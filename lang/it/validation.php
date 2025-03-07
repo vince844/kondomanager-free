@@ -104,7 +104,7 @@ return [
         'array' => ':attribute deve avere almeno :min elementi.',
         'file' => ':attribute deve essere almeno :min kilobyte.',
         'numeric' => ':attribute deve essere minimo :min.',
-        'string' => ':attribute deve contenere almeno :min caratteri.',
+        'string' => 'Il campo :attribute deve contenere almeno :min caratteri.',
     ],
     'min_digits' => ':attribute deve avere almeno :min caratteri.',
     'missing' => ':attribute deve essere mancante.',
@@ -171,8 +171,18 @@ return [
     */
 
     'custom' => [
-        'attribute-name' => [
-            'rule-name' => 'custom-message',
+        'email' => [
+            'required' => 'Il campo :attribute è richiesto',
+            'unique' => 'Il campo :attribute è già in uso',
+            'lowercase' => 'Il campo :attribute deve essere in minuscolo',
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+        ],
+        'name' => [
+            'required' => 'Il campo :attribute è richiesto'
+        ],
+        'password' => [
+            'required' => 'Il campo :attribute è richiesto',
+            'confirmed' => 'Il campo :attribute non coincide con la conferma'
         ],
     ],
 
@@ -187,6 +197,9 @@ return [
     |
     */
 
-    'attributes' => [],
+    'attributes' => [
+        'email' => 'indirizzo email',
+        'name' => 'nome e cognome'
+    ],
 
 ];
