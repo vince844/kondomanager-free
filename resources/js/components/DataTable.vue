@@ -1,6 +1,10 @@
 <script setup lang="ts" generic="TData, TValue">
 import { ref } from 'vue'
-import type { ColumnDef,  ColumnFiltersState } from '@tanstack/vue-table'
+import type { 
+  ColumnDef, 
+  SortingState,
+  ColumnFiltersState 
+} from '@tanstack/vue-table'
 import {
   Table,
   TableBody,
@@ -9,16 +13,17 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-
 import {
   FlexRender,
   getCoreRowModel,
   useVueTable,
   getFilteredRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
 } from '@tanstack/vue-table'
-
 import { Input } from '@/components/ui/input'
 import { valueUpdater } from '@/lib/utils'
+import DataTablePagination from '@/components/DataTablePagination.vue';
 
 const props = defineProps<{
   columns: ColumnDef<TData, TValue>[]
@@ -26,25 +31,30 @@ const props = defineProps<{
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])
+const sorting = ref<SortingState>([])
 
 const table = useVueTable({
   get data() { return props.data },
   get columns() { return props.columns },
   getCoreRowModel: getCoreRowModel(),
   onColumnFiltersChange: updaterOrValue => valueUpdater(updaterOrValue, columnFilters),
+  getPaginationRowModel: getPaginationRowModel(),
   getFilteredRowModel: getFilteredRowModel(),
+  getSortedRowModel: getSortedRowModel(),
+  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
   state: {
         get columnFilters() { return columnFilters.value },
+        get sorting() { return sorting.value },
     },
 })
 </script>
 
 <template>
-      <div class="flex items-center py-4">
-            <Input class="max-w-sm" placeholder="Filter emails..."
-                :model-value="table.getColumn('email')?.getFilterValue() as string"
-                @update:model-value=" table.getColumn('email')?.setFilterValue($event)" />
-        </div>
+  <div class="flex items-center py-4">
+      <Input class="max-w-sm" placeholder="Filtra per nome..."
+          :model-value="table.getColumn('email')?.getFilterValue() as string"
+          @update:model-value=" table.getColumn('name')?.setFilterValue($event)" />
+  </div>
   <div class="border rounded-md">
     <Table>
       <TableHeader>
@@ -78,4 +88,8 @@ const table = useVueTable({
       </TableBody>
     </Table>
   </div>
+  <div class="flex items-center justify-end py-4 space-x-2">
+    <DataTablePagination :table="table" />
+  </div>
+  
 </template>

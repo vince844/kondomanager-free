@@ -18,6 +18,13 @@ class UserSeeder extends Seeder
             'name'     => 'admin',
             'email'    => 'admin@km.com',
             'password' => Hash::make('password'),
-        ])->assignRole('amministratore');
+        ])->assignRole('amministratore'); 
+
+    /*     User::factory()
+            ->count(50)
+            ->create()
+            ->each(function ($user) {
+                $user->assignRole('utente');
+            }); */
     }
 }
