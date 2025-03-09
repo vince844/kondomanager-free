@@ -184,6 +184,14 @@ return [
             'required' => 'Il campo :attribute è richiesto',
             'confirmed' => 'Il campo :attribute non coincide con la conferma'
         ],
+        'building' => [
+            'required' => 'Il campo :attribute è richiesto',
+            'unique' => 'Esiste già un condominio registrato con questa :attribute',
+            'codice_fiscale' => [
+                'required' => 'Il campo :attribute è richiesto',
+                'unique' => 'Esiste già un condominio registrato con questo :attribute'
+            ]
+        ],
     ],
 
     /*
@@ -199,7 +207,10 @@ return [
 
     'attributes' => [
         'email' => 'indirizzo email',
-        'name' => 'nome e cognome'
+        'name' => 'nome e cognome',
+        'building' => [
+            'nome' => 'denominazione'
+        ]
     ],
 
 ];

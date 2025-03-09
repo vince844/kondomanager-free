@@ -34,8 +34,6 @@ const form = useForm({
   /*   buildings: [] */
 });
 
-console.log(form.errors.name);
-
 const submit = () => {
     form.post(route("utenti.store"), {
         preserveScroll: true,
