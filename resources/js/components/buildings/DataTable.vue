@@ -21,13 +21,14 @@ import {
   getSortedRowModel,
   getPaginationRowModel,
 } from '@tanstack/vue-table'
-import { Input } from '@/components/ui/input'
+import type { Building } from '@/types/buildings';
 import { valueUpdater } from '@/lib/utils'
 import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTableToolbar from '@/components/buildings/DataTableToolbar.vue';
 
 const props = defineProps<{
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
+    columns: ColumnDef<Building, any>[]
+    data: Building[]
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])
@@ -43,18 +44,17 @@ const table = useVueTable({
   getSortedRowModel: getSortedRowModel(),
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
   state: {
-        get columnFilters() { return columnFilters.value },
-        get sorting() { return sorting.value },
+      get columnFilters() { return columnFilters.value },
+      get sorting() { return sorting.value },
     },
 })
 </script>
 
 <template>
-  <div class="flex items-center py-4">
-      <Input class="max-w-sm" placeholder="Filtra per nome..."
-          :model-value="table.getColumn('email')?.getFilterValue() as string"
-          @update:model-value=" table.getColumn('name')?.setFilterValue($event)" />
-  </div>
+    <div class="flex items-center py-4">
+      <DataTableToolbar :table="table" />
+    </div>
+  
   <div class="border rounded-md">
     <Table>
       <TableHeader>

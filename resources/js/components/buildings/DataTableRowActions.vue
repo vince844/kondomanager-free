@@ -22,11 +22,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 
-import type { User } from '@/types/users';
+import type { Building } from '@/types/buildings';
 
-defineProps<{ user: User }>()
+defineProps<{ building: Building }>()
 
-const userID = ref('');
+const buildingID = ref('');
 
 // State for AlertDialog
 const isAlertOpen = ref(false)
@@ -35,8 +35,8 @@ const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 
 // Function to delete user: first close menu, then open dialog
-function handleDelete(user: User) {
-  userID.value = user.id;
+function handleDelete(building: Building) {
+  buildingID.value = building.id;
   isDropdownOpen.value = false // Close dropdown first
   setTimeout(() => {
     isAlertOpen.value = true // Open alert after a small delay
@@ -47,16 +47,13 @@ const closeModal = () => {
   isDropdownOpen.value = false // Close dropdown first
 }
 
-const deleteUser = () => {
-    router.delete(route('utenti.destroy', { id: userID.value }),{
+const deleteBuilding = () => {
+    router.delete(route('condomini.destroy', { id: buildingID.value }),{
         preserveScroll: true,
         onSuccess: () => closeModal()
     })
 }
 
-function copy(id: string) {
-  navigator.clipboard.writeText(id)
-}
 </script>
 
 <template>
@@ -70,11 +67,10 @@ function copy(id: string) {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem @click="handleDelete(user)" >
-        Elimina utente
+      <DropdownMenuItem @click="handleDelete(building)" >
+        Elimina condominio
       </DropdownMenuItem>
-    
-      <DropdownMenuItem>View payment details</DropdownMenuItem>
+
     </DropdownMenuContent>
   </DropdownMenu>
 
@@ -82,14 +78,14 @@ function copy(id: string) {
    <AlertDialog v-model:open="isAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro d volere eliminare questo utente?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di volere eliminare questo condominio?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'utente e tutti i dati ad esso associati.
+          Questa azione non è reversibile. Eliminerà il condominio e tutti i dati ad esso associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteUser()">Continua</AlertDialogAction>
+        <AlertDialogAction  @click="deleteBuilding()">Continua</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

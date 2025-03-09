@@ -24,9 +24,7 @@ class UserController extends Controller
     public function index()
     {
         return Inertia::render('users/UsersList', [
-
             'users' => UserResource::collection(User::all())
-            
         ]); 
     }
 
@@ -64,7 +62,8 @@ class UserController extends Controller
             $user->assignRole('utente');
         }
 
-        return to_route('utenti.index');
+        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
+                                                              'message' => "Il nuovo utente è stato creato con successo!"]]);
 
     }
 

@@ -20,7 +20,6 @@ class BuildingController extends Controller
     {
         return Inertia::render('buildings/BuildingsList', [
             'buildings' => BuildingResource::collection(Building::all())
-            
         ]); 
     }
 
@@ -42,7 +41,7 @@ class BuildingController extends Controller
         Building::create($request->validated());
 
         return to_route('condomini.index')->with(['message' => [ 'type'    => 'success',
-                                                                 'message' => "Il profilo del condominio è stato creato con successo!"]]);
+                                                                 'message' => "Il nuovo condominio è stato creato con successo!"]]);
     }
 
     /**
@@ -72,8 +71,11 @@ class BuildingController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Building $building)
+    public function destroy(Building $condomini)
     {
-        //
+        $condomini->delete();
+
+        return back()->with(['message' => [ 'type'    => 'success',
+                                            'message' => "Il codominio è stato eliminato con successo"]]);
     }
 }

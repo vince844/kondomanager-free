@@ -2,13 +2,13 @@
 
 import { computed } from "vue";
 import { usePage } from "@inertiajs/vue3";
-import DataTable from '@/components/DataTable.vue';
+import DataTable from '@/components/buildings/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import { HousePlus} from 'lucide-vue-next';
-import { columns } from '@/components/users/columns';
+import { HousePlus } from 'lucide-vue-next';
+import { columns } from '@/components/buildings/columns';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
@@ -51,7 +51,7 @@ const breadcrumbs: BreadcrumbItem[] = [
           </div>
 
       <div class="container py-3 mx-auto">
-       <!--  <DataTable :columns="columns" :data="users" /> -->
+        <DataTable :columns="columns" :data="buildings" /> 
       </div>
 
     </div>

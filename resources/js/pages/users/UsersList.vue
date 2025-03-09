@@ -2,7 +2,7 @@
 
 import { computed } from "vue";
 import { usePage } from "@inertiajs/vue3";
-import DataTable from '@/components/DataTable.vue';
+import DataTable from '@/components/users/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';

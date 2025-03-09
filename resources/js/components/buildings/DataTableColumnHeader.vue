@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Column } from '@tanstack/vue-table'
-/* import type { Task } from '../data/schema' */
+import type { Building} from '@/types/buildings';
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,8 +14,7 @@ import {
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next'
 
 interface DataTableColumnHeaderProps {
-  /* column: Column<Task, any> */
-  column: Column<unknown, unknown>
+  column: Column<Building, any> 
   title: string
 }
 

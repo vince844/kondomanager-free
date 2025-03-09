@@ -1,8 +1,8 @@
 import { h } from 'vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users';
-import DropdownAction from '@/components/DataTableRowActions.vue';
-import DataTableColumnHeader from '@/components/DataTableColumnHeader.vue';
+import DropdownAction from './DataTableRowActions.vue';
+import DataTableColumnHeader from './DataTableColumnHeader.vue';
 
 const roleClasses: Record<string, string> = {
   amministratore: "bg-red-400 text-white",
