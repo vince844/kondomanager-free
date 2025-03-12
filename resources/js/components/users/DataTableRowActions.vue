@@ -54,6 +54,10 @@ const deleteUser = () => {
     })
 }
 
+const editUser = (user: User) => {
+  router.get(route('utenti.edit', { id: user.id})) 
+}
+
 </script>
 
 <template>
@@ -69,6 +73,10 @@ const deleteUser = () => {
 
       <DropdownMenuItem @click="handleDelete(user)" >
         Elimina utente
+      </DropdownMenuItem>
+
+      <DropdownMenuItem @click="editUser(user)" >
+        Modifica utente
       </DropdownMenuItem>
 
     </DropdownMenuContent>

@@ -35,4 +35,5 @@ class UpdateBuildingRequest extends FormRequest
             'particella_catasto'  => 'sometimes|nullable',
         ];
     }
+    
 }

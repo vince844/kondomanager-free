@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Users;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CreateUserRequest;
+use App\Http\Requests\User\UpdateUserRequest;
+use App\Http\Resources\BuildingResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
-use App\Http\Resources\UserResource;
+use App\Http\Resources\User\EditUserResource;
+use App\Http\Resources\User\UserResource;
+use App\Models\Building;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +19,7 @@ use Inertia\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class UserController extends Controller
 {
@@ -37,6 +42,7 @@ class UserController extends Controller
         return Inertia::render('users/UsersNew',[
             'roles'       => RoleResource::collection(Role::all()),
             'permissions' => PermissionResource::collection(Permission::all()),
+            'buildings'   => BuildingResource::collection(Building::all())
         ]);
 
     }
@@ -46,7 +52,7 @@ class UserController extends Controller
      */
     public function store(CreateUserRequest $request): RedirectResponse
     {
-
+      
         $validated = $request->validated(); 
 
         $user = User::create([
@@ -61,6 +67,8 @@ class UserController extends Controller
         if(empty($request->input('roles'))){
             $user->assignRole('utente');
         }
+
+        $user->buildings()->attach($validated['buildings']);
 
         return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
                                                               'message' => "Il nuovo utente è stato creato con successo!"]]);
@@ -78,18 +86,57 @@ class UserController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(User $utenti): Response
     {
-        //
+        $utenti->load(['roles', 'permissions', 'buildings']);
+
+       return Inertia::render('users/UsersEdit', [
+        'user'        => new EditUserResource($utenti),
+        'roles'       => RoleResource::collection(Role::all()),
+        'permissions' => PermissionResource::collection(Permission::all()),
+        'buildings'   => BuildingResource::collection(Building::all())
+       ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
     {
-        //
+
+        $validated = $request->validated(); 
+
+        $utenti->update([
+            'name'  => $validated['name'],
+            'email' => $validated['email'],
+        ]);
+
+        $utenti->syncRoles($validated['roles']);
+        $utenti->syncPermissions($validated['permissions']);
+        $buildingIds = collect($validated['buildings'])->pluck('id');
+        $utenti->buildings()->sync($buildingIds);
+
+        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
+                                                              'message' => "L'utente è stato aggiornato con successo"]]);
+
     }
+
+/*     public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
+    {
+        $validated = $request->validated();
+
+        $utenti->update([
+            'name'  => $validated['name'],
+            'email' => $validated['email'],
+        ]);
+
+        $utenti->syncRoles($validated->input('roles'));
+        $utenti->syncPermissions($validated->input('permissions'));
+        $utenti->buildings()->sync($validated->input('buildings'));
+
+        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
+                                                              'message' => "L'utente è stato aggiornato con successo"]]);
+    } */
 
     /**
      * Remove the specified resource from storage.

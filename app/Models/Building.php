@@ -28,4 +28,11 @@ class Building extends Model
         'particella_catasto',
 
     ];
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class);
+    }
 }
+
+

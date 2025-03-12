@@ -16,9 +16,8 @@ class RoleResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'value' => $this->id,
-            'label' => Str::of($this->name)->ucfirst()
-            
+            'id' => $this->id,
+            'name' => Str::of($this->name)->ucfirst() 
         ];
     }
 }

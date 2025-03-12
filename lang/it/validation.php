@@ -209,7 +209,12 @@ return [
         'email' => 'indirizzo email',
         'name' => 'nome e cognome',
         'building' => [
-            'nome' => 'denominazione'
+            'nome' => 'denominazione',
+            'roles' => 'Il campo ruoli'
+        ],
+        'user' => [
+            'roles' => 'Il campo ruolo',
+            'buildings' => 'Il campo condominio'
         ]
     ],
 
