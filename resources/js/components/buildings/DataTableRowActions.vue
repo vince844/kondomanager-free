@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { router } from "@inertiajs/vue3";
+import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { 
   DropdownMenu, 
@@ -54,13 +54,17 @@ const deleteBuilding = () => {
     })
 }
 
+const editBuilding = (building: Building) => {
+  router.get(route('condomini.edit', { id: building.id}))
+}
+
 </script>
 
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Open menu</span>
+        <span class="sr-only">Azioni</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
@@ -69,6 +73,10 @@ const deleteBuilding = () => {
 
       <DropdownMenuItem @click="handleDelete(building)" >
         Elimina condominio
+      </DropdownMenuItem>
+
+      <DropdownMenuItem @click="editBuilding(building)" >
+        Modifica condominio
       </DropdownMenuItem>
 
     </DropdownMenuContent>

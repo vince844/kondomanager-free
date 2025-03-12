@@ -44,23 +44,23 @@ const closeModal = () => {
 
 <template>
     <div class="space-y-6">
-        <HeadingSmall title="Delete account" description="Delete your account and all of its resources" />
+        <HeadingSmall title="Elimina account" description="Elimina il tuo account e tutti i dati ad esso associati" />
         <div class="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10">
             <div class="relative space-y-0.5 text-red-600 dark:text-red-100">
-                <p class="font-medium">Warning</p>
-                <p class="text-sm">Please proceed with caution, this cannot be undone.</p>
+                <p class="font-medium">Attenzione</p>
+                <p class="text-sm">Per favore procedi con attenzione, questa azione non è reversibile.</p>
             </div>
             <Dialog>
                 <DialogTrigger as-child>
-                    <Button variant="destructive">Delete account</Button>
+                    <Button variant="destructive">Elimina account</Button>
                 </DialogTrigger>
                 <DialogContent>
                     <form class="space-y-6" @submit="deleteUser">
                         <DialogHeader class="space-y-3">
-                            <DialogTitle>Are you sure you want to delete your account?</DialogTitle>
+                            <DialogTitle>Sei sicuro di volere eliminare il tuo account?</DialogTitle>
                             <DialogDescription>
-                                Once your account is deleted, all of its resources and data will also be permanently deleted. Please enter your
-                                password to confirm you would like to permanently delete your account.
+                                Una volta che il tuo account sarà eliminato, tutti i dati ad esso associati verrano anche eliminati permanentemente. 
+                                Per favore inserisci la tua passsword per confermare l'eliminazione permanente del tuo account.
                             </DialogDescription>
                         </DialogHeader>
 
@@ -72,11 +72,11 @@ const closeModal = () => {
 
                         <DialogFooter class="gap-2">
                             <DialogClose as-child>
-                                <Button variant="secondary" @click="closeModal"> Cancel </Button>
+                                <Button variant="secondary" @click="closeModal"> Cancella </Button>
                             </DialogClose>
 
                             <Button variant="destructive" :disabled="form.processing">
-                                <button type="submit">Delete account</button>
+                                <button type="submit">Elimina account</button>
                             </Button>
                         </DialogFooter>
                     </form>

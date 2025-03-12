@@ -1,7 +1,7 @@
 export interface Building {
     id: string
     nome: string
-    indirizo: string
+    indirizzo: string
     email: string
     note: string,              
     codice_fiscale: string,       

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Building\CreateBuildingRequest;
+use App\Http\Requests\Building\UpdateBuildingRequest;
 use App\Http\Resources\BuildingResource;
 use App\Models\Building;
 use Illuminate\Http\RedirectResponse;
@@ -55,17 +56,22 @@ class BuildingController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Building $building)
+    public function edit(Building $condomini)
     {
-        //
+        return Inertia::render('buildings/BuildingsEdit', [
+            'building' => new BuildingResource($condomini),
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Building $building)
+    public function update(UpdateBuildingRequest $request, Building $condomini): RedirectResponse
     {
-        //
+        $building = Building::find($condomini->id);
+        $building->update($request->validated());
+        return to_route('condomini.index')->with(['message' => [ 'type'    => 'success',
+                                                                 'message' => "Il profilo del condominio è stato modificato con successo"]]);
     }
 
     /**

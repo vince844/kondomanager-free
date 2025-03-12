@@ -81,7 +81,7 @@ const updatePassword = () => {
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password">New password</Label>
+                        <Label for="password">Nuova password</Label>
                         <Input
                             id="password"
                             ref="passwordInput"
@@ -95,7 +95,7 @@ const updatePassword = () => {
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password_confirmation">Confirm password</Label>
+                        <Label for="password_confirmation">Conferma password</Label>
                         <Input
                             id="password_confirmation"
                             v-model="form.password_confirmation"
@@ -108,7 +108,7 @@ const updatePassword = () => {
                     </div>
 
                     <div class="flex items-center gap-4">
-                        <Button :disabled="form.processing">Save password</Button>
+                        <Button :disabled="form.processing">Salva password</Button>
 
                         <TransitionRoot
                             :show="form.recentlySuccessful"
@@ -117,7 +117,7 @@ const updatePassword = () => {
                             leave="transition ease-in-out"
                             leave-to="opacity-0"
                         >
-                            <p class="text-sm text-neutral-600">Saved</p>
+                            <p class="text-sm text-neutral-600">Salvata</p>
                         </TransitionRoot>
                     </div>
                 </form>
