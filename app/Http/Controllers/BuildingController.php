@@ -8,9 +8,10 @@ use App\Http\Requests\Building\UpdateBuildingRequest;
 use App\Http\Resources\BuildingResource;
 use App\Models\Building;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Gate;
+
 
 class BuildingController extends Controller
 {
@@ -29,6 +30,9 @@ class BuildingController extends Controller
      */
     public function create(): Response
     {
+      
+        Gate::authorize('create', Building::class);
+
         return Inertia::render('buildings/BuildingsNew');
 
     }
@@ -58,6 +62,8 @@ class BuildingController extends Controller
      */
     public function edit(Building $condomini)
     {
+        Gate::authorize('update', Building::class);
+        
         return Inertia::render('buildings/BuildingsEdit', [
             'building' => new BuildingResource($condomini),
         ]);
@@ -68,6 +74,8 @@ class BuildingController extends Controller
      */
     public function update(UpdateBuildingRequest $request, Building $condomini): RedirectResponse
     {
+        Gate::authorize('update', Building::class);
+
         $building = Building::find($condomini->id);
         $building->update($request->validated());
         return to_route('condomini.index')->with(['message' => [ 'type'    => 'success',
@@ -79,6 +87,8 @@ class BuildingController extends Controller
      */
     public function destroy(Building $condomini)
     {
+        Gate::authorize('delete', Building::class);
+
         $condomini->delete();
 
         return back()->with(['message' => [ 'type'    => 'success',

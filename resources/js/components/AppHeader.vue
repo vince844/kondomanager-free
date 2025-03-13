@@ -20,6 +20,9 @@ import type { BreadcrumbItem, NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, Menu, Search, Users, House } from 'lucide-vue-next';
 import { computed } from 'vue';
+import { usePermission } from "@/Composables/permissions";
+
+const { hasRole } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -43,17 +46,23 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutGrid,
+        role: 'utente',
+     
   
     },
     {
         title: 'Condomini',
         href: '/condomini',
         icon: House,
+        role: 'amministratore'
+       
     },
     {
         title: 'Utenti',
         href: '/utenti',
         icon: Users,
+        role: 'amministratore'
+      
     }
 ];
 
@@ -129,7 +138,7 @@ const rightNavItems: NavItem[] = [
                     <NavigationMenu class="ml-10 flex h-full items-stretch">
                         <NavigationMenuList class="flex h-full items-stretch space-x-2">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
-                                <Link prefetch :href="item.href">
+                                <Link prefetch :href="item.href" v-if="hasRole(item.role)"> 
                                     <NavigationMenuLink
                                         :class="[navigationMenuTriggerStyle(), activeItemStyles(item.href), 'h-9 cursor-pointer px-3']"
                                     >
