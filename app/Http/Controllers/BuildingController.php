@@ -42,6 +42,8 @@ class BuildingController extends Controller
      */
     public function store(CreateBuildingRequest $request): RedirectResponse
     {
+        
+        Gate::authorize('create', Building::class);
 
         Building::create($request->validated());
 

@@ -13,13 +13,12 @@ use App\Http\Resources\User\UserResource;
 use App\Models\Building;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Gate;
 
 class UserController extends Controller
 {
@@ -28,6 +27,8 @@ class UserController extends Controller
      */
     public function index()
     {
+        Gate::authorize('view', User::class);
+
         return Inertia::render('users/UsersList', [
             'users' => UserResource::collection(User::all())
         ]); 
@@ -38,6 +39,7 @@ class UserController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', User::class);
 
         return Inertia::render('users/UsersNew',[
             'roles'       => RoleResource::collection(Role::all()),
@@ -52,6 +54,8 @@ class UserController extends Controller
      */
     public function store(CreateUserRequest $request): RedirectResponse
     {
+
+        Gate::authorize('create', User::class);
       
         $validated = $request->validated(); 
 
@@ -88,6 +92,8 @@ class UserController extends Controller
      */
     public function edit(User $utenti): Response
     {
+        Gate::authorize('update', User::class);
+
         $utenti->load(['roles', 'permissions', 'buildings']);
 
        return Inertia::render('users/UsersEdit', [
@@ -103,6 +109,8 @@ class UserController extends Controller
      */
     public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
     {
+
+        Gate::authorize('update', User::class);
 
         $validated = $request->validated(); 
 
@@ -121,29 +129,13 @@ class UserController extends Controller
 
     }
 
-/*     public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
-    {
-        $validated = $request->validated();
-
-        $utenti->update([
-            'name'  => $validated['name'],
-            'email' => $validated['email'],
-        ]);
-
-        $utenti->syncRoles($validated->input('roles'));
-        $utenti->syncPermissions($validated->input('permissions'));
-        $utenti->buildings()->sync($validated->input('buildings'));
-
-        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
-                                                              'message' => "L'utente è stato aggiornato con successo"]]);
-    } */
-
     /**
      * Remove the specified resource from storage.
      */
     public function destroy(User $utenti)
     {
-        
+        Gate::authorize('delete', User::class);
+
         $utenti->delete();
 
         return back()->with(['message' => [ 'type'    => 'success',

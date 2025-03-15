@@ -16,11 +16,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import type { BreadcrumbItem, NavItem } from '@/types';
+import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, Menu, Search, Users, House } from 'lucide-vue-next';
 import { computed } from 'vue';
-import { usePermission } from "@/Composables/permissions";
+import { usePermission } from "@/composables/permissions";
 
 const { hasRole } = usePermission();
 
@@ -33,7 +33,8 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const page = usePage();
-const auth = computed(() => page.props.auth);
+/* const auth = computed(() => page.props.auth); */
+const auth = computed<Auth>(() => page.props.auth as Auth);
 
 const isCurrentRoute = (url: string) => {
     return page.url === url;
@@ -46,7 +47,7 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutGrid,
-        role: 'utente',
+        role: ['utente','amministratore','collaboratore'],
      
   
     },
@@ -54,14 +55,14 @@ const mainNavItems: NavItem[] = [
         title: 'Condomini',
         href: '/condomini',
         icon: House,
-        role: 'amministratore'
+        role: ['amministratore', 'collaboratore']
        
     },
     {
         title: 'Utenti',
         href: '/utenti',
         icon: Users,
-        role: 'amministratore'
+        role: ['amministratore']
       
     }
 ];
@@ -138,7 +139,7 @@ const rightNavItems: NavItem[] = [
                     <NavigationMenu class="ml-10 flex h-full items-stretch">
                         <NavigationMenuList class="flex h-full items-stretch space-x-2">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
-                                <Link prefetch :href="item.href" v-if="hasRole(item.role)"> 
+                                <Link prefetch :href="item.href" v-if="!item.role || hasRole(item.role)"> 
                                     <NavigationMenuLink
                                         :class="[navigationMenuTriggerStyle(), activeItemStyles(item.href), 'h-9 cursor-pointer px-3']"
                                     >

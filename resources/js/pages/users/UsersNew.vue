@@ -1,9 +1,7 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { List} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -14,14 +12,13 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
+import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   roles: Role[];
   permissions: Permission[];
   buildings: Building[];
 }>();  
-
-
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -50,7 +47,6 @@ const submit = () => {
 };
 
 </script>
-
 
 <template>
 
@@ -188,7 +184,7 @@ const submit = () => {
                                             :options="buildings" 
                                             label="nome" 
                                             v-model="form.buildings"
-                                            :reduce="(option) => option.id"
+                                            :reduce="(option: Building) => option.id"
                                             placeholder="Seleziona condomini"
                                           />
 
