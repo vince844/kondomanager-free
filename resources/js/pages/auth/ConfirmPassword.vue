@@ -21,8 +21,8 @@ const submit = () => {
 </script>
 
 <template>
-    <AuthLayout title="Confirm your password" description="This is a secure area of the application. Please confirm your password before continuing.">
-        <Head title="Confirm password" />
+    <AuthLayout title="Conferma la tua password" description="Questa è un'area sicura. Per favore conferma la tua password prima di continuare.">
+        <Head title="Conferma password" />
 
         <form @submit.prevent="submit">
             <div class="space-y-6">
@@ -44,7 +44,7 @@ const submit = () => {
                 <div class="flex items-center">
                     <Button class="w-full" :disabled="form.processing">
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                        Confirm Password
+                        Conferma password
                     </Button>
                 </div>
             </div>

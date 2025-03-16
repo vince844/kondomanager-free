@@ -17,17 +17,17 @@ const submit = () => {
 </script>
 
 <template>
-    <AuthLayout title="Verify email" description="Please verify your email address by clicking on the link we just emailed to you.">
-        <Head title="Email verification" />
+    <AuthLayout title="Verifica email" description="Per favore verifica il tuo indirizzo email cliccando sul link che abbiamo inviato al tuo indirizzo email.">
+        <Head title="Verifica email" />
 
         <div v-if="status === 'verification-link-sent'" class="mb-4 text-center text-sm font-medium text-green-600">
-            A new verification link has been sent to the email address you provided during registration.
+            Un nuovo link di verifica è stato inviato all'indirizzo email usato per la registrazione sul portale.
         </div>
 
         <form @submit.prevent="submit" class="space-y-6 text-center">
             <Button :disabled="form.processing" variant="secondary">
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Resend verification email
+                Reinvia email di verifica
             </Button>
 
             <TextLink :href="route('logout')" method="post" as="button" class="mx-auto block text-sm"> Log out </TextLink>

@@ -13,6 +13,7 @@ import type { Building } from '@/types/buildings';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
 import type { BreadcrumbItem } from '@/types';
+import { LoaderCircle } from 'lucide-vue-next';
 
 const props = defineProps<{
   roles: Role[];
@@ -105,44 +106,6 @@ const submit = () => {
                                         </div>
                                     </div>
 
-                                    <!--  Password field -->
-                                <!--     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6"> -->
-
-                                        <!--  New password field -->
-                                   <!--      <div class="sm:col-span-3">
-                                          <Label for="email">Password</Label>
-                                          <Input 
-                                            id="password" 
-                                            class="mt-1 block w-full"
-                                             v-model="form.password" 
-                                             v-on:focus="form.clearErrors('password')"
-                                             autocomplete="password" 
-                                             placeholder="Nuova password" 
-                                          />
-                                          
-                                          <InputError class="mt-2" :message="form.errors.password" />
-                               
-                                        </div> -->
-
-                                        <!-- Confirm password -->
-                                       <!--  <div class="sm:col-span-3">
-                                          <Label for="password_confirmation">Conferma password</Label>
-
-                                          <Input 
-                                            id="password" 
-                                            class="mt-1 block w-full"
-                                             v-model="form.password_confirmation" 
-                                             v-on:focus="form.clearErrors('password_confirmation')"
-                                             autocomplete="new-password" 
-                                             placeholder="Conferma password" 
-                                          />
-                                          
-                                          <InputError class="mt-2" :message="form.errors.password_confirmation" />
-
-                                        </div> -->
-                                        
-                              <!--       </div> -->
-
                                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <!--  Role field -->
                                         <div class="sm:col-span-3">
@@ -198,7 +161,12 @@ const submit = () => {
                                 <div class="pt-5">
                                     <div class="flex">
 
-                                      <Button :class="{ 'opacity-25': form.processing }" :disabled="form.processing">Crea utente</Button>
+                                      <Button :disabled="form.processing">
+                                          <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                                          Crea utente
+                                      </Button>
+
+                                     <!--  <Button :class="{ 'opacity-25': form.processing }" :disabled="form.processing">Crea utente</Button> -->
 
                                     </div>
                                 </div>

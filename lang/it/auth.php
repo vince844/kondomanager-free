@@ -16,5 +16,6 @@ return [
     'failed'   => 'Le credenziali che hai inserito non sono corrette.',
     'password' => 'La password che hai inserito non è corretta.',
     'throttle' => 'Troppi tentativi falliti. Ti preghiamo di riprovare tra :seconds secondi.',
+    'reset_link_sent' => "Un link di ripristino verrà inviato all'inidirizzo email se esiste un account associato",
 
 ];

@@ -48,7 +48,7 @@ class NewUserEmailNotification extends Notification
 
         return (new MailMessage)
             ->subject('Benvenuto su KondoManager')
-            ->greeting("Ciao {$this->user->name},")
+            ->greeting("Salve {$this->user->name},")
             ->line("L'amministratore di condominio ha creato il tuo profilo. Clicca sul seguente link per impostare la tua password.")
             ->action('Imposta password', $resetUrl)
             ->line('Questo link scadrà in 60 minuti.');

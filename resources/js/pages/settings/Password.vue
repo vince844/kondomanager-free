@@ -59,15 +59,15 @@ const updatePassword = () => {
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbItems">
-        <Head title="Profile settings" />
+        <Head title="Impostazioni profilo" />
 
         <SettingsLayout>
             <div class="space-y-6">
-                <HeadingSmall title="Update password" description="Ensure your account is using a long, random password to stay secure" />
+                <HeadingSmall title="Aggiorna password" description="Assicurati di utilizzare una password lunga e casuale per rimanere sicuro" />
 
                 <form @submit.prevent="updatePassword" class="space-y-6">
                     <div class="grid gap-2">
-                        <Label for="current_password">Current password</Label>
+                        <Label for="current_password">Password corrente</Label>
                         <Input
                             id="current_password"
                             ref="currentPasswordInput"
@@ -75,7 +75,7 @@ const updatePassword = () => {
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="current-password"
-                            placeholder="Current password"
+                            placeholder="Password corrente"
                         />
                         <InputError :message="form.errors.current_password" />
                     </div>
@@ -89,7 +89,7 @@ const updatePassword = () => {
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="new-password"
-                            placeholder="New password"
+                            placeholder="Nuova password"
                         />
                         <InputError :message="form.errors.password" />
                     </div>
@@ -102,7 +102,7 @@ const updatePassword = () => {
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="new-password"
-                            placeholder="Confirm password"
+                            placeholder="Conferma password"
                         />
                         <InputError :message="form.errors.password_confirmation" />
                     </div>
