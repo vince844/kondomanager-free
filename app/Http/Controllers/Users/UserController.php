@@ -12,6 +12,7 @@ use App\Http\Resources\User\EditUserResource;
 use App\Http\Resources\User\UserResource;
 use App\Models\Building;
 use App\Models\User;
+use App\Notifications\NewUserEmailNotification;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +20,9 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Carbon;
 
 class UserController extends Controller
 {
@@ -62,7 +66,8 @@ class UserController extends Controller
         $user = User::create([
             'name'     => $validated['name'],
             'email'    => $validated['email'],
-            'password' => Hash::make($validated['password']),
+            'password' => bcrypt(Str::random(16)), // Temporary password
+            /* 'password' => Hash::make($validated['password']), */
         ]);
 
         $user->syncRoles($request->input('roles'));
@@ -74,8 +79,14 @@ class UserController extends Controller
 
         $user->buildings()->attach($validated['buildings']);
 
+        // Send the welcome email with the signed URL
+        $user->notify(new NewUserEmailNotification($user));
+
+        // Send welcome email with reset link
+       /*  $user->notify(new NewUserEmailNotification($user)); */
+
         return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
-                                                              'message' => "Il nuovo utente è stato creato con successo!"]]);
+                                                              'message' => "Il nuovo utente è stato creato con successo!"]]); 
 
     }
 

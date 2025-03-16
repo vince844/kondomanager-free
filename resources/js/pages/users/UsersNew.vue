@@ -30,8 +30,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 const form = useForm({
     name: '',
     email: '',
-    password: '',
-    password_confirmation: '',
+/*     password: '',
+    password_confirmation: '', */
     roles: [],
     permissions: [],
     buildings: [],
@@ -106,10 +106,10 @@ const submit = () => {
                                     </div>
 
                                     <!--  Password field -->
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                                <!--     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6"> -->
 
                                         <!--  New password field -->
-                                        <div class="sm:col-span-3">
+                                   <!--      <div class="sm:col-span-3">
                                           <Label for="email">Password</Label>
                                           <Input 
                                             id="password" 
@@ -122,10 +122,10 @@ const submit = () => {
                                           
                                           <InputError class="mt-2" :message="form.errors.password" />
                                
-                                        </div>
+                                        </div> -->
 
                                         <!-- Confirm password -->
-                                        <div class="sm:col-span-3">
+                                       <!--  <div class="sm:col-span-3">
                                           <Label for="password_confirmation">Conferma password</Label>
 
                                           <Input 
@@ -139,8 +139,9 @@ const submit = () => {
                                           
                                           <InputError class="mt-2" :message="form.errors.password_confirmation" />
 
-                                        </div>
-                                    </div>
+                                        </div> -->
+                                        
+                              <!--       </div> -->
 
                                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <!--  Role field -->
