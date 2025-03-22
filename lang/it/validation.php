@@ -177,6 +177,18 @@ return [
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
             'email' => 'Il campo :attribute deve essere un indirizzo email valido'
         ],
+        'email_secondaria' => [
+            'required' => 'Il campo :attribute è richiesto',
+            'unique' => 'Il campo :attribute è già in uso',
+            'lowercase' => 'Il campo :attribute deve essere in minuscolo',
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+        ],
+        'pec' => [
+            'required' => 'Il campo :attribute è richiesto',
+            'unique' => 'Il campo :attribute è già in uso',
+            'lowercase' => 'Il campo :attribute deve essere in minuscolo',
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+        ],
         'name' => [
             'required' => 'Il campo :attribute è richiesto'
         ],
@@ -191,6 +203,9 @@ return [
                 'required' => 'Il campo :attribute è richiesto',
                 'unique' => 'Esiste già un condominio registrato con questo :attribute'
             ]
+        ],
+        'anagrafica' => [
+            'after:today' => ':attribute deve essere successivo a oggi.',
         ],
     ],
 
@@ -207,6 +222,8 @@ return [
 
     'attributes' => [
         'email' => 'indirizzo email',
+        'email_secondaria' => 'indirizzo email',
+        'pec' => 'indirizzo email',
         'name' => 'nome e cognome',
         'building' => [
             'nome' => 'denominazione',
@@ -215,6 +232,11 @@ return [
         'user' => [
             'roles' => 'Il campo ruolo',
             'buildings' => 'Il campo condominio'
+        ],
+        'anagrafica' => [
+            'nome' => 'Il campo nome e cognome anagrafica',
+            'indirizzo' => 'Il campo indirizzo anagrafica',
+            'scadenza_documento' => 'Il campo scadenza documento',
         ]
     ],
 

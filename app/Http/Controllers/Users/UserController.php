@@ -67,7 +67,6 @@ class UserController extends Controller
             'name'     => $validated['name'],
             'email'    => $validated['email'],
             'password' => bcrypt(Str::random(16)), // Temporary password
-            /* 'password' => Hash::make($validated['password']), */
         ]);
 
         $user->syncRoles($request->input('roles'));
@@ -81,9 +80,6 @@ class UserController extends Controller
 
         // Send the welcome email with the signed URL
         $user->notify(new NewUserEmailNotification($user));
-
-        // Send welcome email with reset link
-       /*  $user->notify(new NewUserEmailNotification($user)); */
 
         return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
                                                               'message' => "Il nuovo utente è stato creato con successo!"]]); 

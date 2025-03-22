@@ -63,7 +63,12 @@ const mainNavItems: NavItem[] = [
         href: '/utenti',
         icon: Users,
         role: ['amministratore']
-      
+    },
+    {
+        title: 'Anagrafiche',
+        href: '/anagrafiche',
+        icon: Users,
+        role: ['amministratore']
     }
 ];
 

@@ -116,7 +116,7 @@ const submit = () => {
                                             :options="roles" 
                                             label="name" 
                                             v-model="form.roles"
-                                             placeholder="Seleziona ruolo utente"
+                                            placeholder="Seleziona ruolo utente"
                                           />
 
                                         </div>
@@ -165,8 +165,6 @@ const submit = () => {
                                           <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                                           Crea utente
                                       </Button>
-
-                                     <!--  <Button :class="{ 'opacity-25': form.processing }" :disabled="form.processing">Crea utente</Button> -->
 
                                     </div>
                                 </div>
