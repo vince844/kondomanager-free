@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Models\Anagrafica;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 
 class AnagraficaController extends Controller
 {
@@ -16,7 +18,8 @@ class AnagraficaController extends Controller
      * Display a listing of the resource.
      */
     public function index()
-    {
+    {   
+
         return Inertia::render('anagrafiche/AnagraficheList', [
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
         ]); 
