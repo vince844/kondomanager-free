@@ -4,13 +4,20 @@ namespace App\Http\Controllers\Anagrafiche;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
+use App\Http\Requests\Anagrafica\UpdateAnagraficaRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Anagrafica\EditAnagraficaResource;
+use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
+use App\Models\Condominio;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
 class AnagraficaController extends Controller
 {
@@ -30,7 +37,9 @@ class AnagraficaController extends Controller
      */
     public function create()
     {
-        return Inertia::render('anagrafiche/AnagraficheNew');
+        return Inertia::render('anagrafiche/AnagraficheNew', [
+            'buildings'   => CondominioResource::collection(Condominio::all())
+        ]);
     }
 
     /**
@@ -39,10 +48,39 @@ class AnagraficaController extends Controller
     public function store(CreateAnagraficaRequest $request): RedirectResponse
     {
 
-        Anagrafica::create($request->validated());
+        $validated = $request->validated(); 
 
-        return to_route('anagrafiche.index')->with(['message' => [ 'type'    => 'success',
-                                                                   'message' => "La nuova anagrafica é stata creata con successo!"]]);
+        try {
+
+            DB::beginTransaction();
+
+            $anagrafica = Anagrafica::create($validated);
+            $anagrafica->condomini()->attach($validated['buildings']);
+
+            DB::commit();
+
+            return to_route('anagrafiche.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La nuova anagrafica è stata creata con successo!"
+                ]
+            ]);
+
+        } catch (Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error creating anagrafica: ' . $e->getMessage());
+
+            return to_route('anagrafiche.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante la creazione dell'anagrafica!"
+                ]
+            ]);
+
+        }
+
     }
 
     /**
@@ -56,17 +94,58 @@ class AnagraficaController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Anagrafica $anagrafica)
+    public function edit(Anagrafica $anagrafiche)
     {
-        //
+        
+       $anagrafiche->load(['condomini']);
+
+       return Inertia::render('anagrafiche/AnagraficheEdit', [
+        'anagrafica'  => new EditAnagraficaResource($anagrafiche),
+        'condomini'   => CondominioResource::collection(Condominio::all())
+       ]);
+       
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Anagrafica $anagrafica)
+    public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafiche): RedirectResponse
     {
-        //
+
+        $validated = $request->validated(); 
+
+        try {
+
+            DB::beginTransaction();
+
+            $anagrafiche->update($validated);
+            
+            $condominiIds = collect($validated['condomini'])->pluck('id');
+            $anagrafiche->condomini()->sync($condominiIds);
+
+            DB::commit();
+
+            return to_route('anagrafiche.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La nuova anagrafica è stata aggiornata con successo!"
+                ]
+            ]);
+
+        } catch (Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error updating anagrafica: ' . $e->getMessage());
+
+            return to_route('anagrafiche.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento dell'anagrafica!"
+                ]
+            ]);
+        }
+
     }
 
     /**

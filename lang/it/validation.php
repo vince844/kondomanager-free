@@ -205,7 +205,8 @@ return [
             ]
         ],
         'anagrafica' => [
-            'after:today' => ':attribute deve essere successivo a oggi.',
+            'after:today' => ':attribute deve essere successivo a oggi',
+            'before:today' => ':attribute deve essere precedente a oggi',
         ],
     ],
 
@@ -237,6 +238,7 @@ return [
             'nome' => 'Il campo nome e cognome anagrafica',
             'indirizzo' => 'Il campo indirizzo anagrafica',
             'scadenza_documento' => 'Il campo scadenza documento',
+            'data_nascita' => 'Il campo data nascita',
         ]
     ],
 

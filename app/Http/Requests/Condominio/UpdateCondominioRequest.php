@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\Building;
+namespace App\Http\Requests\Condominio;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateBuildingRequest extends FormRequest
+class UpdateCondominioRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -35,5 +35,4 @@ class UpdateBuildingRequest extends FormRequest
             'particella_catasto'  => 'sometimes|nullable',
         ];
     }
-    
 }

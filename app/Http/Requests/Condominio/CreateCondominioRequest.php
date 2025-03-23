@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\Building;
+namespace App\Http\Requests\Condominio;
 
-use App\Models\Building;
+use App\Models\Condominio;
 use Illuminate\Foundation\Http\FormRequest;
 
-class CreateBuildingRequest extends FormRequest
+class CreateCondominioRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -23,9 +23,9 @@ class CreateBuildingRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nome'                => 'required|string|max:255|unique:'.Building::class, 
-            'codice_fiscale'      => 'required|string|max:255|unique:'.Building::class,
-            'email'               => 'sometimes|nullable|string|lowercase|email|max:255|unique:'.Building::class,
+            'nome'                => 'required|string|max:255|unique:'.Condominio::class, 
+            'codice_fiscale'      => 'required|string|max:255|unique:'.Condominio::class,
+            'email'               => 'sometimes|nullable|string|lowercase|email|max:255|unique:'.Condominio::class,
             'indirizzo'           => 'sometimes|nullable',
             'note'                => 'sometimes|nullable',
             'comune_catasto'      => 'sometimes|nullable',

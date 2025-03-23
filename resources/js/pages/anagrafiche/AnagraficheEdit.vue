@@ -1,11 +1,12 @@
 <script setup lang="ts">
 
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted } from "vue";
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
+import type { Anagrafica } from '@/types/anagrafiche'; 
 import { Button } from '@/components/ui/button';
 import { List} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -20,13 +21,45 @@ import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 
 const props = defineProps<{
-  buildings: Building[];
+  anagrafica: Anagrafica;
+  condomini: Building[];
 }>();  
+
+const form = useForm({
+    nome:  props.anagrafica?.nome,
+    indirizzo: props.anagrafica?.indirizzo, 
+    codice_fiscale: props.anagrafica?.codice_fiscale, 
+    luogo_nascita: props.anagrafica?.luogo_nascita,
+    data_nascita: props.anagrafica?.data_nascita,
+    numero_documento: props.anagrafica?.numero_documento, 
+    tipologia_documento: props.anagrafica?.tipologia_documento, 
+    scadenza_documento: props.anagrafica?.scadenza_documento, 
+    email: props.anagrafica?.email, 
+    email_secondaria: props.anagrafica?.email_secondaria, 
+    pec: props.anagrafica?.pec, 
+    telefono: props.anagrafica?.telefono, 
+    cellulare: props.anagrafica?.cellulare, 
+    note: props.anagrafica?.note, 
+    condomini: []
+});
+
+console.log(form);
+
+onMounted(() => {
+  form.condomini = props.anagrafica?.condomini
+})
+
+watch(
+    () => props.anagrafica,
+    () => {
+      form.condomini = props.anagrafica?.condomini
+    }
+) 
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Nuova anagrafica',
-        href: '/anagrafiche/create',
+        title: 'Modifica anagrafica',
+        href: '/anagrafiche/edit',
     },
 ];
 
@@ -46,30 +79,9 @@ const documents = [
   }
 ];
 
-const form = useForm({
-    nome: '',
-    indirizzo: '',
-    email: '',
-    email_secondaria: '',
-    pec: '',
-    codice_fiscale: '',
-    tipologia_documento: '',
-    numero_documento: '',
-    scadenza_documento: '',
-    luogo_nascita: '',
-    data_nascita: '',
-    telefono: '',
-    cellulare: '',
-    note: '',
-    buildings: [],
-});
-
 const submit = () => {
-    form.post(route("anagrafiche.store"), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
+    form.put(route("anagrafiche.update", {id: props.anagrafica.id}), {
+        preserveScroll: true
     });
 };
 
@@ -99,7 +111,7 @@ const submit = () => {
 
                                 <div class="pt-3">
                                     <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati anagrafici</p>
+                                    <p class="mt-1 text-sm text-gray-500">Di seguito è possibile modificare i dati anagrafici</p>
                                 </div>
 
                                 <Separator class="my-4" />
@@ -172,7 +184,7 @@ const submit = () => {
 
                                     </div>
 
-                                    <!--  Contatti fields -->
+                                    <!--  Codice fiscale field -->
                                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-2">
                                           <Label for="email">Indirizzo email primario</Label>
@@ -217,7 +229,7 @@ const submit = () => {
                                         </div>
                                     </div>
 
-                                    <!--  documenti fields -->
+                                    <!--  Codice fiscale field -->
                                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-2">
                                           <Label for="tipologia_documento">Tipologia documento</Label>
@@ -228,7 +240,6 @@ const submit = () => {
                                             v-model="form.tipologia_documento"
                                             placeholder="Seleziona tipologia documento"
                                             :reduce="(document: DocumentType) => document.id"
-
                                           />
                                
                                         </div>
@@ -261,7 +272,6 @@ const submit = () => {
                                             auto-apply
                                             placeholder="Data scadenza documento"
                                             class="block w-full py-1" 
-  
                                           />
 
                                           <InputError class="mt-2" :message="form.errors.scadenza_documento || ''" />
@@ -277,9 +287,9 @@ const submit = () => {
                                           <Input 
                                             id="codice_fiscale" 
                                             class="mt-1 block w-full"
-                                             v-model="form.codice_fiscale" 
-                                             v-on:focus="form.clearErrors('codice_fiscale')"
-                                             placeholder="Codice fiscale" 
+                                            v-model="form.codice_fiscale" 
+                                            v-on:focus="form.clearErrors('codice_fiscale')"
+                                            placeholder="Codice fiscale" 
                                           />
                                           
                                           <InputError class="mt-2" :message="form.errors.codice_fiscale" />
@@ -291,9 +301,9 @@ const submit = () => {
                                           <Input 
                                             id="luogo_nascita" 
                                             class="mt-1 block w-full"
-                                             v-model="form.luogo_nascita" 
-                                             v-on:focus="form.clearErrors('luogo_nascita')"
-                                             placeholder="Luogo di nascita" 
+                                            v-model="form.luogo_nascita" 
+                                            v-on:focus="form.clearErrors('luogo_nascita')"
+                                            placeholder="Luogo di nascita" 
                                           />
                                           
                                           <InputError class="mt-2" :message="form.errors.luogo_nascita" />
@@ -326,16 +336,16 @@ const submit = () => {
                                         <!--  Condomini field -->
                                         <div class="sm:col-span-2">
 
-                                          <Label for="ruolo">Condomini</Label>
+                                            <Label for="condomini">Condomini</Label>
 
-                                          <v-select 
-                                            multiple
-                                            :options="buildings" 
-                                            label="nome" 
-                                            v-model="form.buildings"
-                                            :reduce="(option: Building) => option.id"
-                                            placeholder="Seleziona condomini"
-                                          />
+                                            <v-select 
+                                              multiple
+                                              :options="condomini" 
+                                              label="nome" 
+                                              v-model="form.condomini" 
+                                            />
+
+                                            <InputError class="mt-2" :message="form.errors.condomini" />
 
                                         </div>
 
@@ -364,7 +374,7 @@ const submit = () => {
 
                                       <Button :disabled="form.processing">
                                           <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                          Crea anagrafica
+                                          Modifica anagrafica
                                       </Button>
 
                                     </div>

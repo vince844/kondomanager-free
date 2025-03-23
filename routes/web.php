@@ -3,6 +3,7 @@
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\BuildingController;
+use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Users\UserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -16,8 +17,9 @@ Route::get('dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::resource('/utenti', UserController::class)->middleware(['auth', 'verified']);
-Route::resource('/condomini', BuildingController::class)->middleware(['auth', 'verified']);
+/* Route::resource('/condomini', BuildingController::class)->middleware(['auth', 'verified']); */
 Route::resource('/anagrafiche', AnagraficaController::class)->middleware(['auth', 'verified']);
+Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
 
 Route::get('/password/new/', [NewUserPasswordController::class, 'showResetForm'])->name('password.new')->middleware('signed'); ;
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])->name('password.create');

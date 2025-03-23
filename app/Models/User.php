@@ -70,8 +70,11 @@ class User extends Authenticatable
         $this->notify(new CustomVerifyEmailNotification);
     }
 
-    public function buildings()
+    /**
+     * Get the anagrafica associated with the user.
+     */
+    public function anagrafica()
     {
-        return $this->belongsToMany(Building::class);
+        return $this->hasOne(Anagrafica::class); 
     }
 }

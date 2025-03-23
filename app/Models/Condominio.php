@@ -10,6 +10,8 @@ class Condominio extends Model
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory;
 
+    protected $table = 'condomini';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -26,7 +28,6 @@ class Condominio extends Model
         'sezione_catasto', 
         'foglio_catasto',    
         'particella_catasto',
-
     ];
 
     /**

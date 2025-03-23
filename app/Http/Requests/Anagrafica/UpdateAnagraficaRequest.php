@@ -4,10 +4,10 @@ namespace App\Http\Requests\Anagrafica;
 
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
-use App\Models\Anagrafica;
 use Illuminate\Validation\Rule;
+use App\Models\Anagrafica;
 
-class CreateAnagraficaRequest extends FormRequest
+class UpdateAnagraficaRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -27,19 +27,20 @@ class CreateAnagraficaRequest extends FormRequest
         return [
             'nome'                => 'required|string|max:255',
             'indirizzo'           => 'required|string|max:255',
-            'email'               => 'nullable|string|lowercase|email|max:255|unique:'.Anagrafica::class.',email',
+            'email'               => 'nullable|string|lowercase|email|max:255',
             'email_secondaria'    => 'nullable|string|lowercase|email|max:255|different:email',
             'pec'                 => 'nullable|string|lowercase|email|max:255',
             'tipologia_documento' => 'nullable|string|max:255',
             'numero_documento'    => 'nullable|string|max:255',
-            'codice_fiscale'      => 'nullable|string|max:255|unique:'.Anagrafica::class.',codice_fiscale',
+            'codice_fiscale'      => 'nullable|string|max:255',
             'telefono'            => 'nullable|string|max:255',
             'cellulare'           => 'nullable|string|max:255',
             'luogo_nascita'       => 'nullable|string|max:255',
             'scadenza_documento'  => 'nullable|date|after:today',
             'data_nascita'        => 'nullable|date|before:today',
             'note'                => 'nullable|string',
-            'buildings'           => ['nullable', 'array', Rule::exists('condomini', 'id')],
+            'condomini'           => 'nullable|array',
+            'condomini.*.id'      => 'exists:condomini,id'
         ];
     }
 
@@ -69,8 +70,8 @@ class CreateAnagraficaRequest extends FormRequest
             ]);
         }
 
-        if ($this->has('buildings') && !is_array($this->buildings)) {
-            $this->merge(['buildings' => (array)$this->buildings]);
+        if ($this->has('condomini') && !is_array($this->condomini)) {
+            $this->merge(['condomini' => (array)$this->condomini]);
         }
     }
     
@@ -83,10 +84,10 @@ class CreateAnagraficaRequest extends FormRequest
     }
 
     /**
-    * Get custom attributes for validator errors.
-    *
-    * @return array<string, string>
-    */
+     * Get custom attributes for validator errors.
+     *
+     * @return array<string, string>
+     */
     public function attributes()
     {
         return [

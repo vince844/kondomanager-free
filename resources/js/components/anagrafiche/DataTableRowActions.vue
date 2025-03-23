@@ -55,7 +55,7 @@ const deleteAnagrafica = () => {
 }
 
 const editAnagrafica = (anagrafica: Anagrafica) => {
-  router.get(route('utenti.edit', { id: anagrafica.id})) 
+  router.get(route('anagrafiche.edit', { id: anagrafica.id})) 
 }
 
 </script>

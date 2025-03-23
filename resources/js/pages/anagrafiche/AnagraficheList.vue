@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { usePage } from "@inertiajs/vue3";
 import DataTable from '@/components/anagrafiche/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -29,6 +29,23 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
+// Scroll to top when flashMessage exists
+const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+
+// Scroll on mount and watch for flash message changes
+onMounted(() => {
+  if (flashMessage.value) {
+    scrollToTop();
+  }
+});
+
+// Optional: Watch for flashMessage changes (e.g., after Inertia navigation)
+watch(flashMessage, (newValue) => {
+  if (newValue) {
+    scrollToTop();
+  }
+});
+
 </script>
 
 <template>
@@ -46,7 +63,7 @@ const breadcrumbs: BreadcrumbItem[] = [
             <Link :href="route('anagrafiche.create')">Nuova anagrafica</Link>
           </Button>
 
-          <div v-if="flashMessage" class="py-4">
+          <div v-if="flashMessage" class="py-4"> 
             <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
