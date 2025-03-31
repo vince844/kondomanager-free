@@ -18,7 +18,7 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search, Users, House } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, Menu, Search, Users, House, IdCard, SquareLibrary } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
@@ -47,7 +47,7 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutGrid,
-        role: ['utente','amministratore','collaboratore'],
+        role: ['amministratore','collaboratore','fornitore','utente'],
      
   
     },
@@ -59,16 +59,10 @@ const mainNavItems: NavItem[] = [
        
     },
     {
-        title: 'Utenti',
-        href: '/utenti',
-        icon: Users,
-        role: ['amministratore']
-    },
-    {
         title: 'Anagrafiche',
         href: '/anagrafiche',
-        icon: Users,
-        role: ['amministratore']
+        icon: SquareLibrary,
+        role: ['amministratore', 'collaboratore']
     }
 ];
 

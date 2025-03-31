@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\User;
 
+use App\Models\Anagrafica;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -24,9 +25,21 @@ class CreateUserRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'      => 'required|string|max:255',
-            'email'     => 'required|string|lowercase|email|max:255|unique:'.User::class,
-            'buildings' => ['required', Rule::exists('buildings', 'id')]
+            'name'        => 'required|string|max:255',
+            'email'       => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'anagrafica' => [
+                'sometimes',
+                Rule::exists('anagrafiche', 'id'), 
+                function ($attribute, $value, $fail) {
+
+                    $anagrafica = Anagrafica::with('user')->find($value);
+                    if ($anagrafica && $anagrafica->user) {
+                        $fail("Questa anagrafica è già associata all'utente: " . $anagrafica->user->name);
+                    }
+                    
+                }
+            ],
+
         ];
     }
 

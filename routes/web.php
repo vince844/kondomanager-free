@@ -16,8 +16,7 @@ Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
 
-Route::resource('/utenti', UserController::class)->middleware(['auth', 'verified']);
-/* Route::resource('/condomini', BuildingController::class)->middleware(['auth', 'verified']); */
+Route::resource('/utenti', UserController::class)->middleware(['auth', 'verified']); 
 Route::resource('/anagrafiche', AnagraficaController::class)->middleware(['auth', 'verified']);
 Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
 

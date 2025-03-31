@@ -4,6 +4,9 @@ import type { Table } from '@tanstack/vue-table'
 import type { Anagrafica } from '@/types/anagrafiche'
 import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
+import { Button } from '@/components/ui/button'
+import { Link } from '@inertiajs/vue3'
+import { UserPlus} from 'lucide-vue-next';
 
 interface DataTableToolbarProps {
   table: Table<Anagrafica>
@@ -15,6 +18,26 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
 </script>
 
 <template>
+  <div class="flex items-center justify-between w-full mb-3">
+    <!-- Left Section: Input -->
+    <div class="flex items-center space-x-2">
+      <Input
+        placeholder="Filtra per nome..."
+        :model-value="(table.getColumn('nome')?.getFilterValue() as string) ?? ''"
+        class="h-8 w-[150px] lg:w-[250px]"
+        @input="table.getColumn('nome')?.setFilterValue($event.target.value)"
+      />
+    </div>
+
+    <!-- Right Section: Button (force it to the right) -->
+    <Button class="hidden h-8 lg:flex ml-auto">
+      <UserPlus class="w-4 h-4" />
+      <Link :href="route('anagrafiche.create')">Nuova anagrafica</Link>
+    </Button>
+  </div>
+</template>
+
+<!-- <template>
   <div class="flex items-center justify-between">
     <div class="flex flex-1 items-center space-x-2 mb-3">
       <Input
@@ -25,4 +48,4 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
       />
     </div>
   </div>
-</template>
+</template> -->

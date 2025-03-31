@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\User;
 
+use App\Models\Anagrafica;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -28,7 +29,24 @@ class UpdateUserRequest extends FormRequest
             'email'       => ['required','string','lowercase','max:255','email', Rule::unique('users')->ignore($this->utenti, 'email')],
             'roles'       => ['required'],
             'permissions' => ['sometimes', 'array'],
-            'buildings'   => ['required', 'array']
+            'anagrafica' => [
+                'sometimes',
+                Rule::exists('anagrafiche', 'id'), 
+                function ($attribute, $value, $fail) {
+
+                    $anagrafica = Anagrafica::with('user')->find($value);
+
+                    // Check if the anagrafica ID is unchanged
+                    if ($anagrafica && $anagrafica->user == $this->utenti) {
+                        return; // Skip validation if the ID hasn't changed
+                    }
+
+                    if ($anagrafica && $anagrafica->user) {
+                        $fail("Questa anagrafica è già associata all'utente: " . $anagrafica->user->name);
+                    }
+
+                }
+            ],
         ];
     }
 
@@ -41,7 +59,6 @@ class UpdateUserRequest extends FormRequest
     {
         return [
             'roles' => __('validation.attributes.user.roles'),
-            'buildings' => __('validation.attributes.user.buildings'),
         ];
     }
 }

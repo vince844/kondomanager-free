@@ -231,8 +231,7 @@ return [
             'roles' => 'Il campo ruoli'
         ],
         'user' => [
-            'roles' => 'Il campo ruolo',
-            'buildings' => 'Il campo condominio'
+            'roles' => 'Il campo ruolo'
         ],
         'anagrafica' => [
             'nome' => 'Il campo nome e cognome anagrafica',

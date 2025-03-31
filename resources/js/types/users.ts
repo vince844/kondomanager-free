@@ -1,8 +1,11 @@
+
+import { Anagrafica } from './anagrafiche';
+
 export interface User {
     id: string
     name: string
     email: string
-/*     roles: string[] */
- /*    buildings: string[],
-    permissions: string[] */
+    anagrafica: Anagrafica
+    roles: [] 
+    permissions: [] 
   }

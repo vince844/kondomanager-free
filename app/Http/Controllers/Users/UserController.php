@@ -5,27 +5,32 @@ namespace App\Http\Controllers\Users;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\User\CreateUserRequest;
 use App\Http\Requests\User\UpdateUserRequest;
-use App\Http\Resources\BuildingResource;
+use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use App\Http\Resources\User\EditUserResource;
 use App\Http\Resources\User\UserResource;
-use App\Models\Building;
+use App\Models\Anagrafica;
 use App\Models\User;
-use App\Notifications\NewUserEmailNotification;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Carbon;
+use Exception;
+use Illuminate\Support\Facades\Log;
+use App\Services\UserService;
 
 class UserController extends Controller
 {
+    protected $userService;
+
+    public function __construct(UserService $userService)
+    {
+        $this->userService = $userService;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -33,7 +38,7 @@ class UserController extends Controller
     {
         Gate::authorize('view', User::class);
 
-        return Inertia::render('users/UsersList', [
+        return Inertia::render('utenti/ElencoUtenti', [
             'users' => UserResource::collection(User::all())
         ]); 
     }
@@ -45,10 +50,10 @@ class UserController extends Controller
     {
         Gate::authorize('create', User::class);
 
-        return Inertia::render('users/UsersNew',[
+        return Inertia::render('utenti/NuovoUtente',[
             'roles'       => RoleResource::collection(Role::all()),
             'permissions' => PermissionResource::collection(Permission::all()),
-            'buildings'   => BuildingResource::collection(Building::all())
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
         ]);
 
     }
@@ -60,30 +65,29 @@ class UserController extends Controller
     {
 
         Gate::authorize('create', User::class);
-      
-        $validated = $request->validated(); 
 
-        $user = User::create([
-            'name'     => $validated['name'],
-            'email'    => $validated['email'],
-            'password' => bcrypt(Str::random(16)), // Temporary password
-        ]);
+        try {
 
-        $user->syncRoles($request->input('roles'));
-        $user->syncPermissions($request->input('permissions'));
+            $this->userService->createUser($request->validated());
+    
+            return to_route('utenti.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "Il nuovo utente è stato creato con successo!",
+                ],
+            ]);
 
-        if(empty($request->input('roles'))){
-            $user->assignRole('utente');
+        } catch (Exception $e) {
+
+            Log::error('Error creating user: ' . $e->getMessage());
+    
+            return to_route('utenti.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante la creazione del nuovo utente!",
+                ]
+            ]);
         }
-
-        $user->buildings()->attach($validated['buildings']);
-
-        // Send the welcome email with the signed URL
-        $user->notify(new NewUserEmailNotification($user));
-
-        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
-                                                              'message' => "Il nuovo utente è stato creato con successo!"]]); 
-
     }
 
     /**
@@ -101,14 +105,14 @@ class UserController extends Controller
     {
         Gate::authorize('update', User::class);
 
-        $utenti->load(['roles', 'permissions', 'buildings']);
+        $utenti->load(['roles', 'permissions', 'anagrafica']);
 
-       return Inertia::render('users/UsersEdit', [
-        'user'        => new EditUserResource($utenti),
-        'roles'       => RoleResource::collection(Role::all()),
-        'permissions' => PermissionResource::collection(Permission::all()),
-        'buildings'   => BuildingResource::collection(Building::all())
-       ]);
+        return Inertia::render('utenti/ModificaUtente', [
+            'user'        => new EditUserResource($utenti),
+            'roles'       => RoleResource::collection(Role::all()),
+            'permissions' => PermissionResource::collection(Permission::all()),
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+        ]);
     }
 
     /**
@@ -119,20 +123,29 @@ class UserController extends Controller
 
         Gate::authorize('update', User::class);
 
-        $validated = $request->validated(); 
+        try {
 
-        $utenti->update([
-            'name'  => $validated['name'],
-            'email' => $validated['email'],
-        ]);
+            $this->userService->updateUser($utenti, $request->validated());
+    
+            return to_route('utenti.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "L'utente è stato aggiornato con successo!"
+                ]
+            ]);
 
-        $utenti->syncRoles($validated['roles']);
-        $utenti->syncPermissions($validated['permissions']);
-        $buildingIds = collect($validated['buildings'])->pluck('id');
-        $utenti->buildings()->sync($buildingIds);
+        } catch (Exception $e) {
 
-        return to_route('utenti.index')->with(['message' => [ 'type'    => 'success',
-                                                              'message' => "L'utente è stato aggiornato con successo"]]);
+            Log::error('Error updatting user: ' . $e->getMessage());
+
+            return to_route('utenti.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento dell'utente!"
+                ]
+            ]);
+        
+        }
 
     }
 

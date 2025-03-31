@@ -47,7 +47,7 @@ watch(
 ) 
 
 const submit = () => {
-    form.put(route("utenti.update", props.user?.id), {
+    form.patch(route("utenti.update", props.user?.id), {
         preserveScroll: true
     });
 };

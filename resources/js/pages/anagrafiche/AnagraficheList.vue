@@ -57,17 +57,12 @@ watch(flashMessage, (newValue) => {
     <div class="px-4 py-6">
       
       <Heading title="Elenco anagrafiche" description="Di seguito la tabella con l'elenco di tutte le anagrafiche registrate" />
-      
-          <Button class="ml-auto hidden h-8 lg:flex" >
-            <UserPlus class="w-4 h-4" />
-            <Link :href="route('anagrafiche.create')">Nuova anagrafica</Link>
-          </Button>
+    
+      <div v-if="flashMessage" class="py-4"> 
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
-          <div v-if="flashMessage" class="py-4"> 
-            <Alert :message="flashMessage.message" :type="flashMessage.type" />
-          </div>
-
-      <div class="container py-3 mx-auto">
+      <div class="container mx-auto">
         <DataTable :columns="columns" :data="anagrafiche" />
       </div>
 
