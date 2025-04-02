@@ -40,17 +40,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     <div class="px-4 py-6">
       
       <Heading title="Elenco condomini" description="Di seguito la tabella con l'elenco di tutti i condomini registrati" />
-      
-          <Button class="ml-auto hidden h-8 lg:flex" >
-            <HousePlus class="w-4 h-4" />
-            <Link :href="route('condomini.create')">Nuovo condominio</Link>
-          </Button>
 
-          <div v-if="flashMessage" class="py-4">
-            <Alert :message="flashMessage.message" :type="flashMessage.type" />
-          </div>
+      <div v-if="flashMessage" class="py-4">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
-      <div class="container py-3 mx-auto">
+      <div class="container mx-auto">
         <DataTable :columns="columns" :data="buildings" /> 
       </div>
 

@@ -136,7 +136,7 @@ class UserController extends Controller
 
         } catch (Exception $e) {
 
-            Log::error('Error updatting user: ' . $e->getMessage());
+            Log::error('Error updating user: ' . $e->getMessage());
 
             return to_route('utenti.index')->with([
                 'message' => [

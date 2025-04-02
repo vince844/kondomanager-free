@@ -8,7 +8,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
     {
         accessorKey: 'nome',
         header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Nome e cognome' }), 
-        cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('nome')),
+        cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
       },
       {
         accessorKey: 'indirizzo',

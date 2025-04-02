@@ -21,14 +21,14 @@ import {
   getSortedRowModel,
   getPaginationRowModel,
 } from '@tanstack/vue-table'
-import type { User } from '@/types/users';
+import type { Role } from '@/types/roles';
 import { valueUpdater } from '@/lib/utils'
 import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from '@/components/users/DataTableToolbar.vue'
+import DataTableToolbar from '@/components/roles/DataTableToolbar.vue';
 
 const props = defineProps<{
-    columns: ColumnDef<User, any>[]
-    data: User[]
+    columns: ColumnDef<Role, any>[]
+    data: Role[]
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])

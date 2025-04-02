@@ -15,7 +15,7 @@ export const columns: ColumnDef<User>[] = [
     {
         accessorKey: 'name',
         header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Nome e cognome' }), 
-        cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('name')),
+        cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('name')),
       },
       {
         accessorKey: 'email',
@@ -37,7 +37,6 @@ export const columns: ColumnDef<User>[] = [
         }
         
       },
-    
       {
         id: 'actions',
         enableHiding: false,

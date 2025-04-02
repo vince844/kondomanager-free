@@ -1,10 +1,8 @@
 <script setup lang="ts">
 
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { List} from 'lucide-vue-next';
-import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -32,7 +30,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 const form = useForm({
     name: '',
     email: '',
-    roles: [],
+    roles: '',
     permissions: [],
     anagrafica: '',
 });
@@ -61,7 +59,7 @@ const submit = () => {
                     <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
                         <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
                             <form class="space-y-2 p-2" @submit.prevent="submit">
-                                <div class="pt-2">
+                                <div class="">
                                     <!--  Name field -->
                                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-3">
@@ -108,6 +106,7 @@ const submit = () => {
                                             :options="roles" 
                                             label="name" 
                                             v-model="form.roles"
+                                            :reduce="(option) => option.id"
                                             placeholder="Seleziona ruolo utente"
                                           />
 
@@ -123,6 +122,7 @@ const submit = () => {
                                             :options="permissions" 
                                             label="name" 
                                             v-model="form.permissions"
+                                            :reduce="(option) => option.id"
                                             placeholder="Seleziona permessi utente"
                                           />
 
@@ -140,6 +140,7 @@ const submit = () => {
                                             label="nome" 
                                             v-model="form.anagrafica"
                                             :reduce="(option: Anagrafica) => option.id"
+                                            @update:modelValue="form.clearErrors('anagrafica')" 
                                             placeholder="Seleziona anagrafica"
                                           />
 

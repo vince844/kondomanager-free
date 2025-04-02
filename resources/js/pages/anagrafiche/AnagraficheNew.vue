@@ -1,6 +1,5 @@
 <script setup lang="ts">
 
-import { ref, watch, computed } from "vue";
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';

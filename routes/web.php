@@ -4,6 +4,10 @@ use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Permissions\PermissionController;
+use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
+use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
+use App\Http\Controllers\Roles\RoleController;
 use App\Http\Controllers\Users\UserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -17,6 +21,10 @@ Route::get('dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::resource('/utenti', UserController::class)->middleware(['auth', 'verified']); 
+Route::resource('/ruoli', RoleController::class)->middleware(['auth', 'verified']);
+Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
+Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleController::class)->middleware(['auth', 'verified'])->name('ruoli.permissions.destroy');
+Route::delete('users/{user}/permissions/{permission}', RevokePermissionFromUserController::class)->middleware(['auth', 'verified'])->name('users.permissions.destroy');
 Route::resource('/anagrafiche', AnagraficaController::class)->middleware(['auth', 'verified']);
 Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
 

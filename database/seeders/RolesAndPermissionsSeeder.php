@@ -102,7 +102,10 @@ class RolesAndPermissionsSeeder extends Seeder
           app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
   
           // create roles and assign permissions
-          $role = Role::create(['name' => 'amministratore'])->givePermissionTo(Permission::all());
+          Role::create([
+            'name' => 'amministratore',
+            'description' => 'Questo è il ruolo di default amministratore'
+          ])->givePermissionTo(Permission::all());
 
           $collaboratore_permissions = [
             'Crea utenti',
@@ -131,7 +134,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'Visualizza commenti segnalazioni'
           ];
 
-          $role = Role::create(['name' => 'collaboratore'])->givePermissionTo($collaboratore_permissions);
+          Role::create([
+            'name' => 'collaboratore',
+            'description' => 'Questo è il ruolo di default collaboratore'
+          ])->givePermissionTo($collaboratore_permissions);
 
           $fornitore_permissions = [
             'Visualizza comunicazioni',
@@ -141,8 +147,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'Commenta segnalazioni',
             'Visualizza commenti segnalazioni'
           ];
-  
-          $role = Role::create(['name' => 'fornitore'])->givePermissionTo($fornitore_permissions);
+
+          Role::create([
+            'name' => 'fornitore',
+            'description' => 'Questo è il ruolo di default fornitore'
+          ])->givePermissionTo($fornitore_permissions);
 
           $utente_permissions = [
             'Visualizza comunicazioni',
@@ -154,7 +163,11 @@ class RolesAndPermissionsSeeder extends Seeder
             'Commenta segnalazioni',
             'Visualizza commenti segnalazioni'
           ];
-  
-          $role = Role::create(['name' => 'utente'])->givePermissionTo($utente_permissions);
+
+          Role::create([
+            'name' => 'utente',
+            'description' => 'Questo è il ruolo di default utente'
+          ])->givePermissionTo($utente_permissions);
+
     }
 }

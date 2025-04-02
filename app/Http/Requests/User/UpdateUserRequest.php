@@ -36,9 +36,8 @@ class UpdateUserRequest extends FormRequest
 
                     $anagrafica = Anagrafica::with('user')->find($value);
 
-                    // Check if the anagrafica ID is unchanged
                     if ($anagrafica && $anagrafica->user == $this->utenti) {
-                        return; // Skip validation if the ID hasn't changed
+                        return;
                     }
 
                     if ($anagrafica && $anagrafica->user) {

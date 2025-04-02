@@ -1,11 +1,9 @@
 <script setup lang="ts">
 
-import { Link, Head, useForm } from '@inertiajs/vue3';
-import { computed, watch, onMounted, ref } from 'vue';
+import { Head, useForm, Link } from '@inertiajs/vue3';
+import { watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { List} from 'lucide-vue-next';
-import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -35,22 +33,22 @@ const breadcrumbs: BreadcrumbItem[] = [
 const form = useForm({
     name:  props.user?.name,
     email: props.user?.email, 
-    roles: [],
-    permissions: [],
+    roles: props.user?.roles[0]?.id,
+    permissions: props.user?.permissions.map(permission => permission.id) || [],
     anagrafica: props.user?.anagrafica?.id,
 });
 
 onMounted(() => {
-    form.permissions = props.user?.permissions;
-    form.roles = props.user?.roles;
+    form.permissions = props.user?.permissions.map(permission => permission.id) || [];
+    form.roles = props.user?.roles[0]?.id;
     form.anagrafica = props.user?.anagrafica?.id;
 })
 
 watch(
     () => props.user,
     () => {
-      form.permissions = props.user?.permissions,
-      form.roles = props.user?.roles,
+      form.permissions = props.user?.permissions.map(permission => permission.id) || [],
+      form.roles = props.user?.roles[0]?.id,
       form.anagrafica = props.user?.anagrafica?.id
     }
 ) 
@@ -93,10 +91,7 @@ const submit = () => {
                                           <InputError :message="form.errors.name" />
                                
                                         </div>
-                                    </div>
 
-                                    <!--  Email field -->
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-3">
                                           <Label for="email">Indirizzo email</Label>
                                           <Input 
@@ -123,29 +118,12 @@ const submit = () => {
                                             :options="roles" 
                                             label="name" 
                                             v-model="form.roles"
+                                            :reduce="(option) => option.id"
                                             placeholder="Seleziona ruolo utente"
                                           />
 
                                         </div>
 
-                                        <!--  Permissions field -->
-                                        <div class="sm:col-span-3">
-
-                                          <Label for="pemissions">Permessi utente</Label>
-
-                                          <v-select 
-                                            multiple
-                                            :options="permissions" 
-                                            label="name" 
-                                            v-model="form.permissions"
-                                            placeholder="Seleziona permessi utente"
-                                          />
-
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                        <!-- Anagrafiche field -->
                                         <div class="sm:col-span-3">
 
                                           <Label for="ruolo">Associa anagrafica</Label>
@@ -157,8 +135,27 @@ const submit = () => {
                                             :reduce="(option: Anagrafica) => option.id"
                                             placeholder="Seleziona anagrafica"
                                           /> 
-                                   
+
                                           <InputError class="mt-2" :message="form.errors.anagrafica" />
+
+                                        </div>
+                                        
+                                    </div>
+
+                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                                
+                                        <div class="sm:col-span-6">
+
+                                          <Label for="pemissions">Permessi utente</Label>
+
+                                          <v-select 
+                                            multiple
+                                            :options="permissions" 
+                                            label="name" 
+                                            v-model="form.permissions"
+                                            :reduce="(option) => option.id"
+                                            placeholder="Seleziona permessi utente"
+                                          />
 
                                         </div>
 
@@ -181,6 +178,63 @@ const submit = () => {
                     </div>
                 </div>
             </div> 
+
+            <div class="py-4">
+
+              <div class="mt-4 flex flex-col">
+                  <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
+                      <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
+                          <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
+
+                              <div class="sm:flex sm:items-center p-4">
+                                  <div class="sm:flex-auto">
+                                      <h1 class="text-xl font-semibold text-gray-900">
+                                          Permessi utente
+                                      </h1>
+                                      <p class="mt-2 text-sm text-gray-700">
+                                          Di seguito una lista di tutti i permessi già associati all'utente
+                                      </p>
+                                  </div>
+                              </div>
+                              <div class="flex flex-col scroll-region p-4">
+                                  <div class="-my-2 -mx-4 overflow-x-auto sm:-mx-6 lg:-mx-8">
+                                      <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
+                                          <div class="overflow-hidden shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
+                                              <table class="min-w-full divide-y divide-gray-300">
+                                                  <thead class="bg-gray-50">
+                                                      <tr>
+                                                          <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Nome</th>
+                                                          <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Descrizione</th>
+                                                          <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Azioni</th>
+                                                      </tr>
+                                                  </thead>
+
+                                                  <tr class="px-6 py-4 text-sm text-gray-800 text-center" v-if="!user.permissions.length">
+                                                      <td class="px-6 py-4 text-sm text-gray-800 text-center" colspan="5">Nessun permesso associato a questo utente</td>
+                                                  </tr>
+                                        
+                                                  <tbody class="divide-y divide-gray-200 bg-white">
+                                                 
+                                                      <tr v-for="userPermission in user.permissions" :key="userPermission.id">
+                                                          <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-800 font-bold">{{ userPermission.name }}</td>
+                                                          <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-800">{{ userPermission.description }}</td>
+                                                          <td class="relative whitespace-nowrap py-4 pl-3 pr-4 text-sm font-medium sm:pr-6 space-x-4">
+                                                              <Link :href="route('users.permissions.destroy', [user.id, userPermission.id])" method="delete" class="text-red-500 hover:text-red-900 mr-2">Revoca permesso</Link>
+                                                          </td> 
+                                                      </tr>
+                                                  </tbody>
+                                              </table>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+
+                          </div>
+                      </div>
+                  </div>
+              </div> 
+                  
+            </div>
 
         </UtentiLayout>
 

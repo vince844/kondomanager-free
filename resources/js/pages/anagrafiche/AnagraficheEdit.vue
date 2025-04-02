@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, watch, computed, onMounted } from "vue";
+import { watch, onMounted } from "vue";
 import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
@@ -42,8 +42,6 @@ const form = useForm({
     note: props.anagrafica?.note, 
     condomini: []
 });
-
-console.log(form);
 
 onMounted(() => {
   form.condomini = props.anagrafica?.condomini

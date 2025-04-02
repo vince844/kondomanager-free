@@ -133,7 +133,7 @@ return [
     'prohibited_unless' => ':attribute è proibito a meno che :other non sia :values.',
     'prohibits' => ':attribute proibisce a :other di essere presente.',
     'regex' => 'Il formato di :attribute non è valido.',
-    'required' => ':attribute è richiesto.',
+    'required' => 'Il campo :attribute è richiesto',
     'required_array_keys' => ':attribute deve contenere uno dei seguenti valori: :values.',
     'required_if' => ':attribute è richiesto quando :other è :value.',
     'required_if_accepted' => ':attribute è richiesto quando :other è accettato.',
@@ -152,7 +152,7 @@ return [
     'starts_with' => ':attribute deve cominciare con uno dei seguenti valori: :values.',
     'string' => ':attribute deve essere una stringa.',
     'timezone' => ':attribute deve essere un fuso orario valido.',
-    'unique' => ':attribute è già in uso.',
+    'unique' => 'Il campo :attribute è già in uso.',
     'uploaded' => 'L\'upload di :attribute è fallito.',
     'uppercase' => ':attribute deve essere maiuscolo.',
     'url' => ':attribute deve essere un URL valido.',
@@ -238,6 +238,10 @@ return [
             'indirizzo' => 'Il campo indirizzo anagrafica',
             'scadenza_documento' => 'Il campo scadenza documento',
             'data_nascita' => 'Il campo data nascita',
+        ],
+        'ruoli' => [
+            'name' => 'nome ruolo',
+            'description' => 'descrizione ruolo',
         ]
     ],
 

@@ -51,7 +51,7 @@ const table = useVueTable({
 </script>
 
 <template>
-    <div class="flex items-center py-4">
+    <div class="flex items-center">
       <DataTableToolbar :table="table" />
     </div>
   

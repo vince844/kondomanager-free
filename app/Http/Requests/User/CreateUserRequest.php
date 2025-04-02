@@ -27,12 +27,14 @@ class CreateUserRequest extends FormRequest
         return [
             'name'        => 'required|string|max:255',
             'email'       => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'permissions' => ['sometimes', 'array'],
             'anagrafica' => [
-                'sometimes',
+                'nullable',
                 Rule::exists('anagrafiche', 'id'), 
                 function ($attribute, $value, $fail) {
 
                     $anagrafica = Anagrafica::with('user')->find($value);
+                    
                     if ($anagrafica && $anagrafica->user) {
                         $fail("Questa anagrafica è già associata all'utente: " . $anagrafica->user->name);
                     }
