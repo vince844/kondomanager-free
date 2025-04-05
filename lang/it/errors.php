@@ -14,6 +14,7 @@ return [
     */
     '403' => [
         'invalid_signature' => 'il link che stai utilizzando potrebbe essere scaduto o non più valido.',
+        'account_suspended' => "il tuo account è stato temporanemante sospeso, per favore contatta l'amministatore di condominio per riattivarlo.",
     ],
 
 ];

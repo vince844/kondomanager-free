@@ -27,6 +27,7 @@ import type { User } from '@/types/users';
 defineProps<{ user: User }>()
 
 const userID = ref('');
+const userEmail = ref('');
 
 // State for AlertDialog
 const isAlertOpen = ref(false)
@@ -37,6 +38,15 @@ const isDropdownOpen = ref(false)
 // Function to delete user: first close menu, then open dialog
 function handleDelete(user: User) {
   userID.value = user.id;
+  isDropdownOpen.value = false // Close dropdown first
+  setTimeout(() => {
+    isAlertOpen.value = true // Open alert after a small delay
+  }, 200) // Delay helps avoid event conflicts
+}
+
+// Function to delete user: first close menu, then open dialog
+function handleReinvite(user: User) {
+  userEmail.value = user.email;
   isDropdownOpen.value = false // Close dropdown first
   setTimeout(() => {
     isAlertOpen.value = true // Open alert after a small delay
@@ -58,6 +68,23 @@ const editUser = (user: User) => {
   router.get(route('utenti.edit', { id: user.id})) 
 }
 
+const suspendUser = (user: User) => {
+  router.put(route('utenti.suspend', { id: user.id})) 
+}
+
+const unsuspendUser = (user: User) => {
+  router.put(route('utenti.unsuspend', { id: user.id})) 
+}
+
+const reinviteUser = () => {
+  router.post(route('utenti.reinvite', { email: userEmail.value }), {
+        email: userEmail.value 
+    }, {
+        preserveScroll: true,
+        onSuccess: () => closeModal()
+    });
+}
+
 </script>
 
 <template>
@@ -71,18 +98,36 @@ const editUser = (user: User) => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem @click="handleDelete(user)" >
-        Elimina utente
-      </DropdownMenuItem>
-
       <DropdownMenuItem @click="editUser(user)" >
         Modifica utente
+      </DropdownMenuItem>
+
+      <DropdownMenuItem 
+        v-if="!user.suspended_at"
+        @click="suspendUser(user)"
+      >
+        Sospendi utente
+      </DropdownMenuItem>
+
+      <DropdownMenuItem 
+        v-else
+        @click="unsuspendUser(user)"
+      >
+        Riattiva utente
+      </DropdownMenuItem>
+
+      <DropdownMenuItem @click="handleReinvite(user)" >
+        Reinvita utente
+      </DropdownMenuItem>
+
+      <DropdownMenuItem @click="handleDelete(user)" >
+        Elimina utente
       </DropdownMenuItem>
 
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
+    <!-- AlertDialog for deleting action -->
    <AlertDialog v-model:open="isAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
@@ -94,6 +139,22 @@ const editUser = (user: User) => {
       <AlertDialogFooter>
         <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
         <AlertDialogAction  @click="deleteUser()">Continua</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
+   <!-- AlertDialog for reinviting action -->
+   <AlertDialog v-model:open="isAlertOpen" >
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Sei sicuro di volere invitare nuovamente questo utente?</AlertDialogTitle>
+        <AlertDialogDescription>
+          L'utente riceverà una email con un nuovo link per la creazione di una nuova password.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
+        <AlertDialogAction  @click="reinviteUser()">Continua</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

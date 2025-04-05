@@ -24,6 +24,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'suspended_at'
     ];
 
     /**
@@ -50,6 +51,22 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the anagrafica associated with the user.
+     */
+    public function anagrafica()
+    {
+        return $this->hasOne(Anagrafica::class); 
+    }
+
+    /**
+     * Check if the user account is suspended
+     */
+    public function suspended(): bool
+    {
+        return !is_null($this->suspended_at);
+    }
+
+    /**
      * Send the password reset notification.
      *
      * @param  string  $token
@@ -68,14 +85,6 @@ class User extends Authenticatable
     public function sendEmailVerificationNotification()
     {
         $this->notify(new CustomVerifyEmailNotification);
-    }
-
-    /**
-     * Get the anagrafica associated with the user.
-     */
-    public function anagrafica()
-    {
-        return $this->hasOne(Anagrafica::class); 
     }
     
 }

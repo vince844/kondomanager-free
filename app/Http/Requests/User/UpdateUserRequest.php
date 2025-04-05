@@ -30,7 +30,7 @@ class UpdateUserRequest extends FormRequest
             'roles'       => ['required'],
             'permissions' => ['sometimes', 'array'],
             'anagrafica' => [
-                'sometimes',
+                'nullable',
                 Rule::exists('anagrafiche', 'id'), 
                 function ($attribute, $value, $fail) {
 

@@ -24,7 +24,7 @@ export const columns: ColumnDef<User>[] = [
       },
       {
         accessorKey: 'roles',
-        header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ruolo utente' }), 
+        header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ruolo' }), 
         cell: ({ getValue }) => {
           const roles = getValue() as string[];
           return h(
@@ -36,6 +36,33 @@ export const columns: ColumnDef<User>[] = [
           );
         }
         
+      },
+      {
+        accessorKey: 'suspended_at',
+        header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }), 
+        cell: ({ getValue }) => {
+
+          const status = getValue() as string | null;
+
+          const label = status ? 'Sospeso' : 'Attivo';
+          const badgeClass = status
+            ? 'bg-red-400 text-white'
+            : 'bg-green-400 text-white';
+
+            return h(
+              'div',
+              { class: 'flex gap-2' },
+              [
+                h(
+                  'span',
+                  {
+                    class: `px-2 py-1 rounded text-xs font-medium ${badgeClass}`,
+                  },
+                  label
+                )
+              ]
+            ); 
+        }
       },
       {
         id: 'actions',

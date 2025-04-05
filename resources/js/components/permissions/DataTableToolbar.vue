@@ -8,7 +8,7 @@ import { ShieldPlus } from 'lucide-vue-next';
 import { Link } from '@inertiajs/vue3'
 
 interface DataTableToolbarProps {
-  table: Table<permission>
+  table: Table<Permission>
 }
 
 const props = defineProps<DataTableToolbarProps>()

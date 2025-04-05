@@ -2,13 +2,14 @@
 
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
-use App\Http\Controllers\BuildingController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Permissions\PermissionController;
 use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
 use App\Http\Controllers\Users\UserController;
+use App\Http\Controllers\Users\UserReinviteController;
+use App\Http\Controllers\Users\UserStatusController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -18,19 +19,61 @@ Route::get('/', function () {
 
 Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware(['auth', 'verified', 'CheckSuspendedUser'])->name('dashboard');
 
+/*
+|--------------------------------------------------------------------------
+| User Routes
+|--------------------------------------------------------------------------
+*/
 Route::resource('/utenti', UserController::class)->middleware(['auth', 'verified']); 
-Route::resource('/ruoli', RoleController::class)->middleware(['auth', 'verified']);
-Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
-Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleController::class)->middleware(['auth', 'verified'])->name('ruoli.permissions.destroy');
+Route::put('/utenti/{user}/suspend', [UserStatusController::class, 'suspend'])->middleware(['auth', 'verified'])->name('utenti.suspend'); 
+Route::put('/utenti/{user}/unsuspend', [UserStatusController::class, 'unsuspend'])->middleware(['auth', 'verified'])->name('utenti.unsuspend');
+Route::post('/utenti/reinvite/{email}', [UserReinviteController::class, 'reinviteUser'])->name('utenti.reinvite');
 Route::delete('users/{user}/permissions/{permission}', RevokePermissionFromUserController::class)->middleware(['auth', 'verified'])->name('users.permissions.destroy');
+
+/*
+|--------------------------------------------------------------------------
+| Roles Routes
+|--------------------------------------------------------------------------
+*/
+Route::resource('/ruoli', RoleController::class)->middleware(['auth', 'verified']);
+Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleController::class)->middleware(['auth', 'verified'])->name('ruoli.permissions.destroy');
+
+/*
+|--------------------------------------------------------------------------
+| Permission Routes
+|--------------------------------------------------------------------------
+*/
+Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
+
+/*
+|--------------------------------------------------------------------------
+| Anagrafiche Routes
+|--------------------------------------------------------------------------
+*/
 Route::resource('/anagrafiche', AnagraficaController::class)->middleware(['auth', 'verified']);
+
+/*
+|--------------------------------------------------------------------------
+| Condomini Routes
+|--------------------------------------------------------------------------
+*/
 Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
 
+/*
+|--------------------------------------------------------------------------
+| Passwords Routes
+|--------------------------------------------------------------------------
+*/
 Route::get('/password/new/', [NewUserPasswordController::class, 'showResetForm'])->name('password.new')->middleware('signed'); ;
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])->name('password.create');
 
+/*
+|--------------------------------------------------------------------------
+| Settings nd Auth Routes
+|--------------------------------------------------------------------------
+*/
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 

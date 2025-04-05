@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Gate;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
+use Carbon\Carbon;
 
 class UserController extends Controller
 {
@@ -158,7 +159,12 @@ class UserController extends Controller
 
         $utenti->delete();
 
-        return back()->with(['message' => [ 'type'    => 'success',
-                                            'message' => "L'utente è stato eliminato con successo"]]);
+        return back()->with([
+            'message' => [ 
+                'type'    => 'success',
+                'message' => "L'utente è stato eliminato con successo"
+            ]
+        ]);
     }
+    
 }
