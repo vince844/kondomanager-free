@@ -18,7 +18,6 @@ class CondominioController extends Controller
      */
     public function index()
     {
-        
         Gate::authorize('view', Condominio::class);
 
         return Inertia::render('buildings/BuildingsList', [

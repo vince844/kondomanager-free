@@ -21,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Trash2,FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 
 import type { User } from '@/types/users';
 
@@ -30,7 +31,8 @@ const userID = ref('');
 const userEmail = ref('');
 
 // State for AlertDialog
-const isAlertOpen = ref(false)
+const isDeleteAlertOpen = ref(false)
+const isReinviteAlertOpen = ref(false)
 
 // Reference for DropdownMenu
 const isDropdownOpen = ref(false)
@@ -40,7 +42,7 @@ function handleDelete(user: User) {
   userID.value = user.id;
   isDropdownOpen.value = false // Close dropdown first
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
+    isDeleteAlertOpen.value = true // Open alert after a small delay
   }, 200) // Delay helps avoid event conflicts
 }
 
@@ -49,7 +51,7 @@ function handleReinvite(user: User) {
   userEmail.value = user.email;
   isDropdownOpen.value = false // Close dropdown first
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
+    isReinviteAlertOpen.value = true // Open alert after a small delay
   }, 200) // Delay helps avoid event conflicts
 }
 
@@ -99,28 +101,27 @@ const reinviteUser = () => {
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
       <DropdownMenuItem @click="editUser(user)" >
+        <FilePenLine class="w-4 h-4 text-xs" />
         Modifica utente
       </DropdownMenuItem>
 
-      <DropdownMenuItem 
-        v-if="!user.suspended_at"
-        @click="suspendUser(user)"
-      >
+      <DropdownMenuItem  v-if="!user.suspended_at" @click="suspendUser(user)">
+        <MonitorX class="w-4 h-4 text-xs" />
         Sospendi utente
       </DropdownMenuItem>
 
-      <DropdownMenuItem 
-        v-else
-        @click="unsuspendUser(user)"
-      >
+      <DropdownMenuItem v-else @click="unsuspendUser(user)" >
+        <MonitorCheck class="w-4 h-4 text-xs" />
         Riattiva utente
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleReinvite(user)" >
+        <Send class="w-4 h-4 text-xs" />
         Reinvita utente
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(user)" >
+        <Trash2 class="w-4 h-4 text-xs" />
         Elimina utente
       </DropdownMenuItem>
 
@@ -128,7 +129,7 @@ const reinviteUser = () => {
   </DropdownMenu>
 
     <!-- AlertDialog for deleting action -->
-   <AlertDialog v-model:open="isAlertOpen" >
+   <AlertDialog v-model:open="isDeleteAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>Sei sicuro di volere eliminare questo utente?</AlertDialogTitle>
@@ -137,14 +138,14 @@ const reinviteUser = () => {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
+        <AlertDialogCancel @click="isDeleteAlertOpen = false">Cancella</AlertDialogCancel>
         <AlertDialogAction  @click="deleteUser()">Continua</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
 
    <!-- AlertDialog for reinviting action -->
-   <AlertDialog v-model:open="isAlertOpen" >
+   <AlertDialog v-model:open="isReinviteAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>Sei sicuro di volere invitare nuovamente questo utente?</AlertDialogTitle>
@@ -153,7 +154,7 @@ const reinviteUser = () => {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
+        <AlertDialogCancel @click="isReinviteAlertOpen = false">Cancella</AlertDialogCancel>
         <AlertDialogAction  @click="reinviteUser()">Continua</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

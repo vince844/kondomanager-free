@@ -6,6 +6,7 @@ export interface User {
     name: string
     email: string
     suspended_at: string
+    verified_at: string
     anagrafica: Anagrafica
     roles: [] 
     permissions: [] 

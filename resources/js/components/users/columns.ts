@@ -3,6 +3,7 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users';
 import DropdownAction from '@/components/users/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/users/DataTableColumnHeader.vue';
+import { ShieldCheck } from 'lucide-vue-next';
 
 const roleClasses: Record<string, string> = {
   amministratore: "bg-red-400 text-white",
@@ -12,10 +13,33 @@ const roleClasses: Record<string, string> = {
 };
 
 export const columns: ColumnDef<User>[] = [
-    {
+      {
         accessorKey: 'name',
-        header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Nome e cognome' }), 
-        cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('name')),
+      
+        header: ({ column }) =>
+          h(DataTableColumnHeader, {
+            column,
+            title: 'Nome e cognome',
+          }),
+      
+        cell: ({ row }) => {
+          
+          const verified = row.original.verified_at;
+      
+          return h('div', { class: 'flex items-center space-x-2' }, [
+            h(
+              ShieldCheck,
+              {
+                class: verified ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
+              }
+            ),
+            h(
+              'span',
+              { class: 'max-w-[500px] truncate font-medium' },
+              row.getValue('name')
+            ),
+          ]);
+        },
       },
       {
         accessorKey: 'email',

@@ -19,8 +19,9 @@ class UserResource extends JsonResource
             'name'         => $this->name,
             'email'        => $this->email,
             'suspended_at' => $this->suspended_at,
+            'verified_at'  => $this->email_verified_at,
             'roles'        => $this->getRoleNames(),
-            'permissions'  => $this->getAllPermissions(),
+            'permissions'  => $this->getAllPermissions()->pluck('name'),
         ];
     }
 }

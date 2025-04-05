@@ -6,7 +6,7 @@ import { Link } from '@inertiajs/vue3';
 import { LogOut, Settings, Users } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole } = usePermission();
+const { hasPermission } = usePermission();
 
 interface Props {
     user: User;
@@ -31,7 +31,7 @@ defineProps<Props>();
             </Link>
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true">
-            <Link prefetch class="block w-full" :href="route('utenti.index')" as="button" v-if="hasRole(['amministratore', 'collaboratore'])">
+            <Link prefetch class="block w-full" :href="route('utenti.index')" as="button" v-if="hasPermission(['Visualizza utenti'])">
                 <Users class="mr-2 h-4 w-4" />
                 Gestione utenti
             </Link>

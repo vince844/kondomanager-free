@@ -24,7 +24,6 @@ class CondominioPolicy
         return $user->hasPermissionTo('Visualizza condomini')  
         ? Response::allow() 
         : Response::deny('Non hai permessi sufficienti per visualizzare i condomini registrati!');
-        
     }
 
     /**

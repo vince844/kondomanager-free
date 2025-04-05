@@ -48,8 +48,6 @@ const mainNavItems: NavItem[] = [
         href: '/dashboard',
         icon: LayoutGrid,
         role: ['amministratore','collaboratore','fornitore','utente'],
-     
-  
     },
     {
         title: 'Condomini',

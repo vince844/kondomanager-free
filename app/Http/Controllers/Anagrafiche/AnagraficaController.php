@@ -10,12 +10,9 @@ use App\Http\Resources\Anagrafica\EditAnagraficaResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
-use App\Models\User;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Exception;
 use Illuminate\Support\Facades\Log;
 

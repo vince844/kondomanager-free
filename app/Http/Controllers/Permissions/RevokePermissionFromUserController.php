@@ -16,7 +16,6 @@ class RevokePermissionFromUserController extends Controller
     {
         $user->revokePermissionTo($permission);
 
-        return back()->with(['message' => [ 'type'    => 'success',
-                                            'message' => 'Il permesso è stato rimosso con successo!']]);
+        return back();
     }
 }

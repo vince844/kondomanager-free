@@ -7,20 +7,25 @@ use App\Http\Requests\Ruolo\CreateRuoloRequest;
 use App\Http\Requests\Ruolo\UpdateRuoloRequest;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class RoleController extends Controller
 {
+
+    use AuthorizesRequests;
     /**
      * Display a listing of the resource.
      */
     public function index()
     {
+        Gate::authorize('view', Role::class);
         
         return Inertia::render('ruoli/ElencoRuoli', [
             'roles' => RoleResource::collection(Role::all())
@@ -32,6 +37,8 @@ class RoleController extends Controller
      */
     public function create(): Response
     {
+        Gate::authorize('create', Role::class);
+
         return Inertia::render('ruoli/NuovoRuolo',[
             'permissions' => PermissionResource::collection(Permission::all())
         ]);
@@ -42,6 +49,8 @@ class RoleController extends Controller
      */
     public function store(CreateRuoloRequest $request): RedirectResponse
     {
+        Gate::authorize('create', Role::class);
+
         $validated = $request->validated(); 
 
         $role = Role::create([
@@ -75,6 +84,8 @@ class RoleController extends Controller
      */
     public function edit(string $id)
     {
+        Gate::authorize('update', Role::class);
+
         $role = Role::findById($id);
 
         $protectedRoles = ['amministratore', 'fornitore', 'collaboratore', 'utente'];
@@ -103,7 +114,8 @@ class RoleController extends Controller
      */
     public function update(UpdateRuoloRequest $request, Role $ruoli): RedirectResponse
     {
-
+        Gate::authorize('update', Role::class);
+        
         $validated = $request->validated(); 
 
         $ruoli->update([
@@ -127,6 +139,8 @@ class RoleController extends Controller
      */
     public function destroy(string $id): RedirectResponse
     {
+        Gate::authorize('delete', Role::class);
+
         $role = Role::findById($id);
 
         $protectedRoles = ['amministratore', 'fornitore', 'collaboratore', 'utente'];

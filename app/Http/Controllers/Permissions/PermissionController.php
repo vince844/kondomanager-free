@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Permissions;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\PermissionResource;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Permission;
+use Illuminate\Support\Facades\Gate;
 
 class PermissionController extends Controller
 {
@@ -15,7 +15,8 @@ class PermissionController extends Controller
      */
     public function index()
     {
-        
+        Gate::authorize('view', Permission::class);
+
         return Inertia::render('permessi/ElencoPermessi', [
             'permissions' => PermissionResource::collection(Permission::all())
         ]);

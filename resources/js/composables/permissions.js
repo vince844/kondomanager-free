@@ -9,14 +9,13 @@ export function usePermission() {
     // Check if the user has at least one of the roles in the array
     const hasRole = (roles) => {
         const userRoles = auth.value?.user?.roles ?? [];
-        // Check if any of the roles in the passed array match the user's roles
         return roles.some(role => userRoles.includes(role));
     };
 
     // Check if the user has a specific permission
-    const hasPermission = (name) => {
-        const permissions = auth.value?.user?.permissions ?? [];
-        return permissions.includes(name);
+    const hasPermission = (permissions) => {
+        const userPermissions = auth.value?.user?.permissions ?? [];
+        return permissions.some(permission => userPermissions.includes(permission));
     };
 
     return { hasRole, hasPermission };
