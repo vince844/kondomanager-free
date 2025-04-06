@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Condominio extends Model
 {
@@ -18,6 +19,7 @@ class Condominio extends Model
      * @var array<int, string>
      */
     protected $fillable = [
+        'codice_identificativo',
         'nome',   
         'indirizzo',              
         'email',   
@@ -30,12 +32,33 @@ class Condominio extends Model
         'particella_catasto',
     ];
 
+    protected static function booted()
+    {
+        static::creating(function ($condominio) {
+            if (!$condominio->codice_identificativo) {
+                $condominio->codice_identificativo = self::generateUniqueCodice();
+            }
+        });
+    }
+
     /**
      * The anagrafiche that belong to the building.
      */
     public function anagrafiche()
     {
         return $this->belongsToMany(Anagrafica::class);
+    }
+
+    /**
+     * Generate unique code for condominio
+     */
+    public static function generateUniqueCodice()
+    {
+        do {
+            $codice_identificativo = 'BLD-' . Str::upper(Str::random(3)) . rand(100, 999);
+        } while (self::where('codice_identificativo', $codice_identificativo)->exists());
+
+        return $codice_identificativo;
     }
     
 }

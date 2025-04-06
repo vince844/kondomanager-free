@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Invito;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -30,6 +31,7 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+     
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
@@ -43,6 +45,10 @@ class RegisteredUserController extends Controller
         ]);
 
         $user->assignRole('utente');
+
+        $invito = Invito::where('email', $user->email)->first();
+        $invito->accepted_at = now();
+        $invito->save();
 
         event(new Registered($user));
 

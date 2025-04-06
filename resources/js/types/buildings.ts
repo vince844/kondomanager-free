@@ -9,5 +9,6 @@ export interface Building {
     codice_catasto: string,      
     sezione_catasto: string, 
     foglio_catasto: string,    
-    particella_catasto: string
+    particella_catasto: string,
+    codice_identificativo: string
   }

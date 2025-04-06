@@ -6,10 +6,10 @@ import DataTableColumnHeader from '@/components/users/DataTableColumnHeader.vue'
 import { ShieldCheck } from 'lucide-vue-next';
 
 const roleClasses: Record<string, string> = {
-  amministratore: "bg-red-400 text-white",
-  collaboratore: "bg-purple-400 text-white",
-  fornitore: "bg-green-400 text-white",
-  utente: "bg-blue-400 text-white",
+  amministratore: "inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset",
+  collaboratore: "inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-purple-700/10 ring-inset",
+  fornitore: "inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset",
+  utente: "inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset",
 };
 
 export const columns: ColumnDef<User>[] = [
@@ -35,7 +35,7 @@ export const columns: ColumnDef<User>[] = [
             ),
             h(
               'span',
-              { class: 'max-w-[500px] truncate font-medium' },
+              { class: 'font-medium' },
               row.getValue('name')
             ),
           ]);
@@ -55,7 +55,7 @@ export const columns: ColumnDef<User>[] = [
             "div",
             { class: "flex gap-2" }, 
             roles.map((role) =>
-              h("span", { class: `px-2 py-1 rounded text-xs font-medium capitalize ${roleClasses[role] || "bg-gray-400 text-white"}` }, role)
+              h("span", { class: `px-2 py-1 rounded text-xs font-medium capitalize ${roleClasses[role] || "inline-flex items-center rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 ring-1 ring-gray-500/10 ring-inset"}` }, role)
             )
           );
         }
@@ -70,8 +70,8 @@ export const columns: ColumnDef<User>[] = [
 
           const label = status ? 'Sospeso' : 'Attivo';
           const badgeClass = status
-            ? 'bg-red-400 text-white'
-            : 'bg-green-400 text-white';
+            ? 'inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset'
+            : 'inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-600/20 ring-inset';
 
             return h(
               'div',

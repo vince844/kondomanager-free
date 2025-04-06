@@ -21,8 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-
 import type { Building } from '@/types/buildings';
+import { Trash2, FilePenLine } from 'lucide-vue-next'
 
 defineProps<{ building: Building }>()
 
@@ -71,12 +71,14 @@ const editBuilding = (building: Building) => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem @click="handleDelete(building)" >
-        Elimina condominio
+      <DropdownMenuItem @click="editBuilding(building)" >
+        <FilePenLine class="w-4 h-4 text-xs" />
+        Modifica condominio
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="editBuilding(building)" >
-        Modifica condominio
+      <DropdownMenuItem @click="handleDelete(building)" >
+        <Trash2 class="w-4 h-4 text-xs" />
+        Elimina condominio
       </DropdownMenuItem>
 
     </DropdownMenuContent>

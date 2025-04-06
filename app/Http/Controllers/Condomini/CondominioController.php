@@ -44,8 +44,12 @@ class CondominioController extends Controller
 
         Condominio::create($request->validated());
 
-        return to_route('condomini.index')->with(['message' => [ 'type'    => 'success',
-                                                                 'message' => "Il nuovo condominio è stato creato con successo!"]]);
+        return to_route('condomini.index')->with([
+            'message' => [ 
+                'type'    => 'success',
+                'message' => "Il nuovo condominio è stato creato con successo!"
+            ]
+        ]);
     }
 
     /**
@@ -78,8 +82,12 @@ class CondominioController extends Controller
         $condominio = Condominio::find($condomini->id);
         $condominio->update($request->validated());
 
-        return to_route('condomini.index')->with(['message' => [ 'type'    => 'success',
-                                                                 'message' => "Il profilo del condominio è stato modificato con successo"]]);
+        return to_route('condomini.index')->with([
+            'message' => [ 
+                'type'    => 'success',
+                'message' => "Il profilo del condominio è stato modificato con successo"
+            ]
+        ]);
     }
 
     /**
@@ -91,7 +99,11 @@ class CondominioController extends Controller
 
         $condomini->delete();
 
-        return back()->with(['message' => [ 'type'    => 'success',
-                                            'message' => "Il codominio è stato eliminato con successo"]]);
+        return back()->with([
+            'message' => [ 
+                'type'    => 'success',
+                'message' => "Il codominio è stato eliminato con successo"
+            ]
+        ]);
     }
 }

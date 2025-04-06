@@ -21,8 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { Trash2,FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
-
+import { Trash2, FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 import type { User } from '@/types/users';
 
 defineProps<{ user: User }>()
@@ -40,23 +39,23 @@ const isDropdownOpen = ref(false)
 // Function to delete user: first close menu, then open dialog
 function handleDelete(user: User) {
   userID.value = user.id;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isDeleteAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isDeleteAlertOpen.value = true 
+  }, 200) 
 }
 
 // Function to delete user: first close menu, then open dialog
 function handleReinvite(user: User) {
   userEmail.value = user.email;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isReinviteAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isReinviteAlertOpen.value = true 
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
 }
 
 const deleteUser = () => {

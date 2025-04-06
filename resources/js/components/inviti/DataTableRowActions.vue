@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3";
+import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { 
   DropdownMenu, 
@@ -21,41 +21,36 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import type { Role } from '@/types/roles';
-import { Trash2, FilePenLine} from 'lucide-vue-next'
+import { Trash2,FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
+import type { Invito } from '@/types/inviti';
 
-defineProps<{ role: Role }>()
+defineProps<{ invito: Invito }>()
 
-const roleID = ref('');
+const invitoID = ref('');
 
 // State for AlertDialog
-const isAlertOpen = ref(false)
+const isDeleteAlertOpen = ref(false)
 
 // Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
-// Function to delete user: first close menu, then open dialog
-function handleDelete(role: Role) {
-  roleID.value = role.id;
-  isDropdownOpen.value = false // Close dropdown first
+function handleDelete(invito: Invito) {
+  invitoID.value = invito.id;
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isDeleteAlertOpen.value = true
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
 }
 
-const deleteRole = () => {
-    router.delete(route('ruoli.destroy', { id: roleID.value }),{
+const deleteInvito = () => {
+    router.delete(route('inviti.destroy', { id: invitoID.value }),{
         preserveScroll: true,
         onSuccess: () => closeModal()
     })
-}
-
-const editRole = (role: Role) => {
-  router.get(route('ruoli.edit', { id: role.id}))
 }
 
 </script>
@@ -70,33 +65,29 @@ const editRole = (role: Role) => {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-      
-      <DropdownMenuItem @click="editRole(role)" >
-        <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica ruolo
-      </DropdownMenuItem>
 
-      <DropdownMenuItem @click="handleDelete(role)" >
+      <DropdownMenuItem @click="handleDelete(invito)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina ruolo
+        Elimina invito
       </DropdownMenuItem>
 
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
-   <AlertDialog v-model:open="isAlertOpen" >
+    <!-- AlertDialog for deleting action -->
+   <AlertDialog v-model:open="isDeleteAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questo ruolo?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di volere eliminare questo invito?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà il ruolo e tutti i dati ad esso associati.
+          Questa azione non è reversibile. Eliminerà l'invito e l'untente non potrà più registrarsi fino all'invio di un nuovo invito.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteRole()">Continua</AlertDialogAction>
+        <AlertDialogCancel @click="isDeleteAlertOpen = false">Cancella</AlertDialogCancel>
+        <AlertDialogAction  @click="deleteInvito()">Continua</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+  
 </template>

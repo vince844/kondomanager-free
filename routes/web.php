@@ -1,8 +1,11 @@
 <?php
 
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
+use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Inviti\InvitoController;
+use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Permissions\PermissionController;
 use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
@@ -19,7 +22,7 @@ Route::get('/', function () {
 
 Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified', 'CheckSuspendedUser'])->name('dashboard');
+})->middleware(['auth', 'verified', 'CheckSuspendedUser', 'CheckHasAnagrafica'])->name('dashboard');
 
 /*
 |--------------------------------------------------------------------------
@@ -52,7 +55,16 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 | Anagrafiche Routes
 |--------------------------------------------------------------------------
 */
-Route::resource('/anagrafiche', AnagraficaController::class)->middleware(['auth', 'verified']);
+
+// Admin routes
+Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
+    Route::resource('anagrafiche', AnagraficaController::class);
+});
+
+// User routes
+Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
+    Route::resource('anagrafiche', UserAnagraficaController::class);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -66,8 +78,17 @@ Route::resource('/condomini', CondominioController::class)->middleware(['auth', 
 | Passwords Routes
 |--------------------------------------------------------------------------
 */
-Route::get('/password/new/', [NewUserPasswordController::class, 'showResetForm'])->name('password.new')->middleware('signed'); ;
+Route::get('/password/new/', [NewUserPasswordController::class, 'showResetForm'])->name('password.new')->middleware('signed'); 
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])->name('password.create');
+
+/*
+|--------------------------------------------------------------------------
+| Inviti Routes
+|--------------------------------------------------------------------------
+*/
+Route::resource('/inviti', InvitoController::class)->middleware(['auth', 'verified']);
+Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])->name('invito.register')->middleware('signed');
+
 
 /*
 |--------------------------------------------------------------------------

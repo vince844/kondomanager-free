@@ -14,7 +14,7 @@ class NewUserPasswordController extends Controller
         // Validate signed URL
         if (!$request->hasValidSignature()) {
             abort(403);
-        }
+        } 
 
         return inertia('auth/NewUserCreatePassword', [
             'email' => $request->query('email'),
@@ -33,6 +33,8 @@ class NewUserPasswordController extends Controller
         $user->update([
             'password' => Hash::make($request->password),
         ]);
+
+        $user->sendEmailVerificationNotification();
 
         return redirect()->route('login')->with('success', 'Password updated. Please login.');
     }

@@ -56,7 +56,7 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('anagrafiche.index')->with([
+            return to_route('admin.anagrafiche.index')->with([
                 'message' => [
                     'type'    => 'success',
                     'message' => "La nuova anagrafica è stata creata con successo!"
@@ -69,7 +69,7 @@ class AnagraficaController extends Controller
 
             Log::error('Error creating anagrafica: ' . $e->getMessage());
 
-            return to_route('anagrafiche.index')->with([
+            return to_route('admin.anagrafiche.index')->with([
                 'message' => [
                     'type'    => 'error',
                     'message' => "Si è verificato un errore durante la creazione dell'anagrafica!"
@@ -122,7 +122,7 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('anagrafiche.index')->with([
+            return to_route('admin.anagrafiche.index')->with([
                 'message' => [
                     'type'    => 'success',
                     'message' => "La nuova anagrafica è stata aggiornata con successo!"
@@ -135,7 +135,7 @@ class AnagraficaController extends Controller
 
             Log::error('Error updating anagrafica: ' . $e->getMessage());
 
-            return to_route('anagrafiche.index')->with([
+            return to_route('admin.anagrafiche.index')->with([
                 'message' => [
                     'type'    => 'error',
                     'message' => "Si è verificato un errore durante l'aggiornamento dell'anagrafica!"
@@ -150,7 +150,12 @@ class AnagraficaController extends Controller
      */
     public function destroy(Anagrafica $anagrafiche)
     {
-        $anagrafiche->delete();
+  
+        try {
+            $anagrafiche->delete();
+        } catch (Exception $e) {
+            Log::error('Error deleting anagrafica: ' . $e->getMessage());
+        }
 
         return back()->with(['message' => [ 'type'    => 'success',
                                             'message' => "L'anagrafica è stata eliminata con successo"]]);

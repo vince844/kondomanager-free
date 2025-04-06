@@ -33,7 +33,6 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const page = usePage();
-/* const auth = computed(() => page.props.auth); */
 const auth = computed<Auth>(() => page.props.auth as Auth);
 
 const isCurrentRoute = (url: string) => {
@@ -58,7 +57,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Anagrafiche',
-        href: '/anagrafiche',
+        href: '/admin/anagrafiche',
         icon: SquareLibrary,
         role: ['amministratore', 'collaboratore']
     }

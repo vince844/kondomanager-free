@@ -21,8 +21,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-
 import type { Anagrafica } from '@/types/anagrafiche';
+import { Trash2, FilePenLine } from 'lucide-vue-next'
 
 defineProps<{ anagrafica: Anagrafica }>()
 
@@ -48,14 +48,14 @@ const closeModal = () => {
 }
 
 const deleteAnagrafica = () => {
-    router.delete(route('anagrafiche.destroy', { id: anagraficaID.value }),{
+    router.delete(route('admin.anagrafiche.destroy', { id: anagraficaID.value }),{
         preserveScroll: true,
         onSuccess: () => closeModal()
     })
 }
 
 const editAnagrafica = (anagrafica: Anagrafica) => {
-  router.get(route('anagrafiche.edit', { id: anagrafica.id})) 
+  router.get(route('admin.anagrafiche.edit', { id: anagrafica.id})) 
 }
 
 </script>
@@ -70,13 +70,15 @@ const editAnagrafica = (anagrafica: Anagrafica) => {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-
-      <DropdownMenuItem @click="handleDelete(anagrafica)" >
-        Elimina anagrafica
+      
+      <DropdownMenuItem @click="editAnagrafica(anagrafica)" >
+        <FilePenLine class="w-4 h-4 text-xs" />
+        Modifica anagrafica
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="editAnagrafica(anagrafica)" >
-        Modifica anagrafica
+      <DropdownMenuItem @click="handleDelete(anagrafica)" >
+        <Trash2 class="w-4 h-4 text-xs" />
+        Elimina anagrafica
       </DropdownMenuItem>
 
     </DropdownMenuContent>

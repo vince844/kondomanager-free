@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckSuspendedUser;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'CheckSuspendedUser' => CheckSuspendedUser::class,
+            'CheckHasAnagrafica' => CheckHasAnagrafica::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,

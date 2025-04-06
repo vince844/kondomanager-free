@@ -57,7 +57,7 @@ watch(
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Modifica anagrafica',
-        href: '/anagrafiche/edit',
+        href: 'admin/anagrafiche/edit',
     },
 ];
 
@@ -78,7 +78,7 @@ const documents = [
 ];
 
 const submit = () => {
-    form.put(route("anagrafiche.update", {id: props.anagrafica.id}), {
+    form.put(route("admin.anagrafiche.update", {id: props.anagrafica.id}), {
         preserveScroll: true
     });
 };
@@ -98,7 +98,7 @@ const submit = () => {
         
             <Button class="ml-auto hidden h-8 lg:flex">
               <List class="w-4 h-4" />
-              <Link :href="route('anagrafiche.index')">Elenco anagrafiche</Link>
+              <Link :href="route('admin.anagrafiche.index')">Elenco anagrafiche</Link>
             </Button>
 
             <div class="mt-3 flex flex-col">

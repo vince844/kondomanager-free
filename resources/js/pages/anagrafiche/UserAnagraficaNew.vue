@@ -4,7 +4,6 @@ import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import type { BreadcrumbItem } from '@/types';
-import type { Building } from '@/types/buildings';
 import { Button } from '@/components/ui/button';
 import { List} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -18,14 +17,10 @@ import { LoaderCircle } from 'lucide-vue-next';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
 
-const props = defineProps<{
-  buildings: Building[];
-}>();  
-
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Nuova anagrafica',
-        href: '/anagrafiche/create',
+        href: '/user/anagrafiche/create',
     },
 ];
 
@@ -64,7 +59,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route("admin.anagrafiche.store"), {
+    form.post(route("user.anagrafiche.store"), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -84,12 +79,7 @@ const submit = () => {
       <div class="px-4 py-6">
         
         <Heading title="Crea anagrafica" description="Compila il seguente modulo per la creazione di una nuova anagrafica" />
-        
-            <Button class="ml-auto hidden h-8 lg:flex">
-              <List class="w-4 h-4" />
-              <Link :href="route('admin.anagrafiche.index')">Elenco anagrafiche</Link>
-            </Button>
-
+      
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
                     <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
@@ -319,25 +309,6 @@ const submit = () => {
                                           <InputError class="mt-2" :message="form.errors.data_nascita || ''" />
                                
                                         </div>
-                                    </div>
-
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                        <!--  Condomini field -->
-                                        <div class="sm:col-span-2">
-
-                                          <Label for="ruolo">Condomini</Label>
-
-                                          <v-select 
-                                            multiple
-                                            :options="buildings" 
-                                            label="nome" 
-                                            v-model="form.buildings"
-                                            :reduce="(option: Building) => option.id"
-                                            placeholder="Seleziona condomini"
-                                          />
-
-                                        </div>
-
                                     </div>
 
                                      <!--  Note -->

@@ -17,6 +17,7 @@ class UserReinviteController extends Controller
         try {
 
             $user = User::where('email', $email)->first();
+            
             $user->notify(new NewUserEmailNotification($user));
     
             return to_route('utenti.index')->with([
