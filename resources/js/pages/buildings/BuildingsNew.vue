@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { LoaderCircle } from 'lucide-vue-next';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -159,7 +160,7 @@ const submit = () => {
                                  
                                 </div>
 
-                                <div class="pt-3">
+                                <div class="pt-5">
                                     <h3 class="text-lg font-medium leading-6 text-gray-900">Dati catastali</h3>
                                     <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati catastali del condominio</p>
                                 </div>
@@ -241,7 +242,10 @@ const submit = () => {
                                 <div class="pt-5">
                                     <div class="flex">
 
-                                      <Button :class="{ 'opacity-25': form.processing }" :disabled="form.processing">Crea condomino</Button>
+                                      <Button :disabled="form.processing">
+                                          <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                                          Crea nuovo condomino
+                                      </Button>
 
                                     </div>
                                 </div>

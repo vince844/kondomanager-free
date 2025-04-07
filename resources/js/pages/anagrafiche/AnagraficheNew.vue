@@ -98,7 +98,7 @@ const submit = () => {
 
                                 <div class="pt-3">
                                     <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati anagrafici</p>
+                                    <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati generici dell'anagrafica</p>
                                 </div>
 
                                 <Separator class="my-4" />
@@ -216,8 +216,15 @@ const submit = () => {
                                         </div>
                                     </div>
 
+                                    <div class="pt-5">
+                                      <h3 class="text-lg font-medium leading-6 text-gray-900">Dati fiscali</h3>
+                                      <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati fiscali dell'anagrafica</p>
+                                    </div>
+
+                                    <Separator class="my-4" />
+
                                     <!--  documenti fields -->
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                                    <div class="pt-3 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-2">
                                           <Label for="tipologia_documento">Tipologia documento</Label>
 
@@ -363,7 +370,7 @@ const submit = () => {
 
                                       <Button :disabled="form.processing">
                                           <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                          Crea anagrafica
+                                          Crea nuova anagrafica
                                       </Button>
 
                                     </div>

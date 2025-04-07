@@ -10,6 +10,9 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Notifications\InviteUserNotification;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Exception;
+use Illuminate\Support\Facades\Log;
 
 class InvitoController extends Controller
 {
@@ -38,60 +41,52 @@ class InvitoController extends Controller
      */
     public function store(Request $request)
     {
+        try {
 
-        // Validate the incoming data
-        $request->validate([
-            'emails' => 'required|array|min:1',  // Ensure at least one email is provided
-            'emails.*' => 'email|unique:inviti,email',  // Validate each email
-            'buildings' => 'required|array',  // Ensure building codes are provided
-        ]);
+            DB::beginTransaction();
 
-        // Loop through each email and create an invite
-        foreach ($request->emails as $email) {
-            
-            $invito = Invito::create([
-                'email' => $email,
-                'building_codes' => $request->buildings,
-                'expires_at' => Carbon::now()->addMinutes(60),
+            $request->validate([
+                'emails' => 'required|array|min:1',  
+                'emails.*' => 'email|unique:inviti,email',  
+                'buildings' => 'required|array', 
             ]);
 
-            $invito->notify(new InviteUserNotification($invito));
+            // Loop through each email and create an invite
+            foreach ($request->emails as $email) {
+                
+                $invito = Invito::create([
+                    'email' => $email,
+                    'building_codes' => $request->buildings,
+                    'expires_at' => Carbon::now()->addMinutes(60),
+                ]);
 
+                $invito->notify(new InviteUserNotification($invito));
+
+            }
+
+            DB::commit();
+
+            return to_route('inviti.index')->with([
+                'message' => [ 
+                    'type'    => 'success',
+                    'message' => "Il nuovo invito è stato inviato con successo!"
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            
+            DB::rollback();
+
+            Log::error('Error sending invite: ' . $e->getMessage());
+
+            return to_route('inviti.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'invio dell'invito!"
+                ]
+            ]);
         }
 
-        return to_route('inviti.index')->with([
-            'message' => [ 
-                'type'    => 'success',
-                'message' => "Il nuovo invito è stato inviato con successo!"
-            ]
-        ]);
-
-        // Return a success message
-        return back()->with('success', 'Invites sent successfully!');
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(Invito $invito)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Invito $invito)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Invito $invito)
-    {
-        //
     }
 
     /**

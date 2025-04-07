@@ -4,13 +4,19 @@ import { Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import { LoaderCircle } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input'
+import { 
+TagsInput, 
+TagsInputInput, 
+TagsInputItem, 
+TagsInputItemDelete, 
+TagsInputItemText 
+} from '@/components/ui/tags-input';
+import { Separator } from '@/components/ui/separator';
 
 const props = defineProps<{
   buildings: Building[];
@@ -45,11 +51,20 @@ const submit = () => {
                     <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
                         <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
                             <form class="space-y-2 p-2" @submit.prevent="submit">
-                                <div class="">
+
+                                <div class="pt-3">
+                                    <h3 class="text-lg font-medium leading-6 text-gray-900">Invita utenti a registrarsi</h3>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                       Di seguito è possibile inviare un invito per registrarsi sul portale. Inserisci gli indirizzi email e seleziona i condomini ai quali associarli, questi riceveranno una email con le istruzioni per completare la registrazione</p>
+                                </div>
+
+                                <Separator class="my-4" />
+
+                                <div class="py-4">
                                     <!--  Email field -->
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-3">
-                                          <Label for="email">Indirizzo email</Label>
+                                          <Label for="email">Indirizzi email</Label>
 
                                             <TagsInput v-model="form.emails" class="w-full">
                                                 <TagsInputItem v-for="item in form.emails" :key="item" :value="item">

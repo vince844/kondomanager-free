@@ -13,6 +13,7 @@ import type { Role } from '@/types/roles';
 import type { BreadcrumbItem } from '@/types';
 import { LoaderCircle } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
+import { Separator } from '@/components/ui/separator';
 
 const props = defineProps<{
   roles: Role[];
@@ -59,7 +60,16 @@ const submit = () => {
                     <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
                         <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
                             <form class="space-y-2 p-2" @submit.prevent="submit">
-                                <div class="">
+
+                              <div class="pt-3">
+                                    <h3 class="text-lg font-medium leading-6 text-gray-900">Nuovo utente</h3>
+                                    <p class="mt-1 text-sm text-gray-500">
+                                       Di seguito è possibile creare un nuovo utente, puoi assegnare un ruolo, un'anagrafica e dei permessi specifici per questo utente</p>
+                                </div>
+
+                                <Separator class="my-4 mt-4" />
+
+                                <div class="py-4">
                                     <!--  Name field -->
                                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                         <div class="sm:col-span-3">
@@ -106,7 +116,7 @@ const submit = () => {
                                             :options="roles" 
                                             label="name" 
                                             v-model="form.roles"
-                                            :reduce="(option) => option.id"
+                                            :reduce="(option: Role) => option.id"
                                             placeholder="Seleziona ruolo utente"
                                           />
 
@@ -122,7 +132,7 @@ const submit = () => {
                                             :options="permissions" 
                                             label="name" 
                                             v-model="form.permissions"
-                                            :reduce="(option) => option.id"
+                                            :reduce="(option: Permission) => option.id"
                                             placeholder="Seleziona permessi utente"
                                           />
 

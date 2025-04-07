@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
-import vSelect from "vue-select"
+import vSelect from "vue-select";
+import { Separator } from '@/components/ui/separator';
 
 defineProps<{ permissions: Permission[] }>();
 
@@ -49,8 +50,17 @@ const submit = () => {
                     <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
                         <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
                             <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
+
                                 <form class="space-y-2 p-2" @submit.prevent="submit">
-                                    <div class="">
+                                    <div class="pt-3">
+                                        <h3 class="text-lg font-medium leading-6 text-gray-900">Crea nuovo ruolo</h3>
+                                        <p class="mt-1 text-sm text-gray-500">
+                                        Di seguito è possibile creare un nuovo ruolo e selezionare i permessi ad esso associati</p>
+                                    </div>
+
+                                    <Separator class="my-4" />
+
+                                    <div class="py-4">
                                         <!--  Name field -->
                                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                             <div class="sm:col-span-3">
@@ -94,7 +104,7 @@ const submit = () => {
                                                 :options="permissions" 
                                                 label="name" 
                                                 v-model="form.permissions"
-                                                :reduce="(option) => option.id"
+                                                :reduce="(option: Permission) => option.id"
                                                 placeholder="Seleziona permessi ruolo"
                                             />
 
