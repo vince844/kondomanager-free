@@ -10,6 +10,7 @@ use App\Http\Controllers\Permissions\PermissionController;
 use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
+use App\Http\Controllers\Segnalazioni\SegnalazioneController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
@@ -49,6 +50,17 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 |--------------------------------------------------------------------------
 */
 Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
+
+/*
+|--------------------------------------------------------------------------
+| Segnalazioni Routes
+|--------------------------------------------------------------------------
+*/
+
+// Admin routes
+Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
+    Route::resource('segnalazioni', SegnalazioneController::class);
+});
 
 /*
 |--------------------------------------------------------------------------

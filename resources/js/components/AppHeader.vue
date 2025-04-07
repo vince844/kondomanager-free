@@ -18,7 +18,16 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search, Users, House, IdCard, SquareLibrary } from 'lucide-vue-next';
+import { 
+    BookOpen, 
+    Folder, 
+    LayoutGrid, 
+    Menu, 
+    Search, 
+    House,
+    SquareLibrary,
+    Tags
+ } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
@@ -59,6 +68,12 @@ const mainNavItems: NavItem[] = [
         title: 'Anagrafiche',
         href: '/admin/anagrafiche',
         icon: SquareLibrary,
+        role: ['amministratore', 'collaboratore']
+    },
+    {
+        title: 'Segnalazioni',
+        href: '/admin/segnalazioni',
+        icon: Tags,
         role: ['amministratore', 'collaboratore']
     }
 ];

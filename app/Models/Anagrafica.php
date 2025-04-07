@@ -44,4 +44,12 @@ class Anagrafica extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    // Define the many-to-many relationship with Segnalazione (ticket)
+    public function segnalazioni()
+    {
+      /*   return $this->belongsToMany(Segnalazione::class, 'anagrafica_segnalazione', 'anagrafica_id', 'segnalazione_id'); */
+        return $this->belongsToMany(Segnalazione::class);
+    }
+
 }
