@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Link } from '@inertiajs/vue3'
-import { UserPlus} from 'lucide-vue-next';
+import { BellPlus } from 'lucide-vue-next';
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -31,7 +31,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
 
     <!-- Right Section: Button (force it to the right) -->
     <Button class="hidden h-8 lg:flex ml-auto">
-      <UserPlus class="w-4 h-4" />
+      <BellPlus class="w-4 h-4" />
       <Link :href="route('admin.segnalazioni.create')">Nuova segnalazione</Link>
     </Button>
   </div>

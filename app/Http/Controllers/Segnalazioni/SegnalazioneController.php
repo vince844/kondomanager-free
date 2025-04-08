@@ -3,6 +3,11 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Segnalazioni\SegnalazioneResource;
+use App\Models\Anagrafica;
+use App\Models\Condominio;
 use App\Models\Segnalazione;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -16,7 +21,7 @@ class SegnalazioneController extends Controller
     {
        
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => Segnalazione::all()
+            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::all())
         ]); 
     }
 
@@ -25,7 +30,10 @@ class SegnalazioneController extends Controller
      */
     public function create()
     {
-        //
+        return Inertia::render('segnalazioni/SegnalazioniNew',[
+            'condomini'   => CondominioResource::collection(Condominio::all()),
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+        ]); 
     }
 
     /**
@@ -33,7 +41,7 @@ class SegnalazioneController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        dd($request);
     }
 
     /**
