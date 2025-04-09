@@ -1,5 +1,6 @@
-
 import { Anagrafica } from './anagrafiche';
+import { Permission } from './permissions';
+import { Role } from './roles';
 
 export interface User {
     id: string
@@ -8,6 +9,6 @@ export interface User {
     suspended_at: string
     verified_at: string
     anagrafica: Anagrafica
-    roles: [] 
-    permissions: [] 
+    roles: Role[] 
+    permissions: Permission[] 
   }

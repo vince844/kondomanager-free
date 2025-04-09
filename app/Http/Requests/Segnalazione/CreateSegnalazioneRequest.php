@@ -6,6 +6,9 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * @method bool merge(string $key)
+ */
 class CreateSegnalazioneRequest extends FormRequest
 {
     /**
@@ -24,29 +27,28 @@ class CreateSegnalazioneRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'subject' => 'required|string|max:255',
-            'description' => 'required|string',
-            'priority' => 'required|string',
-            'stato' => 'required|string',
-            'can_comment' => 'required|boolean',
-            'is_featured' => 'required|boolean',
-            'is_published' => 'required|boolean',
-            'created_by' => 'required|exists:users,id',
-            'is_approved' => 'required|boolean',
-            'anagrafiche' => ['sometimes', 'array', Rule::exists('anagrafiche', 'id')],
+            'subject'       => 'required|string|max:255',
+            'description'   => 'required|string',
+            'priority'      => 'required|string',
+            'stato'         => 'required|string',
+            'can_comment'   => 'required|boolean',
+            'is_featured'   => 'required|boolean',
+            'is_published'  => 'required|boolean',
+            'created_by'    => 'required|exists:users,id',
+            'is_approved'   => 'required|boolean',
+            'anagrafiche'   => ['sometimes', 'array', Rule::exists('anagrafiche', 'id')],
             'condominio_id' => ['required', 'integer', Rule::exists('condomini', 'id')],
         ];
     }
 
     public function prepareForValidation(): void
     {
-        /** @var \Illuminate\Http\Request $this */
+
         $user = Auth::user();
 
         $this->merge([
             'created_by' => $user->id,
             'is_approved' => $user->hasPermissionTo('Pubblica segnalazioni'),
-           
         ]);
     }
 

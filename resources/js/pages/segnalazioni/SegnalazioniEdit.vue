@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
-import {Head, useForm, Link } from '@inertiajs/vue3';
+import { watch, onMounted } from "vue";
+import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
@@ -9,64 +10,75 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, List } from 'lucide-vue-next';
+import { LoaderCircle, List, Pencil } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
+import type { Segnalazione } from '@/types/segnalazioni';
 import type { Anagrafica } from '@/types/anagrafiche';
-import type { PriorityType, StatoType,PublishedType } from '@/types/segnalazioni';
+import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import '@vuepic/vue-datepicker/dist/main.css';
 
 const props = defineProps<{
   condomini: Building[];
+  segnalazione: Segnalazione;
   anagrafiche: Anagrafica[];
 }>();  
 
 const form = useForm({
-    subject: '',
-    description: '',
-    priority: '',
-    stato: '',
-    condominio_id: '',
-    can_comment: false as boolean,
-    is_featured: false as boolean,
-    is_published: true,
-    anagrafiche: [],
+    subject: props.segnalazione?.subject,
+    description: props.segnalazione?.description,
+    priority: props.segnalazione?.priority,
+    stato: props.segnalazione?.stato,
+    condominio_id: props.segnalazione?.condominio?.id,
+    can_comment: !!props.segnalazione?.can_comment,
+    is_featured: !!props.segnalazione?.is_featured,
+    is_published: !!props.segnalazione?.is_published,
+    anagrafiche: props.segnalazione?.anagrafiche.map(anagrafica => anagrafica.id) || [],
 
 });
 
+ onMounted(() => {
+  form.anagrafiche = props.segnalazione?.anagrafiche.map(anagrafica => anagrafica.id) || []
+})
+
+watch(
+    () => props.segnalazione,
+    () => {
+      form.anagrafiche = props.segnalazione?.anagrafiche.map(anagrafica => anagrafica.id) || []
+    }
+)  
+
 const submit = () => {
-    form.post(route("admin.segnalazioni.store"), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
+    form.put(route("admin.segnalazioni.update", {id: props.segnalazione.id}), {
+        preserveScroll: true
     });
 };
 
 </script>
 
+
 <template>
 
-    <Head title="Crea nuova anagrafica" />
+    <Head title="Modifica segnalazione guasto" />
   
     <AppLayout >
   
       <div class="px-4 py-6">
         
-        <Heading title="Crea segnalazione guasto" description="Compila il seguente modulo per la creazione di una nuova segnalazione guasto" />
+        <Heading title="Modifica segnalazione guasto" description="Compila il seguente modulo per modificare segnalazione guasto" />
 
             <form class="space-y-2" @submit.prevent="submit">
 
                 <!-- Container for buttons (wraps buttons for alignment) -->
                 <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
-                    <!-- Button for "Crea Segnalazione" -->
+                    <!-- Button for "Update Segnalazione" -->
                     <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
-                        <Plus class="w-4 h-4" v-if="!form.processing" />
+                        <Pencil class="w-4 h-4" v-if="!form.processing" />
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                        Crea segnalazione
+                        Modifica segnalazione
                     </Button>
 
                     <!-- Button for "Elenco Segnalazioni" -->
@@ -133,12 +145,12 @@ const submit = () => {
                                     <Label for="priority">Stato pubblicazione</Label>
 
                                     <v-select 
-                                        :options="publishedConstants" 
-                                        label="label" 
+                                        :options="publishedConstants"
                                         v-model="form.is_published"
                                         placeholder="Stato pubblicazione"
-                                        @update:modelValue="form.clearErrors('is_published')" 
-                                        :reduce="(is_published: PublishedType) => is_published.value"
+                                        :reduce="(item: PublishedType) => item.value"
+                                        :get-option-label="(item: PublishedType) => item.label"
+                                        @update:modelValue="form.clearErrors('is_published')"
                                     />
 
                                     <InputError :message="form.errors.is_published" />

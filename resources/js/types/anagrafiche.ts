@@ -1,3 +1,5 @@
+import { Building } from './buildings';
+
 export interface Anagrafica {
     id: string
     nome: string
@@ -14,5 +16,5 @@ export interface Anagrafica {
     telefono: string
     cellulare: string
     note: string
-    condomini: [] 
+    condomini: Building[] 
   }

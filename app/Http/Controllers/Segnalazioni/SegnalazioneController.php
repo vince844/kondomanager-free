@@ -96,17 +96,54 @@ class SegnalazioneController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Segnalazione $segnalazione)
+    public function edit(Segnalazione $segnalazioni)
     {
-        //
+        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+
+        return Inertia::render('segnalazioni/SegnalazioniEdit', [
+         'segnalazione'  => new SegnalazioneResource($segnalazioni),
+         'condomini'     => CondominioResource::collection(Condominio::all()),
+         'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Segnalazione $segnalazione)
+    public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazioni)
     {
-        //
+        $validated = $request->validated(); 
+
+        try {
+
+            DB::beginTransaction();
+
+            $segnalazioni->update($validated);
+            
+            $segnalazioni->anagrafiche()->sync($validated['anagrafiche']);
+
+            DB::commit();
+
+            return to_route('admin.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La segnalazione è stata aggiornata con successo!"
+                ]
+            ]);
+
+        } catch (Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error updating segnalazione: ' . $e->getMessage());
+
+            return to_route('admin.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento della segnalazione!"
+                ]
+            ]);
+        }
     }
 
     /**

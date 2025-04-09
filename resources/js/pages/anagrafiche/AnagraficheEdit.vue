@@ -40,17 +40,17 @@ const form = useForm({
     telefono: props.anagrafica?.telefono, 
     cellulare: props.anagrafica?.cellulare, 
     note: props.anagrafica?.note, 
-    condomini: []
+    condomini:  props.anagrafica?.condomini.map(condominio => condominio.id) || [],
 });
 
 onMounted(() => {
-  form.condomini = props.anagrafica?.condomini
+  form.condomini = props.anagrafica?.condomini.map(condominio => condominio.id) || []
 })
 
 watch(
     () => props.anagrafica,
     () => {
-      form.condomini = props.anagrafica?.condomini
+      form.condomini = props.anagrafica?.condomini.map(condominio => condominio.id) || []
     }
 ) 
 
@@ -341,6 +341,7 @@ const submit = () => {
                                               :options="condomini" 
                                               label="nome" 
                                               v-model="form.condomini" 
+                                              :reduce="(option: Building) => option.id"
                                             />
 
                                             <InputError class="mt-2" :message="form.errors.condomini" />

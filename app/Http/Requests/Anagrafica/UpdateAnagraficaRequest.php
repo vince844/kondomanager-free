@@ -7,6 +7,12 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use App\Models\Anagrafica;
 
+/**
+ * @method bool filled(string $key)
+ * @method bool merge(string $key)
+ * @method bool input(string $key)
+ * @method bool has(string $key)
+ */
 class UpdateAnagraficaRequest extends FormRequest
 {
     /**
@@ -39,8 +45,7 @@ class UpdateAnagraficaRequest extends FormRequest
             'scadenza_documento'  => 'nullable|date|after:today',
             'data_nascita'        => 'nullable|date|before:today',
             'note'                => 'nullable|string',
-            'condomini'           => 'nullable|array',
-            'condomini.*.id'      => 'exists:condomini,id'
+            'condomini'           => ['nullable', 'array', Rule::exists('condomini', 'id')]
         ];
     }
 
@@ -50,7 +55,7 @@ class UpdateAnagraficaRequest extends FormRequest
         // Check if 'scadenza_documento' exists and is not empty
         if ($this->filled('scadenza_documento')) {
             $this->merge([
-                'scadenza_documento' => Carbon::parse($this->scadenza_documento)->toDateString(),
+                'scadenza_documento' => Carbon::parse($this->input('scadenza_documento'))->toDateString(),
             ]);
         } else {
             // Convert empty strings to null
@@ -61,17 +66,17 @@ class UpdateAnagraficaRequest extends FormRequest
 
         if ($this->filled('data_nascita')) {
             $this->merge([
-                'data_nascita' => Carbon::parse($this->data_nascita)->toDateString(),
+                'data_nascita' => Carbon::parse($this->input('data_nascita'))->toDateString(),
             ]);
         } else {
             // Convert empty strings to null
             $this->merge([
-                'scadenza_documento' => null,
+                'data_nascita' => null,
             ]);
         }
 
-        if ($this->has('condomini') && !is_array($this->condomini)) {
-            $this->merge(['condomini' => (array)$this->condomini]);
+        if ($this->has('condomini') && !is_array($this->input('condomini'))) {
+            $this->merge(['condomini' => (array)$this->input('condomini')]);
         }
     }
     

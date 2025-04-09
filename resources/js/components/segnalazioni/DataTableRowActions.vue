@@ -2,27 +2,10 @@
 import { ref } from 'vue'
 import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent,
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
-import { MoreHorizontal } from 'lucide-vue-next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
 import type { Segnalazione } from '@/types/segnalazioni';
-import { Trash2, FilePenLine } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 
 defineProps<{ segnalazione: Segnalazione }>()
 
@@ -78,7 +61,7 @@ const editSegnalazione = (segnalazione: Segnalazione) => {
 
       <DropdownMenuItem @click="handleDelete(segnalazione)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina segnalazione
+         Elimina segnalazione 
       </DropdownMenuItem>
 
     </DropdownMenuContent>

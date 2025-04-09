@@ -32,15 +32,15 @@ class SegnalazioneResource extends JsonResource
             'can_comment'   => $this->can_comment,
             'created_by' => [
                 'user_id' => $this->createdBy->id,
-                'name' => $this->createdBy->name, // From User model
+                'name' => $this->createdBy->name,
                 'email' => $this->createdBy->email,
                 'anagrafica' => $this->whenLoaded('createdBy.anagrafica', function () {
                     return new AnagraficaResource($this->createdBy->anagrafica);
                 }),
             ],
-            /* 'created_by'    => new UserResource($this->whenLoaded('createdBy')), */
             'assigned_to'   => new UserResource($this->whenLoaded('assignedTo')),
             'condominio'    => new CondominioResource($this->whenLoaded('condominio')),
+            'anagrafiche'   => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
         ];
     }
 }

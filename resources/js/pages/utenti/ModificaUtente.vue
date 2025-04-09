@@ -118,7 +118,7 @@ const submit = () => {
                                             :options="roles" 
                                             label="name" 
                                             v-model="form.roles"
-                                            :reduce="(option) => option.id"
+                                            :reduce="(option: Role) => option.id"
                                             placeholder="Seleziona ruolo utente"
                                           />
 
@@ -153,7 +153,7 @@ const submit = () => {
                                             :options="permissions" 
                                             label="name" 
                                             v-model="form.permissions"
-                                            :reduce="(option) => option.id"
+                                            :reduce="(option: Permission) => option.id"
                                             placeholder="Seleziona permessi utente"
                                           />
 

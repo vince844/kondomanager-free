@@ -1,4 +1,30 @@
 import { Anagrafica } from './anagrafiche';
+import { Building } from './buildings';
+import { Component } from 'vue';
+
+export type PriorityValue = 'bassa' | 'media' | 'alta' | 'urgente';
+export type StatoValue = 'aperta' | 'in lavorazione' | 'chiusa';
+export type PublishedValue = boolean;
+
+export interface PriorityType {
+  value: PriorityValue;
+  label: string;
+  icon: Component;
+  colorClass: string;
+}
+
+export interface StatoType {
+  value: StatoValue;
+  label: string;
+  icon: Component;
+  colorClass: string;
+}
+
+export interface PublishedType {
+  value: PublishedValue;
+  label: string;
+  colorClass: string;
+}
 
 export interface Segnalazione {
     id: string;
@@ -6,9 +32,9 @@ export interface Segnalazione {
     description: string;
     created_by: string;
     assigned_to: string;
-    condominio_id: string;
-    priority: 'bassa' | 'media' | 'alta' | 'urgente';  
-    stato: 'aperta' | 'in lavorazione' | 'chiusa';  
+    condominio: Building;
+    priority: PriorityValue;  
+    stato: StatoValue;  
     is_resolved: boolean;
     is_locked: boolean;
     is_featured: boolean;

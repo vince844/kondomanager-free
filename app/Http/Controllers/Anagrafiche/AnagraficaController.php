@@ -117,15 +117,15 @@ class AnagraficaController extends Controller
 
             $anagrafiche->update($validated);
             
-            $condominiIds = collect($validated['condomini'])->pluck('id');
-            $anagrafiche->condomini()->sync($condominiIds);
+           /*  $condominiIds = collect($validated['condomini'])->pluck('id'); */
+            $anagrafiche->condomini()->sync($validated['condomini']);
 
             DB::commit();
 
             return to_route('admin.anagrafiche.index')->with([
                 'message' => [
                     'type'    => 'success',
-                    'message' => "La nuova anagrafica è stata aggiornata con successo!"
+                    'message' => "L'anagrafica è stata aggiornata con successo!"
                 ]
             ]);
 
