@@ -7,6 +7,12 @@ use Illuminate\Foundation\Http\FormRequest;
 use App\Models\Anagrafica;
 use Illuminate\Validation\Rule;
 
+/**
+ * @method bool filled(string $key)
+ * @method bool merge(string $key)
+ * @method bool input(string $key)
+ * @method bool has(string $key)
+ */
 class CreateAnagraficaRequest extends FormRequest
 {
     /**
@@ -49,7 +55,7 @@ class CreateAnagraficaRequest extends FormRequest
         // Check if 'scadenza_documento' exists and is not empty
         if ($this->filled('scadenza_documento')) {
             $this->merge([
-                'scadenza_documento' => Carbon::parse($this->scadenza_documento)->toDateString(),
+                'scadenza_documento' => Carbon::parse($this->input('scadenza_documento'))->toDateString(),
             ]);
         } else {
             // Convert empty strings to null
@@ -60,17 +66,17 @@ class CreateAnagraficaRequest extends FormRequest
 
         if ($this->filled('data_nascita')) {
             $this->merge([
-                'data_nascita' => Carbon::parse($this->data_nascita)->toDateString(),
+                'data_nascita' => Carbon::parse($this->input('data_nascita'))->toDateString(),
             ]);
         } else {
             // Convert empty strings to null
             $this->merge([
-                'scadenza_documento' => null,
+                'data_nascita' => null,
             ]);
         }
 
-        if ($this->has('buildings') && !is_array($this->buildings)) {
-            $this->merge(['buildings' => (array)$this->buildings]);
+        if ($this->has('buildings') && !is_array($this->input('buildings'))) {
+            $this->merge(['buildings' => (array)$this->input('buildings')]);
         }
     }
     

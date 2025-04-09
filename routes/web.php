@@ -53,24 +53,14 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 
 /*
 |--------------------------------------------------------------------------
-| Segnalazioni Routes
-|--------------------------------------------------------------------------
-*/
-
-// Admin routes
-Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
-    Route::resource('segnalazioni', SegnalazioneController::class);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Anagrafiche Routes
+| Admin Routes
 |--------------------------------------------------------------------------
 */
 
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
+    Route::resource('segnalazioni', SegnalazioneController::class);
 });
 
 // User routes

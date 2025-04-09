@@ -242,6 +242,13 @@ return [
         'ruoli' => [
             'name' => 'nome ruolo',
             'description' => 'descrizione ruolo',
+        ],
+        'segnalazioni' => [
+            'subject' => 'oggetto segnalazione',
+            'description' => 'descrizione segnalazione',
+            'is_published' => 'stato segnalazione',
+            'priority' => 'priorità segnalazione',
+            'stato' => 'stato segnalazione',
         ]
     ],
 

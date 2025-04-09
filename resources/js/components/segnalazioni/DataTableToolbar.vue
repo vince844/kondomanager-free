@@ -22,12 +22,19 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
       <Input
-        placeholder="Filtra per oggetto..."
+        placeholder="Filtra per titolo..."
         :model-value="(table.getColumn('subject')?.getFilterValue() as string) ?? ''"
         class="h-8 w-[150px] lg:w-[250px]"
         @input="table.getColumn('subject')?.setFilterValue($event.target.value)"
       />
     </div>
+
+    <DataTableFacetedFilter
+        v-if="table.getColumn('status')"
+        :column="table.getColumn('status')"
+        title="Status"
+        :options="statuses"
+      />
 
     <!-- Right Section: Button (force it to the right) -->
     <Button class="hidden h-8 lg:flex ml-auto">

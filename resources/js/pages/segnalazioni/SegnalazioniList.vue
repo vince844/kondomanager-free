@@ -48,13 +48,13 @@ watch(flashMessage, (newValue) => {
 
 <template>
 
-  <Head title="Elenco anagrafiche" />
+  <Head title="Elenco segnalazioni guasto" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Elenco segnalazioni" description="Di seguito la tabella con l'elenco di tutte le segnalazioni registrate" />
+      <Heading title="Elenco segnalazioni guasto" description="Di seguito la tabella con l'elenco di tutte le segnalazioni guasto registrate" />
     
       <div v-if="flashMessage" class="py-4"> 
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

@@ -73,12 +73,12 @@ const editSegnalazione = (segnalazione: Segnalazione) => {
       
       <DropdownMenuItem @click="editSegnalazione(segnalazione)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica anagrafica
+        Modifica segnalazione
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(segnalazione)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina anagrafica
+        Elimina segnalazione
       </DropdownMenuItem>
 
     </DropdownMenuContent>
@@ -88,9 +88,9 @@ const editSegnalazione = (segnalazione: Segnalazione) => {
    <AlertDialog v-model:open="isAlertOpen" >
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questa anagrafica?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di volere eliminare questa segnalazione?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'anagrafica e tutti i dati ad essa associati.
+          Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>

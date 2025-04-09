@@ -3,14 +3,20 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
+use Exception;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Auth;
 
 class SegnalazioneController extends Controller
 {
@@ -19,9 +25,9 @@ class SegnalazioneController extends Controller
      */
     public function index()
     {
-       
+
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::all())
+            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])->get())
         ]); 
     }
 
@@ -39,9 +45,44 @@ class SegnalazioneController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(CreateSegnalazioneRequest $request): RedirectResponse
     {
-        dd($request);
+        $validated = $request->validated(); 
+
+        try {
+
+            DB::beginTransaction();
+
+            $segnalazione = Segnalazione::create($validated);
+
+            if (!empty($validated['anagrafiche'])) {
+                $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
+            }
+
+            DB::commit();
+
+            return to_route('admin.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La nuova segnalazione guasto è stata creata con successo!"
+                ]
+            ]);
+        
+        } catch (Exception $e) {
+        
+            DB::rollback();
+
+            Log::error('Error creating segnalazione: ' . $e->getMessage());
+
+            return to_route('admin.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante la creazione della segnalazione guasto!"
+                ]
+            ]);
+
+        }
+
     }
 
     /**
@@ -71,8 +112,31 @@ class SegnalazioneController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Segnalazione $segnalazione)
+    public function destroy(Segnalazione $segnalazioni)
     {
-        //
+        try {
+
+            $segnalazioni->delete();
+
+            return back()->with([
+                'message' => [ 
+                    'type'    => 'success',
+                    'message' => "La segnalazione è stata eliminata con successo"
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            
+            Log::error('Error deleting segnalazione: ' . $e->getMessage());
+
+            return back()->with([
+                'message' => [ 
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore nel tentativo di eliminare la segnalazione"
+                ]
+            ]);
+        }
+
+       
     }
 }

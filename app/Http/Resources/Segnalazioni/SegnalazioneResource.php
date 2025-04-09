@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Segnalazioni;
 
+use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
 use Illuminate\Http\Request;
@@ -26,12 +27,20 @@ class SegnalazioneResource extends JsonResource
             'is_locked'     => $this->is_locked,
             'is_featured'   => $this->is_featured,
             'is_private'    => $this->is_private,
-            'is_published'  => $this->is_publisched,
+            'is_published'  => $this->is_published,
             'is_approved'   => $this->is_approved,
             'can_comment'   => $this->can_comment,
-            'created_by'    => UserResource::collection($this->created_by),
-            'assigned_to'   => UserResource::collection($this->assogned_to),
-            'condominio_id' => CondominioResource::collection($this->condominio_id),
+            'created_by' => [
+                'user_id' => $this->createdBy->id,
+                'name' => $this->createdBy->name, // From User model
+                'email' => $this->createdBy->email,
+                'anagrafica' => $this->whenLoaded('createdBy.anagrafica', function () {
+                    return new AnagraficaResource($this->createdBy->anagrafica);
+                }),
+            ],
+            /* 'created_by'    => new UserResource($this->whenLoaded('createdBy')), */
+            'assigned_to'   => new UserResource($this->whenLoaded('assignedTo')),
+            'condominio'    => new CondominioResource($this->whenLoaded('condominio')),
         ];
     }
 }

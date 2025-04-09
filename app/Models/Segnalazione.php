@@ -31,8 +31,7 @@ class Segnalazione extends Model
      // Define the many-to-many relationship with Anagrafica
      public function anagrafiche()
      {
-        /* return $this->belongsToMany(Anagrafica::class, 'anagrafica_segnalazione', 'segnalazione_id', 'anagrafica_id'); */
-        return $this->belongsToMany(Anagrafica::class);
+         return $this->belongsToMany(Anagrafica::class, 'anagrafica_segnalazione', 'segnalazione_id', 'anagrafica_id'); 
      }
  
      // Other relationships (for example, creator, assignee, etc.)

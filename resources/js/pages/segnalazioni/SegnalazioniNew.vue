@@ -89,7 +89,7 @@ const form = useForm({
     description: '',
     priority: '',
     stato: '',
-    condominio: '',
+    condominio_id: '',
     can_comment: false as boolean,
     is_featured: false as boolean,
     is_published: true,
@@ -117,7 +117,7 @@ const submit = () => {
   
       <div class="px-4 py-6">
         
-        <Heading title="Crea segnalazione" description="Compila il seguente modulo per la creazione di una nuova segnalazione" />
+        <Heading title="Crea segnalazione guasto" description="Compila il seguente modulo per la creazione di una nuova segnalazione guasto" />
 
             <form class="space-y-2" @submit.prevent="submit">
 
@@ -177,12 +177,11 @@ const submit = () => {
                                         placeholder="Descrizone segnalazione" 
                                     />
                                     
-                                    <InputError :message="form.errors.subject" />
+                                    <InputError :message="form.errors.description" />
                         
                                 </div>
                                 
                             </div> 
-
 
                         </div>
                     </div>
@@ -200,8 +199,11 @@ const submit = () => {
                                         label="label" 
                                         v-model="form.is_published"
                                         placeholder="Stato pubblicazione"
+                                        @update:modelValue="form.clearErrors('is_published')" 
                                         :reduce="(is_published: Published) => is_published.value"
                                     />
+
+                                    <InputError :message="form.errors.is_published" />
                         
                                 </div>
                             </div>
@@ -215,8 +217,11 @@ const submit = () => {
                                         label="label" 
                                         v-model="form.priority"
                                         placeholder="Priorità segnalazione"
+                                        @update:modelValue="form.clearErrors('priority')" 
                                         :reduce="(priority: Priority) => priority.value"
                                     />
+
+                                    <InputError :message="form.errors.priority" />
                         
                                 </div>
                             </div>
@@ -230,8 +235,11 @@ const submit = () => {
                                         label="label" 
                                         v-model="form.stato"
                                         placeholder="Sato segnalazione"
+                                        @update:modelValue="form.clearErrors('stato')" 
                                         :reduce="(stato: Stato) => stato.value"
                                     />
+
+                                    <InputError :message="form.errors.stato" />
                         
                                 </div>
                             </div>
@@ -243,10 +251,13 @@ const submit = () => {
                                     <v-select 
                                         :options="condomini" 
                                         label="nome" 
-                                        v-model="form.condominio"
+                                        v-model="form.condominio_id"
                                         placeholder="Condominio"
+                                        @update:modelValue="form.clearErrors('condominio_id')" 
                                         :reduce="(condominio: Building) => condominio.id"
                                     />
+
+                                    <InputError :message="form.errors.condominio_id" />
                         
                                 </div>
                             </div>
@@ -261,8 +272,11 @@ const submit = () => {
                                         label="nome" 
                                         v-model="form.anagrafiche"
                                         placeholder="Anagrafiche"
+                                        @update:modelValue="form.clearErrors('anagrafiche')" 
                                         :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                                     />
+
+                                    <InputError :message="form.errors.anagrafiche" />
                         
                                 </div>
                             </div>

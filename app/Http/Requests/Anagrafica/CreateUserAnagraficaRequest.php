@@ -68,7 +68,7 @@ class CreateUserAnagraficaRequest extends FormRequest
         } else {
             // Convert empty strings to null
             $this->merge([
-                'scadenza_documento' => null,
+                'data_nascita' => null,
             ]);
         }
     }
