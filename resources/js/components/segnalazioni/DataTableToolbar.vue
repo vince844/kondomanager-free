@@ -1,12 +1,47 @@
 <script setup lang="ts">
-
 import type { Table } from '@tanstack/vue-table'
 import type { Segnalazione } from '@/types/segnalazioni'
 import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Link } from '@inertiajs/vue3'
-import { BellPlus } from 'lucide-vue-next';
+import { BellPlus, X } from 'lucide-vue-next';
+import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
+
+// Define your status options
+const statusOptions = [
+  { 
+    value: 'aperta', 
+    label: 'Aperta'
+  },
+  { 
+    value: 'in lavorazione', 
+    label: 'In lavorazione'
+  },
+  { 
+    value: 'chiusa', 
+    label: 'Chiusa'
+  }
+]
+
+const prioritiesOptions = [
+  { 
+    value: 'bassa', 
+    label: 'Bassa'
+  },
+  { 
+    value: 'media', 
+    label: 'Media'
+  },
+  { 
+    value: 'alta', 
+    label: 'Alta'
+  },
+  { 
+    value: 'urgente', 
+    label: 'Urgente'
+  }
+]
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -15,11 +50,12 @@ interface DataTableToolbarProps {
 const props = defineProps<DataTableToolbarProps>()
 
 const isFiltered = computed(() => props.table.getState().columnFilters.length > 0)
+
 </script>
 
 <template>
   <div class="flex items-center justify-between w-full mb-3">
-    <!-- Left Section: Input -->
+    <!-- Left Section: Input and Filters -->
     <div class="flex items-center space-x-2">
       <Input
         placeholder="Filtra per titolo..."
@@ -27,16 +63,33 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
         class="h-8 w-[150px] lg:w-[250px]"
         @input="table.getColumn('subject')?.setFilterValue($event.target.value)"
       />
-    </div>
 
-    <DataTableFacetedFilter
-        v-if="table.getColumn('status')"
-        :column="table.getColumn('status')"
-        title="Status"
-        :options="statuses"
+      <DataTableFacetedFilter
+        v-if="table.getColumn('stato')"
+        :column="table.getColumn('stato')"
+        title="Stato"
+        :options="statusOptions"
       />
 
-    <!-- Right Section: Button (force it to the right) -->
+      <DataTableFacetedFilter
+        v-if="table.getColumn('priority')"
+        :column="table.getColumn('priority')"
+        title="Priorità"
+        :options="prioritiesOptions"
+      />
+    
+      <Button
+        v-if="isFiltered"
+        variant="ghost"
+        class="h-8 px-2 lg:px-3"
+        @click="table.resetColumnFilters()"
+      >
+        Resetta
+        <X class="ml-2 h-4 w-4" />
+      </Button>
+    </div>
+
+    <!-- Right Section: Button -->
     <Button class="hidden h-8 lg:flex ml-auto">
       <BellPlus class="w-4 h-4" />
       <Link :href="route('admin.segnalazioni.create')">Nuova segnalazione</Link>

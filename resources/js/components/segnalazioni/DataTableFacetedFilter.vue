@@ -3,31 +3,31 @@ import type { Column } from '@tanstack/vue-table'
 import type { Component } from 'vue'
 import type { Segnalazione } from '@/types/segnalazioni';
 import { cn } from '@/lib/utils'
-import Badge from '../ui/badge/Badge.vue';
-import Button from '../ui/button/Button.vue';
-
+import Badge from '@/components/ui/badge/Badge.vue';
+import Button from '@/components/ui/button/Button.vue';
 import { 
-    Command, 
-    CommandEmpty, 
-    CommandGroup, 
-    CommandInput, 
-    CommandItem, 
-    CommandList, 
-    CommandSeparator 
-} from '@/registry/new-york/ui/command'
+  Command, 
+  CommandEmpty, 
+  CommandGroup, 
+  CommandInput, 
+  CommandItem, 
+  CommandList, 
+  CommandSeparator 
+} from '@/components/ui/command'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/registry/new-york/ui/popover'
-import { Separator } from '@/registry/new-york/ui/separator'
-
+} from '@/components/ui/popover'
+import { Separator } from '@/components/ui/separator'
 import { computed } from 'vue'
-import CheckIcon from '~icons/radix-icons/check'
-import PlusCircledIcon from '~icons/radix-icons/plus-circled'
+import { 
+    Check, 
+    PlusCircle 
+} from 'lucide-vue-next' 
 
-interface DataTableFacetedFilter {
-  column?: Column<Task, any>
+interface DataTableFacetedFilterProps {
+  column?: Column<Segnalazione, unknown>
   title?: string
   options: {
     label: string
@@ -36,7 +36,7 @@ interface DataTableFacetedFilter {
   }[]
 }
 
-const props = defineProps<DataTableFacetedFilter>()
+const props = defineProps<DataTableFacetedFilterProps>()
 
 const facets = computed(() => props.column?.getFacetedUniqueValues())
 const selectedValues = computed(() => new Set(props.column?.getFilterValue() as string[]))
@@ -46,7 +46,7 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
   <Popover>
     <PopoverTrigger as-child>
       <Button variant="outline" size="sm" class="h-8 border-dashed">
-        <PlusCircledIcon class="mr-2 h-4 w-4" />
+        <PlusCircle class="mr-2 h-4 w-4" /> <!-- Fixed icon component name -->
         {{ title }}
         <template v-if="selectedValues.size > 0">
           <Separator orientation="vertical" class="mx-2 h-4" />
@@ -90,18 +90,16 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
               v-for="option in options"
               :key="option.value"
               :value="option"
-              @select="(e) => {
-                console.log(e.detail.value)
+              @select="(e: CustomEvent) => {
                 const isSelected = selectedValues.has(option.value)
                 if (isSelected) {
                   selectedValues.delete(option.value)
-                }
-                else {
+                } else {
                   selectedValues.add(option.value)
                 }
                 const filterValues = Array.from(selectedValues)
                 column?.setFilterValue(
-                  filterValues.length ? filterValues : undefined,
+                  filterValues.length ? filterValues : undefined
                 )
               }"
             >
@@ -113,7 +111,7 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
                     : 'opacity-50 [&_svg]:invisible',
                 )"
               >
-                <CheckIcon :class="cn('h-4 w-4')" />
+                <Check class="h-4 w-4" /> <!-- Fixed icon component name -->
               </div>
               <component :is="option.icon" v-if="option.icon" class="mr-2 h-4 w-4 text-muted-foreground" />
               <span>{{ option.label }}</span>
@@ -127,11 +125,11 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
-                :value="{ label: 'Clear filters' }"
+                :value="{ label: 'Resetta filtri' }"
                 class="justify-center text-center"
                 @select="column?.setFilterValue(undefined)"
               >
-                Clear filters
+                Resetta filtri
               </CommandItem>
             </CommandGroup>
           </template>
