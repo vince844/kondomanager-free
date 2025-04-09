@@ -5,41 +5,58 @@ import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Link } from '@inertiajs/vue3'
-import { BellPlus, X } from 'lucide-vue-next';
+import { 
+  BellPlus, 
+  X,
+  CircleArrowUp,
+  CircleArrowRight,
+  CircleArrowDown,
+  CircleAlert,
+  CircleCheck,
+  CircleX, 
+  History, 
+} from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 
 // Define your status options
 const statusOptions = [
   { 
     value: 'aperta', 
-    label: 'Aperta'
+    label: 'Aperta',
+    icon: CircleCheck
   },
   { 
     value: 'in lavorazione', 
-    label: 'In lavorazione'
+    label: 'In lavorazione',
+    icon: History
   },
   { 
     value: 'chiusa', 
-    label: 'Chiusa'
+    label: 'Chiusa',
+    icon: CircleX
   }
 ]
 
 const prioritiesOptions = [
   { 
     value: 'bassa', 
-    label: 'Bassa'
+    label: 'Bassa',
+    icon: CircleArrowDown
   },
   { 
     value: 'media', 
-    label: 'Media'
+    label: 'Media',
+    icon: CircleArrowRight
   },
   { 
     value: 'alta', 
-    label: 'Alta'
+    label: 'Alta',
+    icon: CircleArrowUp
   },
   { 
     value: 'urgente', 
-    label: 'Urgente'
+    label: 'Urgente',
+    icon: CircleAlert
   }
 ]
 
@@ -54,7 +71,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3">
+  <div class="flex items-center justify-between w-full mb-3 mt-4">
     <!-- Left Section: Input and Filters -->
     <div class="flex items-center space-x-2">
       <Input

@@ -20,6 +20,8 @@ import {
   getFilteredRowModel,
   getSortedRowModel,
   getPaginationRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
 } from '@tanstack/vue-table'
 import type { Segnalazione } from '@/types/segnalazioni';
 import { valueUpdater } from '@/lib/utils'
@@ -43,6 +45,8 @@ const table = useVueTable({
   getFilteredRowModel: getFilteredRowModel(),
   getSortedRowModel: getSortedRowModel(),
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  getFacetedUniqueValues: getFacetedUniqueValues(),
+  getFacetedRowModel: getFacetedRowModel(),
   state: {
       get columnFilters() { return columnFilters.value },
       get sorting() { return sorting.value },

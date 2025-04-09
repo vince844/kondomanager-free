@@ -21,10 +21,7 @@ import {
 } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { computed } from 'vue'
-import { 
-    Check, 
-    PlusCircle 
-} from 'lucide-vue-next' 
+import { Check, PlusCircle } from 'lucide-vue-next'
 
 interface DataTableFacetedFilterProps {
   column?: Column<Segnalazione, unknown>
@@ -38,22 +35,26 @@ interface DataTableFacetedFilterProps {
 
 const props = defineProps<DataTableFacetedFilterProps>()
 
-const facets = computed(() => props.column?.getFacetedUniqueValues())
-const selectedValues = computed(() => new Set(props.column?.getFilterValue() as string[]))
+const facets = computed(() => {
+  if (!props.column) return new Map()
+  return props.column.getFacetedUniqueValues()
+})
+
+const selectedValues = computed(() => {
+  const filterValue = props.column?.getFilterValue()
+  return new Set(Array.isArray(filterValue) ? filterValue : [])
+})
 </script>
 
 <template>
   <Popover>
     <PopoverTrigger as-child>
       <Button variant="outline" size="sm" class="h-8 border-dashed">
-        <PlusCircle class="mr-2 h-4 w-4" /> <!-- Fixed icon component name -->
+        <PlusCircle class="mr-2 h-4 w-4" />
         {{ title }}
         <template v-if="selectedValues.size > 0">
           <Separator orientation="vertical" class="mx-2 h-4" />
-          <Badge
-            variant="secondary"
-            class="rounded-sm px-1 font-normal lg:hidden"
-          >
+          <Badge variant="secondary" class="rounded-sm px-1 font-normal lg:hidden">
             {{ selectedValues.size }}
           </Badge>
           <div class="hidden space-x-1 lg:flex">
@@ -62,13 +63,11 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
               variant="secondary"
               class="rounded-sm px-1 font-normal"
             >
-              {{ selectedValues.size }} selected
+              {{ selectedValues.size }} selezionati
             </Badge>
-
             <template v-else>
               <Badge
-                v-for="option in options
-                  .filter((option) => selectedValues.has(option.value))"
+                v-for="option in options.filter((option) => selectedValues.has(option.value))"
                 :key="option.value"
                 variant="secondary"
                 class="rounded-sm px-1 font-normal"
@@ -80,26 +79,25 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
         </template>
       </Button>
     </PopoverTrigger>
-    <PopoverContent class="w-[200px] p-0" align="start">
+    <PopoverContent class="w-[250px] p-0" align="start">
       <Command>
         <CommandInput :placeholder="title" />
         <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
+          <CommandEmpty>Nessun risultato trovato</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="option in options"
               :key="option.value"
               :value="option"
-              @select="(e: CustomEvent) => {
-                const isSelected = selectedValues.has(option.value)
-                if (isSelected) {
-                  selectedValues.delete(option.value)
+              @select="() => {
+                const newSelectedValues = new Set(selectedValues)
+                if (newSelectedValues.has(option.value)) {
+                  newSelectedValues.delete(option.value)
                 } else {
-                  selectedValues.add(option.value)
+                  newSelectedValues.add(option.value)
                 }
-                const filterValues = Array.from(selectedValues)
-                column?.setFilterValue(
-                  filterValues.length ? filterValues : undefined
+                props.column?.setFilterValue(
+                  newSelectedValues.size ? Array.from(newSelectedValues) : undefined
                 )
               }"
             >
@@ -111,23 +109,29 @@ const selectedValues = computed(() => new Set(props.column?.getFilterValue() as 
                     : 'opacity-50 [&_svg]:invisible',
                 )"
               >
-                <Check class="h-4 w-4" /> <!-- Fixed icon component name -->
+                <Check class="h-4 w-4" />
               </div>
-              <component :is="option.icon" v-if="option.icon" class="mr-2 h-4 w-4 text-muted-foreground" />
+              <component
+                :is="option.icon"
+                v-if="option.icon"
+                class="mr-2 h-4 w-4 text-muted-foreground"
+              />
               <span>{{ option.label }}</span>
-              <span v-if="facets?.get(option.value)" class="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs">
+              <span
+                v-if="facets?.get(option.value)"
+                class="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs"
+              >
                 {{ facets.get(option.value) }}
               </span>
             </CommandItem>
           </CommandGroup>
-
           <template v-if="selectedValues.size > 0">
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
                 :value="{ label: 'Resetta filtri' }"
                 class="justify-center text-center"
-                @select="column?.setFilterValue(undefined)"
+                @select="props.column?.setFilterValue(undefined)"
               >
                 Resetta filtri
               </CommandItem>
