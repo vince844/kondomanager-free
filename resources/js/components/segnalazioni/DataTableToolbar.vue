@@ -5,68 +5,19 @@ import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Link } from '@inertiajs/vue3'
-import { 
-  BellPlus, 
-  X,
-  CircleArrowUp,
-  CircleArrowRight,
-  CircleArrowDown,
-  CircleAlert,
-  CircleCheck,
-  CircleX, 
-  History, 
-} from 'lucide-vue-next';
+import { BellPlus, X } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
-
-// Define your status options
-const statusOptions = [
-  { 
-    value: 'aperta', 
-    label: 'Aperta',
-    icon: CircleCheck
-  },
-  { 
-    value: 'in lavorazione', 
-    label: 'In lavorazione',
-    icon: History
-  },
-  { 
-    value: 'chiusa', 
-    label: 'Chiusa',
-    icon: CircleX
-  }
-]
-
-const prioritiesOptions = [
-  { 
-    value: 'bassa', 
-    label: 'Bassa',
-    icon: CircleArrowDown
-  },
-  { 
-    value: 'media', 
-    label: 'Media',
-    icon: CircleArrowRight
-  },
-  { 
-    value: 'alta', 
-    label: 'Alta',
-    icon: CircleArrowUp
-  },
-  { 
-    value: 'urgente', 
-    label: 'Urgente',
-    icon: CircleAlert
-  }
-]
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
+  condominioOptions: { label: string; value: string }[]; 
 }
 
 const props = defineProps<DataTableToolbarProps>()
 
-const isFiltered = computed(() => props.table.getState().columnFilters.length > 0)
+// Compute whether the table is filtered
+const isFiltered = computed(() => props.table.getState().columnFilters.length > 0) 
 
 </script>
 
@@ -85,23 +36,31 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
         v-if="table.getColumn('stato')"
         :column="table.getColumn('stato')"
         title="Stato"
-        :options="statusOptions"
+        :options="statoConstants"
       />
 
       <DataTableFacetedFilter
         v-if="table.getColumn('priority')"
         :column="table.getColumn('priority')"
         title="Priorità"
-        :options="prioritiesOptions"
+        :options="priorityConstants"
       />
-    
+
+       <!-- Add Condominio Filter -->
+       <DataTableFacetedFilter
+        v-if="table.getColumn('condominio')"
+        :column="table.getColumn('condominio')"
+        title="Condominio"
+        :options="props.condominioOptions"  
+      />
+  
       <Button
         v-if="isFiltered"
         variant="ghost"
         class="h-8 px-2 lg:px-3"
         @click="table.resetColumnFilters()"
       >
-        Resetta
+        Resetta filtri
         <X class="ml-2 h-4 w-4" />
       </Button>
     </div>
@@ -109,7 +68,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     <!-- Right Section: Button -->
     <Button class="hidden h-8 lg:flex ml-auto">
       <BellPlus class="w-4 h-4" />
-      <Link :href="route('admin.segnalazioni.create')">Nuova segnalazione</Link>
+      <Link :href="route('admin.segnalazioni.create')">Crea</Link>
     </Button>
   </div>
 </template>

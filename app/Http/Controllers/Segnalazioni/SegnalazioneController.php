@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Segnalazioni;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
@@ -27,7 +28,8 @@ class SegnalazioneController extends Controller
     {
 
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])->get())
+            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])->get()),
+            'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
         ]); 
     }
 
@@ -88,9 +90,13 @@ class SegnalazioneController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Segnalazione $segnalazione)
+    public function show(Segnalazione $segnalazioni)
     {
-        //
+        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+
+        return Inertia::render('segnalazioni/SegnalazioniView', [
+         'segnalazione'  => new SegnalazioneResource($segnalazioni)
+        ]);
     }
 
     /**
@@ -102,7 +108,7 @@ class SegnalazioneController extends Controller
 
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
          'segnalazione'  => new SegnalazioneResource($segnalazioni),
-         'condomini'     => CondominioResource::collection(Condominio::all()),
+         'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
          'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
         ]);
     }
@@ -113,6 +119,8 @@ class SegnalazioneController extends Controller
     public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazioni)
     {
         $validated = $request->validated(); 
+
+      
 
         try {
 

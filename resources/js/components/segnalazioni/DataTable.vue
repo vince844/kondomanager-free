@@ -31,6 +31,7 @@ import DataTableToolbar from '@/components/segnalazioni/DataTableToolbar.vue'
 const props = defineProps<{
     columns: ColumnDef<Segnalazione, any>[]
     data: Segnalazione[]
+    condominioOptions: { label: string; value: string }[]; // Add this line
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])
@@ -56,7 +57,7 @@ const table = useVueTable({
 
 <template>
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar :table="table" :condominioOptions="condominioOptions" />
     </div>
   
   <div class="border rounded-md">

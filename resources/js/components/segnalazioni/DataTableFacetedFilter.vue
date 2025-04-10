@@ -44,6 +44,8 @@ const selectedValues = computed(() => {
   const filterValue = props.column?.getFilterValue()
   return new Set(Array.isArray(filterValue) ? filterValue : [])
 })
+
+
 </script>
 
 <template>

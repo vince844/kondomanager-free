@@ -1,88 +1,70 @@
 import { h } from 'vue'
+import { Link } from '@inertiajs/vue3'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Segnalazione } from '@/types/segnalazioni';
 import DropdownAction from '@/components/segnalazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHeader.vue';
-import { 
-  CircleCheck,
-  CircleX, 
-  History, 
-  CircleArrowUp,
-  CircleArrowRight,
-  CircleArrowDown,
-  CircleAlert,
-} from 'lucide-vue-next';
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { Badge }  from '@/components/ui/badge';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 
-// Enhanced status definitions with colors
-const stati = [
-  { 
-    value: 'aperta', 
-    label: 'Aperta', 
-    icon: CircleCheck,
-    iconClass: 'text-green-500'
-  },
-  { 
-    value: 'in lavorazione', 
-    label: 'In lavorazione', 
-    icon: History,
-    iconClass: 'text-yellow-500'
-  },
-  { 
-    value: 'chiusa', 
-    label: 'Chiusa', 
-    icon: CircleX,
-    iconClass: 'text-gray-500'
-  }
-]
-
-// Enhanced priority definitions with icons and styling
-const priorities = [
-  { 
-    value: 'bassa', 
-    label: 'Bassa', 
-    icon: CircleArrowDown,
-    iconClass: 'text-green-500',
-    textClass: 'text-green-700'
-  },
-  { 
-    value: 'media', 
-    label: 'Media', 
-    icon: CircleArrowRight,
-    iconClass: 'text-blue-500',
-    textClass: 'text-blue-700'
-  },
-  { 
-    value: 'alta', 
-    label: 'Alta', 
-    icon: CircleArrowUp,
-    iconClass: 'text-orange-500',
-    textClass: 'text-orange-700'
-  },
-  { 
-    value: 'urgente', 
-    label: 'Urgente', 
-    icon: CircleAlert, 
-    iconClass: 'text-red-500', 
-    textClass: 'text-red-700'
-  }
-]
-
-export const columns: ColumnDef<Segnalazione>[] = [
+  export const columns = (): ColumnDef<Segnalazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('subject')),
+    cell: ({ row }) => {
+      const segnalazione = row.original
+      return h(Link, {
+        href: route('admin.segnalazioni.show', {id: segnalazione.id}),
+        class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+        prefetch: true,
+      }, () => segnalazione.subject)
+    }
+  },
+  {
+    accessorKey: 'condominio',
+    header: ({ column }) =>
+      h(DataTableColumnHeader, { column, title: 'Condominio' }),
+  
+    cell: ({ row }) => {
+      const condominio = row.original.condominio;
+  
+      if (!condominio?.option || !condominio?.full) return '—';
+  
+      return h(HoverCard, {}, [
+        h(HoverCardTrigger, {}, [
+          h(Badge, {
+            variant: 'outline',
+            class: 'rounded-md font-bold cursor-pointer'
+          }, condominio.option.label)
+        ]),
+        h(HoverCardContent, {
+          class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
+        }, [
+          h('div', [h('strong', 'Nome: '), condominio.full.nome]),
+          h('div', [h('strong', 'Indirizzo: '), condominio.full.indirizzo]),
+          h('div', [h('strong', 'Email: '), condominio.full.email]),
+          h('div', [h('strong', 'Codice Fiscale: '), condominio.full.codice_fiscale]),
+          h('div', [h('strong', 'Comune Catasto: '), condominio.full.comune_catasto]),
+        ])
+      ]);
+    },
+  
+    filterFn: (row, id, value) => {
+      const condominio = row.original.condominio;
+      return value.includes(condominio?.option?.value);
+    },
   },
   {
     accessorKey: 'stato',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
     cell: ({ row }) => {
-      const status = stati.find(s => s.value === row.getValue('stato'))
+      const status = statoConstants.find(s => s.value === row.getValue('stato'))
       
       if (!status) return null
       
       return h('div', { class: 'flex items-center gap-2' }, [
-        h(status.icon, { class: `h-4 w-4 ${status.iconClass}` }),
+        h(status.icon, { class: `h-4 w-4 ${status.colorClass}` }),
         h('span', status.label)
       ])
     },
@@ -92,14 +74,14 @@ export const columns: ColumnDef<Segnalazione>[] = [
     accessorKey: 'priority',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Priorità' }),
     cell: ({ row }) => {
-      const priority = priorities.find(p => p.value === row.getValue('priority'))
+      const priority = priorityConstants.find(p => p.value === row.getValue('priority'))
       
       if (!priority) return null
       
       return h('div', { 
         class: `flex items-center gap-2 px-3 py-1 w-fit`
       }, [
-        h(priority.icon, { class: `h-4 w-4 ${priority.iconClass}` }),
+        h(priority.icon, { class: `h-4 w-4 ${priority.colorClass}` }),
         h('span', priority.label)
       ])
     },

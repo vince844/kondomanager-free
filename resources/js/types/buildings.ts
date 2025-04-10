@@ -10,5 +10,17 @@ export interface Building {
     sezione_catasto: string, 
     foglio_catasto: string,    
     particella_catasto: string,
-    codice_identificativo: string
+    codice_identificativo: string,
+
+    value: string; 
+    label: string; 
+
+    option?: {
+      value: string;
+      label: string;
+    };
+
+    full?: Building;
   }
+
+   

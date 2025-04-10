@@ -3,6 +3,7 @@
 namespace App\Http\Resources\Segnalazioni;
 
 use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
 use Illuminate\Http\Request;
@@ -39,7 +40,10 @@ class SegnalazioneResource extends JsonResource
                 }),
             ],
             'assigned_to'   => new UserResource($this->whenLoaded('assignedTo')),
-            'condominio'    => new CondominioResource($this->whenLoaded('condominio')),
+            'condominio' => [
+                'option' => new CondominioOptionsResource($this->whenLoaded('condominio')),
+                'full'   => new CondominioResource($this->whenLoaded('condominio')),
+            ],
             'anagrafiche'   => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
         ];
     }

@@ -66,14 +66,14 @@ const submit = () => {
                     <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                         <Plus class="w-4 h-4" v-if="!form.processing" />
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                        Crea segnalazione
+                        Salva
                     </Button>
 
                     <!-- Button for "Elenco Segnalazioni" -->
                     <Button class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
                         <Link :href="route('admin.segnalazioni.index')" class="block lg:inline">
-                        Elenco segnalazioni
+                        Elenco
                         </Link>
                     </Button>
 

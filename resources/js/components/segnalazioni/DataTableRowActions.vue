@@ -56,12 +56,12 @@ const editSegnalazione = (segnalazione: Segnalazione) => {
       
       <DropdownMenuItem @click="editSegnalazione(segnalazione)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica segnalazione
+        Modifica 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(segnalazione)" >
         <Trash2 class="w-4 h-4 text-xs" />
-         Elimina segnalazione 
+         Elimina 
       </DropdownMenuItem>
 
     </DropdownMenuContent>

@@ -10,32 +10,14 @@ import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Segnalazione } from '@/types/segnalazioni';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
-import { 
-  CircleCheck,
-  CircleX, 
-  History, 
-  CircleArrowUp,
-  CircleArrowRight,
-  CircleArrowDown,
-  CircleAlert,
-} from 'lucide-vue-next';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert } from 'lucide-vue-next';
 
-/* defineProps<{ segnalazioni: Segnalazione[] }>() */
-
-const props = defineProps<{ segnalazioni: Segnalazione[] }>()
+const props = defineProps<{ 
+  segnalazioni: Segnalazione[]; 
+  condominioOptions: []; // Add this prop here
+}>()
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -158,7 +140,7 @@ watch(flashMessage, (newValue) => {
       </div>
      
       <div class="container mx-auto">
-        <DataTable :columns="columns" :data="segnalazioni" />
+        <DataTable :columns="columns()" :data="segnalazioni" :condominioOptions="condominioOptions" />
       </div> 
     </div>
   </AppLayout> 

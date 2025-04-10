@@ -36,7 +36,7 @@ import type {
       value: 'urgente', 
       label: 'Urgente priorità', 
       icon: CircleAlert, 
-      colorClass: 'text-red-500 bg-red-50 animate-pulse'
+      colorClass: 'text-red-500 bg-red-50'
     }
   ];
   
