@@ -70,9 +70,9 @@ const submit = () => {
                     </Button>
 
                     <!-- Button for "Elenco Segnalazioni" -->
-                    <Button class="lg:flex h-8 w-full lg:w-auto">
+                    <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
-                        <Link :href="route('admin.segnalazioni.index')" class="block lg:inline">
+                        <Link prefetch :href="route('admin.segnalazioni.index')" class="block lg:inline">
                         Elenco
                         </Link>
                     </Button>

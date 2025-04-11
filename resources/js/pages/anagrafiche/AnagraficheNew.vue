@@ -87,7 +87,7 @@ const submit = () => {
         
             <Button class="ml-auto hidden h-8 lg:flex">
               <List class="w-4 h-4" />
-              <Link :href="route('admin.anagrafiche.index')">Elenco anagrafiche</Link>
+              <Link :href="route('admin.anagrafiche.index')">Elenco</Link>
             </Button>
 
             <div class="mt-3 flex flex-col">

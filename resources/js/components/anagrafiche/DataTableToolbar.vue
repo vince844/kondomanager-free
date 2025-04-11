@@ -32,7 +32,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     <!-- Right Section: Button (force it to the right) -->
     <Button class="hidden h-8 lg:flex ml-auto">
       <UserPlus class="w-4 h-4" />
-      <Link :href="route('admin.anagrafiche.create')">Nuova anagrafica</Link>
+      <Link :href="route('admin.anagrafiche.create')">Crea</Link>
     </Button>
   </div>
 </template>

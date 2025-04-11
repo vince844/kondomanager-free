@@ -30,9 +30,18 @@ export interface Segnalazione {
     id: string;
     subject: string;
     description: string;
-    created_by: string;
-    assigned_to: string;
-    condominio: Building;
+    created_at: string;
+    created_by: {
+      user_id: string;         
+      name: string;
+      email: string;
+      anagrafica: Anagrafica[];
+    };
+    assigned_to: Anagrafica[];
+    condominio: {
+      option: any;             
+      full: Building;           
+    };
     priority: PriorityValue;  
     stato: StatoValue;  
     is_resolved: boolean;

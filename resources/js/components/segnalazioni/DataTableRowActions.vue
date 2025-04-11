@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { router } from "@inertiajs/vue3";
+import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
@@ -37,10 +37,6 @@ const deleteSegnalazione = () => {
     })
 }
 
-const editSegnalazione = (segnalazione: Segnalazione) => {
-  router.get(route('admin.segnalazioni.edit', { id: segnalazione.id})) 
-}
-
 </script>
 
 <template>
@@ -53,10 +49,16 @@ const editSegnalazione = (segnalazione: Segnalazione) => {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-      
-      <DropdownMenuItem @click="editSegnalazione(segnalazione)" >
-        <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica 
+
+      <DropdownMenuItem>
+        <Link
+          :href="route('admin.segnalazioni.edit', { id: segnalazione.id })"
+          prefetch
+          class="flex items-center gap-2"
+        >
+          <FilePenLine class="w-4 h-4 text-xs" />
+          Modifica
+        </Link>
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(segnalazione)" >

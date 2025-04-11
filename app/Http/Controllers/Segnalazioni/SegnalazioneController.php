@@ -120,8 +120,6 @@ class SegnalazioneController extends Controller
     {
         $validated = $request->validated(); 
 
-      
-
         try {
 
             DB::beginTransaction();
