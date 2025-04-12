@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
@@ -53,7 +54,7 @@ const deleteSegnalazione = () => {
       <DropdownMenuItem>
         <Link
           :href="route('admin.segnalazioni.edit', { id: segnalazione.id })"
-          prefetch
+          preserve-state
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />

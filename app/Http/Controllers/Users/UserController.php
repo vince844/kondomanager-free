@@ -21,7 +21,6 @@ use Illuminate\Support\Facades\Gate;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
-use Carbon\Carbon;
 
 class UserController extends Controller
 {

@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
-import { List, Pencil } from 'lucide-vue-next';
+import { List, Pencil, Lock, LockOpen } from 'lucide-vue-next';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 import SegnalazioneStats from '@/components/SegnalazioneStats.vue'
@@ -31,11 +31,25 @@ const props = defineProps<{
                     <!-- Button for "Update Segnalazione" -->
                     <Button  class="lg:flex h-8 w-full lg:w-auto">
                         <Pencil class="w-4 h-4" />
-                       
                         Modifica
                     </Button>
 
                     <!-- Button for "Elenco Segnalazioni" -->
+                    <Button class="lg:flex h-8 w-full lg:w-auto">
+                        <!-- Conditional Rendering of Lucide Icons -->
+                        <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4" />
+                        <Lock v-else class="w-4 h-4" />
+
+                        <Link 
+                        :href="route('admin.segnalazioni.toggleResolve', { id: props.segnalazione.id })" 
+                        method="post" 
+                        as="button" 
+                        class="block lg:inline"
+                        >
+                        {{ props.segnalazione.is_locked ? 'Sblocca' : 'Blocca' }}
+                        </Link>
+                    </Button>
+
                     <Button class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
                         <Link :href="route('admin.segnalazioni.index')" class="block lg:inline">
@@ -61,12 +75,11 @@ const props = defineProps<{
                             <div class="mb-1 space-y-0.5">
                             <h2 class="text-xl font-semibold tracking-tight">{{ props.segnalazione.subject }}</h2>
                             <p class="text-sm text-muted-foreground">
-                                Inviata da {{props.segnalazione.created_by.name }} - {{  props.segnalazione.created_at}}
+                                Inviata da <span class="font-bold">{{props.segnalazione.created_by.name }} </span> -  <span class="font-bold">{{  props.segnalazione.created_at}} </span>
                             </p>
                         </div>
-
                         
-                        <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border text-muted-foreground text-justify">
+                        <div class=" text-muted-foreground text-justify">
 
                             {{props.segnalazione.description }}
 

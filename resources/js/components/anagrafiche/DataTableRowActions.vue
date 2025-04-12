@@ -1,28 +1,12 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
-import { router } from "@inertiajs/vue3";
+import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent,
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
-import { MoreHorizontal } from 'lucide-vue-next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
 import type { Anagrafica } from '@/types/anagrafiche';
-import { Trash2, FilePenLine } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 
 defineProps<{ anagrafica: Anagrafica }>()
 
@@ -34,17 +18,16 @@ const isAlertOpen = ref(false)
 // Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
-// Function to delete user: first close menu, then open dialog
 function handleDelete(anagrafica: Anagrafica) {
   anagraficaID.value = anagrafica.id;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isAlertOpen.value = true
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
 }
 
 const deleteAnagrafica = () => {
@@ -52,10 +35,6 @@ const deleteAnagrafica = () => {
         preserveScroll: true,
         onSuccess: () => closeModal()
     })
-}
-
-const editAnagrafica = (anagrafica: Anagrafica) => {
-  router.get(route('admin.anagrafiche.edit', { id: anagrafica.id})) 
 }
 
 </script>
@@ -70,15 +49,21 @@ const editAnagrafica = (anagrafica: Anagrafica) => {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-      
-      <DropdownMenuItem @click="editAnagrafica(anagrafica)" >
-        <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica anagrafica
-      </DropdownMenuItem>
+
+       <DropdownMenuItem>
+        <Link
+          :href="route('admin.anagrafiche.edit', { id: anagrafica.id })"
+          preserve-state
+          class="flex items-center gap-2"
+        >
+          <FilePenLine class="w-4 h-4 text-xs" />
+          Modifica
+        </Link>
+      </DropdownMenuItem> 
 
       <DropdownMenuItem @click="handleDelete(anagrafica)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina anagrafica
+        Elimina
       </DropdownMenuItem>
 
     </DropdownMenuContent>

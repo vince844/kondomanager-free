@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import { watch, onMounted } from "vue";
+import { router, usePage } from '@inertiajs/vue3';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import '@vuepic/vue-datepicker/dist/main.css';
+
 
 const props = defineProps<{
   condomini: Building[];

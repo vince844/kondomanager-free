@@ -61,6 +61,7 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class);
+    Route::post('segnalazioni/{segnalazioni}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
 });
 
 // User routes

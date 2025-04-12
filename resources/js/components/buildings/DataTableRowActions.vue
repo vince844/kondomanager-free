@@ -55,7 +55,7 @@ const deleteBuilding = () => {
 }
 
 const editBuilding = (building: Building) => {
-  router.get(route('condomini.edit', { id: building.id}))
+  router.get(route('condomini.edit', { id: building.id }))
 }
 
 </script>

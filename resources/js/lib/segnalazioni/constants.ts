@@ -12,25 +12,25 @@ import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazion
   export const priorityConstants: PriorityType[] = [
     { 
       value: 'bassa', 
-      label: 'Bassa priorità', 
+      label: 'Bassa', 
       icon: CircleArrowDown,
       colorClass: 'text-green-500 bg-green-50'
     },
     { 
       value: 'media', 
-      label: 'Media priorità', 
+      label: 'Media', 
       icon: CircleArrowRight,
       colorClass: 'text-blue-500 bg-blue-50'
     },
     { 
       value: 'alta', 
-      label: 'Alta priorità', 
+      label: 'Alta', 
       icon: CircleArrowUp,
       colorClass: 'text-orange-500 bg-orange-50'
     },
     { 
       value: 'urgente', 
-      label: 'Urgente priorità', 
+      label: 'Urgente', 
       icon: CircleAlert, 
       colorClass: 'text-red-500 bg-red-50'
     }

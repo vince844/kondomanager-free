@@ -11,13 +11,13 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
+use App\Notifications\NewSegnalazioneNotification;
 use Exception;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 
 class SegnalazioneController extends Controller
 {
@@ -58,10 +58,21 @@ class SegnalazioneController extends Controller
             $segnalazione = Segnalazione::create($validated);
 
             if (!empty($validated['anagrafiche'])) {
+
                 $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
+                $recipients = Anagrafica::whereIn('id', $validated['anagrafiche'])->get();
+
+            }else{
+            
+                $recipients = Anagrafica::whereHas('condomini', function ($query) use ($validated) {
+                    $query->where('condominio_id', $validated['condominio_id']);
+                })->get();
+              
             }
 
             DB::commit();
+
+            Notification::send($recipients, new NewSegnalazioneNotification($segnalazione));
 
             return to_route('admin.segnalazioni.index')->with([
                 'message' => [
@@ -69,7 +80,7 @@ class SegnalazioneController extends Controller
                     'message' => "La nuova segnalazione guasto è stata creata con successo!"
                 ]
             ]);
-        
+
         } catch (Exception $e) {
         
             DB::rollback();
@@ -150,6 +161,20 @@ class SegnalazioneController extends Controller
                 ]
             ]);
         }
+    }
+
+    /**
+     * Lock and unlock the segnalazione.
+     */
+    public function toggleResolve(Segnalazione $segnalazioni){
+
+        $segnalazione = Segnalazione::findOrFail($segnalazioni->id);
+
+        $segnalazione->is_locked = !$segnalazione->is_locked;
+        $segnalazione->save();
+
+        return redirect()->back();
+        
     }
 
     /**
