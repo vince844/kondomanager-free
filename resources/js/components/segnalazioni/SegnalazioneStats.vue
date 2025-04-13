@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import {
-  Tabs,
-  TabsContent,
-} from '@/components/ui/tabs'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
+import { Tabs, TabsContent } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Segnalazione } from '@/types/segnalazioni';
 import { 
   House, 
   CircleArrowDown, 
@@ -15,8 +14,8 @@ import {
   History,
   ListCheck, 
   ListX, 
-} from 'lucide-vue-next'
-import type { Segnalazione } from '@/types/segnalazioni';
+} from 'lucide-vue-next';
+
 
 const props = defineProps<{
   segnalazione: Segnalazione

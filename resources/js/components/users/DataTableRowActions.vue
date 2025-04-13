@@ -101,27 +101,27 @@ const reinviteUser = () => {
 
       <DropdownMenuItem @click="editUser(user)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica utente
+        Modifica 
       </DropdownMenuItem>
 
       <DropdownMenuItem  v-if="!user.suspended_at" @click="suspendUser(user)">
         <MonitorX class="w-4 h-4 text-xs" />
-        Sospendi utente
+        Sospendi 
       </DropdownMenuItem>
 
       <DropdownMenuItem v-else @click="unsuspendUser(user)" >
         <MonitorCheck class="w-4 h-4 text-xs" />
-        Riattiva utente
+        Riattiva 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleReinvite(user)" >
         <Send class="w-4 h-4 text-xs" />
-        Reinvita utente
+        Reinvita 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(user)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina utente
+        Elimina 
       </DropdownMenuItem>
 
     </DropdownMenuContent>

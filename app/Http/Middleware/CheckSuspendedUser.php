@@ -11,13 +11,18 @@ use Illuminate\Support\Facades\Auth;
 class CheckSuspendedUser
 {
     /**
-     * Handle an incoming request.
+     * This middleware checks if the user is suspended and if it is logs it out and redirect to login.
      *
+     * @param  \Illuminate\Http\Request  $request
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @return \Symfony\Component\HttpFoundation\Response
      */
+
     public function handle(Request $request, Closure $next): Response
     {
-        if (auth()->check() && auth()->user()->suspended()) {
+        $user = Auth::user();
+
+        if (Auth::check() && $user->suspended()) {
 
             Auth::guard('web')->logout();
 

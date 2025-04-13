@@ -7,7 +7,7 @@ import Heading from '@/components/Heading.vue';
 import { List, Pencil, Lock, LockOpen } from 'lucide-vue-next';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
-import SegnalazioneStats from '@/components/SegnalazioneStats.vue'
+import SegnalazioneStats from '@/components/segnalazioni/SegnalazioneStats.vue';
 
 const props = defineProps<{
   segnalazione: Segnalazione;
@@ -60,9 +60,7 @@ const props = defineProps<{
                 </div>
 
                 <div class='mt-4'>
-
                     <SegnalazioneStats :segnalazione="segnalazione" />
-                    
                 </div>
 
                 <!-- Two-column layout (3:1 ratio) -->
@@ -75,7 +73,7 @@ const props = defineProps<{
                             <div class="mb-1 space-y-0.5">
                             <h2 class="text-xl font-semibold tracking-tight">{{ props.segnalazione.subject }}</h2>
                             <p class="text-sm text-muted-foreground">
-                                Inviata da <span class="font-bold">{{props.segnalazione.created_by.name }} </span> -  <span class="font-bold">{{  props.segnalazione.created_at}} </span>
+                                Inviata {{  props.segnalazione.created_at}} da {{props.segnalazione.created_by.name }} 
                             </p>
                         </div>
                         

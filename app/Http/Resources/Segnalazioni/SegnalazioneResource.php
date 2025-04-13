@@ -8,6 +8,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\User\UserResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class SegnalazioneResource extends JsonResource
 {
@@ -20,7 +21,7 @@ class SegnalazioneResource extends JsonResource
     {
         return [
             'id'            => $this->id,
-            'subject'       => $this->subject,
+            'subject'       => Str::ucfirst($this->subject),
             'description'   => $this->description,
             'priority'      => $this->priority,
             'stato'         => $this->stato,

@@ -37,14 +37,14 @@ const isDropdownOpen = ref(false)
 // Function to delete user: first close menu, then open dialog
 function handleDelete(role: Role) {
   roleID.value = role.id;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isAlertOpen.value = true 
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false
 }
 
 const deleteRole = () => {
@@ -73,12 +73,12 @@ const editRole = (role: Role) => {
       
       <DropdownMenuItem @click="editRole(role)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica ruolo
+        Modifica 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(role)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina ruolo
+        Elimina 
       </DropdownMenuItem>
 
     </DropdownMenuContent>

@@ -68,7 +68,7 @@ const deleteInvito = () => {
 
       <DropdownMenuItem @click="handleDelete(invito)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina invito
+        Elimina
       </DropdownMenuItem>
 
     </DropdownMenuContent>

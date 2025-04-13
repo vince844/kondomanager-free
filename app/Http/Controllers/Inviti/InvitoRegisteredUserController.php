@@ -15,9 +15,7 @@ class InvitoRegisteredUserController extends Controller
     public function show(Request $request)
     {
 
-     
-    
-         if (!$request->hasValidSignature()) {
+        if (!$request->hasValidSignature()) {
             abort(403);
         } 
 

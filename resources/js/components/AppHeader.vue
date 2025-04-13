@@ -5,29 +5,14 @@ import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import {
-    NavigationMenu,
-    NavigationMenuItem,
-    NavigationMenuLink,
-    NavigationMenuList,
-    navigationMenuTriggerStyle,
-} from '@/components/ui/navigation-menu';
+import { NavigationMenu, NavigationMenuItem, NavigationMenuLink, NavigationMenuList, navigationMenuTriggerStyle } from '@/components/ui/navigation-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { 
-    BookOpen, 
-    Folder, 
-    LayoutGrid, 
-    Menu, 
-    Search, 
-    House,
-    SquareLibrary,
-    Tags
- } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
@@ -48,12 +33,21 @@ const isCurrentRoute = (url: string) => {
     return page.url === url;
 };
 
+// Compute the base URL for different roles (admin, user, manager, etc.)
+const rolePrefix = computed(() => {
+    if (hasRole(['amministratore'])) {
+        return '/admin';
+    } else {
+        return '/user';
+    }
+});
+
 const activeItemStyles = computed(() => (url: string) => (isCurrentRoute(url) ? 'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100' : ''));
 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: '/dashboard',
+        href: `${rolePrefix.value}/dashboard`,
         icon: LayoutGrid,
         role: ['amministratore','collaboratore','fornitore','utente'],
     },
@@ -66,15 +60,15 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Anagrafiche',
-        href: '/admin/anagrafiche',
+        href: `${rolePrefix.value}/anagrafiche`,
         icon: SquareLibrary,
         role: ['amministratore', 'collaboratore']
     },
     {
         title: 'Segnalazioni',
-        href: '/admin/segnalazioni',
+        href: `${rolePrefix.value}/segnalazioni`,
         icon: Tags,
-        role: ['amministratore', 'collaboratore']
+        role: ['amministratore','collaboratore','fornitore','utente']
     }
 ];
 
@@ -124,14 +118,15 @@ const rightNavItems: NavItem[] = [
                                     </Link>
                                 </nav>
                                 <div class="flex flex-col space-y-4">
-                                    <a
+                                  <a
                                         v-for="item in rightNavItems"
                                         :key="item.title"
                                         :href="item.href"
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         class="flex items-center space-x-2 text-sm font-medium"
-                                    >
+                                    > 
+                        
                                         <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
                                         <span>{{ item.title }}</span>
                                     </a>
@@ -141,7 +136,7 @@ const rightNavItems: NavItem[] = [
                     </Sheet>
                 </div>
 
-                <Link :href="route('dashboard')" class="flex items-center gap-x-2">
+                <Link :href="`${rolePrefix}/dashboard`" class="flex items-center gap-x-2">
                     <AppLogo class="hidden h-6 xl:block" />
                 </Link>
 

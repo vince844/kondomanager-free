@@ -53,7 +53,6 @@ const deleteAnagrafica = () => {
        <DropdownMenuItem>
         <Link
           :href="route('admin.anagrafiche.edit', { id: anagrafica.id })"
-          preserve-state
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />

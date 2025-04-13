@@ -4,6 +4,8 @@ use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Dashboard\DashboardController;
+use App\Http\Controllers\Dashboard\UserDashboardController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Permissions\PermissionController;
@@ -11,6 +13,7 @@ use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
+use App\Http\Controllers\Segnalazioni\UserSegnalazioneController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
@@ -21,9 +24,9 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-Route::get('dashboard', function () {
+/* Route::get('dashboard', function () {
     return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified', 'CheckSuspendedUser', 'CheckHasAnagrafica'])->name('dashboard');
+})->middleware(['auth', 'verified', 'CheckSuspendedUser', 'CheckHasAnagrafica'])->name('dashboard');  */
 
 /*
 |--------------------------------------------------------------------------
@@ -58,15 +61,18 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 */
 
 // Admin routes
-Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified'])->group(function () {
+Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class);
     Route::post('segnalazioni/{segnalazioni}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
+    Route::get('/dashboard', DashboardController::class)->name('dashboard');
 });
 
 // User routes
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
     Route::resource('anagrafiche', UserAnagraficaController::class);
+    Route::resource('segnalazioni', UserSegnalazioneController::class);
+    Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 });
 
 /*
@@ -90,7 +96,7 @@ Route::post('/password/new', [NewUserPasswordController::class, 'reset'])->name(
 |--------------------------------------------------------------------------
 */
 Route::resource('/inviti', InvitoController::class)->middleware(['auth', 'verified']);
-Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])->name('invito.register')->middleware('signed');
+Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])->name('invito.register')->middleware('signed', 'throttle:6,1');
 
 
 /*

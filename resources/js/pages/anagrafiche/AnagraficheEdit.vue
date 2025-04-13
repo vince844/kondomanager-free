@@ -342,6 +342,7 @@ const submit = () => {
                                               label="nome" 
                                               v-model="form.condomini" 
                                               :reduce="(option: Building) => option.id"
+                                              placeholder="Seleziona condomini"
                                             />
 
                                             <InputError class="mt-2" :message="form.errors.condomini" />

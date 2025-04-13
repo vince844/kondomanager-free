@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Anagrafiche;
 
+use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Anagrafica\CreateUserAnagraficaRequest;
 use App\Models\Anagrafica;
@@ -40,11 +41,8 @@ class UserAnagraficaController extends Controller
         // Get the logged user
         $user = Auth::user();
 
-        //Get buildings codes from invito
+        //Get buildings codes from invito email
         $buildingCodes = Invito::where('email', $user->email)->first();
-
-        // Get building IDs
-        $buildingIds = Condominio::whereIn('codice_identificativo', $buildingCodes->building_codes)->pluck('id');
 
         // Create the anagrafica and attach the user id
         $anagrafica = Anagrafica::create([
@@ -52,8 +50,15 @@ class UserAnagraficaController extends Controller
             ...$validated           
         ]);
 
-        // Associate buildings to the anagrafica
-        $anagrafica->condomini()->attach($buildingIds);
+        // Check if we have condomini codes (case user invited) if not then create angrafica but don't associate condomini (case user created manuallY)
+        if(!empty( $buildingCodes)){
+            // Get building IDs
+            $buildingIds = Condominio::whereIn('codice_identificativo', $buildingCodes->building_codes)->pluck('id');
+            // Associate buildings to the anagrafica
+            $anagrafica->condomini()->attach($buildingIds);
+        }
+
+        return redirect()->intended(RedirectHelper::userHomeRoute());
         
     }
 

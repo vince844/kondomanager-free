@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Auth;
 
+use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Invito;
 use App\Models\User;
@@ -47,13 +48,23 @@ class RegisteredUserController extends Controller
         $user->assignRole('utente');
 
         $invito = Invito::where('email', $user->email)->first();
-        $invito->accepted_at = now();
-        $invito->save();
 
+        if($invito){
+            $invito->accepted_at = now();
+            $invito->save();
+        }
+     
         event(new Registered($user));
 
         Auth::login($user);
 
-        return to_route('dashboard');
+        // Check if the email is verified
+        if (!$user->hasVerifiedEmail()) {
+            // If not verified, redirect to the email verification route
+            return redirect()->route('verification.notice');
+        }
+
+        return to_route(RedirectHelper::userHomeRoute());
+
     }
 }
