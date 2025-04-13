@@ -127,5 +127,5 @@
         "resources/js/**/*.tsx",
         "resources/js/**/*.vue",
         "node_modules/vite/client.d.ts"
-, "resources/js/composables/permissions.js"    ]
+, "resources/js/composables/permissions.ts"    ]
 }

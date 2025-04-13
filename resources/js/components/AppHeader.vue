@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
@@ -16,7 +17,7 @@ import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags 
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole } = usePermission();
+const { hasRole, hasPermission, canAccess } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -42,33 +43,33 @@ const rolePrefix = computed(() => {
     }
 });
 
+
 const activeItemStyles = computed(() => (url: string) => (isCurrentRoute(url) ? 'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100' : ''));
 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: `${rolePrefix.value}/dashboard`,
-        icon: LayoutGrid,
-        role: ['amministratore','collaboratore','fornitore','utente'],
+        icon: LayoutGrid
     },
     {
         title: 'Condomini',
         href: '/condomini',
         icon: House,
-        role: ['amministratore', 'collaboratore']
+        roles: ['amministratore', 'collaboratore']
        
     },
     {
         title: 'Anagrafiche',
         href: `${rolePrefix.value}/anagrafiche`,
         icon: SquareLibrary,
-        role: ['amministratore', 'collaboratore']
+        roles: ['amministratore', 'collaboratore']
     },
     {
         title: 'Segnalazioni',
         href: `${rolePrefix.value}/segnalazioni`,
         icon: Tags,
-        role: ['amministratore','collaboratore','fornitore','utente']
+        permissions: ['Visualizza segnalazioni'],
     }
 ];
 
@@ -84,6 +85,7 @@ const rightNavItems: NavItem[] = [
         icon: BookOpen,
     },
 ];
+
 </script>
 
 <template>
@@ -145,7 +147,8 @@ const rightNavItems: NavItem[] = [
                     <NavigationMenu class="ml-10 flex h-full items-stretch">
                         <NavigationMenuList class="flex h-full items-stretch space-x-2">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
-                                <Link prefetch :href="item.href" v-if="!item.role || hasRole(item.role)"> 
+                                <!-- <Link prefetch :href="item.href" v-if="!item.role || hasRole(item.role)">  -->
+                                <Link prefetch :href="item.href" v-if="canAccess(item)"> 
                                     <NavigationMenuLink
                                         :class="[navigationMenuTriggerStyle(), activeItemStyles(item.href), 'h-9 cursor-pointer px-3']"
                                     >

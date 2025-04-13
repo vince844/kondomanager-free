@@ -8,6 +8,9 @@ import { Link } from '@inertiajs/vue3'
 import { BellPlus, X } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { usePermission } from "@/composables/permissions";
+
+const { hasPermission } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -66,7 +69,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     </div>
 
     <!-- Right Section: Button -->
-    <Button class="hidden h-8 lg:flex ml-auto">
+    <Button v-if="hasPermission(['Crea segnalazioni'])" class="hidden h-8 lg:flex ml-auto">
       <BellPlus class="w-4 h-4" />
       <Link :href="route('admin.segnalazioni.create')">Crea</Link>
     </Button>

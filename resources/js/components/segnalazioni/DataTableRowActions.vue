@@ -6,7 +6,10 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
 import type { Segnalazione } from '@/types/segnalazioni';
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
+import { usePermission } from "@/composables/permissions";
+
+const { hasPermission } = usePermission();
 
 defineProps<{ segnalazione: Segnalazione }>()
 
@@ -21,14 +24,14 @@ const isDropdownOpen = ref(false)
 // Function to delete user: first close menu, then open dialog
 function handleDelete(segnalazione: Segnalazione) {
   segnalazioneID.value = segnalazione.id;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isAlertOpen.value = true 
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false
 }
 
 const deleteSegnalazione = () => {
@@ -41,7 +44,7 @@ const deleteSegnalazione = () => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-if="hasPermission(['Modifica segnalazioni']) || hasPermission(['Elimina segnalazioni'])" >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -51,7 +54,7 @@ const deleteSegnalazione = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem>
+      <DropdownMenuItem v-if="hasPermission(['Modifica segnalazioni'])">
         <Link
           :href="route('admin.segnalazioni.edit', { id: segnalazione.id })"
           preserve-state
@@ -61,8 +64,8 @@ const deleteSegnalazione = () => {
           Modifica
         </Link>
       </DropdownMenuItem>
-
-      <DropdownMenuItem @click="handleDelete(segnalazione)" >
+  
+      <DropdownMenuItem v-if="hasPermission(['Elimina segnalazioni'])" @click="handleDelete(segnalazione)" >
         <Trash2 class="w-4 h-4 text-xs" />
          Elimina 
       </DropdownMenuItem>
