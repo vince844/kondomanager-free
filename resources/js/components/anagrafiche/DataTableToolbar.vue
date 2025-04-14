@@ -26,6 +26,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
         :model-value="(table.getColumn('nome')?.getFilterValue() as string) ?? ''"
         class="h-8 w-[150px] lg:w-[250px]"
         @input="table.getColumn('nome')?.setFilterValue($event.target.value)"
+        id="filter"
       />
     </div>
 

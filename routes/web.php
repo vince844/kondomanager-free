@@ -61,7 +61,7 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 */
 
 // Admin routes
-Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore'])->group(function () {
+Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class);
     Route::post('segnalazioni/{segnalazioni}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');

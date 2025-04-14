@@ -10,7 +10,7 @@ import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission } = usePermission();
+const { hasPermission, hasRole } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -21,6 +21,15 @@ const props = defineProps<DataTableToolbarProps>()
 
 // Compute whether the table is filtered
 const isFiltered = computed(() => props.table.getState().columnFilters.length > 0) 
+
+// Compute the base URL for different roles (admin, user, manager, etc.)
+const rolePrefix = computed(() => {
+    if (hasRole(['amministratore'])) {
+        return 'admin';
+    } else {
+        return 'user';
+    }
+});
 
 </script>
 
@@ -33,6 +42,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
         :model-value="(table.getColumn('subject')?.getFilterValue() as string) ?? ''"
         class="h-8 w-[150px] lg:w-[250px]"
         @input="table.getColumn('subject')?.setFilterValue($event.target.value)"
+        id="filter"
       />
 
       <DataTableFacetedFilter
@@ -71,7 +81,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     <!-- Right Section: Button -->
     <Button v-if="hasPermission(['Crea segnalazioni'])" class="hidden h-8 lg:flex ml-auto">
       <BellPlus class="w-4 h-4" />
-      <Link :href="route('admin.segnalazioni.create')">Crea</Link>
+      <Link :href="route(`${rolePrefix}.segnalazioni.create`)">Crea</Link>
     </Button>
   </div>
 </template>

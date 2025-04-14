@@ -27,6 +27,7 @@ class CreateUserRequest extends FormRequest
         return [
             'name'        => 'required|string|max:255',
             'email'       => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'roles'       => ['required'],
             'permissions' => ['sometimes', 'array'],
             'anagrafica' => [
                 'nullable',
@@ -42,6 +43,18 @@ class CreateUserRequest extends FormRequest
                 }
             ],
 
+        ];
+    }
+
+    /**
+    * Get custom attributes for validator errors.
+    *
+    * @return array<string, string>
+    */
+    public function attributes()
+    {
+        return [
+            'roles' => __('validation.attributes.user.roles'),
         ];
     }
 

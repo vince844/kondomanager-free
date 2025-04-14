@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 /**
  * @method bool merge(string $key)
  */
-class CreateSegnalazioneRequest extends FormRequest
+class UserCreateSegnalazioneRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -31,12 +31,9 @@ class CreateSegnalazioneRequest extends FormRequest
             'description'   => 'required|string',
             'priority'      => 'required|string',
             'stato'         => 'required|string',
-            'can_comment'   => 'required|boolean',
-            'is_featured'   => 'required|boolean',
-            'is_published'  => 'required|boolean',
             'created_by'    => 'required|exists:users,id',
             'is_approved'   => 'required|boolean',
-            'anagrafiche'   => ['sometimes', 'array', Rule::exists('anagrafiche', 'id')],
+            'is_published'  => 'required|boolean',
             'condominio_id' => ['required', 'integer', Rule::exists('condomini', 'id')],
         ];
     }
@@ -53,21 +50,21 @@ class CreateSegnalazioneRequest extends FormRequest
 
         $this->merge([
             'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo('Pubblica segnalazioni')
+            'is_approved' => $user->hasPermissionTo('Pubblica segnalazioni'),
+            'is_published' => $user->hasPermissionTo('Pubblica segnalazioni'),
         ]);
     }
-
+   
     /**
-    * Get custom attributes for validator errors.
-    *
-    * @return array<string, string>
-    */
+     * Get custom attributes for validator errors.
+     *
+     * @return array<string, string>
+     */
     public function attributes()
     {
         return [
             'subject' => __('validation.attributes.segnalazioni.subject'),
             'description' => __('validation.attributes.segnalazioni.description'),
-            'is_published' => __('validation.attributes.segnalazioni.is_published'),
             'priority' => __('validation.attributes.segnalazioni.priority'),
             'stato' => __('validation.attributes.segnalazioni.stato'),
             'condominio_id' => __('validation.attributes.segnalazioni.condominio_id'),

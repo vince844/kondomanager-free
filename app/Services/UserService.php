@@ -36,12 +36,8 @@ class UserService
                 'password' => bcrypt(Str::random(16)),
             ]);
 
-            $this->userRepository->assignRoles($user, $validatedData['roles'] ?? []);
-            $this->userRepository->assignPermissions($user, $validatedData['permissions'] ?? []);
-
-            if (empty($validatedData['roles'])) {
-                $user->assignRole('utente');
-            }
+            $user->assignRole($validatedData['roles']);
+            $user->givePermissionTo($validatedData['permissions']);
 
             if (!empty($validatedData['anagrafica'])) {
                 $this->userRepository->linkAnagrafica($user, $validatedData['anagrafica']);

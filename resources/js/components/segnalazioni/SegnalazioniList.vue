@@ -1,22 +1,13 @@
 <script setup lang="ts">
 import { defineProps, ref, computed } from "vue";
 import { Link } from '@inertiajs/vue3';
-import { useRoute } from "vue-router";
+import type { Segnalazione } from '@/types/segnalazioni';
 
-const props = defineProps({
-  segnalazioni: {
-    type: Array,
-    required: true,
-  },
-  priorityIcons: {
-    type: Object,
-    required: true,
-  },
-    routeName: {
-    type: String,
-    required: true, 
-  },
-});
+const props = defineProps<{
+  segnalazioni: Segnalazione[];
+  priorityIcons: Record<string, any>; // or a more specific component map if you have one
+  routeName: string;
+}>();
 
 const expandedIds = ref<Set<number>>(new Set());
 
@@ -47,7 +38,7 @@ const truncate = (text: string, length: number = 120) => {
             <div class="flex-1 min-w-0">
   
               <Link
-                :href="route(routeName, segnalazione.id)"
+                :href="route(routeName, { id: segnalazione.id })"
                 prefetch
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold"
               >
@@ -70,13 +61,13 @@ const truncate = (text: string, length: number = 120) => {
   
               <p class="text-sm text-gray-500 mt-3">
                 <span class="mt-1 text-gray-600 py-1">
-                  {{ isExpanded(segnalazione.id) ? segnalazione.description : truncate(segnalazione.description, 120) }}
+                  {{ isExpanded(Number(segnalazione.id)) ? segnalazione.description : truncate(segnalazione.description, 120) }}
                 </span>
                 <button
                   class="text-xs font-semibold text-gray-500 ml-1"
-                  @click="toggleExpanded(segnalazione.id)"
+                  @click="toggleExpanded(Number(segnalazione.id))"
                 >
-                  {{ isExpanded(segnalazione.id) ? 'Mostra meno' : 'Mostra tutto' }}
+                  {{ isExpanded(Number(segnalazione.id)) ? 'Mostra meno' : 'Mostra tutto' }}
                 </button>
               </p>
   

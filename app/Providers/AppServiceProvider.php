@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
+use App\Policies\SegnalazionePolicy;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
@@ -28,5 +30,6 @@ class AppServiceProvider extends ServiceProvider
         JsonResource::withoutWrapping();
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
+        Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
     }
 }

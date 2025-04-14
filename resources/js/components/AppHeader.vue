@@ -17,7 +17,7 @@ import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags 
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole, hasPermission, canAccess } = usePermission();
+const { hasRole, canAccess } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -36,9 +36,9 @@ const isCurrentRoute = (url: string) => {
 
 // Compute the base URL for different roles (admin, user, manager, etc.)
 const rolePrefix = computed(() => {
-    if (hasRole(['amministratore'])) {
+    if (hasRole(['amministratore', 'collaboratore'])) {
         return '/admin';
-    } else {
+    }else {
         return '/user';
     }
 });
@@ -81,7 +81,7 @@ const rightNavItems: NavItem[] = [
     },
     {
         title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits',
+        href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
         icon: BookOpen,
     },
 ];
@@ -147,7 +147,7 @@ const rightNavItems: NavItem[] = [
                     <NavigationMenu class="ml-10 flex h-full items-stretch">
                         <NavigationMenuList class="flex h-full items-stretch space-x-2">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
-                                <!-- <Link prefetch :href="item.href" v-if="!item.role || hasRole(item.role)">  -->
+
                                 <Link prefetch :href="item.href" v-if="canAccess(item)"> 
                                     <NavigationMenuLink
                                         :class="[navigationMenuTriggerStyle(), activeItemStyles(item.href), 'h-9 cursor-pointer px-3']"
@@ -157,10 +157,8 @@ const rightNavItems: NavItem[] = [
                                     </NavigationMenuLink>
                                 </Link>
                                 <div
-
                                     v-if="isCurrentRoute(item.href)"
                                     class="absolute bottom-0 left-0 h-0.5 w-full translate-y-px bg-black dark:bg-white"
-
                                 ></div>
                               
                             </NavigationMenuItem>

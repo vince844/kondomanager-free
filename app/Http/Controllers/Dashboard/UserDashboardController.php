@@ -33,7 +33,7 @@ class UserDashboardController extends Controller
             $user = Auth::user();
 
             if (!$user || !$user->anagrafica) {
-                abort(403, 'User is not properly authenticated or lacks anagrafica.');
+                abort(403, __('auth.not_authenticated'));
             }
 
             $anagrafica = $user->anagrafica;

@@ -3,25 +3,32 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
-use App\Models\Condominio;
 use App\Models\Segnalazione;
+use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Http\RedirectResponse;
 
 class UserSegnalazioneController extends Controller
 {
-    protected $segnalazioneService;
-
-    public function __construct(SegnalazioneService $segnalazioneService)
-    {
-        $this->segnalazioneService = $segnalazioneService;
-    }
-
+    /**
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\SegnalazioneService  $segnalazioneService
+     * @param  \App\Services\SegnalazioneNotificationService  $notificationService
+     */
+    public function __construct(
+        private SegnalazioneService $segnalazioneService,
+        private SegnalazioneNotificationService $notificationService,
+    ) {}
+    
     /**
      * Display the user's dashboard.
      *
@@ -29,12 +36,14 @@ class UserSegnalazioneController extends Controller
      */
     public function index()
     {
+        Gate::authorize('view', Segnalazione::class);
+
         try {
 
             $user = Auth::user();
 
             if (!$user || !$user->anagrafica) {
-                abort(403, 'User is not properly authenticated or lacks anagrafica.');
+                abort(403, __('auth.not_authenticated'));
             }
 
             $anagrafica = $user->anagrafica;
@@ -63,23 +72,77 @@ class UserSegnalazioneController extends Controller
      */
     public function create()
     {
-        //
+        Gate::authorize('create', Segnalazione::class);
+
+        $user = Auth::user();
+
+        if (!$user || !$user->anagrafica) {
+            abort(403, __('auth.not_authenticated'));
+        }
+
+        $anagrafica = $user->anagrafica;
+        // Fetch the anagrafica related condomini
+        $condomini = $anagrafica->condomini()->get();
+
+        return Inertia::render('segnalazioni/UserSegnalazioniNew',[
+            'condomini' => CondominioOptionsResource::collection($condomini)
+        ]); 
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(UserCreateSegnalazioneRequest $request): RedirectResponse
     {
-        //
+  
+        Gate::authorize('create', Segnalazione::class);
+
+        $validated = $request->validated();
+
+        try {
+
+            $segnalazione = Segnalazione::create($validated);
+
+            $this->notificationService->notify($segnalazione);
+
+            $messageText = $segnalazione->is_approved
+            ? "La nuova segnalazione guasto è stata pubblicata con successo!"
+            : "La segnalazione è stata inviata e sarà pubblicata dopo l'approvazione di un amministratore.";
+
+            return to_route('user.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => $messageText
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            Log::error('Error creating segnalazione: ' . $e->getMessage());
+
+            return to_route('user.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante la creazione della segnalazione guasto!"
+                ]
+            ]);
+
+        }
+
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(Segnalazione $segnalazione)
+    public function show(Segnalazione $segnalazioni)
     {
-        //
+        Gate::authorize('show', $segnalazioni);
+
+        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+
+        return Inertia::render('segnalazioni/SegnalazioniView', [
+         'segnalazione'  => new SegnalazioneResource($segnalazioni)
+        ]);
     }
 
     /**

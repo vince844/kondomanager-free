@@ -120,6 +120,8 @@ const submit = () => {
                                             placeholder="Seleziona ruolo utente"
                                           />
 
+                                          <InputError class="mt-2" :message="form.errors.roles" />
+
                                         </div>
 
                                         <!--  Permissions field -->

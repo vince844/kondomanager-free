@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Gate;
 
 class SegnalazioneController extends Controller
 {
@@ -26,18 +27,21 @@ class SegnalazioneController extends Controller
      */
     public function index()
     {
+        Gate::authorize('view', Segnalazione::class);
 
         return Inertia::render('segnalazioni/SegnalazioniList', [
             'segnalazioni' => SegnalazioneResource::collection(Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])->get()),
             'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
         ]); 
     }
-
+  
     /**
      * Show the form for creating a new resource.
      */
     public function create()
     {
+        Gate::authorize('create', Segnalazione::class);
+
         return Inertia::render('segnalazioni/SegnalazioniNew',[
             'condomini'   => CondominioResource::collection(Condominio::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
@@ -49,6 +53,8 @@ class SegnalazioneController extends Controller
      */
     public function store(CreateSegnalazioneRequest $request): RedirectResponse
     {
+        Gate::authorize('create', Segnalazione::class);
+        
         $validated = $request->validated(); 
 
         try {
@@ -103,6 +109,8 @@ class SegnalazioneController extends Controller
      */
     public function show(Segnalazione $segnalazioni)
     {
+        Gate::authorize('view', Segnalazione::class);
+
         $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniView', [
@@ -129,6 +137,8 @@ class SegnalazioneController extends Controller
      */
     public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazioni)
     {
+        Gate::authorize('update', $segnalazioni);
+
         $validated = $request->validated(); 
 
         try {
@@ -168,6 +178,8 @@ class SegnalazioneController extends Controller
      */
     public function toggleResolve(Segnalazione $segnalazioni){
 
+        Gate::authorize('update', $segnalazioni);
+
         $segnalazione = Segnalazione::findOrFail($segnalazioni->id);
 
         $segnalazione->is_locked = !$segnalazione->is_locked;
@@ -182,6 +194,8 @@ class SegnalazioneController extends Controller
      */
     public function destroy(Segnalazione $segnalazioni)
     {
+        Gate::authorize('delete', Segnalazione::class);
+
         try {
 
             $segnalazioni->delete();

@@ -207,7 +207,7 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute deve essere successivo a oggi',
             'before:today' => ':attribute deve essere precedente a oggi',
-        ],
+        ]
     ],
 
     /*
@@ -231,7 +231,7 @@ return [
             'roles' => 'Il campo ruoli'
         ],
         'user' => [
-            'roles' => 'Il campo ruolo'
+            'roles' => 'ruolo'
         ],
         'anagrafica' => [
             'nome' => 'Il campo nome e cognome anagrafica',
@@ -249,6 +249,7 @@ return [
             'is_published' => 'stato segnalazione',
             'priority' => 'priorità segnalazione',
             'stato' => 'stato segnalazione',
+            'condominio_id' => 'condominio',
         ]
     ],
 

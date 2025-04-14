@@ -20,16 +20,6 @@ class UserRepository
         ]);
     }
 
-    public function assignRoles(User $user, array $roles)
-    {
-        $user->syncRoles($roles);
-    }
-
-    public function assignPermissions(User $user, array $permissions)
-    {
-        $user->syncPermissions($permissions);
-    }
-
     public function linkAnagrafica(User $user, $anagraficaId)
     {
         $anagrafica = Anagrafica::find($anagraficaId);

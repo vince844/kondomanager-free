@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Anagrafica;
 use App\Models\Segnalazione;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 class SegnalazioneService
@@ -14,7 +16,7 @@ class SegnalazioneService
      * @param  \Illuminate\Support\Collection  $condominioIds
      * @return \Illuminate\Database\Eloquent\Collection
      */
-    public function getSegnalazioni($anagrafica, $condominioIds)
+    public function getSegnalazioni(Anagrafica $anagrafica, Collection $condominioIds)
     {
          // Get the currently authenticated user
          $user = Auth::user();
@@ -30,12 +32,11 @@ class SegnalazioneService
                  })
                  // OR Case 2: Assigned to a condominio (user belongs to) and NOT to any specific anagrafiche
                  ->orWhere(function ($q) use ($condominioIds) {
-                     $q->whereIn('condominio_id', $condominioIds)
+                     $q->whereIn('condominio_id', $condominioIds->toArray())
                      ->whereDoesntHave('anagrafiche');
                  });
          })
          ->orderBy('created_at', 'desc');
-
 
         return $query->get();  
     }

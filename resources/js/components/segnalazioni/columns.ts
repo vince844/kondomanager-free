@@ -1,12 +1,24 @@
-import { h } from 'vue'
-import { Link } from '@inertiajs/vue3'
-import type { ColumnDef } from '@tanstack/vue-table'
+import { h, computed } from 'vue';
+import { Link } from '@inertiajs/vue3';
+import type { ColumnDef } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 import DropdownAction from '@/components/segnalazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHeader.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Badge }  from '@/components/ui/badge';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { usePermission } from "@/composables/permissions";
+
+const { hasRole } = usePermission();
+
+// Compute the base URL for different roles (admin, user, manager, etc.)
+const rolePrefix = computed(() => {
+  if (hasRole(['amministratore'])) {
+      return 'admin';
+  } else {
+      return 'user';
+  }
+});
 
   export const columns = (): ColumnDef<Segnalazione>[] => [
   {
@@ -15,7 +27,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
     cell: ({ row }) => {
       const segnalazione = row.original
       return h(Link, {
-        href: route('admin.segnalazioni.show', {id: segnalazione.id}),
+       href: route(`${rolePrefix.value}.segnalazioni.show`, { id: segnalazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         prefetch: true,
       }, () => segnalazione.subject)
@@ -28,26 +40,31 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
   
     cell: ({ row }) => {
       const condominio = row.original.condominio;
-  
+    
       if (!condominio?.option || !condominio?.full) return '—';
-  
-      return h(HoverCard, {}, [
-        h(HoverCardTrigger, {}, [
-          h(Badge, {
-            variant: 'outline',
-            class: 'rounded-md font-bold cursor-pointer'
-          }, condominio.option.label)
-        ]),
-        h(HoverCardContent, {
-          class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
-        }, [
-          h('div', [h('strong', 'Nome: '), condominio.full.nome]),
-          h('div', [h('strong', 'Indirizzo: '), condominio.full.indirizzo]),
-          h('div', [h('strong', 'Email: '), condominio.full.email]),
-          h('div', [h('strong', 'Codice Fiscale: '), condominio.full.codice_fiscale]),
-          h('div', [h('strong', 'Comune Catasto: '), condominio.full.comune_catasto]),
-        ])
-      ]);
+    
+      return h(HoverCard, {}, {
+        default: () => [
+          h(HoverCardTrigger, {}, {
+            default: () =>
+              h(Badge, {
+                variant: 'outline',
+                class: 'rounded-md font-bold cursor-pointer'
+              }, () => condominio.option.label)
+          }),
+          h(HoverCardContent, {
+            class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
+          }, {
+            default: () => [
+              h('div', [h('strong', 'Nome: '), condominio.full.nome]),
+              h('div', [h('strong', 'Indirizzo: '), condominio.full.indirizzo]),
+              h('div', [h('strong', 'Email: '), condominio.full.email]),
+              h('div', [h('strong', 'Codice Fiscale: '), condominio.full.codice_fiscale]),
+              h('div', [h('strong', 'Comune Catasto: '), condominio.full.comune_catasto]),
+            ]
+          })
+        ]
+      });
     },
   
     filterFn: (row, id, value) => {

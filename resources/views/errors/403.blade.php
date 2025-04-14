@@ -17,10 +17,10 @@
       </p>
 
       <div class="mt-6">
-        <a href="{{ url('/dashboard') }}"
-           class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-          Homepage
-        </a>
+        <a href="{{ route(auth()->user()->hasRole('amministratore') ? 'admin.dashboard' : 'user.dashboard') }}"
+          class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
+         Torna alla Dashboard
+       </a>
       </div>
     </div>
   </div>

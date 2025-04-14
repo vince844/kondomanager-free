@@ -49,10 +49,10 @@ const priorityIcons = {
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
                 <CardHeader>
-                    <CardTitle>Overview</CardTitle>
+                    <CardTitle>Ultime comunicazione</CardTitle>
                 </CardHeader>
                 <CardContent class="pl-2">
-                    <Overview />
+                    Qui la lista con le ultime comunicazioni
                 </CardContent>
                 </Card>
 

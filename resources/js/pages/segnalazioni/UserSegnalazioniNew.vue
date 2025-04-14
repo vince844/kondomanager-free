@@ -14,13 +14,12 @@ import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
-import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
-import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import type { PriorityType, StatoType } from '@/types/segnalazioni';
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import '@vuepic/vue-datepicker/dist/main.css';
 
 const props = defineProps<{
   condomini: Building[];
-  anagrafiche: Anagrafica[];
 }>();  
 
 const form = useForm({
@@ -29,15 +28,10 @@ const form = useForm({
     priority: '',
     stato: '',
     condominio_id: '',
-    can_comment: false as boolean,
-    is_featured: false as boolean,
-    is_published: true,
-    anagrafiche: [],
-
 });
 
 const submit = () => {
-    form.post(route("admin.segnalazioni.store"), {
+    form.post(route("user.segnalazioni.store"), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -72,7 +66,7 @@ const submit = () => {
                     <!-- Button for "Elenco Segnalazioni" -->
                     <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
-                        <Link prefetch :href="route('admin.segnalazioni.index')" class="block lg:inline">
+                        <Link prefetch :href="route('user.segnalazioni.index')" class="block lg:inline">
                         Elenco
                         </Link>
                     </Button>
@@ -127,24 +121,6 @@ const submit = () => {
                     <!-- Side Card (1/4 width) -->
                     <div class="col-span-1 mt-3">
                         <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
-
-                            <div class="grid grid-cols-1 sm:grid-cols-6">
-                                <div class="sm:col-span-6">
-                                    <Label for="priority">Stato pubblicazione</Label>
-
-                                    <v-select 
-                                        :options="publishedConstants" 
-                                        label="label" 
-                                        v-model="form.is_published"
-                                        placeholder="Stato pubblicazione"
-                                        @update:modelValue="form.clearErrors('is_published')" 
-                                        :reduce="(is_published: PublishedType) => is_published.value"
-                                    />
-
-                                    <InputError :message="form.errors.is_published" />
-                        
-                                </div>
-                            </div>
 
                             <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                                 <div class="sm:col-span-6">
@@ -220,75 +196,18 @@ const submit = () => {
 
                                     <v-select 
                                         :options="condomini" 
-                                        label="nome" 
+                                        label="label" 
                                         v-model="form.condominio_id"
                                         placeholder="Condominio"
                                         @update:modelValue="form.clearErrors('condominio_id')" 
-                                        :reduce="(condominio: Building) => condominio.id"
+                                        :reduce="(condominio: Building) => condominio.value"
                                     />
 
                                     <InputError :message="form.errors.condominio_id" />
                         
                                 </div>
                             </div>
-
-                            <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                                <div class="sm:col-span-6">
-                                    <Label for="condomini">Anagrafiche</Label>
-
-                                    <v-select 
-                                        multiple
-                                        :options="anagrafiche" 
-                                        label="nome" 
-                                        v-model="form.anagrafiche"
-                                        placeholder="Anagrafiche"
-                                        @update:modelValue="form.clearErrors('anagrafiche')" 
-                                        :reduce="(anagrafica: Anagrafica) => anagrafica.id"
-                                    />
-
-                                    <InputError :message="form.errors.anagrafiche" />
-                        
-                                </div>
-                            </div>
-
-                            <Separator class="my-4" />
-
-                            <div class=" grid grid-cols-1 sm:grid-cols-6">
-                                <div class="flex items-center space-x-2 sm:col-span-6">
-                                    <Checkbox 
-                                        class="size-4" 
-                                        :checked="form.can_comment"
-                                        v-model="form.can_comment" 
-                                        id="can_comment" 
-                                        @update:checked="(val) => form.can_comment = val" 
-                                     />
-                                    <label
-                                        for="comments"
-                                        class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                        >
-                                        Permetti commenti segnalazione
-                                    </label>
-                                </div>
-                            </div>
-
-                            <div class="pt-4 grid grid-cols-1 sm:grid-cols-6">
-                                <div class="flex items-center space-x-2 sm:col-span-6">
-                                    <Checkbox 
-                                        class="size-4" 
-                                        :checked="form.is_featured"
-                                        v-model="form.is_featured" 
-                                        id="is_featured" 
-                                        @update:checked="(val) => form.is_featured = val" 
-                                     />
-                                    <label
-                                        for="comments"
-                                        class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                        >
-                                        Metti segnalazione in evidenza
-                                    </label>
-                                </div>
-                            </div>
-                            
+ 
                         </div>
                     </div>
                 
