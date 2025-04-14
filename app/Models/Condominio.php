@@ -39,6 +39,7 @@ class Condominio extends Model
                 $condominio->codice_identificativo = self::generateUniqueCodice();
             }
         });
+        
     }
 
     /**
@@ -47,6 +48,14 @@ class Condominio extends Model
     public function anagrafiche()
     {
         return $this->belongsToMany(Anagrafica::class);
+    }
+
+     /**
+     * The comunicazioni that belong to the condominio.
+     */
+    public function comunicazioni()
+    {
+        return $this->belongsToMany(Comunicazione::class, 'comunicazione_condominio')->withTimestamps();
     }
 
     /**

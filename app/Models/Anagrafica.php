@@ -35,7 +35,8 @@ class Anagrafica extends Model
      */
     public function condomini()
     {
-        return $this->belongsToMany(Condominio::class);
+        /* return $this->belongsToMany(Condominio::class); */
+        return $this->belongsToMany(Condominio::class, 'condominio_anagrafica')->withTimestamps();
     }
 
     /**
@@ -49,8 +50,18 @@ class Anagrafica extends Model
     // Define the many-to-many relationship with Segnalazione (ticket)
     public function segnalazioni()
     {
-      /*   return $this->belongsToMany(Segnalazione::class, 'anagrafica_segnalazione', 'anagrafica_id', 'segnalazione_id'); */
-        return $this->belongsToMany(Segnalazione::class);
+        return $this->belongsToMany(Segnalazione::class, 'anagrafica_segnalazione')->withTimestamps();
+        /* return $this->belongsToMany(Segnalazione::class); */
     }
+
+     /**
+     * Get the comunicazioni associated with the anagrafica.
+     */
+    public function comunicazioni()
+    {
+        return $this->belongsToMany(Comunicazione::class, 'anagrafica_comunicazione')->withTimestamps();
+    }
+
+    
 
 }
