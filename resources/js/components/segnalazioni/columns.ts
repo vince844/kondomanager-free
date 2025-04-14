@@ -27,7 +27,7 @@ const rolePrefix = computed(() => {
     cell: ({ row }) => {
       const segnalazione = row.original
       return h(Link, {
-       href: route(`${rolePrefix.value}.segnalazioni.show`, { id: segnalazione.id }),
+        href: route(`${rolePrefix.value}.segnalazioni.show`, { id: segnalazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         prefetch: true,
       }, () => segnalazione.subject)

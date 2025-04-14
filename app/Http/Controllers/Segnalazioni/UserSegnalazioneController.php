@@ -9,7 +9,6 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -26,7 +25,7 @@ class UserSegnalazioneController extends Controller
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
-        private SegnalazioneNotificationService $notificationService,
+        private SegnalazioneNotificationService $notificationService
     ) {}
     
     /**
@@ -134,14 +133,14 @@ class UserSegnalazioneController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Segnalazione $segnalazioni)
+    public function show(Segnalazione $segnalazione)
     {
-        Gate::authorize('show', $segnalazioni);
+        Gate::authorize('show', $segnalazione);
 
-        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniView', [
-         'segnalazione'  => new SegnalazioneResource($segnalazioni)
+         'segnalazione'  => new SegnalazioneResource($segnalazione)
         ]);
     }
 
@@ -150,15 +149,57 @@ class UserSegnalazioneController extends Controller
      */
     public function edit(Segnalazione $segnalazione)
     {
-        //
+        Gate::authorize('update', $segnalazione);
+        
+        $user = Auth::user();
+
+        if (!$user || !$user->anagrafica) {
+            abort(403, __('auth.not_authenticated'));
+        }
+
+        $anagrafica = $user->anagrafica;
+        // Fetch the anagrafica related condomini
+        $condomini = $anagrafica->condomini()->get();
+
+        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+
+        return Inertia::render('segnalazioni/UserSegnalazioniEdit', [
+         'segnalazione'  => new SegnalazioneResource($segnalazione),
+         'condomini'     => CondominioOptionsResource::collection($condomini)
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Segnalazione $segnalazione)
+    public function update(UserCreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
-        //
+        Gate::authorize('update', $segnalazione);
+
+        $validated = $request->validated(); 
+
+        try {
+
+            $segnalazione->update($validated);
+
+            return to_route('user.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La segnalazione è stata aggiornata con successo!"
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            Log::error('Error updating segnalazione: ' . $e->getMessage());
+
+            return to_route('user.segnalazioni.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento della segnalazione!"
+                ]
+            ]);
+        }
     }
 
     /**
@@ -166,6 +207,6 @@ class UserSegnalazioneController extends Controller
      */
     public function destroy(Segnalazione $segnalazione)
     {
-        //
+        abort(403, 'Non sei autorizzato a cancellare una segnalazione.');
     }
 }

@@ -32,7 +32,7 @@ class SegnalazionePolicy
      */
     public function show(User $user, Segnalazione $segnalazione): Response
     {
-         if ($user->hasRole(['amministratore', 'collaboratore'])) {
+        if ($user->hasRole(['amministratore', 'collaboratore'])) {
             return Response::allow();
         } 
     
@@ -65,15 +65,25 @@ class SegnalazionePolicy
      */
     public function update(User $user, Segnalazione $segnalazione): Response
     {
-        return $user->hasPermissionTo('Modifica segnalazioni')  
-        ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per modificare questa segnalazione!');
+        if ($user->hasPermissionTo('Modifica segnalazioni')) {
+            return Response::allow();
+        } 
+        
+        if ($user->hasPermissionTo('Modifica proprie segnalazioni')) {
+
+            if ($segnalazione->created_by === $user->id) {
+                return Response::allow();
+            }
+            
+        } 
+        
+        return Response::deny('Non hai permessi sufficienti per modificare questa segnalazione!');
     }
 
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, Segnalazione $segnalazione): Response
+    public function delete(User $user): Response
     {
         return $user->hasPermissionTo('Elimina segnalazioni')  
         ? Response::allow() 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import { watch } from "vue";
 import {Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -11,27 +12,37 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Plus, List } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
+import type { Segnalazione } from '@/types/segnalazioni';
 import type { PriorityType, StatoType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 
 const props = defineProps<{
   condomini: Building[];
+  segnalazione: Segnalazione;
 }>();  
 
 const form = useForm({
-    subject: '',
-    description: '',
-    priority: '',
-    stato: '',
-    condominio_id: '',
+    subject: props.segnalazione?.subject,
+    description: props.segnalazione?.description,
+    priority: props.segnalazione?.priority,
+    stato: props.segnalazione?.stato,
+    condominio_id: props.segnalazione?.condominio?.option?.value,
 });
 
+watch(
+  () => props.segnalazione,
+  (newSegnalazione) => {
+    form.subject = newSegnalazione.subject;
+    form.description = newSegnalazione.description;
+    form.priority = newSegnalazione.priority;
+    form.stato = newSegnalazione.stato;
+    form.condominio_id = newSegnalazione.condominio?.option?.value;
+  }
+);
+
 const submit = () => {
-    form.post(route("user.segnalazioni.store"), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
+    form.put(route("user.segnalazioni.update", {id: props.segnalazione.id}), {
+        preserveScroll: true
     });
 };
 

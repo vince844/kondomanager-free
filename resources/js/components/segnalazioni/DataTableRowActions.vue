@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -9,9 +9,17 @@ import type { Segnalazione } from '@/types/segnalazioni';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission } = usePermission();
+const { hasPermission, hasRole } = usePermission();
 
 defineProps<{ segnalazione: Segnalazione }>()
+
+const rolePrefix = computed(() => {
+  if (hasRole(['amministratore', 'collaboratore'])) {
+      return 'admin';
+  } else {
+      return 'user';
+  }
+});
 
 const segnalazioneID = ref('');
 
@@ -44,7 +52,7 @@ const deleteSegnalazione = () => {
 </script>
 
 <template>
-  <DropdownMenu v-if="hasPermission(['Modifica segnalazioni']) || hasPermission(['Elimina segnalazioni'])" >
+  <DropdownMenu v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni', 'Elimina segnalazioni'])" >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -54,9 +62,9 @@ const deleteSegnalazione = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem v-if="hasPermission(['Modifica segnalazioni'])">
+      <DropdownMenuItem  v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])">
         <Link
-          :href="route('admin.segnalazioni.edit', { id: segnalazione.id })"
+          :href="route(`${rolePrefix}.segnalazioni.edit`, { id: segnalazione.id })"
           preserve-state
           class="flex items-center gap-2"
         >

@@ -63,15 +63,19 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
-    Route::resource('segnalazioni', SegnalazioneController::class);
-    Route::post('segnalazioni/{segnalazioni}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
+    Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
+        'segnalazioni' => 'segnalazione'
+    ]);
+    Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 });
 
 // User routes
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
     Route::resource('anagrafiche', UserAnagraficaController::class);
-    Route::resource('segnalazioni', UserSegnalazioneController::class);
+    Route::resource('segnalazioni', UserSegnalazioneController::class)->parameters([
+        'segnalazioni' => 'segnalazione'
+    ]);
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 });
 

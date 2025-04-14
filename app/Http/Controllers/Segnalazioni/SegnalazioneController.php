@@ -30,7 +30,11 @@ class SegnalazioneController extends Controller
         Gate::authorize('view', Segnalazione::class);
 
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection(Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])->get()),
+            'segnalazioni' => SegnalazioneResource::collection(
+                Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+            ),
             'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
         ]); 
     }
@@ -107,26 +111,26 @@ class SegnalazioneController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Segnalazione $segnalazioni)
+    public function show(Segnalazione $segnalazione)
     {
         Gate::authorize('view', Segnalazione::class);
 
-        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniView', [
-         'segnalazione'  => new SegnalazioneResource($segnalazioni)
+         'segnalazione'  => new SegnalazioneResource($segnalazione)
         ]);
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Segnalazione $segnalazioni)
+    public function edit(Segnalazione $segnalazione)
     {
-        $segnalazioni->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
-         'segnalazione'  => new SegnalazioneResource($segnalazioni),
+         'segnalazione'  => new SegnalazioneResource($segnalazione),
          'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
          'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
         ]);
@@ -135,9 +139,9 @@ class SegnalazioneController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazioni)
+    public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
-        Gate::authorize('update', $segnalazioni);
+        Gate::authorize('update', $segnalazione);
 
         $validated = $request->validated(); 
 
@@ -145,9 +149,9 @@ class SegnalazioneController extends Controller
 
             DB::beginTransaction();
 
-            $segnalazioni->update($validated);
+            $segnalazione->update($validated);
             
-            $segnalazioni->anagrafiche()->sync($validated['anagrafiche']);
+            $segnalazione->anagrafiche()->sync($validated['anagrafiche']);
 
             DB::commit();
 
@@ -176,11 +180,9 @@ class SegnalazioneController extends Controller
     /**
      * Lock and unlock the segnalazione.
      */
-    public function toggleResolve(Segnalazione $segnalazioni){
+    public function toggleResolve(Segnalazione $segnalazione){
 
-        Gate::authorize('update', $segnalazioni);
-
-        $segnalazione = Segnalazione::findOrFail($segnalazioni->id);
+        Gate::authorize('update', $segnalazione);
 
         $segnalazione->is_locked = !$segnalazione->is_locked;
         $segnalazione->save();
@@ -192,13 +194,13 @@ class SegnalazioneController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Segnalazione $segnalazioni)
+    public function destroy(Segnalazione $segnalazione): RedirectResponse
     {
         Gate::authorize('delete', Segnalazione::class);
 
         try {
 
-            $segnalazioni->delete();
+            $segnalazione->delete();
 
             return back()->with([
                 'message' => [ 
