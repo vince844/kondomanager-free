@@ -127,6 +127,8 @@ class SegnalazioneController extends Controller
      */
     public function edit(Segnalazione $segnalazione)
     {
+        Gate::authorize('update', $segnalazione);
+        
         $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniEdit', [

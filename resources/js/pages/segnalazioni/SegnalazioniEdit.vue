@@ -38,7 +38,7 @@ const form = useForm({
 
 });
 
- onMounted(() => {
+onMounted(() => {
   form.anagrafiche = props.segnalazione?.anagrafiche.map(anagrafica => anagrafica.id) || []
 })
 

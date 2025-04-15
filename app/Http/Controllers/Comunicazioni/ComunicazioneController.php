@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Comunicazioni;
 use App\Helpers\SlugHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
+use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -107,15 +108,58 @@ class ComunicazioneController extends Controller
      */
     public function edit(Comunicazione $comunicazione)
     {
-        //
+        $comunicazione->load(['createdBy', 'condomini', 'anagrafiche']);
+
+        return Inertia::render('comunicazioni/ComunicazioniEdit', [
+         'comunicazione'  => new ComunicazioneResource($comunicazione),
+         'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
+         'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Comunicazione $comunicazione)
+    public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione)
     {
-        //
+        $validated = $request->validated(); 
+
+        try {
+
+            DB::beginTransaction();
+
+            $comunicazione->update($validated);
+
+            $comunicazione->condomini()->sync($validated['condomini_ids']);
+
+            if (!empty($validated['anagrafiche'])) {
+
+                $comunicazione->anagrafiche()->sync($validated['anagrafiche']);
+        
+            }
+
+            DB::commit();
+
+            return to_route('admin.comunicazioni.index')->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "La comunicazone è stata aggiornata con successo!"
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error updating comunicazione: ' . $e->getMessage());
+
+            return to_route('admin.comunicazioni.index')->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento della comunicazione!"
+                ]
+            ]);
+        }
     }
 
     /**
