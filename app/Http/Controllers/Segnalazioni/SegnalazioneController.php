@@ -220,7 +220,6 @@ class SegnalazioneController extends Controller
                 ]
             ]);
         }
-
        
     }
 }

@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import type { Table } from '@tanstack/vue-table'
-import type { Segnalazione } from '@/types/segnalazioni'
+import type { Comunicazione } from '@/types/comunicazioni'
 import { Input } from '@/components/ui/input'
 import { computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Link } from '@inertiajs/vue3'
-import { BellPlus, X } from 'lucide-vue-next';
+import { BellPlus, X, ListPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
-import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
 
 const { hasPermission, hasRole } = usePermission();
 
 interface DataTableToolbarProps {
-  table: Table<Segnalazione>
+  table: Table<Comunicazione>
   condominioOptions: { label: string; value: string }[]; 
 }
 
@@ -46,13 +46,6 @@ const rolePrefix = computed(() => {
       />
 
       <DataTableFacetedFilter
-        v-if="table.getColumn('stato')"
-        :column="table.getColumn('stato')"
-        title="Stato"
-        :options="statoConstants"
-      />
-
-      <DataTableFacetedFilter
         v-if="table.getColumn('priority')"
         :column="table.getColumn('priority')"
         title="Priorità"
@@ -61,8 +54,8 @@ const rolePrefix = computed(() => {
 
        <!-- Add Condominio Filter -->
        <DataTableFacetedFilter
-        v-if="table.getColumn('condominio')"
-        :column="table.getColumn('condominio')"
+        v-if="table.getColumn('condomini')"
+        :column="table.getColumn('condomini')"
         title="Condominio"
         :options="props.condominioOptions"  
       />
@@ -80,12 +73,12 @@ const rolePrefix = computed(() => {
 
     <!-- Right Section: Button -->
     <Button
-      v-if="hasPermission(['Crea segnalazioni'])"
+      v-if="hasPermission(['Crea comunicazioni'])"
       as="a"
-      :href="route(`${rolePrefix}.segnalazioni.create`)"
+      :href="route(`${rolePrefix}.comunicazioni.create`)"
       class="hidden h-8 lg:flex ml-auto items-center gap-2"
     >
-      <BellPlus class="w-4 h-4" />
+      <ListPlus class="w-4 h-4" />
       <span>Crea</span>
     </Button>
   </div>

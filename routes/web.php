@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
+use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
+use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
@@ -17,8 +19,10 @@ use App\Http\Controllers\Segnalazioni\UserSegnalazioneController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
+use App\Models\Anagrafica;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return Inertia::render('Welcome');
@@ -54,17 +58,16 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 */
 Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
 
-/*
-|--------------------------------------------------------------------------
-| Admin Routes
-|--------------------------------------------------------------------------
-*/
+Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
 
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
+    ]);
+    Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
+        'comunicazioni' => 'comunicazione'
     ]);
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');

@@ -13,7 +13,7 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags } from 'lucide-vue-next';
+import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
@@ -64,6 +64,12 @@ const mainNavItems: NavItem[] = [
         href: `${rolePrefix.value}/anagrafiche`,
         icon: SquareLibrary,
         roles: ['amministratore', 'collaboratore']
+    },
+    {
+        title: 'Bacheca',
+        href: `${rolePrefix.value}/comunicazioni`,
+        icon: LayoutDashboard,
+        permissions: ['Visualizza comunicazioni'],
     },
     {
         title: 'Segnalazioni',

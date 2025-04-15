@@ -35,8 +35,8 @@ class Anagrafica extends Model
      */
     public function condomini()
     {
-        /* return $this->belongsToMany(Condominio::class); */
-        return $this->belongsToMany(Condominio::class, 'condominio_anagrafica')->withTimestamps();
+        return $this->belongsToMany(Condominio::class); 
+        /* return $this->belongsToMany(Condominio::class, 'condominio_anagrafica')->withTimestamps(); */
     }
 
     /**

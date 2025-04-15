@@ -96,7 +96,7 @@ const rolePrefix = computed(() => {
       if (!priority) return null
       
       return h('div', { 
-        class: `flex items-center gap-2 px-3 py-1 w-fit`
+        class: `flex items-center gap-2`
       }, [
         h(priority.icon, { class: `h-4 w-4 ${priority.colorClass}` }),
         h('span', priority.label)

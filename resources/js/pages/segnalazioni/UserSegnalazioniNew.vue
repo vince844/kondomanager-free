@@ -102,7 +102,7 @@ const submit = () => {
                                         class="mt-1 block w-full min-h-[320px]"
                                         v-model="form.description" 
                                         v-on:focus="form.clearErrors('description')"
-                                        placeholder="Descrizone segnalazione" 
+                                        placeholder="Descrizione segnalazione" 
                                     />
                                     
                                     <InputError :message="form.errors.description" />
