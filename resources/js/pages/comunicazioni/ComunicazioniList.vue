@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
-import { usePage, Head } from "@inertiajs/vue3";
+import { usePage, Head, WhenVisible } from "@inertiajs/vue3";
 import DataTable from '@/components/comunicazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
@@ -55,6 +55,7 @@ watch(flashMessage, (newValue) => {
       </div>
      
       <div class="container mx-auto">
+    
         <DataTable :columns="columns()" :data="comunicazioni" :condominioOptions="condominioOptions" />
       </div> 
     </div>

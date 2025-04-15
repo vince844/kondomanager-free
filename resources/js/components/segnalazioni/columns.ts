@@ -36,7 +36,7 @@ const rolePrefix = computed(() => {
   {
     accessorKey: 'condominio',
     header: ({ column }) =>
-      h(DataTableColumnHeader, { column, title: 'Condominio' }),
+      h(DataTableColumnHeader, { column, title: 'Condomini' }),
   
     cell: ({ row }) => {
       const condominio = row.original.condominio;

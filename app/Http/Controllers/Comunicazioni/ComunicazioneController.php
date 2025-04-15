@@ -28,13 +28,13 @@ class ComunicazioneController extends Controller
     {
         return Inertia::render('comunicazioni/ComunicazioniList', [
             'comunicazioni' => ComunicazioneResource::collection(
-                Comunicazione::with(['createdBy', 'condomini'])
+                Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
                     ->orderBy('created_at', 'desc')
                     ->get()
             ),
             'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
         ]); 
-    }
+    } 
 
     /**
      * Show the form for creating a new resource.

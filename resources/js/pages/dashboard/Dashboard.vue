@@ -4,10 +4,12 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, Link } from '@inertiajs/vue3';
 import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
 import type { Segnalazione } from '@/types/segnalazioni';
+import type { Comunicazione } from '@/types/comunicazioni';
 import { ref } from 'vue';
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
+import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -18,6 +20,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const props = defineProps<{ 
   segnalazioni: Segnalazione[]; 
+  comunicazioni: Comunicazione[]; 
 }>()
 
 const priorityIcons = {
@@ -48,11 +51,30 @@ const priorityIcons = {
 
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
-                <CardHeader>
-                    <CardTitle>Ultime comunicazione</CardTitle>
+                <CardHeader class="p-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <CardTitle class="text-lg">Ultime comunicazioni</CardTitle>
+                            <CardDescription>
+                            Elenco delle ultime comunicazioni in bacheca
+                            </CardDescription>
+                        </div>
+
+                        <Link
+                            :href="route('admin.comunicazioni.index')"
+                            prefetch
+                            class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
+                        >
+                            Visualizza tutte
+                        </Link>
+                        </div>
                 </CardHeader>
-                <CardContent class="pl-2">
-                    Qui la lista con le ultime comunicazioni
+                <CardContent>
+                    <ComunicazioniList 
+                            :comunicazioni="comunicazioni" 
+                            :priorityIcons="priorityIcons" 
+                            :routeName="'admin.comunicazioni.show'"
+                        />
                 </CardContent>
                 </Card>
 
