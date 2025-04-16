@@ -93,7 +93,6 @@ class CondominioController extends Controller
 
     public function options()
     {
-        sleep(2);
         return CondominioOptionsResource::collection(Condominio::all());
     }
 

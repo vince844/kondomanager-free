@@ -58,57 +58,48 @@ const table = useVueTable({
 </script>
 
 <template>
-    <div class="flex items-center">
-      <DataTableToolbar :table="table"  />
-    </div>
   
-    <WhenVisible data="data">
+  <div class="flex items-center">
+    <DataTableToolbar :table="table"  />
+  </div>
 
-      <template #fallback>
-          <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <LoaderCircle class="animate-spin text-slate-500" />
-          </div>
-      </template>
+    <div class="border rounded-md">
 
-      <div class="border rounded-md">
-  
-        <Table>
-          <TableHeader>
-            <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
-              <TableHead v-for="header in headerGroup.headers" :key="header.id">
-                <FlexRender
-                  v-if="!header.isPlaceholder" :render="header.column.columnDef.header"
-                  :props="header.getContext()"
-                />
-              </TableHead>
+      <Table>
+        <TableHeader>
+          <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
+            <TableHead v-for="header in headerGroup.headers" :key="header.id">
+              <FlexRender
+                v-if="!header.isPlaceholder" :render="header.column.columnDef.header"
+                :props="header.getContext()"
+              />
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <template v-if="table.getRowModel().rows?.length">
+            <TableRow
+              v-for="row in table.getRowModel().rows" :key="row.id"
+              :data-state="row.getIsSelected() ? 'selected' : undefined"
+            >
+              <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+                <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            <template v-if="table.getRowModel().rows?.length">
-              <TableRow
-                v-for="row in table.getRowModel().rows" :key="row.id"
-                :data-state="row.getIsSelected() ? 'selected' : undefined"
-              >
-                <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-                  <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-                </TableCell>
-              </TableRow>
-            </template>
-            <template v-else>
-              <TableRow>
-                <TableCell :colspan="columns.length" class="h-24 text-center">
-                  Nessun risultato trovato
-                </TableCell>
-              </TableRow>
-            </template>
-          </TableBody>
-        </Table>
+          </template>
+          <template v-else>
+            <TableRow>
+              <TableCell :colspan="columns.length" class="h-24 text-center">
+                Nessun risultato trovato
+              </TableCell>
+            </TableRow>
+          </template>
+        </TableBody>
+      </Table>
 
-      </div>
-      <div class="flex items-center justify-end py-4 space-x-2">
-        <DataTablePagination :table="table" />
-      </div>
+    </div>
+    <div class="flex items-center justify-end py-4 space-x-2">
+      <DataTablePagination :table="table" />
+    </div>
 
-    </WhenVisible>
-  
 </template>

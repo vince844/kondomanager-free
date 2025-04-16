@@ -40,95 +40,61 @@ const rolePrefix = computed(() => {
   
     cell: ({ row }) => {
       const condomini = row.original.condomini;
-  
-      // Ensure condomini is valid and options/full are arrays
+
       if (!condomini || !Array.isArray(condomini.options) || !Array.isArray(condomini.full) || !condomini.options.length) {
         return '—';
       }
-  
+    
       const maxAvatars = 3;
       const visibleCondomini = condomini.options.slice(0, maxAvatars);
       const remainingCount = condomini.options.length - maxAvatars;
-
+    
       const avatars = visibleCondomini.map((option, index) => {
-        const full = condomini.full[index];
         const initials = option.label
           .split(' ')
           .map(word => word[0]?.toUpperCase())
           .join('')
           .slice(0, 2);
-      
-        return h(HoverCard, {
-          key: `${option.label}-${index}` // Make sure to uniquely identify each card
-        }, {
-          default: () => [
-            h(HoverCardTrigger, {}, {
-              default: () =>
-                h(Badge, {
-                  variant: 'default',
-                  class: `
-                    rounded-full w-8 h-8 flex items-center justify-center font-bold text-xs
-                    border border-white shadow absolute
-                  `,
-                  style: `
-                    z-index: ${10 + index};
-                    left: ${index * 18}px;
-                    top: 50%;
-                    transform: translateY(-50%);
-                  `,
-                  memo: true // Memoizing this component to avoid unnecessary re-renders
-                }, () => initials)
-            }),
-            h(HoverCardContent, {
-              class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
-            }, {
-              default: () => [
-                h('div', [h('strong', 'Nome: '), full.nome]),
-                h('div', [h('strong', 'Indirizzo: '), full.indirizzo]),
-              ]
-            })
-          ]
-        });
+    
+        const tooltip = condomini.full[index]?.nome || option.label;
+    
+        return h('div', {
+          key: `${option.label}-${index}`,
+          title: tooltip,
+          class: `
+            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
+            flex items-center justify-center border border-white shadow
+          `,
+          style: `
+            z-index: ${10 + index};
+            left: ${index * 18}px;
+            top: 50%;
+            transform: translateY(-50%);
+          `,
+        }, initials);
       });
-      
-      // Add +N avatar if there are remaining avatars
+    
       if (remainingCount > 0) {
         avatars.push(
-          h(HoverCard, {}, {
-            default: () => [
-              h(HoverCardTrigger, {}, {
-                default: () =>
-                  h(Badge, {
-                    variant: 'default',
-                    class: `
-                      rounded-full w-8 h-8 flex items-center justify-center font-bold text-xs
-                      border border-white shadow 
-                    `,
-                    style: `
-                      z-index: 13;  
-                      position: absolute;
-                      left: ${maxAvatars * 18}px; 
-                      top: 50%;
-                      transform: translateY(-50%);
-                    `,
-                    memo: true // Memoizing this component to avoid unnecessary re-renders
-                  }, () => `+${remainingCount}`)
-              }),
-              h(HoverCardContent, {
-                class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
-              }, {
-                default: () => [
-                  h('div', [h('strong', 'Avvisi: '), `Ci sono ${remainingCount} altri condomini`])
-                ]
-              })
-            ]
-          })
+          h('div', {
+            key: 'more-condomini',
+            title: `+${remainingCount} altri condomini`,
+            class: `
+              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
+              flex items-center justify-center border border-white shadow
+            `,
+            style: `
+              z-index: 13;
+              left: ${maxAvatars * 18}px;
+              top: 50%;
+              transform: translateY(-50%);
+            `,
+          }, `+${remainingCount}`)
         );
       }
-  
-      // Return all avatars and the +N avatar at the end if needed
+    
       return h('div', {
-        class: 'relative flex items-center h-10' // Use flexbox to position avatars in a row
+        class: 'relative flex items-center h-10',
       }, avatars);
     },
   
@@ -143,50 +109,62 @@ const rolePrefix = computed(() => {
   
     cell: ({ row }) => {
       const anagrafiche = row.original.anagrafiche;
-
-      if (!anagrafiche?.length ) return '—';
+    
+      if (!Array.isArray(anagrafiche) || anagrafiche.length === 0) {
+        return '—';
+      }
+    
+      const maxAvatars = 3;
+      const visibleAnagrafiche = anagrafiche.slice(0, maxAvatars);
+      const remainingCount = anagrafiche.length - maxAvatars;
+    
+      const avatars = visibleAnagrafiche.map((item, index) => {
+        const initials = item.nome
+          ?.split(' ')
+          .map(word => word[0]?.toUpperCase())
+          .join('')
+          .slice(0, 2) || '?';
+    
+          const tooltip = item.nome || '—';
+    
+        return h('div', {
+          key: `${item.nome}-${index}`,
+          title: tooltip,
+          class: `
+            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
+            flex items-center justify-center border border-white shadow
+          `,
+          style: `
+            z-index: ${10 + index};
+            left: ${index * 18}px;
+            top: 50%;
+            transform: translateY(-50%);
+          `,
+        }, initials);
+      });
+    
+      if (remainingCount > 0) {
+        avatars.push(
+          h('div', {
+            key: 'more-anagrafiche',
+            title: `+${remainingCount} altre persone`,
+            class: `
+              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
+              flex items-center justify-center border border-white shadow
+            `,
+            style: `
+              z-index: ${10 + maxAvatars};
+              left: ${maxAvatars * 18}px;
+              top: 50%;
+              transform: translateY(-50%);
+            `,
+          }, `+${remainingCount}`)
+        );
+      }
     
       return h('div', {
-        class: 'relative flex items-center h-10' // Ensure proper height and vertical centering
-      },
-        anagrafiche.map((option, index) => {
-         const full = anagrafiche[index];
-          const initials = option.nome
-            .split(' ')
-            .map(word => word[0]?.toUpperCase())
-            .join('')
-            .slice(0, 2);
-    
-          return h(HoverCard, {}, {
-            default: () => [
-              h(HoverCardTrigger, {}, {
-                default: () =>
-                  h(Badge, {
-                    variant: 'default',
-                    class: `
-                      rounded-full w-8 h-8 flex items-center justify-center font-bold text-xs
-                      border border-white shadow absolute
-                    `,
-                    style: `
-                      z-index: ${10 + index};
-                      left: ${index * 18}px;
-                      top: 50%;
-                      transform: translateY(-50%);
-                    `
-                  }, () => initials)
-              }),
-              h(HoverCardContent, {
-                class: 'w-[300px] p-4 text-sm space-y-1 rounded-xl shadow-md'
-              }, {
-                default: () => [
-                  h('div', [h('strong', 'Nome: '), full.nome]),
-                  h('div', [h('strong', 'Indirizzo: '), full.indirizzo]),
-                ]
-              })
-            ]
-          });
-        })
-      );
+        class: 'relative flex items-center h-10',
+      }, avatars);
     },
   
     filterFn: (row, id, value) => {

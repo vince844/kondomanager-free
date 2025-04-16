@@ -9,7 +9,7 @@ import { X, ListPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
-import axios from 'axios';
+import { useCondominiOptions } from '@/composables/useCondominiOptions'
 
 const { hasPermission, hasRole } = usePermission();
 
@@ -19,36 +19,12 @@ interface DataTableToolbarProps {
 
 const props = defineProps<DataTableToolbarProps>()
 
+//Get condominio options
+const { condomini, isLoading, loadCondominiOptions } = useCondominiOptions();
+// Compute the base URL for different roles (admin, user, manager, etc.)
+const rolePrefix = computed(() => hasRole(['amministratore']) ? 'admin' : 'user');
 // Compute whether the table is filtered
 const isFiltered = computed(() => props.table.getState().columnFilters.length > 0) 
-const isLoading = ref(false)
-
-// Compute the base URL for different roles (admin, user, manager, etc.)
-const rolePrefix = computed(() => {
-    if (hasRole(['amministratore'])) {
-        return 'admin';
-    } else {
-        return 'user';
-    }
-});
-
-const condomini = ref<{ label: string; value: string }[]>([])
-
-
-const loadCondominiOptions = async () => {
-  if (condomini.value.length) return
-  isLoading.value = true
-  console.log('isLoading after setting true:', isLoading.value);
-  try {
-    const { data } = await axios.get(route('condomini.options'))
-    condomini.value = data
-  } catch (error) {
-    console.error('Failed to load condomini options', error)
-  } finally {
-    isLoading.value = false
-    console.log('isLoading after setting false:', isLoading.value);
-  }
-}
 
 </script>
 

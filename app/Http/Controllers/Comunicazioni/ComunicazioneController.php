@@ -24,14 +24,7 @@ class ComunicazioneController extends Controller
      */
     public function index()
     {
-   /*      return Inertia::render('comunicazioni/ComunicazioniList', [
-            'comunicazioni' => ComunicazioneResource::collection(
-                Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
-                    ->orderBy('created_at', 'desc')
-                    ->get()
-            ),
-            'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
-        ]);  */
+
         return Inertia::render('comunicazioni/ComunicazioniList', [
             'comunicazioni' => ComunicazioneResource::collection(
                 Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
