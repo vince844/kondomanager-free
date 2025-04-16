@@ -15,7 +15,7 @@ class CondominioSeeder extends Seeder
     public function run(): void
     {
          Condominio::factory()
-            ->count(50)
+            ->count(5)
             ->create();
     }
 }

@@ -1,26 +1,27 @@
 <script setup lang="ts">
-import type { Table } from '@tanstack/vue-table'
-import type { Comunicazione } from '@/types/comunicazioni'
-import { Input } from '@/components/ui/input'
-import { computed } from 'vue'
-import { Button } from '@/components/ui/button'
-import { Link } from '@inertiajs/vue3'
-import { BellPlus, X, ListPlus } from 'lucide-vue-next';
+
+import type { Table } from '@tanstack/vue-table';
+import type { Comunicazione } from '@/types/comunicazioni';
+import { Input } from '@/components/ui/input';
+import { computed, ref } from 'vue';
+import { Button } from '@/components/ui/button';
+import { X, ListPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import axios from 'axios';
 
 const { hasPermission, hasRole } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<Comunicazione>
-  condominioOptions: { label: string; value: string }[]; 
 }
 
 const props = defineProps<DataTableToolbarProps>()
 
 // Compute whether the table is filtered
 const isFiltered = computed(() => props.table.getState().columnFilters.length > 0) 
+const isLoading = ref(false)
 
 // Compute the base URL for different roles (admin, user, manager, etc.)
 const rolePrefix = computed(() => {
@@ -30,6 +31,24 @@ const rolePrefix = computed(() => {
         return 'user';
     }
 });
+
+const condomini = ref<{ label: string; value: string }[]>([])
+
+
+const loadCondominiOptions = async () => {
+  if (condomini.value.length) return
+  isLoading.value = true
+  console.log('isLoading after setting true:', isLoading.value);
+  try {
+    const { data } = await axios.get(route('condomini.options'))
+    condomini.value = data
+  } catch (error) {
+    console.error('Failed to load condomini options', error)
+  } finally {
+    isLoading.value = false
+    console.log('isLoading after setting false:', isLoading.value);
+  }
+}
 
 </script>
 
@@ -50,14 +69,16 @@ const rolePrefix = computed(() => {
         :column="table.getColumn('priority')"
         title="Priorità"
         :options="priorityConstants"
+        :isLoading="isLoading"
       />
 
-       <!-- Add Condominio Filter -->
-       <DataTableFacetedFilter
+      <DataTableFacetedFilter
         v-if="table.getColumn('condomini')"
         :column="table.getColumn('condomini')"
         title="Condominio"
-        :options="props.condominioOptions"  
+        :options="condomini"
+        @open="loadCondominiOptions"
+        :isLoading="isLoading" 
       />
   
       <Button

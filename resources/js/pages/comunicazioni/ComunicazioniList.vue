@@ -13,7 +13,7 @@ import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vu
 
 const props = defineProps<{ 
   comunicazioni: Comunicazione[]; 
-  condominioOptions: []; 
+ /*  condominioOptions: [];  */
 }>()
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -56,7 +56,8 @@ watch(flashMessage, (newValue) => {
      
       <div class="container mx-auto">
     
-        <DataTable :columns="columns()" :data="comunicazioni" :condominioOptions="condominioOptions" />
+       <DataTable :columns="columns()" :data="comunicazioni"  /> 
+   
       </div> 
     </div>
   </AppLayout> 

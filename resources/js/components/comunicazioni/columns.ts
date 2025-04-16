@@ -26,12 +26,12 @@ const rolePrefix = computed(() => {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
     cell: ({ row }) => {
-      const segnalazione = row.original
+      const comunicazione = row.original
       return h(Link, {
-        href: route(`${rolePrefix.value}.segnalazioni.show`, { id: segnalazione.id }),
+        href: route(`${rolePrefix.value}.comunicazioni.show`, { id: comunicazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         prefetch: true,
-      }, () => segnalazione.subject)
+      }, () => comunicazione.subject)
     }
   },
   {

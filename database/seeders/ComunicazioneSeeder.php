@@ -14,7 +14,7 @@ class ComunicazioneSeeder extends Seeder
     public function run(): void
     {
         Comunicazione::factory()
-        ->count(1000)
+        ->count(5)
         ->hasCondomini(5)
         ->create();
         }

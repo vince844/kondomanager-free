@@ -82,6 +82,7 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 });
 
+Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
 /*
 |--------------------------------------------------------------------------
 | Condomini Routes

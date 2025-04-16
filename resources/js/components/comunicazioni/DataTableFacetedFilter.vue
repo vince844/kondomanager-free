@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { Column } from '@tanstack/vue-table'
-import type { Component } from 'vue'
-import type { Comunicazione } from '@/types/comunicazioni';
-import { cn } from '@/lib/utils'
+
+import { ref, watch, computed, PropType } from 'vue';
+import type { Component } from 'vue';
+import { cn } from '@/lib/utils';
 import Badge from '@/components/ui/badge/Badge.vue';
 import Button from '@/components/ui/button/Button.vue';
 import { 
@@ -13,27 +13,41 @@ import {
   CommandItem, 
   CommandList, 
   CommandSeparator 
-} from '@/components/ui/command'
+} from '@/components/ui/command';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from '@/components/ui/popover'
-import { Separator } from '@/components/ui/separator'
-import { computed } from 'vue'
-import { Check, PlusCircle } from 'lucide-vue-next'
+} from '@/components/ui/popover';
+import { Separator } from '@/components/ui/separator';
+import { Check, PlusCircle } from 'lucide-vue-next';
 
-interface DataTableFacetedFilterProps {
-  column?: Column<Comunicazione, unknown>
-  title?: string
-  options: {
-    label: string
-    value: string
-    icon?: Component
-  }[]
+interface Option {
+  label: string;
+  value: string;
+  icon?: Component;
 }
 
-const props = defineProps<DataTableFacetedFilterProps>()
+const props = defineProps({
+  column: Object,
+  title: String,
+  options: {
+    type: Array as PropType<Option[]>,
+    required: true,
+  },
+  isLoading: {
+    type: Boolean,
+    default: false,
+  },
+})
+
+const isOpen = ref(false)
+const emit = defineEmits(['open'])
+
+watch(isOpen, (val) => {
+  if (val) emit('open')
+})
+
 
 const facets = computed(() => {
   if (!props.column) return new Map()
@@ -45,11 +59,10 @@ const selectedValues = computed(() => {
   return new Set(Array.isArray(filterValue) ? filterValue : [])
 })
 
-
 </script>
 
 <template>
-  <Popover>
+  <Popover v-model:open="isOpen" > <!-- Add isOpen for async load when dropdown is opened -->
     <PopoverTrigger as-child>
       <Button variant="outline" size="sm" class="h-8 border-dashed">
         <PlusCircle class="mr-2 h-4 w-4" />
@@ -84,8 +97,13 @@ const selectedValues = computed(() => {
     <PopoverContent class="w-[250px] p-0" align="start">
       <Command>
         <CommandInput :placeholder="title" />
+
+        <CommandList v-if="props.isLoading">
+          <div class="p-4 text-sm text-muted-foreground">Caricamento...</div>
+        </CommandList>
+          
         <CommandList>
-          <CommandEmpty>Nessun risultato trovato</CommandEmpty>
+          <CommandEmpty>Nessun risultato trovato</CommandEmpty> 
           <CommandGroup>
             <CommandItem
               v-for="option in options"

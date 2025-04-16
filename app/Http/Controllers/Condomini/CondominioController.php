@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Condomini;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Condominio\CreateCondominioRequest;
 use App\Http\Requests\Condominio\UpdateCondominioRequest;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use Illuminate\Http\RedirectResponse;
@@ -88,6 +89,12 @@ class CondominioController extends Controller
                 'message' => "Il profilo del condominio è stato modificato con successo"
             ]
         ]);
+    }
+
+    public function options()
+    {
+        sleep(2);
+        return CondominioOptionsResource::collection(Condominio::all());
     }
 
     /**

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Comunicazioni;
 
-use App\Helpers\SlugHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
@@ -12,7 +11,6 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\Condominio;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -26,13 +24,20 @@ class ComunicazioneController extends Controller
      */
     public function index()
     {
-        return Inertia::render('comunicazioni/ComunicazioniList', [
+   /*      return Inertia::render('comunicazioni/ComunicazioniList', [
             'comunicazioni' => ComunicazioneResource::collection(
                 Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
                     ->orderBy('created_at', 'desc')
                     ->get()
             ),
             'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
+        ]);  */
+        return Inertia::render('comunicazioni/ComunicazioniList', [
+            'comunicazioni' => ComunicazioneResource::collection(
+                Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
+                    ->orderBy('created_at', 'desc')
+                    ->get()
+            )
         ]); 
     } 
 

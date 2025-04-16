@@ -14,7 +14,7 @@ class AnagraficaSeeder extends Seeder
     public function run(): void
     {
         Anagrafica::factory()
-            ->count(10)
+            ->count(5)
             ->create();  
     }
 }

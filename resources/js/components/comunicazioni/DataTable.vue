@@ -34,7 +34,6 @@ import { LoaderCircle } from 'lucide-vue-next';
 const props = defineProps<{
     columns: ColumnDef<Comunicazione, any>[]
     data: Comunicazione[]
-    condominioOptions: { label: string; value: string }[]; // Add this line
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])
@@ -60,7 +59,7 @@ const table = useVueTable({
 
 <template>
     <div class="flex items-center">
-      <DataTableToolbar :table="table" :condominioOptions="condominioOptions" />
+      <DataTableToolbar :table="table"  />
     </div>
   
     <WhenVisible data="data">
