@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\Comunicazione;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 class ComunicazioneSeeder extends Seeder
 {
@@ -13,9 +14,10 @@ class ComunicazioneSeeder extends Seeder
      */
     public function run(): void
     {
-        Comunicazione::factory()
-        ->count(5)
-        ->hasCondomini(5)
-        ->create();
-        }
+         Comunicazione::factory()
+        ->count(1000)
+         ->hasCondomini(5)
+       /*  ->hasAnagrafiche(5) */
+        ->create(); 
+    }
 }

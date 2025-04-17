@@ -23,10 +23,6 @@ class CondominioController extends Controller
     {
         Gate::authorize('view', Condominio::class);
 
-     /*    return Inertia::render('buildings/BuildingsList', [
-            'buildings' => CondominioResource::collection(Condominio::all())
-        ]); 
- */
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'between:10,100'],

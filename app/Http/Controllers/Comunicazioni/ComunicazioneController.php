@@ -15,23 +15,47 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\RedirectResponse;
-
+use Illuminate\Http\Request;
 
 class ComunicazioneController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
 
-        return Inertia::render('comunicazioni/ComunicazioniList', [
-            'comunicazioni' => ComunicazioneResource::collection(
-                Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
-                    ->orderBy('created_at', 'desc')
-                    ->get()
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'subject' => ['sometimes', 'string', 'max:255'],
+            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
+            // aggiungi altri campi filtro se necessario (es: 'email')
+        ]);
+    
+        $comunicazioni = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
+            ->when($validated['subject'] ?? false, function ($query, $subject) {
+                $query->where('subject', 'like', "%{$subject}%");
+            })
+            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
+                $query->whereIn('priority', $priorities)
             )
-        ]); 
+            // altri filtri in questo formato:
+            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? 15)
+            ->withQueryString(); // mantiene i parametri GET nella paginazione
+    
+        return Inertia::render('comunicazioni/ComunicazioniList', [
+            'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->response()->getData(true)['data'],
+            'meta' => [
+                'current_page' => $comunicazioni->currentPage(),
+                'last_page' => $comunicazioni->lastPage(),
+                'per_page' => $comunicazioni->perPage(),
+                'total' => $comunicazioni->total(),
+            ],
+            'filters' => $request->only(['subject', 'priority']) // utile per preservare stato UI
+        ]);
     } 
 
     /**
@@ -189,5 +213,18 @@ class ComunicazioneController extends Controller
             ]);
         }
 
+    }
+
+    public function stats(Request $request)
+    {
+
+        $counts = Comunicazione::selectRaw("
+                SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
+                SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
+                SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
+                SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
+            ")->first();
+
+        return response()->json($counts);
     }
 }

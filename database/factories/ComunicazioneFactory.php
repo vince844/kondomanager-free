@@ -18,7 +18,7 @@ class ComunicazioneFactory extends Factory
     return [
         'subject' => $this->faker->sentence,
         'description' => $this->faker->paragraphs(3, true),
-        'created_by' => \App\Models\User::factory(),
+        'created_by' => User::inRandomOrder()->value('id'),
         'priority' => $priority,
         'is_featured' => $this->faker->boolean(10),
         'is_private' => $this->faker->boolean(10),

@@ -62,6 +62,9 @@ Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagr
 
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
+    
+    Route::get('comunicazioni/stats', [ComunicazioneController::class, 'stats'])->name('comunicazioni.stats');
+
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
@@ -69,6 +72,7 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:ammi
     Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
         'comunicazioni' => 'comunicazione'
     ]);
+    
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 });
