@@ -11,16 +11,7 @@ import type { User } from '@/types/users';
 import type { Flash } from '@/types/flash';
 import Alert from "@/components/Alert.vue";
 
-defineProps<{
-  users: User[],
-  meta: {
-    current_page: number,
-    per_page: number,
-    last_page: number,
-    total: number
-  }
-}>()
-
+defineProps<{ users: User[] }>();
 
 // Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -40,7 +31,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 <template>
     
     <AppLayout :breadcrumbs="breadcrumbs">
-        <Head title="Elenco utenti" />
+        <Head title="Elenco utenti registrati" />
 
         <UtentiLayout>
             <div class="flex flex-col shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-2">
@@ -50,7 +41,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                 </div>
 
                 <div class="container mx-auto">
-                    <DataTable :columns="columns" :data="users" :meta="meta"/>
+                    <DataTable :columns="columns" :data="users" />
                 </div>
 
             </div>

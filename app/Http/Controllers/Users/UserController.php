@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Gate;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
+use Illuminate\Http\Request;
+
 
 class UserController extends Controller
 {
@@ -34,13 +36,37 @@ class UserController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
         Gate::authorize('view', User::class);
 
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'name' => ['sometimes', 'string', 'max:255'], // Add filter validation
+            // Add other filter fields as needed (email, etc.)
+        ]);
+    
+        $users = User::query()
+            ->when($validated['name'] ?? false, function ($query, $name) {
+                $query->where('name', 'like', "%{$name}%");
+            })
+            // Add additional filters like this:
+            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
+            ->paginate($validated['per_page'] ?? 15);
+    
         return Inertia::render('utenti/ElencoUtenti', [
-            'users' => UserResource::collection(User::all())
-        ]); 
+            'users' => UserResource::collection($users)->response()->getData(true)['data'],
+            'meta' => [
+                'current_page' => $users->currentPage(),
+                'last_page' => $users->lastPage(),
+                'per_page' => $users->perPage(),
+                'total' => $users->total(),
+            ],
+            // Optional: Return current filters to maintain UI state
+            'filters' => $request->only(['name']) 
+        ]);
+        
     }
 
     /**

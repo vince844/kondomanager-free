@@ -1,9 +1,10 @@
 <script setup lang="ts" generic="TData, TValue">
+
 import { ref } from 'vue'
+import { router } from '@inertiajs/vue3'
 import type { 
   ColumnDef, 
   SortingState,
-  ColumnFiltersState 
 } from '@tanstack/vue-table'
 import {
   Table,
@@ -17,37 +18,75 @@ import {
   FlexRender,
   getCoreRowModel,
   useVueTable,
-  getFilteredRowModel,
   getSortedRowModel,
-  getPaginationRowModel,
 } from '@tanstack/vue-table'
-import type { Building } from '@/types/buildings';
+import type { Building } from '@/types/buildings'
 import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from '@/components/buildings/DataTableToolbar.vue';
+import DataTablePagination from '@/components/DataTablePagination.vue'
+import DataTableToolbar from '@/components/buildings/DataTableToolbar.vue'
 
 const props = defineProps<{
-    columns: ColumnDef<Building, any>[]
-    data: Building[]
+  columns: ColumnDef<Building, any>[],
+  data: Building[],
+  meta: {
+    current_page: number,
+    per_page: number,
+    last_page: number,
+    total: number
+  }
 }>()
 
-const columnFilters = ref<ColumnFiltersState>([])
 const sorting = ref<SortingState>([])
+const isPending = ref(false) 
 
 const table = useVueTable({
-  get data() { return props.data },
-  get columns() { return props.columns },
-  getCoreRowModel: getCoreRowModel(),
-  onColumnFiltersChange: updaterOrValue => valueUpdater(updaterOrValue, columnFilters),
-  getPaginationRowModel: getPaginationRowModel(),
-  getFilteredRowModel: getFilteredRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  get data() {
+    return props.data ?? []
+  },
+  get columns() {
+    return props.columns ?? []
+  },
+  pageCount: props.meta.last_page,
   state: {
-      get columnFilters() { return columnFilters.value },
-      get sorting() { return sorting.value },
+    pagination: {
+      pageIndex: props.meta.current_page - 1,
+      pageSize: props.meta.per_page,
     },
+    get sorting() {
+      return sorting.value
+    },
+  },
+  manualPagination: true,
+  onPaginationChange: updater => {
+
+    // Prevent concurrent requests
+    if (isPending.value) return 
+    
+    isPending.value = true
+    
+    const nextPage = typeof updater === 'function'
+      ? updater(table.getState().pagination).pageIndex
+      : updater.pageIndex;
+
+    const nextPageSize = table.getState().pagination.pageSize;
+
+    router.get(route('condomini.index'), {
+      page: nextPage + 1,
+      per_page: nextPageSize,
+    }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      onFinish: () => {
+        isPending.value = false
+      }
+    });
+  },
+  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
 })
+
 </script>
 
 <template>
@@ -89,7 +128,7 @@ const table = useVueTable({
     </Table>
   </div>
   <div class="flex items-center justify-end py-4 space-x-2">
-    <DataTablePagination :table="table" />
+    <DataTablePagination :table="table" :meta="props.meta" />
   </div>
   
 </template>

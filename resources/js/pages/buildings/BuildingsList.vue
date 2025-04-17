@@ -12,7 +12,15 @@ import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
 
-defineProps<{ buildings: Building[] }>()
+defineProps<{ 
+  buildings: Building[], 
+  meta: {
+    current_page: number,
+    per_page: number,
+    last_page: number,
+    total: number
+  }
+}>()
 
 // Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -31,7 +39,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 <template>
 
-  <Head title="Elenco utenti" />
+  <Head title="Elenco condomini" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
@@ -44,7 +52,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns" :data="buildings" /> 
+        <DataTable :columns="columns" :data="buildings" :meta="meta" /> 
       </div>
 
     </div>

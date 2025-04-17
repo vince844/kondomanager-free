@@ -9,21 +9,51 @@ use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
+
 
 class CondominioController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
         Gate::authorize('view', Condominio::class);
 
-        return Inertia::render('buildings/BuildingsList', [
+     /*    return Inertia::render('buildings/BuildingsList', [
             'buildings' => CondominioResource::collection(Condominio::all())
         ]); 
+ */
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'nome' => ['sometimes', 'string', 'max:255'], // Add filter validation
+            // Add other filter fields as needed (email, etc.)
+        ]);
+    
+        $condomini = Condominio::query()
+            ->when($validated['nome'] ?? false, function ($query, $nome) {
+                $query->where('nome', 'like', "%{$nome}%");
+            })
+            // Add additional filters like this:
+            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
+            ->paginate($validated['per_page'] ?? 15);
+    
+        return Inertia::render('buildings/BuildingsList', [
+            'buildings' => CondominioResource::collection($condomini)->response()->getData(true)['data'],
+            'meta' => [
+                'current_page' => $condomini->currentPage(),
+                'last_page' => $condomini->lastPage(),
+                'per_page' => $condomini->perPage(),
+                'total' => $condomini->total(),
+            ],
+            // Optional: Return current filters to maintain UI state
+            'filters' => $request->only(['nome']) 
+        ]);
+        
     }
 
     /**
