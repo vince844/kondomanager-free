@@ -26,7 +26,7 @@ import DataTablePagination from '@/components/DataTablePagination.vue'
 import DataTableToolbar from '@/components/comunicazioni/DataTableToolbar.vue'
 
 const props = defineProps<{
-  columns: ColumnDef<Building, any>[],
+  columns: ColumnDef<Comunicazione, any>[],
   data: Comunicazione[],
   meta: {
     current_page: number,

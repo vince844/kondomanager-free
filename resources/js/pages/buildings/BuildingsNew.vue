@@ -5,14 +5,13 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import type { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { List} from 'lucide-vue-next';
+import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle } from 'lucide-vue-next';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -56,11 +55,25 @@ const submit = () => {
       <div class="px-4 py-6">
         
         <Heading title="Crea condominio" description="Compila il seguente modulo per la creazione di un nuovo condominio" />
-        
-            <Button class="ml-auto hidden h-8 lg:flex">
-              <List class="w-4 h-4" />
-              <Link :href="route('condomini.index')">Elenco</Link>
-            </Button>
+
+        <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
+
+              <!-- Button for "Crea comunicazionew" -->
+              <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
+                  <Plus class="w-4 h-4" v-if="!form.processing" />
+                  <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                  Salva
+              </Button>
+
+              <!-- Button for "Elenco condomini" -->
+              <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
+                  <List class="w-4 h-4" />
+                  <Link prefetch :href="route('condomini.index')" class="block lg:inline">
+                  Elenco
+                  </Link>
+              </Button>
+
+          </div>
 
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
@@ -238,17 +251,7 @@ const submit = () => {
                                           <InputError :message="form.errors.particella_catasto" />
                                         </div>
                                     </div>
-                                   
-                                <div class="pt-5">
-                                    <div class="flex">
-
-                                      <Button :disabled="form.processing">
-                                          <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                          Crea nuovo condomino
-                                      </Button>
-
-                                    </div>
-                                </div>
+                              
                             </form>
                         </div>
                     </div>

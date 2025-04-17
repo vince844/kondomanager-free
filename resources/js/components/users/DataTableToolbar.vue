@@ -9,6 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Link } from '@inertiajs/vue3';
 import { UserPlus } from 'lucide-vue-next';
+import { usePermission } from "@/composables/permissions";
+
+const { hasPermission, hasRole } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<User>
@@ -50,10 +53,15 @@ watchDebounced(
       </div>
     </div>
 
-    <!-- Right Section: Button (force it to the right) -->
-    <Button class="hidden h-8 lg:flex ml-auto">
+    <Button
+      v-if="hasPermission(['Crea utenti'])"
+      as="a"
+      :href="route('utenti.create')"
+      class="hidden h-8 lg:flex ml-auto items-center gap-2"
+    >
       <UserPlus class="w-4 h-4" />
-      <Link :href="route('utenti.create')">Nuovo utente</Link>
+      <span>Crea</span>
     </Button>
+
   </div>
 </template>

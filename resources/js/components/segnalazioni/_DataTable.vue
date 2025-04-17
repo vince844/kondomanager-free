@@ -20,15 +20,18 @@ import {
   getFilteredRowModel,
   getSortedRowModel,
   getPaginationRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
 } from '@tanstack/vue-table'
-import type { Permission } from '@/types/permissions';
+import type { Segnalazione } from '@/types/segnalazioni';
 import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/permissions/DataTablePagination.vue';
-import DataTableToolbar from '@/components/permissions/DataTableToolbar.vue';
+import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTableToolbar from '@/components/segnalazioni/DataTableToolbar.vue'
 
 const props = defineProps<{
-    columns: ColumnDef<Permission, any>[]
-    data: Permission[]
+    columns: ColumnDef<Segnalazione, any>[]
+    data: Segnalazione[]
+    condominioOptions: { label: string; value: string }[]; // Add this line
 }>()
 
 const columnFilters = ref<ColumnFiltersState>([])
@@ -43,6 +46,8 @@ const table = useVueTable({
   getFilteredRowModel: getFilteredRowModel(),
   getSortedRowModel: getSortedRowModel(),
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  getFacetedUniqueValues: getFacetedUniqueValues(),
+  getFacetedRowModel: getFacetedRowModel(),
   state: {
       get columnFilters() { return columnFilters.value },
       get sorting() { return sorting.value },
@@ -52,7 +57,7 @@ const table = useVueTable({
 
 <template>
     <div class="flex items-center">
-      <DataTableToolbar :table="table" />
+      <DataTableToolbar :table="table" :condominioOptions="condominioOptions" />
     </div>
   
   <div class="border rounded-md">

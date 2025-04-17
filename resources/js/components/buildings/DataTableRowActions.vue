@@ -73,12 +73,12 @@ const editBuilding = (building: Building) => {
 
       <DropdownMenuItem @click="editBuilding(building)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica condominio
+        Modifica
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(building)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina condominio
+        Elimina
       </DropdownMenuItem>
 
     </DropdownMenuContent>

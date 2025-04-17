@@ -5,6 +5,7 @@ use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
+use App\Http\Controllers\Comunicazioni\ComunicazioniStatsController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
+use App\Http\Controllers\Segnalazioni\SegnalazioniStatsController;
 use App\Http\Controllers\Segnalazioni\UserSegnalazioneController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
@@ -60,10 +62,11 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 
 Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
 
+Route::get('/comunicazioni/stats', ComunicazioniStatsController::class)->middleware(['auth', 'verified'])->name('comunicazioni.stats');
+Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
+
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
-    
-    Route::get('comunicazioni/stats', [ComunicazioneController::class, 'stats'])->name('comunicazioni.stats');
 
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([

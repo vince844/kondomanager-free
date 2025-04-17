@@ -1,9 +1,12 @@
 <script setup lang="ts">
 
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert } from 'lucide-vue-next';
+import { useToast } from '@/components/ui/toast/use-toast';
+
+const { toast } = useToast();
 
 const stats = ref({
   bassa: 0,
@@ -15,8 +18,10 @@ const stats = ref({
 const isLoading = ref(false);
 
 function loadStats() {
+  
   isLoading.value = true;
-  axios.get(route('admin.comunicazioni.stats'))
+
+  axios.get(route('comunicazioni.stats'))
     .then(response => {
       stats.value = {
         bassa: response.data.bassa ?? 0,
@@ -25,12 +30,20 @@ function loadStats() {
         urgente: response.data.urgente ?? 0,
       };
     })
+    .catch(error => {
+      console.error('Errore nel caricamento delle statistiche:', error);
+      toast({
+        title: 'Errore',
+        description: 'Impossibile caricare le statistiche. Riprova più tardi.',
+        variant: 'destructive',
+      });
+    })
     .finally(() => {
       isLoading.value = false;
     });
-}
+} 
 
-defineExpose({ loadStats });
+onMounted(() => loadStats());
 
 const icons = {
   bassa: CircleArrowDown,
@@ -41,6 +54,7 @@ const icons = {
 </script>
 
 <template>
+
   <div class="grid gap-4 md:grid-cols-1 lg:grid-cols-4">
     <Card v-for="(icon, key) in icons" :key="key">
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">

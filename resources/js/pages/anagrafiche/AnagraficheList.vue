@@ -12,7 +12,15 @@ import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Anagrafica } from '@/types/anagrafiche';
 
-defineProps<{ anagrafiche: Anagrafica[] }>()
+defineProps<{ 
+  anagrafiche: Anagrafica[],
+  meta: {
+    current_page: number,
+    per_page: number,
+    last_page: number,
+    total: number
+  } 
+}>()
 
 // Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -61,7 +69,7 @@ watch(flashMessage, (newValue) => {
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns" :data="anagrafiche" />
+        <DataTable :columns="columns" :data="anagrafiche" :meta="meta" />
       </div>
 
     </div>

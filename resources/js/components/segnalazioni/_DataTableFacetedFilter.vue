@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { ref, watch, computed, PropType } from 'vue'
-import type { Component } from 'vue'
 import type { Column } from '@tanstack/vue-table'
+import type { Component } from 'vue'
+import type { Segnalazione } from '@/types/segnalazioni';
 import { cn } from '@/lib/utils'
-import Badge from '@/components/ui/badge/Badge.vue'
-import Button from '@/components/ui/button/Button.vue'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
+import Badge from '@/components/ui/badge/Badge.vue';
+import Button from '@/components/ui/button/Button.vue';
+import { 
+  Command, 
+  CommandEmpty, 
+  CommandGroup, 
+  CommandInput, 
+  CommandItem, 
+  CommandList, 
+  CommandSeparator 
 } from '@/components/ui/command'
 import {
   Popover,
@@ -20,78 +20,36 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
+import { computed } from 'vue'
 import { Check, PlusCircle } from 'lucide-vue-next'
 
-interface Option {
-  label: string
-  value: string
-  icon?: Component
+interface DataTableFacetedFilterProps {
+  column?: Column<Segnalazione, unknown>
+  title?: string
+  options: {
+    label: string
+    value: string
+    icon?: Component
+  }[]
 }
 
-const props = defineProps({
-  column: {
-    type: Object as PropType<Column<any, unknown>>,
-    required: true,
-  },
-  title: String,
-  options: {
-    type: Array as PropType<Option[]>,
-    required: true,
-  },
-  isLoading: {
-    type: Boolean,
-    default: false,
-  },
-})
-
-const emit = defineEmits<{
-  (e: 'update:filter', value: string[]): void
-  (e: 'open'): void
-}>()
-
-const isOpen = ref(false)
-
-watch(isOpen, (val) => {
-  if (val) emit('open')
-})
+const props = defineProps<DataTableFacetedFilterProps>()
 
 const facets = computed(() => {
-  return props.column?.getFacetedUniqueValues?.() ?? new Map()
+  if (!props.column) return new Map()
+  return props.column.getFacetedUniqueValues()
 })
 
-const selectedValues = ref(new Set<string>())
+const selectedValues = computed(() => {
+  const filterValue = props.column?.getFilterValue()
+  return new Set(Array.isArray(filterValue) ? filterValue : [])
+})
 
-watch(
-  () => props.column?.getFilterValue?.(),
-  (newVal) => {
-    selectedValues.value = new Set(Array.isArray(newVal) ? newVal : [])
-  },
-  { immediate: true }
-)
 
-function toggleSelection(optionValue: string) {
-  const updatedValues = new Set(selectedValues.value)
-
-  if (updatedValues.has(optionValue)) {
-    updatedValues.delete(optionValue)
-  } else {
-    updatedValues.add(optionValue)
-  }
-
-  const valuesArray = Array.from(updatedValues)
-  props.column?.setFilterValue(valuesArray.length ? valuesArray : undefined)
-  emit('update:filter', valuesArray)
-}
-
-function clearFilters() {
-  props.column?.setFilterValue(undefined)
-  emit('update:filter', [])
-}
 </script>
 
-
 <template>
-  <Popover v-model:open="isOpen">
+  <Popover>
     <PopoverTrigger as-child>
       <Button variant="outline" size="sm" class="h-8 border-dashed">
         <PlusCircle class="mr-2 h-4 w-4" />
@@ -111,7 +69,7 @@ function clearFilters() {
             </Badge>
             <template v-else>
               <Badge
-                v-for="option in options.filter(o => selectedValues.has(o.value))"
+                v-for="option in options.filter((option) => selectedValues.has(option.value))"
                 :key="option.value"
                 variant="secondary"
                 class="rounded-sm px-1 font-normal"
@@ -126,10 +84,6 @@ function clearFilters() {
     <PopoverContent class="w-[250px] p-0" align="start">
       <Command>
         <CommandInput :placeholder="title" />
-        <CommandList v-if="props.isLoading">
-          <div class="p-4 text-sm text-muted-foreground">Caricamento...</div>
-        </CommandList>
-
         <CommandList>
           <CommandEmpty>Nessun risultato trovato</CommandEmpty>
           <CommandGroup>
@@ -137,7 +91,17 @@ function clearFilters() {
               v-for="option in options"
               :key="option.value"
               :value="option"
-              @select="() => toggleSelection(option.value)"
+              @select="() => {
+                const newSelectedValues = new Set(selectedValues)
+                if (newSelectedValues.has(option.value)) {
+                  newSelectedValues.delete(option.value)
+                } else {
+                  newSelectedValues.add(option.value)
+                }
+                props.column?.setFilterValue(
+                  newSelectedValues.size ? Array.from(newSelectedValues) : undefined
+                )
+              }"
             >
               <div
                 :class="cn(
@@ -163,14 +127,13 @@ function clearFilters() {
               </span>
             </CommandItem>
           </CommandGroup>
-
           <template v-if="selectedValues.size > 0">
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
                 :value="{ label: 'Resetta filtri' }"
                 class="justify-center text-center"
-                @select="clearFilters"
+                @select="props.column?.setFilterValue(undefined)"
               >
                 Resetta filtri
               </CommandItem>

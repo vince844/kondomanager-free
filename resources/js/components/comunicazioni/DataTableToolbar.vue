@@ -7,9 +7,12 @@ import type { Comunicazione } from '@/types/comunicazioni'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Link } from '@inertiajs/vue3'
-import { HousePlus } from 'lucide-vue-next'
+import { BellPlus } from 'lucide-vue-next'
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants } from '@/lib/comunicazioni/constants'
+import { usePermission } from "@/composables/permissions";
+
+const { hasPermission } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<Comunicazione>
@@ -50,7 +53,7 @@ watchDebounced(
   <div class="flex items-center justify-between w-full mb-3 mt-4">
     <div class="flex items-center space-x-2">
       <Input
-        placeholder="Filtra per nome..."
+        placeholder="Filtra per titolo..."
         v-model="subjectFilter"
         class="h-8 w-[150px] lg:w-[250px]"
       />
@@ -65,9 +68,15 @@ watchDebounced(
       />
     </div>
 
-    <Button class="hidden h-8 lg:flex ml-auto">
-      <HousePlus class="w-4 h-4" />
-      <Link :href="route('condomini.create')">Crea</Link>
+    <Button
+      v-if="hasPermission(['Crea comunicazioni'])"
+      as="a"
+      :href="route('admin.comunicazioni.create')"
+      class="hidden h-8 lg:flex ml-auto items-center gap-2"
+    >
+      <BellPlus class="w-4 h-4" />
+      <span>Crea</span>
     </Button>
+
   </div>
 </template>

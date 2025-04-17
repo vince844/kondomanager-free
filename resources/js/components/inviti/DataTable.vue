@@ -23,7 +23,7 @@ import {
 } from '@tanstack/vue-table'
 import type { Invito } from '@/types/inviti';
 import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTablePagination from '@/components/inviti/DataTablePagination.vue';
 import DataTableToolbar from '@/components/inviti/DataTableToolbar.vue'
 
 const props = defineProps<{

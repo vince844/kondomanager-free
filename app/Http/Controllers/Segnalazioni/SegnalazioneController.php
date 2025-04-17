@@ -14,6 +14,7 @@ use App\Models\Segnalazione;
 use App\Notifications\NewSegnalazioneNotification;
 use Exception;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -25,18 +26,38 @@ class SegnalazioneController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
         Gate::authorize('view', Segnalazione::class);
 
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'subject' => ['sometimes', 'string', 'max:255'],
+            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
+        ]);
+    
+        $segnalazioni = Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])
+            ->when($validated['subject'] ?? false, function ($query, $subject) {
+                $query->where('subject', 'like', "%{$subject}%");
+            })
+            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
+                $query->whereIn('priority', $priorities)
+            )
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? 15)
+            ->withQueryString(); // mantiene i parametri GET nella paginazione
+    
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection(
-                Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])
-                    ->orderBy('created_at', 'desc')
-                    ->get()
-            ),
-            'condominioOptions' => CondominioOptionsResource::collection(Condominio::all())
-        ]); 
+            'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->response()->getData(true)['data'],
+            'meta' => [
+                'current_page' => $segnalazioni->currentPage(),
+                'last_page' => $segnalazioni->lastPage(),
+                'per_page' => $segnalazioni->perPage(),
+                'total' => $segnalazioni->total(),
+            ],
+            'filters' => $request->only(['subject', 'priority'])
+        ]);
     }
   
     /**

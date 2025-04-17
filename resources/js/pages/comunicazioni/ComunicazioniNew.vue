@@ -44,7 +44,6 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
     const response = await axios.get('/fetch-anagrafiche', {
       params: { condomini_ids },
     });
-    console.log('Anagrafiche data:', response.data);
 
     form.anagrafiche = []; // clear selected items
     anagraficheOptions.value = response.data.map((item: { id: number, nome: string }) => ({
@@ -84,14 +83,14 @@ const submit = () => {
                 <!-- Container for buttons (wraps buttons for alignment) -->
                 <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
-                    <!-- Button for "Crea Segnalazione" -->
+                    <!-- Button for "Crea comunicazionew" -->
                     <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                         <Plus class="w-4 h-4" v-if="!form.processing" />
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                         Salva
                     </Button>
 
-                    <!-- Button for "Elenco Segnalazioni" -->
+                    <!-- Button for "Elenco comunicazioni" -->
                     <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
                         <Link prefetch :href="route('admin.comunicazioni.index')" class="block lg:inline">

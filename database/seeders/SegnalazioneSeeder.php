@@ -2,19 +2,19 @@
 
 namespace Database\Seeders;
 
-use App\Models\Anagrafica;
+use App\Models\Segnalazione;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
-class AnagraficaSeeder extends Seeder
+class SegnalazioneSeeder extends Seeder
 {
     /**
      * Run the database seeds.
      */
     public function run(): void
     {
-        Anagrafica::factory()
-            ->count(500)
-            ->create();  
+        Segnalazione::factory()
+        ->count(1000)
+        ->create();  
     }
 }

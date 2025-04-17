@@ -19,7 +19,7 @@ class AnagraficaFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => User::factory(),
+            'user_id' => User::inRandomOrder()->value('id'),
             'nome' => $this->faker->firstName() . ' ' . $this->faker->lastName(),
             'indirizzo' => $this->faker->streetAddress() . ', ' . $this->faker->city(),
             'email' => $this->generateUniqueEmail(),

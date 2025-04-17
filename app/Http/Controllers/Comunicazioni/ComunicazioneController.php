@@ -30,7 +30,6 @@ class ComunicazioneController extends Controller
             'per_page' => ['sometimes', 'integer', 'between:10,100'],
             'subject' => ['sometimes', 'string', 'max:255'],
             'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-            // aggiungi altri campi filtro se necessario (es: 'email')
         ]);
     
         $comunicazioni = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
@@ -40,8 +39,6 @@ class ComunicazioneController extends Controller
             ->when($validated['priority'] ?? false, fn($query, $priorities) =>
                 $query->whereIn('priority', $priorities)
             )
-            // altri filtri in questo formato:
-            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
             ->orderBy('created_at', 'desc')
             ->paginate($validated['per_page'] ?? 15)
             ->withQueryString(); // mantiene i parametri GET nella paginazione
@@ -54,7 +51,7 @@ class ComunicazioneController extends Controller
                 'per_page' => $comunicazioni->perPage(),
                 'total' => $comunicazioni->total(),
             ],
-            'filters' => $request->only(['subject', 'priority']) // utile per preservare stato UI
+            'filters' => $request->only(['subject', 'priority'])
         ]);
     } 
 
@@ -215,16 +212,4 @@ class ComunicazioneController extends Controller
 
     }
 
-    public function stats(Request $request)
-    {
-
-        $counts = Comunicazione::selectRaw("
-                SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
-                SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
-                SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
-                SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
-            ")->first();
-
-        return response()->json($counts);
-    }
 }

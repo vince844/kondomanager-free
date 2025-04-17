@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, watch, ref } from "vue";
-import { usePage, Head, WhenVisible } from "@inertiajs/vue3";
+import { usePage, Head } from "@inertiajs/vue3";
 import DataTable from '@/components/comunicazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';

@@ -23,7 +23,7 @@ import {
 } from '@tanstack/vue-table'
 import type { Role } from '@/types/roles';
 import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTablePagination from '@/components/roles/DataTablePagination.vue';
 import DataTableToolbar from '@/components/roles/DataTableToolbar.vue';
 
 const props = defineProps<{

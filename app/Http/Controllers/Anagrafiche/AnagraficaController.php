@@ -14,6 +14,7 @@ use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Exception;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class AnagraficaController extends Controller
@@ -21,12 +22,36 @@ class AnagraficaController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {   
 
-        return Inertia::render('anagrafiche/AnagraficheList', [
+ /*        return Inertia::render('anagrafiche/AnagraficheList', [
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
-        ]); 
+        ]);  */
+
+        $validated = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'nome' => ['sometimes', 'string', 'max:255'], 
+        ]);
+    
+        $anagrafiche = Anagrafica::query()
+            ->when($validated['nome'] ?? false, function ($query, $nome) {
+                $query->where('nome', 'like', "%{$nome}%");
+            })
+            ->paginate($validated['per_page'] ?? 15);
+    
+        return Inertia::render('anagrafiche/AnagraficheList', [
+            'anagrafiche' => CondominioResource::collection($anagrafiche)->response()->getData(true)['data'],
+            'meta' => [
+                'current_page' => $anagrafiche->currentPage(),
+                'last_page' => $anagrafiche->lastPage(),
+                'per_page' => $anagrafiche->perPage(),
+                'total' => $anagrafiche->total(),
+            ],
+            // Optional: Return current filters to maintain UI state
+            'filters' => $request->only(['nome']) 
+        ]);
     }
 
     /**

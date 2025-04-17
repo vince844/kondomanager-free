@@ -3,6 +3,7 @@ import AppContent from '@/components/AppContent.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import AppShell from '@/components/AppShell.vue';
 import type { BreadcrumbItemType } from '@/types';
+import Footer from '@/components/Footer.vue';
 
 interface Props {
     breadcrumbs?: BreadcrumbItemType[];
@@ -19,5 +20,6 @@ withDefaults(defineProps<Props>(), {
         <AppContent>
             <slot />
         </AppContent>
+        <Footer />
     </AppShell>
 </template>

@@ -26,16 +26,13 @@ class CondominioController extends Controller
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'nome' => ['sometimes', 'string', 'max:255'], // Add filter validation
-            // Add other filter fields as needed (email, etc.)
+            'nome' => ['sometimes', 'string', 'max:255'], 
         ]);
     
         $condomini = Condominio::query()
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
-            // Add additional filters like this:
-            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
             ->paginate($validated['per_page'] ?? 15);
     
         return Inertia::render('buildings/BuildingsList', [
