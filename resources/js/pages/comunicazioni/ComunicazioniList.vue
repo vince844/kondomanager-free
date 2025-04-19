@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed, onMounted, watch, ref } from "vue";
 import { usePage, Head } from "@inertiajs/vue3";
 import DataTable from '@/components/comunicazioni/DataTable.vue';

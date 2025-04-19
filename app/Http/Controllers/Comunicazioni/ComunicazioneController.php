@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Comunicazioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Requests\Comunicazione\CreateComunicazioneRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
@@ -11,47 +12,56 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\Condominio;
+use App\Services\ComunicazioneService;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Inertia\Response;
 
 class ComunicazioneController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\ComunicazioneService 
      */
-    public function index(Request $request)
-    {
+    public function __construct(
+        private ComunicazioneService $comunicazioneService
+    ) {}
 
-        $validated = $request->validate([
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'subject' => ['sometimes', 'string', 'max:255'],
-            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-        ]);
-    
-        $comunicazioni = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
-            ->when($validated['subject'] ?? false, function ($query, $subject) {
-                $query->where('subject', 'like', "%{$subject}%");
-            })
-            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                $query->whereIn('priority', $priorities)
-            )
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? 15)
-            ->withQueryString(); // mantiene i parametri GET nella paginazione
+    /**
+     * Display a list of comunicazioni.
+     *
+     * This method retrieves a list of "comunicazioni" based on the validated filters 
+     * provided by the user in the request. It also includes pagination information 
+     * and passes the data to the frontend via Inertia.
+     *
+     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request
+     * @return \Inertia\Response
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     */
+    public function index(ComunicazioneIndexRequest $request): Response
+    {
+        $validated = $request->validated();
+
+        $comunicazioni = $this->comunicazioneService->getComunicazioni(  
+            anagrafica: null,
+            condominioIds: null,
+            validated: $validated
+        );
     
         return Inertia::render('comunicazioni/ComunicazioniList', [
-            'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->response()->getData(true)['data'],
+            'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->resolve(),
             'meta' => [
                 'current_page' => $comunicazioni->currentPage(),
                 'last_page' => $comunicazioni->lastPage(),
                 'per_page' => $comunicazioni->perPage(),
                 'total' => $comunicazioni->total(),
             ],
-            'filters' => $request->only(['subject', 'priority'])
+            'filters' => Arr::only($validated, ['subject', 'priority'])
         ]);
     } 
 

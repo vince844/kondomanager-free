@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
 use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
@@ -14,14 +15,16 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
+use Inertia\Response;
 
 class UserSegnalazioneController extends Controller
 {
     /**
      * Create a new controller instance.
      *
-     * @param  \App\Services\SegnalazioneService  $segnalazioneService
-     * @param  \App\Services\SegnalazioneNotificationService  $notificationService
+     * @param  \App\Services\SegnalazioneService 
+     * @param  \App\Services\SegnalazioneNotificationService 
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
@@ -29,30 +32,42 @@ class UserSegnalazioneController extends Controller
     ) {}
     
     /**
-     * Display the user's dashboard.
+     * Display a paginated list of segnalazioni for authorized users.
      *
+     * Applies optional filters from the validated request (e.g., subject, priority, stato),
+     * retrieves the paginated list using the SegnalazioneService, and returns it to the
+     * Inertia-powered frontend along with pagination metadata and applied filters.
+     *
+     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request
      * @return \Inertia\Response
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
-    public function index()
+    public function index(SegnalazioneIndexRequest $request): Response
     {
-        Gate::authorize('view', Segnalazione::class);
+        Gate::authorize('view', Segnalazione::class);  
 
+        $validated = $request->validated();
+    
         try {
 
             $user = Auth::user();
 
-            if (!$user || !$user->anagrafica) {
+            if (!$user?->anagrafica) {
                 abort(403, __('auth.not_authenticated'));
             }
 
+            // Get user anagrafica
             $anagrafica = $user->anagrafica;
             // Fetch the related condominio IDs
             $condominioIds = $anagrafica->condomini->pluck('id');
             // Get filtered segnalazioni from the service
-            $segnalazioni = $this->segnalazioneService->getSegnalazioni($anagrafica, $condominioIds);
-            // Condomini options for dropdown or filtering
-            $condomini = $anagrafica->condomini()->orderBy('nome')->get();
-        
+            $segnalazioni = $this->segnalazioneService->getSegnalazioni(
+                anagrafica: $anagrafica,
+                condominioIds: $condominioIds,
+                validated: $validated
+            );
+
         } catch (\Exception $e) {
 
             Log::error('Error getting user segnalazioni: ' . $e->getMessage());
@@ -61,10 +76,17 @@ class UserSegnalazioneController extends Controller
         }
 
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection($segnalazioni),
-            'condominioOptions' => CondominioOptionsResource::collection($condomini)
-        ]); 
-    }
+            'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->resolve(),
+            'meta' => [
+                'current_page' => $segnalazioni->currentPage(),
+                'last_page' => $segnalazioni->lastPage(),
+                'per_page' => $segnalazioni->perPage(),
+                'total' => $segnalazioni->total(),
+            ],
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
+        ]);  
+
+    } 
 
     /**
      * Show the form for creating a new resource.

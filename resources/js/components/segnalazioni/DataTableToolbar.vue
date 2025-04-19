@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Link } from '@inertiajs/vue3'
 import { BellPlus } from 'lucide-vue-next'
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
-import { priorityConstants } from '@/lib/segnalazioni/constants'
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants'
 import { usePermission } from "@/composables/permissions";
 
 const { hasPermission } = usePermission();
@@ -22,23 +22,32 @@ const props = defineProps<DataTableToolbarProps>()
 
 const subjectFilter = ref('')
 
-// ✅ Read current priority filter from column state
+// Read current priority filter from column state
 const priorityColumn = props.table.getColumn('priority')
+// Read current stato filter from column state
+const statoColumn = props.table.getColumn('stato')
+
 const priorityFilter = computed(() => {
   const val = priorityColumn?.getFilterValue()
   return Array.isArray(val) ? val : []
 })
 
-// ✅ Watch both filters and send to backend
+const statoFilter = computed(() => {
+  const val = statoColumn?.getFilterValue()
+  return Array.isArray(val) ? val : []
+})
+
+// Watch filters and send to backend
 watchDebounced(
-  [subjectFilter, priorityFilter],
-  ([subject, priority]) => {
+  [subjectFilter, priorityFilter, statoFilter],
+  ([subject, priority, stato]) => {
     const params: Record<string, any> = {
       page: 1,
     }
 
     if (subject) params.subject = subject
     if (priority.length > 0) params.priority = priority
+    if (stato.length > 0) params.stato = stato
 
     router.get(route('admin.segnalazioni.index'), params, {
       preserveState: true,
@@ -50,32 +59,50 @@ watchDebounced(
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
-    <div class="flex items-center space-x-2">
+  <div class="flex flex-col gap-2 w-full mb-3 mt-4 lg:flex-row lg:items-center lg:justify-between">
+    <!-- Input + Filters Container -->
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
+      <!-- Search Input (Full width on mobile, inline on desktop) -->
       <Input
         placeholder="Filtra per titolo..."
         v-model="subjectFilter"
-        class="h-8 w-[150px] lg:w-[250px]"
+        class="h-8 w-full lg:w-[250px]"
       />
 
-      <DataTableFacetedFilter
-        v-if="priorityColumn"
-        :column="priorityColumn"
-        title="Priorità"
-        :options="priorityConstants"
-        :isLoading="false"
-        @update:filter="() => {}" 
-      />
+      <!-- Filters Stack (Mobile) / Row (Desktop) -->
+      <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <DataTableFacetedFilter
+          v-if="priorityColumn"
+          :column="priorityColumn"
+          title="Priorità"
+          :options="priorityConstants"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+
+        <DataTableFacetedFilter
+          v-if="statoColumn"
+          :column="statoColumn"
+          title="Stato"
+          :options="statoConstants"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
+        />
+      </div>
     </div>
 
+    <!-- Crea Button (Mobile: Below | Desktop: Far Right) -->
     <Button
       v-if="hasPermission(['Crea segnalazioni'])"
-      as="a"
-      :href="route('admin.segnalazioni.create')"
-      class="hidden h-8 lg:flex ml-auto items-center gap-2"
+      as-child
+      class="order-last lg:order-none lg:ml-auto"
     >
-      <BellPlus class="w-4 h-4" />
-      <span>Crea</span>
+      <Link :href="route('admin.segnalazioni.create')" class="flex items-center gap-2">
+        <BellPlus class="w-4 h-4" />
+        <span>Crea</span>
+      </Link>
     </Button>
 
   </div>

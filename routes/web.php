@@ -6,6 +6,7 @@ use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Comunicazioni\ComunicazioniStatsController;
+use App\Http\Controllers\Comunicazioni\UserComunicazioneController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
@@ -21,10 +22,8 @@ use App\Http\Controllers\Segnalazioni\UserSegnalazioneController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
-use App\Models\Anagrafica;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use Illuminate\Http\Request;
 
 Route::get('/', function () {
     return Inertia::render('Welcome');
@@ -85,6 +84,9 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::resource('anagrafiche', UserAnagraficaController::class);
     Route::resource('segnalazioni', UserSegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
+    ]);
+    Route::resource('comunicazioni', UserComunicazioneController::class)->parameters([
+        'comunicazioni' => 'comunicazione'
     ]);
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 });

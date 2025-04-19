@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Segnalazioni;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
+use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -12,51 +13,62 @@ use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
 use App\Notifications\NewSegnalazioneNotification;
+use App\Services\SegnalazioneService;
 use Exception;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Gate;
+use Inertia\Response;
+use Illuminate\Support\Arr;
 
 class SegnalazioneController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\SegnalazioneService 
+     * @param  \App\Services\SegnalazioneNotificationService 
      */
-    public function index(Request $request)
+    public function __construct(
+        private SegnalazioneService $segnalazioneService
+    ) {}
+
+    /**
+     * Display a paginated list of segnalazioni for authorized users.
+     *
+     * Applies optional filters from the validated request (e.g., subject, priority, stato),
+     * retrieves the paginated list using the SegnalazioneService, and returns it to the
+     * Inertia-powered frontend along with pagination metadata and applied filters.
+     *
+     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request
+     * @return \Inertia\Response
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     */
+    public function index(SegnalazioneIndexRequest $request): Response
     {
         Gate::authorize('view', Segnalazione::class);
 
-        $validated = $request->validate([
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'subject' => ['sometimes', 'string', 'max:255'],
-            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-        ]);
-    
-        $segnalazioni = Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])
-            ->when($validated['subject'] ?? false, function ($query, $subject) {
-                $query->where('subject', 'like', "%{$subject}%");
-            })
-            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                $query->whereIn('priority', $priorities)
-            )
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? 15)
-            ->withQueryString(); // mantiene i parametri GET nella paginazione
+        $validated = $request->validated();
+
+        $segnalazioni = $this->segnalazioneService->getSegnalazioni(  
+            anagrafica: null,
+            condominioIds: null,
+            validated: $validated
+        );
     
         return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->response()->getData(true)['data'],
+            'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->resolve(),
             'meta' => [
                 'current_page' => $segnalazioni->currentPage(),
                 'last_page' => $segnalazioni->lastPage(),
                 'per_page' => $segnalazioni->perPage(),
                 'total' => $segnalazioni->total(),
             ],
-            'filters' => $request->only(['subject', 'priority'])
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);
     }
   

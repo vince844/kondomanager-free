@@ -19,7 +19,7 @@ class DashboardController extends Controller
     {
         return Inertia::render('dashboard/Dashboard', [
             'segnalazioni'  => SegnalazioneResource::collection(Segnalazione::limit(3)->latest()->get()),
-            'comunicazioni'  => ComunicazioneResource::collection(Comunicazione::limit(3)->latest()->get()),
+            'comunicazioni' => ComunicazioneResource::collection(Comunicazione::limit(3)->latest()->get()),
         ]);
     }
 }

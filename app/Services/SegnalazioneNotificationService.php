@@ -6,7 +6,6 @@ use App\Models\Segnalazione;
 use App\Models\User;
 use App\Models\Anagrafica;
 use Illuminate\Support\Facades\Notification;
-
 use App\Notifications\NewAdminSegnalazioneNotification;
 use App\Notifications\NewSegnalazioneNotification;
  

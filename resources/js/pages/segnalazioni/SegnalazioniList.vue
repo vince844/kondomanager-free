@@ -5,11 +5,11 @@ import DataTable from '@/components/segnalazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/segnalazioni/columns';
+import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Segnalazione } from '@/types/segnalazioni';
-import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 
 defineProps<{ 
   segnalazioni: Segnalazione[], 
@@ -65,19 +65,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head title="Elenco segnalazioni guasto" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="px-4 py-6">
-      <Heading title="Elenco comunicazioni bacheca" description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate" />
+      <Heading title="Elenco segnalazioni guasto" description="Di seguito la tabella con l'elenco di tutte le segnalazioni guasto registrate" />
 
       <div ref="statsSegnalazioniContainerRef">
         <SegnalazioniStats ref="statsRef" />
       </div>
           
-      <div v-if="flashMessage" class="py-4"> 
-        <Alert :message="flashMessage.message" :type="flashMessage.type" />
-      </div>
+      <Transition name="fade">
+        <div v-if="flashMessage" class="py-4"> 
+          <Alert :message="flashMessage.message" :type="flashMessage.type" />
+        </div>
+      </Transition>
      
       <div class="container mx-auto">
     
