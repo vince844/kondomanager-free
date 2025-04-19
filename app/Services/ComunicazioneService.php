@@ -44,27 +44,27 @@ class ComunicazioneService
             return Comunicazione::query()->whereRaw('1 = 0')->paginate(1); // Return an empty result
         }
 
-       return Comunicazione::with('anagrafiche', 'condomini')
-            ->whereHas('anagrafiche', function ($query) use ($anagrafica) {
-                $query->where('anagrafica_id', $anagrafica->id);
-            })
-            ->orWhereHas('condomini', function ($query) use ($anagrafica) {
-                $query->whereNotIn('comunicazione_condominio.comunicazione_id', function ($subQuery) {
-                    $subQuery->select('comunicazione_id')
-                            ->from('anagrafica_comunicazione');
+        return Comunicazione::with('anagrafiche', 'condomini')
+            ->where(function($query) use ($anagrafica, $condominioIds) {
+                // Communications directly assigned to the user
+                $query->whereHas('anagrafiche', function ($q) use ($anagrafica) {
+                    $q->where('anagrafica_id', $anagrafica->id);
                 });
-
-                $query->whereIn('comunicazione_condominio.condominio_id', function ($subQuery) use ($anagrafica) {
-                    $subQuery->select('anagrafica_condominio.condominio_id')
-                            ->from('anagrafica_condominio')
-                            ->where('anagrafica_condominio.anagrafica_id', $anagrafica->id);
+                
+                // OR communications assigned to condominios the user belongs to
+                $query->orWhereHas('condomini', function ($q) use ($condominioIds) {
+                    $q->whereIn('condominio_id', $condominioIds);
+                });
+            })
+            ->when($validated['search'] ?? false, function ($query, $search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('subject', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
                 });
             })
             ->orderBy('created_at', 'desc')
             ->paginate($validated['per_page'] ?? 10)
-            ->withQueryString(); 
-
-
+            ->withQueryString();
     }
     
     private function getAdminScopedQuery(

@@ -67,6 +67,7 @@ class UserComunicazioneController extends Controller
                 'per_page' => $comunicazioni->perPage(),
                 'total' => $comunicazioni->total(),
             ],
+            'search' => $validated['search'] ?? '', // ✅ Add this
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);
     }
