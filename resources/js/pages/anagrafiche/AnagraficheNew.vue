@@ -17,6 +17,7 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import { LoaderCircle } from 'lucide-vue-next';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
+import { usePermission } from '@/composables/permissions';
 
 const props = defineProps<{
   buildings: Building[];
@@ -44,6 +45,8 @@ const documents = [
       id: 'id_card',
   }
 ];
+
+const { hasPermission } = usePermission();
 
 const form = useForm({
     nome: '',
@@ -84,11 +87,20 @@ const submit = () => {
       <div class="px-4 py-6">
         
         <Heading title="Crea anagrafica" description="Compila il seguente modulo per la creazione di una nuova anagrafica" />
-        
-            <Button class="ml-auto hidden h-8 lg:flex">
-              <List class="w-4 h-4" />
-              <Link :href="route('admin.anagrafiche.index')">Elenco</Link>
-            </Button>
+
+            <!-- Container for buttons (wraps buttons for alignment) -->
+            <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
+              <!-- Button for "Elenco anagrafiche" -->
+              <Link 
+                  as="button"
+                  v-if="hasPermission(['Visualizza utenti'])"
+                  :href="route('admin.anagrafiche.index')" 
+                  class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+              >
+                  <List class="w-4 h-4" />
+                  <span>Elenco</span>
+              </Link>
+            </div>
 
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">

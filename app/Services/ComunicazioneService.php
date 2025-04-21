@@ -32,6 +32,20 @@ class ComunicazioneService
 
     }
 
+    /**
+     * Build and return a paginated list of published comunicazioni scoped to a regular user.
+     *
+     * The user can view comunicazioni that are:
+     * - Associated with their anagrafica ID, OR
+     * - Linked to their condomini (only if the segnalazione has no anagrafiche).
+     *
+     * If no valid anagrafica or condominio IDs are provided, an empty result set is returned.
+     *
+     * @param  \App\Models\Anagrafica|null  $anagrafica
+     * @param  \Illuminate\Support\Collection|null  $condominioIds
+     * @param  array  $validated  Optional filters: subject (string), priority (array), stato (array), per_page (int)
+     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     */
     private function getuserScopedQuery(
         ?Anagrafica $anagrafica, 
         ?Collection $condominioIds, 
@@ -67,20 +81,29 @@ class ComunicazioneService
             ->withQueryString();
     }
     
+    /**
+    * Build and return a paginated list of comunicazioni for administrators or collaborators.
+    *
+    * Admins can view all comunicazioni, regardless of associations.
+    * Supports optional filters such as subject, priority, stato, and pagination.
+    *
+    * @param  array  $validated  Optional filters: subject (string), priority (array), stato (array), per_page (int)
+    * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    */
     private function getAdminScopedQuery(
         array $validated = []
     ){
 
        return Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
-                ->when($validated['subject'] ?? false, function ($query, $subject) {
-                    $query->where('subject', 'like', "%{$subject}%");
-                })
-                ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                    $query->whereIn('priority', $priorities)
-                )
-                ->orderBy('created_at', 'desc')
-                ->paginate($validated['per_page'] ?? 15)
-                ->withQueryString(); 
+            ->when($validated['subject'] ?? false, function ($query, $subject) {
+                $query->where('subject', 'like', "%{$subject}%");
+            })
+            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
+                $query->whereIn('priority', $priorities)
+            )
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? 15)
+            ->withQueryString(); 
     }
 
 }

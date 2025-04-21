@@ -9,17 +9,11 @@ import type { Comunicazione } from '@/types/comunicazioni';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission, hasRole } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
-defineProps<{ comunicazione: Comunicazione }>()
-
-const rolePrefix = computed(() => {
-  if (hasRole(['amministratore', 'collaboratore'])) {
-      return 'admin';
-  } else {
-      return 'user';
-  }
-});
+defineProps<{ 
+  comunicazione: Comunicazione 
+}>()
 
 const comunicazioneID = ref('');
 
@@ -64,7 +58,7 @@ const deleteComunicazione = () => {
 
       <DropdownMenuItem  v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])">
         <Link
-          :href="route(`${rolePrefix}.comunicazioni.edit`, { id: comunicazione.id })"
+          :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -73,7 +67,10 @@ const deleteComunicazione = () => {
         </Link>
       </DropdownMenuItem>
   
-      <DropdownMenuItem v-if="hasPermission(['Elimina segnalazioni'])" @click="handleDelete(comunicazione)" >
+      <DropdownMenuItem 
+        v-if="hasPermission(['Elimina segnalazioni'])" 
+        @click="handleDelete(comunicazione)" 
+      >
         <Trash2 class="w-4 h-4 text-xs" />
          Elimina 
       </DropdownMenuItem>

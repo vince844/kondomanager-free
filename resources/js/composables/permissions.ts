@@ -11,8 +11,15 @@ type ExtendedUser = BaseUser & {
   permissions?: string[];  // Change to string array if permissions are strings, not objects
 };
 
+type RolePrefix = 'admin' | 'user';
+
 // Type for items that can be checked for access, like NavItems or raw role/permission arrays
 type AccessCheckItem = NavItem | { roles?: string[]; permissions?: string[] } | string[];
+
+const DEFAULT_ROLE_MAPPINGS = {
+  'amministratore': 'admin',
+  'collaboratore': 'admin'
+} as const;
 
 export function usePermission() {
   const page = usePage();
@@ -55,7 +62,24 @@ export function usePermission() {
   
     return true;
   };
-  
 
-  return { hasRole, hasPermission, canAccess };
+  const getRolePrefix = (
+    roleMappings: Record<string, string> = DEFAULT_ROLE_MAPPINGS
+  ): RolePrefix => {
+    const userRoles = auth.value?.user?.roles ?? [];
+    const matchedRole = Object.keys(roleMappings).find(role => userRoles.includes(role));
+    return (matchedRole ? roleMappings[matchedRole] : 'user') as RolePrefix;
+  };
+
+  const generateRoute = (routeName: string): string => {
+    const prefix = getRolePrefix();
+    return `${prefix}.${routeName}`;
+  };
+
+  const generatePath = (path: string): string => {
+    const prefix = getRolePrefix();
+    return `/${prefix}/${path}`;
+  };
+
+  return { hasRole, hasPermission, canAccess, getRolePrefix, generateRoute, generatePath  };
 }

@@ -5,21 +5,13 @@ import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
-import type { Segnalazione } from '@/types/segnalazioni';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import type { Segnalazione } from '@/types/segnalazioni';
 
-const { hasPermission, hasRole } = usePermission();
+const { hasPermission, hasRol, generateRoute } = usePermission();
 
 defineProps<{ segnalazione: Segnalazione }>()
-
-const rolePrefix = computed(() => {
-  if (hasRole(['amministratore', 'collaboratore'])) {
-      return 'admin';
-  } else {
-      return 'user';
-  }
-});
 
 const segnalazioneID = ref('');
 
@@ -62,9 +54,11 @@ const deleteSegnalazione = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem  v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])">
+      <DropdownMenuItem  
+        v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])"
+      >
         <Link
-          :href="route(`${rolePrefix}.segnalazioni.edit`, { id: segnalazione.id })"
+          :href="route(generateRoute('segnalazioni.edit'), { id: segnalazione.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -73,7 +67,10 @@ const deleteSegnalazione = () => {
         </Link>
       </DropdownMenuItem>
   
-      <DropdownMenuItem v-if="hasPermission(['Elimina segnalazioni'])" @click="handleDelete(segnalazione)" >
+      <DropdownMenuItem 
+        v-if="hasPermission(['Elimina segnalazioni'])" 
+        @click="handleDelete(segnalazione)" 
+      >
         <Trash2 class="w-4 h-4 text-xs" />
          Elimina 
       </DropdownMenuItem>

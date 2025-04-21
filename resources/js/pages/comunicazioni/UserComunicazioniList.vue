@@ -1,10 +1,13 @@
 <script setup lang="ts">
+
 import { ref, onMounted, watch, computed } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Heading from "@/components/Heading.vue";
 import type { Comunicazione } from "@/types/comunicazioni";
+import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
+import { Button } from "@/components/ui/button";
 import {
   CircleArrowDown,
   CircleArrowRight,
@@ -13,8 +16,6 @@ import {
   Loader2,
   SearchX
 } from "lucide-vue-next";
-
-import { Button } from "@/components/ui/button";
 import {
   Pagination,
   PaginationEllipsis,
@@ -45,6 +46,10 @@ const errorState = ref<string | null>(null);
 const showNoResults = ref(false);
 const isInitialLoad = ref(true); // Track initial load state
 const showDelayedLoading = ref(false);
+
+const statsRef = ref()
+const statsContainerRef = ref()
+const hasLoaded = ref(false)
 
 const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(
   () => showDelayedLoading.value = true,
@@ -182,6 +187,20 @@ onMounted(() => {
       startLoadingTimer();
     }
   });
+
+  onMounted(() => {
+  const observer = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting && !hasLoaded.value) {
+      statsRef.value?.loadStats?.()
+      hasLoaded.value = true
+      observer.disconnect()
+    }
+  })
+
+  if (statsContainerRef.value) {
+    observer.observe(statsContainerRef.value)
+  }
+})
   
   router.on('finish', () => {
     loadingCount.value--;
@@ -206,6 +225,10 @@ onMounted(() => {
         title="Elenco comunicazioni bacheca"
         description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate"
       />
+
+      <div ref="statsComunicazioniContainerRef" class="mb-4">
+        <ComunicazioniStats ref="statsRef" />
+      </div>
 
       <!-- Search input with error display -->
       <div class="container mx-auto">

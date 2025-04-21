@@ -1,18 +1,18 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { watchDebounced } from '@vueuse/core'
-import { router } from '@inertiajs/vue3'
-import type { Table } from '@tanstack/vue-table'
-import type { Segnalazione } from '@/types/segnalazioni'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Link } from '@inertiajs/vue3'
-import { BellPlus } from 'lucide-vue-next'
-import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
-import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants'
+
+import { ref, computed } from 'vue';
+import { watchDebounced } from '@vueuse/core';
+import { router, Link } from '@inertiajs/vue3';
+import type { Table } from '@tanstack/vue-table';
+import type { Segnalazione } from '@/types/segnalazioni';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { BellPlus } from 'lucide-vue-next';
+import DataTableFacetedFilter from './DataTableFacetedFilter.vue';
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -94,16 +94,15 @@ watchDebounced(
     </div>
 
     <!-- Crea Button (Mobile: Below | Desktop: Far Right) -->
-    <Button
+    <Link 
+      as="button"
       v-if="hasPermission(['Crea segnalazioni'])"
-      as-child
-      class="order-last lg:order-none lg:ml-auto"
+      :href="route(generateRoute('segnalazioni.create'))" 
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
-      <Link :href="route('admin.segnalazioni.create')" class="flex items-center gap-2">
-        <BellPlus class="w-4 h-4" />
-        <span>Crea</span>
-      </Link>
-    </Button>
+      <BellPlus class="w-4 h-4" />
+      <span>Crea</span>
+    </Link>
 
   </div>
 </template>

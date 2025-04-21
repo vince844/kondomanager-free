@@ -24,7 +24,7 @@ class SegnalazioniStatsController extends Controller
     {
         $user = Auth::user();
 
-        if($user->hasRole('amministratore')) {
+        if($user->hasRole(['amministratore', 'collaboratore'])) {
 
             $counts = Segnalazione::selectRaw("
                 SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
@@ -56,7 +56,7 @@ class SegnalazioniStatsController extends Controller
     }
 
     /**
-     * Get a query scoped to the user's anagrafica and associated condominios.
+     * Get a query scoped to the user's anagrafica and associated condomini.
      *
      * This method builds a query to filter segnalazioni based on whether they are 
      * associated with the user's anagrafica or if the segnalazione belongs to any of 

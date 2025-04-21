@@ -9,25 +9,16 @@ import { Badge }  from '@/components/ui/badge';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole } = usePermission();
+const { hasRole, generateRoute } = usePermission();
 
-// Compute the base URL for different roles (admin, user, manager, etc.)
-const rolePrefix = computed(() => {
-  if (hasRole(['amministratore'])) {
-      return 'admin';
-  } else {
-      return 'user';
-  }
-});
-
-  export const columns = (): ColumnDef<Segnalazione>[] => [
+export const columns = (): ColumnDef<Segnalazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
     cell: ({ row }) => {
       const segnalazione = row.original
       return h(Link, {
-        href: route(`${rolePrefix.value}.segnalazioni.show`, { id: segnalazione.id }),
+        href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         prefetch: true,
       }, () => segnalazione.subject)

@@ -17,7 +17,7 @@ import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags,
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole, canAccess } = usePermission();
+const { generatePath, hasRole, canAccess } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -34,22 +34,12 @@ const isCurrentRoute = (url: string) => {
     return page.url === url;
 };
 
-// Compute the base URL for different roles (admin, user, manager, etc.)
-const rolePrefix = computed(() => {
-    if (hasRole(['amministratore', 'collaboratore'])) {
-        return '/admin';
-    }else {
-        return '/user';
-    }
-});
-
-
 const activeItemStyles = computed(() => (url: string) => (isCurrentRoute(url) ? 'text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100' : ''));
 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: `${rolePrefix.value}/dashboard`,
+        href: generatePath('dashboard'),
         icon: LayoutGrid
     },
     {
@@ -61,19 +51,19 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Anagrafiche',
-        href: `${rolePrefix.value}/anagrafiche`,
+        href: generatePath('anagrafiche'),
         icon: SquareLibrary,
         roles: ['amministratore', 'collaboratore']
     },
     {
         title: 'Bacheca',
-        href: `${rolePrefix.value}/comunicazioni`,
+        href: generatePath('comunicazioni'),
         icon: LayoutDashboard,
         permissions: ['Visualizza comunicazioni'],
     },
     {
         title: 'Segnalazioni',
-        href: `${rolePrefix.value}/segnalazioni`,
+        href: generatePath('segnalazioni'),
         icon: Tags,
         permissions: ['Visualizza segnalazioni'],
     }
@@ -114,13 +104,13 @@ const rightNavItems: NavItem[] = [
                             <div class="flex h-full flex-1 flex-col justify-between space-y-4 py-6">
                                 <nav class="-mx-3 space-y-1">
                                     <Link
-                                        
                                         v-for="item in mainNavItems"
+                                        v-if="canAccess(item)"
                                         :key="item.title"
                                         :href="item.href"
                                         class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent"
                                         :class="activeItemStyles(item.href)"
-                                    >
+                                        >
                                         <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
                                         {{ item.title }}
                                     </Link>
@@ -144,7 +134,7 @@ const rightNavItems: NavItem[] = [
                     </Sheet>
                 </div>
 
-                <Link :href="`${rolePrefix}/dashboard`" class="flex items-center gap-x-2">
+                <Link :href="generatePath('dashboard')" class="flex items-center gap-x-2">
                     <AppLogo class="hidden h-6 xl:block" />
                 </Link>
 

@@ -1,4 +1,4 @@
-import { h, computed } from 'vue';
+import { h } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -6,29 +6,18 @@ import type { Building } from '@/types/buildings';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
-import { Badge }  from '@/components/ui/badge';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
 
-const { hasRole } = usePermission();
+const { hasRole,  generateRoute } = usePermission();
 
-// Compute the base URL for different roles (admin, user, manager, etc.)
-const rolePrefix = computed(() => {
-  if (hasRole(['amministratore'])) {
-      return 'admin';
-  } else {
-      return 'user';
-  }
-});
-
-  export const columns = (): ColumnDef<Comunicazione>[] => [
+export const columns = (): ColumnDef<Comunicazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
     cell: ({ row }) => {
       const comunicazione = row.original
       return h(Link, {
-        href: route(`${rolePrefix.value}.comunicazioni.show`, { id: comunicazione.id }),
+        href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
         prefetch: true,
       }, () => comunicazione.subject)
