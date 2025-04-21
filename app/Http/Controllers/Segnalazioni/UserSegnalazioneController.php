@@ -111,7 +111,19 @@ class UserSegnalazioneController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Handles the creation of a new user-submitted segnalazione (fault report).
+     *
+     * This method performs the following actions:
+     * - Authorizes the current user using Laravel Gate to ensure they have permission to create a segnalazione.
+     * - Validates the incoming request using the UserCreateSegnalazioneRequest form request.
+     * - Attempts to persist the new segnalazione to the database.
+     * - Sends notifications to administrators if the segnalazione is successfully created.
+     * - Determines the appropriate success message based on whether the segnalazione is auto-approved.
+     * - Redirects the user to their segnalazioni list with a success message.
+     * - Catches any exception during the process, logs the error, and redirects the user with an error message.
+     *
+     * @param UserCreateSegnalazioneRequest $request The validated request containing segnalazione data.
+     * @return RedirectResponse Redirects the user to the segnalazioni index with a status message.
      */
     public function store(UserCreateSegnalazioneRequest $request): RedirectResponse
     {
@@ -124,7 +136,7 @@ class UserSegnalazioneController extends Controller
 
             $segnalazione = Segnalazione::create($validated);
 
-            $this->notificationService->notify($segnalazione);
+            $this->notificationService->sendAdminNotifications($segnalazione);
 
             $messageText = $segnalazione->is_approved
             ? "La nuova segnalazione guasto è stata pubblicata con successo!"

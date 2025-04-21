@@ -38,15 +38,6 @@ class NewAdminSegnalazioneNotification extends Notification implements ShouldQue
      */
     public function toMail(object $notifiable): MailMessage
     {
-        
-     /*    $isAdminOrCollaboratore = false;
-
-        // Check if it's a User and has the right role
-        if ($notifiable instanceof \App\Models\User) {
-            $isAdminOrCollaboratore = $notifiable->hasRole(['amministratore', 'collaboratore']);
-        }
-
-        $routePrefix = $isAdminOrCollaboratore ? 'admin' : 'user'; */
 
         return (new MailMessage)
         ->subject('Nuova segnalazione guasto da approvare')

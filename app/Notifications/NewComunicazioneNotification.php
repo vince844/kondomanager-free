@@ -3,25 +3,25 @@
 namespace App\Notifications;
 
 use App\Helpers\RouteHelper;
-use App\Models\Segnalazione;
+use App\Models\Comunicazione;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class NewSegnalazioneNotification extends Notification implements ShouldQueue
+class NewComunicazioneNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $segnalazione;
+    public $comunicazione;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct(Segnalazione $segnalazione)
+    public function __construct(Comunicazione $comunicazione)
     {
-        $this->segnalazione = $segnalazione;
+        $this->comunicazione = $comunicazione;
     }
 
     /**
@@ -43,13 +43,12 @@ class NewSegnalazioneNotification extends Notification implements ShouldQueue
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-        ->subject('Nuova segnalazione guasto')
-        ->greeting('Salve ' . $notifiable->nome)
-        ->line('Una nuova segnalazione guasto è stata creata.')
-        ->line('**Oggetto:** ' . $this->segnalazione->subject)
-        ->line('**Priorità:** ' . Str::ucfirst($this->segnalazione->priority))
-        ->line('**Stato:** ' . Str::ucfirst($this->segnalazione->stato))
-        ->action('Visualizza segnalazione', url("/{$routePrefix}/segnalazioni/" . $this->segnalazione->id));
+            ->subject('Nuova comunicazione in bacheca')
+            ->greeting('Salve ' . $notifiable->nome)
+            ->line("L'amministratore ha creato una nuova comunicazione nella bacheca del condominio.")
+            ->line('**Oggetto:** ' . $this->comunicazione->subject)
+            ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
+            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));;
     }
 
     /**
@@ -60,7 +59,7 @@ class NewSegnalazioneNotification extends Notification implements ShouldQueue
     public function toArray(object $notifiable): array
     {
         return [
-
+            //
         ];
     }
 }

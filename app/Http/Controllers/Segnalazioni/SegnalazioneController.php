@@ -12,14 +12,12 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
-use App\Notifications\NewSegnalazioneNotification;
+use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
-use Exception;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Response;
 use Illuminate\Support\Arr;
@@ -27,25 +25,21 @@ use Illuminate\Support\Arr;
 class SegnalazioneController extends Controller
 {
     /**
-     * Create a new controller instance.
+     * SegnalazioneController constructor.
      *
-     * @param  \App\Services\SegnalazioneService 
-     * @param  \App\Services\SegnalazioneNotificationService 
+     * @param SegnalazioneService $segnalazioneService
+     * @param SegnalazioneNotificationService $notificationService
      */
     public function __construct(
-        private SegnalazioneService $segnalazioneService
+        private SegnalazioneService $segnalazioneService,
+        private SegnalazioneNotificationService $notificationService
     ) {}
 
     /**
-     * Display a paginated list of segnalazioni for authorized users.
+     * Display a listing of segnalazioni with optional filters.
      *
-     * Applies optional filters from the validated request (e.g., subject, priority, stato),
-     * retrieves the paginated list using the SegnalazioneService, and returns it to the
-     * Inertia-powered frontend along with pagination metadata and applied filters.
-     *
-     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request
-     * @return \Inertia\Response
-     *
+     * @param SegnalazioneIndexRequest $request
+     * @return Response
      * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function index(SegnalazioneIndexRequest $request): Response
@@ -73,9 +67,12 @@ class SegnalazioneController extends Controller
     }
   
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new segnalazione.
+     *
+     * @return Response
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
-    public function create()
+    public function create(): Response
     {
         Gate::authorize('create', Segnalazione::class);
 
@@ -85,8 +82,12 @@ class SegnalazioneController extends Controller
         ]); 
     }
 
-    /**
-     * Store a newly created resource in storage.
+     /**
+     * Store a newly created segnalazione in storage.
+     *
+     * @param CreateSegnalazioneRequest $request
+     * @return RedirectResponse
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function store(CreateSegnalazioneRequest $request): RedirectResponse
     {
@@ -101,21 +102,15 @@ class SegnalazioneController extends Controller
             $segnalazione = Segnalazione::create($validated);
 
             if (!empty($validated['anagrafiche'])) {
-
                 $segnalazione->anagrafiche()->attach($validated['anagrafiche']);
-                $recipients = Anagrafica::whereIn('id', $validated['anagrafiche'])->get();
-
-            }else{
-            
-                $recipients = Anagrafica::whereHas('condomini', function ($query) use ($validated) {
-                    $query->where('condominio_id', $validated['condominio_id']);
-                })->get();
-              
             }
 
             DB::commit();
 
-            Notification::send($recipients, new NewSegnalazioneNotification($segnalazione));
+            $this->notificationService->sendUserNotifications(
+                validated: $validated,
+                segnalazione: $segnalazione
+            );
 
             return to_route('admin.segnalazioni.index')->with([
                 'message' => [
@@ -124,7 +119,7 @@ class SegnalazioneController extends Controller
                 ]
             ]);
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
         
             DB::rollback();
 
@@ -142,9 +137,13 @@ class SegnalazioneController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Display the specified segnalazione.
+     *
+     * @param Segnalazione $segnalazione
+     * @return Response
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
-    public function show(Segnalazione $segnalazione)
+    public function show(Segnalazione $segnalazione): Response
     {
         Gate::authorize('view', Segnalazione::class);
 
@@ -156,9 +155,13 @@ class SegnalazioneController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified segnalazione.
+     *
+     * @param Segnalazione $segnalazione
+     * @return Response
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
-    public function edit(Segnalazione $segnalazione)
+    public function edit(Segnalazione $segnalazione): Response
     {
         Gate::authorize('update', $segnalazione);
         
@@ -172,7 +175,12 @@ class SegnalazioneController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified segnalazione in storage.
+     *
+     * @param CreateSegnalazioneRequest $request
+     * @param Segnalazione $segnalazione
+     * @return RedirectResponse
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function update(CreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
@@ -197,7 +205,7 @@ class SegnalazioneController extends Controller
                 ]
             ]);
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
 
             DB::rollback();
 
@@ -213,25 +221,53 @@ class SegnalazioneController extends Controller
     }
 
     /**
-     * Lock and unlock the segnalazione.
+     * Toggle the 'locked' status of a segnalazione (resolve/unresolve).
+     *
+     * @param Segnalazione $segnalazione
+     * @return RedirectResponse
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
-    public function toggleResolve(Segnalazione $segnalazione){
+    public function toggleResolve(Segnalazione $segnalazione): RedirectResponse
+    {
 
         Gate::authorize('update', $segnalazione);
 
-        $segnalazione->is_locked = !$segnalazione->is_locked;
-        $segnalazione->save();
+        try {
 
-        return redirect()->back();
+            $segnalazione->is_locked = !$segnalazione->is_locked;
+            $segnalazione->save();
+
+            return back()->with([
+                'message' => [
+                    'type' => 'success',
+                    'message' => "Lo stato della segnalazione è stato aggiornato con successo."
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            Log::error('Error toggling resolve status segnalazione: ' . $e->getMessage());
+            return back()->with([
+                'message' => [
+                    'type' => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento dello stato della segnalazione."
+                ]
+            ]);
+
+        }
         
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified segnalazione from storage.
+     *
+     * @param Segnalazione $segnalazione
+     * @return RedirectResponse
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function destroy(Segnalazione $segnalazione): RedirectResponse
     {
-        Gate::authorize('delete', Segnalazione::class);
+        Gate::authorize('delete', $segnalazione);
 
         try {
 
@@ -244,7 +280,7 @@ class SegnalazioneController extends Controller
                 ]
             ]);
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             
             Log::error('Error deleting segnalazione: ' . $e->getMessage());
 

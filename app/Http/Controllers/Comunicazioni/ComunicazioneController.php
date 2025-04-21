@@ -12,6 +12,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\Condominio;
+use App\Services\ComunicazioneNotificationService;
 use App\Services\ComunicazioneService;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -26,22 +27,25 @@ class ComunicazioneController extends Controller
      * Create a new controller instance.
      *
      * @param  \App\Services\ComunicazioneService 
+     * @param  \App\Services\ComunicazioneNotificationService 
      */
     public function __construct(
-        private ComunicazioneService $comunicazioneService
+        private ComunicazioneService $comunicazioneService,
+        private ComunicazioneNotificationService $notificationService
     ) {}
 
     /**
-     * Display a list of comunicazioni.
+     * Displays a list of comunicazioni based on validated filter parameters.
      *
-     * This method retrieves a list of "comunicazioni" based on the validated filters 
-     * provided by the user in the request. It also includes pagination information 
-     * and passes the data to the frontend via Inertia.
+     * This method handles the index route for comunicazioni. It validates the incoming request,
+     * fetches the filtered list of comunicazioni via the service layer, and renders the Inertia view
+     * with the data and pagination metadata.
      *
-     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request
-     * @return \Inertia\Response
+     * Currently, it passes `null` for `anagrafica` and `condominioIds`, meaning it retrieves all comunicazioni
+     * that match the validated filter criteria (like subject or priority).
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @param ComunicazioneIndexRequest $request The request containing optional filter parameters.
+     * @return \Illuminate\Http\Response The rendered Inertia page with comunicazioni data.
      */
     public function index(ComunicazioneIndexRequest $request): Response
     {
@@ -93,12 +97,15 @@ class ComunicazioneController extends Controller
             $comunicazione->condomini()->attach($validated['condomini_ids']);
 
             if (!empty($validated['anagrafiche'])) {
-
                 $comunicazione->anagrafiche()->attach($validated['anagrafiche']);
-        
             }
 
             DB::commit();
+
+            $this->notificationService->sendUserNotifications(
+                validated: $validated,
+                comunicazione: $comunicazione
+            );
 
             return to_route('admin.comunicazioni.index')->with([
                 'message' => [
@@ -111,7 +118,7 @@ class ComunicazioneController extends Controller
         
             DB::rollback();
 
-            Log::error('Error creating segnalazione: ' . $e->getMessage());
+            Log::error('Error creating comunicazione: ' . $e->getMessage());
 
             return to_route('admin.comunicazioni.index')->with([
                 'message' => [
@@ -147,7 +154,11 @@ class ComunicazioneController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified comunicazione with validated input data.
+     *
+     * @param CreateComunicazioneRequest $request
+     * @param Comunicazione $comunicazione
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione)
     {

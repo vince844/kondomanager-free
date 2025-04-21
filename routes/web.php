@@ -29,10 +29,6 @@ Route::get('/', function () {
     return Inertia::render('Welcome');
 })->name('home');
 
-/* Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified', 'CheckSuspendedUser', 'CheckHasAnagrafica'])->name('dashboard');  */
-
 /*
 |--------------------------------------------------------------------------
 | User Routes
@@ -91,13 +87,13 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 });
 
-Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
 /*
 |--------------------------------------------------------------------------
 | Condomini Routes
 |--------------------------------------------------------------------------
 */
 Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
+Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
 
 /*
 |--------------------------------------------------------------------------
@@ -114,7 +110,6 @@ Route::post('/password/new', [NewUserPasswordController::class, 'reset'])->name(
 */
 Route::resource('/inviti', InvitoController::class)->middleware(['auth', 'verified']);
 Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])->name('invito.register')->middleware('signed', 'throttle:6,1');
-
 
 /*
 |--------------------------------------------------------------------------
