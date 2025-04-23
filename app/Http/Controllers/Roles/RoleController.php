@@ -39,9 +39,18 @@ class RoleController extends Controller
     {
         Gate::authorize('create', Role::class);
 
-        return Inertia::render('ruoli/NuovoRuolo',[
+    /*     return Inertia::render('ruoli/NuovoRuolo',[
             'permissions' => PermissionResource::collection(Permission::all())
         ]);
+ */
+        // Exclude specific permissions (e.g., 'Accesso pannello amministratore')
+        $permissions = Permission::whereNotIn('name', ['Accesso pannello amministratore'])->get();
+
+        // Transform the permissions using PermissionResource
+        $permissions = PermissionResource::collection($permissions);
+
+        // Render the page with the filtered permissions
+        return Inertia::render('ruoli/NuovoRuolo', compact('permissions'));
     }
 
     /**
@@ -60,6 +69,10 @@ class RoleController extends Controller
         
         if (!empty($validated['permissions'])) {
             $role->syncPermissions($validated['permissions']);
+        }
+
+        if ($validated['accessAdmin']) {
+            $role->givePermissionTo('Accesso pannello amministratore'); 
         }
 
        return to_route('ruoli.index')->with([
@@ -125,6 +138,11 @@ class RoleController extends Controller
 
         $ruoli->syncPermissions($validated['permissions']);
 
+        if ($validated['accessAdmin']) {
+            $ruoli->givePermissionTo('Accesso pannello amministratore');
+        } else {
+            $ruoli->revokePermissionTo('Accesso pannello amministratore');
+        }
         return to_route('ruoli.index')->with([
             'message' => [
                 'type'    => 'success',

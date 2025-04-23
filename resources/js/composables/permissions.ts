@@ -1,9 +1,8 @@
-// composables/permissions.ts
 import { computed } from "vue";
 import { usePage } from "@inertiajs/vue3";
 import type { NavItem, User as BaseUser } from "@/types";
-import type { Role } from "@/types/roles";  // Assuming you still need Role type if required elsewhere
-import type { Permission } from "@/types/permissions";  // Assuming you still need Permission type if required elsewhere
+import type { Role } from "@/types/roles"; // Assuming you still need Role type if required elsewhere
+import type { Permission } from "@/types/permissions"; // Assuming you still need Permission type if required elsewhere
 
 // Extend the User interface to allow optional roles and permissions arrays
 type ExtendedUser = BaseUser & {
@@ -41,7 +40,7 @@ export function usePermission() {
   // Determine if access should be granted based on role or permission checks
   const canAccess = (item: AccessCheckItem): boolean => {
     if (Array.isArray(item)) {
-      return hasPermission(item);
+      return hasPermission(item); // If item is an array of permissions, check against permissions
     }
   
     const roles = item.roles ?? [];  // Use "roles" instead of "role"
@@ -54,21 +53,30 @@ export function usePermission() {
     const permissionCheck = hasDefinedPermissions ? hasPermission(permissions) : false;
   
     if (hasDefinedRoles && hasDefinedPermissions) {
-      return roleCheck || permissionCheck;
+      return roleCheck || permissionCheck; // Access granted if either role or permission matches
     }
   
     if (hasDefinedRoles) return roleCheck;
     if (hasDefinedPermissions) return permissionCheck;
   
-    return true;
+    return true;  // If no roles or permissions specified, grant access
   };
 
   const getRolePrefix = (
     roleMappings: Record<string, string> = DEFAULT_ROLE_MAPPINGS
   ): RolePrefix => {
     const userRoles = auth.value?.user?.roles ?? [];
-    const matchedRole = Object.keys(roleMappings).find(role => userRoles.includes(role));
-    return (matchedRole ? roleMappings[matchedRole] : 'user') as RolePrefix;
+    
+    // Check if user has either "amministratore", "collaboratore", or the permission "Accesso pannello amministratore"
+    const hasAdminAccess = userRoles.some(role => role === 'amministratore' || role === 'collaboratore') || auth.value?.user?.permissions?.includes('Accesso pannello amministratore');
+
+    // If the user has admin roles or the required permission, redirect to admin
+    if (hasAdminAccess) {
+      return 'admin';  // This will return 'admin' for users with roles 'amministratore' or 'collaboratore', or the permission 'Accesso pannello amministratore'
+    }
+
+    // Default to user if none of the above conditions are met
+    return 'user';
   };
 
   const generateRoute = (routeName: string): string => {
@@ -81,5 +89,5 @@ export function usePermission() {
     return `/${prefix}/${path}`;
   };
 
-  return { hasRole, hasPermission, canAccess, getRolePrefix, generateRoute, generatePath  };
+  return { hasRole, hasPermission, canAccess, getRolePrefix, generateRoute, generatePath };
 }

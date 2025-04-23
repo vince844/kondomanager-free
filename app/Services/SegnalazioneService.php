@@ -26,9 +26,10 @@ class SegnalazioneService
 
         $user = Auth::user();
 
-        return $user->hasRole(['amministratore', 'collaboratore'])
-        ? $this->getAdminScopedQuery($validated)
-        : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
+        return $user->hasRole(['amministratore', 'collaboratore']) || 
+               $user->hasPermissionTo('Accesso pannello amministratore')
+               ? $this->getAdminScopedQuery($validated)
+               : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
 
     }
 

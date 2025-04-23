@@ -6,22 +6,26 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
-import { LoaderCircle } from 'lucide-vue-next';
+import { LoaderCircle, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select"
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   role: Role;
   permissions: Permission[];
+  accessAdmin: boolean;
 }>(); 
 
 const form = useForm({
     name:  props.role?.name,
     description:  props.role?.description,
     permissions: props.role?.permissions.map(permission => permission.id) || [],
+    accessAdmin: props.role?.permissions.some(permission => permission.name === 'Accesso pannello amministratore') || false, 
 });
 
 onMounted(() => {
@@ -105,6 +109,23 @@ const submit = () => {
                                             </div>
                                         </div>
 
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <label class="flex items-center space-x-2 mt-6">
+                                            <Checkbox v-model:checked="form.accessAdmin" />
+                                            <span class="font-medium">Dai accessso al layout amministratore</span>
+
+                                            <!-- Tooltip with icon -->
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                <Info class="w-4 h-4 text-muted-foreground cursor-pointer" />
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right">
+                                                Se selezionata questa opzione permette di mostrare il layout amministratore per il nuovo ruolo creato.
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </label>
                                     </div>
 
                                     <div class="pt-5">

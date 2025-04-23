@@ -24,7 +24,7 @@ class SegnalazioniStatsController extends Controller
     {
         $user = Auth::user();
 
-        if($user->hasRole(['amministratore', 'collaboratore'])) {
+        if($user->hasRole(['amministratore', 'collaboratore']) || $user->hasPermissionTo('Accesso pannello amministratore')) {
 
             $counts = Segnalazione::selectRaw("
                 SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,

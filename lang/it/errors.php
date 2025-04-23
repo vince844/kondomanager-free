@@ -16,5 +16,9 @@ return [
         'invalid_signature' => 'il link che stai utilizzando potrebbe essere scaduto o non più valido.',
         'account_suspended' => "il tuo account è stato temporanemante sospeso, per favore contatta l'amministatore di condominio per riattivarlo.",
     ],
+    '403_title' => '403 - Accesso negato',
+    '403_heading' => '403 - Accesso negato',
+    '403_message' => 'Non hai i permessi necessari per accedere a questa pagina.',
+    'back_to_dashboard' => 'Torna alla Dashboard',
 
 ];

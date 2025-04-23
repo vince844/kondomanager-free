@@ -25,7 +25,8 @@ class UpdateRuoloRequest extends FormRequest
         return [
             'name'       => ['required','string','max:255', Rule::unique('roles')->ignore($this->ruoli, 'name')],
             'description' => 'required|string|max:255',
-            'permissions' => ['sometimes', 'array']
+            'permissions' => ['sometimes', 'array'],
+            'accessAdmin' => 'nullable|boolean'
         ];
     }
 

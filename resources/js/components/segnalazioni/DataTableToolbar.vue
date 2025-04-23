@@ -49,7 +49,7 @@ watchDebounced(
     if (priority.length > 0) params.priority = priority
     if (stato.length > 0) params.stato = stato
 
-    router.get(route('admin.segnalazioni.index'), params, {
+    router.get(route(generateRoute('segnalazioni.index')), params, {
       preserveState: true,
       replace: true,
     })

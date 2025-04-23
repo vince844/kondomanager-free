@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
+use Illuminate\Support\Facades\Gate;
 
 class ComunicazioneController extends Controller
 {
@@ -44,11 +45,16 @@ class ComunicazioneController extends Controller
      * Currently, it passes `null` for `anagrafica` and `condominioIds`, meaning it retrieves all comunicazioni
      * that match the validated filter criteria (like subject or priority).
      *
-     * @param ComunicazioneIndexRequest $request The request containing optional filter parameters.
-     * @return \Illuminate\Http\Response The rendered Inertia page with comunicazioni data.
+     * @param  \App\Http\Requests\ComunicazioneIndexRequest  $request  The validated request containing filter inputs.
+     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\Response  The Inertia view with a list of comunicazioni, pagination metadata, and filters applied.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to view the comunicazione.
      */
-    public function index(ComunicazioneIndexRequest $request): Response
+    public function index(ComunicazioneIndexRequest $request, Comunicazione $comunicazione): Response
     {
+        Gate::authorize('view', $comunicazione);
+
         $validated = $request->validated();
 
         $comunicazioni = $this->comunicazioneService->getComunicazioni(  
@@ -70,11 +76,21 @@ class ComunicazioneController extends Controller
     } 
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form to create a new comunicazione.
+     *
+     * This method first authorizes the user to create a new comunicazione.
+     * Then it renders the Inertia.js page for creating a comunicazione, providing
+     * a list of all condomini and an empty anagrafiche list.
+     *
+     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\Response  The Inertia view for creating a new comunicazione.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to create a comunicazione.
      */
-    public function create()
+    public function create(Comunicazione $comunicazione): Response
     {
-        
+        Gate::authorize('create', $comunicazione);
+
         return Inertia::render('comunicazioni/ComunicazioniNew',[
             'condomini'   => CondominioResource::collection(Condominio::all()),
             'anagrafiche' => []
@@ -82,10 +98,22 @@ class ComunicazioneController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created comunicazione in storage.
+     *
+     * This method handles the authorization, validation, creation, and association
+     * of a new comunicazione. It also sends notifications and handles potential
+     * errors using a transaction and proper logging.
+     *
+     * @param  \App\Http\Requests\CreateComunicazioneRequest  $request  The validated request containing comunicazione data.
+     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\RedirectResponse  Redirects to the index route with a success or error message.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to create a comunicazione.
      */
-    public function store(CreateComunicazioneRequest $request): RedirectResponse
+    public function store(CreateComunicazioneRequest $request, Comunicazione $comunicazione): RedirectResponse
     {
+        Gate::authorize('create', $comunicazione);
+
         $validated = $request->validated();
 
         try {
@@ -144,6 +172,8 @@ class ComunicazioneController extends Controller
      */
     public function edit(Comunicazione $comunicazione)
     {
+        Gate::authorize('update', $comunicazione);
+
         $comunicazione->load(['createdBy', 'condomini', 'anagrafiche']);
 
         return Inertia::render('comunicazioni/ComunicazioniEdit', [
@@ -162,6 +192,8 @@ class ComunicazioneController extends Controller
      */
     public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione)
     {
+        Gate::authorize('update', $comunicazione);
+
         $validated = $request->validated(); 
 
         try {

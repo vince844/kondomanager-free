@@ -61,7 +61,7 @@ Route::get('/comunicazioni/stats', ComunicazioniStatsController::class)->middlew
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
 
 // Admin routes
-Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role:amministratore|collaboratore'])->group(function () {
+Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->group(function () {
 
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([

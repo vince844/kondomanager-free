@@ -7,7 +7,7 @@ use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -28,8 +28,9 @@ class UserComunicazioneController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(ComunicazioneIndexRequest $request): Response
+    public function index(ComunicazioneIndexRequest $request, Comunicazione $comunicazione): Response
     {
+        Gate::authorize('view', $comunicazione);
 
         $validated = $request->validated();
     
@@ -72,51 +73,19 @@ class UserComunicazioneController extends Controller
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
 
     /**
      * Display the specified resource.
      */
-    public function show(Comunicazione $comunicazione)
+    public function show(Comunicazione $comunicazione): Response
     {
-        //
+        Gate::authorize('show', $comunicazione);
+
+        $comunicazione->load(['createdBy']);
+
+        return Inertia::render('comunicazioni/ComunicazioniView', [
+         'comunicazione'  => new ComunicazioneResource($comunicazione)
+        ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(Comunicazione $comunicazione)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Comunicazione $comunicazione)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Comunicazione $comunicazione)
-    {
-        //
-    }
 }

@@ -5,13 +5,15 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import { type BreadcrumbItem } from '@/types';
 import type { Permission } from '@/types/permissions';
-import { LoaderCircle } from 'lucide-vue-next';
+import { LoaderCircle, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 
 defineProps<{ permissions: Permission[] }>();
 
@@ -25,7 +27,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 const form = useForm({
     name: '',
     description: '',
-    permissions: []
+    permissions: [],
+    accessAdmin: false,
 });
 
 const submit = () => {
@@ -111,6 +114,23 @@ const submit = () => {
                                             </div>
                                         </div>
 
+                                    </div>
+
+                                    <div class="mb-4">
+                                        <label class="flex items-center space-x-2">
+                                            <Checkbox v-model:checked="form.accessAdmin" />
+                                            <span class="font-medium">Dai accessso al layout amministratore</span>
+
+                                            <!-- Tooltip with icon -->
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                <Info class="w-4 h-4 text-muted-foreground cursor-pointer" />
+                                                </TooltipTrigger>
+                                                <TooltipContent side="right">
+                                                Se selezionata questa opzione permette di mostrare il layout amministratore per il nuovo ruolo creato.
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </label>
                                     </div>
 
                                     <div class="pt-5">

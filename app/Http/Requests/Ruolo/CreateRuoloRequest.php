@@ -30,7 +30,8 @@ class CreateRuoloRequest extends FormRequest
                 Rule::unique('roles', 'name')->ignore($this->roles) 
             ],
             'description' => 'required|string|max:255',
-            'permissions' => ['sometimes', 'array']
+            'permissions' => ['sometimes', 'array'],
+            'accessAdmin' => 'nullable|boolean',
         ];
     }
 

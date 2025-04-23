@@ -17,7 +17,7 @@ import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags,
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
-const { generatePath, hasRole, canAccess } = usePermission();
+const { generatePath, canAccess } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];

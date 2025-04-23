@@ -46,7 +46,7 @@ const deleteComunicazione = () => {
 </script>
 
 <template>
-  <DropdownMenu v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni', 'Elimina segnalazioni'])" >
+  <DropdownMenu v-if="hasPermission(['Modifica comunicazioni', 'Modifica proprie comunicazioni', 'Elimina comunicazioni'])" >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -56,7 +56,7 @@ const deleteComunicazione = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem  v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])">
+      <DropdownMenuItem  v-if="hasPermission(['Modifica comunicazioni', 'Modifica proprie comunicazioni'])">
         <Link
           :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
           preserve-state
@@ -68,7 +68,7 @@ const deleteComunicazione = () => {
       </DropdownMenuItem>
   
       <DropdownMenuItem 
-        v-if="hasPermission(['Elimina segnalazioni'])" 
+        v-if="hasPermission(['Elimina comunicazioni'])" 
         @click="handleDelete(comunicazione)" 
       >
         <Trash2 class="w-4 h-4 text-xs" />

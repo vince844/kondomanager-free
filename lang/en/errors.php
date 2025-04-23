@@ -14,7 +14,12 @@ return [
     */
 
     '403' => [
-        'invalid_signature' => 'the link you are trying to use is expired or not valid il link che stai utilizzando potrebbe essere scaduto o non più valido.',
+        'invalid_signature' => 'the link you are trying to use is expired or not valid.',
+        'account_suspended' => "your account is temporarely suspended, please contact the system administrator to reactivate it.",
     ],
+    '403_title' => '403 - Access Denied',
+    '403_heading' => '403 - Access Denied',
+    '403_message' => 'You do not have permission to access this page.',
+    'back_to_dashboard' => 'Back to Dashboard',
 
 ];

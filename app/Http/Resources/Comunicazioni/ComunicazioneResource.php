@@ -33,10 +33,10 @@ class ComunicazioneResource extends JsonResource
                 'user_id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,
                 'email' => $this->createdBy->email,
-                'anagrafica' => $this->whenLoaded('createdBy.anagrafica', function () {
+                'anagrafica' => $this->relationLoaded('createdBy.anagrafica', function () {
                     return new AnagraficaResource($this->createdBy->anagrafica);
                 }),
-            ],
+            ], 
             'condomini' => [
                 'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
                 'full'    => CondominioResource::collection($this->whenLoaded('condomini')),
