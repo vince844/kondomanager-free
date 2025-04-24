@@ -170,7 +170,7 @@ class ComunicazioneController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Comunicazione $comunicazione)
+    public function edit(Comunicazione $comunicazione): Response
     {
         Gate::authorize('update', $comunicazione);
 
@@ -190,7 +190,7 @@ class ComunicazioneController extends Controller
      * @param Comunicazione $comunicazione
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione)
+    public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione): RedirectResponse
     {
         Gate::authorize('update', $comunicazione);
 
@@ -237,9 +237,10 @@ class ComunicazioneController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Comunicazione $comunicazione)
+    public function destroy(Comunicazione $comunicazione): RedirectResponse
     {
-        
+        Gate::authorize('delete', $comunicazione);
+
         try {
 
             $comunicazione->delete();

@@ -36,15 +36,19 @@ class SegnalazioneController extends Controller
     ) {}
 
     /**
-     * Display a listing of segnalazioni with optional filters.
+     * Display a listing of segnalazioni.
      *
-     * @param SegnalazioneIndexRequest $request
-     * @return Response
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * This method handles the retrieval and display of segnalazioni based on the validated filter parameters from the request.
+     * It first authorizes the user for the given segnalazione and then retrieves the list of segnalazioni using the `segnalazioneService`.
+     * The results are returned to the frontend via an Inertia.js response with pagination data and filters.
+     *
+     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request  The request object containing the filter parameters.
+     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model instance used for authorization.
+     * @return \Inertia\Response  Returns the rendered Inertia.js response with segnalazioni data, pagination, and filters.
      */
-    public function index(SegnalazioneIndexRequest $request): Response
+    public function index(SegnalazioneIndexRequest $request, Segnalazione $segnalazione): Response
     {
-        Gate::authorize('view', Segnalazione::class);
+        Gate::authorize('view', $segnalazione);
 
         $validated = $request->validated();
 
@@ -69,12 +73,16 @@ class SegnalazioneController extends Controller
     /**
      * Show the form for creating a new segnalazione.
      *
-     * @return Response
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * This method authorizes the user to create a new segnalazione and then returns the Inertia.js response 
+     * to render the creation form. The form includes a list of all condomini and anagrafiche, fetched from 
+     * the respective resources.
+     *
+     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
+     * @return \Inertia\Response  Returns the rendered Inertia.js response with the list of condomini and anagrafiche.
      */
-    public function create(): Response
+    public function create(Segnalazione $segnalazione): Response
     {
-        Gate::authorize('create', Segnalazione::class);
+        Gate::authorize('create', $segnalazione);
 
         return Inertia::render('segnalazioni/SegnalazioniNew',[
             'condomini'   => CondominioResource::collection(Condominio::all()),
@@ -82,16 +90,23 @@ class SegnalazioneController extends Controller
         ]); 
     }
 
-     /**
-     * Store a newly created segnalazione in storage.
+    /**
+     * Store a newly created segnalazione in the database.
      *
-     * @param CreateSegnalazioneRequest $request
-     * @return RedirectResponse
-     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * This method handles the process of creating a new segnalazione, including validating the incoming request,
+     * attaching any related anagrafiche, and committing the transaction. It also sends notifications to users 
+     * upon successful creation.
+     * If an error occurs during the creation process, it will roll back the transaction and log the error.
+     *
+     * @param  \App\Http\Requests\CreateSegnalazioneRequest  $request  The request object containing validated data for the segnalazione.
+     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
+     * @return \Illuminate\Http\RedirectResponse  A redirect response to the segnalazioni index with a success or error message.
+     * 
+     * @throws \Exception  If an error occurs during the creation process, an exception is thrown, and the transaction is rolled back.
      */
-    public function store(CreateSegnalazioneRequest $request): RedirectResponse
+    public function store(CreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
-        Gate::authorize('create', Segnalazione::class);
+        Gate::authorize('create', $segnalazione);
         
         $validated = $request->validated(); 
 
@@ -145,7 +160,7 @@ class SegnalazioneController extends Controller
      */
     public function show(Segnalazione $segnalazione): Response
     {
-        Gate::authorize('view', Segnalazione::class);
+        Gate::authorize('view', $segnalazione);
 
         $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 

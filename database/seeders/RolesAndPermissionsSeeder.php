@@ -40,6 +40,7 @@ class RolesAndPermissionsSeeder extends Seeder
             ['name' => 'Elimina comunicazioni', 'description' => 'Permette di eliminare le comunicazioni in bacheca'],
             ['name' => 'Elimina proprie comunicazioni', 'description' => 'Permette di eliminare solo le proprie comunicazioni in bacheca'],
             ['name' => 'Visualizza comunicazioni', 'description' => 'Permette di visualizzare le comunicazioni in bacheca'],
+            ['name' => 'Visualizza proprie comunicazioni', 'description' => 'Permette di visualizzare solo le proprie comunicazioni in bacheca'],
 
             // Commenti comunicazioni
             ['name' => 'Commenta comunicazioni', 'description' => 'Permette di commentare le comunicazioni in bacheca'],
@@ -57,6 +58,7 @@ class RolesAndPermissionsSeeder extends Seeder
             ['name' => 'Elimina segnalazioni', 'description' => 'Permette di eliminare una segnalazione di guasto'],
             ['name' => 'Elimina proprie segnalazioni', 'description' => 'Permette di eliminare solo le proprie segnalazioni di guasto'],
             ['name' => 'Visualizza segnalazioni', 'description' => 'Permette di visualizzare una segnalazione di guasto'],
+            ['name' => 'Visualizza proprie segnalazioni', 'description' => 'Permette di visualizzare solo le proprie segnalazione di guasto'],
 
             // Commenti segnalazioni
             ['name' => 'Commenta segnalazioni', 'description' => 'Permette di commentare le segnalazioni guasto'],

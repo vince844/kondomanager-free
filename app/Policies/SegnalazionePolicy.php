@@ -2,66 +2,110 @@
 
 namespace App\Policies;
 
+use App\Models\Comunicazione;
 use App\Models\Segnalazione;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Lang;
 
 class SegnalazionePolicy
 {
+
     /**
-     * Determine whether the user can view any models.
+     * Determine whether the user can view the specified segnalazione.
+     *
+     * Grants access if the user has the general permission to view all segnalazioni,
+     * or if they are the creator and have permission to view their own segnalazioni.
+     * Denies access otherwise.
+     *
+     * @param  \App\Models\User $user The user attempting to view the segnalazione.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione being viewed.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
-    public function viewAny(User $user): bool
+    public function view(User $user, Segnalazione $segnalazione): Response
     {
-        return false;
+        if ($user->hasPermissionTo('Visualizza segnalazioni')) {
+            return Response::allow();
+        } 
+
+        if ($user->hasPermissionTo('Visualizza proprie segnalazioni')) {
+            if ($segnalazione->created_by === $user->id) {
+                return Response::allow();
+            }
+        }
+
+        return Response::deny(Lang::get('policies.view_tickets'));
+
     }
 
     /**
-     * Determine whether the user can view the model.
-     */
-    public function view(User $user): Response
-    {
-        return $user->hasPermissionTo('Visualizza segnalazioni')  
-        ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per visualizzare le segnalazioni!');
-
-    }
-
-    /**
-     * Determine whether the user can view the model.
+     * Verifica se l'utente ha i permessi per visualizzare una segnalazione specifica.
+     *
+     * La funzione gestisce i permessi in base ai seguenti criteri:
+     * - Gli utenti con il permesso "Accesso pannello amministratore" hanno accesso completo.
+     * - Gli utenti con il permesso "Visualizza segnalazioni" possono vedere le segnalazioni a loro assegnate
+     *   o quelle assegnate al loro condominio (se non ci sono assegnazioni dirette).
+     * - Gli utenti con il permesso "Visualizza proprie segnalazioni" possono vedere solo le segnalazioni che hanno creato.
+     * - Se nessuna di queste condizioni è soddisfatta, l'accesso viene negato.
+     *
+     * @param  \App\Models\User $user L'utente che sta tentando di visualizzare la segnalazione
+     * @param  \App\Models\Segnalazione  $segnalazione  La segnalazione da visualizzare
+     * @return \Illuminate\Auth\Access\Response La risposta che consente o nega l'accesso
      */
     public function show(User $user, Segnalazione $segnalazione): Response
     {
-        if ($user->hasRole(['amministratore', 'collaboratore'])) {
+        if ($user->hasPermissionTo('Accesso pannello amministratore')) {
             return Response::allow();
         } 
-    
-        $anagrafica = $user->anagrafica;
-        $condominioIds = $anagrafica->condomini->pluck('id')->toArray();
-    
-        $isAssignedToUser = $segnalazione->anagrafiche->contains($anagrafica);
-        $isAssignedToCondominio = in_array($segnalazione->condominio_id, $condominioIds)
-            && $segnalazione->anagrafiche->isEmpty();
-    
-        if ($isAssignedToUser || $isAssignedToCondominio) {
-            return Response::allow();
+
+        if ($user->hasPermissionTo('Visualizza segnalazioni')) {
+            $anagrafica = $user->anagrafica;
+            $condominioIds = $anagrafica->condomini->pluck('id')->toArray();
+        
+            $isAssignedToUser = $segnalazione->anagrafiche->contains($anagrafica);
+            $isAssignedToCondominio = in_array($segnalazione->condominio_id, $condominioIds)
+                && $segnalazione->anagrafiche->isEmpty();
+        
+            if ($isAssignedToUser || $isAssignedToCondominio) {
+                return Response::allow();
+            }
+        } 
+
+        if ($user->hasPermissionTo('Visualizza proprie segnalazioni')) {
+            if ($segnalazione->created_by === $user->id) {
+                return Response::allow();
+            } 
         }
-    
-        return Response::deny('Non ha permessi sufficienti per visualizzare questa segnalazione!');
+ 
+        return Response::deny(Lang::get('policies.view_ticket'));
     }
 
     /**
-     * Determine whether the user can create models.
+     * Determine whether the user can create a new segnalazione.
+     *
+     * This method checks if the user has the 'Crea segnalazioni' permission.
+     * If so, the action is allowed; otherwise, it is denied.
+     *
+     * @param  \App\Models\User $user The user attempting to create a segnalazione.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
     public function create(User $user): Response
     {
         return $user->hasPermissionTo('Crea segnalazioni')  
-        ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per creare una nuova segnalazione!');
+               ? Response::allow() 
+               : Response::deny(Lang::get('policies.create_ticket'));
     }
 
     /**
-     * Determine whether the user can update the model.
+     * Determine whether the user can update the specified segnalazione.
+     *
+     * This method allows access if the user has permission to update any segnalazione,
+     * or if they have permission to update their own segnalazioni and they are the creator.
+     * If none of these conditions are satisfied, the action is denied.
+     *
+     * @param  \App\Models\User $user The user attempting to update the segnalazione.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione being updated.
+     * @return \Illuminate\Auth\Access\Response  Authorization response.
      */
     public function update(User $user, Segnalazione $segnalazione): Response
     {
@@ -77,32 +121,35 @@ class SegnalazionePolicy
             
         } 
         
-        return Response::deny('Non hai permessi sufficienti per modificare questa segnalazione!');
+        return Response::deny(Lang::get('policies.edit_tickets'));
     }
 
     /**
-     * Determine whether the user can delete the model.
+     * Determine whether the user can delete the specified segnalazione.
+     *
+     * The method checks if the user has the general permission to delete any segnalazione,
+     * or if they have permission to delete only their own segnalazioni and are the creator of it.
+     * If neither condition is met, access is denied.
+     *
+     * @param  \App\Models\User  $user The user performing the action.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione to be deleted.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
-    public function delete(User $user): Response
+    public function delete(User $user, Segnalazione $segnalazione): Response
     {
-        return $user->hasPermissionTo('Elimina segnalazioni')  
-        ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per eliminare questa segnalazione!');
-    }
+        if ($user->hasPermissionTo('Elimina segnalazioni')) {
+            return Response::allow();
+        }
+        
+        if ($user->hasPermissionTo('Elimina proprie segnalazioni')) {
 
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, Segnalazione $segnalazione): bool
-    {
-        return false;
-    }
+            if ($segnalazione->created_by === $user->id) {
+                return Response::allow();
+            }
+            
+        } 
 
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, Segnalazione $segnalazione): bool
-    {
-        return false;
+        return Response::deny(Lang::get('policies.delete_tickets'));
+
     }
 }
