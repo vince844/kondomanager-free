@@ -5,7 +5,7 @@ import type { Segnalazione } from '@/types/segnalazioni';
 
 const props = defineProps<{
   segnalazioni: Segnalazione[];
-  priorityIcons: Record<string, any>; // or a more specific component map if you have one
+  priorityIcons: Record<string, any>; 
   routeName: string;
 }>();
 
@@ -56,7 +56,7 @@ const truncate = (text: string, length: number = 120) => {
               </Link>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviata {{ segnalazione.created_at }} da {{ segnalazione.created_by.name }}</span>
+                <span>Inviata {{ segnalazione.created_at }} da {{ segnalazione.created_by.user.name }}</span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">

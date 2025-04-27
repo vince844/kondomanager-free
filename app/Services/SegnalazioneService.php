@@ -58,7 +58,7 @@ class SegnalazioneService
             return Segnalazione::query()->whereRaw('1 = 0')->paginate(1); // Return an empty result
         }
 
-        return Segnalazione::with(['anagrafiche.user', 'condominio'])
+        return Segnalazione::with(['anagrafiche.user', 'condominio', 'createdBy.anagrafica'])
                 ->where('is_published', true)
                 ->where(function ($query) use ($anagrafica, $condominioIds) {
                     $query

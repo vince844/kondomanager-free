@@ -9,13 +9,7 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import { LoaderCircle } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import { 
-TagsInput, 
-TagsInputInput, 
-TagsInputItem, 
-TagsInputItemDelete, 
-TagsInputItemText 
-} from '@/components/ui/tags-input';
+import { TagsInput,  TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Separator } from '@/components/ui/separator';
 
 const props = defineProps<{
@@ -34,6 +28,16 @@ const submit = () => {
             form.reset()
         }
     });
+};
+
+const addCurrentInput = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const value = input.value.trim();
+  
+  if (value && !form.emails.includes(value)) {
+    form.emails = [...form.emails, value];
+    input.value = '';
+  }
 };
 
 </script>
@@ -55,7 +59,8 @@ const submit = () => {
                                 <div class="pt-3">
                                     <h3 class="text-lg font-medium leading-6 text-gray-900">Invita utenti a registrarsi</h3>
                                     <p class="mt-1 text-sm text-gray-500">
-                                       Di seguito è possibile inviare un invito per registrarsi sul portale. Inserisci gli indirizzi email e seleziona i condomini ai quali associarli, questi riceveranno una email con le istruzioni per completare la registrazione</p>
+                                       Di seguito è possibile inviare un invito per registrarsi sul portale. Inserisci gli indirizzi email e seleziona i condomini ai quali associarli, questi riceveranno una email con le istruzioni per completare la registrazione
+                                    </p>
                                 </div>
 
                                 <Separator class="my-4" />
@@ -68,10 +73,14 @@ const submit = () => {
 
                                             <TagsInput v-model="form.emails" class="w-full">
                                                 <TagsInputItem v-for="item in form.emails" :key="item" :value="item">
-                                                <TagsInputItemText />
-                                                <TagsInputItemDelete @click="form.emails = form.emails.filter(email => email !== item)" />
+                                                    <TagsInputItemText />
+                                                    <TagsInputItemDelete @click="form.emails = form.emails.filter(email => email !== item)" />
                                                 </TagsInputItem>
-                                                <TagsInputInput placeholder="Inserisci un indirizzo email" />
+                                                <TagsInputInput 
+                                                    placeholder="Inserisci un indirizzo email" 
+                                                    @blur="addCurrentInput"
+                                                    @keydown.enter="addCurrentInput"
+                                                />
                                             </TagsInput>
 
                                           <InputError class="mt-2" :message="form.errors.emails" />

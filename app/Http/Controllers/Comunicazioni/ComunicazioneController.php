@@ -160,21 +160,46 @@ class ComunicazioneController extends Controller
     }
 
     /**
-     * Display the specified resource.
+     * Display the specified comunicazione.
+     *
+     * This method handles the authorization check for the current user to view the specified
+     * comunicazione. It then fetches the related data (e.g., the `createdBy` relationship with its `anagrafica`)
+     * and passes the information to the Inertia view for rendering.
+     *
+     * @param \App\Models\Comunicazione $comunicazione The comunicazione to be displayed.
+     * @return \Inertia\Response The Inertia response containing the view and data.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to view the comunicazione.
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If the comunicazione is not found.
      */
-    public function show(Comunicazione $comunicazione)
+    public function show(Comunicazione $comunicazione): Response
     {
-        //
+        Gate::authorize('show', $comunicazione);
+
+        return Inertia::render('comunicazioni/ComunicazioniView', [
+            'comunicazione' => new ComunicazioneResource(
+                Comunicazione::with('createdBy.anagrafica')->findOrFail($comunicazione->id)
+            ),
+        ]);
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified Comunicazione.
+     *
+     * Authorizes the user to edit the comunicazione and loads the necessary relationships
+     * such as createdBy, condomini, and anagrafiche. The method then renders the edit view
+     * using Inertia with the data required for the form.
+     *
+     * @param  \App\Models\Comunicazione  $comunicazione
+     * @return \Illuminate\Http\Response
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update the comunicazione
      */
     public function edit(Comunicazione $comunicazione): Response
     {
         Gate::authorize('update', $comunicazione);
 
-        $comunicazione->load(['createdBy', 'condomini', 'anagrafiche']);
+        $comunicazione->loadMissing(['createdBy.anagrafica', 'condomini', 'anagrafiche']);
 
         return Inertia::render('comunicazioni/ComunicazioniEdit', [
          'comunicazione'  => new ComunicazioneResource($comunicazione),
@@ -184,11 +209,17 @@ class ComunicazioneController extends Controller
     }
 
     /**
-     * Update the specified comunicazione with validated input data.
+     * Update the specified Comunicazione in storage.
      *
-     * @param CreateComunicazioneRequest $request
-     * @param Comunicazione $comunicazione
+     * Authorizes the user to update the comunicazione, performs the update, and syncs associated condomini and anagrafiche.
+     * If an error occurs during the update, a log entry is created, and the user is notified.
+     *
+     * @param  \App\Http\Requests\CreateComunicazioneRequest  $request
+     * @param  \App\Models\Comunicazione  $comunicazione
      * @return \Illuminate\Http\RedirectResponse
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update the comunicazione
+     * @throws \Exception If the update fails
      */
     public function update(CreateComunicazioneRequest $request, Comunicazione $comunicazione): RedirectResponse
     {
@@ -235,7 +266,16 @@ class ComunicazioneController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified Comunicazione from storage.
+     *
+     * Authorizes the user to delete the comunicazione and performs the deletion. If an error occurs during deletion,
+     * a log entry is created, and the user is notified.
+     *
+     * @param  \App\Models\Comunicazione  $comunicazione
+     * @return \Illuminate\Http\RedirectResponse
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to delete the comunicazione
+     * @throws \Exception If deletion fails
      */
     public function destroy(Comunicazione $comunicazione): RedirectResponse
     {

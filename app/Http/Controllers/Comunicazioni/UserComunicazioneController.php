@@ -26,7 +26,19 @@ class UserComunicazioneController extends Controller
     ) {}
 
     /**
-     * Display a listing of the resource.
+     * Display a listing of the user's comunicazioni.
+     *
+     * This method handles the process of fetching the authenticated user's comunicazioni based on their `anagrafica` and related `condomini`. 
+     * It includes authorization checks and filters the results based on the validated request data.
+     * If an error occurs while retrieving the data, it logs the error and aborts with a 500 status.
+     *
+     * @param \App\Http\Requests\ComunicazioneIndexRequest $request The validated request data.
+     * @param \App\Models\Comunicazione $comunicazione The comunicazione model used for authorization.
+     * @return \Inertia\Response The Inertia response containing the view and paginated comunicazioni data.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to view the comunicazioni.
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException If the user does not have a valid anagrafica.
+     * @throws \Exception If an unexpected error occurs while fetching comunicazioni.
      */
     public function index(ComunicazioneIndexRequest $request, Comunicazione $comunicazione): Response
     {
@@ -73,18 +85,27 @@ class UserComunicazioneController extends Controller
         ]);
     }
 
-
     /**
-     * Display the specified resource.
+     * Display the specified comunicazione.
+     *
+     * This method handles the authorization check for the current user to view the specified
+     * comunicazione. It then fetches the related data (e.g., the `createdBy` relationship with its `anagrafica`)
+     * and passes the information to the Inertia view for rendering.
+     *
+     * @param \App\Models\Comunicazione $comunicazione The comunicazione to be displayed.
+     * @return \Inertia\Response The Inertia response containing the view and data.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to view the comunicazione.
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If the comunicazione is not found.
      */
     public function show(Comunicazione $comunicazione): Response
     {
         Gate::authorize('show', $comunicazione);
 
-        $comunicazione->load(['createdBy']);
-
         return Inertia::render('comunicazioni/ComunicazioniView', [
-         'comunicazione'  => new ComunicazioneResource($comunicazione)
+            'comunicazione' => new ComunicazioneResource(
+                Comunicazione::with('createdBy')->findOrFail($comunicazione->id)
+            ),
         ]);
     }
 

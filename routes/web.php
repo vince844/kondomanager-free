@@ -92,7 +92,9 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
 | Condomini Routes
 |--------------------------------------------------------------------------
 */
-Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified']);
+Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->parameters([
+    'condomini' => 'condominio'
+]);
 Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
 
 /*

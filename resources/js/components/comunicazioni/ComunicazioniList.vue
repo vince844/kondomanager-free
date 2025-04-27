@@ -32,7 +32,7 @@ const truncate = (text: string, length: number = 120) => {
     <div class="flow-root">
       <ul role="list" class="divide-y divide-gray-200">
         <div v-if="!comunicazioni.length" class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-          <span class="font-medium">Nessuna comunicazione guasto ancora creata!</span>
+          <span class="font-medium">Nessuna comunicazione in bacheca ancora creata!</span>
         </div>
         <li v-for="comunicazione in comunicazioni" :key="comunicazione.id" class="py-3 sm:py-4">
           <div class="flex items-center space-x-4">
@@ -57,7 +57,7 @@ const truncate = (text: string, length: number = 120) => {
               </Link>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviata {{ comunicazione.created_at }} da {{ comunicazione.created_by.name }}</span>
+                <span>Inviata {{ comunicazione.created_at }} da {{ comunicazione.created_by.user.name }}</span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">

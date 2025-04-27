@@ -14,6 +14,7 @@ use App\Services\ComunicazioneService;
 use Illuminate\Console\Application;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Lang;
+use Inertia\Response;
 
 class UserDashboardController extends Controller
 {
@@ -42,7 +43,7 @@ class UserDashboardController extends Controller
      * @throws \Symfony\Component\HttpKernel\Exception\HttpException If the user is not authenticated or lacks anagrafica.
      * @throws \Symfony\Component\HttpKernel\Exception\HttpException If an error occurs while fetching data.
      */
-    public function __invoke(Request $request)
+    public function __invoke(Request $request): Response
     {
 
         try {
@@ -56,6 +57,7 @@ class UserDashboardController extends Controller
             $anagrafica = $user->anagrafica;
             // Fetch the related condominio IDs
             $condominioIds = $anagrafica->condomini->pluck('id');
+            
            // Fetch the segnalazioni using the SegnalazioneService
             $segnalazioni = $this->segnalazioneService->getSegnalazioni(
                 anagrafica: $anagrafica,
@@ -83,7 +85,7 @@ class UserDashboardController extends Controller
         }
 
         return Inertia::render('dashboard/UserDashboard', [
-            'segnalazioni' => SegnalazioneResource::collection($segnalazioniLimited),
+            'segnalazioni'  => SegnalazioneResource::collection($segnalazioniLimited),
             'comunicazioni' => ComunicazioneResource::collection($comunicazioniLimited),
         ]);
         

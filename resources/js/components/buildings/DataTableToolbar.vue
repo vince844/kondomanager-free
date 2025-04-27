@@ -1,14 +1,13 @@
 <script setup lang="ts">
 
-import { ref } from 'vue'
-import { watchDebounced } from '@vueuse/core'
-import { router } from '@inertiajs/vue3'
-import type { Table } from '@tanstack/vue-table'
-import type { Building } from '@/types/buildings'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { watchDebounced } from '@vueuse/core';
+import { router, Link } from '@inertiajs/vue3';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { HousePlus } from 'lucide-vue-next';
+import type { Table } from '@tanstack/vue-table';
+import type { Building } from '@/types/buildings';
 
 interface DataTableToolbarProps {
   table: Table<Building>
@@ -50,10 +49,14 @@ watchDebounced(
       </div>
     </div>
 
-    <!-- Right Section: Button (force it to the right) -->
-    <Button class="hidden h-8 lg:flex ml-auto">
+    <Link 
+      as="button"
+      :href="route('condomini.create')" 
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+    >
       <HousePlus class="w-4 h-4" />
-      <Link :href="route('condomini.create')">Crea</Link>
-    </Button>
+      <span>Crea</span>
+    </Link>
+    
   </div>
 </template>

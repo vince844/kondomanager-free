@@ -191,10 +191,10 @@ class UserSegnalazioneController extends Controller
     {
         Gate::authorize('show', $segnalazione);
 
-        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
-
         return Inertia::render('segnalazioni/SegnalazioniView', [
-         'segnalazione'  => new SegnalazioneResource($segnalazione)
+            'segnalazione' => new SegnalazioneResource(
+                Segnalazione::with('createdBy.anagrafica',  'assignedTo', 'condominio', 'anagrafiche')->findOrFail($segnalazione->id)
+            ),
         ]);
     }
 
@@ -227,7 +227,7 @@ class UserSegnalazioneController extends Controller
         // Fetch the anagrafica related condomini
         $condomini = $anagrafica->condomini()->get();
 
-        $segnalazione->load(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
+        $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/UserSegnalazioniEdit', [
          'segnalazione'  => new SegnalazioneResource($segnalazione),

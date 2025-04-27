@@ -59,7 +59,7 @@ class ComunicazioneService
             return Comunicazione::query()->whereRaw('1 = 0')->paginate(1); // Return an empty result
         }
 
-        return Comunicazione::with('anagrafiche', 'condomini')
+        return Comunicazione::with('anagrafiche', 'condomini', 'createdBy.anagrafica')
             ->where(function($query) use ($anagrafica, $condominioIds) {
                 // Communications directly assigned to the user
                 $query->whereHas('anagrafiche', function ($q) use ($anagrafica) {

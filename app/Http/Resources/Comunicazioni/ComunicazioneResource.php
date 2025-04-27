@@ -29,14 +29,14 @@ class ComunicazioneResource extends JsonResource
             'is_approved'   => $this->is_approved,
             'can_comment'   => $this->can_comment,
             'created_at'    => $this->created_at->diffForHumans(),
-            'created_by' => [
-                'user_id' => $this->createdBy->id,
-                'name' => $this->createdBy->name,
-                'email' => $this->createdBy->email,
-                'anagrafica' => $this->relationLoaded('createdBy.anagrafica', function () {
-                    return new AnagraficaResource($this->createdBy->anagrafica);
-                }),
-            ], 
+            'created_by' => $this->whenLoaded('createdBy', function () {
+                return [
+                    'user'       => new UserResource($this->createdBy),
+                    'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
+                        ? new AnagraficaResource($this->createdBy->anagrafica)
+                        : null,
+                ];
+            }),
             'condomini' => [
                 'options' => CondominioOptionsResource::collection($this->whenLoaded('condomini')),
                 'full'    => CondominioResource::collection($this->whenLoaded('condomini')),

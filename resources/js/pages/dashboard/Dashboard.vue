@@ -10,6 +10,9 @@ import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'l
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
+import { usePermission } from "@/composables/permissions";
+
+const { hasPermission } = usePermission();
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -50,32 +53,40 @@ const priorityIcons = {
             </div>
 
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
-                <Card class="w-full">
-                <CardHeader class="p-3">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <CardTitle class="text-lg">Ultime comunicazioni</CardTitle>
-                            <CardDescription>
-                            Elenco delle ultime comunicazioni in bacheca
-                            </CardDescription>
-                        </div>
 
-                        <Link
-                            :href="route('admin.comunicazioni.index')"
-                            prefetch
-                            class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
-                        >
-                            Visualizza tutte
-                        </Link>
+                <Card class="w-full">
+                    <CardHeader class="p-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <CardTitle class="text-lg">Ultime comunicazioni</CardTitle>
+                                <CardDescription>
+                                Elenco delle ultime comunicazioni in bacheca
+                                </CardDescription>
+                            </div>
+
+                            <Link
+                                :href="route('admin.comunicazioni.index')"
+                                v-if="hasPermission(['Visualizza comunicazioni'])"
+                                prefetch
+                                class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
+                            >
+                                Visualizza tutte
+                            </Link>
+                            </div>
+                    </CardHeader>
+                    <CardContent v-if="hasPermission(['Visualizza comunicazioni'])">
+                        <ComunicazioniList 
+                                :comunicazioni="comunicazioni" 
+                                :priorityIcons="priorityIcons" 
+                                :routeName="'user.comunicazioni.show'"
+                            />
+                    </CardContent>
+
+                    <CardContent v-else>
+                        <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le comunicazioni!</span>
                         </div>
-                </CardHeader>
-                <CardContent>
-                    <ComunicazioniList 
-                            :comunicazioni="comunicazioni" 
-                            :priorityIcons="priorityIcons" 
-                            :routeName="'admin.comunicazioni.show'"
-                        />
-                </CardContent>
+                    </CardContent>
                 </Card>
 
                 <Card class="w-full">
@@ -90,6 +101,7 @@ const priorityIcons = {
 
                         <Link
                             :href="route('admin.segnalazioni.index')"
+                            v-if="hasPermission(['Visualizza segnalazioni'])"
                             prefetch
                             class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                         >
@@ -98,12 +110,18 @@ const priorityIcons = {
                         </div>
                     </CardHeader>
 
-                    <CardContent>
+                    <CardContent v-if="hasPermission(['Visualizza segnalazioni'])">
                         <SegnalazioniList 
                             :segnalazioni="segnalazioni" 
                             :priorityIcons="priorityIcons" 
-                            :routeName="'admin.segnalazioni.show'"
+                            :routeName="'user.segnalazioni.show'"
                         />
+                    </CardContent>
+
+                    <CardContent v-else>
+                        <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le segnalazioni!</span>
+                        </div>
                     </CardContent>
                 </Card>
 

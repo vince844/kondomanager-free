@@ -12,16 +12,27 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
-
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Inertia\Response;
 
 class CondominioController extends Controller
 {
     /**
-     * Display a listing of the resource.
+     * Display a list of condominios with optional filtering and pagination.
+     *
+     * This method retrieves a list of condominios from the database, applying filters
+     * (e.g., by name) if provided in the request, and returns a paginated list of results.
+     * The method ensures that the user has permission to view the condominio list.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request containing filter parameters.
+     * @param \App\Models\Condominio $condominio The condominio model instance, used for authorization.
+     *
+     * @return \Inertia\Response A response that renders the building list view with the paginated data and filters.
      */
-    public function index(Request $request)
+    public function index(Request $request, Condominio $condominio): Response
     {
-        Gate::authorize('view', Condominio::class);
+        Gate::authorize('view', $condominio);
 
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
@@ -50,30 +61,68 @@ class CondominioController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new condominio.
+     *
+     * This method ensures that the user is authorized to create a new condominio and
+     * renders the page with the form to create a new condominio. It uses Inertia to 
+     * render the `BuildingsNew` component.
+     *
+     * @param \App\Models\Condominio $condominio The condominio model instance, used for authorization.
+     *
+     * @return \Inertia\Response A response that renders the new condominio creation form.
      */
-    public function create()
+    public function create(Condominio $condominio): Response
     {
-        Gate::authorize('create', Condominio::class);
+        Gate::authorize('create', $condominio);
 
         return Inertia::render('buildings/BuildingsNew');
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created condominio in the database.
+     *
+     * This method handles the process of storing a new condominio, including
+     * validating the incoming request, handling the transaction, and providing
+     * feedback to the user on success or failure. In case of failure, the exception
+     * is logged for further investigation.
+     *
+     * @param \App\Http\Requests\CreateCondominioRequest $request The validated request data for creating a condominio.
+     * 
+     * @return \Illuminate\Http\RedirectResponse A redirect response to the index page, with a success or error message.
      */
-    public function store(CreateCondominioRequest $request): RedirectResponse
+    public function store(CreateCondominioRequest $request, Condominio $condominio): RedirectResponse
     {
-        Gate::authorize('create', Condominio::class);
+        Gate::authorize('create', $condominio);
 
-        Condominio::create($request->validated());
+        try {
 
-        return to_route('condomini.index')->with([
-            'message' => [ 
-                'type'    => 'success',
-                'message' => "Il nuovo condominio è stato creato con successo!"
-            ]
-        ]);
+            DB::beginTransaction();
+
+            Condominio::create($request->validated());
+
+            DB::commit();
+
+            return to_route('condomini.index')->with([
+                'message' => [ 
+                    'type'    => 'success',
+                    'message' => "Il nuovo condominio è stato creato con successo!"
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error during condominio creation: ' . $e->getMessage());
+
+            return to_route('condomini.index')->with([
+                'message' => [ 
+                    'type'    => 'error',
+                    'message' => "Errore durante la creazione del condominio!"
+                ]
+            ]);
+        }
+
     }
 
     /**
@@ -85,33 +134,71 @@ class CondominioController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified condominio.
+     *
+     * This method ensures that the user is authorized to update the specified condominio,
+     * and then it renders the page with the form to edit the condominio details. It uses 
+     * Inertia to render the `BuildingsEdit` component, passing the condominio data as a 
+     * resource to the component.
+     *
+     * @param \App\Models\Condominio $condominio The condominio instance to be edited.
+     *
+     * @return \Inertia\Response A response that renders the condominio editing form with the existing data.
      */
-    public function edit(Condominio $condomini)
+    public function edit(Condominio $condominio): Response
     {
-        Gate::authorize('update', Condominio::class);
+        Gate::authorize('update', $condominio);
 
         return Inertia::render('buildings/BuildingsEdit', [
-            'building' => new CondominioResource($condomini),
+            'building' => new CondominioResource($condominio),
         ]);
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified condominio in storage.
+     *
+     * This method is responsible for updating the condominio's data. It starts a database transaction, 
+     * performs the update, and commits the transaction. If an error occurs during the update, 
+     * the transaction is rolled back and the error is logged.
+     *
+     * @param \App\Http\Requests\UpdateCondominioRequest $request The request object containing validated input data.
+     * @param \App\Models\Condominio $condominio The Condominio model instance to be updated.
+     * @return \Illuminate\Http\RedirectResponse Redirects to the condominio index page with a success or error message.
      */
-    public function update(UpdateCondominioRequest $request, Condominio $condomini): RedirectResponse
+    public function update(UpdateCondominioRequest $request, Condominio $condominio): RedirectResponse
     {
-        Gate::authorize('update', Condominio::class);
+        Gate::authorize('update', $condominio);
 
-        $condominio = Condominio::find($condomini->id);
-        $condominio->update($request->validated());
+        try {
 
-        return to_route('condomini.index')->with([
-            'message' => [ 
-                'type'    => 'success',
-                'message' => "Il profilo del condominio è stato modificato con successo"
-            ]
-        ]);
+            DB::beginTransaction();
+
+            $condominio->update($request->validated());
+
+            DB::commit();
+
+            return to_route('condomini.index')->with([
+                'message' => [ 
+                    'type'    => 'success',
+                    'message' => "Il profilo del condominio è stato modificato con successo"
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollback();
+
+            // Log the exception for developers to investigate
+            Log::error('Error during condominio update: ' . $e->getMessage());
+
+            return to_route('condomini.index')->with([
+                'message' => [ 
+                    'type'    => 'error',
+                    'message' => "Errore durante la modifica del condominio!"
+                ]
+            ]);
+        }
+
     }
 
     public function options()
@@ -120,19 +207,41 @@ class CondominioController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified condominio from storage.
+     *
+     * This method is responsible for deleting the specified condominio. It checks if the user
+     * has permission to delete the condominio and then performs the delete operation. If an error occurs, 
+     * it logs the exception and returns an error message.
+     *
+     * @param \App\Models\Condominio $condominio The Condominio model instance to be deleted.
+     * @return \Illuminate\Http\RedirectResponse Redirects back to the previous page with a success or error message.
      */
-    public function destroy(Condominio $condomini)
+    public function destroy(Condominio $condominio): RedirectResponse
     {
         Gate::authorize('delete', Condominio::class);
 
-        $condomini->delete();
+        try {
+           
+            $condominio->delete();
 
-        return back()->with([
-            'message' => [ 
-                'type'    => 'success',
-                'message' => "Il codominio è stato eliminato con successo"
-            ]
-        ]);
+            return back()->with([
+                'message' => [ 
+                    'type'    => 'success',
+                    'message' => "Il codominio è stato eliminato con successo"
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+
+            Log::error('Error deleting condominio: ' . $e->getMessage());
+
+            return back()->with([
+                'message' => [ 
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore nel tentativo di eliminare il condominio!"
+                ]
+            ]);
+        }
+      
     }
 }

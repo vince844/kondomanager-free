@@ -73,7 +73,7 @@ const props = defineProps<{
                         <div class="mb-1 space-y-0.5">
                         <h2 class="text-xl font-semibold tracking-tight">{{ props.segnalazione.subject }}</h2>
                         <p class="text-sm text-muted-foreground">
-                            Inviata {{  props.segnalazione.created_at}} da {{props.segnalazione.created_by.name }} 
+                            Inviata {{  props.segnalazione.created_at}} da {{props.segnalazione.created_by.user.name }} 
                         </p>
                     </div>
                     

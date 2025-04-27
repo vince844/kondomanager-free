@@ -2,16 +2,18 @@
 
 namespace App\Models;
 
+use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Str;
 
 class Condominio extends Model
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory;
+    use HasFactory, HasCustomIdentifier;
 
     protected $table = 'condomini';
+
+    // Specify the prefix for this model (e.g., 'BLD' for buildings)
+    protected $customIdentifierPrefix = 'BLD'; 
 
     /**
      * The attributes that are mass assignable.
@@ -32,16 +34,6 @@ class Condominio extends Model
         'particella_catasto',
     ];
 
-    protected static function booted()
-    {
-        static::creating(function ($condominio) {
-            if (!$condominio->codice_identificativo) {
-                $condominio->codice_identificativo = self::generateUniqueCodice();
-            }
-        });
-        
-    }
-
     /**
      * The anagrafiche that belong to the building.
      */
@@ -58,16 +50,4 @@ class Condominio extends Model
         return $this->belongsToMany(Comunicazione::class, 'comunicazione_condominio')->withTimestamps();
     }
 
-    /**
-     * Generate unique code for condominio
-     */
-    public static function generateUniqueCodice()
-    {
-        do {
-            $codice_identificativo = 'BLD-' . Str::upper(Str::random(3)) . rand(100, 999);
-        } while (self::where('codice_identificativo', $codice_identificativo)->exists());
-
-        return $codice_identificativo;
-    }
-    
 }

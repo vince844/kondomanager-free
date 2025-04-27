@@ -317,7 +317,7 @@ onMounted(() => {
                       class="text-gray-500"
                     >
                       Inviata {{ comunicazione.created_at }} da
-                      {{ comunicazione.created_by?.name }}
+                      {{ comunicazione.created_by.user.name }}
                     </time>
                   </div>
 

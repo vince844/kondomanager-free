@@ -23,9 +23,9 @@ class UpdateCondominioRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'nome'                => 'required|string|max:255|'.Rule::unique('condomini', 'nome')->ignore($this->condomini), 
-            'codice_fiscale'      => 'required|string|max:255|'.Rule::unique('condomini', 'codice_fiscale')->ignore($this->condomini),
-            'email'               => 'nullable|string|lowercase|email|max:255|'.Rule::unique('condomini', 'email')->ignore($this->condomini),
+            'nome'                => 'required|string|max:255|'.Rule::unique('condomini', 'nome')->ignore($this->condominio), 
+            'codice_fiscale'      => 'required|string|max:255|'.Rule::unique('condomini', 'codice_fiscale')->ignore($this->condominio),
+            'email'               => 'nullable|string|lowercase|email|max:255|'.Rule::unique('condomini', 'email')->ignore($this->condominio),
             'indirizzo'           => 'sometimes|nullable',
             'note'                => 'sometimes|nullable',
             'comune_catasto'      => 'sometimes|nullable',

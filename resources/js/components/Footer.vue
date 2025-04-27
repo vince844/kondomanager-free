@@ -5,7 +5,7 @@
 
 <template>
     <footer class="bg-white dark:bg-gray-800 border-t border-sidebar-border/70 dark:border-sidebar-border">
-        <div class="container mx-auto px-4 py-6">
+        <div class="container mx-auto px-4 py-3">
             <div class="flex flex-col md:flex-row justify-between items-center">
                 <div class="mb-4 md:mb-0">
                     <p class="text-gray-600 dark:text-gray-300 text-sm">

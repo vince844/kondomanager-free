@@ -9,13 +9,20 @@ use App\Models\Comunicazione;
 use App\Models\Segnalazione;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class DashboardController extends Controller
 {
     /**
-     * Handle the incoming request.
+     * Handle the incoming request and return the dashboard view.
+     *
+     * This method retrieves the latest 3 Segnalazione and Comunicazione records,
+     * along with their related models, and passes them to the 'dashboard/Dashboard' Inertia view.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
      */
-    public function __invoke(Request $request)
+    public function __invoke(Request $request): Response
     {
         return Inertia::render('dashboard/Dashboard', [
             'segnalazioni'  => SegnalazioneResource::collection(

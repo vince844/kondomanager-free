@@ -83,7 +83,7 @@ const priorityIcons = {
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai i permessi sufficienti per visualizzare le comunicazioni!</span>
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le comunicazioni!</span>
                         </div>
                     </CardContent>
                 </Card>
@@ -119,7 +119,7 @@ const priorityIcons = {
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai i permessi sufficienti per visualizzare le segnalazioni!</span>
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le segnalazioni!</span>
                         </div>
                     </CardContent>
                 </Card>
