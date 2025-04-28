@@ -19,7 +19,6 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
       return h(Link, {
         href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
         class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-        prefetch: true,
       }, () => comunicazione.subject)
     }
   },
@@ -155,11 +154,7 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
         class: 'relative flex items-center h-10',
       }, avatars);
     },
-  
-    filterFn: (row, id, value) => {
-      const condomini = row.original.condomini?.options ?? [];
-      return condomini.some((condominio: Building) => value.includes(condominio.value));
-    },
+
   },
   {
     accessorKey: 'priority',

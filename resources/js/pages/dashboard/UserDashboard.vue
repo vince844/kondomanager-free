@@ -66,7 +66,6 @@ const priorityIcons = {
                             <Link
                                 :href="route('user.comunicazioni.index')"
                                 v-if="hasPermission(['Visualizza comunicazioni'])"
-                                prefetch
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
                                 Visualizza tutte
@@ -101,7 +100,6 @@ const priorityIcons = {
                         <Link
                             :href="route('user.segnalazioni.index')"
                             v-if="hasPermission(['Visualizza segnalazioni'])"
-                            prefetch
                             class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                         >
                             Visualizza tutte

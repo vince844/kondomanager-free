@@ -295,7 +295,6 @@ onMounted(() => {
                 <div class="border p-4 rounded-md hover:shadow-sm transition-shadow">
                   <Link
                     :href="route('user.comunicazioni.show', { id: comunicazione.id })"
-                    prefetch
                     class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 group-hover:text-blue-600 transition-colors"
                   >
                     <component

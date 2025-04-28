@@ -1,5 +1,9 @@
 <script setup lang="ts">
 
+import { usePage } from '@inertiajs/vue3';
+import { Heart, Coffee } from 'lucide-vue-next';
+
+const { version } = usePage().props;
 
 </script>
 
@@ -9,7 +13,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center">
                 <div class="mb-4 md:mb-0">
                     <p class="text-gray-600 dark:text-gray-300 text-sm">
-                        &copy; {{ new Date().getFullYear() }} KondoManager software open source per il condominio
+                        {{ new Date().getFullYear() }} KondoManager software open source per il condominio (v{{ version }}) 
                     </p>
                 </div>
                 <div class="flex space-x-6">

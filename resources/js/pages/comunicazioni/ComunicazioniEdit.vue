@@ -104,16 +104,18 @@ const submit = () => {
           <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
             <Pencil class="w-4 h-4" v-if="!form.processing" />
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Modifica
+            Salva
           </Button>
 
-          <!-- Button for "Elenco Segnalazioni" -->
-          <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
+          <Link 
+            as="button"
+            :href="route('admin.comunicazioni.index')" 
+            class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+          >
             <List class="w-4 h-4" />
-            <Link prefetch :href="route('admin.comunicazioni.index')" class="block lg:inline">
-              Elenco
-            </Link>
-          </Button>
+            <span>Elenco</span>
+          </Link>
+
         </div>
 
         <!-- Two-column layout (3:1 ratio) -->

@@ -52,17 +52,15 @@ const submit = () => {
                 <!-- Container for buttons (wraps buttons for alignment) -->
                 <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
-                    <!-- Button for "Crea Segnalazione" -->
                     <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                         <Plus class="w-4 h-4" v-if="!form.processing" />
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                         Salva
                     </Button>
 
-                    <!-- Button for "Elenco Segnalazioni" -->
                     <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
-                        <Link prefetch :href="route('user.segnalazioni.index')" class="block lg:inline">
+                        <Link :href="route('user.segnalazioni.index')" class="block lg:inline">
                         Elenco
                         </Link>
                     </Button>

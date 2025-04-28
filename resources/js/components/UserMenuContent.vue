@@ -1,8 +1,9 @@
 <script setup lang="ts">
+
 import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import type { User } from '@/types';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { LogOut, Settings, Users } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 
@@ -13,6 +14,14 @@ interface Props {
 }
 
 defineProps<Props>();
+
+function handleLogout() {
+    router.post(route('logout'), {}, {
+        onSuccess: () => {
+            router.flushAll()
+        }
+    })
+}
 
 </script>
 
@@ -39,9 +48,14 @@ defineProps<Props>();
     </DropdownMenuGroup>
     <DropdownMenuSeparator />
     <DropdownMenuItem :as-child="true">
-        <Link class="block w-full" method="post" :href="route('logout')" as="button">
+      <!--   <Link class="block w-full" method="post" :href="route('logout')" as="button">
             <LogOut class="mr-2 h-4 w-4" />
             Log out
         </Link>
+ -->
+        <button class="block w-full" @click="handleLogout">
+            <LogOut class="mr-2 h-4 w-4" />
+            Log out
+        </button>
     </DropdownMenuItem>
 </template>

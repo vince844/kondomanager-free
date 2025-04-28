@@ -99,7 +99,7 @@ class SegnalazioneService
         array $validated = []
     ){
 
-        return Segnalazione::with(['createdBy', 'assignedTo', 'condominio'])
+        return Segnalazione::with(['anagrafiche.user','createdBy', 'assignedTo', 'condominio'])
                 ->when($validated['subject'] ?? false, function ($query, $subject) {
                     $query->where('subject', 'like', "%{$subject}%");
                 })

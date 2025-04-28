@@ -29,10 +29,8 @@ const props = defineProps<{
         
         <Heading title="Visualizza segnalazione guasto" description="Di seguito i dettagli della segnalazione guasto" />
 
-            <!-- Container for buttons (wraps buttons for alignment) -->
             <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
-                <!-- Button for "Blocca e sblocca segnalazioni" -->
                 <Link 
                     as="button"
                     method="post"
@@ -46,7 +44,6 @@ const props = defineProps<{
                     <span>{{ props.segnalazione.is_locked ? 'Sblocca' : 'Blocca' }}</span>
                 </Link>
 
-                <!-- Button for "Elenco segnalazioni" -->
                 <Link 
                     as="button"
                     v-if="hasPermission(['Visualizza segnalazioni'])"
@@ -64,7 +61,8 @@ const props = defineProps<{
             </div>
 
             <!-- Two-column layout (3:1 ratio) -->
-            <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 ">
+          <!--   <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 "> -->
+            <div class="">
 
                 <!-- Main Card (3/4 width) -->
                 <div class="col-span-1 lg:col-span-3 mt-3">
@@ -87,13 +85,13 @@ const props = defineProps<{
                 </div>
 
                 <!-- Side Card (1/4 width) -->
-                <div class="col-span-1 mt-3">
+      <!--           <div class="col-span-1 mt-3">
                     <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
 
                         altri dettagli
                         
                     </div>
-                </div>
+                </div> -->
             
             </div>
       </div>

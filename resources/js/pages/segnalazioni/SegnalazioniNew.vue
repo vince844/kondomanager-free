@@ -69,7 +69,6 @@ const submit = () => {
 
                 <Link 
                     as="button"
-                    prefetch
                     :href="route('admin.segnalazioni.index')" 
                     class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
                 >

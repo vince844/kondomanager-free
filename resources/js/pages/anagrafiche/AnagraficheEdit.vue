@@ -107,7 +107,6 @@ const submit = () => {
 
                 <Link 
                     as="button"
-                    prefetch
                     :href="route('admin.anagrafiche.index')" 
                     class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
                 >
