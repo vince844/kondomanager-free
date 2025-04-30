@@ -154,18 +154,25 @@ class ComunicazionePolicy
     private function isAssignedToUserOrCondominio(User $user, Comunicazione $comunicazione): bool
     {
         $anagrafica = $user->anagrafica;
-        
+
         if (!$anagrafica) {
             return false;
         }
-    
-        $condominioIds = $anagrafica->condomini->pluck('id')->toArray();
 
-        $isAssignedToUser = $comunicazione->anagrafiche->contains($anagrafica->id);
-        $isAssignedToCondominio = $comunicazione->anagrafiche->isEmpty()
-            && $comunicazione->condomini->pluck('id')->intersect($condominioIds)->isNotEmpty();
+        // Assigned directly to the user
+        if ($comunicazione->anagrafiche->contains($anagrafica->id)) {
+            return true;
+        }
 
-        return $isAssignedToUser || $isAssignedToCondominio;
+        // If it is assigned to any anagrafiche, do NOT allow access via condominio
+        if ($comunicazione->anagrafiche->isNotEmpty()) {
+            return false;
+        }
+
+        // Otherwise, allow via matching condominio
+        $condominioIds = $anagrafica->condomini->pluck('id');
+
+        return $comunicazione->condomini->pluck('id')->intersect($condominioIds)->isNotEmpty();
     }
 
 }

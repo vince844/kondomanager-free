@@ -27,6 +27,7 @@ class ComunicazioneResource extends JsonResource
             'is_featured'   => $this->is_featured,
             'is_published'  => $this->is_published,
             'is_approved'   => $this->is_approved,
+            'is_private'    => $this->is_private,
             'can_comment'   => $this->can_comment,
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {

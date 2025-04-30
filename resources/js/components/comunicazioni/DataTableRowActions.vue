@@ -9,21 +9,15 @@ import type { Comunicazione } from '@/types/comunicazioni';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission, generateRoute } = usePermission();
-
 defineProps<{ 
   comunicazione: Comunicazione 
 }>()
 
+const { hasPermission, generateRoute } = usePermission();
 const comunicazioneID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
-// Function to delete user: first close menu, then open dialog
 function handleDelete(comunicazione: Comunicazione) {
   comunicazioneID.value = comunicazione.id;
   isDropdownOpen.value = false 
@@ -84,7 +78,7 @@ const deleteComunicazione = () => {
       <AlertDialogHeader>
         <AlertDialogTitle>Sei sicuro di volere eliminare questa comunicazione?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.
+          Questa azione non è reversibile. Eliminerà la comunicazione e tutti i dati ad essa associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>

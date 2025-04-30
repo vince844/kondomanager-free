@@ -61,14 +61,18 @@ class ComunicazioneService
 
         return Comunicazione::with('anagrafiche', 'condomini', 'createdBy.anagrafica')
             ->where(function($query) use ($anagrafica, $condominioIds) {
-                // Communications directly assigned to the user
-                $query->whereHas('anagrafiche', function ($q) use ($anagrafica) {
-                    $q->where('anagrafica_id', $anagrafica->id);
-                });
-                
-                // OR communications assigned to condominios the user belongs to
-                $query->orWhereHas('condomini', function ($q) use ($condominioIds) {
-                    $q->whereIn('condominio_id', $condominioIds);
+                $query->where(function($q) use ($anagrafica) {
+                    // Comunicazioni directly associated with the current anagrafica
+                    $q->whereHas('anagrafiche', function($subQ) use ($anagrafica) {
+                        $subQ->where('anagrafica_id', $anagrafica->id);
+                    });
+                })
+                ->orWhere(function($q) use ($condominioIds) {
+                    // Comunicazioni with NO anagrafiche, but matching user's condomini
+                    $q->whereDoesntHave('anagrafiche')
+                    ->whereHas('condomini', function($subQ) use ($condominioIds) {
+                        $subQ->whereIn('condominio_id', $condominioIds);
+                    });
                 });
             })
             ->when($validated['search'] ?? false, function ($query, $search) {

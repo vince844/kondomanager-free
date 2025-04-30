@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 /**
  * @method bool merge(string $key)
  */
-class CreateComunicazioneRequest extends FormRequest
+class CreateUserComunicazioneRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -30,17 +30,16 @@ class CreateComunicazioneRequest extends FormRequest
             'subject'       => 'required|string|max:255',
             'description'   => 'required|string',
             'priority'      => 'required|string',
-            'can_comment'   => 'required|boolean',
             'is_featured'   => 'required|boolean',
             'is_published'  => 'required|boolean',
-            'created_by'    => 'required|exists:users,id',
             'is_approved'   => 'required|boolean',
-            'anagrafiche'   => ['sometimes', 'array', Rule::exists('anagrafiche', 'id')],
+            'is_private'    => 'sometimes|boolean',
+            'created_by'    => 'required|exists:users,id',
             'condomini_ids' => ['required', 'array', Rule::exists('condomini', 'id')],
         ];
     }
 
-    /**
+     /**
      * Prepare the data for validation.
      *
      * @return void
@@ -51,8 +50,9 @@ class CreateComunicazioneRequest extends FormRequest
         $user = Auth::user();
 
         $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo('Pubblica comunicazioni')
+            'created_by'   => $user->id,
+            'is_approved'  => $user->hasPermissionTo('Pubblica comunicazioni'),
+            'is_published' => $user->hasPermissionTo('Pubblica comunicazioni')
         ]);
     }
 
@@ -68,7 +68,6 @@ class CreateComunicazioneRequest extends FormRequest
             'description' => __('validation.attributes.comunicazioni.description'),
             'is_published' => __('validation.attributes.comunicazioni.is_published'),
             'priority' => __('validation.attributes.comunicazioni.priority'),
-            'stato' => __('validation.attributes.comunicazioni.stato'),
             'condomini_ids' => __('validation.attributes.comunicazioni.condomini_ids'),
         ];
     }

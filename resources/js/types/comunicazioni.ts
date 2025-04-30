@@ -1,6 +1,16 @@
+// comunicazioni.ts
+
 import { Anagrafica } from './anagrafiche';
+import { User } from './users';
 import { Building } from './buildings';
 import { Component } from 'vue';
+
+import {
+  CircleArrowDown,
+  CircleArrowRight,
+  CircleArrowUp,
+  CircleAlert,
+} from 'lucide-vue-next';
 
 export type PriorityValue = 'bassa' | 'media' | 'alta' | 'urgente';
 export type PublishedValue = boolean;
@@ -19,26 +29,76 @@ export interface PublishedType {
 }
 
 export interface Comunicazione {
-    id: string;
-    subject: string;
-    description: string;
-    created_at: string;
-    created_by: {
-      user_id: string;         
-      name: string;
-      email: string;
-      anagrafica: Anagrafica[];
-    };
-    assigned_to: Anagrafica[];
-    condomini: {
-      options: Building[];              
-      full: Building[];           
-    };
-    priority: PriorityValue;  
-    is_featured: boolean;
-    is_private: boolean;
-    is_published: boolean;
-    is_approved: boolean;
-    can_comment: boolean; 
-    anagrafiche: Anagrafica[];
-  }
+  id: string;
+  subject: string;
+  description: string;
+  created_at: string;
+  created_by: {
+    user: User;
+    anagrafica: Anagrafica;
+  };
+  assigned_to: Anagrafica[];
+  condomini: {
+    options: Building[];
+    full: Building[];
+  };
+  priority: PriorityValue;
+  is_featured: boolean;
+  is_private: boolean;
+  is_published: boolean;
+  is_approved: boolean;
+  can_comment: boolean;
+  anagrafiche: Anagrafica[];
+}
+
+// Priority options
+export const PRIORITY_OPTIONS: PriorityType[] = [
+  {
+    value: 'bassa',
+    label: 'Bassa',
+    icon: CircleArrowDown,
+    colorClass: 'text-green-600',
+  },
+  {
+    value: 'media',
+    label: 'Media',
+    icon: CircleArrowRight,
+    colorClass: 'text-yellow-500',
+  },
+  {
+    value: 'alta',
+    label: 'Alta',
+    icon: CircleArrowUp,
+    colorClass: 'text-orange-600',
+  },
+  {
+    value: 'urgente',
+    label: 'Urgente',
+    icon: CircleAlert,
+    colorClass: 'text-red-600',
+  },
+];
+
+// Published options
+export const PUBLISHED_OPTIONS: PublishedType[] = [
+  {
+    value: true,
+    label: 'Pubblicata',
+    colorClass: 'text-green-600',
+  },
+  {
+    value: false,
+    label: 'Bozza',
+    colorClass: 'text-gray-500',
+  },
+];
+
+// Helper to get priority metadata
+export const getPriorityMeta = (priority: PriorityValue): PriorityType => {
+  return PRIORITY_OPTIONS.find(p => p.value === priority)!;
+};
+
+// Helper to get published metadata
+export const getPublishedMeta = (isPublished: PublishedValue): PublishedType => {
+  return PUBLISHED_OPTIONS.find(p => p.value === isPublished)!;
+};

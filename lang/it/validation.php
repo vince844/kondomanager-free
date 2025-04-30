@@ -243,6 +243,14 @@ return [
             'name' => 'nome ruolo',
             'description' => 'descrizione ruolo',
         ],
+        'comunicazioni' => [
+            'subject' => 'oggetto',
+            'description' => 'descrizione',
+            'is_published' => 'stato',
+            'priority' => 'priorità',
+            'stato' => 'stato comunicazioni',
+            'condomini_ids' => 'condomini',
+        ],
         'segnalazioni' => [
             'subject' => 'oggetto segnalazione',
             'description' => 'descrizione segnalazione',
