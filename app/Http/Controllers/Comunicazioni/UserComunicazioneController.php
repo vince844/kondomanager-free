@@ -10,6 +10,7 @@ use App\Http\Requests\Comunicazione\UpdateUserComunicazioneRequest;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
+use App\Services\ComunicazioneNotificationService;
 use App\Services\ComunicazioneService;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
@@ -27,9 +28,11 @@ class UserComunicazioneController extends Controller
      * Create a new controller instance.
      *
      * @param  \App\Services\ComunicazioneService 
+     * @param  \App\Services\ComunicazioneNotificationService
      */
     public function __construct(
-        private ComunicazioneService $comunicazioneService
+        private ComunicazioneService $comunicazioneService,
+        private ComunicazioneNotificationService $notificationService
     ) {}
 
     /**
@@ -152,10 +155,9 @@ class UserComunicazioneController extends Controller
 
             DB::commit();
 
-       /*      $this->notificationService->sendUserNotifications(
-                validated: $validated,
+            $this->notificationService->sendAdminNotifications(
                 comunicazione: $comunicazione
-            ); */
+            ); 
 
             return to_route('user.comunicazioni.index')->with([
                 'message' => [

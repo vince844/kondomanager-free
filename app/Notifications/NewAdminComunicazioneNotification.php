@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Helpers\RouteHelper;
 use App\Models\Comunicazione;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -10,7 +9,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class NewComunicazioneNotification extends Notification implements ShouldQueue
+class NewAdminComunicazioneNotification extends Notification
 {
     use Queueable;
 
@@ -39,16 +38,13 @@ class NewComunicazioneNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-
-        $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
-
         return (new MailMessage)
-            ->subject('Nuova comunicazione in bacheca')
-            ->greeting('Salve ' . $notifiable->name)
-            ->line("L'amministratore ha creato una nuova comunicazione nella bacheca del condominio.")
+            ->subject('Nuova comunicazione da approvare')
+            ->greeting('Salve ' . $notifiable->nome)
+            ->line("Una nuova comunicazione è stata creata. La comunicazione è in attesa di essere approvata perchè l'utente che l'ha inviata non ha permessi sufficienti per pubblicarla")
             ->line('**Oggetto:** ' . $this->comunicazione->subject)
             ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
-            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));;
+            ->action('Visualizza comunicazione', url('/admin/comunicazioni/' . $this->comunicazione->id));
     }
 
     /**
