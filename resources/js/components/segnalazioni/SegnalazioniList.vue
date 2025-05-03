@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { defineProps, ref, computed } from "vue";
+
+import { ref, computed } from "vue";
 import { Link } from '@inertiajs/vue3';
 import type { Segnalazione } from '@/types/segnalazioni';
 

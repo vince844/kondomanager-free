@@ -12,6 +12,7 @@ use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
+use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Permissions\PermissionController;
 use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
@@ -73,6 +74,11 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+
+    Route::get('preferences/notifications', [NotificationPreferenceController::class, 'index'])
+      ->name('preferences.notifications.index');
+    Route::put('preferences/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('preferences.notifications.update');
 });
 
 // User routes
@@ -85,6 +91,11 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         'comunicazioni' => 'comunicazione'
     ]);
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
+
+    Route::get('preferences/notifications', [NotificationPreferenceController::class, 'index'])
+    ->name('preferences.notifications.index');
+    Route::put('preferences/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('preferences.notifications.update');
 });
 
 /*

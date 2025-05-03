@@ -86,5 +86,15 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         $this->notify(new CustomVerifyEmailNotification);
     }
+
+    public function notificationPreferences()
+    {
+        return $this->hasMany(NotificationPreference::class);
+    }
+
+    public function prefers(string $type): bool
+    {
+        return $this->notificationPreferences()->where('type', $type)->value('enabled') ?? false;
+    }
     
 }

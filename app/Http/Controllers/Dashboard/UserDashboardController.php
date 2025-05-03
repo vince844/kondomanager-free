@@ -11,9 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Services\SegnalazioneService;
 use App\Services\ComunicazioneService;
-use Illuminate\Console\Application;
 use Illuminate\Support\Facades\App;
-use Illuminate\Support\Facades\Lang;
 use Inertia\Response;
 
 class UserDashboardController extends Controller
