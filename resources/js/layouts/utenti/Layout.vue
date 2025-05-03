@@ -20,7 +20,7 @@ const sidebarNavItems: NavItem[] = [
     {
         title: 'Inviti',
         href: '/inviti',
-    },
+    }
 ];
 
 const currentPath = window.location.pathname;

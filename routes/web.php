@@ -75,10 +75,10 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-    Route::get('preferences/notifications', [NotificationPreferenceController::class, 'index'])
-      ->name('preferences.notifications.index');
-    Route::put('preferences/notifications', [NotificationPreferenceController::class, 'update'])
-        ->name('preferences.notifications.update');
+    Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
+      ->name('settings.notifications.index');
+    Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('settings.notifications.update');
 });
 
 // User routes
@@ -92,10 +92,10 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     ]);
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
 
-    Route::get('preferences/notifications', [NotificationPreferenceController::class, 'index'])
-    ->name('preferences.notifications.index');
-    Route::put('preferences/notifications', [NotificationPreferenceController::class, 'update'])
-        ->name('preferences.notifications.update');
+    Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
+    ->name('settings.notifications.index');
+    Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('settings.notifications.update');
 });
 
 /*

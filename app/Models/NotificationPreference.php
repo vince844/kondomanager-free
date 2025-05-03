@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class NotificationPreference extends Model
 {
-    protected $fillable = ['type', 'enabled'];
+    protected $fillable = ['user_id', 'type', 'enabled'];
     protected $casts = ['enabled' => 'boolean'];
 
     public function user()

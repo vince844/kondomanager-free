@@ -3,23 +3,19 @@
 return [
     'types' => [
         'common' => [
-            'weekly_report' => [
-                'label' => 'Weekly Report',
-                'description' => 'Receive a summary of your weekly activity.',
+            'new_communication' => [
+                'label' => 'Nuova comunicazione bacheca',
+                'description' => 'Ricevi una notifica quando viene creata una nuova comunicazione',
             ],
-            'new_message' => [
-                'label' => 'New Message',
-                'description' => 'Alerts when someone sends you a message.',
+            'new_ticket' => [
+                'label' => 'Nuova segnalazione guasto',
+                'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
             ],
         ],
         'admin' => [
-            'system_alert' => [
-                'label' => 'System Alerts',
-                'description' => 'Critical system updates for admins.',
-            ],
-            'user_activity' => [
-                'label' => 'User Activity',
-                'description' => 'Get notified when users perform key actions.',
+            'new_user' => [
+                'label' => 'Nuovo utente registrato',
+                'description' => 'Ricevi una notifica quando un nuovo utente si registra',
             ],
         ],
     ],
