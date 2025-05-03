@@ -1,0 +1,22 @@
+# Contributing to KondoManager
+Thanks for considering contributing! Here’s how to help:
+
+## How to Contribute
+
+- Fork the repository
+- Create a new branch (`git checkout -b feature/YourFeature`)
+- Commit your changes (`git commit -m 'Add new feature'`)
+- Push to your branch (`git push origin feature/YourFeature`)
+- Open a Pull Request
+
+## Code Style
+
+Please follow PSR-12 (PHP) and standard VueJS formatting. Use ESLint and Prettier for JS/TS.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [AGPL v3 License](./LICENSE).
+
+## Questions?
+
+Open an issue or reach out on [your contact method].
