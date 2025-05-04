@@ -56,7 +56,7 @@ const currentPath = window.location.pathname;
             <Separator class="my-6 md:hidden" />
 
             <div class="w-full shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-4">
-                <section class="max-w-xl space-y-12">
+                <section class="max-w-xl">
                     <slot />
                 </section>
             </div> 

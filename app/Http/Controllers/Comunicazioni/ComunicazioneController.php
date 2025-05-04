@@ -130,10 +130,28 @@ class ComunicazioneController extends Controller
 
             DB::commit();
 
-            $this->notificationService->sendUserNotifications(
-                validated: $validated,
-                comunicazione: $comunicazione
-            );
+            try {
+       
+                // Attempt to send notifications (emails)
+                $this->notificationService->sendUserNotifications(
+                    validated: $validated,
+                    comunicazione: $comunicazione
+                );
+
+            } catch (\Exception $emailException) {
+
+                // If an error occurs during email sending, log it and set a message for the email failure
+                Log::error('Error sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
+    
+                // Add a specific error message for email failure
+                return to_route('admin.comunicazioni.index')->with([
+                    'message' => [
+                        'type'    => 'warning',
+                        'message' => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica!"
+                    ]
+                ]);
+
+            }
 
             return to_route('admin.comunicazioni.index')->with([
                 'message' => [
@@ -146,7 +164,7 @@ class ComunicazioneController extends Controller
         
             DB::rollback();
 
-            Log::error('Error creating comunicazione: ' . $e->getMessage());
+            Log::error('Error sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $e->getMessage());
 
             return to_route('admin.comunicazioni.index')->with([
                 'message' => [
@@ -154,7 +172,7 @@ class ComunicazioneController extends Controller
                     'message' => "Si è verificato un errore durante la creazione della comunicazione!"
                 ]
             ]);
-
+            
         }
 
     }

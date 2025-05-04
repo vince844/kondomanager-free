@@ -4,13 +4,27 @@ namespace App\Http\Controllers\Notifications;
 
 use App\Http\Controllers\Controller;
 use App\Models\NotificationPreference;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class NotificationPreferenceController extends Controller
 {
+    /**
+     * Displays the notification preferences settings page for the authenticated user.
+     *
+     * This method retrieves the available notification types for the user, considering their roles and permissions.
+     * It fetches the configuration for both common and admin notification types and merges them if the user is an admin.
+     * The saved notification preferences are loaded and then mapped to include the type, label, description, and the 
+     * current enabled status for each notification. The result is passed to the view for rendering.
+     *
+     * @return \Inertia\Response The response object for rendering the notification preferences page.
+     * 
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If there is an issue with loading user notification preferences.
+     */
     public function index(): Response
     {
         $user = Auth::user();
@@ -18,14 +32,17 @@ class NotificationPreferenceController extends Controller
         $config = config('notifications.types');
         $types = $config['common'];
 
+        // Checking if the user has a specific role or permission
         if ($user->hasRole(['amministratore', 'collaboratore']) || $user->hasPermissionTo('Accesso pannello amministratore')) {
             $types = array_merge($types, $config['admin']);
         }
 
+        // Get saved notification preferences from the database
         $saved = $user->notificationPreferences()
             ->pluck('enabled', 'type')
             ->toArray();
 
+        // Map the available notification types and merge with saved preferences
         $preferences = collect($types)->map(function ($meta, $type) use ($saved) {
             return [
                 'type' => $type,
@@ -40,25 +57,62 @@ class NotificationPreferenceController extends Controller
         ]);
     }
 
-    public function update(Request $request)
+    /**
+     * Update the notification preferences for the authenticated user.
+     *
+     * This method accepts a request containing the user's notification preferences,
+     * validates the data, and updates or creates the preference records for the user.
+     *
+     * @param \Illuminate\Http\Request $request The incoming request containing the user's preferences.
+     * 
+     * @return \Illuminate\Http\RedirectResponse A redirect response to the previous page.
+     */
+    public function update(Request $request): RedirectResponse
     {
-    
-        $user = Auth::user();
+        try {
+            $user = Auth::user();
 
-        $data = $request->validate([
-            'preferences' => 'required|array',
-            'preferences.*.type' => 'required|string',
-            'preferences.*.enabled' => 'required|boolean',
-        ]);
+            // Validate the incoming request data
+            $data = $request->validate([
+                'preferences' => 'required|array',
+                'preferences.*.type' => 'required|string',
+                'preferences.*.enabled' => 'required|boolean',
+            ]);
 
-        foreach ($data['preferences'] as $pref) {
-            NotificationPreference::updateOrCreate(
-                ['user_id' => $user->id, 'type' => $pref['type']],
-                ['enabled' => $pref['enabled']]
+            // Bulk update or create notification preferences for the user
+            $preferences = collect($data['preferences'])->map(function ($pref) use ($user) {
+                return [
+                    'user_id' => $user->id,  
+                    'type' => $pref['type'],
+                    'enabled' => $pref['enabled']
+                ];
+            });
+
+            NotificationPreference::upsert(
+                $preferences->toArray(),
+                ['user_id', 'type'],
+                ['enabled']
             );
+
+            return back()->with([
+                'message' => [
+                    'type'    => 'success',
+                    'message' => "Le preferenze sono state aggiornate con successo"
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+
+            // Log any unexpected errors for debugging
+            Log::error('Error updating notification preferences for user ' . $user->id . ': ' . $e->getMessage());
+
+            return back()->with([
+                'message' => [
+                    'type'    => 'error',
+                    'message' => "Si è verificato un errore durante l'aggiornamento delle preferenze!"
+                ]
+            ]);
+
         }
-
-        return redirect()->back();
     }
-
 }
