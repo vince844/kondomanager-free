@@ -141,7 +141,7 @@ class ComunicazioneController extends Controller
             } catch (\Exception $emailException) {
 
                 // If an error occurs during email sending, log it and set a message for the email failure
-                Log::error('Error sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
+                Log::error('Error sending email for new comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
     
                 // Add a specific error message for email failure
                 return to_route('admin.comunicazioni.index')->with([
