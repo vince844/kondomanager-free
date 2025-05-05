@@ -24,7 +24,7 @@ export const columns: ColumnDef<User>[] = [
       
         cell: ({ row }) => {
           
-          const verified = row.original.verified_at;
+          const verified = row.original.email_verified_at;
       
           return h('div', { class: 'flex items-center space-x-2' }, [
             h(

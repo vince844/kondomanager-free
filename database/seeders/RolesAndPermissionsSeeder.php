@@ -33,6 +33,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Comunicazioni
             ['name' => 'Crea comunicazioni', 'description' => 'Permette di creare comunicazioni in bacheca'],
+            ['name' => 'Approva comunicazioni', 'description' => 'Permette di approvare comunicazioni in bacheca'],
             ['name' => 'Pubblica comunicazioni', 'description' => 'Permette di pubblicare le comunicazioni in bacheca'],
             ['name' => 'Pubblica proprie comunicazioni', 'description' => 'Permette di pubblicare solo le proprie comunicazioni in bacheca'],
             ['name' => 'Modifica comunicazioni', 'description' => 'Permette di modificare le comunicazioni in bacheca'],
@@ -52,6 +53,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Segnalazioni
             ['name' => 'Crea segnalazioni', 'description' => 'Permette di creare una segnalazione di guasto'],
+            ['name' => 'Approva segnalazioni', 'description' => 'Permette di approvare una segnalazione di guasto'],
             ['name' => 'Pubblica segnalazioni', 'description' => 'Permette di pubblicare una segnalazione di guasto'],
             ['name' => 'Modifica segnalazioni', 'description' => 'Permette di modificare una segnalazione di guasto'],
             ['name' => 'Modifica proprie segnalazioni', 'description' => 'Permette di modificare solo le proprie segnalazioni di guasto'],

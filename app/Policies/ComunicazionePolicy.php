@@ -144,6 +144,13 @@ class ComunicazionePolicy
         return Response::deny(Lang::get('policies.delete_communications'));
     }
 
+    public function approve(User $user, Comunicazione $comunicazione): Response
+    {
+        return $user->hasPermissionTo('Approva comunicazioni')  
+        ? Response::allow() 
+        : Response::deny(Lang::get('policies.approve_communication'));
+    }
+
     /**
      * Verifica se l'utente è assegnato alla comunicazione o al suo condominio.
      *

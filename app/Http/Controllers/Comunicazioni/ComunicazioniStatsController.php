@@ -61,6 +61,7 @@ class ComunicazioniStatsController extends Controller
     private function getUserScopedQuery($anagrafica, $condominioIds)
     {
         return Comunicazione::with('anagrafiche', 'condomini')
+            ->where('is_published', true)
             ->where(function($query) use ($anagrafica, $condominioIds) {
                 // Communications directly assigned to the user
                 $query->whereHas('anagrafiche', function ($q) use ($anagrafica) {

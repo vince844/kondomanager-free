@@ -155,16 +155,48 @@ class UserComunicazioneController extends Controller
 
             DB::commit();
 
-            $this->notificationService->sendAdminNotifications(
-                comunicazione: $comunicazione
-            ); 
+            try {
+       
+                // Attempt to send notifications (emails)
+                $this->notificationService->sendAdminComunicazioneCreatedNotification(
+                    validated: $validated,
+                    comunicazione: $comunicazione
+                ); 
 
-            return to_route('user.comunicazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La nuova comunicazione è stata creata con successo!"
-                ]
-            ]);
+            } catch (\Exception $emailException) {
+
+                // If an error occurs during email sending, log it and set a message for the email failure
+                Log::error('Error sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
+    
+                // Add a specific error message for email failure
+                return to_route('user.comunicazioni.index')->with([
+                    'message' => [
+                        'type'    => 'warning',
+                        'message' => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica!"
+                    ]
+                ]);
+
+            }
+
+            if($validated['is_published']){
+
+                return to_route('user.comunicazioni.index')->with([
+                    'message' => [
+                        'type'    => 'success',
+                        'message' => "La nuova comunicazione è stata creata con successo!"
+                    ]
+                ]);
+
+            }else{
+
+                return to_route('user.comunicazioni.index')->with([
+                    'message' => [
+                        'type'    => 'warning',
+                        'message' => "La nuova comunicazione è stata creata con successo ma deve essere approvata dall'amministratore!"
+                    ]
+                ]);
+
+            }
 
         } catch (\Exception $e) {
         

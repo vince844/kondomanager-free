@@ -5,16 +5,16 @@ namespace App\Services;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use App\Models\User;
-use App\Notifications\NewAdminComunicazioneNotification;
-use App\Notifications\NewComunicazioneNotification;
+use App\Notifications\Communications\ApproveComunicazioneNotification;
+use App\Notifications\Communications\NewComunicazioneNotification;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Log;
-use App\Traits\FiltersByNotificationPreference;
+use App\Traits\FilterByNotificationPreference;
 use App\Enums\NotificationType;
 
 class ComunicazioneNotificationService
 {
-    use FiltersByNotificationPreference;
+    use FilterByNotificationPreference;
 
     /**
      * Sends notifications to users (anagrafiche) based on their preferences.
@@ -31,22 +31,11 @@ class ComunicazioneNotificationService
      * 
      * @throws \Exception If an error occurs during the process of filtering or sending notifications, it will be logged.
      */
-    public function sendUserNotifications(array $validated, Comunicazione $comunicazione) 
+    public function sendUserComunicazioneCreatedNotification(array $validated, Comunicazione $comunicazione) 
     {
         try {
-
-            // Prepare base query for anagrafiche based on given data
-            $baseQuery = !empty($validated['anagrafiche'])
-                ? Anagrafica::whereIn('id', $validated['anagrafiche'])
-                : Anagrafica::whereHas('condomini', function ($query) use ($validated) {
-                    $query->where('condominio_id', $validated['condomini_ids']);
-                });
-
-            // Apply the notification preference filter
-            $anagrafiche = $this->filterByNotificationPreference($baseQuery, NotificationType::NEW_COMMUNICATION->value)
-                ->get()
-                ->unique('email')
-                ->values();
+            
+            $anagrafiche = $this->getAnagraficheForNotification($validated);
 
             if ($anagrafiche->isNotEmpty()) {
                 Notification::send($anagrafiche, new NewComunicazioneNotification($comunicazione));
@@ -60,44 +49,53 @@ class ComunicazioneNotificationService
     }
 
     /**
-     * Sends notifications to admins based on the communication's approval and privacy status.
+     * Sends admin notifications when a new comunicazione is created.
      *
-     * This method retrieves all admins who are subscribed to the 'new-communication' 
-     * notification type. It then sends notifications depending on whether the 
-     * communication is approved, private, or public. Admins are notified differently 
-     * based on these conditions.
+     * This method determines the appropriate group of admin users to notify based on the 
+     * approval and privacy status of the comunicazione:
+     * 
+     * - If the comunicazione is approved:
+     *   - And private: notify admins with the standard new comunicazione notification.
+     *   - And public: notify both admins and relevant anagrafiche using a helper method.
+     * - If the comunicazione is not approved:
+     *   - Notify only admins with the permission to publish comunicazioni, using a special approval request notification.
      *
-     * - If the communication is approved and private, a general notification is sent to admins.
-     * - If the communication is approved and public, both admins and related anagrafiche are notified.
-     * - If the communication is not approved and private, a notification intended for admins only is sent.
+     * The method filters admins based on their notification preferences and uses the 
+     * appropriate notification class based on the context.
      *
-     * @param \App\Models\Comunicazione $comunicazione The comunicazione model instance, representing the communication to be notified about.
+     * @param array $validated An array of validated input data, typically containing 'anagrafiche' or 'condomini_ids'.
+     * @param \App\Models\Comunicazione $comunicazione The comunicazione instance that triggered the notification.
      * 
      * @return void
      * 
-     * @throws \Exception If an error occurs while sending notifications, it will be logged, but not rethrown.
+     * @throws \Exception Any exceptions during the notification process are caught and logged.
      */
-    public function sendAdminNotifications(Comunicazione $comunicazione)
+    public function sendAdminComunicazioneCreatedNotification(array $validated, Comunicazione $comunicazione)
     {
         try {
-            // Get admins who are subscribed to 'new-communication' notification type
-            $adminQuery = User::role(['amministratore', 'collaboratore'])->with('roles');
-            $admins = $this->filterByNotificationPreference($adminQuery, NotificationType::NEW_COMMUNICATION->value)->get();
-
-            // Refactored condition checks for approved and private flags
             if ($comunicazione->is_approved) {
+                $adminQuery = User::permission('Accesso pannello amministratore');
+            } else {
+                $adminQuery = User::permission('Pubblica comunicazioni');
+            }
+    
+            $admins = $this->filterByNotificationPreference(
+                $adminQuery,
+                NotificationType::NEW_COMMUNICATION->value
+            )->get();
+    
+            if ($comunicazione->is_approved) {
+
                 if ($comunicazione->is_private) {
                     Notification::send($admins, new NewComunicazioneNotification($comunicazione));
                 } else {
-                    // If approved and public, notify both admins and related anagrafiche
-                    $this->sendToAdminsAndAnagrafiche($comunicazione, $admins);
+                    $this->sendToAdminsAndAnagrafiche($validated, $comunicazione, $admins);
                 }
+                
             } else {
-                if ($comunicazione->is_private) {
-                    Notification::send($admins, new NewAdminComunicazioneNotification($comunicazione));
-                }
+                Notification::send($admins, new ApproveComunicazioneNotification($comunicazione));
             }
-
+    
         } catch (\Exception $e) {
             Log::error("Error sending notifications for comunicazione ID: {$comunicazione->id} - " . $e->getMessage());
         }
@@ -119,21 +117,36 @@ class ComunicazioneNotificationService
      * 
      * @throws \Exception If an error occurs during the process of filtering, merging, or sending notifications, it will be logged, but not rethrown.
      */
-    private function sendToAdminsAndAnagrafiche(Comunicazione $comunicazione, $admins)
+    private function sendToAdminsAndAnagrafiche($validated, $comunicazione, $admins)
     {
-        // Eager load related condomini for anagrafiche
-        $anagraficaQuery = Anagrafica::with('condomini')
-            ->whereHas('condomini', function ($query) use ($comunicazione) {
-                $query->where('condominio_id', $comunicazione->condominio_id);
+
+        $anagrafiche = $this->getAnagraficheForNotification($validated);
+
+        $recipients = $admins->keyBy('email') // Key admins by email
+            ->union($anagrafiche) // Keep first occurrence of each email
+            ->values(); // Reset to sequential keys (optional)
+
+        // Send the notifications
+        Notification::send($recipients, new NewComunicazioneNotification($comunicazione));
+    }
+
+    /**
+     * Retrieves anagrafiche to notify based on validated data and notification preferences.
+     *
+     * @param array $validated The validated input data, containing 'anagrafiche' or 'condomini_ids'.
+     * @return \Illuminate\Support\Collection A collection of unique anagrafiche.
+     */
+    private function getAnagraficheForNotification(array $validated)
+    {
+        $query = !empty($validated['anagrafiche'])
+            ? Anagrafica::whereIn('id', $validated['anagrafiche'])
+            : Anagrafica::whereHas('condomini', function ($q) use ($validated) {
+                $q->whereIn('condominio_id', $validated['condomini_ids']);
             });
 
-        $anagrafiche = $this->filterByNotificationPreference($anagraficaQuery, NotificationType::NEW_COMMUNICATION->value)
+        return $this->filterByNotificationPreference($query, NotificationType::NEW_COMMUNICATION->value)
             ->get()
             ->unique('email')
             ->values();
-
-        // Merge and send notification to unique recipients
-        $recipients = $admins->merge($anagrafiche)->unique('email')->values();
-        Notification::send($recipients, new NewComunicazioneNotification($comunicazione));
     }
 }

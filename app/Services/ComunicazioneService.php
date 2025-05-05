@@ -60,6 +60,7 @@ class ComunicazioneService
         }
 
         return Comunicazione::with('anagrafiche', 'condomini', 'createdBy.anagrafica')
+            ->where('is_published', true)
             ->where(function($query) use ($anagrafica, $condominioIds) {
                 $query->where(function($q) use ($anagrafica) {
                     // Comunicazioni directly associated with the current anagrafica

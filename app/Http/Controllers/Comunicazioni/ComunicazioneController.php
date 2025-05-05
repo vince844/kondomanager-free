@@ -133,7 +133,7 @@ class ComunicazioneController extends Controller
             try {
        
                 // Attempt to send notifications (emails)
-                $this->notificationService->sendUserNotifications(
+                $this->notificationService->sendUserComunicazioneCreatedNotification(
                     validated: $validated,
                     comunicazione: $comunicazione
                 );

@@ -1,5 +1,5 @@
 import { h } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Building } from '@/types/buildings';
@@ -7,19 +7,46 @@ import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { ShieldCheck } from 'lucide-vue-next';
 
-const { hasRole,  generateRoute } = usePermission();
+const { hasPermission,  generateRoute } = usePermission();
 
 export const columns = (): ColumnDef<Comunicazione>[] => [
   {
     accessorKey: 'subject',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
     cell: ({ row }) => {
-      const comunicazione = row.original
-      return h(Link, {
-        href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
-        class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-      }, () => comunicazione.subject)
+      const comunicazione = row.original;
+    
+      const toggleApproval = () => {
+        router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
+          preserveScroll: true,
+        });
+      };
+    
+      const tooltip = comunicazione.is_approved
+        ? 'Approvata - clicca per rimuovere approvazione'
+        : 'Non approvata - clicca per approvare';
+    
+      const shieldIcon = hasPermission(['Approva comunicazioni'])
+        ? h('div', {
+            class: 'cursor-pointer',
+            title: tooltip,
+            onClick: toggleApproval,
+          }, [
+            h(ShieldCheck, {
+              class: comunicazione.is_approved ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
+            }),
+          ])
+        : null;
+    
+      return h('div', { class: 'flex items-center space-x-2' }, [
+        shieldIcon,
+        h(Link, {
+          href: route(generateRoute('comunicazioni.show'), { id: comunicazione.id }),
+          class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+        }, () => comunicazione.subject)
+      ]);
     }
   },
   {

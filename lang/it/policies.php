@@ -3,6 +3,7 @@
 return [
 
     'create_communication'      => "Non hai permessi sufficienti per creare una comunicazione in bacheca!",
+    'approve_communication'     => "Non hai permessi sufficienti per approvare una comunicazione in bacheca!",
     'view_communications'       => "Non hai permessi sufficienti per visualizzare le comunicazioni in bacheca!",
     'view_communication'        => 'Non hai i permessi per visualizzare questa comunicazione in bacheca!',
     'edit_communications'       => 'Non hai permessi sufficienti per modificare le comunicazioni in bacheca!',

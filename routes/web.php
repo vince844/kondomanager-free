@@ -4,6 +4,7 @@ use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Anagrafiche\UserAnagraficaController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
+use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Comunicazioni\ComunicazioniStatsController;
 use App\Http\Controllers\Comunicazioni\UserComunicazioneController;
@@ -71,6 +72,9 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
         'comunicazioni' => 'comunicazione'
     ]);
+
+    Route::put('comunicazioni/{comunicazione}/toggle-approval', ComunicazioneApprovalController::class)
+    ->name('comunicazioni.toggle-approval');
     
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
