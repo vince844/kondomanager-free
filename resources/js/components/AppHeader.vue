@@ -144,7 +144,7 @@ const rightNavItems: NavItem[] = [
                         <NavigationMenuList class="flex h-full items-stretch space-x-2">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
 
-                                <Link prefetch :href="item.href" v-if="canAccess(item)"> 
+                                <Link :href="item.href" v-if="canAccess(item)"> 
                                     <NavigationMenuLink
                                         :class="[navigationMenuTriggerStyle(), activeItemStyles(item.href), 'h-9 cursor-pointer px-3']"
                                     >

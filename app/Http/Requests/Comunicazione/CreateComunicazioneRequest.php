@@ -27,16 +27,20 @@ class CreateComunicazioneRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'subject'       => 'required|string|max:255',
-            'description'   => 'required|string',
-            'priority'      => 'required|string',
-            'can_comment'   => 'required|boolean',
-            'is_featured'   => 'required|boolean',
-            'is_published'  => 'required|boolean',
-            'created_by'    => 'required|exists:users,id',
-            'is_approved'   => 'required|boolean',
-            'anagrafiche'   => ['sometimes', 'array', Rule::exists('anagrafiche', 'id')],
-            'condomini_ids' => ['required', 'array', Rule::exists('condomini', 'id')],
+            'subject'        => 'required|string|max:255',
+            'description'    => 'required|string',
+            'priority'       => 'required|string',
+            'can_comment'    => 'required|boolean',
+            'is_featured'    => 'required|boolean',
+            'is_published'   => 'required|boolean',
+            'created_by'     => 'required|exists:users,id',
+            'is_approved'    => 'required|boolean',
+
+            'anagrafiche'    => ['nullable', 'array'],
+            'anagrafiche.*'  => ['integer', Rule::exists('anagrafiche', 'id')],
+
+            'condomini_ids'   => ['required', 'array'],
+            'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
         ];
     }
 

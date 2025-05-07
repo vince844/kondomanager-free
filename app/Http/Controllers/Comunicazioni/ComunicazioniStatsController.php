@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Comunicazioni;
 
 use App\Http\Controllers\Controller;
+use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
 use Illuminate\Support\Facades\Auth;
 
@@ -56,7 +57,7 @@ class ComunicazioniStatsController extends Controller
      */
     private function adminCounts()
     {
-        return \App\Models\Comunicazione::selectRaw("
+        return Comunicazione::selectRaw("
             SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
             SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
             SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,

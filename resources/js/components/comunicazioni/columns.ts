@@ -5,7 +5,7 @@ import type { Comunicazione } from '@/types/comunicazioni';
 import type { Building } from '@/types/buildings';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
-import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
 
@@ -199,6 +199,23 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    accessorKey: 'is_published',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    cell: ({ row }) => {
+      const value = Boolean(row.getValue('is_published'));
+      const stato = publishedConstants.find(p => p.value === value);
+  
+      if (!stato) return h('span', '–');
+  
+      return h('div', { class: 'flex items-center gap-2' }, [
+        h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
+        h('span', stato.label)
+      ]);
+    },
+    filterFn: (row, id, value) =>
+      value.includes(Boolean(row.getValue(id))),
   },
   {
     id: 'actions',

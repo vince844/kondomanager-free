@@ -2,23 +2,18 @@
 
 namespace App\Http\Controllers\Comunicazioni;
 
+use App\Events\Comunicazioni\NotifyUserOfApprovedComunicazione;
 use App\Http\Controllers\Controller;
 use App\Models\Comunicazione;
-use App\Services\ComunicazioneNotificationService;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Auth;
 
 class ComunicazioneApprovalController extends Controller
 {
-     /**
-     * Create a new controller instance.
-     *
-     * @param  \App\Services\ComunicazioneNotificationService 
-     */
-    public function __construct(
-        private ComunicazioneNotificationService $notificationService
-    ) {}
+    use HandleFlashMessages;
 
     /**
      * Toggles the approval status of a given Comunicazione and handles related notifications.
@@ -48,40 +43,32 @@ class ComunicazioneApprovalController extends Controller
 
                 try {
 
-                    $this->notificationService->sendUserComunicazioneApproved($comunicazione);
+                    NotifyUserOfApprovedComunicazione::dispatch($comunicazione,  Auth::user());
 
                 } catch (\Exception $emailException) {
 
                     Log::error('Error sending email for approved comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
 
-                    return to_route('admin.comunicazioni.index')->with([
-                        'message' => [
-                            'type'    => 'warning',
-                            'message' => "La comunicazione è stata approvata, ma si è verificato un errore nell'invio della notifica!"
-                        ]
-                    ]);
+                    return back()->with(
+                        $this->flashWarning(__('comunicazioni.error_notify_approved_communication'))
+                    );
                 }
 
             }
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "Lo stato di approvazione della comunicazione è stato aggiornato con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('comunicazioni.success_approve_communication'))
+            );
 
         } catch (\Throwable $e) {
         
             Log::error('Errore durante l\'aggiornamento dello stato di approvazione della comunicazione ID ' . $comunicazione->id . ': ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di aprovare la comunicazione"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('comunicazioni.error_approve_communication'))
+            );
         }
             
     }
+    
 }

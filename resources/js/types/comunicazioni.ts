@@ -10,6 +10,8 @@ import {
   CircleArrowRight,
   CircleArrowUp,
   CircleAlert,
+  CircleCheck,
+  CircleX
 } from 'lucide-vue-next';
 
 export type PriorityValue = 'bassa' | 'media' | 'alta' | 'urgente';
@@ -25,6 +27,7 @@ export interface PriorityType {
 export interface PublishedType {
   value: PublishedValue;
   label: string;
+  icon: Component;
   colorClass: string;
 }
 
@@ -84,12 +87,14 @@ export const PUBLISHED_OPTIONS: PublishedType[] = [
   {
     value: true,
     label: 'Pubblicata',
+    icon: CircleCheck,
     colorClass: 'text-green-600',
   },
   {
     value: false,
     label: 'Bozza',
-    colorClass: 'text-gray-500',
+    icon: CircleX,
+    colorClass: 'text-red-500',
   },
 ];
 

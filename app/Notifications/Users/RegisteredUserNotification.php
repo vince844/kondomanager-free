@@ -1,27 +1,22 @@
 <?php
 
-namespace App\Notifications\Communications;
+namespace App\Notifications\Users;
 
-use App\Helpers\RouteHelper;
-use App\Models\Comunicazione;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Str;
 
-class NewComunicazioneNotification extends Notification implements ShouldQueue
+class RegisteredUserNotification extends Notification
 {
     use Queueable;
-
-    public $comunicazione;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct(Comunicazione $comunicazione)
+    public function __construct()
     {
-        $this->comunicazione = $comunicazione;
+        //
     }
 
     /**
@@ -39,16 +34,12 @@ class NewComunicazioneNotification extends Notification implements ShouldQueue
      */
     public function toMail(object $notifiable): MailMessage
     {
-
-        $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
-
         return (new MailMessage)
-            ->subject('Nuova comunicazione in bacheca')
+            ->subject('Nuovo utente registrato')
             ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->comunicazione->createdBy->name ." ha creato una nuova comunicazione nella bacheca del condominio.")
-            ->line('**Oggetto:** ' . $this->comunicazione->subject)
-            ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
-            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));;
+            ->line("Un nuovo utente si è registrato sul portale. Dopo che avrà confermato il suo indirizzo email potra accedere all'area privata.")
+            ->line("Assicurati di associare l'anagrafica a uno o più condomini se vuoi permette all'utente di visualizzare i dati di questi.")
+            ->action('Accedi al portale', url(config('app.url')));
     }
 
     /**

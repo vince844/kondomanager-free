@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Comunicazioni;
 
+use App\Events\Comunicazioni\NotifyAdminOfCreatedComunicazione;
 use App\Http\Controllers\Controller;
 use App\Traits\HasAnagrafica;
 use App\Http\Requests\Comunicazione\ComunicazioneIndexRequest;
@@ -10,7 +11,6 @@ use App\Http\Requests\Comunicazione\UpdateUserComunicazioneRequest;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
-use App\Services\ComunicazioneNotificationService;
 use App\Services\ComunicazioneService;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
@@ -28,11 +28,9 @@ class UserComunicazioneController extends Controller
      * Create a new controller instance.
      *
      * @param  \App\Services\ComunicazioneService 
-     * @param  \App\Services\ComunicazioneNotificationService
      */
     public function __construct(
         private ComunicazioneService $comunicazioneService,
-        private ComunicazioneNotificationService $notificationService
     ) {}
 
     /**
@@ -156,12 +154,8 @@ class UserComunicazioneController extends Controller
             DB::commit();
 
             try {
-       
-                // Attempt to send notifications (emails)
-                $this->notificationService->sendAdminComunicazioneCreatedNotification(
-                    validated: $validated,
-                    comunicazione: $comunicazione
-                ); 
+
+                event(new NotifyAdminOfCreatedComunicazione($validated, $comunicazione));
 
             } catch (\Exception $emailException) {
 

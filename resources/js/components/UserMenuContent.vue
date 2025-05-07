@@ -40,7 +40,7 @@ function handleLogout() {
             </Link>
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true">
-            <Link prefetch class="block w-full" :href="route('utenti.index')" as="button" v-if="hasPermission(['Visualizza utenti'])">
+            <Link class="block w-full" :href="route('utenti.index')" as="button" v-if="hasPermission(['Visualizza utenti'])">
                 <Users class="mr-2 h-4 w-4" />
                 Gestione utenti
             </Link>

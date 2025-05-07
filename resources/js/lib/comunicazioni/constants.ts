@@ -2,7 +2,9 @@ import {
     CircleArrowUp,
     CircleArrowRight,
     CircleArrowDown,
-    CircleAlert
+    CircleAlert,
+    CircleCheck,
+    CircleX
 } from 'lucide-vue-next';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
   
@@ -37,12 +39,14 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
     { 
       value: false, 
       label: 'Bozza',
-      colorClass: 'text-gray-500 bg-gray-50'
+      icon: CircleX, 
+      colorClass: 'text-red-500 bg-red-50'
     },
     { 
       value: true, 
       label: 'Pubblicata',
-      colorClass: 'text-blue-500 bg-blue-50'
+      icon: CircleCheck, 
+      colorClass: 'text-green-500 bg-green-50'
     }
   ];
   
