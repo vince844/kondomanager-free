@@ -17,6 +17,10 @@ return [
                 'label' => 'Nuova segnalazione guasto',
                 'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
             ],
+            NotificationType::APPROVED_TICKET->value => [
+                'label' => 'Segnalazione guasto approvata',
+                'description' => 'Ricevi una notifica quando viene approvata la segnalazione guasto da te inviata',
+            ],
         ],
         'admin' => [
             NotificationType::NEW_USER->value => [

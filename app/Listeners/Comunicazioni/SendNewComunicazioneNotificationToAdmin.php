@@ -21,11 +21,12 @@ class SendNewComunicazioneNotificationToAdmin implements ShouldQueue
     public function handle(NotifyAdminOfCreatedComunicazione $event): void
     {
         try {
+
             $comunicazione = $event->comunicazione;
             $validated = $event->validated;
 
             $adminQuery = $comunicazione->is_approved
-                ? User::permission('Accesso pannello amministratore')
+                ? User::permission('Approva comunicazioni')
                 : User::permission('Pubblica comunicazioni');
 
             $admins = $this->filterByNotificationPreference(
@@ -34,9 +35,13 @@ class SendNewComunicazioneNotificationToAdmin implements ShouldQueue
             )->get();
 
             if ($comunicazione->is_approved) {
+
                 if ($comunicazione->is_private) {
+
                     Notification::send($admins, new NewComunicazioneNotification($comunicazione));
+
                 } else {
+
                     $anagrafiche = $this->getAnagrafiche($validated);
 
                     $recipients = $admins->keyBy('email')
@@ -44,9 +49,13 @@ class SendNewComunicazioneNotificationToAdmin implements ShouldQueue
                         ->values();
 
                     Notification::send($recipients, new NewComunicazioneNotification($comunicazione));
+
                 }
+
             } else {
+
                 Notification::send($admins, new ApproveComunicazioneNotification($comunicazione));
+                
             }
 
         } catch (\Exception $e) {
@@ -62,8 +71,10 @@ class SendNewComunicazioneNotificationToAdmin implements ShouldQueue
                 $q->whereIn('condominio_id', $validated['condomini_ids'])
             );
 
-        return $this->filterByNotificationPreference($query, NotificationType::NEW_COMMUNICATION->value)
-            ->get()
+        $filtered = $this->filterByNotificationPreference($query, NotificationType::NEW_COMMUNICATION->value)->get();
+        
+        return $filtered
+            ->reject(fn ($a) => $a->user_id === $validated['created_by'])
             ->unique('email')
             ->values();
     }

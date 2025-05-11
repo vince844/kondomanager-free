@@ -1,29 +1,27 @@
 <?php
 
-namespace App\Notifications\Comunicazioni;
+namespace App\Notifications\Segnalazioni;
 
-use App\Models\Comunicazione;
+use App\Helpers\RouteHelper;
+use App\Models\Segnalazione;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
-use App\Helpers\RouteHelper;
 
-class ApprovedComunicazioneNotification extends Notification implements ShouldQueue
+class ApproveSegnalazioneNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $comunicazione;
-    public $user;
+    public $segnalazione;
 
     /**
      * Create a new notification instance.
      */
-    public function __construct(Comunicazione $comunicazione, $user)
+    public function __construct(Segnalazione $segnalazione)
     {
-        $this->comunicazione = $comunicazione;
-        $this->user = $user;
+        $this->segnalazione = $segnalazione;
     }
 
     /**
@@ -41,16 +39,17 @@ class ApprovedComunicazioneNotification extends Notification implements ShouldQu
      */
     public function toMail(object $notifiable): MailMessage
     {
-        
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-            ->subject('Nuova comunicazione approvata')
+            ->subject('Nuova segnalazione da approvare')
             ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->user->name ." ha approvato la comunicazione nella bacheca del condominio")
-            ->line('**Oggetto:** ' . $this->comunicazione->subject)
-            ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
-            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));
+            ->line("L'utente ". $this->segnalazione->createdBy->name ." ha creato una nuova segnalazione guasto per il condominio")
+            ->line("La segnalazione è in attesa di essere approvata perchè l'utente che l'ha inviata non ha permessi sufficienti per pubblicarla")
+            ->line('**Oggetto:** ' . $this->segnalazione->subject)
+            ->line('**Priorità:** ' . Str::ucfirst($this->segnalazione->priority))
+            ->line('**Stato:** ' . Str::ucfirst($this->segnalazione->stato))
+            ->action('Visualizza segnalazione', url("/{$routePrefix}/segnalazioni/" . $this->segnalazione->id));
     }
 
     /**

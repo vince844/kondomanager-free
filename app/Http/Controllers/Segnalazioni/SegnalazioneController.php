@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Segnalazioni;
 
+use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
@@ -12,8 +13,8 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Segnalazione;
-use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -24,15 +25,15 @@ use Illuminate\Support\Arr;
 
 class SegnalazioneController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
      * SegnalazioneController constructor.
      *
      * @param SegnalazioneService $segnalazioneService
-     * @param SegnalazioneNotificationService $notificationService
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
-        private SegnalazioneNotificationService $notificationService
     ) {}
 
     /**
@@ -43,8 +44,8 @@ class SegnalazioneController extends Controller
      * The results are returned to the frontend via an Inertia.js response with pagination data and filters.
      *
      * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request  The request object containing the filter parameters.
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model instance used for authorization.
-     * @return \Inertia\Response  Returns the rendered Inertia.js response with segnalazioni data, pagination, and filters.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model instance used for authorization.
+     * @return \Inertia\Response Returns the rendered Inertia.js response with segnalazioni data, pagination, and filters.
      */
     public function index(SegnalazioneIndexRequest $request, Segnalazione $segnalazione): Response
     {
@@ -77,8 +78,8 @@ class SegnalazioneController extends Controller
      * to render the creation form. The form includes a list of all condomini and anagrafiche, fetched from 
      * the respective resources.
      *
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
-     * @return \Inertia\Response  Returns the rendered Inertia.js response with the list of condomini and anagrafiche.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model used for authorization.
+     * @return \Inertia\Response Returns the rendered Inertia.js response with the list of condomini and anagrafiche.
      */
     public function create(Segnalazione $segnalazione): Response
     {
@@ -100,9 +101,9 @@ class SegnalazioneController extends Controller
      *
      * @param  \App\Http\Requests\CreateSegnalazioneRequest  $request  The request object containing validated data for the segnalazione.
      * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
-     * @return \Illuminate\Http\RedirectResponse  A redirect response to the segnalazioni index with a success or error message.
+     * @return \Illuminate\Http\RedirectResponse A redirect response to the segnalazioni index with a success or error message.
      * 
-     * @throws \Exception  If an error occurs during the creation process, an exception is thrown, and the transaction is rolled back.
+     * @throws \Exception If an error occurs during the creation process, an exception is thrown, and the transaction is rolled back.
      */
     public function store(CreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
@@ -122,17 +123,11 @@ class SegnalazioneController extends Controller
 
             DB::commit();
 
-            $this->notificationService->sendUserNotifications(
-                validated: $validated,
-                segnalazione: $segnalazione
-            );
+            NotifyUserOfCreatedSegnalazione::dispatch($segnalazione);
 
-            return to_route('admin.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La nuova segnalazione guasto è stata creata con successo!"
-                ]
-            ]);
+            return to_route('admin.segnalazioni.index')->with(
+                $this->flashSuccess(__('segnalazioni.success_create_ticket'))
+            );
 
         } catch (\Exception $e) {
         
@@ -140,12 +135,9 @@ class SegnalazioneController extends Controller
 
             Log::error('Error creating segnalazione: ' . $e->getMessage());
 
-            return to_route('admin.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante la creazione della segnalazione guasto!"
-                ]
-            ]);
+            return to_route('admin.segnalazioni.index')->with(
+                $this->flashError(__('segnalazioni.error_create_ticket'))
+            );
 
         }
 
@@ -183,9 +175,9 @@ class SegnalazioneController extends Controller
         $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/SegnalazioniEdit', [
-         'segnalazione'  => new SegnalazioneResource($segnalazione),
-         'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
-         'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
+            'segnalazione'  => new SegnalazioneResource($segnalazione),
+            'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
+            'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
         ]);
     }
 
@@ -213,12 +205,9 @@ class SegnalazioneController extends Controller
 
             DB::commit();
 
-            return to_route('admin.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La segnalazione è stata aggiornata con successo!"
-                ]
-            ]);
+            return to_route('admin.segnalazioni.index')->with(
+                $this->flashSuccess(__('segnalazioni.success_update_ticket'))
+            );
 
         } catch (\Exception $e) {
 
@@ -226,12 +215,10 @@ class SegnalazioneController extends Controller
 
             Log::error('Error updating segnalazione: ' . $e->getMessage());
 
-            return to_route('admin.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento della segnalazione!"
-                ]
-            ]);
+            return to_route('admin.segnalazioni.index')->with(
+                $this->flashError(__('segnalazioni.error_update_ticket'))
+            );
+            
         }
     }
 

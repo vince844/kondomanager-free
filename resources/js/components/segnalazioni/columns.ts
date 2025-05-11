@@ -1,26 +1,52 @@
-import { h, computed } from 'vue';
-import { Link } from '@inertiajs/vue3';
+import { h } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 import DropdownAction from '@/components/segnalazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHeader.vue';
-import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
-import { Badge }  from '@/components/ui/badge';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { ShieldCheck } from 'lucide-vue-next';
 
-const { generateRoute } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 export const columns = (): ColumnDef<Segnalazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
     cell: ({ row }) => {
+
       const segnalazione = row.original
-      return h(Link, {
-        href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
-        class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-      }, () => segnalazione.subject)
+
+      const toggleApproval = () => {
+          router.put(route(generateRoute('segnalazioni.toggle-approval'), { id: segnalazione.id }), {}, {
+            preserveScroll: true,
+          });
+        };
+      
+      const tooltip = segnalazione.is_approved
+        ? 'Approvata - clicca per rimuovere approvazione'
+        : 'Non approvata - clicca per approvare';
+      
+        const shieldIcon = hasPermission(['Approva segnalazioni'])
+        ? h('div', {
+            class: 'cursor-pointer',
+            title: tooltip,
+            onClick: toggleApproval,
+          }, [
+            h(ShieldCheck, {
+              class: segnalazione.is_approved ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
+            }),
+          ])
+        : null;
+
+        return h('div', { class: 'flex items-center space-x-2' }, [
+          shieldIcon,
+          h(Link, {
+            href: route(generateRoute('segnalazioni.show'), { id: segnalazione.id }),
+            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+          }, () => segnalazione.subject)
+        ]);
     }
   },
   {
@@ -169,6 +195,23 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
+  },
+  {
+    accessorKey: 'is_published',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    cell: ({ row }) => {
+      const value = Boolean(row.getValue('is_published'));
+      const stato = publishedConstants.find(p => p.value === value);
+  
+      if (!stato) return h('span', '–');
+  
+      return h('div', { class: 'flex items-center gap-2' }, [
+        h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
+        h('span', stato.label)
+      ]);
+    },
+    filterFn: (row, id, value) =>
+      value.includes(Boolean(row.getValue(id))),
   },
   {
     id: 'actions',

@@ -12,6 +12,7 @@ use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
@@ -23,7 +24,8 @@ use Illuminate\Http\RedirectResponse;
 
 class UserComunicazioneController extends Controller
 {
-    use HasAnagrafica;
+    use HasAnagrafica, HandleFlashMessages;
+    
     /**
      * Create a new controller instance.
      *
@@ -125,11 +127,11 @@ class UserComunicazioneController extends Controller
      * Wraps the operation in a database transaction and handles any exceptions gracefully.
      *
      * @param  \App\Http\Requests\User\CreateUserComunicazioneRequest  $request  The request containing validated data for the comunicazione.
-     * @param  \App\Models\Comunicazione  $comunicazione  The Comunicazione model instance (used for authorization).
-     * @return \Illuminate\Http\RedirectResponse  Redirects to the comunicazioni index with a success or error flash message.
+     * @param  \App\Models\Comunicazione $comunicazione  The Comunicazione model instance (used for authorization).
+     * @return \Illuminate\Http\RedirectResponse Redirects to the comunicazioni index with a success or error flash message.
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to create the comunicazione.
-     * @throws \Throwable  If an exception occurs during the transaction.
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to create the comunicazione.
+     * @throws \Throwable If an exception occurs during the transaction.
      */
     public function store(CreateUserComunicazioneRequest $request, Comunicazione $comunicazione): RedirectResponse
     {
@@ -155,40 +157,30 @@ class UserComunicazioneController extends Controller
 
             try {
 
-                event(new NotifyAdminOfCreatedComunicazione($validated, $comunicazione));
+                NotifyAdminOfCreatedComunicazione::dispatch($validated, $comunicazione);
 
             } catch (\Exception $emailException) {
 
                 // If an error occurs during email sending, log it and set a message for the email failure
-                Log::error('Error sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
-    
-                // Add a specific error message for email failure
-                return to_route('user.comunicazioni.index')->with([
-                    'message' => [
-                        'type'    => 'warning',
-                        'message' => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica!"
-                    ]
-                ]);
+                Log::error('Error user sending email for comunicazione ID: ' . $comunicazione->id . ' - ' . $emailException->getMessage());
+
+                return to_route('user.comunicazioni.index')->with(
+                    $this->flashWarning(__('comunicazioni.error_notify_new_communication'))
+                );
 
             }
 
             if($validated['is_published']){
 
-                return to_route('user.comunicazioni.index')->with([
-                    'message' => [
-                        'type'    => 'success',
-                        'message' => "La nuova comunicazione è stata creata con successo!"
-                    ]
-                ]);
+                return to_route('user.comunicazioni.index')->with(
+                    $this->flashSuccess(__('comunicazioni.success_create_communication'))
+                );
 
             }else{
 
-                return to_route('user.comunicazioni.index')->with([
-                    'message' => [
-                        'type'    => 'warning',
-                        'message' => "La nuova comunicazione è stata creata con successo ma deve essere approvata dall'amministratore!"
-                    ]
-                ]);
+                return to_route('user.comunicazioni.index')->with(
+                    $this->flashInfo(__('comunicazioni.success_create_communication_in_moderation'))
+                );
 
             }
 
@@ -196,14 +188,11 @@ class UserComunicazioneController extends Controller
         
             DB::rollback();
 
-            Log::error('Error creating user comunicazione: ' . $e->getMessage());
+            Log::error('Error user creating user comunicazione: ' . $e->getMessage());
 
-            return to_route('user.comunicazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante la creazione della comunicazione!"
-                ]
-            ]);
+            return to_route('user.comunicazioni.index')->with(
+                $this->flashError(__('comunicazioni.error_create_communication'))
+            );
 
         }
 
@@ -309,25 +298,20 @@ class UserComunicazioneController extends Controller
 
             DB::commit();
 
-            return to_route('user.comunicazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La comunicazione è stata aggiornata con successo!"
-                ]
-            ]);
+            return to_route('user.comunicazioni.index')->with(
+                $this->flashSuccess(__('comunicazioni.success_update_communication'))
+            );
 
         } catch (\Exception $e) {
 
             DB::rollback();
 
-            Log::error('Error updating user comunicazione: ' . $e->getMessage());
+            Log::error('Error user updating comunicazione: ' . $e->getMessage());
 
-            return to_route('user.comunicazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento della comunicazione!"
-                ]
-            ]);
+            return to_route('user.comunicazioni.index')->with(
+                $this->flashError(__('comunicazioni.error_update_communication'))
+            );
+
         }
     }
 
@@ -352,23 +336,17 @@ class UserComunicazioneController extends Controller
 
             $comunicazione->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "La comunicazione è stata eliminata con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('comunicazioni.success_delete_communication'))
+            );
 
         } catch (\Exception $e) {
             
-            Log::error('Error deleting comunicazione: ' . $e->getMessage());
+            Log::error('Error user deleting comunicazione: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare la comunicazione"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('comunicazioni.error_delete_communication'))
+            );
         }
 
     }

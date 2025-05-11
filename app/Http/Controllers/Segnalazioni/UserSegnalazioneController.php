@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Segnalazioni;
 
+use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
 use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
@@ -10,6 +11,8 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
+use App\Traits\HandleFlashMessages;
+use App\Traits\HasAnagrafica;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -17,9 +20,12 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
+use Illuminate\Support\Facades\DB;
 
 class UserSegnalazioneController extends Controller
 {
+    use HasAnagrafica, HandleFlashMessages;
+
     /**
      * Create a new controller instance.
      *
@@ -96,8 +102,8 @@ class UserSegnalazioneController extends Controller
      * and has an associated anagrafica. If the user is not authenticated or does not have an anagrafica, a 403 error is returned. 
      * The method retrieves the user's anagrafica and related condomini to pass them to the view for the creation of the new segnalazione.
      *
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
-     * @return \Inertia\Response  Returns an Inertia.js response to render the segnalazione creation page with available condomini options.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model used for authorization.
+     * @return \Inertia\Response Returns an Inertia.js response to render the segnalazione creation page with available condomini options.
      *
      * @throws \Symfony\Component\HttpKernel\Exception\HttpException  If the user is not authenticated or does not have an anagrafica, a 403 error is triggered.
      */
@@ -115,7 +121,7 @@ class UserSegnalazioneController extends Controller
         // Fetch the anagrafica related condomini
         $condomini = $anagrafica->condomini()->get();
 
-        return Inertia::render('segnalazioni/UserSegnalazioniNew',[
+        return Inertia::render('segnalazioni/user/SegnalazioniNew',[
             'condomini' => CondominioOptionsResource::collection($condomini)
         ]); 
     }
@@ -131,9 +137,9 @@ class UserSegnalazioneController extends Controller
      *
      * @param  \App\Http\Requests\UserCreateSegnalazioneRequest  $request  The validated request object containing the data for the new segnalazione.
      * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
-     * @return \Illuminate\Http\RedirectResponse  Returns a redirect response to the user’s segnalazioni index route with a success or error message.
+     * @return \Illuminate\Http\RedirectResponse Returns a redirect response to the user’s segnalazioni index route with a success or error message.
      *
-     * @throws \Exception  If an error occurs while creating the segnalazione, an exception will be caught, logged, and an error message will be shown.
+     * @throws \Exception If an error occurs while creating the segnalazione, an exception will be caught, logged, and an error message will be shown.
      */
     public function store(UserCreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
@@ -144,31 +150,36 @@ class UserSegnalazioneController extends Controller
 
         try {
 
+            DB::beginTransaction();
+
             $segnalazione = Segnalazione::create($validated);
 
-            $this->notificationService->sendAdminNotifications($segnalazione);
+            if ($validated['is_private']) {
+                $anagrafica = $this->getUserAnagrafica();
+                $segnalazione->anagrafiche()->attach($anagrafica);
+            }
+
+            DB::commit();
+
+            NotifyAdminOfCreatedSegnalazione::dispatch($segnalazione);
 
             $messageText = $segnalazione->is_approved
-            ? "La nuova segnalazione guasto è stata pubblicata con successo!"
-            : "La segnalazione è stata inviata e sarà pubblicata dopo l'approvazione di un amministratore.";
+            ? __('segnalazioni.success_create_ticket')
+            : __('segnalazioni.success_create_ticket_in_moderation');
 
-            return to_route('user.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => $messageText
-                ]
-            ]);
+            return to_route('user.segnalazioni.index')->with(
+                $this->flashSuccess($messageText)
+            );
 
         } catch (\Exception $e) {
 
-            Log::error('Error creating segnalazione: ' . $e->getMessage());
+            DB::rollback();
 
-            return to_route('user.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante la creazione della segnalazione guasto!"
-                ]
-            ]);
+            Log::error('Error user creating user segnalazione: ' . $e->getMessage());
+
+            return to_route('user.segnalazioni.index')->with(
+                $this->flashError(__('segnalazioni.error_create_ticket'))
+            );
 
         }
 
@@ -182,8 +193,8 @@ class UserSegnalazioneController extends Controller
      * to ensure that all necessary data is available for the view. Afterward, it renders the segnalazione view using Inertia.js, passing 
      * the segnalazione data wrapped in a resource.
      *
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model to be displayed.
-     * @return \Inertia\Response  Returns an Inertia.js response to render the SegnalazioniView page with the specified segnalazione data.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model to be displayed.
+     * @return \Inertia\Response Returns an Inertia.js response to render the SegnalazioniView page with the specified segnalazione data.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to view the segnalazione, an authorization exception is thrown.
      */
@@ -207,8 +218,8 @@ class UserSegnalazioneController extends Controller
      * as `createdBy`, `assignedTo`, `condominio`, and `anagrafiche` to provide all required data for editing.
      * Finally, it renders the edit form using Inertia.js, passing the segnalazione data and available condomini for selection in the view.
      *
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model to be edited.
-     * @return \Inertia\Response  Returns an Inertia.js response to render the UserSegnalazioniEdit page with the segnalazione data and available condomini.
+     * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model to be edited.
+     * @return \Inertia\Response Returns an Inertia.js response to render the UserSegnalazioniEdit page with the segnalazione data and available condomini.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to update the segnalazione, an authorization exception is thrown.
      * @throws \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException  If the user is not authenticated or does not have an associated anagrafica.
@@ -243,12 +254,12 @@ class UserSegnalazioneController extends Controller
      * If successful, a success message is flashed and the user is redirected to the index page. If any error occurs during the update process,
      * the transaction is caught, and an error message is logged while the user is redirected with an error notification.
      *
-     * @param  \App\Http\Requests\UserCreateSegnalazioneRequest  $request  The request containing validated data for updating the segnalazione.
-     * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model to be updated.
-     * @return \Illuminate\Http\RedirectResponse  Returns a redirect response to the user.segnalazioni.index route with a success or error message.
+     * @param  \App\Http\Requests\UserCreateSegnalazioneRequest $request  The request containing validated data for updating the segnalazione.
+     * @param  \App\Models\Segnalazione  $segnalazione The segnalazione model to be updated.
+     * @return \Illuminate\Http\RedirectResponse Returns a redirect response to the user.segnalazioni.index route with a success or error message.
      *
-     * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to update the segnalazione, an authorization exception is thrown.
-     * @throws \Exception  If an error occurs during the update process, an exception is thrown and logged.
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update the segnalazione, an authorization exception is thrown.
+     * @throws \Exception If an error occurs during the update process, an exception is thrown and logged.
      */
     public function update(UserCreateSegnalazioneRequest $request, Segnalazione $segnalazione): RedirectResponse
     {
@@ -260,23 +271,18 @@ class UserSegnalazioneController extends Controller
 
             $segnalazione->update($validated);
 
-            return to_route('user.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La segnalazione è stata aggiornata con successo!"
-                ]
-            ]);
+            return to_route('user.segnalazioni.index')->with(
+                $this->flashSuccess(__('segnalazioni.success_update_ticket'))
+            );
 
         } catch (\Exception $e) {
 
-            Log::error('Error updating segnalazione: ' . $e->getMessage());
+            Log::error('Error user updating segnalazione: ' . $e->getMessage());
 
-            return to_route('user.segnalazioni.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento della segnalazione!"
-                ]
-            ]);
+            return to_route('user.segnalazioni.index')->with(
+                $this->flashError(__('segnalazioni.error_update_ticket'))
+            );
+
         }
     }
 
@@ -287,8 +293,8 @@ class UserSegnalazioneController extends Controller
      * la segnalazione dal database e restituisce una risposta di redirect con un messaggio
      * di successo o di errore, a seconda dell'esito dell'operazione.
      *
-     * @param  \App\Models\Segnalazione  $segnalazione  L'istanza della segnalazione da eliminare
-     * @return \Illuminate\Http\RedirectResponse        Risposta con redirect alla pagina precedente, con messaggio flash
+     * @param  \App\Models\Segnalazione $segnalazione  L'istanza della segnalazione da eliminare
+     * @return \Illuminate\Http\RedirectResponse Risposta con redirect alla pagina precedente, con messaggio flash
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException Se l'utente non è autorizzato
      */
@@ -300,23 +306,18 @@ class UserSegnalazioneController extends Controller
 
             $segnalazione->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "La segnalazione è stata eliminata con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('segnalazioni.success_delete_ticket'))
+            );
 
         } catch (\Exception $e) {
             
-            Log::error('Error deleting segnalazione: ' . $e->getMessage());
+            Log::error('Error user deleting segnalazione: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare la segnalazione"
-                ]
-            ]);
+             return back()->with(
+                $this->flashError(__('segnalazioni.error_delete_ticket'))
+            );
+
         }
     }
 }

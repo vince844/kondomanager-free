@@ -9,10 +9,11 @@ return [
     'edit_communications'       => 'Non hai permessi sufficienti per modificare le comunicazioni in bacheca!',
     'delete_communications'     => 'Non hai permessi sufficienti per eliminare le comunicazioni in bacheca!',
 
-    'view_tickets'       => "Non hai permessi sufficienti per visualizzare le segnalazioni guasto!",
-    'view_ticket'        => "Non hai permessi sufficienti per visualizzare questa segnalazione guasto!",
-    'create_ticket'      => "Non hai permessi sufficienti per creare una segnalazione guasto!",
-    'edit_tickets'       => 'Non hai permessi sufficienti per modificare le segnalazioni!',
-    'delete_tickets'     => 'Non hai permessi sufficienti per eliminare le segnalazioni!',
+    'view_tickets'              => "Non hai permessi sufficienti per visualizzare le segnalazioni guasto!",
+    'view_ticket'               => "Non hai permessi sufficienti per visualizzare questa segnalazione guasto!",
+    'approve_ticket'            => "Non hai permessi sufficienti per approvare questa segnalazione guasto!",
+    'create_ticket'             => "Non hai permessi sufficienti per creare una segnalazione guasto!",
+    'edit_tickets'              => 'Non hai permessi sufficienti per modificare le segnalazioni!',
+    'delete_tickets'            => 'Non hai permessi sufficienti per eliminare le segnalazioni!',
 
 ];

@@ -22,7 +22,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Support\Facades\Lang;
 
 class ComunicazioneController extends Controller
 {
@@ -134,6 +133,7 @@ class ComunicazioneController extends Controller
         } catch (\Exception $e) {
 
             DB::rollback();
+            
             Log::error('Error creating comunicazione: ' . $e->getMessage());
         
             return to_route('admin.comunicazioni.index')->with(

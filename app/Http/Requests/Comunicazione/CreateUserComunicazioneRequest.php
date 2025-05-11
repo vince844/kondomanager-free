@@ -64,10 +64,10 @@ class CreateUserComunicazioneRequest extends FormRequest
     public function attributes()
     {
         return [
-            'subject' => __('validation.attributes.comunicazioni.subject'),
-            'description' => __('validation.attributes.comunicazioni.description'),
-            'is_published' => __('validation.attributes.comunicazioni.is_published'),
-            'priority' => __('validation.attributes.comunicazioni.priority'),
+            'subject'       => __('validation.attributes.comunicazioni.subject'),
+            'description'   => __('validation.attributes.comunicazioni.description'),
+            'is_published'  => __('validation.attributes.comunicazioni.is_published'),
+            'priority'      => __('validation.attributes.comunicazioni.priority'),
             'condomini_ids' => __('validation.attributes.comunicazioni.condomini_ids'),
         ];
     }

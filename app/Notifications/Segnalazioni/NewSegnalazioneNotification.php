@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Notifications;
+namespace App\Notifications\Segnalazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Segnalazione;
@@ -44,8 +44,8 @@ class NewSegnalazioneNotification extends Notification implements ShouldQueue
 
         return (new MailMessage)
         ->subject('Nuova segnalazione guasto')
-        ->greeting('Salve ' . $notifiable->nome)
-        ->line('Una nuova segnalazione guasto è stata creata.')
+        ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
+        ->line("L'utente ". $this->segnalazione->createdBy->name ." ha creato una nuova segnalazione guasto.")
         ->line('**Oggetto:** ' . $this->segnalazione->subject)
         ->line('**Priorità:** ' . Str::ucfirst($this->segnalazione->priority))
         ->line('**Stato:** ' . Str::ucfirst($this->segnalazione->stato))

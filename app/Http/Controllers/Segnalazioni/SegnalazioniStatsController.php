@@ -71,6 +71,7 @@ class SegnalazioniStatsController extends Controller
     {
         return Segnalazione::query()
             ->where('is_published', true)
+            ->where('is_approved', true)
             ->where(function ($query) use ($anagrafica, $condominioIds) {
                 $query
                     ->where(function ($q) use ($anagrafica) {

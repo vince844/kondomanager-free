@@ -1,7 +1,6 @@
 <script setup lang="ts">
 
-import {Head, useForm, Link, usePage } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import {Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
@@ -14,11 +13,9 @@ import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche';
-import type { PriorityType, PublishedType } from '@/types/segnalazioni';
-import { priorityConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import type { PriorityType } from '@/types/segnalazioni';
+import { priorityConstants } from '@/lib/segnalazioni/constants';
 import '@vuepic/vue-datepicker/dist/main.css';
-import axios from 'axios';
 import { usePermission } from "@/composables/permissions";
 import {
   HoverCard,
@@ -31,8 +28,6 @@ const { generateRoute } = usePermission();
 const props = defineProps<{
   condomini: Building[];
 }>();  
-
-const anagraficheOptions = ref<Anagrafica[]>([]);
 
 const form = useForm({
     subject: '',
@@ -194,7 +189,7 @@ const submit = () => {
                                     class="size-4" 
                                     :checked="form.is_private"
                                     v-model="form.is_private" 
-                                    id="is_featured" 
+                                    id="is_private" 
                                     @update:checked="(val) => form.is_private = val" 
                                     />
                                 <label

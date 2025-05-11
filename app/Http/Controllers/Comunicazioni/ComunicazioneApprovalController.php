@@ -16,18 +16,17 @@ class ComunicazioneApprovalController extends Controller
     use HandleFlashMessages;
 
     /**
-     * Toggles the approval status of a given Comunicazione and handles related notifications.
+     * Toggles the approval status of a Comunicazione and notifies the user if approved.
      *
-     * This method performs the following actions:
-     * - Authorizes the user to approve the comunicazione using the 'approve' policy.
-     * - Toggles the `is_approved` flag of the comunicazione and saves the change.
-     * - If the comunicazione is now approved, it attempts to notify the creator and related users 
-     *   by calling the `sendUserComunicazioneApproved` method from the ComunicazioneNotificationService.
-     * - If an exception occurs during the notification process, a warning is shown and the error is logged.
-     * - If an exception occurs during the update itself, an error is shown and the issue is logged.
+     * Authorizes the user to approve the Comunicazione, flips the approval status,
+     * and if approved, dispatches a notification to the user. Handles and logs
+     * any exceptions that occur during the update or notification process.
      *
-     * @param \App\Models\Comunicazione $comunicazione The comunicazione instance whose approval status is to be toggled.
-     * @return \Illuminate\Http\RedirectResponse Redirect response with a success, warning, or error message.
+     * @param \App\Models\Comunicazione $comunicazione The comunicazione entity to be approved or unapproved.
+     *
+     * @return \Illuminate\Http\RedirectResponse A redirect response with success or error flash messages.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to approve the comunicazione.
      */
     public function __invoke(Comunicazione $comunicazione): RedirectResponse
     {
@@ -36,7 +35,11 @@ class ComunicazioneApprovalController extends Controller
 
         try {
 
+            // Toggle approval status
             $comunicazione->is_approved = !$comunicazione->is_approved;
+            // Set publication status to match approval
+            $comunicazione->is_published = $comunicazione->is_approved;
+            // Save changes
             $comunicazione->save();
 
             if ($comunicazione->is_approved) {

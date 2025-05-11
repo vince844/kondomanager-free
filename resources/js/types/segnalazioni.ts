@@ -23,6 +23,7 @@ export interface StatoType {
 export interface PublishedType {
   value: PublishedValue;
   label: string;
+  icon: Component;
   colorClass: string;
 }
 

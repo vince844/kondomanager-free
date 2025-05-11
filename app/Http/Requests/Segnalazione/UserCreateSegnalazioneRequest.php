@@ -34,6 +34,7 @@ class UserCreateSegnalazioneRequest extends FormRequest
             'created_by'    => 'required|exists:users,id',
             'is_approved'   => 'required|boolean',
             'is_published'  => 'required|boolean',
+            'is_private'    => 'sometimes|boolean',
             'condominio_id' => ['required', 'integer', Rule::exists('condomini', 'id')],
         ];
     }
@@ -49,8 +50,8 @@ class UserCreateSegnalazioneRequest extends FormRequest
         $user = Auth::user();
 
         $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo('Pubblica segnalazioni'),
+            'created_by'   => $user->id,
+            'is_approved'  => $user->hasPermissionTo('Pubblica segnalazioni'),
             'is_published' => $user->hasPermissionTo('Pubblica segnalazioni'),
         ]);
     }
@@ -63,10 +64,10 @@ class UserCreateSegnalazioneRequest extends FormRequest
     public function attributes()
     {
         return [
-            'subject' => __('validation.attributes.segnalazioni.subject'),
-            'description' => __('validation.attributes.segnalazioni.description'),
-            'priority' => __('validation.attributes.segnalazioni.priority'),
-            'stato' => __('validation.attributes.segnalazioni.stato'),
+            'subject'       => __('validation.attributes.segnalazioni.subject'),
+            'description'   => __('validation.attributes.segnalazioni.description'),
+            'priority'      => __('validation.attributes.segnalazioni.priority'),
+            'stato'         => __('validation.attributes.segnalazioni.stato'),
             'condominio_id' => __('validation.attributes.segnalazioni.condominio_id'),
         ];
     }

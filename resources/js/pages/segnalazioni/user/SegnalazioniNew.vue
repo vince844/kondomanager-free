@@ -6,13 +6,20 @@ import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, List } from 'lucide-vue-next';
+import { Checkbox } from '@/components/ui/checkbox';
+import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { PriorityType, StatoType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card'
 
 const props = defineProps<{
   condomini: Building[];
@@ -24,6 +31,7 @@ const form = useForm({
     priority: '',
     stato: '',
     condominio_id: '',
+    is_private: false as boolean,
 });
 
 const submit = () => {
@@ -199,6 +207,45 @@ const submit = () => {
 
                                     <InputError :message="form.errors.condominio_id" />
                         
+                                </div>
+                            </div>
+
+                            <Separator class="my-4" />
+
+                            <div class="pt-4 grid grid-cols-1 sm:grid-cols-6">
+                                <div class="flex items-center space-x-2 sm:col-span-6">
+                                    <Checkbox 
+                                        class="size-4" 
+                                        :checked="form.is_private"
+                                        v-model="form.is_private" 
+                                        id="is_private" 
+                                        @update:checked="(val) => form.is_private = val" 
+                                        />
+                                    <label
+                                        for="is_private"
+                                        class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
+                                        >
+                                        Crea segnalazione privata
+
+                                        <HoverCard>
+                                            <HoverCardTrigger as-child>
+                                                <Info class="w-4 h-4 text-muted-foreground cursor-pointer ml-2" />
+                                            </HoverCardTrigger>
+                                            <HoverCardContent class="w-80">
+                                            <div class="flex justify-between space-x-4">
+                                                <div class="space-y-1">
+                                                    <h4 class="text-sm font-semibold">
+                                                        Crea segnalazione privata
+                                                    </h4>
+                                                    <p class="text-sm">
+                                                        Quando viene selezionata questa opzione la segnalazione verrà resa privata e sarà solo visibile agli amministratori e non a tutti gli altri condòmini
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            </HoverCardContent>
+                                        </HoverCard>
+
+                                    </label>
                                 </div>
                             </div>
  

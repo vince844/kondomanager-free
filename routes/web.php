@@ -18,6 +18,7 @@ use App\Http\Controllers\Permissions\PermissionController;
 use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
+use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
 use App\Http\Controllers\Segnalazioni\SegnalazioniStatsController;
 use App\Http\Controllers\Segnalazioni\UserSegnalazioneController;
@@ -65,6 +66,7 @@ Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middlewar
 // Admin routes
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->group(function () {
 
+    Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::resource('anagrafiche', AnagraficaController::class);
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
@@ -74,32 +76,41 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     ]);
 
     Route::put('comunicazioni/{comunicazione}/toggle-approval', ComunicazioneApprovalController::class)
-    ->name('comunicazioni.toggle-approval');
-    
-    Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])->name('segnalazioni.toggleResolve');
-    Route::get('/dashboard', DashboardController::class)->name('dashboard');
+        ->name('comunicazioni.toggle-approval');
 
+    Route::put('segnalazioni/{segnalazione}/toggle-approval', SegnalazioneApprovalController::class)
+        ->name('segnalazioni.toggle-approval');
+    
+    Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])
+        ->name('segnalazioni.toggleResolve');
+   
     Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
-      ->name('settings.notifications.index');
+        ->name('settings.notifications.index');
+    
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
 });
 
 // User routes
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
+    
+    Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
     Route::resource('anagrafiche', UserAnagraficaController::class);
+    
     Route::resource('segnalazioni', UserSegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
     ]);
+    
     Route::resource('comunicazioni', UserComunicazioneController::class)->parameters([
         'comunicazioni' => 'comunicazione'
     ]);
-    Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
-
+   
     Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
-    ->name('settings.notifications.index');
+        ->name('settings.notifications.index');
+    
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
+
 });
 
 /*

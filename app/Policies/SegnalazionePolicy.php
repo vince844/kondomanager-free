@@ -2,7 +2,6 @@
 
 namespace App\Policies;
 
-use App\Models\Comunicazione;
 use App\Models\Segnalazione;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
@@ -151,5 +150,12 @@ class SegnalazionePolicy
 
         return Response::deny(Lang::get('policies.delete_tickets'));
 
+    }
+
+    public function approve(User $user, Segnalazione $segnalazione): Response
+    {
+        return $user->hasPermissionTo('Approva segnalazioni')  
+        ? Response::allow() 
+        : Response::deny(Lang::get('policies.approve_ticket'));
     }
 }
