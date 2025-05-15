@@ -5,14 +5,21 @@ import DataTable from '@/components/segnalazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/segnalazioni/columns';
-import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Segnalazione } from '@/types/segnalazioni';
+import { useSegnalazioni } from '@/composables/useSegnalazioni';
+import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 
 defineProps<{ 
   segnalazioni: Segnalazione[], 
+  stats: {
+    bassa: number,
+    media: number,
+    alta: number,
+    urgente: number
+  },
   meta: {
     current_page: number,
     per_page: number,
@@ -23,44 +30,26 @@ defineProps<{
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-const statsRef = ref()
-const statsSegnalazioniContainerRef = ref()
-const hasLoaded = ref(false)
+
+const { setSegnalazioni, segnalazioni, meta } = useSegnalazioni();
+setSegnalazioni(page.props.segnalazioni, page.props.meta);
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
-    title: 'Elenco comunicazioni',
-    href: '/comunicazioni',
+    title: 'Elenco segnalazioni',
+    href: '/segnalazioni',
   },
 ];
 
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
 onMounted(() => {
-  if (flashMessage.value) {
-    scrollToTop();
-  }
+  if (flashMessage.value) scrollToTop();
 });
 
-watch(flashMessage, (newValue) => {
-  if (newValue) {
-    scrollToTop();
-  }
+watch(flashMessage, (newVal) => {
+  if (newVal) scrollToTop();
 });
-
-onMounted(() => {
-  const observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting && !hasLoaded.value) {
-      statsRef.value?.loadStats?.()
-      hasLoaded.value = true
-      observer.disconnect()
-    }
-  })
-
-  if (statsSegnalazioniContainerRef.value) {
-    observer.observe(statsSegnalazioniContainerRef.value)
-  }
-})
 
 </script>
 
@@ -71,15 +60,11 @@ onMounted(() => {
     <div class="px-4 py-6">
       <Heading title="Elenco segnalazioni guasto" description="Di seguito la tabella con l'elenco di tutte le segnalazioni guasto registrate" />
 
-      <div ref="statsSegnalazioniContainerRef">
-        <SegnalazioniStats ref="statsRef" />
-      </div>
+      <SegnalazioniStats :stats="stats" />
           
-      <Transition name="fade">
-        <div v-if="flashMessage" class="py-4"> 
-          <Alert :message="flashMessage.message" :type="flashMessage.type" />
-        </div>
-      </Transition>
+      <div v-if="flashMessage" class="py-4">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
      
       <div class="container mx-auto">
     

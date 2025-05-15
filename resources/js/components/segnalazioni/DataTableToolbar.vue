@@ -11,8 +11,10 @@ import { BellPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { useSegnalazioni } from '@/composables/useSegnalazioni';
 
 const { hasPermission, generateRoute } = usePermission();
+const { setSegnalazioni, segnalazioni, meta } = useSegnalazioni();
 
 interface DataTableToolbarProps {
   table: Table<Segnalazione>
@@ -49,10 +51,15 @@ watchDebounced(
     if (priority.length > 0) params.priority = priority
     if (stato.length > 0) params.stato = stato
 
+        // Fetch new data from the backend
     router.get(route(generateRoute('segnalazioni.index')), params, {
       preserveState: true,
       replace: true,
-    })
+      onSuccess: (page) => {
+        // Update the `segnalazioni` and `meta` data after fetching from backend
+        setSegnalazioni(page.props.segnalazioni, page.props.meta);
+      }
+    });
   },
   { debounce: 300 }
 )

@@ -2,10 +2,10 @@
 
 namespace App\Policies;
 
+use App\Enums\Permission;
 use App\Models\Segnalazione;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
-use Illuminate\Support\Facades\Lang;
 
 class SegnalazionePolicy
 {
@@ -23,17 +23,18 @@ class SegnalazionePolicy
      */
     public function view(User $user, Segnalazione $segnalazione): Response
     {
-        if ($user->hasPermissionTo('Visualizza segnalazioni')) {
+
+        if ($user->hasPermissionTo(Permission::VIEW_SEGNALAZIONI->value)) {
             return Response::allow();
         } 
 
-        if ($user->hasPermissionTo('Visualizza proprie segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::VIEW_OWN_SEGNALAZIONI->value)) {
             if ($segnalazione->created_by === $user->id) {
                 return Response::allow();
             }
         }
 
-        return Response::deny(Lang::get('policies.view_tickets'));
+        return Response::deny(__('policies.view_tickets'));
 
     }
 
@@ -53,11 +54,11 @@ class SegnalazionePolicy
      */
     public function show(User $user, Segnalazione $segnalazione): Response
     {
-        if ($user->hasPermissionTo('Accesso pannello amministratore')) {
+        if ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
             return Response::allow();
         } 
 
-        if ($user->hasPermissionTo('Visualizza segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::VIEW_SEGNALAZIONI->value)) {
             $anagrafica = $user->anagrafica;
             $condominioIds = $anagrafica->condomini->pluck('id')->toArray();
         
@@ -70,13 +71,13 @@ class SegnalazionePolicy
             }
         } 
 
-        if ($user->hasPermissionTo('Visualizza proprie segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::VIEW_OWN_SEGNALAZIONI->value)) {
             if ($segnalazione->created_by === $user->id) {
                 return Response::allow();
             } 
         }
  
-        return Response::deny(Lang::get('policies.view_ticket'));
+        return Response::deny(__('policies.view_ticket'));
     }
 
     /**
@@ -90,9 +91,9 @@ class SegnalazionePolicy
      */
     public function create(User $user): Response
     {
-        return $user->hasPermissionTo('Crea segnalazioni')  
+        return $user->hasPermissionTo(Permission::CREATE_SEGNALAZIONI->value)  
                ? Response::allow() 
-               : Response::deny(Lang::get('policies.create_ticket'));
+               : Response::deny(__('policies.create_ticket'));
     }
 
     /**
@@ -108,11 +109,11 @@ class SegnalazionePolicy
      */
     public function update(User $user, Segnalazione $segnalazione): Response
     {
-        if ($user->hasPermissionTo('Modifica segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::EDIT_SEGNALAZIONI->value)) {
             return Response::allow();
         } 
         
-        if ($user->hasPermissionTo('Modifica proprie segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::EDIT_OWN_SEGNALAZIONI->value)) {
 
             if ($segnalazione->created_by === $user->id) {
                 return Response::allow();
@@ -120,7 +121,7 @@ class SegnalazionePolicy
             
         } 
         
-        return Response::deny(Lang::get('policies.edit_tickets'));
+        return Response::deny(__('policies.edit_tickets'));
     }
 
     /**
@@ -136,11 +137,11 @@ class SegnalazionePolicy
      */
     public function delete(User $user, Segnalazione $segnalazione): Response
     {
-        if ($user->hasPermissionTo('Elimina segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::DELETE_SEGNALAZIONI->value)) {
             return Response::allow();
         }
         
-        if ($user->hasPermissionTo('Elimina proprie segnalazioni')) {
+        if ($user->hasPermissionTo(Permission::DELETE_OWN_SEGNALAZIONI->value)) {
 
             if ($segnalazione->created_by === $user->id) {
                 return Response::allow();
@@ -148,14 +149,25 @@ class SegnalazionePolicy
             
         } 
 
-        return Response::deny(Lang::get('policies.delete_tickets'));
+        return Response::deny(__('policies.delete_tickets'));
 
     }
 
+    /**
+     * Determine if the given user can approve the specified segnalazione.
+     *
+     * Checks if the user has the 'APPROVE_SEGNALAZIONI' permission and
+     * returns an authorization response accordingly.
+     *
+     * @param \App\Models\User $user The user requesting to approve.
+     * @param \App\Models\Segnalazione $segnalazione The ticket to be approved.
+     *
+     * @return \Illuminate\Auth\Access\Response Authorization response (allow or deny).
+     */
     public function approve(User $user, Segnalazione $segnalazione): Response
     {
-        return $user->hasPermissionTo('Approva segnalazioni')  
+        return $user->hasPermissionTo(Permission::APPROVE_SEGNALAZIONI->value)  
         ? Response::allow() 
-        : Response::deny(Lang::get('policies.approve_ticket'));
+        : Response::deny(__('policies.approve_ticket'));
     }
 }

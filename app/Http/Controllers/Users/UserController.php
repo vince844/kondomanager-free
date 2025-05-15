@@ -21,20 +21,43 @@ use Illuminate\Support\Facades\Gate;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use App\Services\UserService;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
-
 
 class UserController extends Controller
 {
-    protected $userService;
-
-    public function __construct(UserService $userService)
-    {
-        $this->userService = $userService;
-    }
+    use HandleFlashMessages;
 
     /**
-     * Display a listing of the resource.
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\UserService 
+     */
+    public function __construct(
+        private UserService $userService,
+    ) {}
+
+    /**
+     * Display a paginated list of users, with optional filtering and pagination.
+     *
+     * This method performs the following steps:
+     * - Authorizes the request using the 'view' gate for the User model.
+     * - Validates optional query parameters:
+     *   - `page`: The page number for pagination (must be >= 1).
+     *   - `per_page`: Number of users per page (between 10 and 100).
+     *   - `name`: A string used to filter users by name.
+     * - Queries the User model applying name filtering if provided.
+     * - Paginates the results.
+     * - Returns an Inertia view with:
+     *   - A collection of users in a transformed resource format.
+     *   - Metadata for pagination.
+     *   - The applied filters for frontend use.
+     *
+     * @param  \Illuminate\Http\Request $request The incoming HTTP request containing optional filters and pagination.
+     * @return \Inertia\Response The rendered Inertia page with user data and pagination metadata.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to view users.
+     * @throws \Illuminate\Validation\ValidationException If the request parameters fail validation.
      */
     public function index(Request $request)
     {
@@ -43,16 +66,13 @@ class UserController extends Controller
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'name' => ['sometimes', 'string', 'max:255'], // Add filter validation
-            // Add other filter fields as needed (email, etc.)
+            'name' => ['sometimes', 'string', 'max:255'], 
         ]);
     
         $users = User::query()
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            // Add additional filters like this:
-            // ->when($validated['email'] ?? false, fn($q, $email) => $q->where('email', 'like', "%{$email}%"))
             ->paginate($validated['per_page'] ?? 15);
     
         return Inertia::render('utenti/ElencoUtenti', [
@@ -63,14 +83,23 @@ class UserController extends Controller
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
             ],
-            // Optional: Return current filters to maintain UI state
             'filters' => $request->only(['name']) 
         ]);
         
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new user.
+     *
+     * This method:
+     * - Authorizes the current user to create a new user using the 'create' gate.
+     * - Retrieves all available roles, permissions, and anagrafiche from the database.
+     * - Returns an Inertia view (`utenti/NuovoUtente`) populated with the above data, each transformed
+     *   using their respective resource collections.
+     *
+     * @return \Inertia\Response The rendered Inertia view with required data for the user creation form.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to create a new user.
      */
     public function create(): Response
     {
@@ -85,7 +114,19 @@ class UserController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Handle the incoming request to store a new user.
+     *
+     * This method:
+     * - Authorizes the user to perform the 'create' action on the User model.
+     * - Validates the request using the custom `CreateUserRequest`.
+     * - Delegates user creation to the `UserService`.
+     * - On success, redirects to the users index route with a success flash message.
+     * - On failure, logs the error and redirects back with an error flash message.
+     *
+     * @param  \App\Http\Requests\CreateUserRequest  $request  The validated request containing user data.
+     * @return \Illuminate\Http\RedirectResponse Redirects to the user list with a status message.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to create users.
      */
     public function store(CreateUserRequest $request): RedirectResponse
     {
@@ -96,23 +137,17 @@ class UserController extends Controller
 
             $this->userService->createUser($request->validated());
     
-            return to_route('utenti.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "Il nuovo utente è stato creato con successo!",
-                ],
-            ]);
+            return to_route('utenti.index')->with(
+                $this->flashSuccess(__('users.success_create_user'))
+            );
 
         } catch (Exception $e) {
 
             Log::error('Error creating user: ' . $e->getMessage());
     
-            return to_route('utenti.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante la creazione del nuovo utente!",
-                ]
-            ]);
+            return to_route('utenti.index')->with(
+                $this->flashError(__('users.error_create_user'))
+            );
         }
     }
 
@@ -125,7 +160,17 @@ class UserController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified user.
+     *
+     * This method:
+     * - Authorizes the current user to perform the 'update' action on the User model.
+     * - Loads related roles, permissions, and anagrafica for the specified user.
+     * - Returns an Inertia response rendering the edit user page with all required data.
+     *
+     * @param  \App\Models\User $utenti The user to be edited.
+     * @return \Inertia\Response The rendered Inertia page with user data and supporting collections.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update users.
      */
     public function edit(User $utenti): Response
     {
@@ -142,7 +187,20 @@ class UserController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified user in storage.
+     *
+     * This method:
+     * - Authorizes the current user to perform the 'update' action on the User model.
+     * - Validates the incoming update request via `UpdateUserRequest`.
+     * - Delegates the update operation to the user service.
+     * - Redirects back to the user listing with a success message on success.
+     * - Logs the error and redirects with an error message on failure.
+     *
+     * @param  \App\Http\Requests\UpdateUserRequest  $request  The validated request containing update data.
+     * @param  \App\Models\User  $utenti  The user instance to be updated.
+     * @return \Illuminate\Http\RedirectResponse Redirect response back to user index with a flash message.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update users.
      */
     public function update(UpdateUserRequest $request, User $utenti): RedirectResponse
     {
@@ -153,43 +211,57 @@ class UserController extends Controller
 
             $this->userService->updateUser($utenti, $request->validated());
     
-            return to_route('utenti.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "L'utente è stato aggiornato con successo!"
-                ]
-            ]);
+            return to_route('utenti.index')->with(
+                $this->flashSuccess(__('users.success_update_user'))
+            );
 
         } catch (Exception $e) {
 
             Log::error('Error updating user: ' . $e->getMessage());
 
-            return to_route('utenti.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento dell'utente!"
-                ]
-            ]);
+            return to_route('utenti.index')->with(
+                $this->flashError(__('users.error_update_user'))
+            );
         
         }
 
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified user from storage.
+     *
+     * This method:
+     * - Authorizes the current user to perform the 'delete' action on the User model.
+     * - Attempts to delete the given user instance.
+     * - On success, redirects back with a success flash message.
+     * - On failure, logs the exception and redirects back with an error flash message.
+     *
+     * @param  \App\Models\User  $utenti The user instance to be deleted.
+     * @return \Illuminate\Http\RedirectResponse Redirects back with a flash message.
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to delete users.
      */
     public function destroy(User $utenti)
     {
         Gate::authorize('delete', User::class);
 
-        $utenti->delete();
+        try {
 
-        return back()->with([
-            'message' => [ 
-                'type'    => 'success',
-                'message' => "L'utente è stato eliminato con successo"
-            ]
-        ]);
+            $utenti->delete();
+
+            return back()->with(
+                $this->flashSuccess(__('users.success_delete_user'))
+            );
+
+        } catch (\Exception $e) {
+            
+            Log::error('Error deleting user: ' . $e->getMessage());
+
+            return back()->with(
+                $this->flashError(__('users.error_delete_user'))
+            );
+        }
+
     }
     
 }

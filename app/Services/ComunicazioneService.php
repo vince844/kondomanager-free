@@ -2,108 +2,88 @@
 
 namespace App\Services;
 
+use App\Enums\Permission;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use Illuminate\Support\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class ComunicazioneService
 {
+    private const DEFAULT_PER_PAGE = 15;
+
     /**
-     * Retrieves a paginated list of communications based on the user's role and filters.
+     * Get paginated comunicazioni based on user role.
      *
-     * If the authenticated user is an administrator or has access to the admin panel,
-     * it returns a global (admin-scoped) query with optional filters.
-     * Otherwise, it returns a user-scoped query limited to the user's anagrafica and condomini.
-     *
-     * @param \App\Models\Anagrafica|null $anagrafica The user's anagrafica (for user-scoped access)
-     * @param \Illuminate\Support\Collection|null $condominioIds List of user's associated condominio IDs
-     * @param array $validated Validated filter inputs (e.g., 'search', 'priority', 'per_page')
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator Paginated list of communications
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @param array $validated
+     * @return LengthAwarePaginator
      */
     public function getComunicazioni(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
         array $validated = []
-    ) {
-        $user = Auth::user();
-
-        return $user->hasRole(['amministratore', 'collaboratore']) ||
-               $user->hasPermissionTo('Accesso pannello amministratore')
+    ): LengthAwarePaginator {
+        return $this->isAdmin()
             ? $this->getAdminScopedQuery($validated)
             : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
     }
 
     /**
-     * Builds a paginated user-scoped query for communications with optional filters.
+     * Get user-scoped comunicazioni query with filters and pagination.
      *
-     * Uses the user's anagrafica and associated condominio IDs to scope the query,
-     * then applies optional search filtering (subject or description) and pagination.
-     * Eager loads relevant relationships and includes query string parameters in pagination links.
-     *
-     * @param \App\Models\Anagrafica|null $anagrafica The user's anagrafica instance
-     * @param \Illuminate\Support\Collection|null $condominioIds Collection of user's condominio IDs
-     * @param array $validated Validated filter input (e.g., 'search', 'per_page')
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator Paginated list of scoped communications
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @param array $validated
+     * @return LengthAwarePaginator
      */
     private function getUserScopedQuery(
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds,
         array $validated
-    ) {
+    ): LengthAwarePaginator {
         $query = $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
+        $query = $this->applyFilters($query, $validated);
 
         return $query
-            ->when($validated['search'] ?? false, function ($query, $search) {
-                $query->where(function ($q) use ($search) {
-                    $q->where('subject', 'like', "%{$search}%");
-                });
-            })
             ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? 10)
+            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
             ->withQueryString();
     }
 
     /**
-     * Public accessor for building a user-scoped base query for communications.
+     * Expose the user-scoped base query for external use.
      *
-     * Delegates to the internal `buildUserScopedBaseQuery` method to generate
-     * a query builder filtered by the given anagrafica and associated condominio IDs.
-     *
-     * @param \App\Models\Anagrafica|null $anagrafica The user's anagrafica instance
-     * @param \Illuminate\Support\Collection|null $condominioIds Collection of associated condominio IDs
-     * @return \Illuminate\Database\Eloquent\Builder The user-scoped query builder for Comunicazione
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @return Builder
      */
     public function getUserScopedBaseQuery(
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds
-    ) {
+    ): Builder {
         return $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
     }
 
     /**
-     * Builds a base query for user-scoped communications based on the given anagrafica
-     * and associated condominio IDs.
+     * Build base query for user-scoped comunicazioni.
      *
-     * The query filters only published and approved communications and includes communications:
-     * - Explicitly linked to the user's anagrafica, or
-     * - Not linked to any anagrafiche but associated with one of the user's condomini.
-     *
-     * If no valid anagrafica or condominio IDs are provided, returns an empty query.
-     * Eager loads related models: anagrafiche, condomini, and createdBy.anagrafica.
-     *
-     * @param \App\Models\Anagrafica|null $anagrafica The user's anagrafica instance
-     * @param \Illuminate\Support\Collection|null $condominioIds Collection of associated condominio IDs
-     * @return \Illuminate\Database\Eloquent\Builder The user-scoped query builder for Comunicazione
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @return Builder
      */
     private function buildUserScopedBaseQuery(
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds
-    ) {
+    ): Builder {
         if (!$anagrafica || !$condominioIds) {
             Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
-            return Comunicazione::query()->whereRaw('1 = 0'); // Return empty query
+            return Comunicazione::query()->whereRaw('1 = 0');
         }
 
         return Comunicazione::with(['anagrafiche', 'condomini', 'createdBy.anagrafica'])
@@ -125,26 +105,99 @@ class ComunicazioneService
     }
 
     /**
-     * Builds a paginated query for communications, scoped for administrators,
-     * with optional filtering by subject and priority.
+     * Get admin-scoped comunicazioni query with filters and pagination.
      *
-     * Applies eager loading for related models (createdBy, condomini, anagrafiche),
-     * supports filtering via the provided `$validated` input, and returns a paginated result.
-     *
-     * @param array $validated An array of validated filters (e.g., 'subject', 'priority', 'per_page')
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator Paginated list of communications
+     * @param array $validated
+     * @return LengthAwarePaginator
      */
-    private function getAdminScopedQuery(array $validated = [])
+    private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
     {
-        return Comunicazione::with(['createdBy', 'condomini', 'anagrafiche'])
-            ->when($validated['subject'] ?? false, function ($query, $subject) {
-                $query->where('subject', 'like', "%{$subject}%");
-            })
-            ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                $query->whereIn('priority', $priorities)
-            )
+        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche']);
+        $query = $this->applyFilters($query, $validated);
+
+        return $query
             ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? 15)
+            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
             ->withQueryString();
+    }
+
+    /**
+     * Apply filters to the query based on validated data.
+     *
+     * @param Builder $query
+     * @param array $validated
+     * @return Builder
+     */
+    private function applyFilters(Builder $query, array $validated): Builder
+    {
+        return $query
+            ->when($validated['search'] ?? false, fn($q, $search) =>
+                $q->where('subject', 'like', "%{$search}%")
+            )
+            ->when($validated['subject'] ?? false, fn($q, $subject) =>
+                $q->where('subject', 'like', "%{$subject}%")
+            ) 
+            ->when($validated['priority'] ?? false, fn($q, $priorities) =>
+                $q->whereIn('priority', $priorities)
+            );
+    }
+
+    /**
+     * Get statistics on comunicazioni based on user role.
+     *
+     * @return object
+     */
+    public function getComunicazioniStats(): object
+    {
+        return $this->isAdmin()
+            ? $this->getStatsQuery(Comunicazione::query())
+            : $this->getUserStats(Auth::user());
+    }
+
+    /**
+     * Get user-specific comunicazioni statistics.
+     *
+     * @param \App\Models\User $user
+     * @return object
+     */
+    private function getUserStats($user): object
+    {
+        $anagrafica = $user->anagrafica;
+        $condominioIds = optional($anagrafica)->condomini->pluck('id') ?? collect();
+
+        if (!$anagrafica || $condominioIds->isEmpty()) {
+            return (object) ['bassa' => 0, 'media' => 0, 'alta' => 0, 'urgente' => 0];
+        }
+
+        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
+        return $this->getStatsQuery($query);
+    }
+
+    /**
+     * Run aggregation query to count comunicazioni by priority.
+     *
+     * @param Builder $query
+     * @return object
+     */
+    private function getStatsQuery(Builder $query): object
+    {
+        return $query->selectRaw("
+            SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
+            SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
+            SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
+            SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
+        ")->first();
+    }
+
+    /**
+     * Check if the current user is an administrator or collaborator.
+     *
+     * @return bool
+     */
+    private function isAdmin(): bool
+    {
+        $user = Auth::user();
+        return $user->hasRole(['amministratore', 'collaboratore']) ||
+               $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }

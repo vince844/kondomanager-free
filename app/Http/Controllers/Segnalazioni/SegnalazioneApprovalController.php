@@ -30,23 +30,23 @@ class SegnalazioneApprovalController extends Controller
      */
     public function __invoke(Segnalazione $segnalazione): RedirectResponse
     {
-
         Gate::authorize('approve', $segnalazione);
-         
-        try {
 
-            // Toggle approval status
-            $segnalazione->is_approved = !$segnalazione->is_approved;
-            // Set publication status to match approval
-            $segnalazione->is_published = $segnalazione->is_approved;
-            // Save changes
+        // Determine intended approval state before applying it
+        $willBeApproved = !$segnalazione->is_approved;
+
+        try {
+            // Update approval and publication state
+            $segnalazione->is_approved = $willBeApproved;
+            $segnalazione->is_published = $willBeApproved;
             $segnalazione->save();
 
-            if ($segnalazione->is_approved) {
+            // Dispatch notification only if approved
+            if ($willBeApproved) {
 
                 try {
-
-                    NotifyUserOfApprovedSegnalazione::dispatch($segnalazione,  Auth::user());
+                    
+                    NotifyUserOfApprovedSegnalazione::dispatch($segnalazione, Auth::user());
 
                 } catch (\Exception $emailException) {
 
@@ -55,22 +55,33 @@ class SegnalazioneApprovalController extends Controller
                     return back()->with(
                         $this->flashWarning(__('segnalazioni.error_notify_approved_ticket'))
                     );
-                }
 
+                }
+                
             }
 
+            // Success message based on new state
+            $successMessage = $willBeApproved
+                ? __('segnalazioni.success_approve_ticket')
+                : __('segnalazioni.success_unapprove_ticket');
+
             return back()->with(
-                $this->flashSuccess(__('segnalazioni.success_approve_ticket'))
+                $this->flashSuccess($successMessage)
             );
 
         } catch (\Throwable $e) {
-        
+
             Log::error('Errore durante l\'aggiornamento dello stato di approvazione della segnalazione ID ' . $segnalazione->id . ': ' . $e->getMessage());
 
-            return back()->with(
-                $this->flashError(__('segnalazioni.error_approve_ticket'))
-            );
-        }
+            // Error message based on intended state
+            $errorMessage = $willBeApproved
+                ? __('segnalazioni.error_approve_ticket')
+                : __('segnalazioni.error_unapprove_ticket');
 
+            return back()->with(
+                $this->flashError($errorMessage)
+            );
+            
+        }
     }
 }

@@ -52,10 +52,10 @@ class InviteUserNotification extends Notification implements ShouldQueue
         );
 
         return (new MailMessage)
-                    ->subject('Benvenuto su '.config('app.name'))
-                    ->line("L'amministratore di condominio ti ha invitato a registrare il tuo account online")
-                    ->action('Registrati adesso', $signedUrl)
-                    ->line('Questo invito sadrà tra tre giorni.');
+            ->subject('Benvenuto su '.config('app.name'))
+            ->line("L'amministratore di condominio ti ha invitato a registrare il tuo account online")
+            ->action('Registrati adesso', $signedUrl)
+            ->line('Questo invito sadrà tra tre giorni.');
     }
 
     /**

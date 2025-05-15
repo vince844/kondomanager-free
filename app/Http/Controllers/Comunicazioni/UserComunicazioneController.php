@@ -75,6 +75,9 @@ class UserComunicazioneController extends Controller
                 validated: $validated
             );
 
+            // Get stats using the same service
+            $stats = $this->comunicazioneService->getComunicazioniStats();
+
         } catch (\Exception $e) {
 
             Log::error('Error getting user comunicazioni: ' . $e->getMessage());
@@ -90,6 +93,7 @@ class UserComunicazioneController extends Controller
                 'per_page' => $comunicazioni->perPage(),
                 'total' => $comunicazioni->total(),
             ],
+            'stats' => $stats, // Add stats to the response
             'search' => $validated['search'] ?? '',
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);

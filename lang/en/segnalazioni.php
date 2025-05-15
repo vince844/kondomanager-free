@@ -11,7 +11,13 @@ return [
     'error_delete_ticket'                  => "An error occurred while deleting the ticket.",
     'success_approve_ticket'               => "The ticket has been approved successfully.",
     'error_approve_ticket'                 => "An error occurred while approving the ticket.",
-    'error_notify_approved_ticket'         => "The ticket was approved, but there was an error sending the notification."
+    'success_unapprove_ticket'             => "The ticket has been unapproved successfully.",
+    'error_unapprove_ticket'               => "An error occurred while unapproving the ticket.",
+    'error_notify_approved_ticket'         => "The ticket was approved, but there was an error sending the notification.",
+    'success_lock_ticket'                  => "The ticket has been locked successfully.",
+    'error_lock_ticket'                    => "An error occurred while locking the ticket.",
+    'success_unlock_ticket'                => "The ticket has been unlocked successfully.",
+    'error_unlock_ticket'                  => "An error occurred while unlocking the ticket.",
 
 
 

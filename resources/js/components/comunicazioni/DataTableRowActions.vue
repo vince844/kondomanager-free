@@ -1,22 +1,24 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
-import type { Comunicazione } from '@/types/comunicazioni';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import type { Comunicazione } from '@/types/comunicazioni';
+import { useComunicazioni } from '@/composables/useComunicazioni';
 
 defineProps<{ 
   comunicazione: Comunicazione 
 }>()
 
-const { hasPermission, generateRoute } = usePermission();
 const comunicazioneID = ref('');
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
+const { removeComunicazione, restoreComunicazione } = useComunicazioni();
+const { hasPermission, generateRoute } = usePermission();
 
 function handleDelete(comunicazione: Comunicazione) {
   comunicazioneID.value = comunicazione.id;
@@ -31,11 +33,26 @@ const closeModal = () => {
 }
 
 const deleteComunicazione = () => {
-    router.delete(route('admin.comunicazioni.destroy', { id: comunicazioneID.value }),{
-        preserveScroll: true,
-        onSuccess: () => closeModal()
-    })
-}
+  
+  const id = comunicazioneID.value;
+
+  // Optimistic UI update
+  removeComunicazione(id);
+
+  router.delete(route('admin.comunicazioni.destroy', { id }), {
+    preserveScroll: true,
+    preserveState: true,
+    only: ['stats'], // we only need updated stats from server
+    onSuccess: () => {
+      closeModal();
+    },
+    onError: () => {
+      restoreComunicazione(id);
+      // Rollback not implemented here. You could re-fetch if needed.
+      console.error('Errore durante la cancellazione.');
+    }
+  });
+};
 
 </script>
 

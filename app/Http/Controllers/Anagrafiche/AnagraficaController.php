@@ -10,16 +10,18 @@ use App\Http\Resources\Anagrafica\EditAnagraficaResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Traits\HandleFlashMessages;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Response;
 
 class AnagraficaController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
      * Display a paginated list of anagrafiche with optional filtering.
      *
@@ -65,22 +67,35 @@ class AnagraficaController extends Controller
     }
 
     /**
-     * Show the form for creating a new Anagrafica.
+     * Show the form for creating a new anagrafica.
      *
-     * @return \Inertia\Response
+     * This method:
+     * - Retrieves all buildings (condomini) from the database.
+     * - Returns an Inertia view (`anagrafiche/AnagraficheNew`) with the building data.
+     *
+     * @return \Inertia\Response The rendered view with required data for the creation form.
      */
     public function create(): Response
     {
         return Inertia::render('anagrafiche/AnagraficheNew', [
-            'buildings'   => CondominioResource::collection(Condominio::all())
+            'buildings' => CondominioResource::collection(Condominio::all())
         ]);
     }
 
     /**
-     * Store a newly created Anagrafica in storage.
+     * Store a newly created anagrafica in storage.
      *
-     * @param  \App\Http\Requests\CreateAnagraficaRequest  $request
+     * This method:
+     * - Validates the request using `CreateAnagraficaRequest`.
+     * - Creates a new `Anagrafica` record and attaches related condomini (buildings).
+     * - Wraps the operation in a database transaction to ensure atomicity.
+     * - Logs errors and rolls back in case of failure.
+     * - Redirects to the anagrafiche index with a success or error flash message.
+     *
+     * @param  \App\Http\Requests\Anagrafica\CreateAnagraficaRequest  $request
      * @return \Illuminate\Http\RedirectResponse
+     *
+     * @throws \Throwable
      */
     public function store(CreateAnagraficaRequest $request): RedirectResponse
     {
@@ -96,25 +111,19 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "La nuova anagrafica è stata creata con successo!"
-                ]
-            ]);
+            return to_route('admin.anagrafiche.index')->with(
+                $this->flashSuccess(__('anagrafiche.success_create_anagrafica'))
+            );
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
 
             DB::rollback();
 
             Log::error('Error creating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante la creazione dell'anagrafica!"
-                ]
-            ]);
+            return to_route('admin.anagrafiche.index')->with(
+                $this->flashError(__('anagrafiche.error_create_anagrafica'))
+            );
 
         }
 
@@ -129,7 +138,13 @@ class AnagraficaController extends Controller
     }
 
     /**
-     * Show the form for editing the specified Anagrafica.
+     * Show the form for editing the specified anagrafica.
+     *
+     * This method:
+     * - Loads missing relationships (specifically 'condomini') for the given Anagrafica instance.
+     * - Returns an Inertia response rendering the edit form with:
+     *   - The current anagrafica data wrapped in `EditAnagraficaResource`.
+     *   - A collection of all available condomini (buildings), transformed with `CondominioResource`.
      *
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Inertia\Response
@@ -140,14 +155,22 @@ class AnagraficaController extends Controller
        $anagrafiche->loadMissing(['condomini']);
 
        return Inertia::render('anagrafiche/AnagraficheEdit', [
-        'anagrafica'  => new EditAnagraficaResource($anagrafiche),
-        'condomini'   => CondominioResource::collection(Condominio::all())
+            'anagrafica'  => new EditAnagraficaResource($anagrafiche),
+            'condomini'   => CondominioResource::collection(Condominio::all())
        ]);
        
     }
 
     /**
-     * Update the specified Anagrafica in storage.
+     * Update the specified anagrafica in storage.
+     *
+     * This method:
+     * - Validates the incoming request using `UpdateAnagraficaRequest`.
+     * - Begins a database transaction to ensure atomicity.
+     * - Updates the `Anagrafica` model with validated data.
+     * - Syncs the associated `condomini` (buildings).
+     * - Commits the transaction on success and returns a redirect with a success message.
+     * - Rolls back and logs the error on failure, then redirects with an error message.
      *
      * @param  \App\Http\Requests\UpdateAnagraficaRequest  $request
      * @param  \App\Models\Anagrafica  $anagrafiche
@@ -167,33 +190,32 @@ class AnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('admin.anagrafiche.index')->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "L'anagrafica è stata aggiornata con successo!"
-                ]
-            ]);
+            return to_route('admin.anagrafiche.index')->with(
+                $this->flashSuccess(__('anagrafiche.success_update_anagrafica'))
+            );
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
 
             DB::rollback();
 
             Log::error('Error updating anagrafica: ' . $e->getMessage());
 
-            return to_route('admin.anagrafiche.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento dell'anagrafica!"
-                ]
-            ]);
+            return to_route('admin.anagrafiche.index')->with(
+                $this->flashError(__('anagrafiche.error_update_anagrafica'))
+            );
         }
 
     }
 
     /**
-     * Remove the specified Anagrafica from storage.
+     * Remove the specified anagrafica from storage.
      *
-     * If the anagrafica is associated with any condomini, the deletion is prevented.
+     * This method:
+     * - Checks if the specified `anagrafica` has any associated condomini.
+     * - If associated condomini exist, redirects back with an error message.
+     * - If no associated condomini are found, attempts to delete the `anagrafica`.
+     * - On success, redirects back with a success message.
+     * - On failure, logs the error and redirects with an error message.
      *
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Illuminate\Http\RedirectResponse
@@ -202,31 +224,26 @@ class AnagraficaController extends Controller
     {
         // Check if the anagrafica has any condomini associated with it
         if ($anagrafiche->condomini()->exists()) {
-            return back()->with(['message' => [ 'type'    => 'error',
-                                                'message' => "L'anagrafica non può essere eliminata perché è associata a dei condomini"]]);
+            return back()->with(
+                $this->flashError(__('anagrafiche.anagrafica_has_building'))
+            );
         }
     
         try {
 
             $anagrafiche->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "L'anagrafica è stata eliminata con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('anagrafiche.error_delete_anagrafica'))
+            );
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
 
             Log::error('Error deleting anagrafica: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare l'anagrafica"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('anagrafiche.error_delete_anagrafica'))
+            );
 
         }
 

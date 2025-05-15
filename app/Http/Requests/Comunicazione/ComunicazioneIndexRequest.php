@@ -22,7 +22,7 @@ class ComunicazioneIndexRequest extends FormRequest
      */
     public function rules(): array
     {
-        $user = Auth::user();
+      /*   $user = Auth::user(); */
 
         return [
             'page' => ['sometimes', 'integer', 'min:1'],
@@ -30,9 +30,9 @@ class ComunicazioneIndexRequest extends FormRequest
             'subject' => ['sometimes', 'string', 'max:255'],
             'priority' => ['sometimes', 'array'],
             'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-            'search' => $user && $user->hasAnyRole(['amministratore', 'collaboratore']) 
+        /*     'search' => $user && $user->hasAnyRole(['amministratore', 'collaboratore']) 
             ? ['prohibited'] // Disallow `search` for admin roles
-            : ['nullable', 'string'], // Allow for regular users
+            : ['nullable', 'string'], // Allow for regular users */
         ];
     }
 }

@@ -16,7 +16,6 @@ import {
   ListX, 
 } from 'lucide-vue-next';
 
-
 const props = defineProps<{
   segnalazione: Segnalazione
 }>()

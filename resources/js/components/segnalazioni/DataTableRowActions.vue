@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -8,20 +8,18 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { Segnalazione } from '@/types/segnalazioni';
+import { useSegnalazioni } from '@/composables/useSegnalazioni';
 
-const { hasPermission, hasRol, generateRoute } = usePermission();
-
-defineProps<{ segnalazione: Segnalazione }>()
+defineProps<{ 
+  segnalazione: Segnalazione 
+}>()
 
 const segnalazioneID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
+const { removeSegnalazione, restoreSegnalazione } = useSegnalazioni();
+const { hasPermission, generateRoute } = usePermission();
 
-// Function to delete user: first close menu, then open dialog
 function handleDelete(segnalazione: Segnalazione) {
   segnalazioneID.value = segnalazione.id;
   isDropdownOpen.value = false 
@@ -35,10 +33,26 @@ const closeModal = () => {
 }
 
 const deleteSegnalazione = () => {
-    router.delete(route('admin.segnalazioni.destroy', { id: segnalazioneID.value }),{
-        preserveScroll: true,
-        onSuccess: () => closeModal()
-    })
+
+  const id = segnalazioneID.value;
+
+  // Optimistic UI update
+  removeSegnalazione(id);
+
+  router.delete(route('admin.segnalazioni.destroy', { id }), {
+    preserveScroll: true,
+    preserveState: true,
+    only: ['stats'], // we only need updated stats from server
+    onSuccess: () => {
+      closeModal();
+    },
+    onError: () => {
+      restoreSegnalazione(id);
+      // Rollback not implemented here. You could re-fetch if needed.
+      console.error('Errore durante la cancellazione.');
+    }
+  });
+
 }
 
 </script>

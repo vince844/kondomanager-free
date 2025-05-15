@@ -8,6 +8,7 @@ use App\Http\Requests\Condominio\UpdateCondominioRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -18,8 +19,10 @@ use Inertia\Response;
 
 class CondominioController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
-     * Display a list of condominios with optional filtering and pagination.
+     * Display a list of condomini with optional filtering and pagination.
      *
      * This method retrieves a list of condominios from the database, applying filters
      * (e.g., by name) if provided in the request, and returns a paginated list of results.
@@ -50,9 +53,9 @@ class CondominioController extends Controller
             'buildings' => CondominioResource::collection($condomini)->response()->getData(true)['data'],
             'meta' => [
                 'current_page' => $condomini->currentPage(),
-                'last_page' => $condomini->lastPage(),
-                'per_page' => $condomini->perPage(),
-                'total' => $condomini->total(),
+                'last_page'    => $condomini->lastPage(),
+                'per_page'     => $condomini->perPage(),
+                'total'        => $condomini->total(),
             ],
             // Optional: Return current filters to maintain UI state
             'filters' => $request->only(['nome']) 
@@ -102,12 +105,9 @@ class CondominioController extends Controller
 
             DB::commit();
 
-            return to_route('condomini.index')->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "Il nuovo condominio è stato creato con successo!"
-                ]
-            ]);
+            return to_route('condomini.index')->with(
+                $this->flashSuccess(__('condomini.success_create_building'))
+            );
 
         } catch (\Exception $e) {
 
@@ -115,12 +115,9 @@ class CondominioController extends Controller
 
             Log::error('Error during condominio creation: ' . $e->getMessage());
 
-            return to_route('condomini.index')->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Errore durante la creazione del condominio!"
-                ]
-            ]);
+            return to_route('condomini.index')->with(
+                $this->flashError(__('condomini.error_create_building'))
+            );
         }
 
     }
@@ -177,26 +174,19 @@ class CondominioController extends Controller
 
             DB::commit();
 
-            return to_route('condomini.index')->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "Il profilo del condominio è stato modificato con successo"
-                ]
-            ]);
+            return to_route('condomini.index')->with(
+                $this->flashSuccess(__('condomini.success_edit_building'))
+            );
 
         } catch (\Exception $e) {
 
             DB::rollback();
 
-            // Log the exception for developers to investigate
             Log::error('Error during condominio update: ' . $e->getMessage());
 
-            return to_route('condomini.index')->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Errore durante la modifica del condominio!"
-                ]
-            ]);
+            return to_route('condomini.index')->with(
+                $this->flashError(__('condomini.error_edit_building'))
+            );
         }
 
     }
@@ -224,23 +214,17 @@ class CondominioController extends Controller
            
             $condominio->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "Il codominio è stato eliminato con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('condomini.success_delete_building'))
+            );
             
         } catch (\Exception $e) {
 
             Log::error('Error deleting condominio: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare il condominio!"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('condomini.error_delete_building'))
+            );
         }
       
     }

@@ -58,14 +58,18 @@ class SegnalazioneController extends Controller
             condominioIds: null,
             validated: $validated
         );
+
+        // Get stats using the same service
+        $stats = $this->segnalazioneService->getSegnalazioniStats();
     
         return Inertia::render('segnalazioni/SegnalazioniList', [
             'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->resolve(),
+            'stats' => $stats, 
             'meta' => [
                 'current_page' => $segnalazioni->currentPage(),
-                'last_page' => $segnalazioni->lastPage(),
-                'per_page' => $segnalazioni->perPage(),
-                'total' => $segnalazioni->total(),
+                'last_page'    => $segnalazioni->lastPage(),
+                'per_page'     => $segnalazioni->perPage(),
+                'total'        => $segnalazioni->total(),
             ],
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);
@@ -232,30 +236,39 @@ class SegnalazioneController extends Controller
     public function toggleResolve(Segnalazione $segnalazione): RedirectResponse
     {
 
-        Gate::authorize('update', $segnalazione);
+       Gate::authorize('update', $segnalazione);
+
+        // Determine the intended new state before changing it
+        $willBeLocked = !$segnalazione->is_locked;
 
         try {
 
-            $segnalazione->is_locked = !$segnalazione->is_locked;
+            // Apply the state change
+            $segnalazione->is_locked = $willBeLocked;
             $segnalazione->save();
 
-            return back()->with([
-                'message' => [
-                    'type' => 'success',
-                    'message' => "Lo stato della segnalazione è stato aggiornato con successo."
-                ]
-            ]);
+            // Success message based on new state
+            $message = $willBeLocked
+                ? __('segnalazioni.success_lock_ticket')    
+                : __('segnalazioni.success_unlock_ticket');
+
+            return back()->with(
+                $this->flashSuccess($message)
+            );
 
         } catch (\Exception $e) {
 
-            Log::error('Error toggling resolve status segnalazione: ' . $e->getMessage());
-            return back()->with([
-                'message' => [
-                    'type' => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento dello stato della segnalazione."
-                ]
-            ]);
+            Log::error('Error toggling resolve status segnalazione ID ' . $segnalazione->id . ': ' . $e->getMessage());
 
+            // Error message based on intended state
+            $errorMessage = $willBeLocked
+                ? __('segnalazioni.error_lock_ticket')
+                : __('segnalazioni.error_unlock_ticket');
+
+            return back()->with(
+                $this->flashError($errorMessage)
+            );
+            
         }
         
     }
@@ -275,23 +288,17 @@ class SegnalazioneController extends Controller
 
             $segnalazione->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "La segnalazione è stata eliminata con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('segnalazioni.success_delete_ticket'))
+            );
 
         } catch (\Exception $e) {
             
             Log::error('Error deleting segnalazione: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare la segnalazione"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('segnalazioni.error_delete_ticket'))
+            );
         }
        
     }

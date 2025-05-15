@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\Permission;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
@@ -16,58 +17,63 @@ class UserPolicy
     }
 
     /**
-     * Determine whether the user can view the model.
+     * Determine whether the user can view another user.
+     *
+     * Grants access if the user has the 'Visualizza utenti' permission.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
     public function view(User $user): Response
     {
-        return $user->hasPermissionTo('Visualizza utenti')  
+        return $user->hasPermissionTo(Permission::VIEW_USERS->value)  
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per visualizzare gli utenti registrati!');
+        : Response::deny(__('policies.view_users'));
     }
 
     /**
-     * Determine whether the user can create models.
+     * Determine whether the user can create a new user.
+     *
+     * Grants access if the user has the 'Crea utenti' permission.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
     public function create(User $user): Response
     {
-        return $user->hasPermissionTo('Crea utenti')  
+        return $user->hasPermissionTo(Permission::CREATE_USERS->value)  
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per creare un nuovo utente!');
+        : Response::deny(__('policies.create_users'));
     }
 
     /**
-     * Determine whether the user can update the model.
+     * Determine whether the user can update another user.
+     *
+     * Grants access if the user has the 'Modifica utenti' permission.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
     public function update(User $user): Response
     {
-        return $user->hasPermissionTo('Modifica utenti')  
+        return $user->hasPermissionTo(Permission::EDIT_USERS->value)  
         ? Response::allow() 
-        : Response::deny("Non hai permessi sufficienti per modificare l'utente!");
+        : Response::deny(__('policies.edit_users'));
     }
 
     /**
-     * Determine whether the user can delete the model.
+     * Determine whether the user can delete another user.
+     *
+     * Grants access if the user has the 'Elimina utenti' permission.
+     *
+     * @param  \App\Models\User $user The user making the authorization request.
+     * @return \Illuminate\Auth\Access\Response Authorization response.
      */
     public function delete(User $user): Response
     {
-        return $user->hasPermissionTo('Elimina utenti')  
+        return $user->hasPermissionTo(Permission::DELETE_USERS->value)  
         ? Response::allow() 
-        : Response::deny("Non hai permessi sufficienti per eliminare l'utente!");
+        : Response::deny(__('policies.delete_users'));
     }
 
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, User $model): bool
-    {
-        return false;
-    }
-
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, User $model): bool
-    {
-        return false;
-    }
 }

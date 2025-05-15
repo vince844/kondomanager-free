@@ -2,10 +2,10 @@
 
 namespace App\Policies;
 
+use App\Enums\Permission;
 use App\Models\Comunicazione;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
-use Illuminate\Support\Facades\Lang;
 
 class ComunicazionePolicy
 {
@@ -15,15 +15,15 @@ class ComunicazionePolicy
      * This method grants access if the user has permission to view comunicazioni ('Visualizza comunicazioni').
      * If the user doesn't have this permission, access is denied with an appropriate message.
      *
-     * @param  \App\Models\User  $user  The user attempting to view the comunicazione.
-     * @param  \App\Models\Comunicazione  $comunicazione  The comunicazione being viewed.
-     * @return \Illuminate\Auth\Access\Response  Authorization response, either allow or deny.
+     * @param  \App\Models\User $user The user attempting to view the comunicazione.
+     * @param  \App\Models\Comunicazione $comunicazione  The comunicazione being viewed.
+     * @return \Illuminate\Auth\Access\Response Authorization response, either allow or deny.
      */
     public function view(User $user, Comunicazione $comunicazione): Response
     {
-        return $user->hasPermissionTo('Visualizza comunicazioni')  
+        return $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value)  
                ? Response::allow() 
-               : Response::deny(Lang::get('policies.view_communications'));
+               : Response::deny(__('policies.view_communications'));
     }
 
     /**
@@ -39,34 +39,34 @@ class ComunicazionePolicy
      * 
      * If none of these conditions are met, access is denied with a localized message.
      *
-     * @param  \App\Models\User  $user  The user attempting to view the comunicazione.
-     * @param  \App\Models\Comunicazione  $comunicazione  The comunicazione being viewed.
-     * @return \Illuminate\Auth\Access\Response  Authorization response, either allow or deny.
+     * @param  \App\Models\User $user The user attempting to view the comunicazione.
+     * @param  \App\Models\Comunicazione $comunicazione  The comunicazione being viewed.
+     * @return \Illuminate\Auth\Access\Response Authorization response, either allow or deny.
      */
     public function show(User $user, Comunicazione $comunicazione): Response
     {
         // Grant access for admin panel access
-        if ($user->hasPermissionTo('Accesso pannello amministratore')) {
+        if ($user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
             return Response::allow();
         }
 
         // Grant access if the user can view comunicazioni and is assigned to it or their condominio
         if (
-            $user->hasPermissionTo('Visualizza comunicazioni') && 
+            $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value) && 
             $this->isAssignedToUserOrCondominio($user, $comunicazione)
         ) {
             return Response::allow();
         }
 
         // Grant access if the user can view their own comunicazioni
-        if ($user->hasPermissionTo('Visualizza proprie comunicazioni')) {
+        if ($user->hasPermissionTo(Permission::VIEW_OWN_COMUNICAZIONI->value)) {
             if ($comunicazione->created_by === $user->id) {
                 return Response::allow();
             }
         }
 
         // Deny access if none of the conditions are met
-        return Response::deny(Lang::get('policies.view_communication'));
+        return Response::deny(__('policies.view_communication'));
     }
 
     /**
@@ -80,9 +80,9 @@ class ComunicazionePolicy
      */
     public function create(User $user): Response
     {
-        return $user->hasPermissionTo('Crea comunicazioni')  
+        return $user->hasPermissionTo(Permission::CREATE_COMUNICAZIONI->value)  
                ? Response::allow() 
-               : Response::deny(Lang::get('policies.create_communication'));
+               : Response::deny(__('policies.create_communication'));
     }
 
     /**
@@ -94,24 +94,24 @@ class ComunicazionePolicy
      *
      * If the user doesn't meet either of these conditions, access is denied with an appropriate message.
      *
-     * @param  \App\Models\User  $user  The user attempting to update the comunicazione.
-     * @param  \App\Models\Comunicazione  $comunicazione  The comunicazione to be updated.
-     * @return \Illuminate\Auth\Access\Response  Authorization response, either allow or deny.
+     * @param  \App\Models\User $user The user attempting to update the comunicazione.
+     * @param  \App\Models\Comunicazione $comunicazione  The comunicazione to be updated.
+     * @return \Illuminate\Auth\Access\Response Authorization response, either allow or deny.
      */
     public function update(User $user, Comunicazione $comunicazione): Response
     {
 
-        if ($user->hasPermissionTo('Modifica comunicazioni')) {
+        if ($user->hasPermissionTo(Permission::EDIT_COMUNICAZIONI->value)) {
             return Response::allow();
         }
 
-        if ($user->hasPermissionTo('Modifica proprie comunicazioni')) {
+        if ($user->hasPermissionTo(Permission::EDIT_OWN_COMUNICAZIONI->value)) {
             if ($comunicazione->created_by === $user->id) {
                 return Response::allow();
             }
         }
 
-        return Response::deny(Lang::get('policies.edit_communications'));
+        return Response::deny(__('policies.edit_communications'));
     }
 
     /**
@@ -123,17 +123,17 @@ class ComunicazionePolicy
      *
      * If the user doesn't meet either of these conditions, access is denied with an appropriate message.
      *
-     * @param  \App\Models\User  $user  The user attempting to delete the comunicazione.
-     * @param  \App\Models\Comunicazione  $comunicazione  The comunicazione to be deleted.
-     * @return \Illuminate\Auth\Access\Response  Authorization response, either allow or deny.
+     * @param  \App\Models\User $user The user attempting to delete the comunicazione.
+     * @param  \App\Models\Comunicazione $comunicazione  The comunicazione to be deleted.
+     * @return \Illuminate\Auth\Access\Response Authorization response, either allow or deny.
      */
     public function delete(User $user, Comunicazione $comunicazione): Response
     {
-        if ($user->hasPermissionTo('Elimina comunicazioni')) {
+        if ($user->hasPermissionTo(Permission::DELETE_COMUNICAZIONI->value)) {
             return Response::allow();
         }
         
-        if ($user->hasPermissionTo('Elimina proprie comunicazioni')) {
+        if ($user->hasPermissionTo(Permission::DELETE_OWN_COMUNICAZIONI->value)) {
 
             if ($comunicazione->created_by === $user->id) {
                 return Response::allow();
@@ -141,14 +141,14 @@ class ComunicazionePolicy
             
         } 
 
-        return Response::deny(Lang::get('policies.delete_communications'));
+        return Response::deny(__('policies.delete_communications'));
     }
 
     public function approve(User $user, Comunicazione $comunicazione): Response
     {
-        return $user->hasPermissionTo('Approva comunicazioni')  
+        return $user->hasPermissionTo(Permission::APPROVE_COMUNICAZIONI->value)  
         ? Response::allow() 
-        : Response::deny(Lang::get('policies.approve_communication'));
+        : Response::deny(__('policies.approve_communication'));
     }
 
     /**

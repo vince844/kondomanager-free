@@ -9,7 +9,6 @@ use App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Segnalazione;
-use App\Services\SegnalazioneNotificationService;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasAnagrafica;
@@ -30,11 +29,9 @@ class UserSegnalazioneController extends Controller
      * Create a new controller instance.
      *
      * @param  \App\Services\SegnalazioneService 
-     * @param  \App\Services\SegnalazioneNotificationService 
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
-        private SegnalazioneNotificationService $notificationService
     ) {}
     
     /**
@@ -241,8 +238,8 @@ class UserSegnalazioneController extends Controller
         $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/UserSegnalazioniEdit', [
-         'segnalazione'  => new SegnalazioneResource($segnalazione),
-         'condomini'     => CondominioOptionsResource::collection($condomini)
+            'segnalazione'  => new SegnalazioneResource($segnalazione),
+            'condomini'     => CondominioOptionsResource::collection($condomini)
         ]);
     }
 

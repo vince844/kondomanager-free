@@ -2,116 +2,151 @@
 
 namespace App\Services;
 
+use App\Enums\Permission;
 use App\Models\Anagrafica;
 use App\Models\Segnalazione;
 use Illuminate\Support\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class SegnalazioneService
 {
     /**
-     * Get segnalazioni based on the user's role and associations.
+     * Get paginated segnalazioni depending on user role.
      *
-     * @param  \App\Models\Anagrafica|null  $anagrafica
-     * @param  \Illuminate\Support\Collection|null  $condominioIds
-     * @param  array  $validated
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @param array $validated
+     * @return LengthAwarePaginator
      */
     public function getSegnalazioni(
-        ?Anagrafica $anagrafica = null, 
+        ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
         array $validated = []
-    ){
-
-        $user = Auth::user();
-
-        return $user->hasRole(['amministratore', 'collaboratore']) || 
-               $user->hasPermissionTo('Accesso pannello amministratore')
-               ? $this->getAdminScopedQuery($validated)
-               : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
-
+    ): LengthAwarePaginator {
+        return $this->isAdmin()
+            ? $this->getScopedQuery(null, null, $validated, true)
+            : $this->getScopedQuery($anagrafica, $condominioIds, $validated, false);
     }
 
     /**
-     * Build and return a paginated list of published segnalazioni scoped to a regular user.
+     * Apply filters and return the scoped query.
      *
-     * The user can view segnalazioni that are:
-     * - Associated with their anagrafica ID, OR
-     * - Linked to their condomini (only if the segnalazione has no anagrafiche).
-     *
-     * If no valid anagrafica or condominio IDs are provided, an empty result set is returned.
-     *
-     * @param  \App\Models\Anagrafica|null  $anagrafica
-     * @param  \Illuminate\Support\Collection|null  $condominioIds
-     * @param  array  $validated  Optional filters: subject (string), priority (array), stato (array), per_page (int)
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @param array $validated
+     * @param bool $isAdmin
+     * @return LengthAwarePaginator
      */
-    private function getUserScopedQuery( 
-        ?Anagrafica $anagrafica, 
-        ?Collection $condominioIds, 
-        array $validated
-    ){
-           // Validate that at least one filter is provided for non-admin users
-        if (!$anagrafica || !$condominioIds) {
+    private function getScopedQuery(?Anagrafica $anagrafica, ?Collection $condominioIds, array $validated, bool $isAdmin): LengthAwarePaginator
+    {
+        $query = $isAdmin 
+            ? $this->buildAdminBaseQuery()
+            : $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
+
+        return $query
+            ->when($validated['search'] ?? false, fn($q, $search) =>
+                $q->where('subject', 'like', "%{$search}%")
+            )
+            ->when($validated['subject'] ?? false, fn($q, $subject) =>
+                $q->where('subject', 'like', "%{$subject}%")
+            )
+            ->when($validated['priority'] ?? false, fn($q, $priorities) =>
+                $q->whereIn('priority', $priorities)
+            )
+            ->when($validated['stato'] ?? false, fn($q, $stati) =>
+                $q->whereIn('stato', $stati)
+            )
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? 15)
+            ->withQueryString();
+    }
+
+    /**
+     * Build base query for a regular user based on their anagrafica and condomini.
+     *
+     * @param Anagrafica|null $anagrafica
+     * @param Collection|null $condominioIds
+     * @return Builder
+     */
+    private function buildUserScopedBaseQuery(?Anagrafica $anagrafica, ?Collection $condominioIds): Builder
+    {
+        if (!$anagrafica || !$condominioIds || $condominioIds->isEmpty()) {
             Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
-            return Segnalazione::query()->whereRaw('1 = 0')->paginate(1); // Return an empty result
+            return Segnalazione::query()->whereRaw('1 = 0'); 
         }
 
         return Segnalazione::with(['anagrafiche.user', 'condominio', 'createdBy.anagrafica'])
-                ->where('is_published', true)
-                ->where('is_approved', true)
-                ->where(function ($query) use ($anagrafica, $condominioIds) {
-                    $query
-                        ->where(function ($q) use ($anagrafica) {
-                            $q->whereHas('anagrafiche', function ($sub) use ($anagrafica) {
-                                $sub->where('anagrafica_id', $anagrafica->id);
-                            });
-                        })
-                        ->orWhere(function ($q) use ($condominioIds) {
-                            $q->whereIn('condominio_id', $condominioIds->toArray())
-                                ->whereDoesntHave('anagrafiche');
-                        });
-                })
-                ->when($validated['subject'] ?? false, fn($query, $subject) =>
-                    $query->where('subject', 'like', "%{$subject}%")
-                )
-                ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                    $query->whereIn('priority', $priorities)
-                )
-                ->when($validated['stato'] ?? false, fn($query, $stati) =>
-                    $query->whereIn('stato', $stati)
-                )
-                ->orderBy('created_at', 'desc')
-                ->paginate($validated['per_page'] ?? 15)
-                ->withQueryString(); 
+            ->where('is_published', true)
+            ->where('is_approved', true)
+            ->where(function ($query) use ($anagrafica, $condominioIds) {
+                $query
+                    ->whereHas('anagrafiche', fn($sub) =>
+                        $sub->where('anagrafica_id', $anagrafica->id)
+                    )
+                    ->orWhere(fn($q) =>
+                        $q->whereIn('condominio_id', $condominioIds->toArray())
+                          ->whereDoesntHave('anagrafiche')
+                    );
+            });
     }
 
     /**
-     * Build and return a paginated list of segnalazioni for administrators or collaborators.
+     * Build base query for admin users.
      *
-     * Admins can view all segnalazioni, regardless of associations.
-     * Supports optional filters such as subject, priority, stato, and pagination.
-     *
-     * @param  array  $validated  Optional filters: subject (string), priority (array), stato (array), per_page (int)
-     * @return \Illuminate\Contracts\Pagination\LengthAwarePaginator
+     * @return Builder
      */
-    private function getAdminScopedQuery(
-        array $validated = []
-    ){
+    private function buildAdminBaseQuery(): Builder
+    {
+        return Segnalazione::with(['anagrafiche.user', 'createdBy', 'assignedTo', 'condominio']);
+    }
 
-        return Segnalazione::with(['anagrafiche.user','createdBy', 'assignedTo', 'condominio'])
-                ->when($validated['subject'] ?? false, function ($query, $subject) {
-                    $query->where('subject', 'like', "%{$subject}%");
-                })
-                ->when($validated['priority'] ?? false, fn($query, $priorities) =>
-                    $query->whereIn('priority', $priorities)
-                )
-                ->when($validated['stato'] ?? false, fn($query, $stati) =>
-                    $query->whereIn('stato', $stati)
-                )
-                ->orderBy('created_at', 'desc')
-                ->paginate($validated['per_page'] ?? 15)
-                ->withQueryString(); 
+    /**
+     * Get statistics for segnalazioni based on user role.
+     *
+     * @return object
+     */
+    public function getSegnalazioniStats(): object
+    {
+        $user = Auth::user();
+
+        $isAdmin = $user->hasRole(['amministratore', 'collaboratore']) ||
+                   $user->hasPermissionTo('Accesso pannello amministratore');
+
+        $query = $isAdmin
+            ? $this->buildAdminBaseQuery()
+            : $this->buildUserScopedBaseQuery($user->anagrafica, optional($user->anagrafica)->condomini->pluck('id') ?? collect());
+
+        return $this->buildStatsQuery($query);
+    }
+
+    /**
+     * Build aggregated stats for segnalazioni priorities.
+     *
+     * @param Builder $query
+     * @return object
+     */
+    private function buildStatsQuery(Builder $query): object
+    {
+        return $query->selectRaw("
+            SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
+            SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
+            SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
+            SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
+        ")->first();
+    }
+
+    /**
+     * Check if the current user is an administrator or collaborator.
+     *
+     * @return bool
+     */
+    private function isAdmin(): bool
+    {
+        $user = Auth::user();
+        return $user->hasRole(['amministratore', 'collaboratore']) ||
+               $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }

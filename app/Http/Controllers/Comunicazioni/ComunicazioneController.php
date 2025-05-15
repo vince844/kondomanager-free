@@ -46,9 +46,9 @@ class ComunicazioneController extends Controller
      * Currently, it passes `null` for `anagrafica` and `condominioIds`, meaning it retrieves all comunicazioni
      * that match the validated filter criteria (like subject or priority).
      *
-     * @param  \App\Http\Requests\ComunicazioneIndexRequest  $request  The validated request containing filter inputs.
-     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
-     * @return \Illuminate\Http\Response  The Inertia view with a list of comunicazioni, pagination metadata, and filters applied.
+     * @param  \App\Http\Requests\ComunicazioneIndexRequest $request  The validated request containing filter inputs.
+     * @param  \App\Models\Comunicazione $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\Response The Inertia view with a list of comunicazioni, pagination metadata, and filters applied.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to view the comunicazione.
      */
@@ -63,14 +63,18 @@ class ComunicazioneController extends Controller
             condominioIds: null,
             validated: $validated
         );
+
+        // Get stats using the same service
+        $stats = $this->comunicazioneService->getComunicazioniStats();
     
         return Inertia::render('comunicazioni/ComunicazioniList', [
             'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->resolve(),
+            'stats' => $stats, // Add stats to the response
             'meta' => [
                 'current_page' => $comunicazioni->currentPage(),
-                'last_page' => $comunicazioni->lastPage(),
-                'per_page' => $comunicazioni->perPage(),
-                'total' => $comunicazioni->total(),
+                'last_page'    => $comunicazioni->lastPage(),
+                'per_page'     => $comunicazioni->perPage(),
+                'total'        => $comunicazioni->total(),
             ],
             'filters' => Arr::only($validated, ['subject', 'priority'])
         ]);
@@ -83,8 +87,8 @@ class ComunicazioneController extends Controller
      * Then it renders the Inertia.js page for creating a comunicazione, providing
      * a list of all condomini and an empty anagrafiche list.
      *
-     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
-     * @return \Illuminate\Http\Response  The Inertia view for creating a new comunicazione.
+     * @param  \App\Models\Comunicazione $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\Response The Inertia view for creating a new comunicazione.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to create a comunicazione.
      */
@@ -105,9 +109,9 @@ class ComunicazioneController extends Controller
      * of a new comunicazione. It also sends notifications and handles potential
      * errors using a transaction and proper logging.
      *
-     * @param  \App\Http\Requests\CreateComunicazioneRequest  $request  The validated request containing comunicazione data.
-     * @param  \App\Models\Comunicazione  $comunicazione  A model instance used for authorization purposes.
-     * @return \Illuminate\Http\RedirectResponse  Redirects to the index route with a success or error message.
+     * @param  \App\Http\Requests\CreateComunicazioneRequest $request  The validated request containing comunicazione data.
+     * @param  \App\Models\Comunicazione $comunicazione  A model instance used for authorization purposes.
+     * @return \Illuminate\Http\RedirectResponse Redirects to the index route with a success or error message.
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException  If the user is not authorized to create a comunicazione.
      */
@@ -193,7 +197,7 @@ class ComunicazioneController extends Controller
      * such as createdBy, condomini, and anagrafiche. The method then renders the edit view
      * using Inertia with the data required for the form.
      *
-     * @param  \App\Models\Comunicazione  $comunicazione
+     * @param  \App\Models\Comunicazione $comunicazione
      * @return \Illuminate\Http\Response
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update the comunicazione
@@ -217,8 +221,8 @@ class ComunicazioneController extends Controller
      * Authorizes the user to update the comunicazione, performs the update, and syncs associated condomini and anagrafiche.
      * If an error occurs during the update, a log entry is created, and the user is notified.
      *
-     * @param  \App\Http\Requests\CreateComunicazioneRequest  $request
-     * @param  \App\Models\Comunicazione  $comunicazione
+     * @param  \App\Http\Requests\CreateComunicazioneRequest $request
+     * @param  \App\Models\Comunicazione $comunicazione
      * @return \Illuminate\Http\RedirectResponse
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to update the comunicazione
@@ -269,7 +273,7 @@ class ComunicazioneController extends Controller
      * Authorizes the user to delete the comunicazione and performs the deletion. If an error occurs during deletion,
      * a log entry is created, and the user is notified.
      *
-     * @param  \App\Models\Comunicazione  $comunicazione
+     * @param  \App\Models\Comunicazione $comunicazione
      * @return \Illuminate\Http\RedirectResponse
      *
      * @throws \Illuminate\Auth\Access\AuthorizationException If the user is not authorized to delete the comunicazione
@@ -283,7 +287,7 @@ class ComunicazioneController extends Controller
 
             $comunicazione->delete();
 
-            return back()->with(
+            return to_route('admin.comunicazioni.index')->with(
                 $this->flashSuccess(__('comunicazioni.success_delete_communication'))
             );
 

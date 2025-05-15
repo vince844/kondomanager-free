@@ -60,7 +60,7 @@ Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['a
 
 Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
 
-Route::get('/comunicazioni/stats', ComunicazioniStatsController::class)->middleware(['auth', 'verified'])->name('comunicazioni.stats');
+/* Route::get('/comunicazioni/stats', ComunicazioniStatsController::class)->middleware(['auth', 'verified'])->name('comunicazioni.stats'); */
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
 
 // Admin routes

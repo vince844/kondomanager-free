@@ -11,8 +11,10 @@ import { BellPlus } from 'lucide-vue-next'
 import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
 import { priorityConstants } from '@/lib/comunicazioni/constants'
 import { usePermission } from "@/composables/permissions";
+import { useComunicazioni } from '@/composables/useComunicazioni';
 
 const { hasPermission } = usePermission();
+const { setComunicazioni, comunicazioni, meta } = useComunicazioni();
 
 interface DataTableToolbarProps {
   table: Table<Comunicazione>
@@ -34,30 +36,38 @@ watchDebounced(
   [subjectFilter, priorityFilter],
   ([subject, priority]) => {
     const params: Record<string, any> = {
-      page: 1,
+      page: 1, // Reset to page 1 when filters change
     }
 
     if (subject) params.subject = subject
     if (priority.length > 0) params.priority = priority
 
+    // Fetch new data from the backend
     router.get(route('admin.comunicazioni.index'), params, {
       preserveState: true,
       replace: true,
-    })
+      onSuccess: (page) => {
+        // Update the `comunicazioni` and `meta` data after fetching from backend
+        setComunicazioni(page.props.comunicazioni, page.props.meta);
+      }
+    });
   },
   { debounce: 300 }
 )
+
 </script>
 
 <template>
   <div class="flex items-center justify-between w-full mb-3 mt-4">
     <div class="flex items-center space-x-2">
+      <!-- Subject Filter -->
       <Input
         placeholder="Filtra per titolo..."
         v-model="subjectFilter"
         class="h-8 w-[150px] lg:w-[250px]"
       />
 
+      <!-- Priority Filter -->
       <DataTableFacetedFilter
         v-if="priorityColumn"
         :column="priorityColumn"
@@ -68,6 +78,7 @@ watchDebounced(
       />
     </div>
 
+    <!-- Create Button -->
     <Button
       v-if="hasPermission(['Crea comunicazioni'])"
       as="a"
@@ -77,6 +88,6 @@ watchDebounced(
       <BellPlus class="w-4 h-4" />
       <span>Crea</span>
     </Button>
-
   </div>
+
 </template>
