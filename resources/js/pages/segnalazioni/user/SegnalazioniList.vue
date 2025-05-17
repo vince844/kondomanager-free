@@ -1,21 +1,18 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Heading from "@/components/Heading.vue";
-import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
-import { useComunicazioni } from '@/composables/useComunicazioni';
+import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
+import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
 import { usePermission } from "@/composables/permissions";
-import type { Comunicazione } from "@/types/comunicazioni";
+import type { Segnalazione } from "@/types/segnalazioni";
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
-import {
-  CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert,
-  Pencil, Trash2, Loader2, SearchX, BellPlus
-} from "lucide-vue-next";
+import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -24,46 +21,45 @@ import {
   Pagination, PaginationEllipsis, PaginationFirst, PaginationLast,
   PaginationList, PaginationListItem, PaginationNext, PaginationPrev,
 } from "@/components/ui/pagination";
-import { getPriorityMeta } from "@/types/comunicazioni"; 
+import { getPriorityMeta } from "@/types/comunicazioni";
+import type { PaginationMeta } from '@/types/pagination';
 
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;
 const SEARCH_MAX_WAIT = 1000;
 const ERROR_TIMEOUT = 5000;
 
-const props = defineProps<{
-  comunicazioni: {
-    data: Comunicazione[];
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
-  },
+interface Props {
+  segnalazioni: {
+    data: Segnalazione[];
+  } & PaginationMeta;
   stats: {
-    bassa: number,
-    media: number,
-    alta: number,
-    urgente: number
-  },
-  search?: string
-}>();
+    bassa: number;
+    media: number;
+    alta: number;
+    urgente: number;
+  };
+  search?: string;
+}
 
+const props = defineProps<Props>();
 const page = usePage<{ flash: { message?: Flash }, auth: Auth }>();
 const { hasPermission, generateRoute } = usePermission();
-const { setComunicazioni, comunicazioni, restoreComunicazione, removeComunicazione } = useComunicazioni();
+const { segnalazioni, meta, setSegnalazioni, removeSegnalazione } = useSegnalazioni();
 
+// Component state
 const auth = computed(() => page.props.auth);
 const flashMessage = computed(() => page.props.flash.message);
-const comunicazioneID = ref('');
+const segnalazioneID = ref<string>('');
 const isAlertOpen = ref(false);
 const searchQuery = ref(props.search ?? '');
 const lastAbortController = ref<AbortController | null>(null);
-
 const loadingCount = ref(0);
 const isInitialLoad = ref(true);
 const showDelayedLoading = ref(false);
 const errorState = ref<string | null>(null);
 
+// Loading states
 const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(() => {
   showDelayedLoading.value = true;
 }, LOADING_DELAY);
@@ -72,28 +68,27 @@ const isLoading = computed(() => loadingCount.value > 0);
 const shouldShowLoading = computed(() => !isInitialLoad.value && showDelayedLoading.value && isLoading.value);
 const showNoResults = computed(() => filteredResults.value.length === 0 && !isLoading.value);
 
-setComunicazioni(props.comunicazioni.data, {
-  current_page: props.comunicazioni.current_page,
-  per_page: props.comunicazioni.per_page,
-  last_page: props.comunicazioni.last_page,
-  total: props.comunicazioni.total,
+// Initialize data
+onMounted(() => {
+  setSegnalazioni(props.segnalazioni.data, {
+    current_page: props.segnalazioni.current_page,
+    per_page: props.segnalazioni.per_page,
+    last_page: props.segnalazioni.last_page,
+    total: props.segnalazioni.total,
+  });
+  isInitialLoad.value = false;
 });
 
-const displayedComunicazioni = ref<Comunicazione[]>(props.comunicazioni.data);
-
+// Filtered results
 const filteredResults = computed(() => {
-  if (!searchQuery.value) return displayedComunicazioni.value;
+  if (!searchQuery.value) return segnalazioni.value;
   const query = searchQuery.value.toLowerCase();
-  return displayedComunicazioni.value.filter(c =>
+  return segnalazioni.value.filter(c =>
     c.subject.toLowerCase().includes(query)
   );
 });
 
-watch(() => props.comunicazioni.data, (newData) => {
-  displayedComunicazioni.value = newData;
-  isInitialLoad.value = false;
-}, { immediate: true });
-
+// Loading helpers
 function incrementLoading() {
   loadingCount.value++;
   errorState.value = null;
@@ -106,10 +101,11 @@ function stopLoading() {
   loadingCount.value = Math.max(0, loadingCount.value - 1);
 }
 
+// Pagination handler
 async function handlePageChange(page: number) {
   try {
     incrementLoading();
-    await router.get(route(generateRoute('comunicazioni.index')), {
+    await router.get(route(generateRoute('segnalazioni.index')), {
       page, 
       search: searchQuery.value || undefined
     }, {
@@ -119,12 +115,12 @@ async function handlePageChange(page: number) {
       onError: () => errorState.value = "Errore di caricamento. Riprova."
     });
   } catch (e) {
-    console.error(e);
     errorState.value = "Errore di caricamento. Riprova.";
     stopLoading();
   }
 }
 
+// Search handler
 watchDebounced(
   searchQuery,
   async (newQuery, _, onCleanup) => {
@@ -140,18 +136,16 @@ watchDebounced(
     }, ERROR_TIMEOUT);
 
     try {
-      await router.get(route(generateRoute('comunicazioni.index')), { 
+      await router.get(route(generateRoute('segnalazioni.index')), { 
         search: newQuery, 
         page: 1 
       }, {
         preserveState: true,
         preserveScroll: true,
         replace: true,
-        only: ['comunicazioni'],
+        only: ['segnalazioni'],
         onFinish: () => clearTimeout(timeoutTimer),
-        onError: () => {
-          errorState.value = "Errore durante la ricerca.";
-        }
+        onError: () => errorState.value = "Errore durante la ricerca."
       });
     } finally {
       clearTimeout(timeoutTimer);
@@ -161,78 +155,53 @@ watchDebounced(
   { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
 );
 
-onMounted(() => {
-  router.on('start', incrementLoading);
-  router.on('finish', stopLoading);
-  router.on('error', stopLoading);
-});
-
-function handleDelete(comunicazione: Comunicazione) {
-  comunicazioneID.value = comunicazione.id;
+// Delete handler
+function handleDelete(segnalazione: Segnalazione) {
+  segnalazioneID.value = segnalazione.id;
   isAlertOpen.value = true;
 }
 
-const deleteComunicazione = async () => {
-  const id = comunicazioneID.value;
-  const comunicazioneToDelete = displayedComunicazioni.value.find(c => c.id === id);
+async function confirmDelete() {
+  const id = segnalazioneID.value;
+  const SegnalazioneToDelete = segnalazioni.value.find(c => c.id === id);
 
-  if (!comunicazioneToDelete) {
+  if (!SegnalazioneToDelete) {
     isAlertOpen.value = false;
     return;
   }
 
-  removeComunicazione(id);
-  
-  displayedComunicazioni.value = displayedComunicazioni.value.filter(c => c.id !== id);
-
   try {
-    await router.delete(route(generateRoute('comunicazioni.destroy'), { id }), {
+    await router.delete(route(generateRoute('segnalazioni.destroy'), { id }), {
       preserveScroll: true,
       preserveState: true,
       only: ['stats'],
       onSuccess: () => {
+        removeSegnalazione(id);
         isAlertOpen.value = false;
-        if (displayedComunicazioni.value.length === 0 && 
-            props.comunicazioni.current_page > 1) {
-          handlePageChange(props.comunicazioni.current_page - 1);
-        }
       },
       onError: () => {
-        if (comunicazioneToDelete) {
-          restoreComunicazione(comunicazioneToDelete);
-          displayedComunicazioni.value = [...displayedComunicazioni.value, comunicazioneToDelete]
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        }
         errorState.value = "Errore durante l'eliminazione. Riprova.";
       }
     });
   } catch (error) {
-    console.error('Delete error:', error);
-    if (comunicazioneToDelete) {
-      restoreComunicazione(comunicazioneToDelete);
-      displayedComunicazioni.value = [...displayedComunicazioni.value, comunicazioneToDelete]
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    }
     errorState.value = "Errore durante l'eliminazione. Riprova.";
   } finally {
     isAlertOpen.value = false;
   }
-};
+}
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head title="Elenco segnalazioni bacheca" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco comunicazioni bacheca"
-        description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate"
+        title="Elenco segnalazioni bacheca"
+        description="Di seguito la tabella con l'elenco di tutte le segnalazioni in bacheca registrate"
       />
 
-      <div ref="statsContainerRef">
-        <ComunicazioniStats :stats="stats" />
-      </div>
+      <SegnalazioniStats :stats="stats" />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
@@ -245,15 +214,14 @@ const deleteComunicazione = async () => {
               v-model="searchQuery"
               type="text"
               placeholder="Cerca per titolo..."
-              aria-label="Search communications"
               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
 
           <Button
-            v-if="hasPermission(['Crea comunicazioni'])"
+            v-if="hasPermission(['Crea segnalazioni'])"
             as="a"
-            :href="route(generateRoute('comunicazioni.create'))"
+            :href="route(generateRoute('segnalazioni.create'))"
             class="h-8 lg:flex items-center gap-2 ml-auto"
           >
             <BellPlus class="w-4 h-4" />
@@ -267,8 +235,6 @@ const deleteComunicazione = async () => {
             <div 
               v-if="shouldShowLoading"
               class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-10 gap-2"
-              aria-live="polite"
-              :aria-busy="isLoading"
             >
               <Loader2 class="w-8 h-8 animate-spin text-gray-500" />
               <p class="text-gray-600">Caricamento in corso...</p>
@@ -280,7 +246,6 @@ const deleteComunicazione = async () => {
             <div 
               v-if="errorState && !shouldShowLoading"
               class="bg-red-50 border border-red-200 rounded-md p-4 mb-4 flex items-start gap-3"
-              role="alert"
             >
               <CircleAlert class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
               <div>
@@ -290,7 +255,7 @@ const deleteComunicazione = async () => {
                   variant="outline" 
                   size="sm" 
                   class="mt-2"
-                  @click="handlePageChange(comunicazioni.current_page)"
+                  @click="handlePageChange(meta.current_page)"
                 >
                   Riprova
                 </Button>
@@ -299,36 +264,32 @@ const deleteComunicazione = async () => {
           </Transition>
 
           <!-- Results -->
-          <TransitionGroup 
-            name="fade-list" 
-            tag="div"
-            aria-live="polite"
-          >
+          <TransitionGroup name="fade-list" tag="div">
             <article
-              v-for="comunicazione in filteredResults"
-              :key="comunicazione.id"
+              v-for="segnalazione in filteredResults"
+              :key="segnalazione.id"
               class="mb-4 fade-list-item"
             >
               <div class="border p-4 rounded-md hover:shadow-sm transition-shadow">
                 <div class="flex items-center justify-between">
                   <Link
-                    :href="route(generateRoute('comunicazioni.show'), { id: comunicazione.id })"
+                    :href="route(generateRoute('segnalazioni.show'), { id: segnalazione.id })"
                     class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-blue-600 transition-colors"
                   >
                     <component
-                      :is="getPriorityMeta(comunicazione.priority).icon"
+                      :is="getPriorityMeta(segnalazione.priority).icon"
                       class="w-4 h-4"
-                      :class="getPriorityMeta(comunicazione.priority).colorClass"
+                      :class="getPriorityMeta(segnalazione.priority).colorClass"
                     />
-                    {{ comunicazione.subject }}
+                    {{ segnalazione.subject }}
                   </Link>
 
                   <div class="flex items-center gap-2">
                     <Link
-                      v-if="hasPermission(['Modifica comunicazioni']) || 
-                           (hasPermission(['Modifica proprie comunicazioni']) && 
-                            comunicazione.created_by.user.id === auth.user.id)"
-                      :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
+                      v-if="hasPermission(['Modifica segnalazioni']) || 
+                           (hasPermission(['Modifica proprie segnalazioni']) && 
+                            segnalazione.created_by.user.id === auth.user.id)"
+                      :href="route(generateRoute('segnalazioni.edit'), { id: segnalazione.id })"
                       class="text-gray-700 hover:text-blue-600 transition-colors"
                       title="Modifica"
                     >
@@ -336,10 +297,10 @@ const deleteComunicazione = async () => {
                     </Link>
 
                     <button
-                      v-if="hasPermission(['Elimina comunicazioni']) || 
-                           (hasPermission(['Elimina proprie comunicazioni']) && 
-                            comunicazione.created_by.user.id === auth.user.id)"
-                      @click="handleDelete(comunicazione)"
+                      v-if="hasPermission(['Elimina segnalazioni']) || 
+                           (hasPermission(['Elimina proprie segnalazioni']) && 
+                            segnalazione.created_by.user.id === auth.user.id)"
+                      @click="handleDelete(segnalazione)"
                       class="text-gray-700 hover:text-red-600 transition-colors"
                       title="Elimina"
                     >
@@ -350,16 +311,16 @@ const deleteComunicazione = async () => {
 
                 <div class="flex items-center gap-x-4 text-xs pt-1">
                   <time
-                    :datetime="comunicazione.created_at"
+                    :datetime="segnalazione.created_at"
                     class="text-gray-500"
                   >
-                    Inviata {{ comunicazione.created_at }} da
-                    {{ comunicazione.created_by.user.name }}
+                    Inviata {{ segnalazione.created_at }} da
+                    {{ segnalazione.created_by.user.name }}
                   </time>
                 </div>
 
                 <p class="mt-5 line-clamp-3 text-sm/6 text-gray-600">
-                  {{ comunicazione.description }}
+                  {{ segnalazione.description }}
                 </p>
               </div>
             </article>
@@ -372,7 +333,7 @@ const deleteComunicazione = async () => {
             >
               <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
               <h3 class="text-lg font-medium text-gray-900">
-                Nessuna comunicazione trovata
+                Nessuna segnalazione trovata
               </h3>
               <p class="mt-1 text-gray-500">
                 Prova a modificare i criteri di ricerca
@@ -393,9 +354,9 @@ const deleteComunicazione = async () => {
         <!-- Pagination -->
         <Pagination
           v-slot="{ page }"
-          :items-per-page="comunicazioni.per_page"
-          :total="comunicazioni.total"
-          :default-page="comunicazioni.current_page"
+          :items-per-page="meta.per_page"
+          :total="meta.total"
+          :default-page="meta.current_page"
           :sibling-count="1"
           show-edges
           @update:page="handlePageChange"
@@ -437,14 +398,14 @@ const deleteComunicazione = async () => {
     <AlertDialog v-model:open="isAlertOpen">
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Sei sicuro di volere eliminare questa comunicazione?</AlertDialogTitle>
+          <AlertDialogTitle>Sei sicuro di volere eliminare questa segnalazione?</AlertDialogTitle>
           <AlertDialogDescription>
-            Questa azione non è reversibile. Eliminerà la comunicazione e tutti i dati ad essa associati.
+            Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancella</AlertDialogCancel>
-          <AlertDialogAction @click="deleteComunicazione">Continua</AlertDialogAction>
+          <AlertDialogCancel>Annulla</AlertDialogCancel>
+          <AlertDialogAction @click="confirmDelete">Conferma</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

@@ -17,7 +17,7 @@ defineProps<{
 const comunicazioneID = ref('');
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
-const { removeComunicazione, restoreComunicazione } = useComunicazioni();
+const { removeComunicazione } = useComunicazioni();
 const { hasPermission, generateRoute } = usePermission();
 
 function handleDelete(comunicazione: Comunicazione) {
@@ -36,19 +36,15 @@ const deleteComunicazione = () => {
   
   const id = comunicazioneID.value;
 
-  // Optimistic UI update
-  removeComunicazione(id);
-
   router.delete(route('admin.comunicazioni.destroy', { id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['stats'], // we only need updated stats from server
+    only: ['stats'],
     onSuccess: () => {
+      removeComunicazione(id);
       closeModal();
     },
     onError: () => {
-      restoreComunicazione(id);
-      // Rollback not implemented here. You could re-fetch if needed.
       console.error('Errore durante la cancellazione.');
     }
   });

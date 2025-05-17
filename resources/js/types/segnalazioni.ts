@@ -6,6 +6,13 @@ export type PriorityValue = 'bassa' | 'media' | 'alta' | 'urgente';
 export type StatoValue = 'aperta' | 'in lavorazione' | 'chiusa';
 export type PublishedValue = boolean;
 
+export type Stats = {
+  bassa: number;
+  media: number;
+  alta: number;
+  urgente: number;
+};
+
 export interface PriorityType {
   value: PriorityValue;
   label: string;

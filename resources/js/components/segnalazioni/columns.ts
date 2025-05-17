@@ -19,10 +19,17 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
       const segnalazione = row.original
 
       const toggleApproval = () => {
+
           router.put(route(generateRoute('segnalazioni.toggle-approval'), { id: segnalazione.id }), {}, {
             preserveScroll: true,
+            only: ['stats'],
+            onSuccess: () => {
+              // Manually update the specific item
+              segnalazione.is_approved = !segnalazione.is_approved;
+            }
           });
-        };
+
+      };
       
       const tooltip = segnalazione.is_approved
         ? 'Approvata - clicca per rimuovere approvazione'

@@ -1,37 +1,33 @@
 <script setup lang="ts">
-import { computed, onMounted, watch, ref } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { usePage, Head } from "@inertiajs/vue3";
 import DataTable from '@/components/segnalazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/segnalazioni/columns';
 import Alert from "@/components/Alert.vue";
-import type { BreadcrumbItem } from '@/types';
-import type { Flash } from '@/types/flash';
-import type { Segnalazione } from '@/types/segnalazioni';
 import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
+import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
+import type { Segnalazione, Stats } from '@/types/segnalazioni';
+import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{ 
   segnalazioni: Segnalazione[], 
-  stats: {
-    bassa: number,
-    media: number,
-    alta: number,
-    urgente: number
-  },
-  meta: {
-    current_page: number,
-    per_page: number,
-    last_page: number,
-    total: number
-  }
+  stats: Stats,
+  meta: PaginationMeta
 }>()
 
-const page = usePage<{ flash: { message?: Flash } }>();
-const flashMessage = computed(() => page.props.flash.message);
+const page = usePage<{
+  segnalazioni: Segnalazione[],
+  meta: PaginationMeta,
+  flash: { message?: Flash }
+}>();
 
-const { setSegnalazioni, segnalazioni, meta } = useSegnalazioni();
+const flashMessage = computed(() => page.props.flash.message);
+const { setSegnalazioni, segnalazioni, meta: tableMeta } = useSegnalazioni();
+
 setSegnalazioni(page.props.segnalazioni, page.props.meta);
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -68,7 +64,7 @@ watch(flashMessage, (newVal) => {
      
       <div class="container mx-auto">
     
-       <DataTable :columns="columns()" :data="segnalazioni" :meta="meta" /> 
+       <DataTable :columns="columns()" :data="segnalazioni" :meta="tableMeta " /> 
    
       </div> 
     </div>

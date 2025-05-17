@@ -4,18 +4,22 @@ import { Anagrafica } from './anagrafiche';
 import { User } from './users';
 import { Building } from './buildings';
 import { Component } from 'vue';
-
-import {
-  CircleArrowDown,
-  CircleArrowRight,
-  CircleArrowUp,
-  CircleAlert,
-  CircleCheck,
-  CircleX
-} from 'lucide-vue-next';
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, CircleCheck, CircleX } from 'lucide-vue-next';
+import { PaginationMeta } from './pagination';
 
 export type PriorityValue = 'bassa' | 'media' | 'alta' | 'urgente';
 export type PublishedValue = boolean;
+
+export type PaginatedComunicazioni = {
+  data: Comunicazione[];
+} & PaginationMeta;
+
+export type Stats = {
+  bassa: number;
+  media: number;
+  alta: number;
+  urgente: number;
+};
 
 export interface PriorityType {
   value: PriorityValue;

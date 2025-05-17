@@ -85,7 +85,7 @@ class UserComunicazioneController extends Controller
 
         }
 
-        return Inertia::render('comunicazioni/user/UserComunicazioniList', [
+        return Inertia::render('comunicazioni/user/ComunicazioniList', [
             'comunicazioni' => [
                 'data' => ComunicazioneResource::collection($comunicazioni)->resolve(),
                 'current_page' => $comunicazioni->currentPage(),

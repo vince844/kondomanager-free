@@ -17,7 +17,7 @@ defineProps<{
 const segnalazioneID = ref('');
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
-const { removeSegnalazione, restoreSegnalazione } = useSegnalazioni();
+const { removeSegnalazione } = useSegnalazioni();
 const { hasPermission, generateRoute } = usePermission();
 
 function handleDelete(segnalazione: Segnalazione) {
@@ -36,19 +36,15 @@ const deleteSegnalazione = () => {
 
   const id = segnalazioneID.value;
 
-  // Optimistic UI update
-  removeSegnalazione(id);
-
   router.delete(route('admin.segnalazioni.destroy', { id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['stats'], // we only need updated stats from server
+    only: ['stats'], 
     onSuccess: () => {
-      closeModal();
+      removeSegnalazione(id);
+      closeModal(); 
     },
     onError: () => {
-      restoreSegnalazione(id);
-      // Rollback not implemented here. You could re-fetch if needed.
       console.error('Errore durante la cancellazione.');
     }
   });

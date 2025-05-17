@@ -72,6 +72,9 @@ class UserSegnalazioneController extends Controller
                 validated: $validated
             );
 
+            // Get stats using the same service
+            $stats = $this->segnalazioneService->getSegnalazioniStats();
+
         } catch (\Exception $e) {
 
             Log::error('Error getting user segnalazioni: ' . $e->getMessage());
@@ -79,15 +82,19 @@ class UserSegnalazioneController extends Controller
 
         }
 
-        return Inertia::render('segnalazioni/SegnalazioniList', [
-            'segnalazioni' => SegnalazioneResource::collection($segnalazioni)->resolve(),
-            'meta' => [
+        return Inertia::render('segnalazioni/user/SegnalazioniList', [
+
+            'segnalazioni' => [
+                'data' => SegnalazioneResource::collection($segnalazioni)->resolve(),
                 'current_page' => $segnalazioni->currentPage(),
                 'last_page' => $segnalazioni->lastPage(),
                 'per_page' => $segnalazioni->perPage(),
                 'total' => $segnalazioni->total(),
             ],
+            'stats' => $stats, // Add stats to the response
+            'search' => $validated['search'] ?? '',
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
+            
         ]);  
 
     } 

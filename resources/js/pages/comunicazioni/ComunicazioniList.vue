@@ -6,32 +6,28 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/comunicazioni/columns';
 import Alert from '@/components/Alert.vue';
-import type { BreadcrumbItem } from '@/types';
-import type { Flash } from '@/types/flash';
-import type { Comunicazione } from '@/types/comunicazioni';
 import { useComunicazioni } from '@/composables/useComunicazioni';
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
+import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
+import type { Comunicazione, Stats } from '@/types/comunicazioni';
+import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{ 
   comunicazioni: Comunicazione[], 
-  stats: {
-    bassa: number,
-    media: number,
-    alta: number,
-    urgente: number
-  },
-  meta: {
-    current_page: number,
-    per_page: number,
-    last_page: number,
-    total: number
-  }
+  stats: Stats,
+  meta: PaginationMeta
 }>()
 
-const page = usePage<{ flash: { message?: Flash } }>();
-const flashMessage = computed(() => page.props.flash.message);
+const page = usePage<{
+  comunicazioni: Comunicazione[],
+  meta: PaginationMeta,
+  flash: { message?: Flash }
+}>();
 
-const { setComunicazioni, comunicazioni, meta } = useComunicazioni();
+const flashMessage = computed(() => page.props.flash.message);
+const { setComunicazioni, comunicazioni, meta: tableMeta } = useComunicazioni();
+
 setComunicazioni(page.props.comunicazioni, page.props.meta);
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -67,7 +63,7 @@ watch(flashMessage, (newVal) => {
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns()" :data="comunicazioni" :meta="meta" />
+        <DataTable :columns="columns()" :data="comunicazioni" :meta="tableMeta" />
       </div>
     </div>
   </AppLayout>
