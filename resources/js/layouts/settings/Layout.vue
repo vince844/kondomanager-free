@@ -18,6 +18,10 @@ const sidebarNavItems: NavItem[] = [
         href: '/settings/password',
     },
     {
+        title: 'Protezione 2FA',
+        href: '/settings/two-factor',
+    },
+    {
         title: 'Notifiche',
         href: generatePath('settings/notifications'),
     },
