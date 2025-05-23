@@ -34,17 +34,16 @@
         "moduleResolution": "bundler" /* Specify how TypeScript looks up a file from a given module specifier. */,
         // "baseUrl": "./",                                  /* Specify the base directory to resolve non-relative module names. */
         "paths": {
-            /* Specify a set of entries that re-map imports to additional lookup locations. */ 
-            "@/*": ["./resources/js/*"],
+            /* Specify a set of entries that re-map imports to additional lookup locations. */ "@/*": ["./resources/js/*"],
             "ziggy-js": ["./vendor/tightenco/ziggy"]
         },
         // "rootDirs": [],                                   /* Allow multiple folders to be treated as one when resolving modules. */
-        // "typeRoots": [],   
+        // "typeRoots": [],                                  /* Specify multiple folders that act like './node_modules/@types'. */
         "types": [
-            "vite/client"
-        ]
-        /* Specify multiple folders that act like './node_modules/@types'. */
-      /* Specify type package names to be included without being referenced in a source file. */,
+            "vite/client",
+          /*   "vue/tsx",
+            "./resources/js/types" */
+        ] /* Specify type package names to be included without being referenced in a source file. */,
         // "allowUmdGlobalAccess": true,                     /* Allow accessing UMD globals from modules. */
         // "moduleSuffixes": [],                             /* List of file name suffixes to search when resolving a module. */
         // "allowImportingTsExtensions": true,               /* Allow imports to include TypeScript file extensions. Requires '--moduleResolution bundler' and either '--noEmit' or '--emitDeclarationOnly' to be set. */
@@ -120,12 +119,10 @@
         // "skipDefaultLibCheck": true,                      /* Skip type checking .d.ts files that are included with TypeScript. */
         "skipLibCheck": true /* Skip type checking all .d.ts files. */
     },
-  
     "include": [
         "resources/js/**/*.ts",
         "resources/js/**/*.d.ts",
-        "resources/js/**/*.tsx",
-        "resources/js/**/*.vue",
-        "node_modules/vite/client.d.ts"
-, "resources/js/composables/permissions.ts"    ]
+        "resources/js/**/*.tsx", 
+        "resources/js/**/*.vue"
+    ]
 }

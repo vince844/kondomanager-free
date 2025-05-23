@@ -16,12 +16,20 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
     cell: ({ row }) => {
+
       const comunicazione = row.original;
-    
+
       const toggleApproval = () => {
-        router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
-          preserveScroll: true,
-        });
+
+          router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
+            preserveScroll: true,
+            only: ['stats'],
+            onSuccess: () => {
+              // Manually update the specific item
+              comunicazione.is_approved = !comunicazione.is_approved;
+            }
+          });
+
       };
     
       const tooltip = comunicazione.is_approved

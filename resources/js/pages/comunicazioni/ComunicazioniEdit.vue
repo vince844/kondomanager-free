@@ -18,6 +18,7 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants'; 
+import axios from 'axios';
 
 const props = defineProps<{
   comunicazione: Comunicazione;

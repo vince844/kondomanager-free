@@ -15,11 +15,7 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { PriorityType, StatoType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 const props = defineProps<{
   condomini: Building[];

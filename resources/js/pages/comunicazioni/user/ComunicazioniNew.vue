@@ -13,15 +13,11 @@ import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
-import type { PriorityType } from '@/types/segnalazioni';
-import { priorityConstants } from '@/lib/segnalazioni/constants';
-import '@vuepic/vue-datepicker/dist/main.css';
+import type { PriorityType } from '@/types/comunicazioni';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from '@/components/ui/hover-card'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import '@vuepic/vue-datepicker/dist/main.css';
 
 const { generateRoute } = usePermission();
 
@@ -60,7 +56,8 @@ const submit = () => {
         <Heading title="Crea comunicazione" description="Compila il seguente modulo per la creazione di una nuova comunicazione per la bacheca del condominio" />
 
         <form class="space-y-2" @submit.prevent="submit">
-            
+
+            <!-- Container for buttons (wraps buttons for alignment) -->
             <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
                 <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
@@ -69,17 +66,15 @@ const submit = () => {
                     Salva
                 </Button>
 
-                <Link 
-                    as="button"
-                    :href="route(generateRoute('comunicazioni.index'))" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
-                >
+                <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                     <List class="w-4 h-4" />
-                    <span>Elenco</span>
-                </Link>
+                    <Link :href="route(generateRoute('comunicazioni.index'))" class="block lg:inline">
+                    Elenco
+                    </Link>
+                </Button>
 
             </div>
-
+        
             <!-- Two-column layout (3:1 ratio) -->
             <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
 
@@ -136,7 +131,7 @@ const submit = () => {
                                     :options="priorityConstants" 
                                     label="label" 
                                     v-model="form.priority"
-                                    placeholder="Priorità segnalazione"
+                                    placeholder="Priorità comunincazione"
                                     @update:modelValue="form.clearErrors('priority')" 
                                     :reduce="(priority: PriorityType) => priority.value"
                                 >

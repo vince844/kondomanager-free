@@ -15,8 +15,8 @@ import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
-import type { PriorityType, PublishedType } from '@/types/segnalazioni';
-import { priorityConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import type { PriorityType, PublishedType } from '@/types/comunicazioni';
+import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 
@@ -80,9 +80,8 @@ const submit = () => {
 
         <form class="space-y-2" @submit.prevent="submit">
             
-            <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
-
-                <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
+            <div class="flex flex-col lg:flex-row lg:justify-end items-start lg:items-center space-y-2 lg:space-y-0 lg:space-x-2">
+                <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                     <Plus class="w-4 h-4" v-if="!form.processing" />
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                     Salva
@@ -91,12 +90,11 @@ const submit = () => {
                 <Link 
                     as="button"
                     :href="route('admin.comunicazioni.index')" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                    class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
                 >
                     <List class="w-4 h-4" />
                     <span>Elenco</span>
                 </Link>
-
             </div>
 
             <!-- Two-column layout (3:1 ratio) -->
@@ -174,7 +172,7 @@ const submit = () => {
                                     :options="priorityConstants" 
                                     label="label" 
                                     v-model="form.priority"
-                                    placeholder="Priorità segnalazione"
+                                    placeholder="Priorità comunicazione"
                                     @update:modelValue="form.clearErrors('priority')" 
                                     :reduce="(priority: PriorityType) => priority.value"
                                 >

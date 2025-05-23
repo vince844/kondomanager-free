@@ -1,16 +1,12 @@
 <script setup lang="ts">
 
-import { ref, onMounted, watch, computed } from 'vue';
-import { watchDebounced, useTimeoutFn } from '@vueuse/core';
-import { Head, router, Link } from "@inertiajs/vue3";
+import { Head, Link } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
-import Heading from "@/components/Heading.vue";
 import type { Comunicazione } from "@/types/comunicazioni";
-import { Button } from "@/components/ui/button";
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, List } from "lucide-vue-next";
 import { usePermission } from "@/composables/permissions";
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const props = defineProps<{
   comunicazione: Comunicazione
