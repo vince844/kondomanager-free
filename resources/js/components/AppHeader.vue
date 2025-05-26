@@ -101,35 +101,39 @@ const rightNavItems: NavItem[] = [
                             <SheetHeader class="flex justify-start text-left">
                                 <AppLogoIcon class="size-6 fill-current text-black dark:text-white" />
                             </SheetHeader>
-                            <div class="flex h-full flex-1 flex-col justify-between space-y-4 py-6">
-                                <nav class="-mx-3 space-y-1">
+                            <div class="flex h-full flex-1 flex-col justify-start gap-4 py-6">
+                                <!-- Main Navigation -->
+                                <nav
+                                v-for="(item, index) in mainNavItems.filter(item => canAccess(item))"
+                                :key="index"
+                                class="space-y-1"
+                                >
                                     <Link
-                                        v-for="item in mainNavItems"
-                                        v-if="canAccess(item)"
-                                        :key="item.title"
-                                        :href="item.href"
-                                        class="flex items-center gap-x-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent"
-                                        :class="activeItemStyles(item.href)"
-                                        >
+                                    :href="item.href"
+                                    class="flex items-center gap-3 rounded-lg px-3 py-1 text-sm font-medium hover:bg-accent"
+                                    :class="activeItemStyles(item.href)"
+                                    >
                                         <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
                                         {{ item.title }}
                                     </Link>
                                 </nav>
-                                <div class="flex flex-col space-y-4">
-                                  <a
-                                        v-for="item in rightNavItems"
-                                        :key="item.title"
-                                        :href="item.href"
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        class="flex items-center space-x-2 text-sm font-medium"
-                                    > 
-                        
-                                        <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
-                                        <span>{{ item.title }}</span>
+
+                                <!-- Right Navigation -->
+                                <div class="flex flex-col gap-4 px-3">
+                                    <a
+                                    v-for="item in rightNavItems"
+                                    :key="item.title"
+                                    :href="item.href"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="flex items-center gap-2 text-sm font-medium py-1"
+                                    >
+                                    <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
+                                    <span>{{ item.title }}</span>
                                     </a>
                                 </div>
                             </div>
+
                         </SheetContent>
                     </Sheet>
                 </div>

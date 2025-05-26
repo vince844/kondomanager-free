@@ -42,13 +42,11 @@ watchDebounced(
   <div class="flex items-center justify-between w-full mb-3">
     <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
-      <div class="flex items-center space-x-2">
         <Input
           placeholder="Filtra per nome..."
           v-model="nomeFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
-      </div>
     </div>
 
     <!-- Right Section: Button (force it to the right) -->

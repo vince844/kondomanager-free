@@ -18,7 +18,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
   },
   {
     accessorKey: 'condomini',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini associati' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
     
     cell: ({ row }) => {
       const condomini = row.original.condomini ?? [];

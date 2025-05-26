@@ -61,7 +61,7 @@ const submit = () => {
                    
                         <form class="space-y-2" @submit.prevent="submit">
 
-                            <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
+                            <div class="flex flex-col lg:flex-row lg:justify-end items-start lg:items-center space-y-2 lg:space-y-0 lg:space-x-2">
 
                               <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                                 <Plus class="w-4 h-4" v-if="!form.processing" />
@@ -72,7 +72,7 @@ const submit = () => {
                               <Link 
                                 as="button"
                                 :href="route('condomini.index')" 
-                                class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                                class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
                               >
                                 <List class="w-4 h-4" />
                                 <span>Elenco</span>
@@ -80,7 +80,7 @@ const submit = () => {
 
                             </div>
 
-                            <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-3" >
+                            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
 
                               <div class="pt-3">
                                   <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>

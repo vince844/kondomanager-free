@@ -29,16 +29,14 @@ const props = defineProps<{
         
         <Heading title="Visualizza segnalazione guasto" description="Di seguito i dettagli della segnalazione guasto" />
 
-            <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
-
+            <div class="flex flex-wrap flex-col lg:flex-row lg:justify-end gap-2 items-start lg:items-center">
                 <Link 
                     as="button"
                     method="post"
                     v-if="hasPermission(['Modifica segnalazioni'])"
                     :href="route(generateRoute('segnalazioni.toggleResolve'), { id: props.segnalazione.id })" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
-                    <!-- Conditional Rendering of Lucide Icons -->
                     <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4" />
                     <Lock v-else class="w-4 h-4" />
                     <span>{{ props.segnalazione.is_locked ? 'Sblocca' : 'Blocca' }}</span>
@@ -48,12 +46,11 @@ const props = defineProps<{
                     as="button"
                     v-if="hasPermission(['Visualizza segnalazioni'])"
                     :href="route(generateRoute('segnalazioni.index'))" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
                     <List class="w-4 h-4" />
                     <span>Elenco</span>
                 </Link>
-
             </div>
 
             <div class='mt-4'>
@@ -75,7 +72,7 @@ const props = defineProps<{
                         </p>
                     </div>
                     
-                    <div class=" text-muted-foreground text-justify">
+                    <div class="mt-4 text-muted-foreground text-justify">
 
                         {{props.segnalazione.description }}
 

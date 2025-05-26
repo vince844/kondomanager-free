@@ -2,13 +2,13 @@
 
 import { ref, computed } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router } from '@inertiajs/vue3'
+import { router, Link } from '@inertiajs/vue3'
 import type { Table } from '@tanstack/vue-table'
 import type { Comunicazione } from '@/types/comunicazioni'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BellPlus } from 'lucide-vue-next'
-import DataTableFacetedFilter from './DataTableFacetedFilter.vue'
+import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue'
 import { priorityConstants } from '@/lib/comunicazioni/constants'
 import { usePermission } from "@/composables/permissions";
 import { useComunicazioni } from '@/composables/useComunicazioni';
@@ -78,16 +78,16 @@ watchDebounced(
       />
     </div>
 
-    <!-- Create Button -->
-    <Button
+    <Link 
+      as="button"
       v-if="hasPermission(['Crea comunicazioni'])"
-      as="a"
-      :href="route('admin.comunicazioni.create')"
-      class="hidden h-8 lg:flex ml-auto items-center gap-2"
+      :href="route('admin.comunicazioni.create')" 
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <BellPlus class="w-4 h-4" />
       <span>Crea</span>
-    </Button>
+    </Link>
+
   </div>
 
 </template>

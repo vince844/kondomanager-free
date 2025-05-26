@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed, onMounted, watch } from 'vue';
 import { usePage, Head } from '@inertiajs/vue3';
 import DataTable from '@/components/comunicazioni/DataTable.vue';
@@ -50,7 +51,7 @@ watch(flashMessage, (newVal) => {
   <Head title="Elenco comunicazioni bacheca" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
-    <div class="px-4 py-6">
+    <div class="p-4 sm:p-6 lg:p-8 space-y-6">
       <Heading
         title="Elenco comunicazioni bacheca"
         description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate"

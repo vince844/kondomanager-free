@@ -62,12 +62,12 @@ const priorityIcons = {
                     </div>
 
                     <!-- Sottotitolo con data e autore -->
-                    <p class="text-sm text-muted-foreground">
+                    <p class="ml-6 text-sm text-muted-foreground">
                     Inviata {{ comunicazione.created_at }} da {{ comunicazione.created_by.user.name }}
                     </p>
                 </div>
         
-                <div class=" text-muted-foreground text-justify">
+                <div class="mt-4 text-muted-foreground text-justify">
 
                     {{props.comunicazione.description }}
 

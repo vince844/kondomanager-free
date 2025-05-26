@@ -1,4 +1,5 @@
 import { Anagrafica } from './anagrafiche';
+import { User } from './users';
 import { Building } from './buildings';
 import { Component } from 'vue';
 
@@ -40,12 +41,10 @@ export interface Segnalazione {
     description: string;
     created_at: string;
     created_by: {
-      user_id: string;         
-      name: string;
-      email: string;
-      anagrafica: Anagrafica[];
+      user: User
+      anagrafica: Anagrafica;
     };
-    assigned_to: Anagrafica[];
+    assigned_to: Anagrafica;
     condominio: {
       option: any;             
       full: Building;           

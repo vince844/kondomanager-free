@@ -27,16 +27,13 @@ const flashMessage = computed(() => page.props.flash.message);
         <Head title="Elenco utenti registrati" />
 
         <UtentiLayout>
-            <div class="flex flex-col shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-2">
 
-                <div v-if="flashMessage" class="py-4">
-                    <Alert :message="flashMessage.message" :type="flashMessage.type" />
-                </div>
+            <div v-if="flashMessage" class="py-4">
+                <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
 
-                <div class="container mx-auto">
-                    <DataTable :columns="columns" :data="inviti" />
-                </div>
-
+            <div class="container mx-auto">
+                <DataTable :columns="columns" :data="inviti" />
             </div>
 
         </UtentiLayout>

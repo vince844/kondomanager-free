@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, List, Pencil } from 'lucide-vue-next';
+import { LoaderCircle, List, Pencil, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
@@ -18,6 +18,7 @@ import type { Segnalazione } from '@/types/segnalazioni';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 const props = defineProps<{
   condomini: Building[];
@@ -35,7 +36,6 @@ const form = useForm({
     is_featured: !!props.segnalazione?.is_featured,
     is_published: !!props.segnalazione?.is_published,
     anagrafiche: props.segnalazione?.anagrafiche.map(anagrafica => anagrafica.id) || [],
-
 });
 
 onMounted(() => {
@@ -57,7 +57,6 @@ const submit = () => {
 
 </script>
 
-
 <template>
 
     <Head title="Modifica segnalazione guasto" />
@@ -70,23 +69,22 @@ const submit = () => {
 
             <form class="space-y-2" @submit.prevent="submit">
 
-                <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
-
-                    <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
+                  <!-- Action buttons -->
+                <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+                    <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                         <Pencil class="w-4 h-4" v-if="!form.processing" />
                         <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                         Salva
                     </Button>
 
-                    <Link 
+                    <Link
                         as="button"
-                        :href="route('admin.segnalazioni.index')" 
-                        class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                        :href="route('admin.segnalazioni.index')"
+                        class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                     >
                         <List class="w-4 h-4" />
                         <span>Elenco</span>
                     </Link>
-
                 </div>
 
                 <!-- Two-column layout (3:1 ratio) -->
@@ -276,8 +274,28 @@ const submit = () => {
                                         for="comments"
                                         class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                         >
-                                        Permetti commenti segnalazione
+                                        Permetti commenti 
                                     </label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                            <button type="button" class="cursor-pointer">
+                                                <Info class="w-4 h-4 text-muted-foreground" />
+                                            </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                                <h4 class="text-sm font-semibold">
+                                                    Commenti segnalazione
+                                                </h4>
+                                                <p class="text-sm">
+                                                    Quando viene selezionata questa opzione verrano abilitati i commenti per questa segnalazione
+                                                </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
                                 </div>
                             </div>
 
@@ -294,8 +312,27 @@ const submit = () => {
                                         for="comments"
                                         class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                         >
-                                        Metti segnalazione in evidenza
+                                        Segnalazione in evidenza
                                     </label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80 z-50">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">Metti in evidenza</h4>
+                                            <p class="text-sm">
+                                                Quando viene selezionata questa opzione, la segnalazione verrà messa in evidenza e comparirà sempre in cima all'elenco delle segnalazioni.
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+
                                 </div>
                             </div>
                             
@@ -308,6 +345,6 @@ const submit = () => {
       </div>
     </AppLayout> 
   
-  </template>
+</template>
 
 <style src="vue-select/dist/vue-select.css"></style>

@@ -33,7 +33,7 @@ const currentPath = window.location.pathname;
 
         <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
             <aside class="w-full max-w-xl lg:w-48">
-                <nav class="flex flex-col space-x-0 space-y-1 shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-2">
+                <nav class="flex flex-col space-x-0 space-y-1 shadow ring-1 ring-black/5 md:rounded-lg p-2">
                     <Button
                         v-for="item in sidebarNavItems"
                         :key="item.href"
@@ -48,7 +48,7 @@ const currentPath = window.location.pathname;
                 </nav>
             </aside>
             
-            <div class="w-full">
+            <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
                 <section class="w-full">
                     <slot />
                 </section>

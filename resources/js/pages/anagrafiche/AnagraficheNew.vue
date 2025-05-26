@@ -76,315 +76,182 @@ const submit = () => {
 </script>
 
 <template>
-
   <Head title="Crea nuova anagrafica" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
+  
+    <div class="p-4 sm:p-6 lg:p-8 space-y-6">
 
-    <div class="px-4 py-6">
-      
-      <Heading title="Crea anagrafica" description="Compila il seguente modulo per la creazione di una nuova anagrafica" />
-      
-      <div class="mt-3 flex flex-col">
-        <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
-          <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-            <form class="space-y-2" @submit.prevent="submit">
+      <Heading
+        title="Crea anagrafica"
+        description="Compila il seguente modulo per la creazione di una nuova anagrafica"
+      />
 
-                <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
-                  
-                  <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
-                    <Plus class="w-4 h-4" v-if="!form.processing" />
-                    <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                    Salva
-                  </Button>
+      <form @submit.prevent="submit" class="space-y-6">
 
-                  <Link 
-                      as="button"
-                      :href="route('admin.anagrafiche.index')" 
-                      class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
-                  >
-                      <List class="w-4 h-4" />
-                      <span>Elenco</span>
-                  </Link>
-                  
-                </div>
+        <!-- Action buttons -->
+        <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+          <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
+            <Plus class="w-4 h-4" v-if="!form.processing" />
+            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+            Salva
+          </Button>
 
-                <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-3" >
-
-                  <div class="pt-3">
-                      <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
-                      <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati generici dell'anagrafica</p>
-                  </div>
-
-                  <Separator class="my-4" />
-
-                  <div class="pt-3">
-                      
-                    <!--  Name field -->
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-3">
-                        <Label for="nome">Nome e cognome</Label>
-                        <Input 
-                          id="nome" 
-                          class="mt-1 block w-full"
-                            v-model="form.nome" 
-                            v-on:focus="form.clearErrors('nome')"
-                            placeholder="Nome e cognome" 
-                        />
-                        
-                        <InputError :message="form.errors.nome" />
-              
-                      </div>
-                    </div> 
-
-                    <!--  Indirizzo field -->
-                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                        <Label for="indirizzo">Indirizzo di residenza</Label>
-                        <Input 
-                          id="indirizzo" 
-                          class="mt-1 block w-full"
-                            v-model="form.indirizzo" 
-                            v-on:focus="form.clearErrors('indirizzo')"
-                            placeholder="Indirizzo di residenza" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.indirizzo" />
-              
-                      </div>
-                    </div>
-
-                    <!-- telefoni field -->
-                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-2">
-                        <Label for="telefono">Telefono fisso</Label>
-                        <Input 
-                          id="telefono" 
-                          class="mt-1 block w-full"
-                            v-model="form.telefono" 
-                            v-on:focus="form.clearErrors('telefono')"
-                            placeholder="Telefono fisso" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.telefono" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="cellulare">Telefono cellulare</Label>
-                        <Input 
-                          id="cellulare" 
-                          class="mt-1 block w-full"
-                            v-model="form.cellulare" 
-                            v-on:focus="form.clearErrors('cellulare')"
-                            placeholder="Telefono cellulare" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.cellulare" />
-              
-                      </div>
-                    </div>
-
-                    <!--  Contatti fields -->
-                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-2">
-                        <Label for="email">Indirizzo email primario</Label>
-                        <Input 
-                          id="email" 
-                          class="mt-1 block w-full"
-                            v-model="form.email" 
-                            v-on:focus="form.clearErrors('email')"
-                            placeholder="Indirizzo email primario" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.email" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="email_secondaria">Indirizzo email secondario</Label>
-                        <Input 
-                          id="email_secondaria" 
-                          class="mt-1 block w-full"
-                            v-model="form.email_secondaria" 
-                            v-on:focus="form.clearErrors('email_secondaria')"
-                            placeholder="Indirizzo email secondario" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.email_secondaria" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="pec">Indirizzo email pec</Label>
-                        <Input 
-                          id="pec" 
-                          class="mt-1 block w-full"
-                            v-model="form.pec" 
-                            v-on:focus="form.clearErrors('pec')"
-                            placeholder="Indirizzo email pec" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.pec" />
-              
-                      </div>
-                    </div>
-
-                    <div class="pt-5">
-                      <h3 class="text-lg font-medium leading-6 text-gray-900">Dati fiscali</h3>
-                      <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati fiscali dell'anagrafica</p>
-                    </div>
-
-                    <Separator class="my-4" />
-
-                    <!--  documenti fields -->
-                    <div class="pt-3 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-2">
-                        <Label for="tipologia_documento">Tipologia documento</Label>
-
-                        <v-select 
-                          :options="documents" 
-                          label="label" 
-                          v-model="form.tipologia_documento"
-                          placeholder="Seleziona tipologia documento"
-                          :reduce="(document: DocumentType) => document.id"
-
-                        />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="numero_documento">Numero documento</Label>
-                        <Input 
-                          id="numero_documento" 
-                          class="mt-1 block w-full"
-                            v-model="form.numero_documento" 
-                            v-on:focus="form.clearErrors('numero_documento')"
-                            placeholder="Numero documento" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.numero_documento" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="scadenza_documento">Data scadenza documento</Label>
-
-                        <VueDatePicker 
-                          v-model="form.scadenza_documento" 
-                          format="dd/MM/yyyy" 
-                          locale="it"
-                          :enable-time-picker="false"
-                          position="left"
-                          auto-position="bottom"
-                          :action-row="{ showSelect: false, showCancel: false, }"
-                          auto-apply
-                          placeholder="Data scadenza documento"
-                          class="block w-full py-1" 
-
-                        />
-
-                        <InputError class="mt-2" :message="form.errors.scadenza_documento || ''" />
-              
-                      </div>
-                    </div>
-
-                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-2">
-                        
-                        <Label for="codice_fiscale">Codice fiscale</Label>
-
-                        <Input 
-                          id="codice_fiscale" 
-                          class="mt-1 block w-full"
-                            v-model="form.codice_fiscale" 
-                            v-on:focus="form.clearErrors('codice_fiscale')"
-                            placeholder="Codice fiscale" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.codice_fiscale" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="luogo_nascita">Luogo di nascita</Label>
-                        <Input 
-                          id="luogo_nascita" 
-                          class="mt-1 block w-full"
-                            v-model="form.luogo_nascita" 
-                            v-on:focus="form.clearErrors('luogo_nascita')"
-                            placeholder="Luogo di nascita" 
-                        />
-                        
-                        <InputError class="mt-2" :message="form.errors.luogo_nascita" />
-              
-                      </div>
-
-                      <div class="sm:col-span-2">
-                        <Label for="scadenza_documento">Data nascita</Label>
-
-                        <VueDatePicker 
-                          v-model="form.data_nascita" 
-                          format="dd/MM/yyyy" 
-                          locale="it"
-                          :enable-time-picker="false"
-                          position="left"
-                          auto-position="bottom"
-                          :action-row="{ showSelect: false, showCancel: false, }"
-                          auto-apply
-                          placeholder="Data nascita"
-                          class="block w-full py-1" 
-
-                        />
-
-                        <InputError class="mt-2" :message="form.errors.data_nascita || ''" />
-              
-                      </div>
-                    </div>
-
-                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <!--  Condomini field -->
-                      <div class="sm:col-span-2">
-
-                        <Label for="ruolo">Condomini</Label>
-
-                        <v-select 
-                          multiple
-                          :options="buildings" 
-                          label="nome" 
-                          v-model="form.buildings"
-                          :reduce="(option: Building) => option.id"
-                          placeholder="Seleziona condomini"
-                        />
-
-                      </div>
-                    </div>
-
-                      <!--  Note -->
-                      <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                          <Label for="note">Note aggiuntive</Label>
-                          <Textarea 
-                              id="note" 
-                              placeholder="Inserisci una nota qui" 
-                              v-model="form.note" 
-                              v-on:focus="form.clearErrors('note')"
-                          />
-                      </div>
-
-                      <InputError :message="form.errors.note" />
-                    </div>
-                  
-                  </div>
-
-                </div>
-            </form>
-          </div>
+          <Link
+            as="button"
+            :href="route('admin.anagrafiche.index')"
+            class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+          >
+            <List class="w-4 h-4" />
+            <span>Elenco</span>
+          </Link>
         </div>
-      </div> 
 
+        <!-- Form card -->
+        <div class="bg-white dark:bg-muted rounded shadow-sm p-4 sm:p-6 border space-y-6">
+
+          <!-- Section: Dati anagrafici -->
+          <div class="space-y-1">
+            <h3 class="text-lg font-medium text-gray-900">Dati anagrafici</h3>
+            <p class="text-sm text-gray-500">Specifica i dati generici dell'anagrafica</p>
+          </div>
+          <Separator />
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label for="nome">Nome e cognome</Label>
+              <Input id="nome" v-model="form.nome" class="w-full" placeholder="Nome e cognome" @focus="form.clearErrors('nome')" />
+              <InputError :message="form.errors.nome" />
+            </div>
+
+            <div>
+              <Label for="indirizzo">Indirizzo di residenza</Label>
+              <Input id="indirizzo" v-model="form.indirizzo" class="w-full" placeholder="Indirizzo di residenza" @focus="form.clearErrors('indirizzo')" />
+              <InputError :message="form.errors.indirizzo" />
+            </div>
+
+            <div>
+              <Label for="telefono">Telefono fisso</Label>
+              <Input id="telefono" v-model="form.telefono" class="w-full" placeholder="Telefono fisso" @focus="form.clearErrors('telefono')" />
+              <InputError :message="form.errors.telefono" />
+            </div>
+
+            <div>
+              <Label for="cellulare">Telefono cellulare</Label>
+              <Input id="cellulare" v-model="form.cellulare" class="w-full" placeholder="Telefono cellulare" @focus="form.clearErrors('cellulare')" />
+              <InputError :message="form.errors.cellulare" />
+            </div>
+
+            <div>
+              <Label for="email">Email primario</Label>
+              <Input id="email" v-model="form.email" class="w-full" placeholder="Email primario" @focus="form.clearErrors('email')" />
+              <InputError :message="form.errors.email" />
+            </div>
+
+            <div>
+              <Label for="email_secondaria">Email secondario</Label>
+              <Input id="email_secondaria" v-model="form.email_secondaria" class="w-full" placeholder="Email secondario" @focus="form.clearErrors('email_secondaria')" />
+              <InputError :message="form.errors.email_secondaria" />
+            </div>
+
+            <div>
+              <Label for="pec">Email PEC</Label>
+              <Input id="pec" v-model="form.pec" class="w-full" placeholder="Email PEC" @focus="form.clearErrors('pec')" />
+              <InputError :message="form.errors.pec" />
+            </div>
+          </div>
+
+          <!-- Section: Dati fiscali -->
+          <div class="space-y-1">
+            <h3 class="text-lg font-medium text-gray-900">Dati fiscali</h3>
+            <p class="text-sm text-gray-500">Specifica i dati fiscali dell'anagrafica</p>
+          </div>
+          <Separator />
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label for="tipologia_documento">Tipologia documento</Label>
+              <v-select
+                class="w-full"
+                :options="documents"
+                label="label"
+                v-model="form.tipologia_documento"
+                :reduce="(d: DocumentType) => d.id"
+                placeholder="Seleziona tipologia"
+              />
+            </div>
+
+            <div>
+              <Label for="numero_documento">Numero documento</Label>
+              <Input id="numero_documento" v-model="form.numero_documento" class="w-full" placeholder="Numero documento" @focus="form.clearErrors('numero_documento')" />
+              <InputError :message="form.errors.numero_documento" />
+            </div>
+
+            <div>
+              <Label for="scadenza_documento">Scadenza documento</Label>
+              <VueDatePicker
+                v-model="form.scadenza_documento"
+                class="w-full"
+                format="dd/MM/yyyy"
+                locale="it"
+                :enable-time-picker="false"
+                auto-apply
+                placeholder="Data scadenza"
+              />
+              <InputError :message="form.errors.scadenza_documento" />
+            </div>
+
+            <div>
+              <Label for="codice_fiscale">Codice fiscale</Label>
+              <Input id="codice_fiscale" v-model="form.codice_fiscale" class="w-full" placeholder="Codice fiscale" @focus="form.clearErrors('codice_fiscale')" />
+              <InputError :message="form.errors.codice_fiscale" />
+            </div>
+
+            <div>
+              <Label for="luogo_nascita">Luogo di nascita</Label>
+              <Input id="luogo_nascita" v-model="form.luogo_nascita" class="w-full" placeholder="Luogo di nascita" @focus="form.clearErrors('luogo_nascita')" />
+              <InputError :message="form.errors.luogo_nascita" />
+            </div>
+
+            <div>
+              <Label for="data_nascita">Data nascita</Label>
+              <VueDatePicker
+                v-model="form.data_nascita"
+                class="w-full"
+                format="dd/MM/yyyy"
+                locale="it"
+                :enable-time-picker="false"
+                auto-apply
+                placeholder="Data nascita"
+              />
+              <InputError :message="form.errors.data_nascita" />
+            </div>
+
+            <div>
+              <Label for="buildings">Condomini</Label>
+              <v-select
+                multiple
+                class="w-full"
+                :options="buildings"
+                label="nome"
+                v-model="form.buildings"
+                :reduce="(option: Building) => option.id"
+                placeholder="Seleziona condomini"
+              />
+            </div>
+
+            <div class="sm:col-span-2">
+              <Label for="note">Note aggiuntive</Label>
+              <Textarea id="note" class="w-full" placeholder="Inserisci una nota qui" v-model="form.note" @focus="form.clearErrors('note')" />
+              <InputError :message="form.errors.note" />
+            </div>
+          </div>
+
+        </div>
+      </form>
     </div>
-  </AppLayout> 
+  </AppLayout>
 </template>
+
 
 <style src="vue-select/dist/vue-select.css"></style>

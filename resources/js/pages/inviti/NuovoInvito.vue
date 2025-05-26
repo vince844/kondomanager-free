@@ -9,7 +9,7 @@ import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import { LoaderCircle } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import { TagsInput,  TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
+import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Separator } from '@/components/ui/separator';
 
 const props = defineProps<{
@@ -50,82 +50,74 @@ const addCurrentInput = (event: Event) => {
 
         <UtentiLayout>
 
-            <div class="mt-3 flex flex-col">
-                <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
-                    <div class="inline-block min-w-full align-middle md:px-6 lg:px-8">
-                        <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
-                            <form class="space-y-2 p-2" @submit.prevent="submit">
+            <form class="" @submit.prevent="submit">
 
-                                <div class="pt-3">
-                                    <h3 class="text-lg font-medium leading-6 text-gray-900">Invita utenti a registrarsi</h3>
-                                    <p class="mt-1 text-sm text-gray-500">
-                                       Di seguito è possibile inviare un invito per registrarsi sul portale. Inserisci gli indirizzi email e seleziona i condomini ai quali associarli, questi riceveranno una email con le istruzioni per completare la registrazione
-                                    </p>
-                                </div>
+                <div class="">
+                    <h3 class="text-lg font-medium leading-6 text-gray-900">Invita utenti a registrarsi</h3>
+                    <p class="mt-1 text-sm text-gray-500">
+                        Di seguito è possibile inviare un invito per registrarsi sul portale. Inserisci gli indirizzi email e seleziona i condomini ai quali associarli, questi riceveranno una email con le istruzioni per completare la registrazione
+                    </p>
+                </div>
 
-                                <Separator class="my-4" />
+                <Separator class="my-4" />
 
-                                <div class="py-4">
-                                    <!--  Email field -->
-                                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                        <div class="sm:col-span-3">
-                                          <Label for="email">Indirizzi email</Label>
+                <div class="py-4">
+                    <!--  Email field -->
+                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <div class="sm:col-span-3">
+                            <Label for="email">Indirizzi email</Label>
 
-                                            <TagsInput v-model="form.emails" class="w-full">
-                                                <TagsInputItem v-for="item in form.emails" :key="item" :value="item">
-                                                    <TagsInputItemText />
-                                                    <TagsInputItemDelete @click="form.emails = form.emails.filter(email => email !== item)" />
-                                                </TagsInputItem>
-                                                <TagsInputInput 
-                                                    placeholder="Inserisci un indirizzo email" 
-                                                    @blur="addCurrentInput"
-                                                    @keydown.enter="addCurrentInput"
-                                                />
-                                            </TagsInput>
+                            <TagsInput v-model="form.emails" class="w-full">
+                                <TagsInputItem v-for="item in form.emails" :key="item" :value="item">
+                                    <TagsInputItemText />
+                                    <TagsInputItemDelete @click="form.emails = form.emails.filter(email => email !== item)" />
+                                </TagsInputItem>
+                                <TagsInputInput 
+                                    placeholder="Inserisci un indirizzo email" 
+                                    @blur="addCurrentInput"
+                                    @keydown.enter="addCurrentInput"
+                                />
+                            </TagsInput>
 
-                                          <InputError class="mt-2" :message="form.errors.emails" />
-                               
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                        <!--  Condomini field -->
-                                        <div class="sm:col-span-3">
-
-                                          <Label for="ruolo">Condomini</Label>
-
-                                          <v-select 
-                                            multiple
-                                            :options="buildings" 
-                                            label="nome" 
-                                            v-model="form.buildings"
-                                            :reduce="(option: Building) => option.codice_identificativo"
-                                            placeholder="Seleziona condomini"
-                                          />
-
-                                          <InputError class="mt-2" :message="form.errors.buildings" />
-
-                                        </div>
-
-                                    </div>
-
-                                </div>
-
-                                <div class="pt-5">
-                                    <div class="flex">
-
-                                      <Button :disabled="form.processing">
-                                          <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                          Invia invito
-                                      </Button>
-
-                                    </div>
-                                </div>
-                            </form>
+                            <InputError class="mt-2" :message="form.errors.emails" />
+                
                         </div>
                     </div>
+
+                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                        <!--  Condomini field -->
+                        <div class="sm:col-span-3">
+
+                            <Label for="ruolo">Condomini</Label>
+
+                            <v-select 
+                            multiple
+                            :options="buildings" 
+                            label="nome" 
+                            v-model="form.buildings"
+                            :reduce="(option: Building) => option.codice_identificativo"
+                            placeholder="Seleziona condomini"
+                            />
+
+                            <InputError class="mt-2" :message="form.errors.buildings" />
+
+                        </div>
+
+                    </div>
+
                 </div>
-            </div> 
+
+                <div class="pt-5">
+                    <div class="flex">
+
+                        <Button :disabled="form.processing">
+                            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                            Invia invito
+                        </Button>
+
+                    </div>
+                </div>
+            </form>
 
         </UtentiLayout>
 

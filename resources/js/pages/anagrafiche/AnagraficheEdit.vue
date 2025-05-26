@@ -85,38 +85,38 @@ const submit = () => {
 
 <template>
 
-  <Head title="Crea nuova anagrafica" />
+  <Head title="Modifica anagrafica" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Crea anagrafica" description="Compila il seguente modulo per la creazione di una nuova anagrafica" />
+      <Heading title="Modifica anagrafica" description="Compila il seguente modulo per modificare l'anagrafica" />
 
       <div class="mt-3 flex flex-col">
         <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
           <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
             <form class="space-y-2" @submit.prevent="submit">
-              <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
-        
-                <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
+
+              <!-- Action buttons -->
+              <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+                <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                   <Plus class="w-4 h-4" v-if="!form.processing" />
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   Salva
                 </Button>
 
-                <Link 
-                    as="button"
-                    :href="route('admin.anagrafiche.index')" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                <Link
+                  as="button"
+                  :href="route('admin.anagrafiche.index')"
+                  class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
-                    <List class="w-4 h-4" />
-                    <span>Elenco</span>
+                  <List class="w-4 h-4" />
+                  <span>Elenco</span>
                 </Link>
-                
               </div>
 
-              <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-3" >
+              <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
 
                 <div class="pt-3">
                     <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
@@ -127,7 +127,6 @@ const submit = () => {
 
                 <div class="pt-3">
                     
-                    <!--  Name field -->
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-3">
                           <Label for="nome">Nome e cognome</Label>
@@ -144,7 +143,6 @@ const submit = () => {
                         </div>
                     </div> 
 
-                    <!--  Indirizzo field -->
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-6">
                           <Label for="indirizzo">Indirizzo di residenza</Label>
@@ -161,7 +159,6 @@ const submit = () => {
                         </div>
                     </div>
 
-                    <!-- telefoni field -->
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
                           <Label for="telefono">Telefono fisso</Label>
@@ -193,7 +190,6 @@ const submit = () => {
 
                     </div>
 
-                    <!--  Codice fiscale field -->
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
                           <Label for="email">Indirizzo email primario</Label>
@@ -238,7 +234,6 @@ const submit = () => {
                         </div>
                     </div>
 
-                    <!--  Codice fiscale field -->
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
                           <Label for="tipologia_documento">Tipologia documento</Label>
@@ -362,8 +357,7 @@ const submit = () => {
 
                     </div>
 
-                      <!--  Note -->
-                      <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-6">
                             <Label for="note">Note aggiuntive</Label>
                             <Textarea 
@@ -380,17 +374,8 @@ const submit = () => {
                   
                 </div>
 
-                <div class="pt-5">
-                    <div class="flex">
-
-                      <Button :disabled="form.processing">
-                          <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                          Modifica anagrafica
-                      </Button>
-
-                    </div>
-                </div>
               </div>
+              
             </form>
           </div>
         </div>

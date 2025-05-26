@@ -10,13 +10,14 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, List } from 'lucide-vue-next';
+import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
 
@@ -33,7 +34,7 @@ const form = useForm({
     priority: '',
     stato: '',
     condomini_ids: [],
-    can_comment: true as boolean,
+    can_comment: false as boolean,
     is_featured: false as boolean,
     is_published: true,
     anagrafiche: []
@@ -79,18 +80,19 @@ const submit = () => {
         <Heading title="Crea comunicazione" description="Compila il seguente modulo per la creazione di una nuova comunicazione per la bacheca del condominio" />
 
         <form class="space-y-2" @submit.prevent="submit">
-            
-            <div class="flex flex-col lg:flex-row lg:justify-end items-start lg:items-center space-y-2 lg:space-y-0 lg:space-x-2">
+
+            <!-- Action buttons -->
+            <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
                 <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                     <Plus class="w-4 h-4" v-if="!form.processing" />
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                     Salva
                 </Button>
 
-                <Link 
+                <Link
                     as="button"
-                    :href="route('admin.comunicazioni.index')" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
+                    :href="route('admin.comunicazioni.index')"
+                    class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
                     <List class="w-4 h-4" />
                     <span>Elenco</span>
@@ -144,28 +146,74 @@ const submit = () => {
                 <div class="col-span-1 mt-3">
                     <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
 
-                        <div class="grid grid-cols-1 sm:grid-cols-6">
-                            <div class="sm:col-span-6">
+                       <div class="grid grid-cols-1 sm:grid-cols-6">
+                        <div class="sm:col-span-6">
+                            <!-- Label text and icon in a flex row -->
+                            <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
                                 <Label for="stato">Stato pubblicazione</Label>
 
-                                <v-select 
-                                    id="stato" 
-                                    :options="publishedConstants" 
-                                    label="label" 
-                                    v-model="form.is_published"
-                                    placeholder="Stato pubblicazione"
-                                    @update:modelValue="form.clearErrors('is_published')" 
-                                    :reduce="(is_published: PublishedType) => is_published.value"
-                                />
-
-                                <InputError :message="form.errors.is_published" />
-                    
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                    <button type="button" class="cursor-pointer">
+                                        <Info class="w-4 h-4 text-muted-foreground" />
+                                    </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80">
+                                    <div class="flex justify-between space-x-4">
+                                        <div class="space-y-1">
+                                        <h4 class="text-sm font-semibold">
+                                            Stato pubblicazione
+                                        </h4>
+                                        <p class="text-sm">
+                                            Scegli se rendere visibile la comunicazione nella bacheca o mantenerla nascosta.
+                                        </p>
+                                        </div>
+                                    </div>
+                                    </HoverCardContent>
+                                </HoverCard>
                             </div>
+
+                            <!-- Select dropdown -->
+                            <v-select 
+                            id="stato" 
+                            :options="publishedConstants" 
+                            label="label" 
+                            v-model="form.is_published"
+                            placeholder="Stato pubblicazione"
+                            @update:modelValue="form.clearErrors('is_published')" 
+                            :reduce="(is_published: PublishedType) => is_published.value"
+                            />
+
+                            <InputError :message="form.errors.is_published" />
                         </div>
+                       </div>
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="priority">Priorità comunicazione</Label>
+                                
+                                  <!-- Label with HoverCard -->
+                                <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                                    <Label for="priority">Priorità comunicazione</Label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">Priorità comunicazione</h4>
+                                            <p class="text-sm">
+                                                Seleziona il livello di priorità con cui questa comunicazione deve essere trattata.
+                                                Le priorità possono influenzare la visibilità o l'urgenza nella bacheca.
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+                                </div>
 
                                 <v-select 
                                     id="priority" 
@@ -249,32 +297,72 @@ const submit = () => {
                                     @update:checked="(val) => form.can_comment = val" 
                                     />
                                 <label
-                                    for="comments"
-                                    class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    for="can_comment"
+                                    class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
                                     >
-                                    Permetti commenti comunicazione
+                                    Permetti commenti 
                                 </label>
+
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80">
+                                    <div class="flex justify-between space-x-4">
+                                        <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">
+                                                Commenti comunicazione
+                                            </h4>
+                                            <p class="text-sm">
+                                                Quando viene selezionata questa opzione verrano abilitati i commenti per questa comunicazione
+                                            </p>
+                                        </div>
+                                    </div>
+                                    </HoverCardContent>
+                                </HoverCard>
                             </div>
                         </div>
 
                         <div class="pt-4 grid grid-cols-1 sm:grid-cols-6">
                             <div class="flex items-center space-x-2 sm:col-span-6">
+                                <!-- Checkbox -->
                                 <Checkbox 
                                     class="size-4" 
-                                    :checked="form.is_featured"
-                                    v-model="form.is_featured" 
-                                    id="is_featured" 
-                                    @update:checked="(val) => form.is_featured = val" 
-                                    />
+                                    v-model="form.is_featured"
+                                    id="is_featured"
+                                    @update:checked="(val) => form.is_featured = val"
+                                />
+
+                                <!-- Label only -->
                                 <label
-                                    for="comments"
+                                    for="is_featured"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                    >
-                                    Metti comunicazione in evidenza
+                                >
+                                    Comunicazione in evidenza
                                 </label>
+                                
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                    <button type="button" class="cursor-pointer">
+                                        <Info class="w-4 h-4 text-muted-foreground" />
+                                    </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 z-50">
+                                    <div class="flex justify-between space-x-4">
+                                        <div class="space-y-1">
+                                        <h4 class="text-sm font-semibold">Metti in evidenza</h4>
+                                        <p class="text-sm">
+                                            Quando viene selezionata questa opzione, la comunicazione verrà messa in evidenza e comparirà sempre in cima all'elenco delle comunicazioni.
+                                        </p>
+                                        </div>
+                                    </div>
+                                    </HoverCardContent>
+                                </HoverCard>
                             </div>
                         </div>
-                        
+
                     </div>
                 </div>
             
@@ -283,7 +371,7 @@ const submit = () => {
         </form>
 
       </div>
-      
+                 
     </AppLayout> 
   
 </template>

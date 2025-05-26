@@ -9,13 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, List } from 'lucide-vue-next';
+import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import '@vuepic/vue-datepicker/dist/main.css';
 
 const props = defineProps<{
@@ -33,7 +34,6 @@ const form = useForm({
     is_featured: false as boolean,
     is_published: true,
     anagrafiche: [],
-
 });
 
 const submit = () => {
@@ -58,24 +58,23 @@ const submit = () => {
         <Heading title="Crea segnalazione guasto" description="Compila il seguente modulo per la creazione di una nuova segnalazione guasto" />
 
         <form class="space-y-2" @submit.prevent="submit">
-            
-            <div class="flex flex-col lg:flex-row lg:justify-end space-y-2 lg:space-y-0 lg:space-x-2 items-start lg:items-center">
 
-                <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
+            <!-- Action buttons -->
+            <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+                <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                     <Plus class="w-4 h-4" v-if="!form.processing" />
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                     Salva
                 </Button>
 
-                <Link 
+                <Link
                     as="button"
-                    :href="route('admin.segnalazioni.index')" 
-                    class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                    :href="route('admin.segnalazioni.index')"
+                    class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
                     <List class="w-4 h-4" />
                     <span>Elenco</span>
                 </Link>
-
             </div>
 
             <!-- Two-column layout (3:1 ratio) -->
@@ -127,7 +126,30 @@ const submit = () => {
 
                         <div class="grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="priority">Stato pubblicazione</Label>
+
+                                <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                                    <Label for="stato">Stato pubblicazione</Label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">
+                                                Stato pubblicazione
+                                            </h4>
+                                            <p class="text-sm">
+                                                Scegli se rendere visibile la segnalazione nella bacheca o mantenerla nascosta.
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+                                </div>
 
                                 <v-select 
                                     :options="publishedConstants" 
@@ -145,7 +167,31 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="priority">Priorità segnalazione</Label>
+
+                                <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                                    <Label for="stato">Priorità segnalazione</Label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">
+                                               Priorità segnalazione
+                                            </h4>
+                                            <p class="text-sm">
+                                                Seleziona il livello di priorità con cui questa segnalazione deve essere trattata.
+                                                Le priorità possono influenzare la visibilità o l'urgenza nella bacheca.
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+                                </div>
 
                                 <v-select 
                                     :options="priorityConstants" 
@@ -179,7 +225,30 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="stato">Stato segnalazione</Label>
+
+                                <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                                    <Label for="stato">Stato segnalazione</Label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">
+                                               Stato segnalazione
+                                            </h4>
+                                            <p class="text-sm">
+                                                Lo stato indica a che punto è la segnalazione: <strong>Aperta</strong> se è appena stata inviata, <strong>In lavorazione</strong> se qualcuno ci sta lavorando, <strong>Chiusa</strong> se è stata risolta.
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+                                </div>
 
                                 <v-select 
                                     :options="statoConstants" 
@@ -263,8 +332,28 @@ const submit = () => {
                                     for="comments"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                     >
-                                    Permetti commenti segnalazione
+                                    Permetti commenti
                                 </label>
+
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80">
+                                    <div class="flex justify-between space-x-4">
+                                        <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">
+                                                Commenti segnalazione
+                                            </h4>
+                                            <p class="text-sm">
+                                                Quando viene selezionata questa opzione verrano abilitati i commenti per questa segnalazione
+                                            </p>
+                                        </div>
+                                    </div>
+                                    </HoverCardContent>
+                                </HoverCard>
                             </div>
                         </div>
 
@@ -281,8 +370,27 @@ const submit = () => {
                                     for="comments"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                     >
-                                    Metti segnalazione in evidenza
+                                    Segnalazione in evidenza
                                 </label>
+
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                    <button type="button" class="cursor-pointer">
+                                        <Info class="w-4 h-4 text-muted-foreground" />
+                                    </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 z-50">
+                                    <div class="flex justify-between space-x-4">
+                                        <div class="space-y-1">
+                                        <h4 class="text-sm font-semibold">Metti in evidenza</h4>
+                                        <p class="text-sm">
+                                            Quando viene selezionata questa opzione, la segnalazione verrà messa in evidenza e comparirà sempre in cima all'elenco delle segnalazioni.
+                                        </p>
+                                        </div>
+                                    </div>
+                                    </HoverCardContent>
+                                </HoverCard>
+
                             </div>
                         </div>
                         

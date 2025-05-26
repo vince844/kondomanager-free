@@ -17,12 +17,9 @@ defineProps<{ permissions: Permission[] }>();
         <Head title="Elenco ruoli registrati" />
 
         <UtentiLayout>
-            <div class="flex flex-col shadow ring-1 ring-black ring-opacity-5 md:rounded-lg p-2">
 
-                <div class="container mx-auto">
-                    <DataTable :columns="columns" :data="permissions" />
-                </div>
- 
+            <div class="container mx-auto">
+                <DataTable :columns="columns" :data="permissions" />
             </div>
 
         </UtentiLayout>

@@ -47,7 +47,7 @@ const submit = () => {
         <Head title="Impostazioni profilo" />
 
         <SettingsLayout>
-            <div class="flex flex-col space-y-6">
+            <div class="flex flex-col space-y-6 mb-5">
                 <HeadingSmall title="Informazioni profilo" description="Aggiorna il tuo nome o indirizzo email" />
 
                 <form @submit.prevent="submit" class="space-y-6">
