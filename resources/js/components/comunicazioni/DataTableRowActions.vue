@@ -39,7 +39,7 @@ const deleteComunicazione = () => {
   router.delete(route('admin.comunicazioni.destroy', { id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['stats'],
+    only: ['flash','stats'],
     onSuccess: () => {
       removeComunicazione(id);
       closeModal();

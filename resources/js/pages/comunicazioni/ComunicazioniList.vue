@@ -51,7 +51,7 @@ watch(flashMessage, (newVal) => {
   <Head title="Elenco comunicazioni bacheca" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
-    <div class="p-4 sm:p-6 lg:p-8 space-y-6">
+    <div class="px-4 py-6">
       <Heading
         title="Elenco comunicazioni bacheca"
         description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate"

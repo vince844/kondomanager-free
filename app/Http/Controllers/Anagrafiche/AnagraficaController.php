@@ -234,7 +234,7 @@ class AnagraficaController extends Controller
             $anagrafiche->delete();
 
             return back()->with(
-                $this->flashSuccess(__('anagrafiche.error_delete_anagrafica'))
+                $this->flashSuccess(__('anagrafiche.success_delete_anagrafica'))
             );
 
         } catch (\Exception $e) {

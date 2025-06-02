@@ -39,7 +39,7 @@ const deleteSegnalazione = () => {
   router.delete(route('admin.segnalazioni.destroy', { id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['stats'], 
+    only: ['flash','stats'], 
     onSuccess: () => {
       removeSegnalazione(id);
       closeModal(); 

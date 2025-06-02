@@ -15,7 +15,8 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
-    cell: ({ row }) => {
+
+    cell: ({ row, table }) => {
 
       const comunicazione = row.original;
 
@@ -27,6 +28,14 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
             onSuccess: () => {
               // Manually update the specific item
               comunicazione.is_approved = !comunicazione.is_approved;
+              comunicazione.is_published = comunicazione.is_approved;
+
+              // Update the row data in the table
+              table.options.meta?.updateData(row.index, {
+                ...comunicazione,
+                is_published: comunicazione.is_approved
+              });
+
             }
           });
 
@@ -212,6 +221,7 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
     accessorKey: 'is_published',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
     cell: ({ row }) => {
+
       const value = Boolean(row.getValue('is_published'));
       const stato = publishedConstants.find(p => p.value === value);
   

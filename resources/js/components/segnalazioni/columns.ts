@@ -14,7 +14,7 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
 
       const segnalazione = row.original
 
@@ -26,6 +26,14 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
             onSuccess: () => {
               // Manually update the specific item
               segnalazione.is_approved = !segnalazione.is_approved;
+              segnalazione.is_published = segnalazione.is_approved;
+
+                 // Update the row data in the table
+              table.options.meta?.updateData(row.index, {
+                ...segnalazione,
+                is_published: segnalazione.is_approved
+              });
+
             }
           });
 
@@ -190,6 +198,7 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
     accessorKey: 'priority',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Priorità' }),
     cell: ({ row }) => {
+      
       const priority = priorityConstants.find(p => p.value === row.getValue('priority'))
       
       if (!priority) return null

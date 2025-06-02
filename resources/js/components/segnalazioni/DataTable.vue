@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import type { 
   ColumnDef, 
@@ -38,10 +38,15 @@ const props = defineProps<{
 
 const sorting = ref<SortingState>([])
 const isPending = ref(false) 
+const segnalazioni = ref<Segnalazione[]>([...props.data]);
+
+watch(() => props.data, (newData) => {
+  segnalazioni.value = [...newData];
+});
 
 const table = useVueTable({
   get data() {
-    return props.data ?? []
+    return segnalazioni.value;
   },
   get columns() {
     return props.columns ?? []
@@ -85,6 +90,13 @@ const table = useVueTable({
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
+  meta: {
+    updateData: (rowIndex, updatedRow) => {
+      segnalazioni.value = segnalazioni.value.map((item, i) =>
+        i === rowIndex ? updatedRow : item
+      );
+    },
+  }
 })
 
 </script>

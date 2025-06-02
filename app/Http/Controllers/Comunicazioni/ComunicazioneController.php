@@ -287,10 +287,10 @@ class ComunicazioneController extends Controller
 
             $comunicazione->delete();
 
-            return to_route('admin.comunicazioni.index')->with(
+            return back()->with(
                 $this->flashSuccess(__('comunicazioni.success_delete_communication'))
             );
-
+            
         } catch (\Exception $e) {
             
             Log::error('Error deleting comunicazione: ' . $e->getMessage());
