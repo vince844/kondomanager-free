@@ -11,6 +11,7 @@ use App\Http\Controllers\Comunicazioni\UserComunicazioneController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
+use App\Http\Controllers\Dcoumenti\DocumentoController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
@@ -73,6 +74,10 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     ]);
     Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
         'comunicazioni' => 'comunicazione'
+    ]);
+
+    Route::resource('documenti', DocumentoController::class)->parameters([
+        'documenti' => 'documento'
     ]);
 
     Route::put('comunicazioni/{comunicazione}/toggle-approval', ComunicazioneApprovalController::class)

@@ -71,6 +71,15 @@ class RolesAndPermissionsSeeder extends Seeder
             ['name' => 'Pubblica commenti segnalazioni', 'description' => 'Permette di pubblicare commenti lasciati in una segnalazione guasto'],
             ['name' => 'Approva commenti segnalazioni', 'description' => 'Permette di approvare commenti lasciati in una segnalazione guasto'],
             ['name' => 'Visualizza commenti segnalazioni', 'description' => 'Permette di visualizzare commenti lasciati in una segnalazione guasto'],
+
+            // Documenti
+            ['name' => 'Crea documenti', 'description' => 'Permette di creare nuovi documenti'],
+            ['name' => 'Approva documenti', 'description' => 'Permette di approvare documenti'],
+            ['name' => 'Pubblica documenti', 'description' => 'Permette di pubblicare i documenti'],
+            ['name' => 'Modifica documenti', 'description' => 'Permette di modificare i documenti'],
+            ['name' => 'Elimina documenti', 'description' => 'Permette di eliminarei documenti'],
+            ['name' => 'Visualizza documenti', 'description' => 'Permette di visualizzare i documenti'],
+            
         ];
 
         // Create or update permissions

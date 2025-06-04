@@ -13,7 +13,7 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
+import { BookOpen, Folder, Folders, LayoutGrid, Menu, Search, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
@@ -66,6 +66,12 @@ const mainNavItems: NavItem[] = [
         href: generatePath('segnalazioni'),
         icon: Tags,
         permissions: ['Visualizza segnalazioni'],
+    },
+    {
+        title: 'Documenti',
+        href: generatePath('documenti'),
+        icon: Folders,
+        permissions: ['Visualizza documenti'],
     }
 ];
 
