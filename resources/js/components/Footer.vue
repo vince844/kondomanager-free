@@ -13,7 +13,7 @@ const { version } = usePage().props;
             <div class="flex flex-col md:flex-row justify-between items-center">
                 <div class="mb-4 md:mb-0">
                     <p class="text-gray-600 dark:text-gray-300 text-sm">
-                        {{ new Date().getFullYear() }} KondoManager software open source per il condominio (v{{ version }}) 
+                        KondoManager software open source per il condominio v{{ version }}
                     </p>
                 </div>
                 <div class="flex space-x-6">

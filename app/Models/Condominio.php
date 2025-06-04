@@ -50,4 +50,9 @@ class Condominio extends Model
         return $this->belongsToMany(Comunicazione::class, 'comunicazione_condominio')->withTimestamps();
     }
 
+    public function documenti()
+    {
+        return $this->belongsToMany(Documento::class, 'condominio_documento');
+    }
+
 }
