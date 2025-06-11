@@ -2,37 +2,35 @@
 
 import { computed, onMounted, watch } from 'vue';
 import { usePage, Head } from '@inertiajs/vue3';
-import DataTable from '@/components/comunicazioni/DataTable.vue';
+import DataTable from '@/components/documenti/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
-import { columns } from '@/components/comunicazioni/columns';
+import { columns } from '@/components/documenti/columns';
 import Alert from '@/components/Alert.vue';
-import { useComunicazioni } from '@/composables/useComunicazioni';
-import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
+import { useDocumenti } from '@/composables/useDocumenti';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import type { Comunicazione, Stats } from '@/types/comunicazioni';
+import type { Documento } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{ 
-  comunicazioni: Comunicazione[], 
-  stats: Stats,
+  documenti: Documento[], 
   meta: PaginationMeta
 }>()
 
 const page = usePage<{
-  comunicazioni: Comunicazione[],
+  documenti: Documento[],
   meta: PaginationMeta,
   flash: { message?: Flash }
 }>();
 
 const flashMessage = computed(() => page.props.flash.message);
-const { setComunicazioni, comunicazioni, meta: tableMeta } = useComunicazioni();
+const { setDocumenti, documenti, meta: tableMeta } = useDocumenti();
 
-setComunicazioni(page.props.comunicazioni, page.props.meta);
+setDocumenti(page.props.documenti, page.props.meta);
 
 const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Elenco comunicazioni', href: '/comunicazioni' },
+  { title: 'Elenco documenti', href: '/documenti' },
 ];
 
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -48,23 +46,21 @@ watch(flashMessage, (newVal) => {
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head title="Elenco archivio documenti" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="px-4 py-6">
       <Heading
-        title="Elenco comunicazioni bacheca"
-        description="Di seguito la tabella con l'elenco di tutte le comunicazioni salvate nella bacheca del condominio"
+        title="Elenco archivio documenti"
+        description="Di seguito la tabella con l'elenco di tutti i docuemnti salvati nell'archivio del condominio"
       />
-
-      <ComunicazioniStats :stats="stats" />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns()" :data="comunicazioni" :meta="tableMeta" />
+        <DataTable :columns="columns()" :data="documenti" :meta="tableMeta" />
       </div>
     </div>
   </AppLayout>

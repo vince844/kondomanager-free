@@ -4,28 +4,58 @@ namespace App\Http\Controllers\Documenti;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
+use App\Http\Requests\Documento\DocumentoIndexRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
+use App\Http\Resources\Documenti\DocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Models\Condominio;
 use App\Models\Documento;
+use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Arr;
 
 class DocumentoController extends Controller
 {
     use HandleFlashMessages;
+
+    /**
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\DocumentoService 
+     */
+    public function __construct(
+        private DocumentoService $documentoService,
+    ) {}
     
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(DocumentoIndexRequest $request, Documento $documento): Response
     {
-        dd('List all documents');
+        $validated = $request->validated();
+
+        $documenti = $this->documentoService->getDocumenti(  
+            anagrafica: null,
+            condominioIds: null,
+            validated: $validated
+        );
+
+        return Inertia::render('documenti/DocumentiList', [
+            'documenti' => DocumentoResource::collection($documenti)->resolve(),
+            'meta' => [
+                'current_page' => $documenti->currentPage(),
+                'last_page'    => $documenti->lastPage(),
+                'per_page'     => $documenti->perPage(),
+                'total'        => $documenti->total(),
+            ],
+            'filters' => Arr::only($validated, ['name'])
+        ]);
     }
 
     /**

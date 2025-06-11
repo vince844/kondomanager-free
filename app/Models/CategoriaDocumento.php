@@ -8,7 +8,10 @@ class CategoriaDocumento extends Model
 {
     protected $table = 'categorie_documento';
 
-    protected $fillable = ['name'];
+    protected $fillable = [
+        'name',
+        'description'
+    ];
 
     public function documenti()
     {

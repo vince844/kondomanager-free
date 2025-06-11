@@ -69,10 +69,13 @@ Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middlewar
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->group(function () {
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    
     Route::resource('anagrafiche', AnagraficaController::class);
+   
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'
     ]);
+    
     Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
         'comunicazioni' => 'comunicazione'
     ]);
@@ -103,6 +106,7 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
     
     Route::get('/dashboard', UserDashboardController::class)->name('dashboard');
+    
     Route::resource('anagrafiche', UserAnagraficaController::class);
     
     Route::resource('segnalazioni', UserSegnalazioneController::class)->parameters([

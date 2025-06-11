@@ -5,13 +5,14 @@ namespace App\Services;
 use App\Enums\Permission;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
+use App\Models\Documento;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
-class ComunicazioneService
+class DocumentoService
 {
     private const DEFAULT_PER_PAGE = 15;
 
@@ -23,7 +24,7 @@ class ComunicazioneService
      * @param array $validated
      * @return LengthAwarePaginator
      */
-    public function getComunicazioni(
+    public function getDocumenti(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
         array $validated = []
@@ -111,7 +112,7 @@ class ComunicazioneService
      */
     private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
     {
-        $query = Comunicazione::with(['createdBy', 'condomini', 'anagrafiche']);
+        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
         $query = $this->applyFilters($query, $validated);
 
         return $query
@@ -131,10 +132,10 @@ class ComunicazioneService
     {
         return $query
             ->when($validated['search'] ?? false, fn($q, $search) =>
-                $q->where('subject', 'like', "%{$search}%")
+                $q->where('name', 'like', "%{$search}%")
             )
-            ->when($validated['subject'] ?? false, fn($q, $subject) =>
-                $q->where('subject', 'like', "%{$subject}%")
+            ->when($validated['name'] ?? false, fn($q, $name) =>
+                $q->where('name', 'like', "%{$name}%")
             ) 
             ->when($validated['priority'] ?? false, fn($q, $priorities) =>
                 $q->whereIn('priority', $priorities)
