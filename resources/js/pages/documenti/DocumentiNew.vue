@@ -50,7 +50,18 @@ const newCategoryDescription = ref('')
 const localCategories = ref([...props.categories])
 const anagraficheOptions = ref<Anagrafica[]>([]);
 
+const form = useForm({
+  name: '',
+  description: '',
+  is_published: true,
+  condomini_ids: [],
+  category_id: '',
+  file: null as File | null,
+  anagrafiche: []
+})
+
 const createCategory = async () => {
+
   if (!newCategoryName.value) return
 
   try {
@@ -68,17 +79,8 @@ const createCategory = async () => {
   } catch (error) {
     console.error('Errore creazione categoria', error)
   }
-}
 
-const form = useForm({
-  name: '',
-  description: '',
-  is_published: true,
-  condomini_ids: [],
-  category_id: '',
-  file: null as File | null,
-  anagrafiche: []
-})
+}
 
 const fetchAnagrafiche = async (condomini_ids: number[]) => {
   try {

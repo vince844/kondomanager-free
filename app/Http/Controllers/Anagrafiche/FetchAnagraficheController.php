@@ -15,7 +15,7 @@ class FetchAnagraficheController extends Controller
 
          // Fetch the anagrafiche based on the selected condomini
          $anagrafiche = Anagrafica::whereHas('condomini', function ($query) use ($condomini_ids) {
-             $query->whereIn('condomini.id', $condomini_ids); // Explicitly use 'condomini.id'
+             $query->whereIn('condomini.id', $condomini_ids); 
          })->get();
  
          // Return the data as JSON response

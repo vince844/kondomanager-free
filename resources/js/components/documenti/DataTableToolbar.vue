@@ -1,41 +1,48 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue'
-import { watchDebounced } from '@vueuse/core'
-import { router, Link } from '@inertiajs/vue3'
-import { Input } from '@/components/ui/input'
-import { BellPlus } from 'lucide-vue-next'
-import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue'
+import { ref, computed } from 'vue';
+import { watchDebounced } from '@vueuse/core';
+import { router, Link } from '@inertiajs/vue3';
+import { Input } from '@/components/ui/input';
+import { BellPlus } from 'lucide-vue-next';
+import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
-import type { Table } from '@tanstack/vue-table'
-import type { Documento } from '@/types/documenti'
-
-const { hasPermission } = usePermission();
-const { setDocumenti, documenti, meta } = useDocumenti();
+import type { Table } from '@tanstack/vue-table';
+import type { Documento } from '@/types/documenti';
+import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 
 interface DataTableToolbarProps {
   table: Table<Documento>
 }
 
 const props = defineProps<DataTableToolbarProps>()
-
-/* type DocumentiPageProps = {
-  documenti: Documento[]
-  meta: any // Replace with a specific type if available
-} */
+const { hasPermission } = usePermission();
+const { setDocumenti, documenti, meta } = useDocumenti();
+const { categorie, isLoading, loadCategorie } = useCategorieDocumenti()
 
 const nameFilter = ref('')
+const categoriaColumn = props.table.getColumn('categoria')
+
+const categoriaFilter = computed(() => {
+  const val = categoriaColumn?.getFilterValue()
+  return Array.isArray(val) ? val : []
+})
+
+const handleOpenDropdown = () => {
+  loadCategorie()
+}
 
 // ✅ Watch both filters and send to backend
 watchDebounced(
-  [nameFilter],
-  ([name]) => {
+  [nameFilter, categoriaFilter],
+  ([name, category_id]) => {
     const params: Record<string, any> = {
       page: 1, // Reset to page 1 when filters change
     }
 
     if (name) params.name = name
+    if (category_id.length > 0) params.category_id = category_id
 
     // Fetch new data from the backend
     router.get(route('admin.documenti.index'), params, {
@@ -43,7 +50,6 @@ watchDebounced(
       replace: true,
       onSuccess: (page) => {
         // Update the `documenti` and `meta` data after fetching from backend
-        /* setDocumenti(page.props.documenti, page.props.meta); */
         const props = (page.props as unknown) as { documenti: Documento[]; meta: any }
         setDocumenti(props.documenti, props.meta)
       }
@@ -63,6 +69,26 @@ watchDebounced(
         v-model="nameFilter"
         class="h-8 w-[150px] lg:w-[250px]"
       />
+
+      <DataTableFacetedFilter
+        v-if="categoriaColumn"
+        :column="categoriaColumn"
+        title="Categoria"
+        :options="categorie"
+        :isLoading="isLoading"
+        @open="handleOpenDropdown"
+        @update:filter="() => {}"
+      />
+
+      <!-- Priority Filter -->
+<!--       <DataTableFacetedFilter
+        v-if="categoriaColumn"
+        :column="categoriaColumn"
+        title="Categoria"
+        :options="priorityConstants"
+        :isLoading="false"
+        @update:filter="() => {}" 
+      /> -->
 
     </div>
 

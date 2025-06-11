@@ -41,7 +41,6 @@ watch(recovery, (value) => {
     nextTick(() => {
       if (recoveryInputRef.value) {
         recoveryInputRef.value.focus();
-         /*  recoveryInputRef.value.$el.focus(); */
       }
     });
   } else {
@@ -53,7 +52,6 @@ watch(recovery, (value) => {
     });
   }
 })
-
 
 const toggleRecovery = () => {
   recovery.value = !recovery.value;

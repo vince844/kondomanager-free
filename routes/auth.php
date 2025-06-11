@@ -59,5 +59,6 @@ Route::middleware('auth')->group(function () {
 // Two-factor challenge routes with the ensure-two-factor-challenge-session middleware
 Route::middleware('ensure-two-factor-challenge-session')->group(function () {
     Route::inertia('two-factor-challenge', 'auth/TwoFactorChallenge')->name('two-factor.challenge');
+    
     Route::post('two-factor-challenge', [TwoFactorAuthChallengeController::class, 'store']);
 });

@@ -137,8 +137,8 @@ class DocumentoService
             ->when($validated['name'] ?? false, fn($q, $name) =>
                 $q->where('name', 'like', "%{$name}%")
             ) 
-            ->when($validated['priority'] ?? false, fn($q, $priorities) =>
-                $q->whereIn('priority', $priorities)
+            ->when($validated['category_id'] ?? false, fn($q, $categories) =>
+                $q->whereIn('category_id', $categories)
             );
     }
 

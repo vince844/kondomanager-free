@@ -22,9 +22,12 @@ class DocumentoIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'page'       => ['sometimes', 'integer', 'min:1'],
-            'per_page'   => ['sometimes', 'integer', 'between:10,100'],
-            'name'       => ['sometimes', 'string', 'max:255'],
+            'page'          => ['sometimes', 'integer', 'min:1'],
+            'per_page'      => ['sometimes', 'integer', 'between:10,100'],
+            'name'          => ['sometimes', 'string', 'max:255'],
+            'category_id'   => ['sometimes', 'array'],
+            'category_id.*' => ['integer', 'exists:categorie_documento,id'],
+
         ];
     }
 }

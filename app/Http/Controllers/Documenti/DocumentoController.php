@@ -14,11 +14,13 @@ use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 
 class DocumentoController extends Controller
 {
@@ -54,7 +56,7 @@ class DocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
-            'filters' => Arr::only($validated, ['name'])
+            'filters' => Arr::only($validated, ['name', 'category_id'])
         ]);
     }
 
@@ -71,7 +73,19 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly uploaded document in the database and filesystem.
+     *
+     * This method performs the following:
+     * - Validates incoming form data via CreateDocumentoRequest.
+     * - Verifies that a file was uploaded and is valid.
+     * - Stores the uploaded file in the `storage/app/documenti` directory using a hashed name.
+     * - Creates a new Documento record in the database.
+     * - Attaches related condomini and anagrafiche records via pivot tables.
+     * - Uses a database transaction to ensure consistency.
+     * - Logs and handles any exceptions that may occur.
+     *
+     * @param  \App\Http\Requests\CreateDocumentoRequest  $request  The incoming HTTP request containing form data and file.
+     * @return \Illuminate\Http\RedirectResponse  Redirects to the document index route with a success or error message.
      */
     public function store(CreateDocumentoRequest $request)
     {
@@ -157,10 +171,50 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Delete a document and its associated file from storage.
+     *
+     * This method performs the following:
+     * - Deletes the physical file from the storage if it exists.
+     * - Deletes the document record from the database.
+     * - Relies on ON DELETE CASCADE to clean up pivot table relations.
+     * - Logs any errors that occur during the process.
+     *
+     * @param  \App\Models\Documento  $documento  The document instance to be deleted.
+     * @return \Illuminate\Http\RedirectResponse  Redirects back with a success or error message.
      */
-    public function destroy(Documento $documento)
+    public function destroy(Documento $documento): RedirectResponse
     {
-        //
+        try {
+            // Start a transaction in case you need to roll back
+            DB::beginTransaction();
+
+            // Delete the file from storage
+            if (Storage::exists($documento->path)) {
+                Storage::delete($documento->path);
+            }
+
+            // Delete the database record
+            $documento->delete();
+
+            DB::commit();
+
+            return redirect()->back()->with(
+                $this->flashSuccess(__('documenti.success_delete_document'))
+            );
+
+        } catch (\Exception $e) {
+            
+            DB::rollBack();
+
+            Log::error('Error deleting documento archivio', [
+                'document_id' => $documento->id,
+                'message'     => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+
+            return redirect()->back()->with(
+                $this->flashError(__('documenti.error_delete_document'))
+            );
+        }   
     }
 }
