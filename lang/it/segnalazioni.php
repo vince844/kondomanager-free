@@ -19,5 +19,4 @@ return [
     'success_unlock_ticket'                => "La segnalazione guasto è stata sbloccata con successo.",
     'error_unlock_ticket'                  => "Si è verificato un errore durante il tentativo di sbloccare della segnalazione guasto.",
 
-
 ];

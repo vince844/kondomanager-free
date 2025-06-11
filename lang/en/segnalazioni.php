@@ -19,6 +19,4 @@ return [
     'success_unlock_ticket'                => "The ticket has been unlocked successfully.",
     'error_unlock_ticket'                  => "An error occurred while unlocking the ticket.",
 
-
-
 ];

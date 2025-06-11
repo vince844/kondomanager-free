@@ -84,7 +84,6 @@ const submit = () => {
                 <div class="col-span-1 lg:col-span-3 mt-3">
                     <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
                         
-                        <!--  subject field -->
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-3">
                                 <Label for="nome">Oggetto segnalazione</Label>

@@ -258,6 +258,13 @@ return [
             'priority' => 'priorità segnalazione',
             'stato' => 'stato segnalazione',
             'condominio_id' => 'condominio',
+        ],
+        'documenti' => [
+            'name' => 'nome',
+            'description' => 'descrizione',
+            'is_published' => 'stato documento',
+            'condomini_ids' => 'condomini',
+            'category_id' => 'categoria',
         ]
     ],
 

@@ -60,7 +60,8 @@ const submit = () => {
               <div>
                     <h3 class="text-lg font-medium leading-6 text-gray-900">Nuovo utente</h3>
                     <p class="mt-1 text-sm text-gray-500">
-                        Di seguito è possibile creare un nuovo utente, puoi assegnare un ruolo, un'anagrafica e dei permessi specifici per questo utente</p>
+                      Di seguito è possibile creare un nuovo utente, puoi assegnare un ruolo, un'anagrafica e dei permessi specifici per questo utente
+                    </p>
                 </div>
 
                 <Separator class="my-4 mt-4" />

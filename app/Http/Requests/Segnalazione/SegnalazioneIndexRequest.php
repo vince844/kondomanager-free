@@ -22,13 +22,13 @@ class SegnalazioneIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'subject' => ['sometimes', 'string', 'max:255'],
-            'priority' => ['sometimes', 'array'],
+            'page'       => ['sometimes', 'integer', 'min:1'],
+            'per_page'   => ['sometimes', 'integer', 'between:10,100'],
+            'subject'    => ['sometimes', 'string', 'max:255'],
+            'priority'   => ['sometimes', 'array'],
             'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-            'stato' => ['sometimes', 'array'],
-            'stato.*' => ['string', 'in:aperta,in lavorazione,chiusa'],
+            'stato'      => ['sometimes', 'array'],
+            'stato.*'    => ['string', 'in:aperta,in lavorazione,chiusa'],
         ];
     }
 }

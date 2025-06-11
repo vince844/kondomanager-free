@@ -129,7 +129,7 @@ class ComunicazioneController extends Controller
             $comunicazione->condomini()->attach($validated['condomini_ids'] ?? []);
         
             if (!empty($validated['anagrafiche'])) {
-                $comunicazione->anagrafiche()->attach($validated['anagrafiche'] ?? []);;
+                $comunicazione->anagrafiche()->attach($validated['anagrafiche'] ?? []);
             }
         
             DB::commit();
