@@ -8,6 +8,7 @@ import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/documenti/columns';
 import Alert from '@/components/Alert.vue';
 import { useDocumenti } from '@/composables/useDocumenti';
+import DocumentiStats from '@/components/documenti/DocumentiStats.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Documento } from '@/types/documenti';
@@ -15,6 +16,7 @@ import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{ 
   documenti: Documento[], 
+  stats: Stats,
   meta: PaginationMeta
 }>()
 
@@ -54,6 +56,8 @@ watch(flashMessage, (newVal) => {
         title="Elenco archivio documenti"
         description="Di seguito la tabella con l'elenco di tutti i docuemnti salvati nell'archivio del condominio"
       />
+
+      <DocumentiStats :stats="stats" />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

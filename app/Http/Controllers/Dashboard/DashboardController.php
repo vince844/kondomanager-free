@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
+use App\Http\Resources\Documenti\DocumentoResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Comunicazione;
+use App\Models\Documento;
 use App\Models\Segnalazione;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -38,6 +40,14 @@ class DashboardController extends Controller
                     'createdBy.anagrafica',
                     'condomini',
                     'anagrafiche',
+                ])->limit(3)->latest()->get()
+            ),
+            'documenti' => DocumentoResource::collection(
+                Documento::with([
+                    'createdBy.anagrafica',
+                    'condomini',
+                    'anagrafiche',
+                    'categoria',
                 ])->limit(3)->latest()->get()
             ),
         ]);

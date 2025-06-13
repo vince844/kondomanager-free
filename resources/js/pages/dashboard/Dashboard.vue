@@ -3,14 +3,16 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
-import type { Segnalazione } from '@/types/segnalazioni';
-import type { Comunicazione } from '@/types/comunicazioni';
-import { type BreadcrumbItem } from '@/types';
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
+import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import { usePermission } from "@/composables/permissions";
+import type { Segnalazione } from '@/types/segnalazioni';
+import type { Comunicazione } from '@/types/comunicazioni';
+import type { Documento } from '@/types/documenti';
+import { type BreadcrumbItem } from '@/types';
 
 const { hasPermission } = usePermission();
 
@@ -24,6 +26,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 const props = defineProps<{ 
   segnalazioni: Segnalazione[]; 
   comunicazioni: Comunicazione[]; 
+  documenti: Documento[]; 
 }>()
 
 const priorityIcons = {
@@ -77,7 +80,7 @@ const priorityIcons = {
                         <ComunicazioniList 
                                 :comunicazioni="comunicazioni" 
                                 :priorityIcons="priorityIcons" 
-                                :routeName="'user.comunicazioni.show'"
+                                :routeName="'admin.comunicazioni.show'"
                             />
                     </CardContent>
 
@@ -112,7 +115,7 @@ const priorityIcons = {
                         <SegnalazioniList 
                             :segnalazioni="segnalazioni" 
                             :priorityIcons="priorityIcons" 
-                            :routeName="'user.segnalazioni.show'"
+                            :routeName="'admin.segnalazioni.show'"
                         />
                     </CardContent>
 
@@ -121,6 +124,46 @@ const priorityIcons = {
                             <span class="font-medium">Non hai permessi sufficienti per visualizzare le segnalazioni!</span>
                         </div>
                     </CardContent>
+                </Card>
+
+            </div>
+
+            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+
+                <Card class="w-full">
+                    <CardHeader class="p-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <CardTitle class="text-lg">Ultimi documenti</CardTitle>
+                                <CardDescription>
+                                Elenco degli ultimi documenti in archivio
+                                </CardDescription>
+                            </div>
+
+                            <Link
+                                :href="route('admin.documenti.index')"
+                                v-if="hasPermission(['Visualizza documenti'])"
+                                class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
+                            >
+                                Visualizza tutti
+                            </Link>
+                            </div>
+                    </CardHeader>
+                    <CardContent v-if="hasPermission(['Visualizza documenti'])">
+                        <DocumentiList 
+                            :documenti="documenti" 
+                        />
+                    </CardContent>
+
+                    <CardContent v-else>
+                        <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare documenti!</span>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card class="w-full">
+                 
                 </Card>
 
             </div>

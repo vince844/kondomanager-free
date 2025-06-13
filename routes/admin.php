@@ -33,6 +33,9 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
         'documenti' => 'documento'
     ]);
 
+    Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])
+        ->name('documenti.download');
+
     Route::post('/categorie-documento', [CategoriaDocumentoController::class, 'store'])->name('categorie.store');
 
     Route::put('comunicazioni/{comunicazione}/toggle-approval', ComunicazioneApprovalController::class)

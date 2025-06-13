@@ -21,10 +21,10 @@ export const columns = (): ColumnDef<Documento>[] => [
       const documento = row.original;
     
       return h('div', { class: 'flex items-center space-x-2' }, [
-        h(Link, {
-          href: route(generateRoute('comunicazioni.show'), { id: documento.id }),
+        h('a', {
+          href: route(generateRoute('documenti.download'), { documento: documento.id }),
           class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-        }, () => documento.name)
+        }, documento.name)
       ]);
     }
   },

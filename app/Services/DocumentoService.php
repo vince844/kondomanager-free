@@ -143,16 +143,79 @@ class DocumentoService
     }
 
     /**
+     * Get statistics on documents based on user role.
+     *
+     * @return object
+     */
+    public function getDocumentiStats(): object
+    {
+        return $this->isAdmin()
+            ? $this->getAdminDocumentiStats()
+            : $this->getUserDocumentiStats(Auth::user());
+    }
+
+    /**
+     * Get admin-specific document stats (all documents).
+     *
+     * @return object
+     */
+    private function getAdminDocumentiStats(): object
+    {
+        $query = Documento::query();
+
+        return (object) [
+            'total_storage_bytes' => (int) $query->sum('file_size'),
+            'total_documents'     => (int) $query->count(),
+            'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
+                                                 ->whereYear('created_at', now()->year)
+                                                 ->count(),
+            'average_size_bytes'  => (float) $query->avg('file_size') ?: 0,
+        ];
+    }
+
+    /**
+     * Get user-specific document stats filtered by user's anagrafica and condominio.
+     *
+     * @param \App\Models\User $user
+     * @return object
+     */
+    private function getUserDocumentiStats($user): object
+    {
+        $anagrafica = $user->anagrafica;
+        $condominioIds = optional($anagrafica)->condomini->pluck('id') ?? collect();
+
+        if (!$anagrafica || $condominioIds->isEmpty()) {
+            return (object) [
+                'total_storage_bytes' => 0,
+                'total_documents' => 0,
+                'uploaded_this_month' => 0,
+                'average_size_bytes' => 0,
+            ];
+        }
+
+        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
+
+        return (object) [
+            'total_storage_bytes' => (int) $query->sum('size'),
+            'total_documents' => (int) $query->count(),
+            'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
+                                                ->whereYear('created_at', now()->year)
+                                                ->count(),
+            'average_size_bytes' => (float) $query->avg('size') ?: 0,
+        ];
+    }
+
+    /**
      * Get statistics on comunicazioni based on user role.
      *
      * @return object
      */
-    public function getComunicazioniStats(): object
+/*     public function getComunicazioniStats(): object
     {
         return $this->isAdmin()
             ? $this->getStatsQuery(Comunicazione::query())
             : $this->getUserStats(Auth::user());
-    }
+    } */
 
     /**
      * Get user-specific comunicazioni statistics.
@@ -160,7 +223,7 @@ class DocumentoService
      * @param \App\Models\User $user
      * @return object
      */
-    private function getUserStats($user): object
+/*     private function getUserStats($user): object
     {
         $anagrafica = $user->anagrafica;
         $condominioIds = optional($anagrafica)->condomini->pluck('id') ?? collect();
@@ -171,7 +234,7 @@ class DocumentoService
 
         $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
         return $this->getStatsQuery($query);
-    }
+    } */
 
     /**
      * Run aggregation query to count comunicazioni by priority.
@@ -179,7 +242,7 @@ class DocumentoService
      * @param Builder $query
      * @return object
      */
-    private function getStatsQuery(Builder $query): object
+ /*    private function getStatsQuery(Builder $query): object
     {
         return $query->selectRaw("
             SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
@@ -187,7 +250,7 @@ class DocumentoService
             SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
             SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
         ")->first();
-    }
+    } */
 
     /**
      * Check if the current user is an administrator or collaborator.

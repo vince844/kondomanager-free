@@ -48,8 +48,12 @@ class DocumentoController extends Controller
             validated: $validated
         );
 
+        // Get stats using the same service
+        $stats = $this->documentoService->getDocumentiStats();
+
         return Inertia::render('documenti/DocumentiList', [
             'documenti' => DocumentoResource::collection($documenti)->resolve(),
+            'stats' => $stats,
             'meta' => [
                 'current_page' => $documenti->currentPage(),
                 'last_page'    => $documenti->lastPage(),
@@ -216,5 +220,38 @@ class DocumentoController extends Controller
                 $this->flashError(__('documenti.error_delete_document'))
             );
         }   
+    }
+
+    /**
+     * Download the specified document file.
+     *
+     * @param  \App\Models\Documento  $documento
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\RedirectResponse
+     */
+    public function download(Documento $documento)
+    {
+
+        try {
+            
+            if (!Storage::exists($documento->path)) {
+                return redirect()->back()->with(
+                    $this->flashError(__('documenti.file_not_found'))
+                );
+            }
+
+            return Storage::download($documento->path, $documento->name);
+
+        } catch (\Exception $e) {
+
+            Log::error('Error downloading documento archivio', [
+                'document_id' => $documento->id,
+                'message'     => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->with(
+                $this->flashError(__('documenti.error_downloading_document'))
+            );
+
+        }
     }
 }
