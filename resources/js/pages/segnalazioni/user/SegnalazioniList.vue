@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, onMounted, computed } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
@@ -9,9 +10,6 @@ import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
 import { usePermission } from "@/composables/permissions";
-import type { Segnalazione } from "@/types/segnalazioni";
-import type { Flash } from '@/types/flash';
-import type { Auth } from '@/types';
 import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -23,6 +21,9 @@ import {
 } from "@/components/ui/pagination";
 import { getPriorityMeta } from "@/types/comunicazioni";
 import type { PaginationMeta } from '@/types/pagination';
+import type { Segnalazione } from "@/types/segnalazioni";
+import type { Flash } from '@/types/flash';
+import type { Auth } from '@/types';
 
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;

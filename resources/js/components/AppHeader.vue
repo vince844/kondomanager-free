@@ -17,7 +17,7 @@ import { BookOpen, Folder, Folders, LayoutGrid, Menu, Search, House, SquareLibra
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 
-const { generatePath, canAccess } = usePermission();
+const { generatePath, canAccess, hasPermission } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -69,7 +69,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Documenti',
-        href: generatePath('documenti'),
+        href: hasPermission(['Accesso pannello amministratore']) ? generatePath('documenti') : generatePath('categorie-documenti'),
         icon: Folders,
         permissions: ['Visualizza documenti'],
     }

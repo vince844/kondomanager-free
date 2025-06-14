@@ -11,7 +11,7 @@ import { useDocumenti } from '@/composables/useDocumenti';
 import DocumentiStats from '@/components/documenti/DocumentiStats.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import type { Documento } from '@/types/documenti';
+import type { Documento, Stats } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{ 

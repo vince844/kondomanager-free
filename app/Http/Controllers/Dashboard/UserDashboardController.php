@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
+use App\Http\Resources\Documenti\DocumentoResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use App\Services\SegnalazioneService;
 use App\Services\ComunicazioneService;
+use App\Services\DocumentoService;
 use Illuminate\Support\Facades\App;
 use Inertia\Response;
 
@@ -20,14 +22,16 @@ class UserDashboardController extends Controller
     /**
      * Inject the SegnalazioneService.
      *
-     * @param  \App\Services\SegnalazioneService  $segnalazioneService
+     * @param  \App\Services\SegnalazioneService $segnalazioneService
+     * @param  \App\Services\ComunicazioneService $comunicazioneService
+     * @param  \App\Services\DocoumentoService $documentoService
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
-        private ComunicazioneService $comunicazioneService
+        private ComunicazioneService $comunicazioneService,
+        private DocumentoService $documentoService
     ) {}
     
-
     /**
      * Display the authenticated user's dashboard with a limited set of segnalazioni and comunicazioni.
      *
@@ -70,14 +74,23 @@ class UserDashboardController extends Controller
                 validated: []
             );
 
+           // Fetch the documenti using the DocumentoService
+            $documenti = $this->documentoService->getDocumenti(
+                anagrafica: $anagrafica,
+                condominioIds: $condominioIds,
+                validated: []
+            );
+
             /** @var \Illuminate\Pagination\LengthAwarePaginator $segnalazioni */
             $segnalazioniLimited = $segnalazioni->take(3);
             /** @var \Illuminate\Pagination\LengthAwarePaginator $comunicazioni */
             $comunicazioniLimited = $comunicazioni->take(3);
+            /** @var \Illuminate\Pagination\LengthAwarePaginator $documenti */
+            $documentiLimited = $documenti->take(3);
         
         } catch (\Exception $e) {
 
-            Log::error('Error getting user segnalazioni or comunicazioni: ' . $e->getMessage());
+            Log::error('Error getting user segnalazioni or comunicazioni or documents: ' . $e->getMessage());
             abort(500, 'Unable to fetch reports.');
 
         }
@@ -85,6 +98,7 @@ class UserDashboardController extends Controller
         return Inertia::render('dashboard/UserDashboard', [
             'segnalazioni'  => SegnalazioneResource::collection($segnalazioniLimited),
             'comunicazioni' => ComunicazioneResource::collection($comunicazioniLimited),
+            'documenti'     => DocumentoResource::collection($documentiLimited),
         ]);
         
     }

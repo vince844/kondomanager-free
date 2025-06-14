@@ -44,7 +44,6 @@ export interface Comunicazione {
     user: User;
     anagrafica: Anagrafica;
   };
- /*  assigned_to: Anagrafica[]; */
   condomini: {
     options: Building[];
     full: Building[];

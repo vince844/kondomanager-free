@@ -7,6 +7,13 @@ import { Categoria } from './categorie';
 
 export type PublishedValue = boolean;
 
+export type Stats = {
+  total_storage_bytes: number,
+  total_documents: number,
+  uploaded_this_month: number,
+  average_size_bytes: number
+};
+
 export interface PublishedType {
   value: PublishedValue;
   label: string;

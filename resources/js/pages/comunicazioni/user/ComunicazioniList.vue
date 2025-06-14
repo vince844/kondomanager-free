@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, onMounted, computed } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
@@ -9,20 +10,14 @@ import { useComunicazioni } from '@/composables/useComunicazioni';
 import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
 import { usePermission } from "@/composables/permissions";
+import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
+import { getPriorityMeta } from "@/types/comunicazioni";
+import type { PaginationMeta } from '@/types/pagination';
 import type { Comunicazione } from "@/types/comunicazioni";
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
-import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Pagination, PaginationEllipsis, PaginationFirst, PaginationLast,
-  PaginationList, PaginationListItem, PaginationNext, PaginationPrev,
-} from "@/components/ui/pagination";
-import { getPriorityMeta } from "@/types/comunicazioni";
-import type { PaginationMeta } from '@/types/pagination';
 
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;

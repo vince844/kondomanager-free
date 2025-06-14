@@ -83,10 +83,10 @@ class DocumentoService
     ): Builder {
         if (!$anagrafica || !$condominioIds) {
             Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
-            return Comunicazione::query()->whereRaw('1 = 0');
+            return Documento::query()->whereRaw('1 = 0');
         }
 
-        return Comunicazione::with(['anagrafiche', 'condomini', 'createdBy.anagrafica'])
+        return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
             ->where('is_published', true)
             ->where('is_approved', true)
             ->where(function ($query) use ($anagrafica, $condominioIds) {
@@ -204,53 +204,6 @@ class DocumentoService
             'average_size_bytes' => (float) $query->avg('size') ?: 0,
         ];
     }
-
-    /**
-     * Get statistics on comunicazioni based on user role.
-     *
-     * @return object
-     */
-/*     public function getComunicazioniStats(): object
-    {
-        return $this->isAdmin()
-            ? $this->getStatsQuery(Comunicazione::query())
-            : $this->getUserStats(Auth::user());
-    } */
-
-    /**
-     * Get user-specific comunicazioni statistics.
-     *
-     * @param \App\Models\User $user
-     * @return object
-     */
-/*     private function getUserStats($user): object
-    {
-        $anagrafica = $user->anagrafica;
-        $condominioIds = optional($anagrafica)->condomini->pluck('id') ?? collect();
-
-        if (!$anagrafica || $condominioIds->isEmpty()) {
-            return (object) ['bassa' => 0, 'media' => 0, 'alta' => 0, 'urgente' => 0];
-        }
-
-        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
-        return $this->getStatsQuery($query);
-    } */
-
-    /**
-     * Run aggregation query to count comunicazioni by priority.
-     *
-     * @param Builder $query
-     * @return object
-     */
- /*    private function getStatsQuery(Builder $query): object
-    {
-        return $query->selectRaw("
-            SUM(CASE WHEN priority = 'bassa' THEN 1 ELSE 0 END) as bassa,
-            SUM(CASE WHEN priority = 'media' THEN 1 ELSE 0 END) as media,
-            SUM(CASE WHEN priority = 'alta' THEN 1 ELSE 0 END) as alta,
-            SUM(CASE WHEN priority = 'urgente' THEN 1 ELSE 0 END) as urgente
-        ")->first();
-    } */
 
     /**
      * Check if the current user is an administrator or collaborator.

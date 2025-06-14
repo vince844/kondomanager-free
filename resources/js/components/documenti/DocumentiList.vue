@@ -1,13 +1,15 @@
 <script setup lang="ts">
 
 import { ref } from "vue";
-import { Link } from '@inertiajs/vue3';
 import type { Documento } from '@/types/documenti';
 import { CloudDownload } from 'lucide-vue-next';
+import { usePermission } from "@/composables/permissions";
 
 const props = defineProps<{
   documenti: Documento[];
 }>();
+
+const { generateRoute } = usePermission();
 
 const expandedIds = ref<Set<number>>(new Set());
 
@@ -38,8 +40,7 @@ const truncate = (text: string, length: number = 120) => {
             <div class="flex-1 min-w-0">
   
               <a
-                :href="route('admin.documenti.download', { documento: documento.id })"
-                download
+                :href="route(generateRoute('documenti.download'), { id: documento.id })"
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold hover:text-primary transition-colors"
               >
                 <CloudDownload class="w-4 h-4 text-muted-foreground" />

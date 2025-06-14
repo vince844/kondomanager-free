@@ -1,5 +1,9 @@
+import { Documento } from "./documenti";
+
 export interface Categoria {
-  id: string
-  name: string
-  description: string
+  id: number;
+  name: string;
+  description?: string;
+  documenti_count: number;
+  documenti: Documento[];
 }
