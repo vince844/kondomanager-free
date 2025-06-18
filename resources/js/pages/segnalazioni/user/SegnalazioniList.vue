@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
@@ -79,6 +79,19 @@ onMounted(() => {
   });
   isInitialLoad.value = false;
 });
+
+// This is important for pagination to work correctly
+watch(
+  () => props.segnalazioni,
+  (newSegnalazioni) => {
+    setSegnalazioni(newSegnalazioni.data, {
+      current_page: newSegnalazioni.current_page,
+      per_page: newSegnalazioni.per_page,
+      last_page: newSegnalazioni.last_page,
+      total: newSegnalazioni.total,
+    });
+  }
+);
 
 // Filtered results
 const filteredResults = computed(() => {

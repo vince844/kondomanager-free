@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
@@ -73,6 +73,18 @@ onMounted(() => {
   });
   isInitialLoad.value = false;
 });
+
+watch(
+  () => props.comunicazioni,
+  (newComunicazioni) => {
+    setComunicazioni(newComunicazioni.data, {
+      current_page: newComunicazioni.current_page,
+      per_page: newComunicazioni.per_page,
+      last_page: newComunicazioni.last_page,
+      total: newComunicazioni.total,
+    });
+  }
+);
 
 // Filtered results
 const filteredResults = computed(() => {

@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 
 class DocumentoService
 {
-    private const DEFAULT_PER_PAGE = 15;
+    private const DEFAULT_PER_PAGE = 3;
 
     /**
      * Get paginated comunicazioni based on user role.
@@ -63,7 +63,7 @@ class DocumentoService
      * @param array $validated
      * @return LengthAwarePaginator
      */
-    private function getUserScopedQuery(
+    /* private function getUserScopedQuery(
         ?Anagrafica $anagrafica,
         ?Collection $condominioIds,
         array $validated
@@ -75,7 +75,7 @@ class DocumentoService
             ->orderBy('created_at', 'desc')
             ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
             ->withQueryString();
-    }
+    } */
 
     /**
      * Expose the user-scoped base query for external use.
@@ -131,7 +131,7 @@ class DocumentoService
      * @param array $validated
      * @return LengthAwarePaginator
      */
-    private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
+    /* private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
     {
         $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
         $query = $this->applyFilters($query, $validated);
@@ -140,7 +140,7 @@ class DocumentoService
             ->orderBy('created_at', 'desc')
             ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
             ->withQueryString();
-    }
+    } */
 
     /**
      * Apply filters to the query based on validated data.
@@ -177,10 +177,37 @@ class DocumentoService
         int $categoriaId,
         array $validated = []
     ): LengthAwarePaginator {
+        // Get the base query builder
+        $query = $this->isAdmin()
+            ? $this->getAdminScopedBaseQuery($validated)  // Make sure this returns a Builder
+            : $this->getUserScopedBaseQuery($anagrafica, $condominioIds);  // Make sure this returns a Builder
+        
+        // Apply category filter
+        $query->where('category_id', $categoriaId);
+
+        // Apply search filter if present
+        if (isset($validated['search'])) {
+            $query->where('name', 'like', '%'.$validated['search'].'%');
+        }
+
+        // Apply other filters
+        $query = $this->applyFilters($query, $validated);
+
+        return $query->orderBy('created_at', 'desc')
+                    ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+                    ->withQueryString();
+    }
+
+   /*  public function getDocumentiByCategoria(
+        Anagrafica $anagrafica,
+        Collection $condominioIds,
+        int $categoriaId,
+        array $validated = []
+    ): LengthAwarePaginator {
         return $this->isAdmin()
             ? $this->getAdminDocumentiByCategoria($categoriaId, $validated)
             : $this->getUserDocumentiByCategoria($anagrafica, $condominioIds, $categoriaId, $validated);
-    }
+    } */
 
     private function getUserDocumentiByCategoria(
         Anagrafica $anagrafica,

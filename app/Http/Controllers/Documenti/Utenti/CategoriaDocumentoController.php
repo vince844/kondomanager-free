@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Documenti\Utenti;
 
-use App\DataTransferObjects\UserCondominioData;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
@@ -13,6 +12,7 @@ use App\Traits\HandlesUserCondominioData;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Arr;
 
 class CategoriaDocumentoController extends Controller
 {
@@ -67,15 +67,17 @@ class CategoriaDocumentoController extends Controller
         );
 
         return Inertia::render('documenti/user/DocumentiList', [
-            'categoria' => new CategoriaDocumentoResource($categoriaDocumento),
-            'documenti' => DocumentoResource::collection($documenti),
-            'filters' => $validated,
-            'pagination' => [
+            'documenti' => [
+                'data' => DocumentoResource::collection($documenti)->resolve(),
                 'current_page' => $documenti->currentPage(),
                 'last_page' => $documenti->lastPage(),
                 'per_page' => $documenti->perPage(),
                 'total' => $documenti->total(),
             ],
+            'categoria' => new CategoriaDocumentoResource($categoriaDocumento),
+            'search' => $validated['search'] ?? null, // Use null instead of empty string
+            'filters' => Arr::only($validated, ['name'])
         ]);
+
     }
 }
