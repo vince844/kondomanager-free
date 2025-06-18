@@ -25,5 +25,8 @@ return [
     'create_users'              => "Non hai permessi sufficienti per creare nuovi utenti!",
     'edit_users'                => "Non hai permessi sufficienti per modificare gli utenti!",
     'delete_users'              => "Non hai permessi sufficienti per eliminare gli utenti!",
+    // Archive documents
+    'view_archive_documents'    => "Non hai permessi sufficienti per visualizzare i documenti in archivio!",
+    'create_archive_documents'  => "Non hai permessi sufficienti per creare documenti in archivio!",
 
 ];

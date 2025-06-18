@@ -60,4 +60,8 @@ enum Permission: string
     case APPROVE_COMMENTS_SEGNALAZIONI = 'Approva commenti segnalazioni';
     case VIEW_COMMENTS_SEGNALAZIONI = 'Visualizza commenti segnalazioni';
 
+    // Docuemnti archivio
+    case VIEW_ARCHIVE_DOCUMENTS = 'Visualizza documenti';
+    case CREATE_ARCHIVE_DOCUMENTS = 'Crea documenti';
+
 }

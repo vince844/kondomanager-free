@@ -6,19 +6,18 @@ import { Badge } from '@/components/ui/badge';
 import type { Categoria } from '@/types/categorie';
 import { usePermission } from "@/composables/permissions";
 
-const { generatePath, generateRoute, canAccess, hasPermission } = usePermission();
+const { generateRoute } = usePermission();
 
 defineProps<{
   categoria: Categoria;
 }>();
 
-
 </script>
 
 <template>
   <Card>
-    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-      <CardTitle class="text-xl font-bold">
+    <CardHeader class="flex flex-row items-center justify-between p-2">
+      <CardTitle class="text-xl font-bold capitalize">
 
         <Link
           :href="route(generateRoute('categorie-documenti.show'), {id: categoria.id})"
@@ -35,8 +34,8 @@ defineProps<{
         {{ categoria.documenti_count }}
       </Badge>
     </CardHeader>
-    <CardContent>
-      <div class="text-sm font-medium">
+    <CardContent class="p-2">
+      <div class="text-sm text-muted-foreground">
         {{ categoria.description || 'Nessuna descrizione' }}
       </div>
     </CardContent>

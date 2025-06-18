@@ -19,6 +19,7 @@ class CategoriaDocumentoResource extends JsonResource
             'id'          => $this->id,
             'name'        => $this->name,
             'description' => $this->description,
+            'documenti_count' => $this->documenti_count ?? 0,
             'documenti'   => DocumentoResource::collection($this->whenLoaded('documenti')),
         ];
     }

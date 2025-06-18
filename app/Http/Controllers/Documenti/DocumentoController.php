@@ -20,6 +20,7 @@ use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class DocumentoController extends Controller
@@ -67,8 +68,10 @@ class DocumentoController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Documento $documento): Response
     {
+       Gate::authorize('create',$documento);
+
        return Inertia::render('documenti/DocumentiNew', [
             'categories' => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
             'condomini'  => CondominioResource::collection(Condominio::all()),
@@ -91,8 +94,9 @@ class DocumentoController extends Controller
      * @param  \App\Http\Requests\CreateDocumentoRequest  $request  The incoming HTTP request containing form data and file.
      * @return \Illuminate\Http\RedirectResponse  Redirects to the document index route with a success or error message.
      */
-    public function store(CreateDocumentoRequest $request)
+    public function store(CreateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
+        Gate::authorize('create',$documento);
 
         $validated = $request->validated();
 

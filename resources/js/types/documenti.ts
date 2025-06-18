@@ -27,6 +27,7 @@ export interface Documento {
   description: string;
   is_published: boolean;
   created_at: string;
+  mime_type: string;
   condomini: {
     options: Building[];
     full: Building[];

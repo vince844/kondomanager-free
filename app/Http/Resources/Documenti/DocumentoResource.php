@@ -26,6 +26,7 @@ class DocumentoResource extends JsonResource
             'description'   => $this->description,
             'is_published'  => $this->is_published,
             'is_approved'   => $this->is_approved,
+            'mime_type'     => $this->getMimeTypeLabel($this->mime_type),
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
@@ -43,5 +44,17 @@ class DocumentoResource extends JsonResource
 
             'categoria' => new CategoriaDocumentoResource($this->whenLoaded('categoria')),
         ];
+    }
+
+    private function getMimeTypeLabel(string $mimeType): string
+    {
+        return match ($mimeType) {
+            'application/pdf' => 'PDF',
+            'application/msword' => 'DOC',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'DOCX',
+            'image/jpeg' => 'JPEG',
+            'image/png' => 'PNG',
+            default => $mimeType,
+        };
     }
 }

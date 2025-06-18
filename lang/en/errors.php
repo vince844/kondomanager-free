@@ -21,5 +21,4 @@ return [
     '403_heading' => '403 - Access Denied',
     '403_message' => 'You do not have permission to access this page.',
     'back_to_dashboard' => 'Back to Dashboard',
-
 ];

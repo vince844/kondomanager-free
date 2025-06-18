@@ -1,0 +1,18 @@
+{
+  "The given role or permission should use guard :expected instead of :given.": "Il ruolo o permesso fornito dovrebbe usare il guard :expected invece di :given.",
+  "A :permission permission already exists for guard :guard.": "Un permesso :permission esiste già per il guard :guard.",
+  "There is no permission named :permission for guard :guard.": "Non esiste alcun permesso chiamato :permission per il guard :guard.",
+  "There is no [permission] with ID :id for guard :guard.": "Non esiste alcun [permesso] con ID :id per il guard :guard.",
+  "A role :role already exists for guard :guard.": "Un ruolo :role esiste già per il guard :guard.",
+  "There is no role named :role for guard :guard.": "Non esiste alcun ruolo chiamato :role per il guard :guard.",
+  "There is no role with ID :id for guard :guard.": "Non esiste alcun ruolo con ID :id per il guard :guard.",
+  "User does not have the right roles.": "L'utente non ha i ruoli corretti per accedere.",
+  "Necessary roles are :roles": "Ruoli richiesti: :roles",
+  "User does not have the right permissions.": "L'utente non ha le autorizzazioni corrette.",
+  "Necessary permissions are :permissions": "Autorizzazioni richieste: :permissions",
+  "User does not have any of the necessary access rights.": "L'utente non ha nessuno dei diritti di accesso necessari.",
+  "Necessary roles or permissions are :values": "Ruoli o autorizzazioni richiesti: :values",
+  "Authorizable class :class must use Spatie\\Permission\\Traits\\HasRoles trait.": "La classe :class deve utilizzare il trait Spatie\\Permission\\Traits\\HasRoles.",
+  "User is not logged in.": "L'utente non ha eseguito l'accesso.",
+  "Wildcard permission must be string, permission id or permission instance": "Un permesso wildcard deve essere una stringa, un ID di permesso o un'istanza di permesso"
+}

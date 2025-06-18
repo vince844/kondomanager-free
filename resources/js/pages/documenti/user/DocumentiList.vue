@@ -9,7 +9,9 @@ import type { Documento } from '@/types/documenti';
 
 defineProps<{
   categoria: Categoria;
-  documenti: Documento[];
+  documenti: {
+    data: Documento[];
+  }
 }>();
 
 </script>
@@ -24,14 +26,24 @@ defineProps<{
        :title="`Elenco documenti nella categoria ${categoria.name.toLowerCase()}`"
         description="Di seguito una lista delle categorie utilizzate per classificare i documenti nell'archivio del condominio."
       />
-    </div>
 
-    <div class="grid gap-4 md:grid-cols-1 lg:grid-cols-4">
-      <DocumentiListCards
-        v-for="documento in categoria.documenti"
-        :key="documento.id"
-        :documento="documento"
-      />
+      <div class="container mx-auto mt-6">
+    
+        <div v-if="documenti.data?.length" class="grid gap-4 md:grid-cols-1 lg:grid-cols-4">
+          <DocumentiListCards
+            v-for="documento in documenti.data"
+            :key="documento.id"
+            :documento="documento"
+          />
+        </div>
+
+        <!-- No documents fallback -->
+        <div v-else class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
+            <span class="font-medium">Nessun documento è stato ancora caricato nella categoria {{ categoria.name.toLowerCase() }}</span>
+        </div>
+
+      </div>
+
     </div>
    
   </AppLayout>

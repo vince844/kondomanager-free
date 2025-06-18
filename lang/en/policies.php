@@ -25,5 +25,8 @@ return [
     'create_users'              => "You don't have sufficient permissions to create users.",
     'edit_users'                => "You don't have sufficient permissions to edit users.",
     'delete_users'              => "You don't have sufficient permissions to delete users.",
+    // Archive documents
+    'view_archive_documents'    => "You don't have sufficient permissions to view archived documents.",
+    'create_archive_documents'  => "You don't have sufficient permissions to create archive documents.",
 
 ];

@@ -74,19 +74,18 @@ class UserDashboardController extends Controller
                 validated: []
             );
 
-           // Fetch the documenti using the DocumentoService
+            // Fetch the documenti using the DocumentoService
             $documenti = $this->documentoService->getDocumenti(
                 anagrafica: $anagrafica,
                 condominioIds: $condominioIds,
-                validated: []
+                validated: [],
+                limit: 3
             );
 
             /** @var \Illuminate\Pagination\LengthAwarePaginator $segnalazioni */
             $segnalazioniLimited = $segnalazioni->take(3);
             /** @var \Illuminate\Pagination\LengthAwarePaginator $comunicazioni */
             $comunicazioniLimited = $comunicazioni->take(3);
-            /** @var \Illuminate\Pagination\LengthAwarePaginator $documenti */
-            $documentiLimited = $documenti->take(3);
         
         } catch (\Exception $e) {
 
@@ -98,7 +97,7 @@ class UserDashboardController extends Controller
         return Inertia::render('dashboard/UserDashboard', [
             'segnalazioni'  => SegnalazioneResource::collection($segnalazioniLimited),
             'comunicazioni' => ComunicazioneResource::collection($comunicazioniLimited),
-            'documenti'     => DocumentoResource::collection($documentiLimited),
+            'documenti'     => DocumentoResource::collection($documenti),
         ]);
         
     }

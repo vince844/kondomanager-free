@@ -11,6 +11,7 @@ use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -23,7 +24,7 @@ use Illuminate\Support\Facades\DB;
 
 class UserSegnalazioneController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
 
     /**
      * Create a new controller instance.
@@ -55,20 +56,12 @@ class UserSegnalazioneController extends Controller
     
         try {
 
-            $user = Auth::user();
+            $userData = $this->getUserCondominioData();
 
-            if (!$user?->anagrafica) {
-                abort(403, __('auth.not_authenticated'));
-            }
-
-            // Get user anagrafica
-            $anagrafica = $user->anagrafica;
-            // Fetch the related condominio IDs
-            $condominioIds = $anagrafica->condomini->pluck('id');
             // Get filtered segnalazioni from the service
             $segnalazioni = $this->segnalazioneService->getSegnalazioni(
-                anagrafica: $anagrafica,
-                condominioIds: $condominioIds,
+                anagrafica: $userData->anagrafica,
+                condominioIds: $userData->condominioIds,
                 validated: $validated
             );
 
@@ -91,7 +84,7 @@ class UserSegnalazioneController extends Controller
                 'per_page' => $segnalazioni->perPage(),
                 'total' => $segnalazioni->total(),
             ],
-            'stats' => $stats, // Add stats to the response
+            'stats' => $stats,
             'search' => $validated['search'] ?? '',
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
             
@@ -115,15 +108,8 @@ class UserSegnalazioneController extends Controller
     {
         Gate::authorize('create', $segnalazione);
 
-        $user = Auth::user();
-
-        if (!$user || !$user->anagrafica) {
-            abort(403, __('auth.not_authenticated'));
-        }
-
-        $anagrafica = $user->anagrafica;
-        // Fetch the anagrafica related condomini
-        $condomini = $anagrafica->condomini()->get();
+        $anagrafica = $this->getUserAnagrafica();
+        $condomini = $anagrafica->condomini;
 
         return Inertia::render('segnalazioni/user/SegnalazioniNew',[
             'condomini' => CondominioOptionsResource::collection($condomini)
@@ -232,16 +218,9 @@ class UserSegnalazioneController extends Controller
     {
         Gate::authorize('update', $segnalazione);
         
-        $user = Auth::user();
-
-        if (!$user || !$user->anagrafica) {
-            abort(401, __('auth.not_authenticated'));
-        }
-
-        $anagrafica = $user->anagrafica;
-        // Fetch the anagrafica related condomini
-        $condomini = $anagrafica->condomini()->get();
-
+        $anagrafica = $this->getUserAnagrafica();
+        $condomini = $anagrafica->condomini;
+        
         $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
         return Inertia::render('segnalazioni/UserSegnalazioniEdit', [

@@ -36,25 +36,32 @@ const truncatedName = (name: string, length: number = 80) => {
 
 <template>
   <Card>
-    <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
+  <CardHeader class="p-2">
+    <div class="flex items-center justify-between">
       <CardTitle class="text-base font-medium">
-
         <a
           :href="route(generateRoute('documenti.download'), { id: documento.id })"
-          class="text-primary hover:underline"
+          class="text-primary hover:text-muted-foreground"
         >
           {{ truncatedName(documento.name, 20) }}
         </a>
-
-        <div class="text-xs py-1 text-gray-600 font-light">
-          <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }}</span>
-        </div> 
-
       </CardTitle>
 
-    </CardHeader>
+      <Badge
+        variant="outline"
+        class="rounded-md text-xs"
+      >
+        {{ documento.mime_type }}
+      </Badge>
+    </div>
 
-    <CardContent>
+    <div class="text-xs text-gray-600 font-light">
+      <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }}</span>
+    </div>
+  </CardHeader>
+
+
+    <CardContent class="p-2">
       <div class="text-sm text-muted-foreground">
  
         <span class="mt-1 text-gray-600 py-1">

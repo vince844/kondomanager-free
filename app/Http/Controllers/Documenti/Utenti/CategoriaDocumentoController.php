@@ -2,104 +2,80 @@
 
 namespace App\Http\Controllers\Documenti\Utenti;
 
+use App\DataTransferObjects\UserCondominioData;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Http\Resources\Documenti\DocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Services\DocumentoService;
-use Illuminate\Http\Request;
+use App\Traits\HandlesUserCondominioData;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 
 class CategoriaDocumentoController extends Controller
 {
-    /**
-     * Inject the SegnalazioneService.
-     *
-     * @param  \App\Services\DocoumentoService $documentoService
-     */
+    use HandlesUserCondominioData;
+
     public function __construct(
         private DocumentoService $documentoService
     ) {}
 
-    /**
-     * Display a listing of the resource.
-     */
     public function index(): Response
     {
-        $user = Auth::user();
+        $userData = $this->getUserCondominioData();
 
-        $anagrafica = $user->anagrafica;
-        // Fetch the related condominio IDs
-        $condominioIds = $anagrafica->condomini->pluck('id');
-
-        // Fetch the documenti using the DocumentoService
-        $documenti = $this->documentoService->getDocumenti(
-            anagrafica: $anagrafica,
-            condominioIds: $condominioIds,
-            validated: []
+        $allCategorie = CategoriaDocumento::orderBy('name')->get();
+        
+        $userDocCounts = $this->documentoService->getUserDocumentCountsByCategoria(
+            $userData->anagrafica,
+            $userData->condominioIds
         );
 
-        /** @var \Illuminate\Pagination\LengthAwarePaginator $documenti */
-        $documentiLimited = $documenti->take(3);
-       
+        $categorie = $allCategorie->map(function ($categoria) use ($userDocCounts) {
+            return new CategoriaDocumentoResource(
+                $categoria->setRelation('documenti_count', $userDocCounts[$categoria->id] ?? 0)
+            );
+        });
+
+        $documenti = $this->documentoService->getDocumenti(
+            anagrafica: $userData->anagrafica,
+            condominioIds: $userData->condominioIds,
+            validated: [],
+            limit: 3
+        );
+
         return Inertia::render('documenti/user/CategorieList', [
-            'categorie' => CategoriaDocumento::withCount('documenti')->get(),
-            'documenti' => DocumentoResource::collection($documentiLimited),
+            'categorie' => $categorie,
+            'documenti' => DocumentoResource::collection($documenti),
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
+    public function show(CategoriaDocumentoIndexRequest $request, CategoriaDocumento $categoriaDocumento): Response
     {
-        //
-    }
+        Gate::authorize('view', $categoriaDocumento);
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
+        $userData = $this->getUserCondominioData();
+        $validated = $request->validated();
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(CategoriaDocumento $categoriaDocumento): Response
-    {
-  
-        $categoriaDocumento->load('documenti', 'documenti.createdBy');
+        $documenti = $this->documentoService->getDocumentiByCategoria(
+            anagrafica: $userData->anagrafica,
+            condominioIds: $userData->condominioIds,
+            categoriaId: $categoriaDocumento->id,
+            validated: $validated
+        );
 
         return Inertia::render('documenti/user/DocumentiList', [
             'categoria' => new CategoriaDocumentoResource($categoriaDocumento),
+            'documenti' => DocumentoResource::collection($documenti),
+            'filters' => $validated,
+            'pagination' => [
+                'current_page' => $documenti->currentPage(),
+                'last_page' => $documenti->lastPage(),
+                'per_page' => $documenti->perPage(),
+                'total' => $documenti->total(),
+            ],
         ]);
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(CategoriaDocumento $categoriaDocumento)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, CategoriaDocumento $categoriaDocumento)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(CategoriaDocumento $categoriaDocumento)
-    {
-        //
     }
 }

@@ -18,7 +18,8 @@
 
       <p class="mt-4 text-muted-foreground">
         @isset($exception)
-          {{ __($exception->getMessage()) }}
+       {{--    {{ __($exception->getMessage()) }} --}}
+          {{ $exception->getMessage() }}
         @else
           {{ __('errors.403_message') }}
         @endisset

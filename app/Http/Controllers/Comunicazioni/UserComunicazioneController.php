@@ -13,9 +13,9 @@ use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Models\Comunicazione;
 use App\Services\ComunicazioneService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HandlesUserCondominioData;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,7 +24,7 @@ use Illuminate\Http\RedirectResponse;
 
 class UserComunicazioneController extends Controller
 {
-    use HasAnagrafica, HandleFlashMessages;
+    use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
     
     /**
      * Create a new controller instance.
@@ -58,20 +58,11 @@ class UserComunicazioneController extends Controller
     
         try {
 
-            $user = Auth::user();
+            $userData = $this->getUserCondominioData();
 
-            if (!$user?->anagrafica) {
-                abort(403, __('auth.not_authenticated'));
-            } 
-
-            // Get user anagrafica
-            $anagrafica = $user->anagrafica;
-            // Fetch the related condominio IDs
-            $condominioIds = $anagrafica->condomini->pluck('id');
-            // Get filtered segnalazioni from the service
             $comunicazioni = $this->comunicazioneService->getComunicazioni(
-                anagrafica: $anagrafica,
-                condominioIds: $condominioIds,
+                anagrafica:  $userData->anagrafica,
+                condominioIds:  $userData->condominioIds,
                 validated: $validated
             );
 
@@ -93,7 +84,7 @@ class UserComunicazioneController extends Controller
                 'per_page' => $comunicazioni->perPage(),
                 'total' => $comunicazioni->total(),
             ],
-            'stats' => $stats, // Add stats to the response
+            'stats' => $stats, 
             'search' => $validated['search'] ?? '',
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);
@@ -245,7 +236,6 @@ class UserComunicazioneController extends Controller
         Gate::authorize('update', $comunicazione);
 
         $anagrafica = $this->getUserAnagrafica();
-        // Fetch the related condomini
         $condomini = $anagrafica->condomini;
 
         $comunicazione->loadMissing(['createdBy.anagrafica', 'condomini']);

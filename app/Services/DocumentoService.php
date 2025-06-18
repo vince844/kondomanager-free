@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\Permission;
 use App\Models\Anagrafica;
-use App\Models\Comunicazione;
 use App\Models\Documento;
 use Illuminate\Support\Collection;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -24,14 +23,36 @@ class DocumentoService
      * @param array $validated
      * @return LengthAwarePaginator
      */
+
     public function getDocumenti(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
-        array $validated = []
-    ): LengthAwarePaginator {
-        return $this->isAdmin()
-            ? $this->getAdminScopedQuery($validated)
-            : $this->getUserScopedQuery($anagrafica, $condominioIds, $validated);
+        array $validated = [],
+        ?int $limit = null
+    ): Collection|LengthAwarePaginator {
+
+        $query = $this->isAdmin()
+            ? $this->getAdminScopedBaseQuery($validated)    // <-- return Builder
+            : $this->getUserScopedBaseQuery($anagrafica, $condominioIds); // <-- return Builder
+
+        // Apply filters on base query
+        $query = $this->applyFilters($query, $validated);
+
+        if ($limit !== null) {
+            return $query->limit($limit)->get();  // returns a Collection
+        }
+
+        return $query->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+                     ->withQueryString();  // returns LengthAwarePaginator
+    }
+
+    /**
+     * Return admin base query builder without pagination.
+     */
+    public function getAdminScopedBaseQuery(array $validated = []): Builder
+    {
+        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
+        return $this->applyFilters($query, $validated);
     }
 
     /**
@@ -140,6 +161,58 @@ class DocumentoService
             ->when($validated['category_id'] ?? false, fn($q, $categories) =>
                 $q->whereIn('category_id', $categories)
             );
+    }
+
+    public function getUserDocumentCountsByCategoria(Anagrafica $anagrafica, Collection $condominioIds): Collection
+    {
+        return $this->getUserScopedBaseQuery($anagrafica, $condominioIds)
+            ->selectRaw('category_id, COUNT(*) as count')
+            ->groupBy('category_id')
+            ->pluck('count', 'category_id');
+    }
+
+    public function getDocumentiByCategoria(
+        Anagrafica $anagrafica,
+        Collection $condominioIds,
+        int $categoriaId,
+        array $validated = []
+    ): LengthAwarePaginator {
+        return $this->isAdmin()
+            ? $this->getAdminDocumentiByCategoria($categoriaId, $validated)
+            : $this->getUserDocumentiByCategoria($anagrafica, $condominioIds, $categoriaId, $validated);
+    }
+
+    private function getUserDocumentiByCategoria(
+        Anagrafica $anagrafica,
+        Collection $condominioIds,
+        int $categoriaId,
+        array $validated = []
+    ): LengthAwarePaginator {
+        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds)
+                    ->where('category_id', $categoriaId);
+
+        $query = $this->applyFilters($query, $validated);
+
+        return $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+            ->withQueryString();
+    }
+
+    private function getAdminDocumentiByCategoria(
+        int $categoriaId,
+        array $validated = []
+    ): LengthAwarePaginator {
+        $query = Documento::query()
+            ->where('category_id', $categoriaId)
+            ->with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
+
+        $query = $this->applyFilters($query, $validated);
+
+        return $query
+            ->orderBy('created_at', 'desc')
+            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+            ->withQueryString();
     }
 
     /**

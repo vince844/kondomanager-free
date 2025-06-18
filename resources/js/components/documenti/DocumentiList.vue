@@ -49,7 +49,7 @@ const truncate = (text: string, length: number = 120) => {
               </a>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }} nella categoria {{ documento.categoria.name }}</span>
+                <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }} nella categoria {{ documento.categoria.name.toLowerCase() }}</span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">
@@ -57,6 +57,7 @@ const truncate = (text: string, length: number = 120) => {
                   {{ isExpanded(Number(documento.id)) ? documento.description : truncate(documento.description, 120) }}
                 </span>
                 <button
+                  v-if="documento.description.length > 120"
                   class="text-xs font-semibold text-gray-500 ml-1"
                   @click="toggleExpanded(Number(documento.id))"
                 >

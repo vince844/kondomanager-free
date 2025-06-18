@@ -9,6 +9,8 @@ use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Gate;
+
 
 class DocumentoController extends Controller
 {
@@ -87,6 +89,7 @@ class DocumentoController extends Controller
      */
     public function download(Documento $documento)
     {
+        Gate::authorize('view',$documento);
 
         try {
             

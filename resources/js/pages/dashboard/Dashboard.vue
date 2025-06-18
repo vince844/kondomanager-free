@@ -58,7 +58,7 @@ const priorityIcons = {
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
 
                 <Card class="w-full">
-                    <CardHeader class="p-3">
+                    <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                             <div>
                                 <CardTitle class="text-lg">Ultime comunicazioni</CardTitle>
@@ -92,7 +92,7 @@ const priorityIcons = {
                 </Card>
 
                 <Card class="w-full">
-                    <CardHeader class="p-3">
+                    <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                         <div>
                             <CardTitle class="text-lg">Ultime segnalazioni</CardTitle>
@@ -131,7 +131,7 @@ const priorityIcons = {
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
 
                 <Card class="w-full">
-                    <CardHeader class="p-3">
+                    <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                             <div>
                                 <CardTitle class="text-lg">Ultimi documenti</CardTitle>
@@ -157,7 +157,7 @@ const priorityIcons = {
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai permessi sufficienti per visualizzare documenti!</span>
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare documenti in archivio!</span>
                         </div>
                     </CardContent>
                 </Card>

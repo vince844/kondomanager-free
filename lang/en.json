@@ -1,0 +1,18 @@
+{
+  "The given role or permission should use guard :expected instead of :given.": "The given role or permission should use the guard :expected instead of :given.",
+  "A :permission permission already exists for guard :guard.": "A :permission permission already exists for the guard :guard.",
+  "There is no permission named :permission for guard :guard.": "There is no permission named :permission for the guard :guard.",
+  "There is no [permission] with ID :id for guard :guard.": "There is no [permission] with ID :id for the guard :guard.",
+  "A role :role already exists for guard :guard.": "A role :role already exists for the guard :guard.",
+  "There is no role named :role for guard :guard.": "There is no role named :role for the guard :guard.",
+  "There is no role with ID :id for guard :guard.": "There is no role with ID :id for the guard :guard.",
+  "User does not have the right roles.": "The user does not have the correct roles to access.",
+  "Necessary roles are :roles": "Required roles: :roles",
+  "User does not have the right permissions.": "The user does not have the correct permissions.",
+  "Necessary permissions are :permissions": "Required permissions: :permissions",
+  "User does not have any of the necessary access rights.": "The user does not have any of the required access rights.",
+  "Necessary roles or permissions are :values": "Required roles or permissions: :values",
+  "Authorizable class :class must use Spatie\\Permission\\Traits\\HasRoles trait.": "The class :class must use the Spatie\\Permission\\Traits\\HasRoles trait.",
+  "User is not logged in.": "The user is not logged in.",
+  "Wildcard permission must be string, permission id or permission instance": "Wildcard permission must be a string, a permission ID, or a permission instance."
+}
