@@ -23,12 +23,13 @@ class SegnalazioneIndexRequest extends FormRequest
     {
         return [
             'page'       => ['sometimes', 'integer', 'min:1'],
-            'per_page'   => ['sometimes', 'integer', 'between:10,100'],
+            'per_page'   => ['sometimes', 'integer'],
             'subject'    => ['sometimes', 'string', 'max:255'],
             'priority'   => ['sometimes', 'array'],
             'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
             'stato'      => ['sometimes', 'array'],
             'stato.*'    => ['string', 'in:aperta,in lavorazione,chiusa'],
+            'search'     => ['nullable', 'string'],
         ];
     }
 }

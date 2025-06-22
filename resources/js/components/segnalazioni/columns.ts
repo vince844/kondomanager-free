@@ -1,16 +1,16 @@
 import { h } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
-import type { ColumnDef } from '@tanstack/vue-table';
-import type { Segnalazione } from '@/types/segnalazioni';
 import DropdownAction from '@/components/segnalazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHeader.vue';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
+import type { ColumnDef } from '@tanstack/vue-table';
+import type { Segnalazione } from '@/types/segnalazioni';
 
 const { hasPermission, generateRoute } = usePermission();
 
-export const columns = (): ColumnDef<Segnalazione>[] => [
+export const columns: ColumnDef<Segnalazione>[] = [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
@@ -22,7 +22,7 @@ export const columns = (): ColumnDef<Segnalazione>[] => [
 
           router.put(route(generateRoute('segnalazioni.toggle-approval'), { id: segnalazione.id }), {}, {
             preserveScroll: true,
-            only: ['stats'],
+            only: ['stats', 'segnalazioni'],
             onSuccess: () => {
               // Manually update the specific item
               segnalazione.is_approved = !segnalazione.is_approved;

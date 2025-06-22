@@ -7,14 +7,23 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/documenti/columns';
 import Alert from '@/components/Alert.vue';
-import { useDocumenti } from '@/composables/useDocumenti';
+/* import { useDocumenti } from '@/composables/useDocumenti'; */
 import DocumentiStats from '@/components/documenti/DocumentiStats.vue';
-import type { BreadcrumbItem } from '@/types';
+/* import type { BreadcrumbItem } from '@/types'; */
 import type { Flash } from '@/types/flash';
 import type { Documento, Stats } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 
-defineProps<{ 
+defineProps<{
+  documenti: Documento[],
+  stats: Stats,
+  meta: PaginationMeta
+}>()
+
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
+
+/* defineProps<{ 
   documenti: Documento[], 
   stats: Stats,
   meta: PaginationMeta
@@ -40,17 +49,17 @@ const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 onMounted(() => {
   if (flashMessage.value) scrollToTop();
 });
-
-watch(flashMessage, (newVal) => {
+ */
+/* watch(flashMessage, (newVal) => {
   if (newVal) scrollToTop();
 });
-
+ */
 </script>
 
 <template>
   <Head title="Elenco archivio documenti" />
 
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout>
     <div class="px-4 py-6">
       <Heading
         title="Elenco archivio documenti"
@@ -64,7 +73,7 @@ watch(flashMessage, (newVal) => {
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns()" :data="documenti" :meta="tableMeta" />
+         <DataTable :columns="columns" :data="documenti" :meta="meta"/>
       </div>
     </div>
   </AppLayout>

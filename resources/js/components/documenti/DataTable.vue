@@ -12,6 +12,68 @@ import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
 const props = defineProps<{
   columns: ColumnDef<Documento, any>[],
+  data: Comunicazione[],
+  meta: {
+    current_page: number,
+    per_page: number,
+    last_page: number,
+    total: number
+  }
+}>()
+
+const sorting = ref<SortingState>([])
+const isPending = ref(false) 
+
+const table = useVueTable({
+  get data() {
+    return props.data ?? []
+  },
+  get columns() {
+    return props.columns ?? []
+  },
+  pageCount: props.meta.last_page,
+  state: {
+    pagination: {
+      pageIndex: props.meta.current_page - 1,
+      pageSize: props.meta.per_page,
+    },
+    get sorting() {
+      return sorting.value
+    },
+  },
+  manualPagination: true,
+  onPaginationChange: updater => {
+
+    // Prevent concurrent requests
+    if (isPending.value) return 
+    
+    isPending.value = true
+    
+    const nextPage = typeof updater === 'function'
+      ? updater(table.getState().pagination).pageIndex
+      : updater.pageIndex;
+
+    const nextPageSize = table.getState().pagination.pageSize;
+
+    router.get(route('admin.documenti.index'), {
+      page: nextPage + 1,
+      per_page: nextPageSize,
+    }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      onFinish: () => {
+        isPending.value = false
+      }
+    });
+  },
+  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
+  getCoreRowModel: getCoreRowModel(),
+  getSortedRowModel: getSortedRowModel(),
+})
+
+/* const props = defineProps<{
+  columns: ColumnDef<Documento, any>[],
   data: Documento[],
   meta: {
     current_page: number,
@@ -85,7 +147,7 @@ const table = useVueTable({
     },
   }
 })
-
+ */
 </script>
 
 <template>

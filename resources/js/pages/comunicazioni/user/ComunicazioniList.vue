@@ -6,96 +6,144 @@ import { Head, router, Link, usePage } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Heading from "@/components/Heading.vue";
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
-import { useComunicazioni } from '@/composables/useComunicazioni';
 import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
+import { useComunicazioni } from '@/composables/useComunicazioni';
 import { usePermission } from "@/composables/permissions";
 import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Pagination, PaginationEllipsis, PaginationFirst, PaginationLast,
+  PaginationList, PaginationListItem, PaginationNext, PaginationPrev,
+} from "@/components/ui/pagination";
 import { getPriorityMeta } from "@/types/comunicazioni";
 import type { PaginationMeta } from '@/types/pagination';
 import type { Comunicazione } from "@/types/comunicazioni";
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
 
+// Constants
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;
 const SEARCH_MAX_WAIT = 1000;
-const ERROR_TIMEOUT = 5000;
+const NO_RESULTS_DELAY = 400;
 
+// Props and page data
 interface Props {
-  comunicazioni: {
-    data: Comunicazione[];
-  } & PaginationMeta;
-  stats: {
-    bassa: number;
-    media: number;
-    alta: number;
-    urgente: number;
-  };
+  comunicazioni: { data: Comunicazione[] } & PaginationMeta;
+  stats: { bassa: number; media: number; alta: number; urgente: number };
   search?: string;
 }
-
 const props = defineProps<Props>();
-const page = usePage<{ flash: { message?: Flash }, auth: Auth }>();
+const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
+
+// Permissions and data setup
 const { hasPermission, generateRoute } = usePermission();
-const { comunicazioni, meta, setComunicazioni, removeComunicazione } = useComunicazioni();
-
-// Component state
-const auth = computed(() => page.props.auth);
-const flashMessage = computed(() => page.props.flash.message);
-const comunicazioneID = ref<string>('');
-const isAlertOpen = ref(false);
-const searchQuery = ref(props.search ?? '');
-const lastAbortController = ref<AbortController | null>(null);
-const loadingCount = ref(0);
-const isInitialLoad = ref(true);
-const showDelayedLoading = ref(false);
-const errorState = ref<string | null>(null);
-
-// Loading states
-const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(() => {
-  showDelayedLoading.value = true;
-}, LOADING_DELAY);
-
-const isLoading = computed(() => loadingCount.value > 0);
-const shouldShowLoading = computed(() => !isInitialLoad.value && showDelayedLoading.value && isLoading.value);
-const showNoResults = computed(() => filteredResults.value.length === 0 && !isLoading.value);
-
-// Initialize data
-onMounted(() => {
-  setComunicazioni(props.comunicazioni.data, {
+const { comunicazioni, meta, setComunicazioni, removeComunicazione } = useComunicazioni(
+  props.comunicazioni.data,
+  {
     current_page: props.comunicazioni.current_page,
     per_page: props.comunicazioni.per_page,
     last_page: props.comunicazioni.last_page,
     total: props.comunicazioni.total,
-  });
-  isInitialLoad.value = false;
-});
-
-watch(
-  () => props.comunicazioni,
-  (newComunicazioni) => {
-    setComunicazioni(newComunicazioni.data, {
-      current_page: newComunicazioni.current_page,
-      per_page: newComunicazioni.per_page,
-      last_page: newComunicazioni.last_page,
-      total: newComunicazioni.total,
-    });
   }
 );
 
-// Filtered results
-const filteredResults = computed(() => {
-  if (!searchQuery.value) return comunicazioni.value;
-  const query = searchQuery.value.toLowerCase();
-  return comunicazioni.value.filter(c =>
-    c.subject.toLowerCase().includes(query)
-  );
+// Reactive state
+const searchQuery = ref(props.search ?? '');
+const loadingCount = ref(0);
+const isInitialLoad = ref(true);
+const errorState = ref<string | null>(null);
+const hasSearched = ref(false);
+const showDelayedLoading = ref(false);
+const showNoResultsDelayed = ref(false);
+const isAlertOpen = ref(false);
+const comunicazioneID = ref<number | null>(null);
+
+// Computed values
+const auth = computed(() => page.props.auth);
+const flashMessage = computed(() => page.props.flash.message);
+const isLoading = computed(() => loadingCount.value > 0);
+const shouldShowLoading = computed(() => isLoading.value);
+
+const filteredResults = computed(() => comunicazioni.value);
+
+const showNoResults = computed(() =>
+  !isLoading.value &&
+  hasSearched.value &&
+  searchQuery.value &&
+  filteredResults.value.length === 0 &&
+  showNoResultsDelayed.value
+);
+
+// Timeout handlers
+const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(
+  () => (showDelayedLoading.value = true),
+  LOADING_DELAY
+);
+const { start: startNoResultsTimer, stop: stopNoResultsTimer } = useTimeoutFn(
+  () => (showNoResultsDelayed.value = true),
+  NO_RESULTS_DELAY
+);
+
+// Init
+onMounted(() => {
+  updatePaginationData(props.comunicazioni);
+  isInitialLoad.value = false;
 });
 
-// Loading helpers
+// Watchers
+watch(() => props.comunicazioni, updatePaginationData);
+
+watch(searchQuery, (val) => {
+  if (!val) {
+    hasSearched.value = false;
+    showNoResultsDelayed.value = false;
+    errorState.value = null;
+    stopNoResultsTimer();
+    updatePaginationData(props.comunicazioni);
+  }
+});
+
+watchDebounced(
+  searchQuery,
+  async (newQuery) => {
+    showNoResultsDelayed.value = false;
+    hasSearched.value = true;
+    incrementLoading();
+
+    try {
+      await router.get(
+        route(generateRoute('comunicazioni.index')),
+        { page: 1, search: newQuery || undefined },
+        {
+          preserveState: true,
+          preserveScroll: true,
+          replace: true,
+          only: ['comunicazioni'],
+          onFinish: () => {
+            stopLoading();
+            if (newQuery && filteredResults.value.length === 0) {
+              startNoResultsTimer();
+            } else {
+              showNoResultsDelayed.value = false;
+            }
+          }
+        }
+      );
+    } catch (error) {
+      errorState.value = "Errore durante la ricerca.";
+      stopLoading();
+      console.error('Search error:', error);
+    }
+  },
+  { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
+);
+
+// Methods
 function incrementLoading() {
   loadingCount.value++;
   errorState.value = null;
@@ -108,61 +156,37 @@ function stopLoading() {
   loadingCount.value = Math.max(0, loadingCount.value - 1);
 }
 
-// Pagination handler
+function updatePaginationData(newData: Props['comunicazioni']) {
+  setComunicazioni(newData.data, {
+    current_page: newData.current_page,
+    per_page: newData.per_page,
+    last_page: newData.last_page,
+    total: newData.total,
+  });
+}
+
 async function handlePageChange(page: number) {
   try {
     incrementLoading();
-    await router.get(route(generateRoute('comunicazioni.index')), {
-      page, 
-      search: searchQuery.value || undefined
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      onFinish: stopLoading,
-      onError: () => errorState.value = "Errore di caricamento. Riprova."
-    });
-  } catch (e) {
+    await router.get(
+      route(generateRoute('comunicazioni.index')),
+      { page, search: searchQuery.value || undefined },
+      {
+        preserveState: true,
+        preserveScroll: true,
+        onFinish: stopLoading,
+        onError: () => {
+          errorState.value = "Errore di caricamento. Riprova.";
+          stopLoading();
+        },
+      }
+    );
+  } catch {
     errorState.value = "Errore di caricamento. Riprova.";
     stopLoading();
   }
 }
 
-// Search handler
-watchDebounced(
-  searchQuery,
-  async (newQuery, _, onCleanup) => {
-    lastAbortController.value?.abort();
-    const controller = new AbortController();
-    lastAbortController.value = controller;
-    onCleanup(() => controller.abort());
-
-    incrementLoading();
-
-    const timeoutTimer = setTimeout(() => {
-      errorState.value = "La richiesta sta impiegando troppo tempo...";
-    }, ERROR_TIMEOUT);
-
-    try {
-      await router.get(route(generateRoute('comunicazioni.index')), { 
-        search: newQuery, 
-        page: 1 
-      }, {
-        preserveState: true,
-        preserveScroll: true,
-        replace: true,
-        only: ['comunicazioni'],
-        onFinish: () => clearTimeout(timeoutTimer),
-        onError: () => errorState.value = "Errore durante la ricerca."
-      });
-    } finally {
-      clearTimeout(timeoutTimer);
-      stopLoading();
-    }
-  },
-  { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
-);
-
-// Delete handler
 function handleDelete(comunicazione: Comunicazione) {
   comunicazioneID.value = comunicazione.id;
   isAlertOpen.value = true;
@@ -170,9 +194,10 @@ function handleDelete(comunicazione: Comunicazione) {
 
 async function confirmDelete() {
   const id = comunicazioneID.value;
-  const comunicazioneToDelete = comunicazioni.value.find(c => c.id === id);
+  if (!id) return;
 
-  if (!comunicazioneToDelete) {
+  const comunicazione = comunicazioni.value.find(s => s.id === id);
+  if (!comunicazione) {
     isAlertOpen.value = false;
     return;
   }
@@ -190,7 +215,7 @@ async function confirmDelete() {
         errorState.value = "Errore durante l'eliminazione. Riprova.";
       }
     });
-  } catch (error) {
+  } catch {
     errorState.value = "Errore durante l'eliminazione. Riprova.";
   } finally {
     isAlertOpen.value = false;

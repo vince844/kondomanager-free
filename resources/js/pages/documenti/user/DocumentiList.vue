@@ -20,8 +20,6 @@ const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;
 const SEARCH_MAX_WAIT = 1000;
 
-const hasSearched = ref(false);
-
 interface Props {
   documenti: {
     data: Documento[];
@@ -45,13 +43,13 @@ const { documenti, meta, setDocumenti, removeDocumento } = useDocumenti(
 
 const auth = computed(() => page.props.auth);
 const flashMessage = computed(() => page.props.flash.message);
-
 const searchQuery = ref(props.search ?? '');
 const loadingCount = ref(0);
 const isInitialLoad = ref(true);
 const showDelayedLoading = ref(false);
 const errorState = ref<string | null>(null);
 const showNoResultsDelayed = ref(false);
+const hasSearched = ref(false);
 
 const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(() => {
   showDelayedLoading.value = true;
@@ -65,21 +63,15 @@ const isLoading = computed(() => loadingCount.value > 0);
 const shouldShowLoading = computed(() => isLoading.value);
 
 const filteredResults = computed(() => {
-  if (isLoading.value) return documenti.value;
-  if (!searchQuery.value) return documenti.value;
-
-  const query = searchQuery.value.toLowerCase();
-  return documenti.value.filter(doc =>
-    doc.name.toLowerCase().includes(query)
-  );
+  return documenti.value;
 });
 
 const showNoResults = computed(() => {
   return (
     !isLoading.value &&
-    hasSearched.value && 
+    hasSearched.value &&
     searchQuery.value &&
-    filteredResults.value.length === 0 &&
+    documenti.value.length === 0 &&
     showNoResultsDelayed.value
   );
 });
@@ -154,7 +146,7 @@ watchDebounced(
 
     try {
       await router.get(
-        route('user.categorie-documenti.show', { id: props.categoria.id }),
+        route(generateRoute('categorie-documenti.show'), { id: props.categoria.id }),
         {
           page: 1,
           search: newQuery || undefined,

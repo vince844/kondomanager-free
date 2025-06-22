@@ -7,22 +7,20 @@ import { Input } from '@/components/ui/input';
 import { BellPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
-import { useDocumenti } from '@/composables/useDocumenti';
+import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
-import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 
-interface DataTableToolbarProps {
-  table: Table<Documento>
-}
-
-const props = defineProps<DataTableToolbarProps>()
-const { hasPermission } = usePermission();
-const { setDocumenti, documenti, meta } = useDocumenti();
+const { generateRoute, hasPermission, hasRole } = usePermission();
 const { categorie, isLoading, loadCategorie } = useCategorieDocumenti()
 
+// Change this to allow table reset when filter cleared
+const { table } = defineProps<{
+  table: Table<Documento>
+}>()
+
 const nameFilter = ref('')
-const categoriaColumn = props.table.getColumn('categoria')
+const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
   const val = categoriaColumn?.getFilterValue()
@@ -33,27 +31,28 @@ const handleOpenDropdown = () => {
   loadCategorie()
 }
 
-// ✅ Watch both filters and send to backend
 watchDebounced(
   [nameFilter, categoriaFilter],
   ([name, category_id]) => {
-    const params: Record<string, any> = {
-      page: 1, // Reset to page 1 when filters change
-    }
+    const params: Record<string, any> = { page: 1 }
 
     if (name) params.name = name
     if (category_id.length > 0) params.category_id = category_id
 
-    // Fetch new data from the backend
-    router.get(route('admin.documenti.index'), params, {
-      preserveState: true,
-      replace: true,
-      onSuccess: (page) => {
-        // Update the `documenti` and `meta` data after fetching from backend
-        const props = (page.props as unknown) as { documenti: Documento[]; meta: any }
-        setDocumenti(props.documenti, props.meta)
+    router.get(
+      route('admin.documenti.index'),
+      params,
+      {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true,
+        onSuccess: () => {
+          if (!name && category_id.length === 0) {
+            table.reset()
+          }
+        }
       }
-    });
+    )
   },
   { debounce: 300 }
 )
@@ -79,16 +78,6 @@ watchDebounced(
         @open="handleOpenDropdown"
         @update:filter="() => {}"
       />
-
-      <!-- Priority Filter -->
-<!--       <DataTableFacetedFilter
-        v-if="categoriaColumn"
-        :column="categoriaColumn"
-        title="Categoria"
-        :options="priorityConstants"
-        :isLoading="false"
-        @update:filter="() => {}" 
-      /> -->
 
     </div>
 

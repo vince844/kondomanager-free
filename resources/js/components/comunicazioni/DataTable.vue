@@ -1,29 +1,14 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref, watch } from 'vue'
-import { router } from '@inertiajs/vue3'
-import type { 
-  ColumnDef, 
-  SortingState,
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  FlexRender,
-  getCoreRowModel,
-  useVueTable,
-  getSortedRowModel,
-} from '@tanstack/vue-table'
-import type { Comunicazione } from '@/types/comunicazioni'
-import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue'
-import DataTableToolbar from '@/components/comunicazioni/DataTableToolbar.vue'
+import { ref, watch } from 'vue';
+import { router } from '@inertiajs/vue3';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
+import { valueUpdater } from '@/lib/utils';
+import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTableToolbar from '@/components/comunicazioni/DataTableToolbar.vue';
+import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import type { Comunicazioone } from '@/types/comunicazioni';
 
 const props = defineProps<{
   columns: ColumnDef<Comunicazione, any>[],
@@ -38,16 +23,10 @@ const props = defineProps<{
 
 const sorting = ref<SortingState>([])
 const isPending = ref(false) 
-const comunicazioni = ref<Comunicazione[]>([...props.data]);
-
-watch(() => props.data, (newData) => {
-  comunicazioni.value = [...newData];
-});
 
 const table = useVueTable({
-  
   get data() {
-    return comunicazioni.value;
+    return props.data ?? []
   },
   get columns() {
     return props.columns ?? []
@@ -91,14 +70,7 @@ const table = useVueTable({
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
-  // This is important to update other cells if action happens on a row o cell
-  meta: {
-    updateData: (rowIndex, updatedRow) => {
-      comunicazioni.value = comunicazioni.value.map((item, i) =>
-        i === rowIndex ? updatedRow : item
-      );
-    },
-  }
+
 })
 
 </script>

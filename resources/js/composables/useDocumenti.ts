@@ -41,7 +41,6 @@ export function useDocumenti(initialData: Documento[] = [], initialMeta: Partial
       });
     }
   };
-  
 
   return {
     documenti,

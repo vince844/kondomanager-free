@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\Log;
 
 class DocumentoService
 {
-    private const DEFAULT_PER_PAGE = 3;
-
     /**
      * Get paginated comunicazioni based on user role.
      *
@@ -42,8 +40,8 @@ class DocumentoService
             return $query->limit($limit)->get();  // returns a Collection
         }
 
-        return $query->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
-                     ->withQueryString();  // returns LengthAwarePaginator
+        return $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+                    ->withQueryString();  // returns LengthAwarePaginator
     }
 
     /**
@@ -54,28 +52,6 @@ class DocumentoService
         $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
         return $this->applyFilters($query, $validated);
     }
-
-    /**
-     * Get user-scoped comunicazioni query with filters and pagination.
-     *
-     * @param Anagrafica|null $anagrafica
-     * @param Collection|null $condominioIds
-     * @param array $validated
-     * @return LengthAwarePaginator
-     */
-    /* private function getUserScopedQuery(
-        ?Anagrafica $anagrafica,
-        ?Collection $condominioIds,
-        array $validated
-    ): LengthAwarePaginator {
-        $query = $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
-        $query = $this->applyFilters($query, $validated);
-
-        return $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
-            ->withQueryString();
-    } */
 
     /**
      * Expose the user-scoped base query for external use.
@@ -124,23 +100,6 @@ class DocumentoService
                 });
             });
     }
-
-    /**
-     * Get admin-scoped comunicazioni query with filters and pagination.
-     *
-     * @param array $validated
-     * @return LengthAwarePaginator
-     */
-    /* private function getAdminScopedQuery(array $validated = []): LengthAwarePaginator
-    {
-        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
-        $query = $this->applyFilters($query, $validated);
-
-        return $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
-            ->withQueryString();
-    } */
 
     /**
      * Apply filters to the query based on validated data.
@@ -194,52 +153,8 @@ class DocumentoService
         $query = $this->applyFilters($query, $validated);
 
         return $query->orderBy('created_at', 'desc')
-                    ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+                    ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
                     ->withQueryString();
-    }
-
-   /*  public function getDocumentiByCategoria(
-        Anagrafica $anagrafica,
-        Collection $condominioIds,
-        int $categoriaId,
-        array $validated = []
-    ): LengthAwarePaginator {
-        return $this->isAdmin()
-            ? $this->getAdminDocumentiByCategoria($categoriaId, $validated)
-            : $this->getUserDocumentiByCategoria($anagrafica, $condominioIds, $categoriaId, $validated);
-    } */
-
-    private function getUserDocumentiByCategoria(
-        Anagrafica $anagrafica,
-        Collection $condominioIds,
-        int $categoriaId,
-        array $validated = []
-    ): LengthAwarePaginator {
-        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds)
-                    ->where('category_id', $categoriaId);
-
-        $query = $this->applyFilters($query, $validated);
-
-        return $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
-            ->withQueryString();
-    }
-
-    private function getAdminDocumentiByCategoria(
-        int $categoriaId,
-        array $validated = []
-    ): LengthAwarePaginator {
-        $query = Documento::query()
-            ->where('category_id', $categoriaId)
-            ->with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
-
-        $query = $this->applyFilters($query, $validated);
-
-        return $query
-            ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
-            ->withQueryString();
     }
 
     /**

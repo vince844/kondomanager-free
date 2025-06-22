@@ -23,10 +23,11 @@ class DocumentoIndexRequest extends FormRequest
     {
         return [
             'page'          => ['sometimes', 'integer', 'min:1'],
-            'per_page'      => ['sometimes', 'integer', 'between:10,100'],
+            'per_page'      => ['sometimes', 'integer'],
             'name'          => ['sometimes', 'string', 'max:255'],
             'category_id'   => ['sometimes', 'array'],
             'category_id.*' => ['integer', 'exists:categorie_documento,id'],
+            'search'        => ['nullable', 'string'],
 
         ];
     }

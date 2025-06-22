@@ -1,55 +1,57 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue'
-import { watchDebounced } from '@vueuse/core'
-import { router, Link } from '@inertiajs/vue3'
-import type { Table } from '@tanstack/vue-table'
-import type { Comunicazione } from '@/types/comunicazioni'
-import { Input } from '@/components/ui/input'
-import { BellPlus } from 'lucide-vue-next'
-import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue'
-import { priorityConstants } from '@/lib/comunicazioni/constants'
+import { ref, computed } from 'vue';
+import { watchDebounced } from '@vueuse/core';
+import { router } from '@inertiajs/vue3';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Link } from '@inertiajs/vue3';
+import { UserPlus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
-import { useComunicazioni } from '@/composables/useComunicazioni';
+import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
+import type { Table } from '@tanstack/vue-table';
+import type { Comunicazione } from '@/types/comunicazioni';
 
-const { hasPermission } = usePermission();
-const { setComunicazioni, comunicazioni, meta } = useComunicazioni();
+const { hasPermission, hasRole } = usePermission();
 
-interface DataTableToolbarProps {
+// Change this to allow table reset when filter cleared
+const { table } = defineProps<{
   table: Table<Comunicazione>
-}
+}>()
 
-const props = defineProps<DataTableToolbarProps>()
+// Read current priority filter from column state
+const priorityColumn = table.getColumn('priority')
 
-const subjectFilter = ref('')
+const nameFilter = ref('')
 
-// ✅ Read current priority filter from column state
-const priorityColumn = props.table.getColumn('priority')
 const priorityFilter = computed(() => {
   const val = priorityColumn?.getFilterValue()
   return Array.isArray(val) ? val : []
 })
 
-// ✅ Watch both filters and send to backend
 watchDebounced(
-  [subjectFilter, priorityFilter],
+  [nameFilter, priorityFilter],
   ([subject, priority]) => {
-    const params: Record<string, any> = {
-      page: 1, // Reset to page 1 when filters change
-    }
+    const params: Record<string, any> = { page: 1 }
 
     if (subject) params.subject = subject
     if (priority.length > 0) params.priority = priority
 
-    // Fetch new data from the backend
-    router.get(route('admin.comunicazioni.index'), params, {
-      preserveState: true,
-      replace: true,
-      onSuccess: (page) => {
-        // Update the `comunicazioni` and `meta` data after fetching from backend
-        setComunicazioni(page.props.comunicazioni, page.props.meta);
+    router.get(
+      route('admin.comunicazioni.index'),
+      params,
+      {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true,
+        onSuccess: () => {
+          if (!subject && priority.length === 0) {
+            table.reset()
+          }
+        }
       }
-    });
+    )
   },
   { debounce: 300 }
 )
@@ -58,35 +60,40 @@ watchDebounced(
 
 <template>
   <div class="flex items-center justify-between w-full mb-3 mt-4">
+    <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
-      <!-- Subject Filter -->
-      <Input
-        placeholder="Filtra per titolo..."
-        v-model="subjectFilter"
-        class="h-8 w-[150px] lg:w-[250px]"
-      />
+      <div class="flex items-center space-x-2">
+        <Input
+          placeholder="Filtra per nome..."
+          v-model="nameFilter"
+          class="h-8 w-[150px] lg:w-[250px]"
+        />
 
-      <!-- Priority Filter -->
-      <DataTableFacetedFilter
-        v-if="priorityColumn"
-        :column="priorityColumn"
-        title="Priorità"
-        :options="priorityConstants"
-        :isLoading="false"
-        @update:filter="() => {}" 
-      />
+         <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <DataTableFacetedFilter
+            v-if="priorityColumn"
+            :column="priorityColumn"
+            title="Priorità"
+            :options="priorityConstants"
+            :isLoading="false"
+            @update:filter="() => {}"
+            class="w-full lg:w-auto"
+          />
+
+        </div>
+
+      </div>
     </div>
 
-    <Link 
-      as="button"
+    <Button
       v-if="hasPermission(['Crea comunicazioni'])"
-      :href="route('admin.comunicazioni.create')" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+      as="a"
+      :href="route('admin.comunicazioni.create')"
+      class="hidden h-8 lg:flex ml-auto items-center gap-2"
     >
-      <BellPlus class="w-4 h-4" />
+      <UserPlus class="w-4 h-4" />
       <span>Crea</span>
-    </Link>
+    </Button>
 
   </div>
-
 </template>

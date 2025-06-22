@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\Log;
 
 class ComunicazioneService
 {
-    private const DEFAULT_PER_PAGE = 15;
-
     /**
      * Get paginated comunicazioni based on user role.
      *
@@ -51,7 +49,7 @@ class ComunicazioneService
 
         return $query
             ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
 
@@ -116,7 +114,7 @@ class ComunicazioneService
 
         return $query
             ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
 

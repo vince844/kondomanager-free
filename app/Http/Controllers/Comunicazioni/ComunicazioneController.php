@@ -22,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Http\Request;
 
 class ComunicazioneController extends Controller
 {
@@ -62,14 +63,14 @@ class ComunicazioneController extends Controller
             anagrafica: null,
             condominioIds: null,
             validated: $validated
-        );
+        ); 
 
         // Get stats using the same service
         $stats = $this->comunicazioneService->getComunicazioniStats();
     
         return Inertia::render('comunicazioni/ComunicazioniList', [
-            'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->resolve(),
-            'stats' => $stats, // Add stats to the response
+            'comunicazioni' => ComunicazioneResource::collection($comunicazioni)->resolve(), 
+            'stats' => $stats,
             'meta' => [
                 'current_page' => $comunicazioni->currentPage(),
                 'last_page'    => $comunicazioni->lastPage(),

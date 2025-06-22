@@ -6,10 +6,10 @@ import { columns } from '@/components/users/columns';
 import { Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
+import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { User } from '@/types/users';
 import type { Flash } from '@/types/flash';
-import Alert from "@/components/Alert.vue";
 
 defineProps<{
   users: User[],

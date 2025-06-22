@@ -3,31 +3,27 @@
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
-import type { Table } from '@tanstack/vue-table';
-import type { Segnalazione } from '@/types/segnalazioni';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BellPlus } from 'lucide-vue-next';
-import DataTableFacetedFilter from './DataTableFacetedFilter.vue';
+import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
-import { useSegnalazioni } from '@/composables/useSegnalazioni';
+import type { Table } from '@tanstack/vue-table';
+import type { Segnalazione } from '@/types/segnalazioni';
 
-const { hasPermission, generateRoute } = usePermission();
-const { setSegnalazioni, segnalazioni, meta } = useSegnalazioni();
+const { generateRoute, hasPermission, hasRole } = usePermission();
 
-interface DataTableToolbarProps {
+// Change this to allow table reset when filter cleared
+const { table } = defineProps<{
   table: Table<Segnalazione>
-}
-
-const props = defineProps<DataTableToolbarProps>()
-
-const subjectFilter = ref('')
+}>()
 
 // Read current priority filter from column state
-const priorityColumn = props.table.getColumn('priority')
-// Read current stato filter from column state
-const statoColumn = props.table.getColumn('stato')
+const priorityColumn = table.getColumn('priority')
+const statoColumn = table.getColumn('stato')
+
+const subjectFilter = ref('')
 
 const priorityFilter = computed(() => {
   const val = priorityColumn?.getFilterValue()
@@ -39,30 +35,33 @@ const statoFilter = computed(() => {
   return Array.isArray(val) ? val : []
 })
 
-// Watch filters and send to backend
 watchDebounced(
   [subjectFilter, priorityFilter, statoFilter],
   ([subject, priority, stato]) => {
-    const params: Record<string, any> = {
-      page: 1,
-    }
+    const params: Record<string, any> = { page: 1 }
 
     if (subject) params.subject = subject
     if (priority.length > 0) params.priority = priority
     if (stato.length > 0) params.stato = stato
 
-        // Fetch new data from the backend
-    router.get(route(generateRoute('segnalazioni.index')), params, {
-      preserveState: true,
-      replace: true,
-      onSuccess: (page) => {
-        // Update the `segnalazioni` and `meta` data after fetching from backend
-        setSegnalazioni(page.props.segnalazioni, page.props.meta);
+    router.get(
+      route('admin.segnalazioni.index'),
+      params,
+      {
+        preserveState: true,
+        replace: true,
+        preserveScroll: true,
+        onSuccess: () => {
+          if (!subject && priority.length === 0 && stato.length === 0) {
+            table.reset()
+          }
+        }
       }
-    });
+    )
   },
   { debounce: 300 }
 )
+
 </script>
 
 <template>

@@ -65,7 +65,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
+            'per_page' => ['sometimes', 'integer', 'between:1,100'],
             'name' => ['sometimes', 'string', 'max:255'], 
         ]);
     
@@ -73,7 +73,7 @@ class UserController extends Controller
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? 15);
+            ->paginate($validated['per_page'] ?? 10);
     
         return Inertia::render('utenti/ElencoUtenti', [
             'users' => UserResource::collection($users)->response()->getData(true)['data'],

@@ -1,5 +1,4 @@
 import { h } from 'vue';
-import { Link, router } from '@inertiajs/vue3';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
@@ -11,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 
 const { hasPermission,  generateRoute } = usePermission();
 
-export const columns = (): ColumnDef<Documento>[] => [
+export const columns: ColumnDef<Documento>[] = [
   {
     accessorKey: 'name',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),

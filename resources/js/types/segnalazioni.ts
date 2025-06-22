@@ -36,7 +36,7 @@ export interface PublishedType {
 }
 
 export interface Segnalazione {
-    id: string;
+    id: number;
     subject: string;
     description: string;
     created_at: string;

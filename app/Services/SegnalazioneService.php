@@ -13,8 +13,6 @@ use Illuminate\Support\Facades\Log;
 
 class SegnalazioneService
 {
-    private const DEFAULT_PER_PAGE = 1;
-
     /**
      * Get paginated segnalazioni depending on user role.
      *
@@ -62,7 +60,7 @@ class SegnalazioneService
                 $q->whereIn('stato', $stati)
             )
             ->orderBy('created_at', 'desc')
-            ->paginate($validated['per_page'] ?? self::DEFAULT_PER_PAGE)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     }
 

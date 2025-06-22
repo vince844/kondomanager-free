@@ -75,7 +75,7 @@ class CategoriaDocumentoController extends Controller
                 'total' => $documenti->total(),
             ],
             'categoria' => new CategoriaDocumentoResource($categoriaDocumento),
-            'search' => $validated['search'] ?? null, // Use null instead of empty string
+            'search' => $validated['search'] ?? null, 
             'filters' => Arr::only($validated, ['name'])
         ]);
 

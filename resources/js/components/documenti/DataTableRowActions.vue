@@ -39,7 +39,7 @@ const deleteDocumento = () => {
   router.delete(route('admin.documenti.destroy', { id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash','stats'],
+    only: ['flash','stats', 'documenti'],
     onSuccess: () => {
       removeDocumento(id);
       closeModal();

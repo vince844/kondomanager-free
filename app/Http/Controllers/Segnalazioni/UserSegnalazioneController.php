@@ -85,7 +85,7 @@ class UserSegnalazioneController extends Controller
                 'total' => $segnalazioni->total(),
             ],
             'stats' => $stats,
-            'search' => $validated['search'] ?? '',
+            'search' => $validated['search'] ?? null,
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
             
         ]);  

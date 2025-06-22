@@ -85,7 +85,7 @@ class UserComunicazioneController extends Controller
                 'total' => $comunicazioni->total(),
             ],
             'stats' => $stats, 
-            'search' => $validated['search'] ?? '',
+            'search' => $validated['search'] ?? null,
             'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
         ]);
     }

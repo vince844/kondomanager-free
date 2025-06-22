@@ -1,17 +1,17 @@
 import { h } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
-import type { ColumnDef } from '@tanstack/vue-table';
-import type { Comunicazione } from '@/types/comunicazioni';
-import type { Building } from '@/types/buildings';
 import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
+import type { ColumnDef } from '@tanstack/vue-table';
+import type { Comunicazione } from '@/types/comunicazioni';
+import type { Building } from '@/types/buildings';
 
 const { hasPermission,  generateRoute } = usePermission();
 
-export const columns = (): ColumnDef<Comunicazione>[] => [
+export const columns: ColumnDef<Comunicazione>[] = [
   {
     accessorKey: 'subject',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
@@ -24,7 +24,7 @@ export const columns = (): ColumnDef<Comunicazione>[] => [
 
           router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
             preserveScroll: true,
-            only: ['stats'],
+            only: ['stats', 'comunicazioni'],
             onSuccess: () => {
               // Manually update the specific item
               comunicazione.is_approved = !comunicazione.is_approved;

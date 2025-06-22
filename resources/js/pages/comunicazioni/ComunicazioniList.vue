@@ -7,50 +7,26 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/comunicazioni/columns';
 import Alert from '@/components/Alert.vue';
-import { useComunicazioni } from '@/composables/useComunicazioni';
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
-import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Comunicazione, Stats } from '@/types/comunicazioni';
 import type { PaginationMeta } from '@/types/pagination';
 
-defineProps<{ 
-  comunicazioni: Comunicazione[], 
+defineProps<{
+  comunicazioni: Comunicazione[],
   stats: Stats,
   meta: PaginationMeta
 }>()
 
-const page = usePage<{
-  comunicazioni: Comunicazione[],
-  meta: PaginationMeta,
-  flash: { message?: Flash }
-}>();
-
+const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-const { setComunicazioni, comunicazioni, meta: tableMeta } = useComunicazioni();
-
-setComunicazioni(page.props.comunicazioni, page.props.meta);
-
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Elenco comunicazioni', href: '/comunicazioni' },
-];
-
-const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-
-onMounted(() => {
-  if (flashMessage.value) scrollToTop();
-});
-
-watch(flashMessage, (newVal) => {
-  if (newVal) scrollToTop();
-});
 
 </script>
 
 <template>
   <Head title="Elenco comunicazioni bacheca" />
 
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout>
     <div class="px-4 py-6">
       <Heading
         title="Elenco comunicazioni bacheca"
@@ -64,7 +40,7 @@ watch(flashMessage, (newVal) => {
       </div>
 
       <div class="container mx-auto">
-        <DataTable :columns="columns()" :data="comunicazioni" :meta="tableMeta" />
+        <DataTable :columns="columns" :data="comunicazioni" :meta="meta"/>
       </div>
     </div>
   </AppLayout>

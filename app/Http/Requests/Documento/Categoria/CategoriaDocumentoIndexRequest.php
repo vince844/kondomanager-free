@@ -25,7 +25,7 @@ class CategoriaDocumentoIndexRequest extends FormRequest
             'page'       => ['sometimes', 'integer', 'min:1'],
             'per_page'   => ['sometimes', 'integer', 'between:10,100'],
             'name'       => ['sometimes', 'string', 'max:255'],
-            'search' => ['nullable', 'string'],
+            'search'     => ['nullable', 'string'],
         ];
     }
 }

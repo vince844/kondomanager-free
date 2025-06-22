@@ -60,7 +60,6 @@ const truncatedName = (name: string, length: number = 80) => {
     </div>
   </CardHeader>
 
-
     <CardContent class="p-2">
       <div class="text-sm text-muted-foreground">
  
