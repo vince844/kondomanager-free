@@ -5,6 +5,7 @@ import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHea
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
+import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Building } from '@/types/buildings';
@@ -45,7 +46,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
         ? 'Approvata - clicca per rimuovere approvazione'
         : 'Non approvata - clicca per approvare';
     
-      const shieldIcon = hasPermission(['Approva comunicazioni'])
+      const shieldIcon = hasPermission([Permission.APPROVE_COMUNICAZIONI])
         ? h('div', {
             class: 'cursor-pointer',
             title: tooltip,

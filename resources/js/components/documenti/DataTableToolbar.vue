@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { BellPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
 import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
@@ -40,7 +41,7 @@ watchDebounced(
     if (category_id.length > 0) params.category_id = category_id
 
     router.get(
-      route('admin.documenti.index'),
+      route(generateRoute('documenti.index')),
       params,
       {
         preserveState: true,
@@ -83,8 +84,8 @@ watchDebounced(
 
     <Link 
       as="button"
-      v-if="hasPermission(['Crea documenti'])"
-      :href="route('admin.documenti.create')" 
+      v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
+      :href="route(generateRoute('documenti.create'))" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <BellPlus class="w-4 h-4" />

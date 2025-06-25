@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Comunicazione;
 
+use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
@@ -46,18 +47,18 @@ class UpdateUserComunicazioneRequest extends FormRequest
 
         $this->merge([
             'created_by'   => $user->id,
-            'is_approved'  => $user->hasPermissionTo('Pubblica comunicazioni'),
-            'is_published' => $user->hasPermissionTo('Pubblica comunicazioni')
+            'is_approved'  => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value),
+            'is_published' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value)
         ]);
     }
 
     public function attributes()
     {
         return [
-            'subject' => __('validation.attributes.comunicazioni.subject'),
-            'description' => __('validation.attributes.comunicazioni.description'),
-            'is_published' => __('validation.attributes.comunicazioni.is_published'),
-            'priority' => __('validation.attributes.comunicazioni.priority'),
+            'subject'       => __('validation.attributes.comunicazioni.subject'),
+            'description'   => __('validation.attributes.comunicazioni.description'),
+            'is_published'  => __('validation.attributes.comunicazioni.is_published'),
+            'priority'      => __('validation.attributes.comunicazioni.priority'),
             'condomini_ids' => __('validation.attributes.comunicazioni.condomini_ids'),
         ];
     }

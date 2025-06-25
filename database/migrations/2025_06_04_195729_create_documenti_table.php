@@ -18,6 +18,7 @@ return new class extends Migration
             $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
             $table->boolean('is_published')->default(true);
             $table->boolean('is_approved')->default(true);
+            $table->boolean('is_private')->default(false);
             $table->string('path');
             $table->string('mime_type')->nullable();
             $table->unsignedBigInteger('file_size')->nullable();

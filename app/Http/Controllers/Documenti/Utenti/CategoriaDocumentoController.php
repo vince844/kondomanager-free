@@ -22,8 +22,10 @@ class CategoriaDocumentoController extends Controller
         private DocumentoService $documentoService
     ) {}
 
-    public function index(): Response
+    public function index(CategoriaDocumento $categoriaDocumento): Response
     {
+        Gate::authorize('view', $categoriaDocumento);
+
         $userData = $this->getUserCondominioData();
 
         $allCategorie = CategoriaDocumento::orderBy('name')->get();

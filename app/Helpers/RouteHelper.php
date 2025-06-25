@@ -2,29 +2,37 @@
 
 namespace App\Helpers;
 
+use App\Enums\Permission;
+use App\Enums\Role;
 use App\Models\User;
 
 class RouteHelper
-{ 
+{
     /**
-     * Determines the route prefix based on the notifiable user's role and permission.
+     * Get the route prefix for a given user based on their role or permissions.
      *
-     * This method checks if the given notifiable is an instance of the User model
-     * and whether they have the role of 'amministratore' or 'collaboratore' or permission Accesso pannello amministratore.
-     * If so, it returns 'admin' as the route prefix. Otherwise, it defaults to 'user'.
+     * If the user has the role of 'amministratore' or 'collaboratore', or has the
+     * 'Accesso pannello amministratore' permission, the method returns 'admin'.
+     * Otherwise, it defaults to 'user'.
      *
-     * @param mixed $notifiable The object to evaluate, typically a User.
-     * @return string The appropriate route prefix ('admin' or 'user').
+     * @param mixed $notifiable Typically a User instance.
+     * @return string Either 'admin' or 'user' as the route prefix.
      */
     public static function getRoutePrefixForUser(mixed $notifiable): string
     {
-        if ($notifiable instanceof User && (
-            $notifiable->hasRole(['amministratore', 'collaboratore']) ||
-            $notifiable->hasPermissionTo('Accesso pannello amministratore') // Check if the user has the permission
-        )) {
+        if (
+            $notifiable instanceof User &&
+            (
+                $notifiable->hasRole([
+                    Role::AMMINISTRATORE->value,
+                    Role::COLLABORATORE->value
+                ]) ||
+                $notifiable->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+            )
+        ) {
             return 'admin';
         }
-    
+
         return 'user';
     }
 }

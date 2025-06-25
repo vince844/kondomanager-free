@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Segnalazioni;
+namespace App\Http\Controllers\Segnalazioni\Utenti;
 
 use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
@@ -22,7 +22,7 @@ use Illuminate\Support\Arr;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 
-class UserSegnalazioneController extends Controller
+class SegnalazioneController extends Controller
 {
     use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
 
@@ -223,7 +223,7 @@ class UserSegnalazioneController extends Controller
         
         $segnalazione->loadMissing(['createdBy', 'assignedTo', 'condominio', 'anagrafiche']);
 
-        return Inertia::render('segnalazioni/UserSegnalazioniEdit', [
+        return Inertia::render('segnalazioni/user/SegnalazioniEdit', [
             'segnalazione'  => new SegnalazioneResource($segnalazione),
             'condomini'     => CondominioOptionsResource::collection($condomini)
         ]);

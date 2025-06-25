@@ -1,5 +1,7 @@
 import type { LucideIcon } from 'lucide-vue-next';
 import type { PageProps } from '@inertiajs/core';
+import { Role } from '@/enums/Role';
+import { Permission } from '@/enums/Permission';
 
 export interface Auth {
     user: User;
@@ -15,8 +17,8 @@ export interface NavItem {
     href: string;
     icon?: LucideIcon;
     isActive?: boolean;
-    roles?: string[];
-    permissions?: string[];
+    roles?: Role[];
+    permissions?: Permission[];
 }
 
 export interface SharedData extends PageProps {

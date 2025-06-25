@@ -13,18 +13,22 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, List, Pencil, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
+import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
-import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 
 const props = defineProps<{
   condomini: Building[];
   segnalazione: Segnalazione;
   anagrafiche: Anagrafica[];
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const form = useForm({
     subject: props.segnalazione?.subject,
@@ -50,7 +54,7 @@ watch(
 )  
 
 const submit = () => {
-    form.put(route("admin.segnalazioni.update", {id: props.segnalazione.id}), {
+    form.put(route(generateRoute('segnalazioni.update'), {id: props.segnalazione.id}), {
         preserveScroll: true
     });
 };
@@ -79,7 +83,7 @@ const submit = () => {
 
                     <Link
                         as="button"
-                        :href="route('admin.segnalazioni.index')"
+                        :href="route(generateRoute('segnalazioni.index'))"
                         class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                     >
                         <List class="w-4 h-4" />

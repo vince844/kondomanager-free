@@ -10,7 +10,8 @@ import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
 import { useComunicazioni } from '@/composables/useComunicazioni';
 import { usePermission } from "@/composables/permissions";
-import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
+import { Permission }  from "@/enums/Permission";
+import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus } from "lucide-vue-next";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -42,6 +43,7 @@ const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
 
 // Permissions and data setup
 const { hasPermission, generateRoute } = usePermission();
+
 const { comunicazioni, meta, setComunicazioni, removeComunicazione } = useComunicazioni(
   props.comunicazioni.data,
   {
@@ -251,12 +253,12 @@ async function confirmDelete() {
           </div>
 
           <Button
-            v-if="hasPermission(['Crea comunicazioni'])"
+            v-if="hasPermission([Permission.CREATE_COMUNICAZIONI])"
             as="a"
             :href="route(generateRoute('comunicazioni.create'))"
             class="h-8 lg:flex items-center gap-2 ml-auto"
           >
-            <BellPlus class="w-4 h-4" />
+            <Plus class="w-4 h-4" />
             <span>Crea</span>
           </Button>
         </div>

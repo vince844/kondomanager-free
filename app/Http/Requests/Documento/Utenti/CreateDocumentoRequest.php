@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Http\Requests\Documento;
+namespace App\Http\Requests\Documento\Utenti;
 
-use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
+use App\Enums\Permission;
 
 /**
  * @method bool merge(string $key)
@@ -33,10 +33,9 @@ class CreateDocumentoRequest extends FormRequest
             'category_id'     => 'required|string|exists:categorie_documento,id',
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
+            'is_private'      => 'sometimes|boolean',
             'created_by'      => 'required|exists:users,id',
             'file'            => 'required|file|mimes:pdf|max:20480',
-            'anagrafiche'     => ['nullable', 'array'],
-            'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
             'condomini_ids'   => ['required', 'array'],
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
         ];
@@ -53,8 +52,9 @@ class CreateDocumentoRequest extends FormRequest
         $user = Auth::user();
 
         $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
+            'created_by'   => $user->id,
+            'is_approved'  => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
+            'is_published' => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
         ]);
     }
 
@@ -68,9 +68,7 @@ class CreateDocumentoRequest extends FormRequest
         return [
             'name'          => __('validation.attributes.documenti.name'),
             'description'   => __('validation.attributes.documenti.description'),
-            'is_published'  => __('validation.attributes.documenti.is_published'),
             'condomini_ids' => __('validation.attributes.documenti.condomini_ids'),
-            'category_id'   => __('validation.attributes.documenti.category_id'),
         ];
     }
 }

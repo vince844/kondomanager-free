@@ -1,27 +1,26 @@
 <script setup lang="ts">
 
-import { Link, Head, useForm } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
-import AppLayout from '@/layouts/AppLayout.vue'
-import type { BreadcrumbItem } from '@/types'
-import type { Categoria } from '@/types/categorie'
-import { Button } from '@/components/ui/button'
-import { List, Plus, LoaderCircle, UploadCloud, Info } from 'lucide-vue-next'
-import Heading from '@/components/Heading.vue'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
+import { Link, Head, useForm } from '@inertiajs/vue3';
+import { ref, watch } from 'vue';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Button } from '@/components/ui/button';
+import { List, Plus, LoaderCircle, UploadCloud, Info } from 'lucide-vue-next';
+import Heading from '@/components/Heading.vue';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import InputError from '@/components/InputError.vue'
-import { Separator } from '@/components/ui/separator'
+import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import vSelect from "vue-select"
-import { usePermission } from '@/composables/permissions'
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
+import axios from 'axios';
+import vSelect from "vue-select";
+import { usePermission } from '@/composables/permissions';
 import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
-import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
-import axios from 'axios'
+import type { BreadcrumbItem } from '@/types';
+import type { Categoria } from '@/types/categorie';
 
 const props = defineProps<{
   condomini: Building[];
@@ -141,7 +140,7 @@ const submit = () => {
 <template>
   <Head title="Crea nuovo documento" />
 
-<!--   <AppLayout :breadcrumbs="breadcrumbs"> -->
+<!--  <AppLayout :breadcrumbs="breadcrumbs"> -->
   <AppLayout >
     <div class="px-4 py-6">
 

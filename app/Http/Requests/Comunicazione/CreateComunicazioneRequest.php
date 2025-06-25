@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Comunicazione;
 
+use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
@@ -54,7 +55,7 @@ class CreateComunicazioneRequest extends FormRequest
 
         $this->merge([
             'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo('Pubblica comunicazioni')
+            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) ? true : false,
         ]);
     }
 

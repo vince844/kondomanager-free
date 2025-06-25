@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Segnalazione;
 
+use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
@@ -52,8 +53,8 @@ class CreateSegnalazioneRequest extends FormRequest
         $user = Auth::user();
 
         $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo('Pubblica segnalazioni')
+            'created_by'  => $user->id,
+            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_SEGNALAZIONI->value)
         ]);
     }
 
@@ -65,11 +66,11 @@ class CreateSegnalazioneRequest extends FormRequest
     public function attributes()
     {
         return [
-            'subject' => __('validation.attributes.segnalazioni.subject'),
-            'description' => __('validation.attributes.segnalazioni.description'),
-            'is_published' => __('validation.attributes.segnalazioni.is_published'),
-            'priority' => __('validation.attributes.segnalazioni.priority'),
-            'stato' => __('validation.attributes.segnalazioni.stato'),
+            'subject'       => __('validation.attributes.segnalazioni.subject'),
+            'description'   => __('validation.attributes.segnalazioni.description'),
+            'is_published'  => __('validation.attributes.segnalazioni.is_published'),
+            'priority'      => __('validation.attributes.segnalazioni.priority'),
+            'stato'         => __('validation.attributes.segnalazioni.stato'),
             'condominio_id' => __('validation.attributes.segnalazioni.condominio_id'),
         ];
     }

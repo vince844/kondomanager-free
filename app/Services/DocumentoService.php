@@ -49,7 +49,9 @@ class DocumentoService
      */
     public function getAdminScopedBaseQuery(array $validated = []): Builder
     {
-        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria']);
+        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria'])
+            ->orderBy('created_at', 'desc');
+
         return $this->applyFilters($query, $validated);
     }
 
@@ -86,6 +88,7 @@ class DocumentoService
         return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
             ->where('is_published', true)
             ->where('is_approved', true)
+            ->orderBy('created_at', 'desc')
             ->where(function ($query) use ($anagrafica, $condominioIds) {
                 $query->where(function ($q) use ($anagrafica) {
                     $q->whereHas('anagrafiche', function ($subQ) use ($anagrafica) {

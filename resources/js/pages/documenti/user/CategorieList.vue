@@ -1,18 +1,25 @@
 <script setup lang="ts">
 
-import { Head } from "@inertiajs/vue3";
+import { ref, onMounted, computed, watch } from 'vue';
+import { Head, usePage } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Heading from "@/components/Heading.vue";
+import Alert from "@/components/Alert.vue";
 import CategorieDocumentiCards from '@/components/documenti/CategorieDocumentiCards.vue';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
+import type { Flash } from '@/types/flash';
+import type { Auth } from '@/types';
 
 defineProps<{ 
   categorie: Categoria[], 
   documenti: Documento[]
 }>()
+
+const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 </script>
 
@@ -26,6 +33,10 @@ defineProps<{
         title="Elenco categorie archivio documenti"
         description="Di seguito una lista delle categorie utilizzate per classificare i documenti nell'archivio del condominio."
       />
+
+      <div v-if="flashMessage" class="py-4">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      </div>
 
       <!-- Container -->
       <div class="container mx-auto mt-6">

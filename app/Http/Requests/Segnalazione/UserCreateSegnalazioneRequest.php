@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Segnalazione;
 
+use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
@@ -51,8 +52,8 @@ class UserCreateSegnalazioneRequest extends FormRequest
 
         $this->merge([
             'created_by'   => $user->id,
-            'is_approved'  => $user->hasPermissionTo('Pubblica segnalazioni'),
-            'is_published' => $user->hasPermissionTo('Pubblica segnalazioni'),
+            'is_approved'  => $user->hasPermissionTo(Permission::PUBLISH_SEGNALAZIONI->value),
+            'is_published' => $user->hasPermissionTo(Permission::PUBLISH_SEGNALAZIONI->value),
         ]);
     }
    

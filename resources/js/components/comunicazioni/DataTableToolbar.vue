@@ -10,10 +10,11 @@ import { UserPlus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
 
-const { hasPermission, hasRole } = usePermission();
+const { generateRoute, hasPermission, hasRole } = usePermission();
 
 // Change this to allow table reset when filter cleared
 const { table } = defineProps<{
@@ -39,7 +40,7 @@ watchDebounced(
     if (priority.length > 0) params.priority = priority
 
     router.get(
-      route('admin.comunicazioni.index'),
+      route(generateRoute('comunicazioni.index')),
       params,
       {
         preserveState: true,
@@ -86,9 +87,9 @@ watchDebounced(
     </div>
 
     <Button
-      v-if="hasPermission(['Crea comunicazioni'])"
+      v-if="hasPermission([Permission.CREATE_COMUNICAZIONI])"
       as="a"
-      :href="route('admin.comunicazioni.create')"
+      :href="route(generateRoute('comunicazioni.create'))"
       class="hidden h-8 lg:flex ml-auto items-center gap-2"
     >
       <UserPlus class="w-4 h-4" />

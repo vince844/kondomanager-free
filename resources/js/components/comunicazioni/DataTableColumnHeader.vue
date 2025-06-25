@@ -1,17 +1,11 @@
 <script setup lang="ts">
-import type { Column } from '@tanstack/vue-table'
-import type { Comunicazione } from '@/types/comunicazioni';
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
-import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next'
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next';
+import type { Column } from '@tanstack/vue-table';
+import type { Comunicazione } from '@/types/comunicazioni';
 
 interface DataTableColumnHeaderProps {
   column: Column<Comunicazione, any> 

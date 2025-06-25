@@ -12,7 +12,7 @@ import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
 const props = defineProps<{
   columns: ColumnDef<Documento, any>[],
-  data: Comunicazione[],
+  data: Documento[],
   meta: {
     current_page: number,
     per_page: number,

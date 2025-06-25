@@ -3,18 +3,24 @@
 namespace App\Http\Controllers\Documenti\Utenti;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
+use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasAnagrafica;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Gate;
-
+use Inertia\Inertia;
+use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 
 class DocumentoController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasAnagrafica;
 
     /**
      * Create a new controller instance.
@@ -36,17 +42,85 @@ class DocumentoController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create()
+    public function create(Request $request): Response
     {
-        //
+        Gate::authorize('create', Documento::class);
+
+        $validated = $request->validate([
+            'categoria' => ['required', 'integer', 'exists:categorie_documento,id']
+        ]);
+
+        $anagrafica = $this->getUserAnagrafica();
+        $condomini = $anagrafica->condomini;
+
+        return Inertia::render('documenti/user/DocumentiNew', [
+            'condomini' => CondominioResource::collection($condomini),
+            'categoria' => (int) $validated['categoria'],
+        ]);
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(CreateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
-        //
+        Gate::authorize('create',$documento);
+
+        $validated = $request->validated();
+
+        /** @var \Illuminate\Http\Request $request */
+        if (!$request->hasFile('file') || !$request->file('file')->isValid()) {
+            return to_route('user.categorie-documenti.index')->with(
+                $this->flashError(__('documenti.no_file_uploaded'))
+            );
+        }
+
+         try {
+
+            DB::beginTransaction();
+
+            /** @var \Illuminate\Http\Request $request */
+            $uploadedFile = $request->file('file');
+
+            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName());
+
+            $documento = Documento::create([
+                'name'         => $validated['name'],
+                'description'  => $validated['description'],
+                'path'         => $path,
+                'mime_type'    => $uploadedFile->getClientMimeType(),
+                'file_size'    => $uploadedFile->getSize(),
+                'created_by'   => $validated['created_by'],
+                'category_id'  => $validated['category_id'],
+                'is_published' => $validated['is_published'],
+                'is_approved'  => $validated['is_approved'],
+            ]);
+
+            $documento->condomini()->attach($validated['condomini_ids']);
+
+            if ($validated['is_private']) {
+                
+                $anagrafica = $this->getUserAnagrafica();
+                $documento->anagrafiche()->attach($anagrafica);
+            }
+
+            DB::commit();
+
+        } catch (\Exception $e) {
+            
+            DB::rollback();
+            
+            Log::error('Error creating documento archivio: ' . $e->getMessage());
+        
+            return to_route('user.categorie-documenti.index')->with(
+                $this->flashError(__('documenti.error_create_document'))
+            );
+
+        }
+
+        return to_route('user.categorie-documenti.index')->with(
+            $this->flashSuccess(__('documenti.success_create_document'))
+        );
     }
 
     /**

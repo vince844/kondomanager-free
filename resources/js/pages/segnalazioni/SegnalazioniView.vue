@@ -4,19 +4,19 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
-import { List, Pencil, Lock, LockOpen,   ListCheck, 
-  ListX,  } from 'lucide-vue-next';
+import { List, Pencil, Lock, LockOpen, ListCheck, ListX } from 'lucide-vue-next';
 import SegnalazioneStats from '@/components/segnalazioni/SegnalazioneStats.vue';
 import { usePermission } from '@/composables/permissions';
-import type { Segnalazione } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { Permisison } from '@/enums/permissions';
+import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
-
-const { hasPermission, generateRoute } = usePermission();
 
 const props = defineProps<{
   segnalazione: Segnalazione;
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const priorityItem = computed(() => {
   return priorityConstants.find(p => p.value === props.segnalazione.priority);
@@ -42,7 +42,7 @@ const statusItem = computed(() => {
                 <Link 
                     as="button"
                     method="post"
-                    v-if="hasPermission(['Modifica segnalazioni'])"
+                    v-if="hasPermission([Permission.EDIT_SEGNALAZIONI])"
                     :href="route(generateRoute('segnalazioni.toggleResolve'), { id: props.segnalazione.id })" 
                     class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
@@ -53,7 +53,7 @@ const statusItem = computed(() => {
 
                 <Link 
                     as="button"
-                    v-if="hasPermission(['Visualizza segnalazioni'])"
+                    v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
                     :href="route(generateRoute('segnalazioni.index'))" 
                     class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >

@@ -11,15 +11,19 @@ import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Plus, List } from 'lucide-vue-next';
 import vSelect from "vue-select";
+import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
+import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { PriorityType, StatoType } from '@/types/segnalazioni';
-import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 
 const props = defineProps<{
   condomini: Building[];
   segnalazione: Segnalazione;
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const form = useForm({
     subject: props.segnalazione?.subject,
@@ -41,7 +45,7 @@ watch(
 );
 
 const submit = () => {
-    form.put(route("user.segnalazioni.update", {id: props.segnalazione.id}), {
+    form.put(route(generateRoute('segnalazioni.update'), {id: props.segnalazione.id}), {
         preserveScroll: true
     });
 };
@@ -73,7 +77,7 @@ const submit = () => {
                     <!-- Button for "Elenco Segnalazioni" -->
                     <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
-                        <Link :href="route('user.segnalazioni.index')" class="block lg:inline">
+                        <Link :href="route(generateRoute('segnalazioni.index'))" class="block lg:inline">
                         Elenco
                         </Link>
                     </Button>

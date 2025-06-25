@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\Permission;
 use App\Models\Anagrafica;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
@@ -21,7 +22,7 @@ class AnagraficaPolicy
      */
     public function view(User $user, Anagrafica $anagrafica): Response
     {
-        return $user->hasPermissionTo('Visualizza utenti')  
+        return $user->hasPermissionTo(Permission::VIEW_USERS->value)  
         ? Response::allow() 
         : Response::deny('Non hai permessi sufficienti per visualizzare le anagrafiche registrate!');
     }

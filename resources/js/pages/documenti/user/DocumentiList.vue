@@ -7,14 +7,16 @@ import Heading from "@/components/Heading.vue";
 import DocumentiListCards from '@/components/documenti/DocumentiListCards.vue';
 import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
+import { Permission } from '@/enums/Permission';
 import { Button } from "@/components/ui/button";
-import { CircleAlert, Loader2, SearchX } from "lucide-vue-next";
+import { CircleAlert, Loader2, SearchX, Plus } from "lucide-vue-next";
 import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
+
 
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;
@@ -177,7 +179,6 @@ watchDebounced(
   { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
 );
 
-// ** NEW WATCHER to handle clearing search properly **
 watch(searchQuery, (val) => {
   if (!val) {
     hasSearched.value = false;
@@ -213,6 +214,16 @@ watch(searchQuery, (val) => {
               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
+
+          <Button
+            v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
+            as="a"
+            :href="route(generateRoute('documenti.create'), { categoria: props.categoria.id })"
+            class="h-8 lg:flex items-center gap-2 ml-auto"
+          >
+            <Plus class="w-4 h-4" />
+            <span>Crea</span>
+          </Button>
         </div>
 
         <div class="relative min-h-[300px]">

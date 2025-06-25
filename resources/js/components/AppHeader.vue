@@ -11,11 +11,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, Folder, Folders, LayoutGrid, Menu, Search, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
+import { Role } from '@/enums/Role';
+import { Permission } from '@/enums/Permission';
+import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 
 const { generatePath, canAccess, hasPermission } = usePermission();
 
@@ -46,39 +48,41 @@ const mainNavItems: NavItem[] = [
         title: 'Condomini',
         href: '/condomini',
         icon: House,
-        roles: ['amministratore', 'collaboratore']
+        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
        
     },
     {
         title: 'Anagrafiche',
         href: generatePath('anagrafiche'),
         icon: SquareLibrary,
-        roles: ['amministratore', 'collaboratore']
+        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
     },
     {
         title: 'Bacheca',
         href: generatePath('comunicazioni'),
         icon: LayoutDashboard,
-        permissions: ['Visualizza comunicazioni'],
+        permissions: [Permission.VIEW_COMUNICAZIONI],
     },
     {
         title: 'Segnalazioni',
         href: generatePath('segnalazioni'),
         icon: Tags,
-        permissions: ['Visualizza segnalazioni'],
+        permissions: [Permission.VIEW_SEGNALAZIONI],
     },
     {
         title: 'Documenti',
-        href: hasPermission(['Accesso pannello amministratore']) ? generatePath('documenti') : generatePath('categorie-documenti'),
+        href: hasPermission([Permission.ACCESS_ADMIN_PANEL]) 
+              ? generatePath('documenti') 
+              : generatePath('categorie-documenti'),
         icon: Folders,
-        permissions: ['Visualizza documenti'],
+        permissions: [Permission.VIEW_ARCHIVE_DOCUMENTS],
     }
 ];
 
 const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
+        href: 'https://github.com/vince844/kondomanager-free',
         icon: Folder,
     },
     {

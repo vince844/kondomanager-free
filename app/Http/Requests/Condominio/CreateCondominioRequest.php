@@ -46,9 +46,9 @@ class CreateCondominioRequest extends FormRequest
 
         return [
 
-            'nome.required' => trans('validation.custom.building.required'),
-            'nome.unique' => trans('validation.custom.building.unique'),
-            'codice_fiscale.unique' => trans('validation.custom.building.codice_fiscale.unique'),
+            'nome.required'           => trans('validation.custom.building.required'),
+            'nome.unique'             => trans('validation.custom.building.unique'),
+            'codice_fiscale.unique'   => trans('validation.custom.building.codice_fiscale.unique'),
             'codice_fiscale.required' => trans('validation.custom.building.codice_fiscale.required'),
 
         ];

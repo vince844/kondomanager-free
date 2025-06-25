@@ -10,7 +10,8 @@ import Alert from "@/components/Alert.vue";
 import { Button } from "@/components/ui/button";
 import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import { usePermission } from "@/composables/permissions";
-import { CircleAlert, Pencil, Trash2, Loader2, SearchX, BellPlus } from "lucide-vue-next";
+import { Permission } from "@/enums/Permission";
+import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus } from "lucide-vue-next";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -42,6 +43,7 @@ const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
 
 // Permissions and data setup
 const { hasPermission, generateRoute } = usePermission();
+
 const { segnalazioni, meta, setSegnalazioni, removeSegnalazione } = useSegnalazioni(
   props.segnalazioni.data,
   {
@@ -252,12 +254,12 @@ async function confirmDelete() {
           </div>
 
           <Button
-            v-if="hasPermission(['Crea segnalazioni'])"
+            v-if="hasPermission([Permission.CREATE_SEGNALAZIONI])"
             as="a"
             :href="route(generateRoute('segnalazioni.create'))"
             class="h-8 lg:flex items-center gap-2 ml-auto"
           >
-            <BellPlus class="w-4 h-4" />
+            <Plus class="w-4 h-4" />
             <span>Crea</span>
           </Button>
         </div>
@@ -319,8 +321,8 @@ async function confirmDelete() {
 
                   <div class="flex items-center gap-2">
                     <Link
-                      v-if="hasPermission(['Modifica segnalazioni']) || 
-                           (hasPermission(['Modifica proprie segnalazioni']) && 
+                      v-if="hasPermission([Permission.EDIT_SEGNALAZIONI]) || 
+                           (hasPermission([Permission.EDIT_OWN_SEGNALAZIONI]) && 
                             segnalazione.created_by.user.id === auth.user.id)"
                       :href="route(generateRoute('segnalazioni.edit'), { id: segnalazione.id })"
                       class="text-gray-700 hover:text-blue-600 transition-colors"
@@ -330,8 +332,8 @@ async function confirmDelete() {
                     </Link>
 
                     <button
-                      v-if="hasPermission(['Elimina segnalazioni']) || 
-                           (hasPermission(['Elimina proprie segnalazioni']) && 
+                      v-if="hasPermission([Permission.DELETE_SEGNALAZIONI]) || 
+                           (hasPermission([Permission.DELETE_OWN_SEGNALAZIONI]) && 
                             segnalazione.created_by.user.id === auth.user.id)"
                       @click="handleDelete(segnalazione)"
                       class="text-gray-700 hover:text-red-600 transition-colors"

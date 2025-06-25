@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Comunicazioni;
+namespace App\Http\Controllers\Comunicazioni\Utenti;
 
 use App\Events\Comunicazioni\NotifyAdminOfCreatedComunicazione;
 use App\Http\Controllers\Controller;
@@ -22,7 +22,7 @@ use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\RedirectResponse;
 
-class UserComunicazioneController extends Controller
+class ComunicazioneController extends Controller
 {
     use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
     

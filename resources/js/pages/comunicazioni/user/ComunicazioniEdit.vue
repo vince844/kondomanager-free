@@ -13,19 +13,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Pencil, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
+import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { usePermission } from "@/composables/permissions";
+import { Permission } form '@/enums/permissions';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
-import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
-import { usePermission } from "@/composables/permissions";
-
-const { hasPermission, generateRoute } = usePermission();
 
 const props = defineProps<{
   comunicazione: Comunicazione;
   condomini: Building[];
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const form = useForm({
   subject: props.comunicazione?.subject ?? '',
@@ -73,7 +74,7 @@ const submit = () => {
           </Button>
 
           <Link 
-            v-if="hasPermission(['Visualizza comunicazioni'])"
+            v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])"
             as="button"
             :href="route(generateRoute('comunicazioni.index'))" 
             class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"

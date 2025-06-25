@@ -13,19 +13,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Pencil, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
+import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants'; 
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import axios from 'axios';
+import { usePermission } from "@/composables/permissions";
+import { Permission }  from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
-import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants'; 
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import axios from 'axios';
 
 const props = defineProps<{
   comunicazione: Comunicazione;
   condomini: Building[];
   anagrafiche: Anagrafica[];
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
 
@@ -83,7 +87,7 @@ watch(
 );
 
 const submit = () => {
-  form.put(route("admin.comunicazioni.update", { id: props.comunicazione.id }), {
+  form.put(route(generateRoute('comunicazioni.update'), { id: props.comunicazione.id }), {
     preserveScroll: true
   });
 };
@@ -110,7 +114,7 @@ const submit = () => {
 
               <Link
                   as="button"
-                  :href="route('admin.comunicazioni.index')"
+                  :href="route(generateRoute('comunicazioni.index'))"
                   class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                   <List class="w-4 h-4" />

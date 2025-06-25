@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import {Head, useForm, Link } from '@inertiajs/vue3';
+import { Head, useForm, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
@@ -12,14 +12,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
-import type { Building } from '@/types/buildings';
-import type { PriorityType, StatoType } from '@/types/segnalazioni';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { usePermission } from "@/composables/permissions";
+import type { Building } from '@/types/buildings';
+import type { PriorityType, StatoType } from '@/types/segnalazioni';
 
 const props = defineProps<{
   condomini: Building[];
 }>();  
+
+const { hasPermission, generateRoute } = usePermission();
 
 const form = useForm({
     subject: '',
@@ -64,7 +67,7 @@ const submit = () => {
 
                     <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                         <List class="w-4 h-4" />
-                        <Link :href="route('user.segnalazioni.index')" class="block lg:inline">
+                        <Link :href="route(generateRoute('segnalazioni.index'))" class="block lg:inline">
                         Elenco
                         </Link>
                     </Button>

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Anagrafiche;
+namespace App\Http\Controllers\Anagrafiche\Utenti;
 
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
@@ -13,7 +13,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 
-class UserAnagraficaController extends Controller
+class AnagraficaController extends Controller
 {
     /**
      * Display a listing of the resource.
