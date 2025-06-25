@@ -9,5 +9,6 @@ return [
     'success_delete_document'                => "Il documento è stato eliminato con successo.",
     'error_delete_document'                  => "Si è verificato un errore durante l'eliminazione del documento.",
     'error_downloading_document'             => "Si è verificato un errore durante il download del documento.",
+    'error_notify_new_document'              => "Il documento è stata creato, ma si è verificato un errore nell'invio della notifica.",
 
 ];

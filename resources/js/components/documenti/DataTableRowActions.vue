@@ -8,6 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
+import { Permission } from '@/enums/Permission';
 import type { Documento } from '@/types/documenti';
 
 defineProps<{ 
@@ -36,7 +37,7 @@ const deleteDocumento = () => {
   
   const id = documentoID.value;
 
-  router.delete(route('admin.documenti.destroy', { id }), {
+  router.delete(route(generateRoute('documenti.destroy'), { id }), {
     preserveScroll: true,
     preserveState: true,
     only: ['flash','stats', 'documenti'],
@@ -53,7 +54,7 @@ const deleteDocumento = () => {
 </script>
 
 <template>
-  <DropdownMenu v-if="hasPermission(['Modifica documenti', 'Elimina documenti'])" >
+  <DropdownMenu v-if="hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS, Permission.DELETE_ARCHIVE_DOCUMENTS])" >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -63,7 +64,7 @@ const deleteDocumento = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem  v-if="hasPermission(['Modifica documenti'])">
+      <DropdownMenuItem  v-if="hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS])">
         <Link
           :href="route(generateRoute('documenti.edit'), { id: documento.id })"
           preserve-state
@@ -75,7 +76,7 @@ const deleteDocumento = () => {
       </DropdownMenuItem>
   
       <DropdownMenuItem 
-        v-if="hasPermission(['Elimina documenti'])" 
+        v-if="hasPermission([ Permission.DELETE_ARCHIVE_DOCUMENTS])" 
         @click="handleDelete(documento)" 
       >
         <Trash2 class="w-4 h-4 text-xs" />

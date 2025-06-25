@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Documenti;
 
+use App\Events\Documenti\NotifyUserOfCreatedDocumento;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
@@ -114,7 +115,7 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName());
+            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
 
             $documento = Documento::create([
                 'name'         => $validated['name'],
@@ -144,6 +145,22 @@ class DocumentoController extends Controller
         
             return to_route('admin.documenti.index')->with(
                 $this->flashError(__('documenti.error_create_document'))
+            );
+
+        }
+
+        try {
+
+            // Exclude 'file' before dispatching event
+            $validatedForEvent = Arr::except($validated, ['file']);
+            NotifyUserOfCreatedDocumento::dispatch($validatedForEvent, $documento);
+
+        } catch (\Exception $emailException) {
+
+            Log::error('Error sending email for documento ID ' . $documento->id . ': ' . $emailException->getMessage());
+        
+            return to_route('admin.documenti.index')->with(
+                $this->flashWarning(__('documenti.error_notify_new_document'))
             );
 
         }

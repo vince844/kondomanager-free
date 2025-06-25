@@ -9,4 +9,5 @@ return [
     'success_delete_document'              => "The document has been deleted successfully.",
     'error_delete_document'                => "An error occurred while deleting the document.",
     'error_downloading_document'           => "An error occurred while downloading the document.",
+    'error_notify_new_document'            => "The documento was created, but there was an error sending the notification.",
 ];

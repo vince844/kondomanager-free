@@ -56,7 +56,6 @@ enum Role: string
                 PermissionEnum::VIEW_COMUNICAZIONI,
                 PermissionEnum::COMMENT_COMUNICAZIONI,
                 PermissionEnum::PUBLISH_COMMENTS_COMUNICAZIONI,
-                PermissionEnum::APPROVE_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::EDIT_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::VIEW_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::CREATE_SEGNALAZIONI,
@@ -66,8 +65,11 @@ enum Role: string
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::EDIT_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::PUBLISH_COMMENTS_SEGNALAZIONI,
-                PermissionEnum::APPROVE_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
+                PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
+                PermissionEnum::CREATE_ARCHIVE_DOCUMENTS,
+                PermissionEnum::EDIT_ARCHIVE_DOCUMENTS,
+                PermissionEnum::PUBLISH_ARCHIVE_DOCUMENTS,
             ],
 
             self::FORNITORE => [
@@ -77,17 +79,18 @@ enum Role: string
                 PermissionEnum::VIEW_SEGNALAZIONI,
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
+                PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
             ],
 
             self::UTENTE => [
                 PermissionEnum::VIEW_COMUNICAZIONI,
                 PermissionEnum::COMMENT_COMUNICAZIONI,
-                PermissionEnum::EDIT_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::VIEW_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::CREATE_SEGNALAZIONI,
                 PermissionEnum::VIEW_SEGNALAZIONI,
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
+                PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
             ],
         };
     }

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Notifications;
 
 use App\Http\Controllers\Controller;
 use App\Models\NotificationPreference;
+use App\Services\NotificationPreferenceService;
+use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +15,8 @@ use Inertia\Response;
 
 class NotificationPreferenceController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
      * Displays the notification preferences settings page for the authenticated user.
      *
@@ -25,24 +29,17 @@ class NotificationPreferenceController extends Controller
      * 
      * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If there is an issue with loading user notification preferences.
      */
-    public function index(): Response
+    public function index(NotificationPreferenceService $service): Response
     {
+
         $user = Auth::user();
 
-        $config = config('notifications.types');
-        $types = $config['common'];
+        $types = $service->getVisibleNotificationTypes($user);
 
-        // Checking if the user has a specific role or permission
-        if ($user->hasRole(['amministratore', 'collaboratore']) || $user->hasPermissionTo('Accesso pannello amministratore')) {
-            $types = array_merge($types, $config['admin']);
-        }
-
-        // Get saved notification preferences from the database
         $saved = $user->notificationPreferences()
             ->pluck('enabled', 'type')
             ->toArray();
 
-        // Map the available notification types and merge with saved preferences
         $preferences = collect($types)->map(function ($meta, $type) use ($saved) {
             return [
                 'type' => $type,
@@ -55,6 +52,7 @@ class NotificationPreferenceController extends Controller
         return Inertia::render('settings/Notifications', [
             'preferences' => $preferences,
         ]);
+
     }
 
     /**

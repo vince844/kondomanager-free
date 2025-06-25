@@ -82,7 +82,7 @@ class DocumentoController extends Controller
             /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
-            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName());
+            $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
 
             $documento = Documento::create([
                 'name'         => $validated['name'],

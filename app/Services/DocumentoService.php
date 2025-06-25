@@ -88,7 +88,6 @@ class DocumentoService
         return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
             ->where('is_published', true)
             ->where('is_approved', true)
-            ->orderBy('created_at', 'desc')
             ->where(function ($query) use ($anagrafica, $condominioIds) {
                 $query->where(function ($q) use ($anagrafica) {
                     $q->whereHas('anagrafiche', function ($subQ) use ($anagrafica) {
