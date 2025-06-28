@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
-import { Head, usePage, router } from "@inertiajs/vue3";
+import { Head, usePage, router, Link } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
 import Heading from "@/components/Heading.vue";
 import DocumentiListCards from '@/components/documenti/DocumentiListCards.vue';
@@ -9,14 +9,13 @@ import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
 import { Permission } from '@/enums/Permission';
 import { Button } from "@/components/ui/button";
-import { CircleAlert, Loader2, SearchX, Plus } from "lucide-vue-next";
+import { CircleAlert, Loader2, SearchX, Plus, List } from "lucide-vue-next";
 import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
-
 
 const LOADING_DELAY = 300;
 const SEARCH_DEBOUNCE = 400;
@@ -224,6 +223,15 @@ watch(searchQuery, (val) => {
             <Plus class="w-4 h-4" />
             <span>Crea</span>
           </Button>
+           <Link 
+              as="button"
+              v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])"
+              :href="route(generateRoute('categorie-documenti.index'))" 
+              class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
+          >
+              <List class="w-4 h-4" />
+              <span>Categorie</span>
+          </Link>
         </div>
 
         <div class="relative min-h-[300px]">

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Documenti\Utenti;
 
+use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -17,6 +18,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Arr;
 
 class DocumentoController extends Controller
 {
@@ -105,6 +107,23 @@ class DocumentoController extends Controller
             }
 
             DB::commit();
+
+            try {
+
+                $validatedForEvent = Arr::except($validated, ['file']);
+
+                NotifyAdminOfCreatedDocumento::dispatch($validatedForEvent, $documento);
+
+            } catch (\Exception $emailException) {
+
+                // If an error occurs during email sending, log it and set a message for the email failure
+                Log::error('Error user sending email for documento ID: ' . $documento->id . ' - ' . $emailException->getMessage());
+
+                return to_route('user.categorie-documenti.index')->with(
+                    $this->flashWarning(__('documenti.error_notify_new_document'))
+                );
+
+            }
 
         } catch (\Exception $e) {
             

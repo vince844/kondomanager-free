@@ -13,5 +13,6 @@ return [
     'success_approve_document'             => "The communication has been approved successfully.",
     'error_approve_document'               => "An error occurred while approving the document.",
     'error_notify_new_document'            => "The document was created, but there was an error sending the notification.",
-    'error_notify_approved_document'       => "The document was approved, but there was an error sending the notification."
+    'error_notify_approved_document'       => "The document was approved, but there was an error sending the notification.",
+    'error_notify_new_document'            => "The document was created, but there was an error sending the notification.",
 ];

@@ -213,12 +213,12 @@ class DocumentoService
         $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
 
         return (object) [
-            'total_storage_bytes' => (int) $query->sum('size'),
+            'total_storage_bytes' => (int) $query->sum('file_size'),
             'total_documents' => (int) $query->count(),
             'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
                                                 ->whereYear('created_at', now()->year)
                                                 ->count(),
-            'average_size_bytes' => (float) $query->avg('size') ?: 0,
+            'average_size_bytes' => (float) $query->avg('file_size') ?: 0,
         ];
     }
 

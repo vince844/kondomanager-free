@@ -8,7 +8,7 @@ import { List, Pencil, Lock, LockOpen, ListCheck, ListX } from 'lucide-vue-next'
 import SegnalazioneStats from '@/components/segnalazioni/SegnalazioneStats.vue';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
-import { Permisison } from '@/enums/permissions';
+import { Permission } from '@/enums/Permission';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 
@@ -78,16 +78,16 @@ const statusItem = computed(() => {
                             class="flex items-center gap-1"
                             v-if="priorityItem"
                         >
-                            <component
-                                :is="priorityItem.icon"
-                                class="h-3.5 w-3.5"
-                                :class="priorityItem.colorClass"
-                            />
                             <div
-                            class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
-                            :class="priorityItem.colorClass"
-                            >
-                            {{ priorityItem.label }}
+                                class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
+                                :class="priorityItem.colorClass"
+                                >
+                                <component
+                                    :is="priorityItem.icon"
+                                    class="h-3 w-3 mr-2"
+                                    :class="priorityItem.colorClass"
+                                />
+                                {{ priorityItem.label }}
                             </div>
                         </div>
                     </div>
@@ -159,16 +159,17 @@ const statusItem = computed(() => {
                             class="flex items-center gap-1"
                             v-if="statusItem"
                         >
-                            <component
-                            :is="statusItem.icon"
-                            class="h-3.5 w-3.5"
-                            :class="statusItem.colorClass"
-                            />
+                        
                             <div
-                            class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
-                            :class="statusItem.colorClass"
+                                class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
+                                :class="statusItem.colorClass"
                             >
-                            {{ statusItem.label }}
+                                <component
+                                    :is="statusItem.icon"
+                                    class="h-3 w-3 mr-2"
+                                    :class="statusItem.colorClass"
+                                />
+                                {{ statusItem.label }}
                             </div>
                         </div>
                     </div>

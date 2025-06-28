@@ -3,6 +3,7 @@
 namespace App\Listeners\Comunicazioni;
 
 use App\Enums\NotificationType;
+use App\Enums\Permission;
 use App\Events\Comunicazioni\NotifyAdminOfCreatedComunicazione;
 use App\Models\Anagrafica;
 use App\Models\User;
@@ -26,8 +27,8 @@ class SendNewComunicazioneNotificationToAdmin implements ShouldQueue
             $validated = $event->validated;
 
             $adminQuery = $comunicazione->is_approved
-                ? User::permission('Approva comunicazioni')
-                : User::permission('Pubblica comunicazioni');
+                ? User::permission(Permission::APPROVE_COMUNICAZIONI->value)
+                : User::permission(Permission::PUBLISH_COMUNICAZIONI->value);
 
             $admins = $this->filterByNotificationPreference(
                 $adminQuery,

@@ -13,6 +13,7 @@ return [
     'success_approve_document'               => "Il documento è stato approvato con successo.",
     'error_approve_document'                 => "Si è verificato un errore durante l'approvazione del documento",
     'error_notify_new_document'              => "Il documento è stato creato, ma si è verificato un errore nell'invio della notifica.",
-    'error_notify_approved_document'         => "Il documento è stato approvato, ma si è verificato un errore nell'invio della notifica."
+    'error_notify_approved_document'         => "Il documento è stato approvato, ma si è verificato un errore nell'invio della notifica.",
+    'error_notify_new_document'              => "Il documento è stato creato, ma si è verificato un errore nell'invio della notifica.",
 
 ];
