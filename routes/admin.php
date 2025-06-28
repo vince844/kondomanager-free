@@ -5,6 +5,7 @@ use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Documenti\CategoriaDocumentoController;
+use App\Http\Controllers\Documenti\DocumentoApprovalController;
 use App\Http\Controllers\Documenti\DocumentoController;
 use App\Http\Controllers\Documenti\FetchCategorieController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
@@ -37,6 +38,9 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
         ->name('documenti.download');
 
     Route::post('/categorie-documento', [CategoriaDocumentoController::class, 'store'])->name('categorie.store');
+
+    Route::put('documenti/{documento}/toggle-approval', DocumentoApprovalController::class)
+        ->name('documenti.toggle-approval');
 
     Route::put('comunicazioni/{comunicazione}/toggle-approval', ComunicazioneApprovalController::class)
         ->name('comunicazioni.toggle-approval');

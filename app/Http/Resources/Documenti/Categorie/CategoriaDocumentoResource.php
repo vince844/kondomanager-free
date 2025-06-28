@@ -16,11 +16,11 @@ class CategoriaDocumentoResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'          => $this->id,
-            'name'        => $this->name,
-            'description' => $this->description,
+            'id'              => $this->id,
+            'name'            => $this->name,
+            'description'     => $this->description,
             'documenti_count' => $this->documenti_count ?? 0,
-            'documenti'   => DocumentoResource::collection($this->whenLoaded('documenti')),
+            'documenti'       => DocumentoResource::collection($this->whenLoaded('documenti')),
         ];
     }
 }

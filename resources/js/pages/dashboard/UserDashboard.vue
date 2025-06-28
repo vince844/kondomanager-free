@@ -3,18 +3,18 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
-import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import { usePermission } from "@/composables/permissions";
-import { type BreadcrumbItem } from '@/types';
+import { Permission } from '@/enums/Permission';
+import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';
 
-const { hasPermission } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -28,13 +28,6 @@ const props = defineProps<{
   comunicazioni: Comunicazione[];
   documenti: Documento[];
 }>()
-
-const priorityIcons = {
-  bassa: CircleArrowDown,
-  media: CircleArrowRight,
-  alta: CircleArrowUp,
-  urgente: CircleAlert,
-}
 
 </script>
 
@@ -67,20 +60,19 @@ const priorityIcons = {
                             </div>
 
                             <Link
-                                :href="route('user.comunicazioni.index')"
-                                v-if="hasPermission(['Visualizza comunicazioni'])"
+                                :href="route(generateRoute('comunicazioni.index'))"
+                                v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
                                 Visualizza tutte
                             </Link>
                             </div>
                     </CardHeader>
-                    <CardContent v-if="hasPermission(['Visualizza comunicazioni'])">
+                    <CardContent v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])">
                         <ComunicazioniList 
-                                :comunicazioni="comunicazioni" 
-                                :priorityIcons="priorityIcons" 
-                                :routeName="'user.comunicazioni.show'"
-                            />
+                            :comunicazioni="comunicazioni" 
+                            :routeName="'comunicazioni.show'"
+                        />
                     </CardContent>
 
                     <CardContent v-else>
@@ -101,8 +93,8 @@ const priorityIcons = {
                         </div>
 
                         <Link
-                            :href="route('user.segnalazioni.index')"
-                            v-if="hasPermission(['Visualizza segnalazioni'])"
+                            :href="route(generateRoute('segnalazioni.index'))"
+                            v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
                             class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                         >
                             Visualizza tutte
@@ -110,11 +102,10 @@ const priorityIcons = {
                         </div>
                     </CardHeader>
 
-                    <CardContent v-if="hasPermission(['Visualizza segnalazioni'])">
+                    <CardContent v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])">
                         <SegnalazioniList 
                             :segnalazioni="segnalazioni" 
-                            :priorityIcons="priorityIcons" 
-                            :routeName="'user.segnalazioni.show'"
+                            :routeName="'segnalazioni.show'"
                         />
                     </CardContent>
 
@@ -139,15 +130,15 @@ const priorityIcons = {
                             </div>
 
                             <Link
-                                :href="route('user.categorie-documenti.index')"
-                                v-if="hasPermission(['Visualizza documenti'])"
+                                :href="route(generateRoute('categorie-documenti.index'))"
+                                v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
                                 Visualizza tutti
                             </Link>
                         </div>
                     </CardHeader>
-                    <CardContent v-if="hasPermission(['Visualizza documenti'])">
+                    <CardContent v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])">
                         <DocumentiList
                             :documenti="documenti" 
                         />

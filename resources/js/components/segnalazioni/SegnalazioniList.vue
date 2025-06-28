@@ -1,14 +1,24 @@
 <script setup lang="ts">
 
-import { ref, computed } from "vue";
+import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
+import { usePermission } from "@/composables/permissions";
 import type { Segnalazione } from '@/types/segnalazioni';
 
 const props = defineProps<{
   segnalazioni: Segnalazione[];
-  priorityIcons: Record<string, any>; 
   routeName: string;
 }>();
+
+const priorityIcons = {
+  bassa: CircleArrowDown,
+  media: CircleArrowRight,
+  alta: CircleArrowUp,
+  urgente: CircleAlert,
+}
+
+const { generateRoute } = usePermission();
 
 const expandedIds = ref<Set<number>>(new Set());
 
@@ -39,7 +49,7 @@ const truncate = (text: string, length: number = 120) => {
             <div class="flex-1 min-w-0">
   
               <Link
-                :href="route(routeName, { id: segnalazione.id })"
+                :href="route(generateRoute(routeName), { id: segnalazione.id })"
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold"
               >
                 <component

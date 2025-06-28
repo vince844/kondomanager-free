@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
-import { Head, useForm, Link, usePage } from '@inertiajs/vue3';
-import { ref, watch, onMounted } from 'vue';
+import { Head, useForm, Link } from '@inertiajs/vue3';
+import { watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
@@ -13,13 +13,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Pencil, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
-import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
+import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
-import { Permission } form '@/enums/permissions';
+import { Permission } from '@/enums/Permission';
 import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
+import type { PriorityType } from '@/types/comunicazioni';
 
 const props = defineProps<{
   comunicazione: Comunicazione;
@@ -40,13 +40,6 @@ const form = useForm({
 onMounted(() => {
     form.condomini_ids = props.comunicazione?.condomini?.options?.map(c => c.value) ?? [];
 })
-
-watch(
-    () => props.anagrafica,
-    () => {
-        form.condomini_ids = props.comunicazione?.condomini?.options?.map(c => c.value) ?? [];
-    }
-) 
 
 const submit = () => {
   form.put(route(generateRoute('comunicazioni.update'), { id: props.comunicazione.id }), {

@@ -27,7 +27,7 @@ export function useDocumenti(initialData: Documento[] = [], initialMeta: Partial
   /**
    * Removes a documento by ID and handles pagination
    */
-  const removeDocumento = (id: string): void => {
+  const removeDocumento = (id: number): void => {
     documenti.value = documenti.value.filter(c => c.id !== id);
     meta.value.total = Math.max(0, meta.value.total - 1);
     meta.value.last_page = Math.max(1, Math.ceil(meta.value.total / meta.value.per_page));

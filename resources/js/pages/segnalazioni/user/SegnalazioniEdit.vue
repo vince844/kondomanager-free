@@ -13,7 +13,6 @@ import { LoaderCircle, Plus, List } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
-import { Permission } from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { PriorityType, StatoType } from '@/types/segnalazioni';
@@ -23,7 +22,7 @@ const props = defineProps<{
   segnalazione: Segnalazione;
 }>();  
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const form = useForm({
     subject: props.segnalazione?.subject,

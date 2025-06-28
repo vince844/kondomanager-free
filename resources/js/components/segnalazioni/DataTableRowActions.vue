@@ -1,71 +1,96 @@
 <script setup lang="ts">
-
 import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3";
+import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
-import { usePermission } from "@/composables/permissions";
-import type { Segnalazione } from '@/types/segnalazioni';
-import { useSegnalazioni } from '@/composables/useSegnalazioni';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { usePermission } from "@/composables/permissions"
+import { Permission } from "@/enums/Permission"
+import { useSegnalazioni } from '@/composables/useSegnalazioni'
+import type { Segnalazione } from '@/types/segnalazioni'
 
-defineProps<{ 
-  segnalazione: Segnalazione 
-}>()
+defineProps<{ segnalazione: Segnalazione }>()
 
-const segnalazioneID = ref('');
+const segnalazioneID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
-const { removeSegnalazione } = useSegnalazioni();
-const { hasPermission, generateRoute } = usePermission();
+const isDeleting = ref(false)
+
+const { removeSegnalazione } = useSegnalazioni()
+const { hasPermission, generateRoute } = usePermission()
 
 function handleDelete(segnalazione: Segnalazione) {
-  segnalazioneID.value = segnalazione.id;
-  isDropdownOpen.value = false 
-  setTimeout(() => {
-    isAlertOpen.value = true 
-  }, 200) 
-}
-
-const closeModal = () => {
+  segnalazioneID.value = segnalazione.id
   isDropdownOpen.value = false
+  setTimeout(() => {
+    isAlertOpen.value = true
+  }, 200)
 }
 
-const deleteSegnalazione = () => {
+function closeModal() {
+  isAlertOpen.value = false
+  isDropdownOpen.value = false
+  segnalazioneID.value = null
+}
 
-  const id = segnalazioneID.value;
+function deleteSegnalazione() {
+  if (segnalazioneID.value === null || isDeleting.value) return
 
-  router.delete(route('admin.segnalazioni.destroy', { id }), {
+  const id = segnalazioneID.value
+  isDeleting.value = true
+
+  router.delete(route('admin.segnalazioni.destroy', { id: String(id) }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash','stats', 'segnalazioni'], 
+    only: ['flash', 'stats', 'segnalazioni'],
     onSuccess: () => {
-      removeSegnalazione(id);
-      closeModal(); 
+      removeSegnalazione(id)
+      closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.');
+      console.error('Errore durante la cancellazione.')
+    },
+    onFinish: () => {
+      isDeleting.value = false
     }
-  });
-
+  })
 }
-
 </script>
 
 <template>
-  <DropdownMenu v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni', 'Elimina segnalazioni'])" >
+  <DropdownMenu
+    v-if="hasPermission([
+      Permission.EDIT_SEGNALAZIONI,
+      Permission.EDIT_OWN_SEGNALAZIONI,
+      Permission.DELETE_SEGNALAZIONI
+    ])"
+  >
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem  
-        v-if="hasPermission(['Modifica segnalazioni', 'Modifica proprie segnalazioni'])"
+      <DropdownMenuItem
+        v-if="hasPermission([Permission.EDIT_SEGNALAZIONI, Permission.EDIT_OWN_SEGNALAZIONI])"
       >
         <Link
           :href="route(generateRoute('segnalazioni.edit'), { id: segnalazione.id })"
@@ -76,20 +101,18 @@ const deleteSegnalazione = () => {
           Modifica
         </Link>
       </DropdownMenuItem>
-  
-      <DropdownMenuItem 
-        v-if="hasPermission(['Elimina segnalazioni'])" 
-        @click="handleDelete(segnalazione)" 
+
+      <DropdownMenuItem
+        v-if="hasPermission([Permission.DELETE_SEGNALAZIONI])"
+        @click="handleDelete(segnalazione)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-         Elimina 
+        Elimina
       </DropdownMenuItem>
-
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
-   <AlertDialog v-model:open="isAlertOpen" >
+  <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
         <AlertDialogTitle>Sei sicuro di volere eliminare questa segnalazione?</AlertDialogTitle>
@@ -98,8 +121,11 @@ const deleteSegnalazione = () => {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteSegnalazione()">Continua</AlertDialogAction>
+        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
+        <AlertDialogAction :disabled="isDeleting" @click="deleteSegnalazione">
+          <span v-if="isDeleting">Eliminazione...</span>
+          <span v-else>Continua</span>
+        </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

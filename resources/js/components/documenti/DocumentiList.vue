@@ -1,9 +1,9 @@
 <script setup lang="ts">
 
 import { ref } from "vue";
-import type { Documento } from '@/types/documenti';
 import { CloudDownload } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
   documenti: Documento[];
@@ -43,7 +43,7 @@ const truncate = (text: string, length: number = 120) => {
                 :href="route(generateRoute('documenti.download'), { id: documento.id })"
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold hover:text-primary transition-colors"
               >
-                <CloudDownload class="w-4 h-4 text-muted-foreground" />
+                <CloudDownload class="w-4 h-4 text-green-400" />
                 {{ documento.name }}
                 
               </a>

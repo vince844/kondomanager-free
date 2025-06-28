@@ -8,7 +8,7 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/comunicazioni/DataTableToolbar.vue';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
-import type { Comunicazioone } from '@/types/comunicazioni';
+import type { Comunicazione } from '@/types/comunicazioni';
 
 const props = defineProps<{
   columns: ColumnDef<Comunicazione, any>[],

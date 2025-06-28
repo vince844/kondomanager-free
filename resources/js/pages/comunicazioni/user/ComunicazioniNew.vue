@@ -131,7 +131,7 @@ const submit = () => {
                                     :options="priorityConstants" 
                                     label="label" 
                                     v-model="form.priority"
-                                    placeholder="Priorità comunincazione"
+                                    placeholder="Priorità comunicazione"
                                     @update:modelValue="form.clearErrors('priority')" 
                                     :reduce="(priority: PriorityType) => priority.value"
                                 >

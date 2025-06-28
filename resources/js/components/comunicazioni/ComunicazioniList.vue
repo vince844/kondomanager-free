@@ -2,13 +2,23 @@
 
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
+import { usePermission } from "@/composables/permissions";
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import type { Comunicazione } from '@/types/comunicazioni';
 
 const props = defineProps<{
   comunicazioni: Comunicazione[];
-  priorityIcons: Record<string, any>; // or a more specific component map if you have one
   routeName: string;
 }>();
+
+const priorityIcons = {
+  bassa: CircleArrowDown,
+  media: CircleArrowRight,
+  alta: CircleArrowUp,
+  urgente: CircleAlert,
+}
+
+const { generateRoute } = usePermission();
 
 const expandedIds = ref<Set<number>>(new Set());
 
@@ -39,15 +49,15 @@ const truncate = (text: string, length: number = 120) => {
             <div class="flex-1 min-w-0">
   
               <Link
-                :href="route(routeName, { id: comunicazione.id })"
+                :href="route(generateRoute(routeName), { id: comunicazione.id })"
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold"
               >
                 <component
                   :is="priorityIcons[comunicazione.priority]"
                   class="w-4 h-4"
                   :class="{
-                    'text-blue-400': comunicazione.priority === 'bassa',
-                    'text-yellow-300': comunicazione.priority === 'media',
+                    'text-green-400': comunicazione.priority === 'bassa',
+                    'text-blue-300': comunicazione.priority === 'media',
                     'text-orange-400': comunicazione.priority === 'alta',
                     'text-red-500': comunicazione.priority === 'urgente',
                   }"

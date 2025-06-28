@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, toRef, watch, ref, onMounted } from 'vue';
+
+import { computed, toRef, watch } from 'vue';
 import { Head, usePage, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
@@ -10,8 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
-import type { Flash } from '@/types/flash';
 import { LoaderCircle } from 'lucide-vue-next';
+import type { Flash } from '@/types/flash';
 
 const { generateRoute } = usePermission();
 

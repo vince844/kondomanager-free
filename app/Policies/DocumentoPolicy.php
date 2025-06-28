@@ -86,6 +86,13 @@ class DocumentoPolicy
         return false;
     }
 
+    public function approve(User $user, Documento $documento): Response
+    {
+        return $user->hasPermissionTo(Permission::APPROVE_ARCHIVE_DOCUMENTS->value)  
+        ? Response::allow() 
+        : Response::deny(__('policies.approve_archive_documents'));
+    }
+
     /**
      * Verifica se l'utente è assegnato al documento o al suo condominio.
      *

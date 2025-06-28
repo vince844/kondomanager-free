@@ -22,10 +22,11 @@ export interface PublishedType {
 }
 
 export interface Documento {
-  id: string;
+  id: number;
   name: string;
   description: string;
   is_published: boolean;
+  is_approved: boolean
   created_at: string;
   mime_type: string;
   condomini: {
