@@ -70,6 +70,7 @@ enum Role: string
                 PermissionEnum::CREATE_ARCHIVE_DOCUMENTS,
                 PermissionEnum::EDIT_ARCHIVE_DOCUMENTS,
                 PermissionEnum::PUBLISH_ARCHIVE_DOCUMENTS,
+                PermissionEnum::APPROVE_ARCHIVE_DOCUMENTS,
             ],
 
             self::FORNITORE => [

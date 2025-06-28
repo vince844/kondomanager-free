@@ -75,6 +75,7 @@ enum Permission: string
     case EDIT_ARCHIVE_DOCUMENTS = 'Modifica documenti archivio';
     case PUBLISH_ARCHIVE_DOCUMENTS = 'Pubblica documenti archivio';
     case APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio';
+    case DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio';
 
     /**
      * Get a human-readable description for the permission.
@@ -141,12 +142,13 @@ enum Permission: string
             self::VIEW_COMMENTS_SEGNALAZIONI => 'Permette di visualizzare commenti lasciati in una segnalazione guasto',
 
             // Documenti archivio
-            self::VIEW_ARCHIVE_DOCUMENTS => 'Permette di visualizzare i documenti',
-            self::CREATE_ARCHIVE_DOCUMENTS => 'Permette di creare nuovi documenti',
-            self::DELETE_ARCHIVE_DOCUMENTS => 'Permette di eliminare documenti',
-            self::EDIT_ARCHIVE_DOCUMENTS => 'Permette di modificare documenti',
-            self::PUBLISH_ARCHIVE_DOCUMENTS => 'Permette di pubblicare documenti',
-            self::APPROVE_ARCHIVE_DOCUMENTS => 'Permette di approvare documenti'
+            self::VIEW_ARCHIVE_DOCUMENTS => 'Permette di visualizzare i documenti in archivio',
+            self::CREATE_ARCHIVE_DOCUMENTS => 'Permette di creare nuovi documenti in archivio',
+            self::DELETE_ARCHIVE_DOCUMENTS => 'Permette di eliminare documenti in archivio',
+            self::EDIT_ARCHIVE_DOCUMENTS => 'Permette di modificare documenti in archivio',
+            self::PUBLISH_ARCHIVE_DOCUMENTS => 'Permette di pubblicare documenti in archivio',
+            self::APPROVE_ARCHIVE_DOCUMENTS => 'Permette di approvare documenti in archivio',
+            self::DELETE_OWN_ARCHIVE_DOCUMENTS => 'Permette di eliminare i propri documenti in archivio'
         };
     }
 }

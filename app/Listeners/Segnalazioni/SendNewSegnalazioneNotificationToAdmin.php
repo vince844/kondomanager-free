@@ -3,6 +3,7 @@
 namespace App\Listeners\Segnalazioni;
 
 use App\Enums\NotificationType;
+use App\Enums\Permission;
 use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Models\Anagrafica;
 use App\Models\Segnalazione;
@@ -40,7 +41,7 @@ class SendNewSegnalazioneNotificationToAdmin implements ShouldQueue
 
             $segnalazione = $event->segnalazione;
 
-            $adminQuery = User::permission('Accesso pannello amministratore');
+            $adminQuery = User::permission(Permission::ACCESS_ADMIN_PANEL->value);
 
             $admins = $this->filterByNotificationPreference(
                 $adminQuery,

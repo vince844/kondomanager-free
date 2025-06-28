@@ -27,6 +27,10 @@ const truncate = (text: string, length: number = 120) => {
   return text.length > length ? `${text.slice(0, length)}...` : text;
 };
 
+const truncatedName = (name: string, length: number = 80) => {
+  return name.length > length ? `${name.slice(0, length)}...` : name;
+};
+
 </script>
 
 <template>
@@ -44,7 +48,8 @@ const truncate = (text: string, length: number = 120) => {
                 class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold hover:text-primary transition-colors"
               >
                 <CloudDownload class="w-4 h-4 text-green-400" />
-                {{ documento.name }}
+
+                {{ truncatedName(documento.name, 40) }}
                 
               </a>
   

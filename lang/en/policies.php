@@ -29,5 +29,6 @@ return [
     'view_archive_documents'    => "You don't have sufficient permissions to view archived documents.",
     'create_archive_documents'  => "You don't have sufficient permissions to create archive documents.",
     'approve_archive_documents' => "You don't have sufficient permissions to approve an archive document",
+    'delete_archive_documents'  => "You don't have sufficient permissions to delete an archive document",
 
 ];

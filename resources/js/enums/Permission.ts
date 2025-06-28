@@ -1,14 +1,17 @@
 // src/enums/Permission.ts
 export enum Permission {
   ACCESS_ADMIN_PANEL = 'Accesso pannello amministratore',
+  // Utenti
   CREATE_USERS = 'Crea utenti',
   EDIT_USERS = 'Modifica utenti',
   DELETE_USERS = 'Elimina utenti',
   VIEW_USERS = 'Visualizza utenti',
+  // Condomini
   CREATE_CONDOMINI = 'Crea condomini',
   EDIT_CONDOMINI = 'Modifica condomini',
   DELETE_CONDOMINI = 'Elimina condomini',
   VIEW_CONDOMINI = 'Visualizza condomini',
+  // Comunicazioni
   CREATE_COMUNICAZIONI = 'Crea comunicazioni',
   APPROVE_COMUNICAZIONI = 'Approva comunicazioni',
   PUBLISH_COMUNICAZIONI = 'Pubblica comunicazioni',
@@ -19,12 +22,14 @@ export enum Permission {
   DELETE_OWN_COMUNICAZIONI = 'Elimina proprie comunicazioni',
   VIEW_COMUNICAZIONI = 'Visualizza comunicazioni',
   VIEW_OWN_COMUNICAZIONI = 'Visualizza proprie comunicazioni',
+  // Commenti comunicazioni
   COMMENT_COMUNICAZIONI = 'Commenta comunicazioni',
   PUBLISH_COMMENTS_COMUNICAZIONI = 'Pubblica commenti comunicazioni',
   APPROVE_COMMENTS_COMUNICAZIONI = 'Approva commenti comunicazioni',
   EDIT_COMMENTS_COMUNICAZIONI = 'Modifica commenti comunicazioni',
   DELETE_COMMENTS_COMUNICAZIONI = 'Elimina commenti comunicazioni',
   VIEW_COMMENTS_COMUNICAZIONI = 'Visualizza commenti comunicazioni',
+  // Segnalazioni guasti
   CREATE_SEGNALAZIONI = 'Crea segnalazioni',
   APPROVE_SEGNALAZIONI = 'Approva segnalazioni',
   PUBLISH_SEGNALAZIONI = 'Pubblica segnalazioni',
@@ -34,6 +39,7 @@ export enum Permission {
   DELETE_OWN_SEGNALAZIONI = 'Elimina proprie segnalazioni',
   VIEW_SEGNALAZIONI = 'Visualizza segnalazioni',
   VIEW_OWN_SEGNALAZIONI = 'Visualizza proprie segnalazioni',
+  // Commenti segnalazioni
   COMMENT_SEGNALAZIONI = 'Commenta segnalazioni',
   EDIT_COMMENTS_SEGNALAZIONI = 'Modifica commenti segnalazioni',
   EDIT_OWN_COMMENTS_SEGNALAZIONI = 'Modifica propri commenti segnalazioni',
@@ -42,10 +48,12 @@ export enum Permission {
   PUBLISH_COMMENTS_SEGNALAZIONI = 'Pubblica commenti segnalazioni',
   APPROVE_COMMENTS_SEGNALAZIONI = 'Approva commenti segnalazioni',
   VIEW_COMMENTS_SEGNALAZIONI = 'Visualizza commenti segnalazioni',
+  // Documenti archivio
   VIEW_ARCHIVE_DOCUMENTS = 'Visualizza documenti archivio',
   CREATE_ARCHIVE_DOCUMENTS = 'Crea documenti archivio',
   DELETE_ARCHIVE_DOCUMENTS = 'Elimina documenti archvio',
   EDIT_ARCHIVE_DOCUMENTS = 'Modifica documenti archivio',
   PUBLISH_ARCHIVE_DOCUMENTS = 'Pubblica documenti archivio',
   APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio',
+  DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio',
 }

@@ -169,9 +169,43 @@ class DocumentoController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Documento $documento)
+    public function destroy(Documento $documento): RedirectResponse
     {
-        //
+        Gate::authorize('delete', $documento);
+
+        try {
+            // Start a transaction in case you need to roll back
+            DB::beginTransaction();
+
+            // Delete the file from storage
+            if (Storage::exists($documento->path)) {
+                Storage::delete($documento->path);
+            }
+
+            // Delete the database record
+            $documento->delete();
+
+            DB::commit();
+
+            return back()->with(
+                $this->flashSuccess(__('documenti.success_delete_document'))
+            );
+
+        } catch (\Exception $e) {
+            
+            DB::rollBack();
+
+            Log::error('Error deleting documento archivio', [
+                'document_id' => $documento->id,
+                'message'     => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+
+            return back()->with(
+                $this->flashError(__('documenti.error_delete_document'))
+            ); 
+        }   
+
     }
 
     /**

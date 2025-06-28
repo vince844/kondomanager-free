@@ -9,6 +9,7 @@ import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
 import { Permission } from '@/enums/Permission';
 import { Button } from "@/components/ui/button";
+import Alert from "@/components/Alert.vue";
 import { CircleAlert, Loader2, SearchX, Plus, List } from "lucide-vue-next";
 import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
 import type { Categoria } from '@/types/categorie';
@@ -32,7 +33,7 @@ interface Props {
 const props = defineProps<Props>();
 const page = usePage<{ flash: { message?: Flash }, auth: Auth }>();
 const { hasPermission, generateRoute } = usePermission();
-const { documenti, meta, setDocumenti, removeDocumento } = useDocumenti(
+const { documenti, meta, setDocumenti } = useDocumenti(
   props.documenti.data,
   {
     current_page: props.documenti.current_page,
@@ -42,8 +43,8 @@ const { documenti, meta, setDocumenti, removeDocumento } = useDocumenti(
   }
 );
 
-const auth = computed(() => page.props.auth);
 const flashMessage = computed(() => page.props.flash.message);
+console.log('Flash message:', flashMessage.value);
 const searchQuery = ref(props.search ?? '');
 const loadingCount = ref(0);
 const isInitialLoad = ref(true);
@@ -232,6 +233,10 @@ watch(searchQuery, (val) => {
               <List class="w-4 h-4" />
               <span>Categorie</span>
           </Link>
+        </div>
+
+        <div v-if="flashMessage" class="py-4">
+          <Alert :message="flashMessage.message" :type="flashMessage.type" />
         </div>
 
         <div class="relative min-h-[300px]">

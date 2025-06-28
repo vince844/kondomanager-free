@@ -65,9 +65,21 @@ class DocumentoPolicy
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, Documento $documento): bool
+    public function delete(User $user, Documento $documento): Response
     {
-        return false;
+        if ($user->hasPermissionTo(Permission::DELETE_ARCHIVE_DOCUMENTS->value)) {
+            return Response::allow();
+        }
+        
+        if ($user->hasPermissionTo(Permission::DELETE_OWN_ARCHIVE_DOCUMENTS->value)) {
+
+            if ($documento->created_by === $user->id) {
+                return Response::allow();
+            }
+            
+        } 
+
+        return Response::deny(__('policies.delete_archive_documents'));
     }
 
     /**

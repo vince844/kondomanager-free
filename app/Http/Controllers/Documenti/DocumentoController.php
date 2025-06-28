@@ -209,6 +209,8 @@ class DocumentoController extends Controller
      */
     public function destroy(Documento $documento): RedirectResponse
     {
+        Gate::authorize('delete',$documento);
+
         try {
             // Start a transaction in case you need to roll back
             DB::beginTransaction();
