@@ -54,7 +54,7 @@ const truncatedName = (name: string, length: number = 80) => {
               </a>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }} nella categoria {{ documento.categoria.name.toLowerCase() }}</span>
+                <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }} in {{ documento.categoria.name.toLowerCase() }}</span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">

@@ -7,6 +7,8 @@ return [
     'no_file_uploaded'                     => "No file was uploaded. Please try again.",
     'file_not_found'                       => "No file was found. Please try again.",
     'success_delete_document'              => "The document has been deleted successfully.",
+    'success_update_document'              => "The document has been updated successfully",
+    'error_update_document'                => "An error occurred while updating the document.",
     'error_delete_document'                => "An error occurred while deleting the document.",
     'error_downloading_document'           => "An error occurred while downloading the document.",
     'error_notify_new_document'            => "The documento was created, but there was an error sending the notification.",

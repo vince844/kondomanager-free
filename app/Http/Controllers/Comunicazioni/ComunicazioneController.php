@@ -210,7 +210,7 @@ class ComunicazioneController extends Controller
         $comunicazione->loadMissing(['createdBy.anagrafica', 'condomini', 'anagrafiche']);
 
         return Inertia::render('comunicazioni/ComunicazioniEdit', [
-         'comunicazione'  => new ComunicazioneResource($comunicazione),
+         'comunicazione' => new ComunicazioneResource($comunicazione),
          'condomini'     => CondominioOptionsResource::collection(Condominio::all()),
          'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all())
         ]);

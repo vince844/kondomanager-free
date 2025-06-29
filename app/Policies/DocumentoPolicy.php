@@ -23,7 +23,6 @@ class DocumentoPolicy
     public function view(User $user, Documento $documento): Response
     {
 
-        // Grant access for admin panel access
         if (
             $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value) &&
             $user->hasPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value)
@@ -31,7 +30,6 @@ class DocumentoPolicy
             return Response::allow();
         }
 
-         // Grant access if the user can view comunicazioni and is assigned to it or their condominio
         if (
             $user->hasPermissionTo(Permission::VIEW_ARCHIVE_DOCUMENTS->value) && 
             $this->isAssignedToUserOrCondominio($user, $documento)

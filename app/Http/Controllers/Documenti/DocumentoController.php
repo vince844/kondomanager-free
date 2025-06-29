@@ -6,9 +6,13 @@ use App\Events\Documenti\NotifyUserOfCreatedDocumento;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\CreateDocumentoRequest;
 use App\Http\Requests\Documento\DocumentoIndexRequest;
+use App\Http\Requests\Documento\UpdateDocumentoRequest;
+use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Http\Resources\Documenti\DocumentoResource;
+use App\Models\Anagrafica;
 use App\Models\CategoriaDocumento;
 use App\Models\Condominio;
 use App\Models\Documento;
@@ -42,6 +46,8 @@ class DocumentoController extends Controller
      */
     public function index(DocumentoIndexRequest $request, Documento $documento): Response
     {
+        Gate::authorize('view', $documento);
+
         $validated = $request->validated();
 
         $documenti = $this->documentoService->getDocumenti(  
@@ -172,27 +178,80 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(Documento $documento)
-    {
-        //
-    }
-
-    /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Documento $documento)
+    public function edit(Documento $documento): Response
     {
-        //
+        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+
+        return Inertia::render('documenti/DocumentiEdit', [
+            'documento'   => new DocumentoResource($documento),
+            'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
+            'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+        ]); 
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Documento $documento)
+    public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
-        //
+
+        $validated = $request->validated();
+
+        try {
+
+            DB::beginTransaction();
+
+            /** @var \Illuminate\Http\Request $request */
+            if ($request->hasFile('file') && $request->file('file')->isValid()) {
+                // Delete old file if exists
+                if (Storage::exists($documento->path)) {
+                    Storage::delete($documento->path);
+                }
+
+                $uploadedFile = $request->file('file');
+                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+
+                // Update file related fields
+                $documento->path = $path;
+                $documento->mime_type = $uploadedFile->getClientMimeType();
+                $documento->file_size = $uploadedFile->getSize();
+            }
+
+            $documento->update([
+                'name'         => $validated['name'] ?? $documento->name,
+                'description'  => $validated['description'] ?? $documento->description,
+                'path'         => $documento->path,
+                'mime_type'    => $documento->mime_type,
+                'file_size'    => $documento->file_size,
+                'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                'category_id'  => $validated['category_id'] ?? $documento->category_id,
+                'is_published' => $validated['is_published'] ?? $documento->is_published,
+                'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
+            ]);
+
+            if (isset($validated['condomini_ids'])) {
+                $documento->condomini()->sync($validated['condomini_ids']);
+            }
+
+            $documento->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+
+            DB::commit();
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Error updating documento archivio: ' . $e->getMessage());
+
+            return to_route('admin.documenti.index')->with(
+                $this->flashError(__('documenti.error_update_document'))
+            );
+        }
+
+        return to_route('admin.documenti.index')->with(
+            $this->flashSuccess(__('documenti.success_update_document'))
+        );
     }
 
     /**

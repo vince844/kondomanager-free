@@ -34,6 +34,9 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
         'documenti' => 'documento'
     ]);
 
+    Route::post('documenti/{documento}', [DocumentoController::class, 'update'])
+    ->name('documenti.update'); // Same name used by Inertia
+
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])
         ->name('documenti.download');
 
