@@ -16,15 +16,7 @@ interface RecoveryCodesResponse {
 }
 
 export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes: string[]) {
-  const csrfToken =
-    document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-
-  const headers = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'X-CSRF-TOKEN': csrfToken,
-    'X-Requested-With': 'XMLHttpRequest',
-  };
+  const csrfToken = ref(document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
 
   const confirmed = ref(initialConfirmed);
   const qrCodeSvg = ref('');
@@ -37,6 +29,29 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
   const showingRecoveryCodes = ref(false);
   const showModal = ref(false);
 
+  // Helper to fetch fresh CSRF token from server and update meta tag & ref
+  const fetchCsrfToken = async () => {
+    const response = await fetch('/csrf-token', { credentials: 'same-origin' });
+    if (response.ok) {
+      const data = await response.json();
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta) {
+        meta.setAttribute('content', data.csrf_token);
+      }
+      csrfToken.value = data.csrf_token;
+      return data.csrf_token;
+    }
+    throw new Error('Failed to fetch CSRF token');
+  };
+
+  // Function to generate fresh headers with current CSRF token
+  const getHeaders = () => ({
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    'X-CSRF-TOKEN': csrfToken.value,
+    'X-Requested-With': 'XMLHttpRequest',
+  });
+
   // Automatically enable 2FA when modal opens and QR is not yet fetched
   watch([showModal, verifyStep, qrCodeSvg], ([newShowModal, newVerifyStep, newQrCodeSvg]) => {
     if (newShowModal && !newVerifyStep && !newQrCodeSvg) {
@@ -46,9 +61,11 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
 
   const enable = async () => {
     try {
+      await fetchCsrfToken(); // Refresh token before request
+
       const response = await fetch(route('two-factor.enable'), {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
       });
 
       if (response.ok) {
@@ -69,9 +86,11 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
     const formattedCode = passcode.value.replace(/\s+/g, '').trim();
 
     try {
+      await fetchCsrfToken(); // Refresh token before request
+
       const response = await fetch(route('two-factor.confirm'), {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({ code: formattedCode }),
       });
 
@@ -101,9 +120,11 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
 
   const regenerateRecoveryCodes = async () => {
     try {
+      await fetchCsrfToken(); // Refresh token before request
+
       const response = await fetch(route('two-factor.regenerate-recovery-codes'), {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
       });
 
       if (response.ok) {
@@ -121,7 +142,12 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
 
   const disable = async () => {
     try {
-      const response = await fetch(route('two-factor.disable'), { method: 'DELETE', headers });
+      await fetchCsrfToken(); // Refresh token before request
+
+      const response = await fetch(route('two-factor.disable'), {
+        method: 'DELETE',
+        headers: getHeaders(),
+      });
 
       if (response.ok) {
         confirmed.value = false;
@@ -140,7 +166,7 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     copied.value = true;
-    setTimeout(() => copied.value = false, 1500);
+    setTimeout(() => (copied.value = false), 1500);
   };
 
   return {

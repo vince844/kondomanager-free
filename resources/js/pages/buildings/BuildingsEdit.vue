@@ -2,7 +2,6 @@
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
@@ -10,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import type { Building } from '@/types/buildings';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import type { BreadcrumbItem } from '@/types';
+import type { Building } from '@/types/buildings';
 
 const props = defineProps<{ building: Building }>();
 

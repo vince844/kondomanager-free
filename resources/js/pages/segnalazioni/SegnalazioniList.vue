@@ -1,13 +1,12 @@
 <script setup lang="ts">
 
-import { computed, onMounted, watch } from "vue";
+import { computed } from "vue";
 import { usePage, Head } from "@inertiajs/vue3";
 import DataTable from '@/components/segnalazioni/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/segnalazioni/columns';
 import Alert from "@/components/Alert.vue";
-import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
 import type { Flash } from '@/types/flash';
 import type { Segnalazione, Stats } from '@/types/segnalazioni';

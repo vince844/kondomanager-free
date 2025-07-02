@@ -23,6 +23,7 @@ function handleLogout() {
     })
 }
 
+
 </script>
 
 <template>

@@ -14,155 +14,115 @@ use Illuminate\Support\Facades\Log;
 class DocumentoService
 {
     /**
-     * Get paginated comunicazioni based on user role.
-     *
-     * @param Anagrafica|null $anagrafica
-     * @param Collection|null $condominioIds
-     * @param array $validated
-     * @return LengthAwarePaginator
+     * Get documents paginated or limited, scoped by admin or user.
      */
-
     public function getDocumenti(
         ?Anagrafica $anagrafica = null,
         ?Collection $condominioIds = null,
         array $validated = [],
         ?int $limit = null
     ): Collection|LengthAwarePaginator {
-
-        $query = $this->isAdmin()
-            ? $this->getAdminScopedBaseQuery($validated)    // <-- return Builder
-            : $this->getUserScopedBaseQuery($anagrafica, $condominioIds); // <-- return Builder
-
-        // Apply filters on base query
-        $query = $this->applyFilters($query, $validated);
+        $query = $this->getScopedBaseQuery($anagrafica, $condominioIds, $validated);
 
         if ($limit !== null) {
-            return $query->limit($limit)->get();  // returns a Collection
+            return $query->limit($limit)->get();
         }
 
         return $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
-                    ->withQueryString();  // returns LengthAwarePaginator
+                     ->withQueryString();
     }
 
     /**
-     * Return admin base query builder without pagination.
+     * Unified base query builder depending on user role.
      */
-    public function getAdminScopedBaseQuery(array $validated = []): Builder
-    {
-        $query = Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria'])
-            ->orderBy('created_at', 'desc');
+    protected function getScopedBaseQuery(
+        ?Anagrafica $anagrafica,
+        ?Collection $condominioIds,
+        array $validated = []
+    ): Builder {
+        $query = $this->isAdmin()
+            ? $this->getAdminBaseQuery($validated)
+            : $this->getUserBaseQuery($anagrafica, $condominioIds);
 
         return $this->applyFilters($query, $validated);
     }
 
     /**
-     * Expose the user-scoped base query for external use.
-     *
-     * @param Anagrafica|null $anagrafica
-     * @param Collection|null $condominioIds
-     * @return Builder
+     * Admin base query with eager loads and ordering.
      */
-    public function getUserScopedBaseQuery(
-        ?Anagrafica $anagrafica,
-        ?Collection $condominioIds
-    ): Builder {
-        return $this->buildUserScopedBaseQuery($anagrafica, $condominioIds);
+    protected function getAdminBaseQuery(array $validated): Builder
+    {
+        return Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria'])
+                        ->orderBy('created_at', 'desc');
     }
 
     /**
-     * Build base query for user-scoped comunicazioni.
-     *
-     * @param Anagrafica|null $anagrafica
-     * @param Collection|null $condominioIds
-     * @return Builder
+     * User base query scoped to anagrafica and condominio.
      */
-    private function buildUserScopedBaseQuery(
-        ?Anagrafica $anagrafica,
-        ?Collection $condominioIds
-    ): Builder {
-        if (!$anagrafica || !$condominioIds) {
-            Log::warning('No anagrafica or condominio IDs provided for user-scoped query.');
-            return Documento::query()->whereRaw('1 = 0');
+    protected function getUserBaseQuery(?Anagrafica $anagrafica, ?Collection $condominioIds): Builder
+    {
+        if (!$anagrafica || $condominioIds->isEmpty()) {
+            Log::warning('No anagrafica or condominio IDs provided for user query.');
+            return Documento::query()->whereRaw('0 = 1'); // empty result set
         }
 
         return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
             ->where('is_published', true)
             ->where('is_approved', true)
             ->where(function ($query) use ($anagrafica, $condominioIds) {
-                $query->where(function ($q) use ($anagrafica) {
-                    $q->whereHas('anagrafiche', function ($subQ) use ($anagrafica) {
-                        $subQ->where('anagrafica_id', $anagrafica->id);
-                    });
-                })
-                ->orWhere(function ($q) use ($condominioIds) {
-                    $q->whereDoesntHave('anagrafiche')
-                      ->whereHas('condomini', function ($subQ) use ($condominioIds) {
-                          $subQ->whereIn('condominio_id', $condominioIds);
+                $query->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagrafica->id))
+                      ->orWhere(function ($q) use ($condominioIds) {
+                          $q->whereDoesntHave('anagrafiche')
+                            ->whereHas('condomini', fn($sub) => $sub->whereIn('condominio_id', $condominioIds));
                       });
-                });
-            });
+            })
+            ->orderBy('created_at', 'desc');
     }
 
     /**
-     * Apply filters to the query based on validated data.
-     *
-     * @param Builder $query
-     * @param array $validated
-     * @return Builder
+     * Apply filtering based on validated inputs.
      */
-    private function applyFilters(Builder $query, array $validated): Builder
+    protected function applyFilters(Builder $query, array $validated): Builder
     {
         return $query
-            ->when($validated['search'] ?? false, fn($q, $search) =>
-                $q->where('name', 'like', "%{$search}%")
-            )
-            ->when($validated['name'] ?? false, fn($q, $name) =>
-                $q->where('name', 'like', "%{$name}%")
-            ) 
-            ->when($validated['category_id'] ?? false, fn($q, $categories) =>
-                $q->whereIn('category_id', $categories)
-            );
+            ->when($validated['search'] ?? false, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
+            ->when($validated['name'] ?? false, fn($q, $n) => $q->where('name', 'like', "%{$n}%"))
+            ->when($validated['category_id'] ?? false, fn($q, $c) => $q->whereIn('category_id', $c));
     }
 
+    /**
+     * Get counts grouped by category without ordering (fixes MySQL ONLY_FULL_GROUP_BY issue).
+     */
     public function getUserDocumentCountsByCategoria(Anagrafica $anagrafica, Collection $condominioIds): Collection
     {
-        return $this->getUserScopedBaseQuery($anagrafica, $condominioIds)
-            ->selectRaw('category_id, COUNT(*) as count')
-            ->groupBy('category_id')
-            ->pluck('count', 'category_id');
+        $query = $this->getUserBaseQuery($anagrafica, $condominioIds);
+
+        $query->getQuery()->orders = null; // Remove orderBy to avoid SQL error
+
+        return $query->selectRaw('category_id, COUNT(*) as count')
+                     ->groupBy('category_id')
+                     ->pluck('count', 'category_id');
     }
 
+    /**
+     * Get documents by category, paginated.
+     */
     public function getDocumentiByCategoria(
         Anagrafica $anagrafica,
         Collection $condominioIds,
         int $categoriaId,
         array $validated = []
     ): LengthAwarePaginator {
-        // Get the base query builder
-        $query = $this->isAdmin()
-            ? $this->getAdminScopedBaseQuery($validated)  // Make sure this returns a Builder
-            : $this->getUserScopedBaseQuery($anagrafica, $condominioIds);  // Make sure this returns a Builder
-        
-        // Apply category filter
-        $query->where('category_id', $categoriaId);
-
-        // Apply search filter if present
-        if (isset($validated['search'])) {
-            $query->where('name', 'like', '%'.$validated['search'].'%');
-        }
-
-        // Apply other filters
-        $query = $this->applyFilters($query, $validated);
+        $query = $this->getScopedBaseQuery($anagrafica, $condominioIds, $validated)
+                      ->where('category_id', $categoriaId);
 
         return $query->orderBy('created_at', 'desc')
-                    ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
-                    ->withQueryString();
+                     ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+                     ->withQueryString();
     }
 
     /**
-     * Get statistics on documents based on user role.
-     *
-     * @return object
+     * Get aggregated statistics for documents.
      */
     public function getDocumentiStats(): object
     {
@@ -172,31 +132,26 @@ class DocumentoService
     }
 
     /**
-     * Get admin-specific document stats (all documents).
-     *
-     * @return object
+     * Admin document statistics.
      */
-    private function getAdminDocumentiStats(): object
+    protected function getAdminDocumentiStats(): object
     {
         $query = Documento::query();
 
         return (object) [
             'total_storage_bytes' => (int) $query->sum('file_size'),
-            'total_documents'     => (int) $query->count(),
+            'total_documents' => (int) $query->count(),
             'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
                                                  ->whereYear('created_at', now()->year)
                                                  ->count(),
-            'average_size_bytes'  => (float) $query->avg('file_size') ?: 0,
+            'average_size_bytes' => (float) $query->avg('file_size') ?: 0,
         ];
     }
 
     /**
-     * Get user-specific document stats filtered by user's anagrafica and condominio.
-     *
-     * @param \App\Models\User $user
-     * @return object
+     * User document statistics.
      */
-    private function getUserDocumentiStats($user): object
+    protected function getUserDocumentiStats($user): object
     {
         $anagrafica = $user->anagrafica;
         $condominioIds = optional($anagrafica)->condomini->pluck('id') ?? collect();
@@ -210,7 +165,7 @@ class DocumentoService
             ];
         }
 
-        $query = $this->getUserScopedBaseQuery($anagrafica, $condominioIds);
+        $query = $this->getUserBaseQuery($anagrafica, $condominioIds);
 
         return (object) [
             'total_storage_bytes' => (int) $query->sum('file_size'),
@@ -223,11 +178,9 @@ class DocumentoService
     }
 
     /**
-     * Check if the current user is an administrator or collaborator.
-     *
-     * @return bool
+     * Check if current user is admin or collaborator.
      */
-    private function isAdmin(): bool
+    protected function isAdmin(): bool
     {
         $user = Auth::user();
         return $user->hasRole(['amministratore', 'collaboratore']) ||

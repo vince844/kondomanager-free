@@ -22,7 +22,7 @@ const props = defineProps<{
   condomini: Building[];
 }>();  
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const form = useForm({
     subject: '',

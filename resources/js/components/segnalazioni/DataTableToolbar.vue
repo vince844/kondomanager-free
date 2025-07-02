@@ -3,16 +3,16 @@
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BellPlus } from 'lucide-vue-next';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 
-const { generateRoute, hasPermission, hasRole } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 // Change this to allow table reset when filter cleared
 const { table } = defineProps<{
@@ -102,7 +102,7 @@ watchDebounced(
     <!-- Crea Button (Mobile: Below | Desktop: Far Right) -->
     <Link 
       as="button"
-      v-if="hasPermission(['Crea segnalazioni'])"
+      v-if="hasPermission([Permission.CREATE_SEGNALAZIONI])"
       :href="route(generateRoute('segnalazioni.create'))" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >

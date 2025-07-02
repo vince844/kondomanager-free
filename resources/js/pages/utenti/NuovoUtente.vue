@@ -7,13 +7,13 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select";
+import { LoaderCircle } from 'lucide-vue-next';
+import UtentiLayout from '@/layouts/utenti/Layout.vue';
+import { Separator } from '@/components/ui/separator';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
 import type { BreadcrumbItem } from '@/types';
-import { LoaderCircle } from 'lucide-vue-next';
-import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import { Separator } from '@/components/ui/separator';
 
 const props = defineProps<{
   roles: Role[];

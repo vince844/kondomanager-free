@@ -3,10 +3,10 @@
 import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { UserPlus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Anagrafica } from '@/types/anagrafiche';
 
@@ -15,7 +15,7 @@ interface DataTableToolbarProps {
 }
 
 const nomeFilter = ref('')
-const { hasPermission } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 // Debounce search input (300ms delay)
 watchDebounced(
@@ -23,7 +23,7 @@ watchDebounced(
   (newValue) => {
     // Reset filters if empty, otherwise filter
     router.get(
-      route('admin.anagrafiche.index'),
+      route(generateRoute('anagrafiche.index')),
       newValue
         ? { nome: newValue, page: 1 }
         : { page: 1 }, // Clear the filter
@@ -52,8 +52,8 @@ watchDebounced(
     <!-- Right Section: Button (force it to the right) -->
     <Link 
       as="button"
-      v-if="hasPermission(['Crea utenti'])"
-      :href="route('admin.anagrafiche.create')" 
+      v-if="hasPermission([Permission.CREATE_USERS])"
+      :href="route(generateRoute('anagrafiche.create'))" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <UserPlus class="w-4 h-4" />

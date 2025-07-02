@@ -13,13 +13,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
-import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche';
-import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import '@vuepic/vue-datepicker/dist/main.css';
 import axios from 'axios';
+import type { Building } from '@/types/buildings';
+import type { Anagrafica } from '@/types/anagrafiche';
+import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 
 const props = defineProps<{
   condomini: Building[];

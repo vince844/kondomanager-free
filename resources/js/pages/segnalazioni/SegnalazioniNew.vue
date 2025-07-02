@@ -15,7 +15,6 @@ import { Separator } from '@/components/ui/separator';
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
-import { Permission } from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, StatoType, PublishedType } from '@/types/segnalazioni';
@@ -26,7 +25,7 @@ const props = defineProps<{
   anagrafiche: Anagrafica[];
 }>();  
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const form = useForm({
     subject: '',

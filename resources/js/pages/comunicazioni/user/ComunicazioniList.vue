@@ -320,8 +320,8 @@ async function confirmDelete() {
 
                   <div class="flex items-center gap-2">
                     <Link
-                      v-if="hasPermission(['Modifica comunicazioni']) || 
-                           (hasPermission(['Modifica proprie comunicazioni']) && 
+                      v-if="hasPermission([Permission.EDIT_COMUNICAZIONI]) || 
+                           (hasPermission([Permission.EDIT_OWN_COMUNICAZIONI]) && 
                             comunicazione.created_by.user.id === auth.user.id)"
                       :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
                       class="text-gray-700 hover:text-blue-600 transition-colors"
@@ -331,8 +331,8 @@ async function confirmDelete() {
                     </Link>
 
                     <button
-                      v-if="hasPermission(['Elimina comunicazioni']) || 
-                           (hasPermission(['Elimina proprie comunicazioni']) && 
+                      v-if="hasPermission([Permission.DELETE_COMUNICAZIONI]) || 
+                           (hasPermission([Permission.DELETE_OWN_COMUNICAZIONI]) && 
                             comunicazione.created_by.user.id === auth.user.id)"
                       @click="handleDelete(comunicazione)"
                       class="text-gray-700 hover:text-red-600 transition-colors"

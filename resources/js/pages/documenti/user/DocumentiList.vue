@@ -44,7 +44,6 @@ const { documenti, meta, setDocumenti } = useDocumenti(
 );
 
 const flashMessage = computed(() => page.props.flash.message);
-console.log('Flash message:', flashMessage.value);
 const searchQuery = ref(props.search ?? '');
 const loadingCount = ref(0);
 const isInitialLoad = ref(true);
@@ -52,6 +51,9 @@ const showDelayedLoading = ref(false);
 const errorState = ref<string | null>(null);
 const showNoResultsDelayed = ref(false);
 const hasSearched = ref(false);
+const justResetSearch = ref(false);
+
+let latestSearchId = 0;
 
 const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(() => {
   showDelayedLoading.value = true;
@@ -75,6 +77,15 @@ const showNoResults = computed(() => {
     searchQuery.value &&
     documenti.value.length === 0 &&
     showNoResultsDelayed.value
+  );
+});
+
+const showNoDocuments = computed(() => {
+  return (
+    !isLoading.value &&
+    !hasSearched.value &&
+    documenti.value.length === 0 &&
+    !justResetSearch.value
   );
 });
 
@@ -136,14 +147,14 @@ async function handlePageChange(page: number) {
   }
 }
 
+// 🔐 Race condition guard
 watchDebounced(
   searchQuery,
   async (newQuery) => {
-    // Reset no-results display to avoid showing stale message immediately
+    const currentSearchId = ++latestSearchId;
+
     showNoResultsDelayed.value = false;
-
     incrementLoading();
-
     hasSearched.value = true;
 
     try {
@@ -159,8 +170,10 @@ watchDebounced(
           replace: true,
           only: ['documenti'],
           onFinish: () => {
-            stopLoading();
+            // Ignore outdated responses
+            if (currentSearchId !== latestSearchId) return;
 
+            stopLoading();
             if (newQuery && filteredResults.value.length === 0) {
               startNoResultsTimer();
             } else {
@@ -170,9 +183,11 @@ watchDebounced(
         }
       );
     } catch (error) {
-      errorState.value = "Errore durante la ricerca.";
-      stopLoading();
-      showNoResultsDelayed.value = false;
+      if (currentSearchId === latestSearchId) {
+        errorState.value = "Errore durante la ricerca.";
+        stopLoading();
+        showNoResultsDelayed.value = false;
+      }
       console.error('Search error:', error);
     }
   },
@@ -181,16 +196,28 @@ watchDebounced(
 
 watch(searchQuery, (val) => {
   if (!val) {
+    justResetSearch.value = true;
+
     hasSearched.value = false;
     showNoResultsDelayed.value = false;
     errorState.value = null;
     stopNoResultsTimer();
 
-    // Reset documents to the original props data when search cleared
-    updatePaginationData(props.documenti);
+    router.get(
+      route(generateRoute('categorie-documenti.show'), { id: props.categoria.id }),
+      {},
+      {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: ['documenti'],
+        onFinish: () => {
+          justResetSearch.value = false;
+        }
+      }
+    );
   }
 });
-
 </script>
 
 <template>
@@ -204,7 +231,7 @@ watch(searchQuery, (val) => {
       />
 
       <div class="container mx-auto mt-4">
-        <!-- Search -->
+        <!-- Search and action buttons -->
         <div class="mb-4 flex items-center gap-4">
           <div class="flex-1 relative max-w-md">
             <input
@@ -215,32 +242,37 @@ watch(searchQuery, (val) => {
             />
           </div>
 
-          <Button
-            v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
-            as="a"
-            :href="route(generateRoute('documenti.create'), { categoria: props.categoria.id })"
-            class="h-8 lg:flex items-center gap-2 ml-auto"
-          >
-            <Plus class="w-4 h-4" />
-            <span>Crea</span>
-          </Button>
-           <Link 
+          <div class="flex items-center gap-2 ml-auto">
+            <Button
+              v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
+              as="a"
+              :href="route(generateRoute('documenti.create'), { categoria: props.categoria.id })"
+              class="h-8 lg:flex items-center gap-2"
+            >
+              <Plus class="w-4 h-4" />
+              <span>Crea</span>
+            </Button>
+
+            <Link 
               as="button"
               v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])"
               :href="route(generateRoute('categorie-documenti.index'))" 
               class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
-          >
+            >
               <List class="w-4 h-4" />
               <span>Categorie</span>
-          </Link>
+            </Link>
+          </div>
         </div>
 
+        <!-- Flash message -->
         <div v-if="flashMessage" class="py-4">
           <Alert :message="flashMessage.message" :type="flashMessage.type" />
         </div>
 
-        <div class="relative min-h-[300px]">
-          <!-- Loading spinner -->
+        <!-- Content area -->
+        <div class="relative min-h-[200px]">
+          <!-- Loading state -->
           <Transition name="fade">
             <div 
               v-if="shouldShowLoading"
@@ -273,7 +305,7 @@ watch(searchQuery, (val) => {
             </div>
           </Transition>
 
-          <!-- Results and empty state -->
+          <!-- Results -->
           <TransitionGroup name="fade-list" tag="div">
             <div v-if="filteredResults.length > 0" class="grid gap-4 md:grid-cols-1 lg:grid-cols-4">
               <DocumentiListCards
@@ -283,11 +315,11 @@ watch(searchQuery, (val) => {
               />
             </div>
 
-            <!-- Show only when not loading and no results -->
-            <div 
+            <!-- Search with no results -->
+            <div
               v-if="showNoResults"
               key="no-results"
-              class="text-center py-10 fade-list-item"
+              class="fade-list-item w-full border border-gray-300 rounded-lg p-6 text-center bg-white mt-6"
             >
               <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
               <h3 class="text-lg font-medium text-gray-900">
@@ -298,7 +330,6 @@ watch(searchQuery, (val) => {
               </p>
               <Button
                 v-if="searchQuery"
-                variant="ghost"
                 size="sm"
                 class="mt-3"
                 @click="searchQuery = ''"
@@ -306,6 +337,22 @@ watch(searchQuery, (val) => {
                 Cancella ricerca
               </Button>
             </div>
+
+            <!-- No documents at all -->
+            <div 
+              v-if="showNoDocuments"
+              key="no-documents"
+              class="fade-list-item w-full border border-gray-300 rounded-lg p-6 text-center bg-white mt-6"
+            >
+              <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
+              <h3 class="text-lg font-medium text-gray-900">
+                Nessun documento presente
+              </h3>
+              <p class="mt-1 text-gray-500">
+                Non ci sono ancora documenti per questa categoria.
+              </p>
+            </div>
+
           </TransitionGroup>
         </div>
 
@@ -325,7 +372,6 @@ watch(searchQuery, (val) => {
           >
             <PaginationFirst :disabled="shouldShowLoading" />
             <PaginationPrev :disabled="shouldShowLoading" />
-
             <template v-for="(item, index) in items" :key="index">
               <PaginationListItem
                 v-if="item.type === 'page'"
@@ -341,10 +387,8 @@ watch(searchQuery, (val) => {
                   {{ item.value }}
                 </Button>
               </PaginationListItem>
-
               <PaginationEllipsis v-else :index="index" />
             </template>
-
             <PaginationNext :disabled="shouldShowLoading" />
             <PaginationLast :disabled="shouldShowLoading" />
           </PaginationList>

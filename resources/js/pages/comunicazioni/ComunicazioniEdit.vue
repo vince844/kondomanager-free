@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { Head, useForm, Link, usePage } from '@inertiajs/vue3';
+import { Head, useForm, Link } from '@inertiajs/vue3';
 import { ref, watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,6 @@ import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/const
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import axios from 'axios';
 import { usePermission } from "@/composables/permissions";
-import { Permission }  from "@/enums/Permission";
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -29,7 +28,7 @@ const props = defineProps<{
   anagrafiche: Anagrafica[];
 }>();  
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
 
