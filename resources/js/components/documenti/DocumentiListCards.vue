@@ -1,9 +1,9 @@
 <script setup lang="ts">
 
 import { ref, computed } from "vue";
-import { usePage, router } from "@inertiajs/vue3";
+import { usePage, router, Link } from "@inertiajs/vue3";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trash2 } from "lucide-vue-next";
+import { Trash2, Pencil } from "lucide-vue-next";
 import { Badge } from '@/components/ui/badge';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
 import { usePermission } from "@/composables/permissions";
@@ -98,6 +98,17 @@ async function confirmDelete() {
       >
         {{ documento.mime_type }}
       </Badge>
+
+      <Link
+        v-if="hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS]) || 
+              (hasPermission([Permission.EDIT_OWN_ARCHIVE_DOCUMENTS]) && 
+              documento.created_by.user.id === auth.user.id)"
+        :href="route(generateRoute('documenti.edit'), { id: documento.id })"
+        class="text-gray-700 hover:text-blue-600 transition-colors"
+        title="Modifica"
+      >
+        <Pencil class="w-3 h-3" />
+      </Link>
 
       <button
         v-if="hasPermission([Permission.DELETE_ARCHIVE_DOCUMENTS]) || 

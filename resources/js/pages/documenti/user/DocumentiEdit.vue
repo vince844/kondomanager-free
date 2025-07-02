@@ -1,10 +1,9 @@
 <script setup lang="ts">
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { List, Plus, LoaderCircle, UploadCloud, Info } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
@@ -12,30 +11,57 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
+import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
-import type { Building } from '@/types/buildings';
+import { publishedConstants } from '@/lib/documenti/constants';
+import type { PublishedType } from '@/types/documenti';
+import type { Categoria } from '@/types/categorie';
+import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
-  categoria: number;
-  condomini: Building[];
+  documento: Documento;
+  categories: Categoria[];
 }>()
 
-const { generateRoute } = usePermission()
+const { generateRoute } = usePermission();
 
+const localCategories = ref(props.categories);
+const newCategoryName = ref('')
+const newCategoryDescription = ref('')
 const file = ref<File | null>(null)
 const progress = ref<number | null>(null)
 
 const form = useForm({
-  name: '',
-  description: '',
-  is_published: true,
-  condomini_ids: [],
-  category_id: props.categoria,
-  is_private: false as boolean,
+  name: props.documento?.name ?? '',
+  description: props.documento?.description ?? '',
+  is_published: !!props.documento?.is_published,
+  category_id: props.documento?.categoria?.id ?? null, 
   file: null as File | null,
-})
+});
+
+const createCategory = async () => {
+
+  if (!newCategoryName.value) return
+
+  try {
+    const response = await axios.post(route(generateRoute('categorie.store')), {
+      name: newCategoryName.value,
+      description: newCategoryDescription.value
+    })
+
+    const newCat = response.data
+    localCategories.value.push(newCat)
+    form.category_id = newCat.id
+
+    newCategoryName.value = ''
+    newCategoryDescription.value = ''
+  } catch (error) {
+    console.error('Errore creazione categoria', error)
+  }
+
+}
 
 function handleFileChange(event: Event) {
   const target = event.target as HTMLInputElement
@@ -52,39 +78,41 @@ function handleFileChange(event: Event) {
 }
 
 const submit = () => {
-  form.post(route(generateRoute('documenti.store')), {
+
+  form.post(route(generateRoute('documenti.update'), { id: props.documento.id }), {
     preserveScroll: true,
+    method: 'put',
     onStart: () => {
-      progress.value = 0
+      progress.value = 0;
     },
     onProgress: (event) => {
       if (event?.percentage) {
-        progress.value = Math.round(event.percentage)
+        progress.value = Math.round(event.percentage);
       }
     },
     onSuccess: () => {
-      progress.value = null
-      form.reset()
-      file.value = null
+      progress.value = null;
+      form.reset();
+      file.value = null;
     },
     onFinish: () => {
-      progress.value = null
+      progress.value = null;
     },
-  })
-}
+  });
+};
+
 </script>
 
 
 <template>
-  <Head title="Crea nuovo documento" />
+  <Head title="Modifica documento" />
 
-<!--   <AppLayout :breadcrumbs="breadcrumbs"> -->
   <AppLayout >
     <div class="px-4 py-6">
 
       <Heading
-        title="Crea documento archivio"
-        description="Compila il seguente modulo per la creazione di un nuovo documento per l'archivo del condominio"
+        title="Modifica documento archivio"
+        description="Compila il seguente modulo per modificare documento per l'archivo del condominio"
       />
 
       <form @submit.prevent="submit" class="space-y-2">
@@ -160,6 +188,7 @@ const submit = () => {
                           <input
                             id="file-upload"
                             type="file"
+                            name="file" 
                             class="hidden"
                             accept="application/pdf"
                             @change="handleFileChange"
@@ -192,61 +221,86 @@ const submit = () => {
                 <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
 
                     <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                        <div class="sm:col-span-6">
-                            <Label for="condomini">Condominio</Label>
+                      <div class="sm:col-span-6 space-y-1">
 
-                            <v-select 
-                              multiple
-                              :options="condomini" 
-                              label="nome" 
-                              v-model="form.condomini_ids"
-                              placeholder="Condomini"
-                              @update:modelValue="form.clearErrors('condomini_ids')" 
-                              :reduce="(condomini: Building) => condomini.id"
-                            />
-
-                            <InputError :message="form.errors.condomini_ids" />
-                
+                        <!-- Label + info icon -->
+                        <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
+                          <Label for="stato">Categoria</Label>
+                          <HoverCard>
+                            <HoverCardTrigger as-child>
+                              <button type="button" class="cursor-pointer">
+                                <Info class="w-4 h-4 text-muted-foreground" />
+                              </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent class="w-80">
+                              <div class="space-y-1">
+                                <h4 class="text-sm font-semibold">Categoria documento</h4>
+                                <p class="text-sm">
+                                  Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                                </p>
+                              </div>
+                            </HoverCardContent>
+                          </HoverCard>
                         </div>
-                    </div>
 
-                    <Separator class="my-4" />
+                        <!-- v-select and plus button in one row -->
+                        <div class="flex items-center gap-2">
+                          <v-select
+                            :options="localCategories"
+                            label="name"
+                            v-model="form.category_id"
+                            :reduce="(option: Categoria) => option.id"
+                            placeholder="Seleziona categoria"
+                            class="flex-1"
+                            @update:modelValue="form.clearErrors('category_id')" 
+                          />
+                          <Sheet>
+                            <SheetTrigger as-child>
+                              <button type="button" class="p-2 rounded-md border hover:bg-muted transition">
+                                <Plus class="w-4 h-4 text-muted-foreground hover:text-primary" />
+                              </button>
+                            </SheetTrigger>
+                            <SheetContent side="right" class="p-6">
+                              <SheetHeader class="mt-4 p-0">
+                                <SheetTitle>Crea nuova categoria</SheetTitle>
+                                <SheetDescription>
+                                  Aggiungi una nuova categoria per i documenti.
+                                </SheetDescription>
+                              </SheetHeader>
 
-                    <div class="pt-4 grid grid-cols-1 sm:grid-cols-6">
-                        <div class="flex items-center space-x-2 sm:col-span-6">
-                            <Checkbox 
-                                class="size-4" 
-                                :checked="form.is_private"
-                                v-model="form.is_private" 
-                                id="is_private" 
-                                @update:checked="(val) => form.is_private = val" 
-                                />
-                            <label
-                                for="is_private"
-                                class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
-                                >
-                                Crea documento privato
+                              <form @submit.prevent="createCategory" class="mt-6 space-y-4">
+                                <div>
+                                  <Label for="new-category-name">Nome</Label>
+                                  <Input
+                                    id="new-category-name"
+                                    v-model="newCategoryName"
+                                    placeholder="Nome della categoria"
+                                    class="w-full mt-1"
+                                  />
+                                </div>
 
-                                <HoverCard>
-                                    <HoverCardTrigger as-child>
-                                        <Info class="w-4 h-4 text-muted-foreground cursor-pointer ml-2" />
-                                    </HoverCardTrigger>
-                                    <HoverCardContent class="w-80">
-                                    <div class="flex justify-between space-x-4">
-                                        <div class="space-y-1">
-                                            <h4 class="text-sm font-semibold">
-                                                Crea documento privato
-                                            </h4>
-                                            <p class="text-sm">
-                                                Quando viene selezionata questa opzione il documento verrà reso privato e sarà solo visibile agli amministratori e non a tutti gli altri condòmini
-                                            </p>
-                                        </div>
-                                    </div>
-                                    </HoverCardContent>
-                                </HoverCard>
+                                <div>
+                                  <Label for="new-category-description">Descrizione</Label>
+                                  <Textarea
+                                    id="new-category-description"
+                                    v-model="newCategoryDescription"
+                                    placeholder="Descrizione della categoria"
+                                    class="w-full mt-1 min-h-[200px]"
+                                  />
+                                </div>
 
-                            </label>
+                                <div class="flex justify-end">
+                                  <SheetClose as-child>
+                                    <Button type="submit">Salva</Button>
+                                  </SheetClose>
+                                </div>
+                              </form>
+                            </SheetContent>
+                          </Sheet>
                         </div>
+
+                        <InputError :message="form.errors.category_id" />
+                      </div>
                     </div>
 
                 </div>

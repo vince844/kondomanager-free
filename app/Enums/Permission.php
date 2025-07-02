@@ -73,6 +73,7 @@ enum Permission: string
     case CREATE_ARCHIVE_DOCUMENTS = 'Crea documenti archivio';
     case DELETE_ARCHIVE_DOCUMENTS = 'Elimina documenti archvio';
     case EDIT_ARCHIVE_DOCUMENTS = 'Modifica documenti archivio';
+    case EDIT_OWN_ARCHIVE_DOCUMENTS = 'Modifica propri documenti archivio';
     case PUBLISH_ARCHIVE_DOCUMENTS = 'Pubblica documenti archivio';
     case APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio';
     case DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio';
@@ -146,6 +147,7 @@ enum Permission: string
             self::CREATE_ARCHIVE_DOCUMENTS => 'Permette di creare nuovi documenti in archivio',
             self::DELETE_ARCHIVE_DOCUMENTS => 'Permette di eliminare documenti in archivio',
             self::EDIT_ARCHIVE_DOCUMENTS => 'Permette di modificare documenti in archivio',
+            self::EDIT_OWN_ARCHIVE_DOCUMENTS => 'Permette di modificare solo i propri documenti in archivio',
             self::PUBLISH_ARCHIVE_DOCUMENTS => 'Permette di pubblicare documenti in archivio',
             self::APPROVE_ARCHIVE_DOCUMENTS => 'Permette di approvare documenti in archivio',
             self::DELETE_OWN_ARCHIVE_DOCUMENTS => 'Permette di eliminare i propri documenti in archivio'

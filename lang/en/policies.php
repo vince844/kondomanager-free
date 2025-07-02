@@ -5,16 +5,16 @@ return [
     'create_communication'      => "You don't have sufficient permissions to create a new communication.",
     'approve_communication'     => "You don't have sufficient permissions to approve a communication",
     'view_communications'       => "You don't have sufficient permissions to view communications.",
-    'view_communication'        => 'You do not have permission to view this communication.',
-    'edit_communications'       => 'You do not have permission to edit communications.',
-    'delete_communications'     => 'You do not have permission to delete communications.',
+    'view_communication'        => "You don't have sufficient permissions to view this communication.",
+    'edit_communications'       => "You don't have sufficient permissions to edit communications.",
+    'delete_communications'     => "You don't have sufficient permissions to delete communications.",
     // Tickets
     'view_tickets'              => "You don't have sufficient permissions to view tickets.",
     'view_ticket'               => "You don't have sufficient permissions to view this ticket.",
     'approve_ticket'            => "You don't have sufficient permissions to approve a ticket",
     'create_ticket'             => "You don't have sufficient permissions to create a new ticket.",
-    'edit_tickets'              => 'You do not have permission to edit tickets.',
-    'delete_tickets'            => 'You do not have permission to delete tickets.',
+    'edit_tickets'              => "You don't have sufficient permissions to edit tickets.",
+    'delete_tickets'            => "You don't have sufficient permissions to delete tickets.",
     // Buildings
     'view_buildings'            => "You don't have sufficient permissions to view buildings.",
     'create_building'           => "You don't have sufficient permissions to create a new building.",
@@ -28,7 +28,8 @@ return [
     // Archive documents
     'view_archive_documents'    => "You don't have sufficient permissions to view archived documents.",
     'create_archive_documents'  => "You don't have sufficient permissions to create archive documents.",
-    'approve_archive_documents' => "You don't have sufficient permissions to approve an archive document",
-    'delete_archive_documents'  => "You don't have sufficient permissions to delete an archive document",
+    'approve_archive_documents' => "You don't have sufficient permissions to approve an archive document.",
+    'delete_archive_documents'  => "You don't have sufficient permissions to delete an archive document.",
+    'edit_archive_documents'    => "You don't have sufficient permissions to edit an archive document.",
 
 ];

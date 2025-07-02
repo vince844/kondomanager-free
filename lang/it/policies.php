@@ -5,7 +5,7 @@ return [
     'create_communication'      => "Non hai permessi sufficienti per creare una comunicazione in bacheca!",
     'approve_communication'     => "Non hai permessi sufficienti per approvare una comunicazione in bacheca!",
     'view_communications'       => "Non hai permessi sufficienti per visualizzare le comunicazioni in bacheca!",
-    'view_communication'        => 'Non hai i permessi per visualizzare questa comunicazione in bacheca!',
+    'view_communication'        => 'Non hai permessi sufficienti per visualizzare questa comunicazione in bacheca!',
     'edit_communications'       => 'Non hai permessi sufficienti per modificare le comunicazioni in bacheca!',
     'delete_communications'     => 'Non hai permessi sufficienti per eliminare le comunicazioni in bacheca!',
     // Tickets
@@ -30,5 +30,6 @@ return [
     'create_archive_documents'  => "Non hai permessi sufficienti per creare documenti in archivio!",
     'approve_archive_documents' => "Non hai permessi sufficienti per approvare un documento in archivio!",
     'delete_archive_documents'  => "Non hai permessi sufficienti per eliminare un documento in archivio!",
+    'edit_archive_documents'    => "Non hai permessi sufficienti per modificare un documento in archivio!",
 
 ];

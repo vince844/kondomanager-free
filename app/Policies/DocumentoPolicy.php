@@ -55,9 +55,19 @@ class DocumentoPolicy
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, Documento $documento): bool
+    public function update(User $user, Documento $documento): Response
     {
-        return false;
+        if ($user->hasPermissionTo(Permission::EDIT_ARCHIVE_DOCUMENTS->value)) {
+            return Response::allow();
+        }
+
+        if ($user->hasPermissionTo(Permission::EDIT_OWN_ARCHIVE_DOCUMENTS->value)) {
+            if ($documento->created_by === $user->id) {
+                return Response::allow();
+            }
+        }
+
+        return Response::deny(__('policies.edit_archive_documents'));
     }
 
     /**

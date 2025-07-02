@@ -53,6 +53,7 @@ export enum Permission {
   CREATE_ARCHIVE_DOCUMENTS = 'Crea documenti archivio',
   DELETE_ARCHIVE_DOCUMENTS = 'Elimina documenti archvio',
   EDIT_ARCHIVE_DOCUMENTS = 'Modifica documenti archivio',
+  EDIT_OWN_ARCHIVE_DOCUMENTS = 'Modifica propri documenti archivio',
   PUBLISH_ARCHIVE_DOCUMENTS = 'Pubblica documenti archivio',
   APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio',
   DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio',

@@ -19,7 +19,6 @@ import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
-import type { BreadcrumbItem } from '@/types';
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 
@@ -33,7 +32,7 @@ const props = defineProps<{
 const { generatePath, generateRoute } = usePermission();
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
-const localCategories = ref<Categoria>(props.categories);
+const localCategories = ref(props.categories);
 const newCategoryName = ref('')
 const newCategoryDescription = ref('')
 const file = ref<File | null>(null)
@@ -73,7 +72,7 @@ const createCategory = async () => {
 
 const fetchAnagrafiche = async (condomini_ids: number[]) => {
   try {
-    const response = await axios.get('/fetch-anagrafiche', {
+    const response = await axios.get(generatePath('fetch-anagrafiche'), {
       params: { condomini_ids },
     });
 
@@ -133,7 +132,6 @@ const submit = () => {
 <template>
   <Head title="Modifica documento" />
 
-<!--  <AppLayout :breadcrumbs="breadcrumbs"> -->
   <AppLayout >
     <div class="px-4 py-6">
 

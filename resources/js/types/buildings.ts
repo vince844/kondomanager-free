@@ -12,11 +12,11 @@ export interface Building {
     particella_catasto: string,
     codice_identificativo: string,
 
-    value: string; 
+    value: number; 
     label: string; 
 
     option?: {
-      value: string;
+      value: number;
       label: string;
     };
 

@@ -5,7 +5,15 @@ namespace App\Http\Controllers\Documenti\Utenti;
 use App\Events\Documenti\NotifyAdminOfCreatedDocumento;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Utenti\CreateDocumentoRequest;
+use App\Http\Requests\Documento\Utenti\UpdateDocumentoRequest;
+use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
+use App\Http\Resources\Documenti\DocumentoResource;
+use App\Models\Anagrafica;
+use App\Models\CategoriaDocumento;
+use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
@@ -32,14 +40,6 @@ class DocumentoController extends Controller
     public function __construct(
         private DocumentoService $documentoService,
     ) {}
-
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        //
-    }
 
     /**
      * Show the form for creating a new resource.
@@ -143,27 +143,77 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(Documento $documento)
-    {
-        //
-    }
-
-    /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Documento $documento)
+    public function edit(Documento $documento): Response
     {
-        //
+        Gate::authorize('update',$documento);
+
+        $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
+
+        return Inertia::render('documenti/user/DocumentiEdit', [
+            'documento'   => new DocumentoResource($documento),
+            'categories'  => CategoriaDocumentoResource::collection(CategoriaDocumento::all()),
+            'condomini'   => CondominioOptionsResource::collection(Condominio::all()),
+            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
+        ]); 
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Documento $documento)
+    public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
-        //
+        Gate::authorize('update',$documento);
+
+        $validated = $request->validated();
+
+        try {
+
+            DB::beginTransaction();
+
+            /** @var \Illuminate\Http\Request $request */
+            if ($request->hasFile('file') && $request->file('file')->isValid()) {
+                // Delete old file if exists
+                if (Storage::exists($documento->path)) {
+                    Storage::delete($documento->path);
+                }
+
+                $uploadedFile = $request->file('file');
+                $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
+
+                // Update file related fields
+                $documento->path = $path;
+                $documento->mime_type = $uploadedFile->getClientMimeType();
+                $documento->file_size = $uploadedFile->getSize();
+            }
+
+            $documento->update([
+                'name'         => $validated['name'] ?? $documento->name,
+                'description'  => $validated['description'] ?? $documento->description,
+                'path'         => $documento->path,
+                'mime_type'    => $documento->mime_type,
+                'file_size'    => $documento->file_size,
+                'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                'category_id'  => $validated['category_id'] ?? $documento->category_id,
+                'is_published' => $validated['is_published'],
+                'is_approved'  => $validated['is_approved'],
+            ]);
+
+            DB::commit();
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Error user updating documento archivio: ' . $e->getMessage());
+
+            return to_route('user.categorie-documenti.index')->with(
+                $this->flashError(__('documenti.error_update_document'))
+            );
+        }
+
+        return to_route('user.categorie-documenti.index')->with(
+            $this->flashSuccess(__('documenti.success_update_document'))
+        );
     }
 
     /**
@@ -211,8 +261,7 @@ class DocumentoController extends Controller
     /**
      * Download the specified document file.
      *
-     * @param  \App\Models\Documento  $documento
-     * @return \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\RedirectResponse
+     * @param  \App\Models\Documento $documento
      */
     public function download(Documento $documento)
     {

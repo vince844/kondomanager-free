@@ -28,6 +28,9 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         'documenti' => 'documento'
     ]);
 
+    Route::post('documenti/{documento}', [DocumentoController::class, 'update'])
+        ->name('documenti.update');
+
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])
         ->name('documenti.download');
 

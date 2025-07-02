@@ -18,7 +18,6 @@ use App\Models\Condominio;
 use App\Models\Documento;
 use App\Services\DocumentoService;
 use App\Traits\HandleFlashMessages;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -182,6 +181,8 @@ class DocumentoController extends Controller
      */
     public function edit(Documento $documento): Response
     {
+        Gate::authorize('update',$documento);
+
         $documento->loadMissing(['categoria', 'condomini', 'anagrafiche']);
 
         return Inertia::render('documenti/DocumentiEdit', [
@@ -197,6 +198,7 @@ class DocumentoController extends Controller
      */
     public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
+        Gate::authorize('update',$documento);
 
         $validated = $request->validated();
 
@@ -308,10 +310,10 @@ class DocumentoController extends Controller
      * Download the specified document file.
      *
      * @param  \App\Models\Documento  $documento
-     * @return \Symfony\Component\HttpFoundation\StreamedResponse|\Illuminate\Http\RedirectResponse
      */
     public function download(Documento $documento)
     {
+        Gate::authorize('view', $documento);
 
         try {
             

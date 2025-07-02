@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, onMounted, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, usePage, router, Link } from "@inertiajs/vue3";

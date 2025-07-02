@@ -1,15 +1,13 @@
 <script setup lang="ts">
 
-import { computed, onMounted, watch } from 'vue';
+import { computed } from 'vue';
 import { usePage, Head } from '@inertiajs/vue3';
 import DataTable from '@/components/documenti/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/documenti/columns';
 import Alert from '@/components/Alert.vue';
-/* import { useDocumenti } from '@/composables/useDocumenti'; */
 import DocumentiStats from '@/components/documenti/DocumentiStats.vue';
-/* import type { BreadcrumbItem } from '@/types'; */
 import type { Flash } from '@/types/flash';
 import type { Documento, Stats } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
@@ -23,37 +21,6 @@ defineProps<{
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-/* defineProps<{ 
-  documenti: Documento[], 
-  stats: Stats,
-  meta: PaginationMeta
-}>()
-
-const page = usePage<{
-  documenti: Documento[],
-  meta: PaginationMeta,
-  flash: { message?: Flash }
-}>();
-
-const flashMessage = computed(() => page.props.flash.message);
-const { setDocumenti, documenti, meta: tableMeta } = useDocumenti();
-
-setDocumenti(page.props.documenti, page.props.meta);
-
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Elenco documenti', href: '/documenti' },
-];
-
-const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
-
-onMounted(() => {
-  if (flashMessage.value) scrollToTop();
-});
- */
-/* watch(flashMessage, (newVal) => {
-  if (newVal) scrollToTop();
-});
- */
 </script>
 
 <template>

@@ -83,7 +83,7 @@ const createCategory = async () => {
 
 const fetchAnagrafiche = async (condomini_ids: number[]) => {
   try {
-    const response = await axios.get('/fetch-anagrafiche', {
+    const response = await axios.get(generatePath('fetch-anagrafiche'), {
       params: { condomini_ids },
     });
 
