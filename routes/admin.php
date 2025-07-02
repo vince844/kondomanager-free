@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
+use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Dashboard\DashboardController;
@@ -21,6 +22,8 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
         ->name('categorie.documenti');
     
     Route::resource('anagrafiche', AnagraficaController::class);
+
+    Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
    
     Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
         'segnalazioni' => 'segnalazione'

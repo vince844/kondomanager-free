@@ -46,8 +46,6 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 */
 Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
 
-Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche'])->middleware(['auth', 'verified']);
-
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
 
 /*
