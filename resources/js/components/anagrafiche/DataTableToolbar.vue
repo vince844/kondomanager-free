@@ -4,7 +4,7 @@ import { ref } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { UserPlus } from 'lucide-vue-next';
+import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
@@ -56,7 +56,7 @@ watchDebounced(
       :href="route(generateRoute('anagrafiche.create'))" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
-      <UserPlus class="w-4 h-4" />
+      <Plus class="w-4 h-4" />
       <span>Crea</span>
     </Link>
 

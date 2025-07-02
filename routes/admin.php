@@ -18,6 +18,10 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
+     Route::resource('categorie', CategoriaDocumentoController::class)->parameters([
+        'categorie' => 'categoria'
+    ]);
+
     Route::get('/fetch-categorie-documenti', FetchCategorieController::class)
         ->name('categorie.documenti');
     

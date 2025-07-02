@@ -6,7 +6,7 @@ import { router } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Link } from '@inertiajs/vue3';
-import { UserPlus } from 'lucide-vue-next';
+import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
@@ -92,7 +92,7 @@ watchDebounced(
       :href="route(generateRoute('comunicazioni.create'))"
       class="hidden h-8 lg:flex ml-auto items-center gap-2"
     >
-      <UserPlus class="w-4 h-4" />
+      <Plus class="w-4 h-4" />
       <span>Crea</span>
     </Button>
 

@@ -22,7 +22,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
-use Illuminate\Http\Request;
 
 class ComunicazioneController extends Controller
 {

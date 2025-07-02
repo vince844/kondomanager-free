@@ -6,13 +6,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from '@/components/documenti/DataTableToolbar.vue';
-import type { Documento } from '@/types/documenti';
+import DataTableToolbar from '@/components/documenti/categories/DataTableToolbar.vue';
+import type { Categoria } from '@/types/categorie';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
 const props = defineProps<{
-  columns: ColumnDef<Documento, any>[],
-  data: Documento[],
+  columns: ColumnDef<Categoria, any>[],
+  data: Categoria[],
   meta: {
     current_page: number,
     per_page: number,
@@ -55,7 +55,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route('admin.documenti.index'), {
+    router.get(route('admin.categorie.index'), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {
