@@ -43,13 +43,17 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'version' => config('app.version'),
-            'quote' => ['message' => trim($message), 'author' => trim($author)],
+
             'auth.user' => fn () => $request->user()
-            ? new UserResource($request->user())
-            : null,
+                ? new UserResource($request->user())
+                : null,
+
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
             ],
+
+            // Share CSRF token only if user is logged in
+            'csrf_token' => fn () => $request->user() ? csrf_token() : null,
         ];
     }
 }

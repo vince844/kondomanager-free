@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 
 interface EnableResponse {
   qrCode: string;
@@ -16,7 +17,9 @@ interface RecoveryCodesResponse {
 }
 
 export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes: string[]) {
-  const csrfToken = ref(document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '');
+ 
+  const page = usePage();
+  const csrfToken = ref((page.props.csrf_token as string) || '');
 
   const confirmed = ref(initialConfirmed);
   const qrCodeSvg = ref('');
@@ -29,22 +32,6 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
   const showingRecoveryCodes = ref(false);
   const showModal = ref(false);
 
-  // Helper to fetch fresh CSRF token from server and update meta tag & ref
-  const fetchCsrfToken = async () => {
-    const response = await fetch('/csrf-token', { credentials: 'same-origin' });
-    if (response.ok) {
-      const data = await response.json();
-      const meta = document.querySelector('meta[name="csrf-token"]');
-      if (meta) {
-        meta.setAttribute('content', data.csrf_token);
-      }
-      csrfToken.value = data.csrf_token;
-      return data.csrf_token;
-    }
-    throw new Error('Failed to fetch CSRF token');
-  };
-
-  // Function to generate fresh headers with current CSRF token
   const getHeaders = () => ({
     'Content-Type': 'application/json',
     Accept: 'application/json',
@@ -53,16 +40,14 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
   });
 
   // Automatically enable 2FA when modal opens and QR is not yet fetched
-  watch([showModal, verifyStep, qrCodeSvg], ([newShowModal, newVerifyStep, newQrCodeSvg]) => {
-    if (newShowModal && !newVerifyStep && !newQrCodeSvg) {
+  watch([showModal, verifyStep, qrCodeSvg], ([modal, verify, qr]) => {
+    if (modal && !verify && !qr) {
       enable();
     }
   });
 
   const enable = async () => {
     try {
-      await fetchCsrfToken(); // Refresh token before request
-
       const response = await fetch(route('two-factor.enable'), {
         method: 'POST',
         headers: getHeaders(),
@@ -86,8 +71,6 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
     const formattedCode = passcode.value.replace(/\s+/g, '').trim();
 
     try {
-      await fetchCsrfToken(); // Refresh token before request
-
       const response = await fetch(route('two-factor.confirm'), {
         method: 'POST',
         headers: getHeaders(),
@@ -95,9 +78,9 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
       });
 
       if (response.ok) {
-        const responseData: ConfirmResponse = await response.json();
-        if (responseData.recovery_codes) {
-          recoveryCodesList.value = responseData.recovery_codes;
+        const data: ConfirmResponse = await response.json();
+        if (data.recovery_codes) {
+          recoveryCodesList.value = data.recovery_codes;
         }
 
         confirmed.value = true;
@@ -108,20 +91,18 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
         error.value = '';
       } else {
         const errorData = await response.json();
-        console.error('Verification error:', errorData.message);
         error.value = errorData.message || 'Invalid verification code';
         passcode.value = '';
+        console.error('Verification error:', errorData.message);
       }
     } catch (err) {
-      console.error('Error confirming 2FA:', err);
       error.value = 'An error occurred while confirming 2FA';
+      console.error('Error confirming 2FA:', err);
     }
   };
 
   const regenerateRecoveryCodes = async () => {
     try {
-      await fetchCsrfToken(); // Refresh token before request
-
       const response = await fetch(route('two-factor.regenerate-recovery-codes'), {
         method: 'POST',
         headers: getHeaders(),
@@ -129,9 +110,7 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
 
       if (response.ok) {
         const data: RecoveryCodesResponse = await response.json();
-        if (data.recovery_codes) {
-          recoveryCodesList.value = data.recovery_codes;
-        }
+        recoveryCodesList.value = data.recovery_codes || [];
       } else {
         console.error('Error regenerating codes:', response.statusText);
       }
@@ -142,8 +121,6 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
 
   const disable = async () => {
     try {
-      await fetchCsrfToken(); // Refresh token before request
-
       const response = await fetch(route('two-factor.disable'), {
         method: 'DELETE',
         headers: getHeaders(),

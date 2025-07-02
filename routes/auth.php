@@ -54,10 +54,6 @@ Route::middleware('auth')->group(function () {
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
-
-    Route::get('/csrf-token', function () {
-        return response()->json(['csrf_token' => csrf_token()]);
-    });
 });
 
 // Two-factor challenge routes with the ensure-two-factor-challenge-session middleware
