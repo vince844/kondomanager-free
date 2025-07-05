@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Models\CategoriaDocumento;
+use App\Traits\HandleFlashMessages;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -13,6 +15,7 @@ use Illuminate\Support\Arr;
 
 class CategoriaDocumentoController extends Controller
 {
+    use HandleFlashMessages;
     /**
      * Display a listing of the resource.
      */
@@ -29,7 +32,7 @@ class CategoriaDocumentoController extends Controller
         }
 
         // Paginate the result
-        $categorie = $query->paginate(15)->withQueryString();
+        $categorie = $query->paginate(config('pagination.default_per_page'))->withQueryString();
 
         return Inertia::render('documenti/categories/CategorieList', [
             'categorie' => CategoriaDocumentoResource::collection($categorie)->resolve(), 
@@ -93,8 +96,21 @@ class CategoriaDocumentoController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(CategoriaDocumento $categoria)
     {
-        //
+        
+        if ($categoria->documenti()->exists()) {
+
+            return redirect()->back()->with(
+                $this->flashInfo(__('documenti.category_has_documents'))
+            );
+        }
+
+        $categoria->delete();
+
+        return redirect()->back()->with(
+            $this->flashSuccess(__('documenti.success_delete_category'))
+        );
+
     }
 }

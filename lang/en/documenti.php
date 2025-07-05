@@ -17,4 +17,7 @@ return [
     'error_notify_new_document'            => "The document was created, but there was an error sending the notification.",
     'error_notify_approved_document'       => "The document was approved, but there was an error sending the notification.",
     'error_notify_new_document'            => "The document was created, but there was an error sending the notification.",
+    'category_has_documents'               => "This category contains documents. Please move or delete them before removing the category.",
+    'success_delete_category'              => "The document category has been deleted successfully"
+    
 ];

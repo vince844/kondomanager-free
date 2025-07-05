@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
-import { useDocumenti } from '@/composables/useDocumenti'
 import type { Categoria } from '@/types/categorie'
 
 defineProps<{ categoria: Categoria }>()
@@ -32,7 +31,6 @@ const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
-const { removeDocumento } = useDocumenti()
 const { generateRoute } = usePermission()
 
 function handleDelete(categoria: Categoria) {
@@ -49,7 +47,7 @@ function closeModal() {
   isDropdownOpen.value = false
 }
 
-function deleteDocumento() {
+function deleteCategoria() {
   if (categoriaID.value === null || isDeleting.value) return
 
   const id = categoriaID.value
@@ -58,9 +56,8 @@ function deleteDocumento() {
   router.delete(route(generateRoute('categorie.destroy'), { id: String(id) }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'stats', 'categorie'],
+    only: ['flash', 'categorie'],
     onSuccess: () => {
-      removeDocumento(id)
       closeModal()
     },
     onError: () => {
@@ -86,7 +83,7 @@ function deleteDocumento() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('documenti.edit'), { id: categoria.id })"
+          :href="route(generateRoute('categorie.edit'), { id: categoria.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -107,14 +104,14 @@ function deleteDocumento() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo documento?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler eliminare questa categoria?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà il documento e tutti i dati associati.
+          Questa azione non è reversibile. Eliminerà la categoria e tutti i documenti ad essa associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteDocumento">
+        <AlertDialogAction :disabled="isDeleting" @click="deleteCategoria">
           <span v-if="isDeleting">Eliminazione...</span>
           <span v-else>Continua</span>
         </AlertDialogAction>

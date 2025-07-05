@@ -31,7 +31,7 @@ const flashMessage = computed(() => page.props.flash.message);
         description="Di seguito la tabella con l'elenco di tutte le categorie documenti dell'archivio del condominio"
       />
 
-      <div v-if="flashMessage" class="py-4">
+      <div v-if="flashMessage">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
