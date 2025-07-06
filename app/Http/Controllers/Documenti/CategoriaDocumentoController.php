@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Documenti;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
+use App\Http\Requests\Documento\Categoria\CreateCategoriaRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Traits\HandleFlashMessages;
@@ -12,12 +13,21 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
+use PhpParser\Node\Stmt\TryCatch;
 
 class CategoriaDocumentoController extends Controller
 {
     use HandleFlashMessages;
+
     /**
-     * Display a listing of the resource.
+     * Display a listing of the categoria documenti.
+     *
+     * Applies optional filters (e.g., by name), paginates the results, 
+     * and returns the data to an Inertia view along with meta information and active filters.
+     *
+     * @param  \App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest  $request
+     * @return \Inertia\Response
      */
     public function index(CategoriaDocumentoIndexRequest $request): Response
     {
@@ -55,18 +65,44 @@ class CategoriaDocumentoController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created categoria.
+     *
+     * @param  \App\Http\Requests\Documento\Categoria\CreateCategoriaRequest $request
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
      */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'description' => 'required|string|max:255',
-        ]);
+    public function store(CreateCategoriaRequest $request)
+    {   
+        try {
 
-        $categoria = CategoriaDocumento::create($validated);
+            $validated = $request->validated();
 
-        return response()->json($categoria); // for dynamic use in Vue
+            $categoria = CategoriaDocumento::create($validated);
+
+            // For form submission via Axios
+            if ($request->wantsJson()) {
+                return response()->json($categoria);
+            }
+
+            // For regular form submission via Inertia
+            return redirect()->back()->with(
+                $this->flashSuccess(__('documenti.success_create_category'))
+            );
+
+        } catch (\Exception $e) {
+
+            // Log error or customize response
+            Log::error('Category creation failed: ' . $e->getMessage());
+
+            if ($request->wantsJson()) {
+                return response()->json(['error' => __('documenti.error_create_category')], 500);
+            }
+
+            return redirect()->back()->with(
+                $this->flashError(__('documenti.error_create_category'))
+            );
+
+        }
+       
     }
 
     /**
@@ -94,23 +130,35 @@ class CategoriaDocumentoController extends Controller
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified categoria.
+     *
+     * @param  \App\Models\Documento\CategoriaDocumento $categoria
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function destroy(CategoriaDocumento $categoria)
     {
-        
-        if ($categoria->documenti()->exists()) {
+        try {
+            
+            // Check if category has document and avoid delete
+            if ($categoria->documenti()->exists()) {
+                return redirect()->back()->with(
+                    $this->flashInfo(__('documenti.category_has_documents'))
+                );
+            }
+
+            $categoria->delete();
 
             return redirect()->back()->with(
-                $this->flashInfo(__('documenti.category_has_documents'))
+                $this->flashSuccess(__('documenti.success_delete_category'))
+            );
+
+        } catch (\Exception $e) {
+
+            Log::error('Errore durante l\'eliminazione della categoria: ' . $e->getMessage());
+
+            return redirect()->back()->with(
+                $this->flashError(__('documenti.error_delete_category'))
             );
         }
-
-        $categoria->delete();
-
-        return redirect()->back()->with(
-            $this->flashSuccess(__('documenti.success_delete_category'))
-        );
-
     }
 }

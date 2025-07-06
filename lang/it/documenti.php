@@ -18,6 +18,9 @@ return [
     'error_notify_approved_document'         => "Il documento è stato approvato, ma si è verificato un errore nell'invio della notifica.",
     'error_notify_new_document'              => "Il documento è stato creato, ma si è verificato un errore nell'invio della notifica.",
     'category_has_documents'                 => 'Questa categoria contiene dei documenti. Spostali o eliminali prima di eliminare la categoria.',
-    'success_delete_category'                => "La categoria documenti è stata eliminata con successo."
+    'success_delete_category'                => "La categoria documenti è stata eliminata con successo.",
+    'error_delete_category'                  => "Si è verificato un errore durante l'eliminazione della categoria documento.",
+    'success_create_category'                => "La categoria documenti è stata creata con successo.",
+    'error_create_category'                  => "Si è verificato un errore durante la creazione della categoria documento."
 
 ];

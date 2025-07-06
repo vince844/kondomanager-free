@@ -1,15 +1,15 @@
 <script setup lang="ts">
 
-import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3"
-import { Button } from '@/components/ui/button'
+import { ref } from 'vue';
+import { router, Link } from "@inertiajs/vue3";
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,10 +19,11 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle
-} from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
-import { usePermission } from "@/composables/permissions"
-import type { Categoria } from '@/types/categorie'
+} from '@/components/ui/alert-dialog';
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
+import { usePermission } from '@/composables/permissions';
+import type { Categoria } from '@/types/categorie';
+
 
 defineProps<{ categoria: Categoria }>()
 
@@ -68,6 +69,7 @@ function deleteCategoria() {
     }
   })
 }
+
 </script>
 
 <template>
@@ -118,4 +120,5 @@ function deleteCategoria() {
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+
 </template>
