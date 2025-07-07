@@ -1,5 +1,5 @@
 
-# KondoManager
+# Benvenuto su KondoManager
 
 KondoManager è un innovatovo software open source per la gestione condominiale, realizzato in Laravel e database MySql, pensato per gli amministratori di condominio ma anche per gli utenti del condomiio. 
 
