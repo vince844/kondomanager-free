@@ -26,7 +26,7 @@ KondoManager è un innovatovo software open source per la gestione condominiale,
 
 ## Installazione del gestionale
 
-1. Clona la the repository
+1. Clona la repository
 
 ```bash
 https://github.com/vince844/kondomanager-free.git
