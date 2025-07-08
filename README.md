@@ -5,7 +5,16 @@ KondoManager è un innovatovo software open source per la gestione condominiale,
 
 ## Screenshots
 
-![App Screenshot](https://via.placeholder.com/468x300?text=App+Screenshot+Here)
+<table>
+  <tr>
+    <td><img src="https://i.imgur.com/5xFDr7X.png" alt="Dashboard" width="100%"></td>
+    <td><img src="https://i.imgur.com/kgDhope.png" alt="Segnalazioni guasto" width="100%"></td>
+  </tr>
+  <tr>
+    <td><img src="https://i.imgur.com/dNOKWYV.png" alt="Bacheca condominio" width="100%"></td>
+    <td><img src="https://i.imgur.com/xkCipgI.png" alt="Archivio documenti" width="100%"></td>
+  </tr>
+</table>
 
 ## Funzionalità del gestionale
 
