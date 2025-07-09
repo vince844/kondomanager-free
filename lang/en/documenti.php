@@ -21,6 +21,8 @@ return [
     'success_delete_category'              => "The document category has been deleted successfully",
     'error_delete_category'                => "An error occurred while deleting the document category.",
     'success_create_category'              => "The document category has been created successfully",
-    'error_create_category'                => "An error occurred while creating the new document category"
+    'error_create_category'                => "An error occurred while creating the new document category",
+    'success_update_category'              => "The document category has been updated successfully",
+    'error_update_category'                => "An error occurred while updating the document category."
     
 ];

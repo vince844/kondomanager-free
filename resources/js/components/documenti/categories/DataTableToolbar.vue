@@ -105,7 +105,7 @@ watchDebounced(
 
   </div>
 
-   <Sheet v-model:open="isNewCategorySheetOpen">
+  <Sheet v-model:open="isNewCategorySheetOpen">
     <SheetContent side="right" class="p-6">
       <SheetHeader class="mt-4 p-0">
         <SheetTitle>Crea nuova categoria</SheetTitle>

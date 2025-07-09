@@ -5,16 +5,15 @@ namespace App\Http\Controllers\Documenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documento\Categoria\CategoriaDocumentoIndexRequest;
 use App\Http\Requests\Documento\Categoria\CreateCategoriaRequest;
+use App\Http\Requests\Documento\Categoria\UpdateCategoriaRequest;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
 use App\Models\CategoriaDocumento;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
-use PhpParser\Node\Stmt\TryCatch;
 
 class CategoriaDocumentoController extends Controller
 {
@@ -54,14 +53,6 @@ class CategoriaDocumentoController extends Controller
             ],
             'filters' => Arr::only($validated, ['name'])
         ]);
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
     }
 
     /**
@@ -106,27 +97,31 @@ class CategoriaDocumentoController extends Controller
     }
 
     /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
-
-    /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(UpdateCategoriaRequest $request, CategoriaDocumento $categoria): RedirectResponse
     {
-        //
+
+        $validated = $request->validated(); 
+
+        try {
+
+            $categoria->update($validated);
+
+            return redirect()->back()->with(
+                $this->flashSuccess(__('documenti.success_update_category'))
+            );
+
+
+        } catch (\Exception $e) {
+
+            Log::error('Errore durante l\'aggiornamento della categoria: ' . $e->getMessage());
+
+            return redirect()->back()->with(
+                $this->flashError(__('documenti.error_update_category'))
+            );
+        }
+   
     }
 
     /**

@@ -21,6 +21,8 @@ return [
     'success_delete_category'                => "La categoria documenti è stata eliminata con successo.",
     'error_delete_category'                  => "Si è verificato un errore durante l'eliminazione della categoria documento.",
     'success_create_category'                => "La categoria documenti è stata creata con successo.",
-    'error_create_category'                  => "Si è verificato un errore durante la creazione della categoria documento."
+    'error_create_category'                  => "Si è verificato un errore durante la creazione della categoria documento.",
+    'success_update_category'                => "La categoria documenti è stata aggiornata con successo",
+    'error_update_category'                  => "Si è verificato un errore durante l'aggiornamento della categoria documenti.",
 
 ];
