@@ -55,4 +55,9 @@ class Condominio extends Model
         return $this->belongsToMany(Documento::class, 'condominio_documento');
     }
 
+    public function eventi()
+    {
+        return $this->belongsToMany(Evento::class, 'condominio_evento', 'condominio_id', 'evento_id');
+    }
+
 }

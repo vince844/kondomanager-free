@@ -9,6 +9,7 @@ use App\Http\Controllers\Documenti\CategoriaDocumentoController;
 use App\Http\Controllers\Documenti\DocumentoApprovalController;
 use App\Http\Controllers\Documenti\DocumentoController;
 use App\Http\Controllers\Documenti\FetchCategorieController;
+use App\Http\Controllers\Eventi\EventoController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
@@ -18,8 +19,12 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
 
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
 
-     Route::resource('categorie', CategoriaDocumentoController::class)->parameters([
+    Route::resource('categorie', CategoriaDocumentoController::class)->parameters([
         'categorie' => 'categoria'
+    ]);
+
+    Route::resource('eventi', EventoController::class)->parameters([
+        'eventi' => 'evento'
     ]);
 
     Route::get('/fetch-categorie-documenti', FetchCategorieController::class)

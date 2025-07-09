@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, Folders, LayoutGrid, Menu, Search, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
+import { BookOpen, Folder, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Role } from '@/enums/Role';
@@ -76,6 +76,11 @@ const mainNavItems: NavItem[] = [
               : generatePath('categorie-documenti'),
         icon: Folders,
         permissions: [Permission.VIEW_ARCHIVE_DOCUMENTS],
+    },
+    {
+        title: 'Agenda',
+        href: generatePath('eventi'),
+        icon: CalendarClock,
     }
 ];
 
@@ -154,7 +159,7 @@ const rightNavItems: NavItem[] = [
 
                 <!-- Desktop Menu -->
                 <div class="hidden h-full lg:flex lg:flex-1">
-                    <NavigationMenu class="ml-10 flex h-full items-stretch">
+                    <NavigationMenu class="ml-6 flex h-full items-stretch">
                         <NavigationMenuList class="flex h-full items-stretch space-x-1">
                             <NavigationMenuItem v-for="(item, index) in mainNavItems" :key="index" class="relative flex h-full items-center">
 
@@ -178,9 +183,6 @@ const rightNavItems: NavItem[] = [
 
                 <div class="ml-auto flex items-center space-x-2">
                     <div class="relative flex items-center space-x-1">
-                <!--         <Button variant="ghost" size="icon" class="group h-9 w-9 cursor-pointer">
-                            <Search class="size-5 opacity-80 group-hover:opacity-100" />
-                        </Button> -->
 
                         <div class="hidden space-x-1 lg:flex">
                             <template v-for="item in rightNavItems" :key="item.title">

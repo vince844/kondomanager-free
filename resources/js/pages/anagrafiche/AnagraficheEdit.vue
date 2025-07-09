@@ -3,9 +3,6 @@
 import { watch, onMounted } from "vue";
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { BreadcrumbItem } from '@/types';
-import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche'; 
 import { Button } from '@/components/ui/button';
 import { List, LoaderCircle, Plus } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -17,6 +14,9 @@ import { Textarea } from '@/components/ui/textarea';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
+import type { BreadcrumbItem } from '@/types';
+import type { Building } from '@/types/buildings';
+import type { Anagrafica } from '@/types/anagrafiche'; 
 
 const props = defineProps<{
   anagrafica: Anagrafica;
