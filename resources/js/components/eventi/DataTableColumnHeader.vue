@@ -5,10 +5,10 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next';
 import type { Column } from '@tanstack/vue-table';
-import type { Documento } from '@/types/documenti';
+import type { Evento } from '@/types/eventi';
 
 interface DataTableColumnHeaderProps {
-  column: Column<Documento, any> 
+  column: Column<Evento, any> 
   title: string
 }
 

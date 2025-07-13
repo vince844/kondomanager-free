@@ -61,4 +61,30 @@ class CreateEventoRequest extends FormRequest
             'created_by' => $user->id
         ]);
     }
+
+    public function messages()
+    {
+        return [
+            'start_time.after_or_equal' => __('validation.custom.evento.after_or_equal:today'),
+        ];
+    }
+
+    /**
+    * Get custom attributes for validator errors.
+    *
+    * @return array<string, string>
+    */
+    public function attributes()
+    {
+        return [
+            'title'            => __('validation.attributes.eventi.title'),
+            'description'      => __('validation.attributes.eventi.description'),
+            'start_time'       => __('validation.attributes.eventi.start_time'),
+            'end_time'         => __('validation.attributes.eventi.end_time'),
+            'category_id'      => __('validation.attributes.eventi.category_id'),
+            'recurrence_until' => __('validation.attributes.eventi.recurrence_until'),
+            'condomini_ids'    => __('validation.attributes.eventi.condomini_ids'),
+        ];
+    }
+
 }

@@ -14,6 +14,7 @@ class RicorrenzaEvento extends Model
         'by_day',
         'until',
         'type',
+        'rrule'
     ];
 
     protected $casts = [

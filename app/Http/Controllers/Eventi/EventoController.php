@@ -6,16 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Evento\CreateEventoRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
+use App\Http\Resources\Evento\EventoResource;
 use App\Models\CategoriaEvento;
 use App\Models\Condominio;
 use App\Models\Evento;
 use App\Models\RicorrenzaEvento;
+use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use RRule\RRule;
+
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class EventoController extends Controller
 {
@@ -25,9 +31,33 @@ class EventoController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        dd('index');
+        $perPage = $request->get('per_page', 10);
+        $page = $request->get('page', 1);
+
+        $events = (new RecurrenceService)->getEventsInNextDays(60);
+
+        // Sort before paginating (though your service already sorts)
+        $sorted = $events->sortBy('occurs_at');
+
+        $paginated = new LengthAwarePaginator(
+            $sorted->forPage($page, $perPage),
+            $sorted->count(),
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
+
+        return Inertia::render('eventi/EventiList', [
+            'eventi' => EventoResource::collection($paginated->items()),
+            'meta' => [
+                'current_page' => $paginated->currentPage(),
+                'last_page'    => $paginated->lastPage(),
+                'per_page'     => $paginated->perPage(),
+                'total'        => $paginated->total(),
+            ]
+        ]);
     }
 
     /**
@@ -64,17 +94,32 @@ class EventoController extends Controller
 
             $ricorrenza = null;
 
-            // Create recurrence if it exists
             if (!empty($validated['recurrence_frequency'])) {
+
+                $rruleArray = [
+                    'FREQ' => strtoupper($validated['recurrence_frequency']),
+                    'INTERVAL' => $validated['recurrence_interval'] ?? 1,
+                    'DTSTART' => Carbon::parse($validated['start_time'])->toRfc3339String(),
+                ];
+
+                if (!empty($validated['recurrence_by_day'])) {
+                    $rruleArray['BYDAY'] = $validated['recurrence_by_day'];
+                }
+
+                if (!empty($validated['recurrence_until'])) {
+                    $rruleArray['UNTIL'] = Carbon::parse($validated['recurrence_until'])->toRfc3339String();
+                }
+
+                $rrule = new RRule($rruleArray);
 
                 $ricorrenza = RicorrenzaEvento::create([
                     'frequency' => $validated['recurrence_frequency'],
-                    'interval'  => $validated['recurrence_interval'] ?? 1,
-                    'by_day'    => $validated['recurrence_by_day'] ?? [],
-                    'until'     => $validated['recurrence_until'] ?? null,
-                    'type'      => 'custom',
+                    'interval' => $validated['recurrence_interval'] ?? 1,
+                    'by_day' => $validated['recurrence_by_day'] ?? [],
+                    'until' => $validated['recurrence_until'] ?? null,
+                    'type' => 'custom',
+                    'rrule' => (string) $rrule,
                 ]);
-                
             }
 
             // Create the event regardless

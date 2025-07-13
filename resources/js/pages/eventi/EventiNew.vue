@@ -90,18 +90,26 @@ const submit = () => {
 
   <AppLayout>
     <div class="px-4 py-6">
-      <Heading title="Crea scadenza in agenda" description="Compila il seguente modulo per la creazione di una nuova scadenza" />
+      <Heading title="Crea scadenza in agenda" description="Compila il seguente modulo per la creazione di una nuova scadenza per l'agenda condominiale" />
 
       <form class="space-y-2" @submit.prevent="submit">
-        <div class="flex justify-end gap-2">
-          <Button :disabled="form.processing">
-            <Plus v-if="!form.processing" class="w-4 h-4" />
-            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva
-          </Button>
-          <Link :href="route('admin.comunicazioni.index')" class="inline-flex items-center bg-primary text-white px-3 py-1.5 rounded">
-            <List class="w-4 h-4" /> Elenco
-          </Link>
+
+        <!-- Action buttons -->
+        <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+            <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
+                <Plus class="w-4 h-4" v-if="!form.processing" />
+                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                Salva
+            </Button>
+
+            <Link
+                as="button"
+                :href="route(generateRoute('eventi.index'))"
+                class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+            >
+                <List class="w-4 h-4" />
+                <span>Elenco</span>
+            </Link>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
@@ -158,6 +166,8 @@ const submit = () => {
               <div class="mt-4">
                 <Label>Ripeti fino al</Label>
                 <Input type="datetime-local" v-model="form.recurrence_until" />
+
+                 <InputError :message="form.errors.recurrence_until" />
               </div>
 
                   <!--  Note -->

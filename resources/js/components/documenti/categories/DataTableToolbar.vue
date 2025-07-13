@@ -71,7 +71,7 @@ watchDebounced(
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
+  <div class="flex items-center justify-between w-full mb-3">
     <div class="flex items-center space-x-2">
       <!-- Subject Filter -->
       <Input

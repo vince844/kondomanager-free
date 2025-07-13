@@ -17,7 +17,8 @@ return new class extends Migration
             $table->integer('interval')->default(1);
             $table->json('by_day')->nullable(); // ['MO', 'WE']
             $table->timestamp('until')->nullable(); // null = infinite
-            $table->enum('type', ['custom', 'rrule', 'manual'])->nullable(); // NEW: Recurrence engine
+            $table->text('rrule')->nullable();
+            $table->enum('type', ['custom', 'rrule', 'manual'])->nullable(); 
             $table->timestamps();
         });
     }

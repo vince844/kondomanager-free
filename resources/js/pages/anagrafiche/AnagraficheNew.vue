@@ -2,8 +2,6 @@
 
 import { Link,  Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { BreadcrumbItem } from '@/types';
-import type { Building } from '@/types/buildings';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -16,6 +14,8 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
+import type { BreadcrumbItem } from '@/types';
+import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
   buildings: Building[];
@@ -44,7 +44,7 @@ const documents = [
   }
 ];
 
-const { hasPermission } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 const form = useForm({
     nome: '',
@@ -65,7 +65,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route("admin.anagrafiche.store"), {
+    form.post(route(generateRoute('anagrafiche.store')), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -99,7 +99,7 @@ const submit = () => {
 
           <Link
             as="button"
-            :href="route('admin.anagrafiche.index')"
+            :href="route(generateRoute('anagrafiche.index'))"
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
