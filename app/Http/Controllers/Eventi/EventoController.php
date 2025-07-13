@@ -13,13 +13,15 @@ use App\Models\Evento;
 use App\Models\RicorrenzaEvento;
 use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
-use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use RRule\RRule;
+use Recurr\Rule;
+use Recurr\Transformer\ArrayTransformer;
+use Recurr\Transformer\ArrayTransformerConfig;
+
 
 use Illuminate\Pagination\LengthAwarePaginator;
 
@@ -33,30 +35,33 @@ class EventoController extends Controller
      */
     public function index(Request $request)
     {
-        $perPage = $request->get('per_page', 10);
-        $page = $request->get('page', 1);
+        $perPage = (int) $request->get('per_page', 10);
+        $page = (int) $request->get('page', 1);
 
         $events = (new RecurrenceService)->getEventsInNextDays(60);
 
-        // Sort before paginating (though your service already sorts)
-        $sorted = $events->sortBy('occurs_at');
+        $total = $events->count();
+        $items = $events->forPage($page, $perPage)->values();
 
         $paginated = new LengthAwarePaginator(
-            $sorted->forPage($page, $perPage),
-            $sorted->count(),
+            $items,
+            $total,
             $perPage,
             $page,
-            ['path' => $request->url(), 'query' => $request->query()]
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]
         );
 
         return Inertia::render('eventi/EventiList', [
             'eventi' => EventoResource::collection($paginated->items()),
             'meta' => [
                 'current_page' => $paginated->currentPage(),
-                'last_page'    => $paginated->lastPage(),
-                'per_page'     => $paginated->perPage(),
-                'total'        => $paginated->total(),
-            ]
+                'last_page' => $paginated->lastPage(),
+                'per_page' => $paginated->perPage(),
+                'total' => $paginated->total(),
+            ],
         ]);
     }
 
@@ -92,70 +97,85 @@ class EventoController extends Controller
         try {
             DB::beginTransaction();
 
-            $ricorrenza = null;
-
-            if (!empty($validated['recurrence_frequency'])) {
-
-                $rruleArray = [
-                    'FREQ' => strtoupper($validated['recurrence_frequency']),
-                    'INTERVAL' => $validated['recurrence_interval'] ?? 1,
-                    'DTSTART' => Carbon::parse($validated['start_time'])->toRfc3339String(),
-                ];
-
-                if (!empty($validated['recurrence_by_day'])) {
-                    $rruleArray['BYDAY'] = $validated['recurrence_by_day'];
-                }
-
-                if (!empty($validated['recurrence_until'])) {
-                    $rruleArray['UNTIL'] = Carbon::parse($validated['recurrence_until'])->toRfc3339String();
-                }
-
-                $rrule = new RRule($rruleArray);
-
-                $ricorrenza = RicorrenzaEvento::create([
-                    'frequency' => $validated['recurrence_frequency'],
-                    'interval' => $validated['recurrence_interval'] ?? 1,
-                    'by_day' => $validated['recurrence_by_day'] ?? [],
-                    'until' => $validated['recurrence_until'] ?? null,
-                    'type' => 'custom',
-                    'rrule' => (string) $rrule,
-                ]);
-            }
-
-            // Create the event regardless
+            // Create the base event
             $evento = Evento::create([
-                'title'          => $validated['title'],
-                'description'    => $validated['description'] ?? null,
-                'start_time'     => $validated['start_time'],
-                'note'           => $validated['note'],
-                'end_time'       => $validated['end_time'] ?? null,
-                'recurrence_id'  => $ricorrenza?->id,
-                'created_by'     => $validated['created_by'],
-                'category_id'    => $validated['category_id'],
+                'title'        => $validated['title'],
+                'description'  => $validated['description'] ?? null,
+                'start_time'   => $validated['start_time'],
+                'note'         => $validated['note'] ?? null,
+                'end_time'     => $validated['end_time'],
+                'created_by'   => $validated['created_by'],
+                'category_id'  => $validated['category_id'] ?? null,
+                'timezone'     => config('app.timezone'),
+                'visibility'   => $validated['visibility'] ?? 'public',
             ]);
 
-            // Relationships
-            $evento->condomini()->sync($validated['condomini_ids']);
+            // Handle recurrence if provided
+            if (!empty($validated['recurrence_frequency'])) {
+                $rule = new Rule(
+                    null,
+                    new \DateTime($validated['start_time'], new \DateTimeZone(config('app.timezone'))),
+                    !empty($validated['recurrence_until'])
+                        ? new \DateTime($validated['recurrence_until'], new \DateTimeZone(config('app.timezone')))
+                        : null,
+                    config('app.timezone')
+                );
 
+                $rule->setFreq(strtoupper($validated['recurrence_frequency']))
+                    ->setInterval($validated['recurrence_interval'] ?? 1);
+
+                if (!empty($validated['recurrence_by_day'])) {
+                    $byDay = is_array($validated['recurrence_by_day'])
+                        ? $validated['recurrence_by_day']
+                        : explode(',', $validated['recurrence_by_day']);
+                    $rule->setByDay($byDay);
+                }
+
+                if (!empty($validated['recurrence_by_month_day'])) {
+                    $rule->setByMonthDay([$validated['recurrence_by_month_day']]);
+                }
+
+                $transformer = new ArrayTransformer();
+                if ($validated['recurrence_frequency'] === 'monthly') {
+                    $transformerConfig = new ArrayTransformerConfig();
+                    $transformerConfig->enableLastDayOfMonthFix();
+                    $transformer->setConfig($transformerConfig);
+                }
+
+                $transformer->transform($rule); // Validate the rule
+
+                $ricorrenza = RicorrenzaEvento::create([
+                    'frequency'      => $validated['recurrence_frequency'],
+                    'interval'       => $validated['recurrence_interval'] ?? 1,
+                    'by_day'         => !empty($byDay) ? json_encode($byDay) : null,
+                    'by_month_day'   => $validated['recurrence_by_month_day'] ?? null,
+                    'until'          => $validated['recurrence_until'] ?? null,
+                    'type'           => 'rrule',
+                    'rrule'          => $rule->getString(),
+                    'timezone'       => config('app.timezone'),
+                ]);
+
+                $evento->update(['recurrence_id' => $ricorrenza->id]);
+            }
+
+            // Sync relations
+            $evento->condomini()->sync($validated['condomini_ids'] ?? []);
             if (!empty($validated['anagrafiche'])) {
                 $evento->anagrafiche()->sync($validated['anagrafiche']);
             }
 
             DB::commit();
 
+            return to_route('admin.eventi.index')->with(
+                $this->flashSuccess(__('eventi.success_create_event'))
+            );
         } catch (\Exception $e) {
-
             DB::rollBack();
             Log::error('Error creating agenda event: ' . $e->getMessage());
-
             return to_route('admin.eventi.index')->with(
                 $this->flashError(__('eventi.error_create_event'))
             );
         }
-
-        return to_route('admin.eventi.index')->with(
-            $this->flashSuccess(__('eventi.success_create_event'))
-        );
     }
 
     /**

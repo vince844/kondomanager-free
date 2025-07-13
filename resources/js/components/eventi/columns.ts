@@ -16,7 +16,7 @@ export const columns: ColumnDef<Evento>[] = [
    {
     accessorKey: 'occurs_at',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Data scadenza' }),
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('occurs_at')),
+    cell: ({ row }) => h('div', { class: 'font-bold' }, row.getValue('occurs_at')),
   },
   {
     accessorKey: 'categoria',
@@ -39,7 +39,7 @@ export const columns: ColumnDef<Evento>[] = [
   {
     accessorKey: 'title',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('title')),
+    cell: ({ row }) => h('div', { class: 'font-bold' }, row.getValue('title')),
   },
   {
     id: 'actions',

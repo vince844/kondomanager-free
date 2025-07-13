@@ -12,18 +12,15 @@ class RicorrenzaEvento extends Model
         'frequency',
         'interval',
         'by_day',
+        'by_month_day',
         'until',
         'type',
-        'rrule'
+        'rrule',
+        'timezone',
     ];
 
     protected $casts = [
         'by_day' => 'array',
-        'until' => 'datetime',
+        'until'  => 'datetime',
     ];
-
-    public function eventi()
-    {
-        return $this->hasMany(Evento::class, 'recurrence_id');
-    }
 }

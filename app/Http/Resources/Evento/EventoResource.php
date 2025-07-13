@@ -17,12 +17,18 @@ class EventoResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        
+        $occursAt = $this->occurs_at ?? $this->start_time;
+
         return [
-            'id'            => $this->id,
-            'title'         => Str::ucfirst($this->title),
-            'description'   => $this->description,
-            'occurs_at'     => Carbon::parse($this->occurs_at)->format('d/m/Y H:i'),
-            'categoria'     => new CategoriaEventoResource($this->whenLoaded('categoria')),
+            'id' => $this->id,
+            'title' => Str::ucfirst($this->title),
+            'description' => $this->description,
+            'occurs_at_human' => Carbon::parse($occursAt)->diffForHumans(),
+            'occurs_at' => Carbon::parse($occursAt)->format('d/m/Y \a\l\l\e H:i'),
+            'categoria' => new CategoriaEventoResource($this->whenLoaded('categoria')),
+            'timezone' => $this->timezone,
+            'visibility' => $this->visibility,
         ];
     }
 }

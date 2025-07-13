@@ -18,6 +18,7 @@ class Evento extends Model
         'category_id',
         'recurrence_id',
         'visibility',
+        'timezone',
     ];
 
     protected $casts = [

@@ -16,9 +16,11 @@ return new class extends Migration
             $table->enum('frequency', ['daily', 'weekly', 'monthly', 'yearly']);
             $table->integer('interval')->default(1);
             $table->json('by_day')->nullable(); // ['MO', 'WE']
+            $table->integer('by_month_day')->nullable();
             $table->timestamp('until')->nullable(); // null = infinite
             $table->text('rrule')->nullable();
-            $table->enum('type', ['custom', 'rrule', 'manual'])->nullable(); 
+            $table->string('timezone')->default('UTC');
+            $table->enum('type', ['custom', 'rrule'])->default('rrule');
             $table->timestamps();
         });
     }
