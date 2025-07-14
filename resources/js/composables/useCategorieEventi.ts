@@ -1,12 +1,12 @@
-import { ref } from 'vue'
-import axios from 'axios'
+import { ref } from 'vue';
+import axios from 'axios';
 
-interface CategoriaDocumento {
+interface CategoriaEvento {
   id: number
   name: string
 }
 
-export function useCategorieDocumenti() {
+export function useCategorieEventi() {
   const categorie = ref<{ label: string; value: string }[]>([])
   const isLoading = ref(false)
   const isLoaded = ref(false)
@@ -19,9 +19,9 @@ export function useCategorieDocumenti() {
     error.value = null
 
     try {
-      const response = await axios.get(route('admin.categorie.documenti'))
+      const response = await axios.get(route('admin.categorie.eventi'))
 
-      categorie.value = response.data.map((categoria: CategoriaDocumento) => ({
+      categorie.value = response.data.map((categoria: CategoriaEvento) => ({
         label: categoria.name,
         value: categoria.id,
       }))
@@ -29,7 +29,7 @@ export function useCategorieDocumenti() {
       isLoaded.value = true
     } catch (err: any) {
       error.value = err
-      console.error('Errore nel caricamento delle categorie documenti:', err)
+      console.error('Errore nel caricamento delle categorie eventi:', err)
     } finally {
       isLoading.value = false
     }

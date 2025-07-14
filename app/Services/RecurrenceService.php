@@ -4,67 +4,145 @@ namespace App\Services;
 
 use App\Models\Evento;
 use Carbon\Carbon;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
 use Recurr\Rule;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
 use Recurr\Transformer\Constraint\BetweenConstraint;
-use Illuminate\Support\Facades\Log;
 
 class RecurrenceService
 {
-    public function getEventsInNextDays(int $days = 7): Collection
-    {
+    private const MAX_DAYS = 365; // Prevent excessive date ranges
+    
+    public function getEventsInNextDays(
+        int $days = 7, 
+        array $filters = [], 
+        ?int $page = null, 
+        ?int $perPage = null
+    ): Collection|LengthAwarePaginator {
+        $days = min($days, self::MAX_DAYS);
         $now = Carbon::now();
         $end = $now->copy()->addDays($days);
-        $results = collect();
+        
+        // Get base query with eager loading
+        $oneTimeEvents = $this->getOneTimeEvents($now, $end, $filters);
+        $recurringEvents = $this->getRecurringEvents($now, $end, $filters);
+        
+        $combined = $oneTimeEvents->concat($recurringEvents)
+            ->sortBy('occurs_at')
+            ->values();
 
-        // One-time events
-        Evento::whereNull('recurrence_id')
+        // Return paginated or full collection based on parameters
+        return $page && $perPage 
+            ? $this->paginateResults($combined, $page, $perPage)
+            : $combined;
+    }
+
+    private function getOneTimeEvents(Carbon $start, Carbon $end, array $filters): Collection
+    {
+        $query = Evento::query()
+            ->whereNull('recurrence_id')
             ->with('categoria')
-            ->whereBetween('start_time', [$now, $end])
-            ->each(function ($event) use ($results) {
-                $event = $event->replicate();
-                $event->occurs_at = $event->start_time;
-                $event->is_recurring = false;
-                $results->push($event);
+            ->whereBetween('start_time', [$start, $end]);
+
+        $this->applyFilters($query, $filters);
+
+        return $query->get()->map(function ($event) {
+            $event = $event->replicate();
+            $event->occurs_at = $event->start_time;
+            $event->is_recurring = false;
+            return $event;
+        });
+    }
+
+    private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection
+    {
+        $query = Evento::query()
+            ->whereNotNull('recurrence_id')
+            ->with(['ricorrenza', 'categoria']);
+
+        $this->applyFilters($query, $filters);
+
+        return $query->get()->flatMap(function ($event) use ($start, $end, $filters) {
+            return $this->expandRecurringEvent($event, $start, $end, $filters);
+        });
+    }
+
+    private function expandRecurringEvent(Evento $event, Carbon $start, Carbon $end, array $filters): Collection
+    {
+        $rec = $event->ricorrenza;
+        if (!$rec || !$rec->rrule) {
+            return collect();
+        }
+
+        try {
+            $rule = new Rule(
+                $rec->rrule, 
+                new \DateTime($event->start_time), 
+                null, 
+                $rec->timezone ?? config('app.timezone')
+            );
+
+            $transformer = new ArrayTransformer();
+            if (strtolower($rec->frequency) === 'monthly') {
+                $config = new ArrayTransformerConfig();
+                $config->enableLastDayOfMonthFix();
+                $transformer->setConfig($config);
+            }
+
+            $constraint = new BetweenConstraint(new \DateTime($start), new \DateTime($end), true);
+            $occurrences = $transformer->transform($rule, $constraint);
+
+            return collect($occurrences)->map(function ($occurrence) use ($event) {
+                $newEvent = $event->replicate();
+                $newEvent->occurs_at = Carbon::instance($occurrence->getStart());
+                $newEvent->is_recurring = true;
+                return $newEvent;
+            })->filter(function ($event) use ($filters) {
+                return $this->passesSearchFilter($event, $filters['search'] ?? null);
             });
 
-        // Recurring events
-        Evento::whereNotNull('recurrence_id')
-            ->with(['ricorrenza', 'categoria'])
-            ->get()
-            ->each(function ($event) use ($now, $end, $results) {
-                $rec = $event->ricorrenza;
-                if (!$rec || !$rec->rrule) {
-                    return;
-                }
+        } catch (\Exception $e) {
+            Log::warning("Invalid RRULE for event ID {$event->id}: {$e->getMessage()}");
+            return collect();
+        }
+    }
 
-                try {
-                    $rule = new Rule($rec->rrule, new \DateTime($event->start_time), null, $rec->timezone ?? config('app.timezone'));
+    private function applyFilters($query, array $filters): void
+    {
+        if (!empty($filters['title'])) {
+            $query->where('title', 'like', '%' . $filters['title'] . '%');
+        }
 
-                    $transformer = new ArrayTransformer();
+        if (!empty($filters['category_id']) && is_array($filters['category_id'])) {
+            $query->whereIn('category_id', $filters['category_id']);
+        }
+    }
 
-                    if (strtolower($rec->frequency) === 'monthly') {
-                        $config = new ArrayTransformerConfig();
-                        $config->enableLastDayOfMonthFix();
-                        $transformer->setConfig($config);
-                    }
+    private function passesSearchFilter($event, ?string $search): bool
+    {
+        if (empty($search)) {
+            return true;
+        }
 
-                    $constraint = new BetweenConstraint(new \DateTime($now), new \DateTime($end), true);
-                    $transformerCollection = $transformer->transform($rule, $constraint);
+        $search = strtolower($search);
+        return str_contains(strtolower($event->title), $search) || 
+               str_contains(strtolower($event->description ?? ''), $search);
+    }
 
-                    foreach ($transformerCollection as $occurrence) {
-                        $newEvent = $event->replicate();
-                        $newEvent->occurs_at = Carbon::instance($occurrence->getStart());
-                        $newEvent->is_recurring = true;
-                        $results->push($newEvent);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning("Invalid RRULE for event ID {$event->id}: {$e->getMessage()}");
-                }
-            });
-
-        return $results->sortBy('occurs_at')->values();
+    private function paginateResults(Collection $items, int $page, int $perPage): LengthAwarePaginator
+    {
+        return new LengthAwarePaginator(
+            $items->forPage($page, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $page,
+            [
+                'path' => LengthAwarePaginator::resolveCurrentPath(),
+                'query' => request()->query(),
+            ]
+        );
     }
 }

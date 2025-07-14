@@ -10,6 +10,7 @@ use App\Http\Controllers\Documenti\DocumentoApprovalController;
 use App\Http\Controllers\Documenti\DocumentoController;
 use App\Http\Controllers\Documenti\FetchCategorieController;
 use App\Http\Controllers\Eventi\EventoController;
+use App\Http\Controllers\Eventi\FetchCategorieController as EventiFetchCategorieController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
@@ -29,6 +30,9 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
 
     Route::get('/fetch-categorie-documenti', FetchCategorieController::class)
         ->name('categorie.documenti');
+
+    Route::get('/fetch-categorie-eventi', EventiFetchCategorieController::class)
+        ->name('categorie.eventi');
     
     Route::resource('anagrafiche', AnagraficaController::class);
 

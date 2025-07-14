@@ -9,10 +9,12 @@ import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue';
 import { Permission }  from "@/enums/Permission";
+import { useCategorieEventi } from '@/composables/useCategorieEventi';
 import type { Table } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
 const { generateRoute, hasPermission } = usePermission();
+const { categorie, isLoading, loadCategorie } = useCategorieEventi()
 
 // Change this to allow table reset when filter cleared
 const { table } = defineProps<{
@@ -23,6 +25,16 @@ const { table } = defineProps<{
 /* const priorityColumn = table.getColumn('priority') */
 
 const nameFilter = ref('')
+const categoriaColumn = table.getColumn('categoria')
+
+const categoriaFilter = computed(() => {
+  const val = categoriaColumn?.getFilterValue()
+  return Array.isArray(val) ? val : []
+})
+
+const handleOpenDropdown = () => {
+  loadCategorie()
+}
 
 /* const priorityFilter = computed(() => {
   const val = priorityColumn?.getFilterValue()
@@ -30,11 +42,12 @@ const nameFilter = ref('')
 })
  */
 watchDebounced(
-  [nameFilter],
-  ([title]) => {
+  [nameFilter, categoriaFilter],
+  ([title, category_id]) => {
     const params: Record<string, any> = { page: 1 }
 
     if (title) params.title = title
+    if (category_id.length > 0) params.category_id = category_id
 
     router.get(
       route(generateRoute('eventi.index')),
@@ -44,7 +57,7 @@ watchDebounced(
         replace: true,
         preserveScroll: true,
         onSuccess: () => {
-          if (!title) {
+          if (!title && category_id.length === 0) {
             table.reset()
           }
         }
@@ -65,6 +78,16 @@ watchDebounced(
           placeholder="Filtra per nome..."
           v-model="nameFilter"
           class="h-8 w-[150px] lg:w-[250px]"
+        />
+
+        <DataTableFacetedFilter
+          v-if="categoriaColumn"
+          :column="categoriaColumn"
+          title="Categoria"
+          :options="categorie"
+          :isLoading="isLoading"
+          @open="handleOpenDropdown"
+          @update:filter="() => {}"
         />
 
 <!--          <div class="flex flex-col gap-2 lg:flex-row lg:items-center">

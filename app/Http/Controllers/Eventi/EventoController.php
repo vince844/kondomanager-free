@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Eventi;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Evento\CreateEventoRequest;
+use App\Http\Requests\Evento\EventoIndexRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Http\Resources\Evento\EventoResource;
@@ -19,49 +20,46 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Recurr\Rule;
+use Inertia\Response;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
-
-
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
 
 class EventoController extends Controller
 {
 
     use HandleFlashMessages;
 
+    public function __construct(private RecurrenceService $recurrenceService) {}
+
     /**
      * Display a listing of the resource.
      */
-    public function index(Request $request)
+    public function index(EventoIndexRequest $request): Response
     {
-        $perPage = (int) $request->get('per_page', 10);
-        $page = (int) $request->get('page', 1);
+        $validated = $request->validated();
+        
+        // Set safe pagination limits
+        $perPage = min((int) ($validated['per_page'] ?? 10), 100); // Max 100 items per page
+        $page = (int) ($validated['page'] ?? 1);
 
-        $events = (new RecurrenceService)->getEventsInNextDays(60);
-
-        $total = $events->count();
-        $items = $events->forPage($page, $perPage)->values();
-
-        $paginated = new LengthAwarePaginator(
-            $items,
-            $total,
-            $perPage,
-            $page,
-            [
-                'path' => $request->url(),
-                'query' => $request->query(),
-            ]
+        // Get filtered and paginated events
+        $events = $this->recurrenceService->getEventsInNextDays(
+            days: 60,
+            filters: Arr::only($validated, ['title', 'category_id', 'search']),
+            page: $page,
+            perPage: $perPage
         );
 
         return Inertia::render('eventi/EventiList', [
-            'eventi' => EventoResource::collection($paginated->items()),
+            'eventi' => EventoResource::collection($events->items()),
             'meta' => [
-                'current_page' => $paginated->currentPage(),
-                'last_page' => $paginated->lastPage(),
-                'per_page' => $paginated->perPage(),
-                'total' => $paginated->total(),
+                'current_page' => $events->currentPage(),
+                'last_page' => $events->lastPage(),
+                'per_page' => $events->perPage(),
+                'total' => $events->total(),
             ],
+            'filters' => $validated,
         ]);
     }
 
