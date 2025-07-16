@@ -1,15 +1,24 @@
 <script setup lang="ts">
 
-import { ref, watch, computed, PropType } from 'vue';
-import { cn } from '@/lib/utils';
-import Badge from '@/components/ui/badge/Badge.vue';
-import Button from '@/components/ui/button/Button.vue';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { Check, PlusCircle } from 'lucide-vue-next';
-import type { Component } from 'vue';
-import type { Column } from '@tanstack/vue-table';
+import { ref, watch, computed, PropType } from 'vue'
+import { router } from '@inertiajs/vue3'
+import { cn } from '@/lib/utils'
+import Badge from '@/components/ui/badge/Badge.vue'
+import Button from '@/components/ui/button/Button.vue'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Separator } from '@/components/ui/separator'
+import { Check, PlusCircle } from 'lucide-vue-next'
+import type { Component } from 'vue'
+import type { Column } from '@tanstack/vue-table'
 
 interface Option {
   label: string
@@ -44,9 +53,7 @@ watch(isOpen, (val) => {
   if (val) emit('open')
 })
 
-const facets = computed(() => {
-  return props.column?.getFacetedUniqueValues?.() ?? new Map()
-})
+const facets = computed(() => props.column?.getFacetedUniqueValues?.() ?? new Map())
 
 const selectedValues = ref(new Set<string>())
 
@@ -57,6 +64,25 @@ watch(
   },
   { immediate: true }
 )
+
+// Helper function to update URL filters with Inertia router
+function updateUrlFilters(categoryFilter: string[] | undefined) {
+  router.get(
+    route('admin.eventi.index'),
+    {
+      title: undefined,
+      category_id: categoryFilter?.length ? categoryFilter : undefined,
+      date_from: undefined,
+      date_to: undefined,
+      page: 1,
+    },
+    {
+      preserveState: true,
+      replace: true,
+      preserveScroll: true,
+    }
+  )
+}
 
 function toggleSelection(optionValue: string) {
   const updatedValues = new Set(selectedValues.value)
@@ -70,14 +96,17 @@ function toggleSelection(optionValue: string) {
   const valuesArray = Array.from(updatedValues)
   props.column?.setFilterValue(valuesArray.length ? valuesArray : undefined)
   emit('update:filter', valuesArray)
+
+  updateUrlFilters(valuesArray)
 }
 
 function clearFilters() {
   props.column?.setFilterValue(undefined)
   emit('update:filter', [])
+
+  updateUrlFilters(undefined)
 }
 </script>
-
 
 <template>
   <Popover v-model:open="isOpen">

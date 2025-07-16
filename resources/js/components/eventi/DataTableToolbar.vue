@@ -1,30 +1,29 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
-import { watchDebounced } from '@vueuse/core';
-import { router, Link } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-vue-next';
-import { usePermission } from "@/composables/permissions";
-import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue';
-import { Permission }  from "@/enums/Permission";
-import { useCategorieEventi } from '@/composables/useCategorieEventi';
-import type { Table } from '@tanstack/vue-table';
-import type { Evento } from '@/types/eventi';
+import { ref, computed } from 'vue'
+import { watchDebounced } from '@vueuse/core'
+import { router, Link } from '@inertiajs/vue3'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Plus, Calendar as CalendarIcon } from 'lucide-vue-next'
+import { usePermission } from '@/composables/permissions'
+import { useCategorieEventi } from '@/composables/useCategorieEventi'
+import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { RangeCalendar } from '@/components/ui/range-calendar'
+import { CalendarDate, getLocalTimeZone, DateFormatter } from '@internationalized/date'
+import type { Table } from '@tanstack/vue-table'
+import type { Evento } from '@/types/eventi'
 
-const { generateRoute, hasPermission } = usePermission();
+const df = new DateFormatter('it-IT', { dateStyle: 'short' })
+
+const { generateRoute, hasPermission } = usePermission()
 const { categorie, isLoading, loadCategorie } = useCategorieEventi()
 
-// Change this to allow table reset when filter cleared
-const { table } = defineProps<{
-  table: Table<Evento>
-}>()
-
-// Read current priority filter from column state
-/* const priorityColumn = table.getColumn('priority') */
+const { table } = defineProps<{ table: Table<Evento> }>()
 
 const nameFilter = ref('')
+const dateRange = ref<{ start?: CalendarDate; end?: CalendarDate }>({})
 const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
@@ -36,43 +35,102 @@ const handleOpenDropdown = () => {
   loadCategorie()
 }
 
-/* const priorityFilter = computed(() => {
-  const val = priorityColumn?.getFilterValue()
-  return Array.isArray(val) ? val : []
-})
- */
+const convertCalendarDateToString = (date?: CalendarDate): string | undefined => {
+  return date ? date.toDate(getLocalTimeZone()).toISOString().split('T')[0] : undefined
+}
+
+const getCurrentQuery = () => {
+  const urlParams = new URLSearchParams(window.location.search)
+  const query: Record<string, any> = {}
+  for (const [key, value] of urlParams.entries()) {
+    query[key] = value
+  }
+  return query
+}
+
 watchDebounced(
-  [nameFilter, categoriaFilter],
-  ([title, category_id]) => {
-    const params: Record<string, any> = { page: 1 }
+  [nameFilter, categoriaFilter, dateRange],
+  ([title, category_id, range]) => {
+    const currentQuery = getCurrentQuery()
+    const params: Record<string, any> = {
+      ...currentQuery,
+      page: 1, // reset to first page on filter
+    }
 
     if (title) params.title = title
-    if (category_id.length > 0) params.category_id = category_id
+    else delete params.title
 
-    router.get(
-      route(generateRoute('eventi.index')),
-      params,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-        onSuccess: () => {
-          if (!title && category_id.length === 0) {
-            table.reset()
-          }
-        }
-      }
-    )
+    if (category_id.length > 0) params.category_id = category_id
+    else delete params.category_id
+
+    if (range?.start)
+      params.date_from = convertCalendarDateToString(range.start)
+    else delete params.date_from
+
+    if (range?.end)
+      params.date_to = convertCalendarDateToString(range.end)
+    else delete params.date_to
+
+    router.get(route('admin.eventi.index'), params, {
+      preserveState: true,
+      replace: true,
+      preserveScroll: true,
+    })
   },
   { debounce: 300 }
 )
+
+const clearAllFilters = () => {
+  nameFilter.value = ''
+  dateRange.value = {}
+  categoriaColumn?.setFilterValue(undefined)
+
+  router.get(route('admin.eventi.index'), {
+    page: 1,
+  }, {
+    preserveState: true,
+    replace: true,
+    preserveScroll: true,
+  })
+}
+
+// Modify your clearDateFilter method
+const clearDateFilter = () => {
+  dateRange.value = {}
+
+  // Re-trigger the watcher by forcing a new object reference
+  router.get(route(generateRoute('eventi.index')), {
+    title: nameFilter.value || undefined,
+    category_id: categoriaFilter.value.length > 0 ? categoriaFilter.value : undefined,
+    date_from: undefined,
+    date_to: undefined,
+    page: 1
+  }, {
+    preserveState: true,
+    replace: true,
+    preserveScroll: true,
+  })
+}
+
+const formattedRange = computed(() => {
+  const start = dateRange.value.start?.toDate(getLocalTimeZone())
+  const end = dateRange.value.end?.toDate(getLocalTimeZone())
+
+  if (start && end) {
+    return `${df.format(start)} - ${df.format(end)}`
+  } else if (start) {
+    return df.format(start)
+  }
+  return 'Seleziona periodo'
+})
 
 </script>
 
 <template>
   <div class="flex items-center justify-between w-full mb-3">
-    <!-- Left Section: Input -->
-    <div class="flex items-center space-x-2">
+    <!-- Left Section: Filters -->
+    <div class="flex flex-col space-y-2 w-full lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
+      <!-- Search and Category Filters -->
       <div class="flex items-center space-x-2">
         <Input
           placeholder="Filtra per nome..."
@@ -89,23 +147,47 @@ watchDebounced(
           @open="handleOpenDropdown"
           @update:filter="() => {}"
         />
+      </div>
 
-<!--          <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <DataTableFacetedFilter
-            v-if="priorityColumn"
-            :column="priorityColumn"
-            title="Priorità"
-            :options="priorityConstants"
-            :isLoading="false"
-            @update:filter="() => {}"
-            class="w-full lg:w-auto"
-          />
+      <!-- Date Range Filter -->
+      <div class="flex items-center space-x-2">
+        <Popover>
+          <PopoverTrigger as-child>
+            <Button
+              variant="outline"
+              class="h-8 justify-start text-left font-normal w-[260px]"
+            >
+              <CalendarIcon class="mr-2 h-4 w-4" />
+              {{ formattedRange }}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent class="w-auto p-0">
+            <RangeCalendar
+              v-model="dateRange"
+              initial-focus
+              :number-of-months="2"
+              @update:start-value="start => dateRange.start = start"
+              @update:end-value="end => dateRange.end = end"
+            />
+            <div class="p-2 border-t flex justify-end">
+              <Button variant="outline" size="sm" @click="clearDateFilter">
+                Cancella
+              </Button>
+            </div>
+          </PopoverContent>
+        </Popover>
 
-        </div> -->
-
+        <Button
+          variant="outline"
+          size="sm"
+          @click="clearAllFilters"
+        >
+          Resetta tutti i filtri
+        </Button>
       </div>
     </div>
 
+    <!-- Create Button -->
     <Link
       as="button"
       :href="route(generateRoute('eventi.create'))"
@@ -114,6 +196,5 @@ watchDebounced(
       <Plus class="w-4 h-4" />
       <span>Crea</span>
     </Link>
-
   </div>
 </template>

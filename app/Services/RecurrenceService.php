@@ -15,21 +15,25 @@ use Recurr\Transformer\Constraint\BetweenConstraint;
 class RecurrenceService
 {
     private const MAX_DAYS = 365; // Prevent excessive date ranges
-    
+
     public function getEventsInNextDays(
         int $days = 7, 
         array $filters = [], 
         ?int $page = null, 
         ?int $perPage = null
     ): Collection|LengthAwarePaginator {
-        $days = min($days, self::MAX_DAYS);
         $now = Carbon::now();
-        $end = $now->copy()->addDays($days);
-        
+
+        // Override default start and end with filters if present
+        $start = !empty($filters['date_from']) ? Carbon::parse($filters['date_from']) : $now;
+        $end = !empty($filters['date_to']) 
+            ? Carbon::parse($filters['date_to']) 
+            : $now->copy()->addDays(min($days, self::MAX_DAYS));
+
         // Get base query with eager loading
-        $oneTimeEvents = $this->getOneTimeEvents($now, $end, $filters);
-        $recurringEvents = $this->getRecurringEvents($now, $end, $filters);
-        
+        $oneTimeEvents = $this->getOneTimeEvents($start, $end, $filters);
+        $recurringEvents = $this->getRecurringEvents($start, $end, $filters);
+
         $combined = $oneTimeEvents->concat($recurringEvents)
             ->sortBy('occurs_at')
             ->values();
@@ -52,7 +56,6 @@ class RecurrenceService
         return $query->get()->map(function ($event) {
             $event = $event->replicate();
             $event->occurs_at = $event->start_time;
-            $event->is_recurring = false;
             return $event;
         });
     }
@@ -98,7 +101,6 @@ class RecurrenceService
             return collect($occurrences)->map(function ($occurrence) use ($event) {
                 $newEvent = $event->replicate();
                 $newEvent->occurs_at = Carbon::instance($occurrence->getStart());
-                $newEvent->is_recurring = true;
                 return $newEvent;
             })->filter(function ($event) use ($filters) {
                 return $this->passesSearchFilter($event, $filters['search'] ?? null);
@@ -119,6 +121,7 @@ class RecurrenceService
         if (!empty($filters['category_id']) && is_array($filters['category_id'])) {
             $query->whereIn('category_id', $filters['category_id']);
         }
+
     }
 
     private function passesSearchFilter($event, ?string $search): bool

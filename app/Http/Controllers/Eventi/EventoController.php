@@ -45,8 +45,8 @@ class EventoController extends Controller
 
         // Get filtered and paginated events
         $events = $this->recurrenceService->getEventsInNextDays(
-            days: 60,
-            filters: Arr::only($validated, ['title', 'category_id', 'search']),
+            days: 360,
+            filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
             page: $page,
             perPage: $perPage
         );

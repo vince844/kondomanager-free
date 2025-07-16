@@ -42,31 +42,40 @@ const table = useVueTable({
     },
   },
   manualPagination: true,
-  onPaginationChange: updater => {
+  onPaginationChange: (updater) => {
+  if (isPending.value) return
+  isPending.value = true
 
-    // Prevent concurrent requests
-    if (isPending.value) return 
-    
-    isPending.value = true
-    
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
+  const nextPage = typeof updater === 'function'
+    ? updater(table.getState().pagination).pageIndex + 1
+    : updater.pageIndex + 1
 
-    const nextPageSize = table.getState().pagination.pageSize;
+  const nextPageSize = typeof updater === 'function'
+    ? updater(table.getState().pagination).pageSize
+    : updater.pageSize
 
-    router.get(route('admin.eventi.index'), {
-      page: nextPage + 1,
-      per_page: nextPageSize,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => {
-        isPending.value = false
-      }
-    });
-  },
+  const currentQuery = new URLSearchParams(window.location.search)
+  const queryParams: Record<string, any> = {}
+
+  for (const [key, value] of currentQuery.entries()) {
+    // Filter out duplicate pagination if present
+    if (key !== 'page' && key !== 'per_page') {
+      queryParams[key] = value
+    }
+  }
+
+  queryParams.page = nextPage
+  queryParams.per_page = nextPageSize
+
+  router.get(route('admin.eventi.index'), queryParams, {
+    preserveState: true,
+    preserveScroll: true,
+    replace: true,
+    onFinish: () => {
+      isPending.value = false
+    },
+  })
+},
   onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
   getCoreRowModel: getCoreRowModel(),
   getSortedRowModel: getSortedRowModel(),
