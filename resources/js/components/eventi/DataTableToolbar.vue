@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { ref, computed } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { router, Link } from '@inertiajs/vue3'
@@ -11,7 +10,12 @@ import { useCategorieEventi } from '@/composables/useCategorieEventi'
 import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { RangeCalendar } from '@/components/ui/range-calendar'
-import { CalendarDate, getLocalTimeZone, DateFormatter } from '@internationalized/date'
+import { 
+  DateRange, 
+  DateValue, 
+  getLocalTimeZone, 
+  DateFormatter 
+} from '@internationalized/date'
 import type { Table } from '@tanstack/vue-table'
 import type { Evento } from '@/types/eventi'
 
@@ -22,8 +26,11 @@ const { categorie, isLoading, loadCategorie } = useCategorieEventi()
 
 const { table } = defineProps<{ table: Table<Evento> }>()
 
-const nameFilter = ref('')
-const dateRange = ref<{ start?: CalendarDate; end?: CalendarDate }>({})
+const nameFilter = ref<string>('')
+
+// Important: Use correct type for dateRange - a DateRange of DateValue (can be CalendarDate or ZonedDateTime)
+const dateRange = ref<DateRange<DateValue>>({ start: undefined, end: undefined })
+
 const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
@@ -35,8 +42,12 @@ const handleOpenDropdown = () => {
   loadCategorie()
 }
 
-const convertCalendarDateToString = (date?: CalendarDate): string | undefined => {
-  return date ? date.toDate(getLocalTimeZone()).toISOString().split('T')[0] : undefined
+const convertCalendarDateToString = (date?: DateValue): string | undefined => {
+  // Defensive: date can be undefined
+  if (!date) return undefined
+  // Convert to JS Date using getLocalTimeZone
+  const jsDate = date.toDate(getLocalTimeZone())
+  return jsDate.toISOString().split('T')[0]
 }
 
 const getCurrentQuery = () => {
@@ -63,15 +74,13 @@ watchDebounced(
     if (category_id.length > 0) params.category_id = category_id
     else delete params.category_id
 
-    if (range?.start)
-      params.date_from = convertCalendarDateToString(range.start)
+    if (range?.start) params.date_from = convertCalendarDateToString(range.start)
     else delete params.date_from
 
-    if (range?.end)
-      params.date_to = convertCalendarDateToString(range.end)
+    if (range?.end) params.date_to = convertCalendarDateToString(range.end)
     else delete params.date_to
 
-    router.get(route('admin.eventi.index'), params, {
+    router.get(route(generateRoute('eventi.index')), params, {
       preserveState: true,
       replace: true,
       preserveScroll: true,
@@ -82,23 +91,20 @@ watchDebounced(
 
 const clearAllFilters = () => {
   nameFilter.value = ''
-  dateRange.value = {}
+  dateRange.value = { start: undefined, end: undefined }
   categoriaColumn?.setFilterValue(undefined)
 
-  router.get(route('admin.eventi.index'), {
-    page: 1,
-  }, {
+  router.get(route(generateRoute('eventi.index')), { page: 1 }, {
     preserveState: true,
     replace: true,
     preserveScroll: true,
   })
 }
 
-// Modify your clearDateFilter method
 const clearDateFilter = () => {
-  dateRange.value = {}
+  dateRange.value = { start: undefined, end: undefined }
 
-  // Re-trigger the watcher by forcing a new object reference
+  // Re-trigger the watcher by forcing new object reference and update route params
   router.get(route(generateRoute('eventi.index')), {
     title: nameFilter.value || undefined,
     category_id: categoriaFilter.value.length > 0 ? categoriaFilter.value : undefined,
@@ -113,18 +119,19 @@ const clearDateFilter = () => {
 }
 
 const formattedRange = computed(() => {
-  const start = dateRange.value.start?.toDate(getLocalTimeZone())
-  const end = dateRange.value.end?.toDate(getLocalTimeZone())
+  const startDate = dateRange.value.start?.toDate(getLocalTimeZone())
+  const endDate = dateRange.value.end?.toDate(getLocalTimeZone())
 
-  if (start && end) {
-    return `${df.format(start)} - ${df.format(end)}`
-  } else if (start) {
-    return df.format(start)
+  if (startDate && endDate) {
+    return `${df.format(startDate)} - ${df.format(endDate)}`
+  } else if (startDate) {
+    return df.format(startDate)
   }
   return 'Seleziona periodo'
 })
 
 </script>
+
 
 <template>
   <div class="flex items-center justify-between w-full mb-3">
@@ -162,12 +169,11 @@ const formattedRange = computed(() => {
             </Button>
           </PopoverTrigger>
           <PopoverContent class="w-auto p-0">
+
             <RangeCalendar
               v-model="dateRange"
               initial-focus
               :number-of-months="2"
-              @update:start-value="start => dateRange.start = start"
-              @update:end-value="end => dateRange.end = end"
             />
             <div class="p-2 border-t flex justify-end">
               <Button variant="outline" size="sm" @click="clearDateFilter">

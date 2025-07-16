@@ -9,6 +9,7 @@ export interface Evento {
   description: string;
   created_at: string;
   categoria: CategoriaEvento;
+  recurrence_id: number | null;
   created_by: {
     user: User;
     anagrafica: Anagrafica;

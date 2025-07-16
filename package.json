@@ -25,6 +25,7 @@
     "dependencies": {
         "@headlessui/vue": "^1.7.23",
         "@inertiajs/vue3": "^2.0.0",
+        "@internationalized/date": "^3.8.2",
         "@tailwindcss/forms": "^0.5.3",
         "@tailwindcss/vite": "^4.1.1",
         "@tanstack/vue-table": "^8.21.2",

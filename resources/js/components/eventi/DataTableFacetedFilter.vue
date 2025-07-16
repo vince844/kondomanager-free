@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Check, PlusCircle } from 'lucide-vue-next'
+import { usePermission } from '@/composables/permissions'
 import type { Component } from 'vue'
 import type { Column } from '@tanstack/vue-table'
 
@@ -48,6 +49,7 @@ const emit = defineEmits<{
 }>()
 
 const isOpen = ref(false)
+const { generateRoute } = usePermission()
 
 watch(isOpen, (val) => {
   if (val) emit('open')
@@ -68,7 +70,7 @@ watch(
 // Helper function to update URL filters with Inertia router
 function updateUrlFilters(categoryFilter: string[] | undefined) {
   router.get(
-    route('admin.eventi.index'),
+    route(generateRoute('eventi.index')),
     {
       title: undefined,
       category_id: categoryFilter?.length ? categoryFilter : undefined,

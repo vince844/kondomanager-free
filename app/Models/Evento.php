@@ -36,6 +36,11 @@ class Evento extends Model
         return $this->belongsTo(RicorrenzaEvento::class, 'recurrence_id');
     }
 
+    public function eccezioni()
+    {
+        return $this->hasMany(EccezioneEvento::class, 'evento_id');
+    }
+
     public function anagrafiche()
     {
         return $this->belongsToMany(Anagrafica::class, 'anagrafica_evento', 'evento_id', 'anagrafica_id');

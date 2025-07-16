@@ -7,6 +7,7 @@ import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@ta
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/eventi/DataTableToolbar.vue';
+import { usePermission } from '@/composables/permissions';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
@@ -21,6 +22,7 @@ const props = defineProps<{
   }
 }>()
 
+const { generateRoute } = usePermission()
 const sorting = ref<SortingState>([])
 const isPending = ref(false) 
 
@@ -67,7 +69,7 @@ const table = useVueTable({
   queryParams.page = nextPage
   queryParams.per_page = nextPageSize
 
-  router.get(route('admin.eventi.index'), queryParams, {
+  router.get(route(generateRoute('eventi.index')), queryParams, {
     preserveState: true,
     preserveScroll: true,
     replace: true,

@@ -54,10 +54,11 @@ class RecurrenceService
         $this->applyFilters($query, $filters);
 
         return $query->get()->map(function ($event) {
-            $event = $event->replicate();
-            $event->occurs_at = $event->start_time;
-            return $event;
+            $copy = clone $event; // clone object to avoid mutation
+            $copy->occurs_at = $copy->start_time;
+            return $copy;
         });
+
     }
 
     private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection
@@ -74,6 +75,60 @@ class RecurrenceService
     }
 
     private function expandRecurringEvent(Evento $event, Carbon $start, Carbon $end, array $filters): Collection
+{
+    $rec = $event->ricorrenza;
+    if (!$rec || !$rec->rrule) {
+        return collect();
+    }
+
+    // Load exceptions marked as deleted within date range
+    $exceptions = $event->eccezioni()
+        ->where('is_deleted', true)
+        ->whereBetween('exception_date', [$start, $end])
+        ->pluck('exception_date')
+        ->map(fn($date) => Carbon::parse($date)->format('Y-m-d H:i:s'))
+        ->toArray();
+
+    try {
+        $rule = new Rule(
+            $rec->rrule, 
+            new \DateTime($event->start_time), 
+            null, 
+            $rec->timezone ?? config('app.timezone')
+        );
+
+        $transformer = new ArrayTransformer();
+        if (strtolower($rec->frequency) === 'monthly') {
+            $config = new ArrayTransformerConfig();
+            $config->enableLastDayOfMonthFix();
+            $transformer->setConfig($config);
+        }
+
+        $constraint = new BetweenConstraint(new \DateTime($start), new \DateTime($end), true);
+        $occurrences = $transformer->transform($rule, $constraint);
+
+        return collect($occurrences)->map(function ($occurrence) use ($event) {
+            $newEvent = $event->replicate();
+            $newEvent->id = $event->id; // preserve original id
+            $newEvent->occurs_at = Carbon::instance($occurrence->getStart());
+            return $newEvent;
+        })->filter(function ($event) use ($filters, $exceptions) {
+            // Filter out occurrences that exist as deleted exceptions
+            $occursAtStr = $event->occurs_at->format('Y-m-d H:i:s');
+            if (in_array($occursAtStr, $exceptions)) {
+                return false; // skip deleted occurrence
+            }
+            return $this->passesSearchFilter($event, $filters['search'] ?? null);
+        });
+
+    } catch (\Exception $e) {
+        Log::warning("Invalid RRULE for event ID {$event->id}: {$e->getMessage()}");
+        return collect();
+    }
+}
+
+
+/*     private function expandRecurringEvent(Evento $event, Carbon $start, Carbon $end, array $filters): Collection
     {
         $rec = $event->ricorrenza;
         if (!$rec || !$rec->rrule) {
@@ -100,6 +155,7 @@ class RecurrenceService
 
             return collect($occurrences)->map(function ($occurrence) use ($event) {
                 $newEvent = $event->replicate();
+                $newEvent->id = $event->id; // preserve original id
                 $newEvent->occurs_at = Carbon::instance($occurrence->getStart());
                 return $newEvent;
             })->filter(function ($event) use ($filters) {
@@ -110,7 +166,7 @@ class RecurrenceService
             Log::warning("Invalid RRULE for event ID {$event->id}: {$e->getMessage()}");
             return collect();
         }
-    }
+    } */
 
     private function applyFilters($query, array $filters): void
     {
