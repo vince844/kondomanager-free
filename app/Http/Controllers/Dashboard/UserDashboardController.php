@@ -20,7 +20,7 @@ class UserDashboardController extends Controller
 {
     
     /**
-     * Inject the SegnalazioneService.
+     * Inject the services.
      *
      * @param  \App\Services\SegnalazioneService $segnalazioneService
      * @param  \App\Services\ComunicazioneService $comunicazioneService

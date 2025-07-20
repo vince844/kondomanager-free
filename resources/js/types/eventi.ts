@@ -14,6 +14,8 @@ export interface Evento {
   title: string;
   description: string;
   created_at: string;
+  occurs: string | Date;
+  occurs_at: string;
   categoria: CategoriaEvento;
   recurrence_id: number | null;
   created_by: {

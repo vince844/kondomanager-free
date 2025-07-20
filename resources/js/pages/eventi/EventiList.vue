@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue';
-import { usePage, Head } from '@inertiajs/vue3';
+import { usePage, Head, router } from '@inertiajs/vue3';
 import DataTable from '@/components/eventi/DataTable.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
@@ -11,15 +11,30 @@ import EventiStats from '@/components/eventi/EventiStats.vue';
 import type { Flash } from '@/types/flash';
 import type { Evento, Stats } from '@/types/eventi';
 import type { PaginationMeta } from '@/types/pagination';
+import { reactive } from 'vue';
 
-defineProps<{
+const props = defineProps<{
   eventi: Evento[],
   stats: Stats,
-  meta: PaginationMeta
+  meta: PaginationMeta,
+  filters: Record<string, any>
 }>()
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
+
+const filters = reactive({ ...props.filters });
+
+function setFilter(range: { date_from: string; date_to: string }) {
+  filters.date_from = range.date_from;
+  filters.date_to = range.date_to;
+  filters.page = 1;
+
+  router.get(route('admin.eventi.index'), filters, {
+    preserveScroll: true,
+    preserveState: true,
+  });
+}
 
 </script>
 
@@ -33,7 +48,7 @@ const flashMessage = computed(() => page.props.flash.message);
         description="Di seguito la tabella con l'elenco di tutte le prossime scadenze nell'agenda del condominio"
       />
 
-      <EventiStats :stats="stats" />
+       <EventiStats :stats="stats" @setFilter="setFilter" />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

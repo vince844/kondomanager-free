@@ -277,7 +277,7 @@ return [
             'title' => 'titolo',
             'description' => 'descrizione',
             'start_time' => 'data inizio',
-            'end_time' => 'La data fine',
+            'end_time' => 'data fine',
             'category_id' => 'categoria',
             'recurrence_until' => 'La data di fine ricorrenza',
             'condomini_ids' => 'condomini',
