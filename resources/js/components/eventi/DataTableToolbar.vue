@@ -10,27 +10,16 @@ import { useCategorieEventi } from '@/composables/useCategorieEventi'
 import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { RangeCalendar } from '@/components/ui/range-calendar'
-import { 
-  DateRange, 
-  DateValue, 
-  getLocalTimeZone, 
-  DateFormatter 
-} from '@internationalized/date'
+import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internationalized/date'
 import type { Table } from '@tanstack/vue-table'
 import type { Evento } from '@/types/eventi'
 
 const df = new DateFormatter('it-IT', { dateStyle: 'short' })
-
 const { generateRoute, hasPermission } = usePermission()
 const { categorie, isLoading, loadCategorie } = useCategorieEventi()
-
 const { table } = defineProps<{ table: Table<Evento> }>()
-
 const nameFilter = ref<string>('')
-
-// Important: Use correct type for dateRange - a DateRange of DateValue (can be CalendarDate or ZonedDateTime)
 const dateRange = ref<DateRange<DateValue>>({ start: undefined, end: undefined })
-
 const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
@@ -134,7 +123,7 @@ const formattedRange = computed(() => {
 
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3">
+  <div class="flex items-center justify-between w-full mb-3 mt-4">
     <!-- Left Section: Filters -->
     <div class="flex flex-col space-y-2 w-full lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
       <!-- Search and Category Filters -->
@@ -145,19 +134,6 @@ const formattedRange = computed(() => {
           class="h-8 w-[150px] lg:w-[250px]"
         />
 
-        <DataTableFacetedFilter
-          v-if="categoriaColumn"
-          :column="categoriaColumn"
-          title="Categoria"
-          :options="categorie"
-          :isLoading="isLoading"
-          @open="handleOpenDropdown"
-          @update:filter="() => {}"
-        />
-      </div>
-
-      <!-- Date Range Filter -->
-      <div class="flex items-center space-x-2">
         <Popover>
           <PopoverTrigger as-child>
             <Button
@@ -183,6 +159,16 @@ const formattedRange = computed(() => {
           </PopoverContent>
         </Popover>
 
+        <DataTableFacetedFilter
+          v-if="categoriaColumn"
+          :column="categoriaColumn"
+          title="Categoria"
+          :options="categorie"
+          :isLoading="isLoading"
+          @open="handleOpenDropdown"
+          @update:filter="() => {}"
+        />
+
         <Button
           variant="outline"
           size="sm"
@@ -191,6 +177,7 @@ const formattedRange = computed(() => {
           Resetta tutti i filtri
         </Button>
       </div>
+
     </div>
 
     <!-- Create Button -->

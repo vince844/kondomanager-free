@@ -7,12 +7,14 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/eventi/columns';
 import Alert from '@/components/Alert.vue';
+import EventiStats from '@/components/eventi/EventiStats.vue';
 import type { Flash } from '@/types/flash';
-import type { Evento } from '@/types/eventi';
+import type { Evento, Stats } from '@/types/eventi';
 import type { PaginationMeta } from '@/types/pagination';
 
 defineProps<{
   eventi: Evento[],
+  stats: Stats,
   meta: PaginationMeta
 }>()
 
@@ -30,6 +32,8 @@ const flashMessage = computed(() => page.props.flash.message);
         title="Elenco scadenze in agenda"
         description="Di seguito la tabella con l'elenco di tutte le prossime scadenze nell'agenda del condominio"
       />
+
+      <EventiStats :stats="stats" />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

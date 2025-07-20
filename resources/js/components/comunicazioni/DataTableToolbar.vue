@@ -5,7 +5,6 @@ import { watchDebounced } from '@vueuse/core';
 import { router } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Link } from '@inertiajs/vue3';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
@@ -14,7 +13,7 @@ import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
 
-const { generateRoute, hasPermission, hasRole } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 
 // Change this to allow table reset when filter cleared
 const { table } = defineProps<{
@@ -23,7 +22,6 @@ const { table } = defineProps<{
 
 // Read current priority filter from column state
 const priorityColumn = table.getColumn('priority')
-
 const nameFilter = ref('')
 
 const priorityFilter = computed(() => {

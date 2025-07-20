@@ -8,15 +8,16 @@ import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import { Checkbox } from '@/components/ui/checkbox';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Textarea } from '@/components/ui/textarea';
-import { LoaderCircle, Plus, List } from 'lucide-vue-next';
+import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import axios from 'axios';
 import { usePermission } from "@/composables/permissions";
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { CategoriaEvento } from '@/types/categorie-eventi';
-
 
 const { generatePath, generateRoute } = usePermission();
 
@@ -27,6 +28,7 @@ const props = defineProps<{
 }>();
 
 const anagraficheOptions = ref<Anagrafica[]>([]);
+const showRecurrence = ref(false);
 
 const frequencies = [
   { label: 'Giornaliera', value: 'daily' },
@@ -77,12 +79,22 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
 
 watch(() => form.condomini_ids, fetchAnagrafiche);
 
+watch(showRecurrence, (enabled) => {
+  if (!enabled) {
+    form.recurrence_frequency = null;
+    form.recurrence_interval = 1;
+    form.recurrence_by_day = [];
+    form.recurrence_until = null;
+  }
+});
+
 const submit = () => {
   form.post(route(generateRoute('eventi.store')), {
     preserveScroll: true,
     onSuccess: () => form.reset()
   });
 };
+
 </script>
 
 <template>
@@ -113,6 +125,7 @@ const submit = () => {
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
+          
           <!-- Main Form -->
           <div class="lg:col-span-3 space-y-4 bg-white p-4 border rounded">
 
@@ -128,6 +141,21 @@ const submit = () => {
               <InputError :message="form.errors.description" />
             </div>
 
+            <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+              <div class="sm:col-span-6">
+                <Label for="note">Note aggiuntive</Label>
+                <Textarea 
+                    id="note" 
+                    placeholder="Inserisci una nota qui" 
+                    v-model="form.note" 
+                    v-on:focus="form.clearErrors('note')"
+                />
+                </div>
+
+              <InputError :message="form.errors.note" />
+        
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <Label>Inizio</Label>
@@ -141,7 +169,32 @@ const submit = () => {
               </div>
             </div>
 
-            <div>
+            <div class="flex items-center space-x-2">
+              <Checkbox class="size-4"  id="recurrenceToggle" v-model:checked="showRecurrence" />
+              <Label for="recurrenceToggle">Imposta evento ricorrente</Label>
+              <HoverCard>
+                <HoverCardTrigger as-child>
+                  <button type="button" class="cursor-pointer">
+                      <Info class="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </HoverCardTrigger>
+                <HoverCardContent class="w-80">
+                <div class="flex justify-between space-x-4">
+                  <div class="space-y-1">
+                      <h4 class="text-sm font-semibold">
+                          Evento ricorrente
+                      </h4>
+                      <p class="text-sm">
+                          Quando viene selezionata questa opzione verrano abilitati i campi per la configurazione della ricorrenza dell'evento.
+                      </p>
+                  </div>
+                </div>
+                </HoverCardContent>
+              </HoverCard>
+
+            </div>
+
+            <div v-if="showRecurrence">
               <Label>Ricorrenza</Label>
               <div class="grid grid-cols-2 gap-4">
                 <v-select :options="frequencies" label="label" v-model="form.recurrence_frequency" :reduce="opt => opt.value" placeholder="Frequenza" />
@@ -170,23 +223,8 @@ const submit = () => {
                  <InputError :message="form.errors.recurrence_until" />
               </div>
 
-                  <!--  Note -->
-              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <Label for="note">Note aggiuntive</Label>
-                  <Textarea 
-                      id="note" 
-                      placeholder="Inserisci una nota qui" 
-                      v-model="form.note" 
-                      v-on:focus="form.clearErrors('note')"
-                  />
-                </div>
-
-                <InputError :message="form.errors.note" />
-        
-              </div>
-
             </div>
+
           </div>
 
           <!-- Side Form -->
@@ -234,8 +272,11 @@ const submit = () => {
               />
               <InputError :message="form.errors.anagrafiche" />
             </div>
+
           </div>
+
         </div>
+
       </form>
     </div>
   </AppLayout>

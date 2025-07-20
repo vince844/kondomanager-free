@@ -25,7 +25,6 @@ use Inertia\Response;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
 use Illuminate\Support\Arr;
-use Carbon\Carbon;
 
 class EventoController extends Controller
 {
@@ -53,8 +52,12 @@ class EventoController extends Controller
             perPage: $perPage
         );
 
+        // Get stats using the same service
+        $stats = $this->recurrenceService->getUpcomingStats();
+
         return Inertia::render('eventi/EventiList', [
             'eventi' => EventoResource::collection($events->items()),
+            'stats' => $stats,
             'meta' => [
                 'current_page' => $events->currentPage(),
                 'last_page' => $events->lastPage(),

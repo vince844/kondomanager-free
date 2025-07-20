@@ -3,6 +3,12 @@ import { User } from './users';
 import { Building } from './buildings';
 import { CategoriaEvento } from './categorie-eventi';
 
+export type Stats = {
+  next_seven_days: number,
+  next_fourteen_days: number,
+  next_twentyeight_days: number,
+};
+
 export interface Evento {
   id: number;
   title: string;
