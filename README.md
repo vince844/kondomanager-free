@@ -111,6 +111,10 @@ Visualizza la pagina `contributing.md` per consigli e direttive sulle contribuzi
 
 Ti prego di aderire al nostro `code of conduct`.
 
+## Sostieni il progetto
+Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto.
+
+[Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
 
 ## Feedback
 
