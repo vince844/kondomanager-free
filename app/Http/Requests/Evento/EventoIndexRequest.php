@@ -20,8 +20,8 @@ class EventoIndexRequest extends FormRequest
             'category_id'   => ['sometimes', 'array'],
             'category_id.*' => ['integer', 'exists:categorie_evento,id'],
             'search'        => ['nullable', 'string', 'max:255'],
-            'date_from' => ['sometimes', 'date', 'date_format:Y-m-d'],
-            'date_to' => ['sometimes', 'date', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'date_from'     => ['sometimes', 'date', 'date_format:Y-m-d'],
+            'date_to'       => ['sometimes', 'date', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ];
     }
 

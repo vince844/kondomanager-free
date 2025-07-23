@@ -374,7 +374,6 @@ async function confirmDelete() {
               </p>
               <Button
                 v-if="searchQuery"
-                variant="ghost"
                 size="sm"
                 class="mt-3"
                 @click="searchQuery = ''"

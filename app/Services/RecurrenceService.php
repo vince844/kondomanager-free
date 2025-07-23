@@ -224,6 +224,10 @@ class RecurrenceService
             $query->where('title', 'like', '%' . $filters['title'] . '%');
         }
 
+        if (!empty($filters['search'])) {
+            $query->where('title', 'like', '%' . $filters['search'] . '%');
+        }
+
         if (!empty($filters['category_id']) && is_array($filters['category_id'])) {
             $query->whereIn('category_id', $filters['category_id']);
         }

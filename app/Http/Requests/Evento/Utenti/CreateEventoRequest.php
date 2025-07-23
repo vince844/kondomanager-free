@@ -1,9 +1,12 @@
 <?php
 
-namespace App\Http\Requests\Evento;
+namespace App\Http\Requests\Evento\Utenti;
 
+use App\Enums\Permission;
+use App\Enums\VisibilityStatus;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rules\Enum;
 
 /**
  * @method bool merge(string $key)
@@ -35,15 +38,13 @@ class CreateEventoRequest extends FormRequest
             'category_id'             => 'required|nullable|exists:categorie_evento,id',
             'condomini_ids'           => 'required|nullable|array',
             'condomini_ids.*'         => 'exists:condomini,id',
-            'anagrafiche'             => 'nullable|array',
-            'anagrafiche.*'           => 'exists:anagrafiche,id',
             'recurrence_frequency'    => 'nullable|in:daily,weekly,monthly,yearly',
             'recurrence_interval'     => 'nullable|integer|min:1',
             'recurrence_by_day'       => 'nullable|array',
             'recurrence_by_day.*'     => 'in:MO,TU,WE,TH,FR,SA,SU',
             'recurrence_by_month_day' => 'nullable|integer|min:1|max:31',
             'recurrence_until'        => 'nullable|date|after:start_time',
-            'visibility'              => 'nullable|in:public,private,hidden',
+            'visibility'              => ['required', new Enum(VisibilityStatus::class)],
         ];
     }
 
@@ -58,7 +59,10 @@ class CreateEventoRequest extends FormRequest
         $user = Auth::user();
 
         $this->merge([
-            'created_by' => $user->id
+            'created_by'  => $user->id,
+            'visibility' => $user->hasPermissionTo(Permission::PUBLISH_EVENTS->value)
+                ? VisibilityStatus::PUBLIC->value
+                : VisibilityStatus::HIDDEN->value
         ]);
     }
 
@@ -86,5 +90,4 @@ class CreateEventoRequest extends FormRequest
             'condomini_ids'    => __('validation.attributes.eventi.condomini_ids'),
         ];
     }
-
 }

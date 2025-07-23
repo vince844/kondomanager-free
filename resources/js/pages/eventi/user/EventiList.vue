@@ -176,7 +176,6 @@ function getEventColor(occurs: string | Date): string {
   return 'text-green-500';
 }
 
-
 function formatEventDate(date: string | Date) {
   const d = typeof date === 'string' ? new Date(date) : date;
 
@@ -259,7 +258,9 @@ async function confirmDelete() {
       </div>
 
       <div class="container mx-auto mt-4">
-        <div class="mb-4 flex items-center gap-4">
+        
+        <div class="mb-4 flex flex-wrap items-center gap-4 justify-between">
+          <!-- Search box -->
           <div class="flex-1 relative max-w-md">
             <input
               v-model="searchQuery"
@@ -269,15 +270,32 @@ async function confirmDelete() {
             />
           </div>
 
-          <Button
-            v-if="hasPermission([Permission.CREATE_EVENTS])"
-            as="a"
-            :href="route(generateRoute('eventi.create'))"
-            class="h-8 lg:flex items-center gap-2 ml-auto"
-          >
-            <Plus class="w-4 h-4" />
-            <span>Crea</span>
-          </Button>
+          <!-- Legend + Crea button wrapper -->
+          <div class="flex items-center gap-4 mt-2 lg:mt-0">
+            <!-- Legend -->
+            <div class="flex items-center gap-4 text-sm border border-gray-300 rounded-md px-4 py-1.5 bg-white shadow-sm">
+              <div class="flex items-center gap-1">
+                <span class="w-3 h-3 rounded-full bg-red-500"></span> ≤ 7 giorni
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="w-3 h-3 rounded-full bg-yellow-500"></span> ≤ 14 giorni
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="w-3 h-3 rounded-full bg-green-500"></span> oltre
+              </div>
+            </div>
+
+            <!-- Crea button -->
+            <Button
+              v-if="hasPermission([Permission.CREATE_EVENTS])"
+              as="a"
+              :href="route(generateRoute('eventi.create'))"
+              class="h-8 lg:flex items-center gap-2"
+            >
+              <Plus class="w-4 h-4" />
+              <span>Crea</span>
+            </Button>
+          </div>
         </div>
 
         <div class="relative min-h-[300px]">
@@ -341,7 +359,7 @@ async function confirmDelete() {
               <!-- Event content -->
               <div class="flex-1 flex flex-col">
                 <div class="flex items-center justify-between">
-                  <h3 class="font-semibold text-lg text-gray-900">{{ evento.title }}</h3>
+                  <h3 class="font-semibold text-gray-900">{{ evento.title }}</h3>
 
                   <div class="flex items-center gap-2">
                     <Link
@@ -390,7 +408,6 @@ async function confirmDelete() {
               </p>
               <Button
                 v-if="searchQuery"
-                variant="ghost"
                 size="sm"
                 class="mt-3"
                 @click="searchQuery = ''"
