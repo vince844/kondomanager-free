@@ -254,6 +254,7 @@ const submit = () => {
                 label="nome" 
                 v-model="form.condomini_ids" 
                 :reduce="(option: Building) => option.id"
+                @update:modelValue="form.clearErrors('condomini_ids')" 
                 placeholder="Seleziona condomini" 
               />
               <InputError :message="form.errors.condomini_ids" />

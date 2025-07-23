@@ -31,5 +31,9 @@ return [
     'approve_archive_documents' => "Non hai permessi sufficienti per approvare un documento in archivio!",
     'delete_archive_documents'  => "Non hai permessi sufficienti per eliminare un documento in archivio!",
     'edit_archive_documents'    => "Non hai permessi sufficienti per modificare un documento in archivio!",
+    // Events
+    'view_events'               => "Non hai permessi sufficienti per visualizzare le scadenze in agenda!",
+    'create_events'             => "Non hai permessi sufficienti per creare una scadenza in agenda!",
+    'delete_events'             => 'Non hai permessi sufficienti per eliminare la scadenza in agenda!',
 
 ];

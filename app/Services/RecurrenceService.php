@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Models\Anagrafica;
 use App\Models\Evento;
 use Carbon\Carbon;
+use App\Enums\Permission;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Collection;
@@ -11,12 +13,103 @@ use Recurr\Rule;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
 use Recurr\Transformer\Constraint\BetweenConstraint;
+use Illuminate\Support\Facades\Auth;
 
 class RecurrenceService
 {
     private const MAX_DAYS = 365;
 
-    public function getEventsInNextDays(
+     public function getEventsInNextDays(
+        int $days = 7,
+        array $filters = [],
+        ?int $page = null,
+        ?int $perPage = null,
+        ?Anagrafica $anagrafica = null,
+        ?Collection $condominioIds = null
+    ): Collection|LengthAwarePaginator {
+        $now = Carbon::now();
+        $start = !empty($filters['date_from']) ? Carbon::parse($filters['date_from']) : $now;
+        $end = !empty($filters['date_to']) ? Carbon::parse($filters['date_to']) : $now->copy()->addDays(min($days, self::MAX_DAYS));
+
+        if ($this->isAdmin()) {
+            $oneTimeEvents = $this->getOneTimeEvents($start, $end, $filters);
+            $recurringEvents = $this->getRecurringEvents($start, $end, $filters);
+        } else {
+            $oneTimeEvents = $this->getUserScopedOneTimeEvents($start, $end, $filters, $anagrafica, $condominioIds);
+            $recurringEvents = $this->getUserScopedRecurringEvents($start, $end, $filters, $anagrafica, $condominioIds);
+        }
+
+        $combined = $oneTimeEvents->concat($recurringEvents)->sortBy('occurs_at')->values();
+
+        return $page && $perPage
+            ? $this->paginateResults($combined, $page, $perPage)
+            : $combined;
+    }
+
+    private function getUserScopedRecurringEvents(
+        Carbon $start,
+        Carbon $end,
+        array $filters,
+        ?Anagrafica $anagrafica,
+        ?Collection $condominioIds
+    ): Collection {
+        $query = Evento::query()
+            ->whereNotNull('recurrence_id')
+            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
+        /*     ->where('is_published', true); */
+
+        $this->applyFilters($query, $filters);
+
+        $query->where(function ($q) use ($anagrafica, $condominioIds) {
+            $q->whereHas('anagrafiche', fn($q) =>
+                $q->where('anagrafica_id', $anagrafica?->id)
+            )->orWhere(function ($q) use ($condominioIds) {
+                $q->whereDoesntHave('anagrafiche')
+                  ->whereHas('condomini', fn($q) =>
+                      $q->whereIn('condominio_id', $condominioIds)
+                  );
+            });
+        });
+
+        return $query->get()->flatMap(fn($event) =>
+            $this->expandRecurringEvent($event, $start, $end, $filters)
+        );
+    }
+
+    private function getUserScopedOneTimeEvents(
+        Carbon $start,
+        Carbon $end,
+        array $filters,
+        ?Anagrafica $anagrafica,
+        ?Collection $condominioIds
+    ): Collection {
+        $query = Evento::query()
+            ->whereNull('recurrence_id')
+            ->with('categoria', 'condomini', 'anagrafiche')
+          /*   ->where('is_published', true) */
+            ->whereBetween('start_time', [$start, $end]);
+
+        $this->applyFilters($query, $filters);
+
+        $query->where(function ($q) use ($anagrafica, $condominioIds) {
+            $q->whereHas('anagrafiche', fn($q) =>
+                $q->where('anagrafica_id', $anagrafica?->id)
+            )->orWhere(function ($q) use ($condominioIds) {
+                $q->whereDoesntHave('anagrafiche')
+                  ->whereHas('condomini', fn($q) =>
+                      $q->whereIn('condominio_id', $condominioIds)
+                  );
+            });
+        });
+
+        return $query->get()->map(function ($event) {
+            $copy = clone $event;
+            $copy->occurs_at = $copy->start_time;
+            return $copy;
+        });
+    }
+
+    /* public function getEventsInNextDays(
         int $days = 7,
         array $filters = [],
         ?int $page = null,
@@ -35,13 +128,13 @@ class RecurrenceService
         return $page && $perPage
             ? $this->paginateResults($combined, $page, $perPage)
             : $combined;
-    }
+    } */
 
     private function getOneTimeEvents(Carbon $start, Carbon $end, array $filters): Collection
     {
         $query = Evento::query()
             ->whereNull('recurrence_id')
-            ->with('categoria')
+            ->with('categoria', 'condomini', 'anagrafiche')
             ->whereBetween('start_time', [$start, $end]);
 
         $this->applyFilters($query, $filters);
@@ -57,7 +150,7 @@ class RecurrenceService
     {
         $query = Evento::query()
             ->whereNotNull('recurrence_id')
-            ->with(['ricorrenza', 'categoria']);
+            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
 
         $this->applyFilters($query, $filters);
 
@@ -226,6 +319,13 @@ class RecurrenceService
             });
 
         return $oneTimeEvents + $recurringEvents->count();
+    }
+
+    private function isAdmin(): bool
+    {
+        $user = Auth::user();
+        return $user->hasRole(['amministratore', 'collaboratore']) ||
+               $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 
 }

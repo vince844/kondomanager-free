@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { CalendarDays, CalendarCheck, CalendarClock, AlertTriangle } from 'lucide-vue-next';
+
+import { AlertTriangle, ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const emit = defineEmits<{
@@ -29,7 +30,7 @@ const displayStats = {
   },
   next_seven_days: {
     title: 'Scadenza prossimi 7 giorni',
-    icon: CalendarDays,
+    icon: ClockAlert,
     range: {
       date_from: formatDate(now),
       date_to: formatDate(new Date(now.getTime() + 7 * 86400000)),
@@ -37,7 +38,7 @@ const displayStats = {
   },
   next_fourteen_days: {
     title: 'Scadenza prossimi 14 giorni',
-    icon: CalendarCheck,
+    icon: ClockArrowUp,
     range: {
       date_from: formatDate(now),
       date_to: formatDate(new Date(now.getTime() + 14 * 86400000)),
@@ -45,7 +46,7 @@ const displayStats = {
   },
   next_twentyeight_days: {
     title: 'Scadenza prossimi 30 giorni',
-    icon: CalendarClock,
+    icon: Clock,
     range: {
       date_from: formatDate(now),
       date_to: formatDate(new Date(now.getTime() + 28 * 86400000)),

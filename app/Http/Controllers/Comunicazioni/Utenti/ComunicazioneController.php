@@ -61,8 +61,8 @@ class ComunicazioneController extends Controller
             $userData = $this->getUserCondominioData();
 
             $comunicazioni = $this->comunicazioneService->getComunicazioni(
-                anagrafica:  $userData->anagrafica,
-                condominioIds:  $userData->condominioIds,
+                anagrafica: $userData->anagrafica,
+                condominioIds: $userData->condominioIds,
                 validated: $validated
             );
 

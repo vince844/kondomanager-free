@@ -68,7 +68,8 @@ class Anagrafica extends Model
 
     public function eventi()
     {
-        return $this->belongsToMany(Evento::class, 'anagrafica_evento', 'anagrafica_id', 'evento_id');
+        /* return $this->belongsToMany(Evento::class, 'anagrafica_evento', 'anagrafica_id', 'evento_id'); */
+        return $this->belongsToMany(Evento::class, 'anagrafica_evento');
     }
 
     

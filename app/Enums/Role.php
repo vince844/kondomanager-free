@@ -44,6 +44,7 @@ enum Role: string
             self::AMMINISTRATORE => PermissionEnum::cases(),
 
             self::COLLABORATORE => [
+                PermissionEnum::ACCESS_ADMIN_PANEL,
                 PermissionEnum::CREATE_USERS,
                 PermissionEnum::EDIT_USERS,
                 PermissionEnum::VIEW_USERS,
@@ -71,6 +72,11 @@ enum Role: string
                 PermissionEnum::EDIT_ARCHIVE_DOCUMENTS,
                 PermissionEnum::PUBLISH_ARCHIVE_DOCUMENTS,
                 PermissionEnum::APPROVE_ARCHIVE_DOCUMENTS,
+                PermissionEnum::VIEW_EVENTS,
+                PermissionEnum::CREATE_EVENTS,
+                PermissionEnum::EDIT_EVENTS,
+                PermissionEnum::PUBLISH_EVENTS,
+                PermissionEnum::APPROVE_EVENTS,
             ],
 
             self::FORNITORE => [
@@ -81,6 +87,7 @@ enum Role: string
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
+                PermissionEnum::VIEW_EVENTS,
             ],
 
             self::UTENTE => [
@@ -92,6 +99,7 @@ enum Role: string
                 PermissionEnum::COMMENT_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
+                PermissionEnum::VIEW_EVENTS,
             ],
         };
     }

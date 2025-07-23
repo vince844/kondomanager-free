@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { watchDebounced } from '@vueuse/core'
-import { router, Link } from '@inertiajs/vue3'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Plus, Calendar as CalendarIcon } from 'lucide-vue-next'
-import { usePermission } from '@/composables/permissions'
-import { useCategorieEventi } from '@/composables/useCategorieEventi'
-import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { RangeCalendar } from '@/components/ui/range-calendar'
-import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internationalized/date'
-import type { Table } from '@tanstack/vue-table'
-import type { Evento } from '@/types/eventi'
+
+import { ref, computed } from 'vue';
+import { watchDebounced } from '@vueuse/core';
+import { router, Link } from '@inertiajs/vue3';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Plus, Calendar as CalendarIcon } from 'lucide-vue-next';
+import { usePermission } from '@/composables/permissions';
+import { Permission }  from "@/enums/Permission";
+import { useCategorieEventi } from '@/composables/useCategorieEventi';
+import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { RangeCalendar } from '@/components/ui/range-calendar';
+import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internationalized/date';
+import type { Table } from '@tanstack/vue-table';
+import type { Evento } from '@/types/eventi';
 
 const df = new DateFormatter('it-IT', { dateStyle: 'short' })
 const { generateRoute, hasPermission } = usePermission()
@@ -121,7 +123,6 @@ const formattedRange = computed(() => {
 
 </script>
 
-
 <template>
   <div class="flex items-center justify-between w-full mb-3 mt-4">
     <!-- Left Section: Filters -->
@@ -182,6 +183,7 @@ const formattedRange = computed(() => {
 
     <!-- Create Button -->
     <Link
+      v-if="hasPermission([Permission.CREATE_EVENTS])"
       as="button"
       :href="route(generateRoute('eventi.create'))"
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"

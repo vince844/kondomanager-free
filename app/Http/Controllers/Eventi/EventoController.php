@@ -25,6 +25,7 @@ use Inertia\Response;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Gate;
 
 class EventoController extends Controller
 {
@@ -38,15 +39,17 @@ class EventoController extends Controller
      * @param EventoIndexRequest $request The validated index request.
      * @return Response The rendered event list.
      */
-    public function index(EventoIndexRequest $request): Response
+    public function index(EventoIndexRequest $request, Evento $evento): Response
     {
+        Gate::authorize('view', $evento);
+
         $validated = $request->validated();
         
         $perPage = min((int) ($validated['per_page'] ?? 10), 100);
         $page = (int) ($validated['page'] ?? 1);
 
         $events = $this->recurrenceService->getEventsInNextDays(
-            days: 360,
+            days: 365,
             filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
             page: $page,
             perPage: $perPage
@@ -73,8 +76,10 @@ class EventoController extends Controller
      *
      * @return Response
      */
-    public function create(): Response
+    public function create(Evento $evento): Response
     {
+        Gate::authorize('create', $evento);
+
         return Inertia::render('eventi/EventiNew', [
             'condomini'   => CondominioResource::collection(Condominio::all()),
             'categorie'   => CategoriaEventoResource::collection(CategoriaEvento::all()),
@@ -88,8 +93,10 @@ class EventoController extends Controller
      * @param CreateEventoRequest $request The validated request containing event and recurrence data.
      * @return RedirectResponse A redirect response back to the eventi index route.
      */
-    public function store(CreateEventoRequest $request): RedirectResponse
+    public function store(CreateEventoRequest $request, Evento $evento): RedirectResponse
     {
+        Gate::authorize('create', $evento);
+
         $validated = $request->validated();
 
         try {
@@ -163,9 +170,13 @@ class EventoController extends Controller
             return to_route('admin.eventi.index')->with(
                 $this->flashSuccess(__('eventi.success_create_event'))
             );
+
         } catch (\Exception $e) {
+
             DB::rollBack();
+
             Log::error('Error creating agenda event: ' . $e->getMessage());
+
             return to_route('admin.eventi.index')->with(
                 $this->flashError(__('eventi.error_create_event'))
             );
@@ -217,6 +228,8 @@ class EventoController extends Controller
      */
     public function destroy(Request $request, Evento $evento): RedirectResponse
     {
+        Gate::authorize('delete', $evento);
+
         $mode = $request->input('mode', 'only_this'); 
 
         if (!$evento->recurrence_id) {
@@ -234,6 +247,7 @@ class EventoController extends Controller
         }
 
         switch ($mode) {
+            
             case 'only_this':
                 EccezioneEvento::create([
                     'recurrence_id' => $evento->recurrence_id,
@@ -247,6 +261,7 @@ class EventoController extends Controller
             case 'this_and_future':
                 DB::transaction(function () use ($evento, $occurrenceDate) {
                     $ricorrenza = $evento->ricorrenza;
+
                     if (!$ricorrenza) {
                         abort(400, 'No recurrence rule found for this event.');
                     }

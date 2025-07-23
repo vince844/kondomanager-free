@@ -57,4 +57,13 @@ export enum Permission {
   PUBLISH_ARCHIVE_DOCUMENTS = 'Pubblica documenti archivio',
   APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio',
   DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio',
+  // Eventi
+  VIEW_EVENTS = 'Visualizza scadenze in agenda',
+  CREATE_EVENTS = 'Crea scadenza in agenda',
+  DELETE_EVENTS = 'Elimina scadenza in agenda',
+  EDIT_EVENTS = 'Modifica scadenza in agenda',
+  EDIT_OWN_EVENTS = 'Modifica proprie scadenze in agenda',
+  PUBLISH_EVENTS = 'Pubblica scadenze in agenda',
+  APPROVE_EVENTS = 'Approva scadenze in agenda',
+  DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda',
 }

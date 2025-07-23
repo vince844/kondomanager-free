@@ -178,13 +178,13 @@ const submit = () => {
 
                             <!-- Select dropdown -->
                             <v-select 
-                            id="stato" 
-                            :options="publishedConstants" 
-                            label="label" 
-                            v-model="form.is_published"
-                            placeholder="Stato pubblicazione"
-                            @update:modelValue="form.clearErrors('is_published')" 
-                            :reduce="(is_published: PublishedType) => is_published.value"
+                                id="stato" 
+                                :options="publishedConstants" 
+                                label="label" 
+                                v-model="form.is_published"
+                                placeholder="Stato pubblicazione"
+                                @update:modelValue="form.clearErrors('is_published')" 
+                                :reduce="(is_published: PublishedType) => is_published.value"
                             />
 
                             <InputError :message="form.errors.is_published" />

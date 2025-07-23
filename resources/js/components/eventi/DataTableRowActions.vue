@@ -39,9 +39,12 @@ const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 function handleDelete(evento: Evento) {
-  console.log('Handling delete for evento:', evento);
   eventoID.value = evento.id
-  occurrenceDate.value = evento.occurs ?? null
+  occurrenceDate.value = evento.occurs
+  ? typeof evento.occurs === 'string'
+    ? evento.occurs
+    : evento.occurs.toISOString()
+  : null;
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -55,18 +58,19 @@ function closeModal() {
 }
 
 function deleteEvento() {
-  console.log('Deleting evento:', eventoID.value, 'with mode:', deleteMode.value);
+  
   if (eventoID.value === null || isDeleting.value) return
-  console.log(eventoID.value);
+
   const id = eventoID.value
+  
   isDeleting.value = true
 
   router.delete(route(generateRoute('eventi.destroy'), { evento: String(id) }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'eventi'],
+    only: ['flash', 'eventi', 'stats'],
     data: {
-      mode: deleteMode.value, // pass the selected deletion mode
+      mode: deleteMode.value, 
       occurrence_date: occurrenceDate.value,
     },
     onSuccess: () => {
@@ -84,7 +88,13 @@ function deleteEvento() {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu
+   v-if="hasPermission([
+      Permission.EDIT_EVENTS,
+      Permission.EDIT_OWN_EVENTS,
+      Permission.DELETE_EVENTS
+    ])"
+  >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
@@ -94,7 +104,9 @@ function deleteEvento() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem>
+      <DropdownMenuItem
+       v-if="hasPermission([Permission.EDIT_EVENTS, Permission.EDIT_OWN_EVENTS])"
+      >
 
           <FilePenLine class="w-4 h-4 text-xs" />
           Modifica
@@ -102,6 +114,7 @@ function deleteEvento() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
+       v-if="hasPermission([Permission.DELETE_EVENTS])"
        @click="handleDelete(evento)"
       >
         <Trash2 class="w-4 h-4 text-xs" />

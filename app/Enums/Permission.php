@@ -78,6 +78,16 @@ enum Permission: string
     case APPROVE_ARCHIVE_DOCUMENTS = 'Approva documenti archivio';
     case DELETE_OWN_ARCHIVE_DOCUMENTS = 'Elimina propri documenti archivio';
 
+    // Eventi
+    case VIEW_EVENTS = 'Visualizza scadenze in agenda';
+    case CREATE_EVENTS = 'Crea scadenza in agenda';
+    case DELETE_EVENTS = 'Elimina scadenza in agenda';
+    case EDIT_EVENTS = 'Modifica scadenza in agenda';
+    case EDIT_OWN_EVENTS = 'Modifica proprie scadenze in agenda';
+    case PUBLISH_EVENTS = 'Pubblica scadenze in agenda';
+    case APPROVE_EVENTS = 'Approva scadenze in agenda';
+    case DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda';
+
     /**
      * Get a human-readable description for the permission.
      *
@@ -150,7 +160,17 @@ enum Permission: string
             self::EDIT_OWN_ARCHIVE_DOCUMENTS => 'Permette di modificare solo i propri documenti in archivio',
             self::PUBLISH_ARCHIVE_DOCUMENTS => 'Permette di pubblicare documenti in archivio',
             self::APPROVE_ARCHIVE_DOCUMENTS => 'Permette di approvare documenti in archivio',
-            self::DELETE_OWN_ARCHIVE_DOCUMENTS => 'Permette di eliminare i propri documenti in archivio'
+            self::DELETE_OWN_ARCHIVE_DOCUMENTS => 'Permette di eliminare i propri documenti in archivio',
+
+            // Eventi
+            self::VIEW_EVENTS => 'Permette di visualizzare le scadenze in agenda',
+            self::CREATE_EVENTS => 'Permette di creare nuove scadenze in agenda',
+            self::DELETE_EVENTS => 'Permette di eliminare scadenze in agenda',
+            self::EDIT_EVENTS => 'Permette di modificare scadenze in agenda',
+            self::EDIT_OWN_EVENTS => 'Permette di modificare solo le proprie scadenze in agenda',
+            self::PUBLISH_EVENTS => 'Permette di pubblicare scadenze in agenda',
+            self::APPROVE_EVENTS => 'Permette di approvare scadenze in agenda',
+            self::DELETE_OWN_EVENTS => 'Permette di eliminare le proprie scadenze in agenda',
         };
     }
 }

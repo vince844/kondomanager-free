@@ -43,12 +43,14 @@ class Evento extends Model
 
     public function anagrafiche()
     {
-        return $this->belongsToMany(Anagrafica::class, 'anagrafica_evento', 'evento_id', 'anagrafica_id');
+        /* return $this->belongsToMany(Anagrafica::class, 'anagrafica_evento', 'evento_id', 'anagrafica_id'); */
+        return $this->belongsToMany(Anagrafica::class, 'anagrafica_evento');
     }
 
     public function condomini()
     {
-        return $this->belongsToMany(Condominio::class, 'condominio_evento', 'evento_id', 'condominio_id');
+       /*  return $this->belongsToMany(Condominio::class, 'condominio_evento', 'evento_id', 'condominio_id'); */
+        return $this->belongsToMany(Condominio::class);
     }
 
     public function createdBy()

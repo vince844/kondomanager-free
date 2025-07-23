@@ -41,7 +41,6 @@ class DocumentoResource extends JsonResource
                 'full'    => CondominioResource::collection($this->whenLoaded('condomini')),
             ],
             'anagrafiche' => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
-
             'categoria' => new CategoriaDocumentoResource($this->whenLoaded('categoria')),
         ];
     }

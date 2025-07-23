@@ -22,9 +22,6 @@ export interface Evento {
     user: User;
     anagrafica: Anagrafica;
   };
-  condomini: {
-    options: Building[];
-    full: Building[];
-  };
+  condomini:  Building[];
   anagrafiche: Anagrafica[];
 }

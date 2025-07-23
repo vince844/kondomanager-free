@@ -81,6 +81,7 @@ const mainNavItems: NavItem[] = [
         title: 'Agenda',
         href: generatePath('eventi'),
         icon: CalendarClock,
+        permissions: [Permission.VIEW_EVENTS],
     }
 ];
 

@@ -57,7 +57,8 @@ class Condominio extends Model
 
     public function eventi()
     {
-        return $this->belongsToMany(Evento::class, 'condominio_evento', 'condominio_id', 'evento_id');
+        /* return $this->belongsToMany(Evento::class, 'condominio_evento', 'condominio_id', 'evento_id'); */
+        return $this->belongsToMany(Evento::class, 'condominio_evento');
     }
 
 }

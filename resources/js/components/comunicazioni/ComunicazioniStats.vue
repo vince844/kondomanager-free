@@ -31,7 +31,7 @@ const icons = {
       </CardHeader>
       <CardContent>
         <div class="text-2xl font-bold">
-          + {{ stats[key] || 0 }}
+          {{ stats[key] || 0 }}
         </div>
       </CardContent>
     </Card>
