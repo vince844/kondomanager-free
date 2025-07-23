@@ -7,12 +7,16 @@ KondoManager è un innovatovo software open source per la gestione condominiale,
 
 <table>
   <tr>
-    <td><img src="https://i.imgur.com/5xFDr7X.png" alt="Dashboard" width="100%"></td>
-    <td><img src="https://i.imgur.com/kgDhope.png" alt="Segnalazioni guasto" width="100%"></td>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-3.png" alt="Dashboard" width="100%"></td>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-2.png" alt="Segnalazioni guasto" width="100%"></td>
   </tr>
   <tr>
-    <td><img src="https://i.imgur.com/dNOKWYV.png" alt="Bacheca condominio" width="100%"></td>
-    <td><img src="https://i.imgur.com/xkCipgI.png" alt="Archivio documenti" width="100%"></td>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-1.png" alt="Bacheca condominio" width="100%"></td>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-6.png" alt="Archivio documenti" width="100%"></td>
+  </tr>
+  <tr>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-4.png" alt="Agenda del condominio" width="100%"></td>
+    <td><img src="https://dev.karibusana.org/github/Screenshot-5.png" alt="Gestione utenti e permessi" width="100%"></td>
   </tr>
 </table>
 
