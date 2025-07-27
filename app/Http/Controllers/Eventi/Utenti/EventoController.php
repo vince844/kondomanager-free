@@ -9,6 +9,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Http\Resources\Evento\EventoResource;
 use App\Models\CategoriaEvento;
+use App\Models\EccezioneEvento;
 use App\Models\Evento;
 use App\Models\RicorrenzaEvento;
 use App\Services\RecurrenceService;
@@ -51,7 +52,7 @@ class EventoController extends Controller
             $userData = $this->getUserCondominioData();
 
             $events = $this->recurrenceService->getEventsInNextDays(
-                days: 365,
+                days: 360,
                 filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
                 page: $page,
                 perPage: $perPage,
@@ -212,8 +213,104 @@ class EventoController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Request $request, Evento $evento): RedirectResponse
     {
-        //
+        Gate::authorize('delete', $evento);
+
+        $mode = $request->input('mode', 'only_this'); 
+
+        if (!$evento->recurrence_id) {
+            // One-time event — just delete it
+            $evento->delete();
+
+            return back()->with(
+                $this->flashSuccess(__('eventi.success_delete_event'))
+            );
+
+        }
+
+        // 🔹 Recurring event
+        $occurrenceDate = $request->input('occurrence_date');
+
+        // Validate occurrenceDate once for relevant modes
+        if (in_array($mode, ['only_this', 'this_and_future']) && !$occurrenceDate) {
+            abort(400, 'Missing occurrence_date for recurring event.');
+        }
+
+        switch ($mode) {
+            
+            case 'only_this':
+                EccezioneEvento::create([
+                    'recurrence_id'  => $evento->recurrence_id,
+                    'evento_id'      => $evento->id,
+                    'exception_date' => $occurrenceDate,
+                    'is_deleted'     => true,
+                    'override_data'  => null,
+                ]);
+                break;
+
+            case 'this_and_future':
+                DB::transaction(function () use ($evento, $occurrenceDate) {
+                    $ricorrenza = $evento->ricorrenza;
+
+                    if (!$ricorrenza) {
+                        abort(400, 'No recurrence rule found for this event.');
+                    }
+
+                    $timezone = new \DateTimeZone(config('app.timezone') ?? 'UTC');
+                    $occurrence = new \DateTime($occurrenceDate, $timezone);
+
+                    $cutoff = (clone $occurrence)->modify('-1 second');
+                    $eventStart = new \DateTime($evento->start_time, $timezone);
+                    if ($cutoff < $eventStart) {
+                        $cutoff = clone $eventStart;
+                    }
+
+                    // Adjust recurrence rule to end before the cutoff date
+                    $oldRule = new \Recurr\Rule(
+                        $ricorrenza->rrule,
+                        $eventStart,
+                        null,
+                        config('app.timezone')
+                    );
+                    $oldRule->setUntil($cutoff);
+
+                    $ricorrenza->update([
+                        'until' => $cutoff->format('Y-m-d H:i:s'),
+                        'rrule' => $oldRule->getString(),
+                    ]);
+
+                    // Delete future event occurrences starting from the cutoff date
+                    Evento::where('recurrence_id', $evento->recurrence_id)
+                        ->where('start_time', '>=', $occurrence->format('Y-m-d H:i:s'))
+                        ->delete();
+
+                    // Check if any events remain linked to this recurrence
+                    $remainingEvents = Evento::where('recurrence_id', $evento->recurrence_id)->count();
+
+                    if ($remainingEvents === 0) {
+                        // No events left, delete recurrence rule and exceptions
+                        $ricorrenza->delete();
+                        EccezioneEvento::where('recurrence_id', $evento->recurrence_id)->delete();
+                    }
+                });
+                break;
+
+            case 'all':
+                DB::transaction(function () use ($evento) {
+                    // Delete all events linked to recurrence, recurrence rule, and exceptions
+                    Evento::where('recurrence_id', $evento->recurrence_id)->delete();
+                    $evento->ricorrenza()->delete();
+                    EccezioneEvento::where('recurrence_id', $evento->recurrence_id)->delete();
+                });
+                break;
+
+            default:
+                abort(400, 'Invalid deletion mode.');
+        }
+
+        return back()->with(
+            $this->flashSuccess(__('eventi.success_delete_event'))
+        );
     }
 }

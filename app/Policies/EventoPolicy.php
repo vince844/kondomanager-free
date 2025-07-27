@@ -6,7 +6,6 @@ use App\Enums\Permission;
 use App\Models\Evento;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
-use Illuminate\Support\Facades\Log;
 
 class EventoPolicy
 {
@@ -24,7 +23,7 @@ class EventoPolicy
     public function view(User $user, Evento $evento): Response
     {
 
-        return $user->hasPermissionTo(Permission::VIEW_COMUNICAZIONI->value)  
+        return $user->hasPermissionTo(Permission::VIEW_EVENTS->value)  
                ? Response::allow() 
                : Response::deny(__('policies.view_events'));
                

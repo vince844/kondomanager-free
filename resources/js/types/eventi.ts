@@ -24,4 +24,5 @@ export interface Evento {
   };
   condomini:  Building[];
   anagrafiche: Anagrafica[];
+  occurrence_index?: number;
 }

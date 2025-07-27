@@ -3,9 +3,9 @@
 namespace App\Http\Resources\Evento;
 
 use App\Http\Resources\Anagrafica\AnagraficaResource;
-use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
+use App\Http\Resources\User\UserResource;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -36,6 +36,14 @@ class EventoResource extends JsonResource
             'anagrafiche'     => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
             'timezone'        => $this->timezone,
             'visibility'      => $this->visibility,
+            'created_by' => $this->whenLoaded('createdBy', function () {
+                return [
+                    'user'       => new UserResource($this->createdBy),
+                    'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
+                        ? new AnagraficaResource($this->createdBy->anagrafica)
+                        : null,
+                ];
+            }),
         ];
     }
 }

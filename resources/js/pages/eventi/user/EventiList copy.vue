@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { ref, onMounted, computed, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
 import { Head, router, Link, usePage } from "@inertiajs/vue3";
@@ -48,6 +47,7 @@ const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
 
 // Permissions
 const { hasPermission, generateRoute } = usePermission();
+
 const auth = computed(() => page.props.auth);
 
 // Eventi composable
@@ -65,7 +65,7 @@ const eventoID = ref<number | null>(null);
 const occurrenceDate = ref<string | null>(null);
 const loadingCount = ref(0);
 const errorState = ref<string | null>(null);
-const hasSearched = ref(!!props.search); // Initialize based on props
+const hasSearched = ref(false);
 const showDelayedLoading = ref(false);
 const showNoResultsDelayed = ref(false);
 const isInitialLoad = ref(true);
@@ -76,31 +76,27 @@ const isDeleting = ref(false);
 const flashMessage = computed(() => page.props.flash.message);
 const isLoading = computed(() => loadingCount.value > 0);
 const shouldShowLoading = computed(() => isLoading.value);
-
 const filteredResults = computed(() => {
-  return [...eventi.value].sort((a, b) => {
-    const dateA = a.occurs ? new Date(a.occurs).getTime() : Number.MAX_SAFE_INTEGER;
-    const dateB = b.occurs ? new Date(b.occurs).getTime() : Number.MAX_SAFE_INTEGER;
-    return dateA - dateB || a.id - b.id || (a.occurrence_index ?? 0) - (b.occurrence_index ?? 0);
-  });
+    return [...eventi.value].sort((a, b) => {
+        const dateA = a.occurs ? new Date(a.occurs).getTime() : Number.MAX_SAFE_INTEGER;
+        const dateB = b.occurs ? new Date(b.occurs).getTime() : Number.MAX_SAFE_INTEGER;
+        return dateA - dateB || a.id - b.id || (a.occurrence_index ?? 0) - (b.occurrence_index ?? 0);
+    }).map(event => {
+        if (!event.occurs) {
+            console.warn(`Invalid occurs value for event ID ${event.id}:`, event.occurs);
+        }
+        return event;
+    });
 });
 
-const isRecurring = computed(() => {
-  const event = eventi.value.find(e => e.id === eventoID.value);
-  return !!event?.recurrence_id;
-});
-
-const showNoResults = computed(() => {
-  const shouldShow = (
-    !isLoading.value &&
-    searchQuery.value &&
-    filteredResults.value.length === 0 &&
-    (hasSearched.value || showNoResultsDelayed.value)
-  );
-  
-  return shouldShow;
-
-});
+// Debug logging
+watch(filteredResults, (newResults) => {
+    console.log('Filtered results:', newResults.map(e => ({
+        id: e.id,
+        occurs: e.occurs,
+        occurrence_index: e.occurrence_index ?? 0,
+    })));
+}, { immediate: true });
 
 // Loading timers
 const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(
@@ -129,13 +125,7 @@ watch(searchQuery, (val) => {
 // Debounced search
 watchDebounced(
   searchQuery,
-  async (newQuery) => {
-    showNoResultsDelayed.value = false;
-    await handleSearch(newQuery);
-    if (newQuery && filteredResults.value.length === 0) {
-      startNoResultsTimer();
-    }
-  },
+  async (newQuery) => handleSearch(newQuery),
   { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
 );
 
@@ -170,6 +160,7 @@ function resetSearchState() {
 }
 
 async function handleSearch(query: string) {
+  showNoResultsDelayed.value = false;
   hasSearched.value = true;
   incrementLoading();
 
@@ -187,7 +178,13 @@ async function handleSearch(query: string) {
         preserveState: false,
         preserveScroll: true,
         replace: true,
-        onFinish: stopLoading,
+       /*  only: ['eventi'], */
+        onFinish: () => {
+          stopLoading();
+          if (query && filteredResults.value.length === 0) {
+            startNoResultsTimer();
+          }
+        }
       }
     );
   } catch (error) {
@@ -196,6 +193,7 @@ async function handleSearch(query: string) {
     console.error('Search error:', error);
   }
 }
+
 async function handlePageChange(page: number) {
   try {
     incrementLoading();
@@ -211,6 +209,7 @@ async function handlePageChange(page: number) {
       {
         preserveState: false,
         preserveScroll: true,
+    /*     only: ['eventi'], */
         onFinish: stopLoading,
         onError: () => {
           errorState.value = "Errore di caricamento. Riprova.";
@@ -267,6 +266,7 @@ function deleteEvento() {
   router.delete(route(generateRoute('eventi.destroy'), { evento: String(eventoID.value) }), {
     preserveScroll: false,
     preserveState: true,
+/*     only: ['flash', 'eventi', 'stats'], */
     data: {
       mode: deleteMode.value,
       occurrence_date: occurrenceDate.value,
@@ -374,63 +374,63 @@ function deleteEvento() {
           <!-- Results -->
           <TransitionGroup name="fade-list" tag="div">
                       
-            <article
-              v-for="evento in filteredResults"
-              :key="`${evento.id}-${evento.occurrence_index ?? 0}`"
-              class="mb-4 fade-list-item"
-            >
-            
-            <div class="border p-4 rounded-md hover:shadow-sm transition-shadow flex gap-4"> 
+          <article
+            v-for="evento in filteredResults"
+            :key="`${evento.id}-${evento.occurrence_index ?? 0}`"
+            class="mb-4 fade-list-item"
+          >
+          
+          <div class="border p-4 rounded-md hover:shadow-sm transition-shadow flex gap-4"> 
 
-                <!-- Date block -->
-                <div :class="[
-                  'flex flex-col items-center justify-center w-16 select-none p-1',
-                  getEventColor(evento.occurs)
-                ]">
-                  <span class="text-3xl font-extrabold leading-none">
-                    {{ formatEventDate(evento.occurs).day }}
-                  </span>
-                  <span class="text-sm uppercase">
-                    {{ formatEventDate(evento.occurs).month }}
-                  </span>
-                </div>
-
-                <!-- Event content -->
-                <div class="flex-1 flex flex-col">
-                  <div class="flex items-center justify-between">
-                    <h3 class="font-semibold text-gray-900">{{ evento.title }}</h3>
-
-                    <div class="flex items-center gap-2">
-                      <Link
-                        v-if="hasPermission([Permission.EDIT_EVENTS]) || 
-                            (hasPermission([Permission.EDIT_OWN_EVENTS]) && 
-                              evento.created_by.user.id === auth.user.id)"
-                        :href="route(generateRoute('eventi.edit'), { id: evento.id })"
-                        class="text-gray-700 hover:text-blue-600 transition-colors"
-                        title="Modifica"
-                      >
-                        <Pencil class="w-4 h-4" />
-                      </Link>
-
-                      <button
-                        v-if="hasPermission([Permission.DELETE_EVENTS]) || 
-                            (hasPermission([Permission.DELETE_OWN_EVENTS]) && 
-                              evento.created_by.user.id === auth.user.id)"
-                        @click="handleDelete(evento)"
-                        class="text-gray-700 hover:text-red-600 transition-colors"
-                        title="Elimina"
-                      >
-                        <Trash2 class="w-4 h-4" />
-                      </button>
-                    </div> 
-                  </div>
-
-                  <p class="mt-2 line-clamp-3 text-sm text-gray-600">
-                    {{ evento.description }}
-                  </p>
-                </div>
+              <!-- Date block -->
+              <div :class="[
+                'flex flex-col items-center justify-center w-16 select-none p-1',
+                getEventColor(evento.occurs)
+              ]">
+                <span class="text-3xl font-extrabold leading-none">
+                  {{ formatEventDate(evento.occurs).day }}
+                </span>
+                <span class="text-sm uppercase">
+                  {{ formatEventDate(evento.occurs).month }}
+                </span>
               </div>
-            </article>
+
+              <!-- Event content -->
+              <div class="flex-1 flex flex-col">
+                <div class="flex items-center justify-between">
+                  <h3 class="font-semibold text-gray-900">{{ evento.title }}</h3>
+
+                  <div class="flex items-center gap-2">
+                    <Link
+                      v-if="hasPermission([Permission.EDIT_EVENTS]) || 
+                          (hasPermission([Permission.EDIT_OWN_EVENTS]) && 
+                            evento.created_by.user.id === auth.user.id)"
+                      :href="route(generateRoute('eventi.edit'), { id: evento.id })"
+                      class="text-gray-700 hover:text-blue-600 transition-colors"
+                      title="Modifica"
+                    >
+                      <Pencil class="w-4 h-4" />
+                    </Link>
+
+                    <button
+                      v-if="hasPermission([Permission.DELETE_EVENTS]) || 
+                          (hasPermission([Permission.DELETE_OWN_EVENTS]) && 
+                            evento.created_by.user.id === auth.user.id)"
+                      @click="handleDelete(evento)"
+                      class="text-gray-700 hover:text-red-600 transition-colors"
+                      title="Elimina"
+                    >
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                  </div> 
+                </div>
+
+                <p class="mt-2 line-clamp-3 text-sm text-gray-600">
+                  {{ evento.description }}
+                </p>
+              </div>
+            </div>
+          </article>
 
             <!-- Empty state -->
             <div 
@@ -500,7 +500,7 @@ function deleteEvento() {
       </div>
     </div>
 
-      <!-- Delete confirmation dialog -->
+    <!-- Delete confirmation dialog -->
       <AlertDialog v-model:open="isAlertOpen">
         <AlertDialogContent>
           <AlertDialogHeader>

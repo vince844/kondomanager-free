@@ -16,6 +16,8 @@ use App\Models\RicorrenzaEvento;
 use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -24,8 +26,6 @@ use Recurr\Rule;
 use Inertia\Response;
 use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Gate;
 
 class EventoController extends Controller
 {
@@ -49,7 +49,7 @@ class EventoController extends Controller
         $page = (int) ($validated['page'] ?? 1);
 
         $events = $this->recurrenceService->getEventsInNextDays(
-            days: 365,
+            days: 60,
             filters: Arr::only($validated, ['title', 'category_id', 'search', 'date_from', 'date_to']),
             page: $page,
             perPage: $perPage
@@ -235,7 +235,10 @@ class EventoController extends Controller
         if (!$evento->recurrence_id) {
             // One-time event — just delete it
             $evento->delete();
-            return back()->with('success', 'Evento eliminato con successo.');
+
+            return back()->with(
+                $this->flashSuccess(__('eventi.success_delete_event'))
+            );
         }
 
         // 🔹 Recurring event
@@ -250,11 +253,11 @@ class EventoController extends Controller
             
             case 'only_this':
                 EccezioneEvento::create([
-                    'recurrence_id' => $evento->recurrence_id,
-                    'evento_id' => $evento->id,
+                    'recurrence_id'  => $evento->recurrence_id,
+                    'evento_id'      => $evento->id,
                     'exception_date' => $occurrenceDate,
-                    'is_deleted' => true,
-                    'override_data' => null,
+                    'is_deleted'     => true,
+                    'override_data'  => null,
                 ]);
                 break;
 
@@ -318,7 +321,9 @@ class EventoController extends Controller
                 abort(400, 'Invalid deletion mode.');
         }
 
-        return back()->with('success', 'Evento eliminato con successo.');
+        return back()->with(
+            $this->flashSuccess(__('eventi.success_delete_event'))
+        );
     }
 
 }
