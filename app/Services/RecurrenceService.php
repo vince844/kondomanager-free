@@ -109,27 +109,6 @@ class RecurrenceService
         });
     }
 
-    /* public function getEventsInNextDays(
-        int $days = 7,
-        array $filters = [],
-        ?int $page = null,
-        ?int $perPage = null
-    ): Collection|LengthAwarePaginator {
-        $now = Carbon::now();
-
-        $start = !empty($filters['date_from']) ? Carbon::parse($filters['date_from']) : $now;
-        $end = !empty($filters['date_to']) ? Carbon::parse($filters['date_to']) : $now->copy()->addDays(min($days, self::MAX_DAYS));
-
-        $oneTimeEvents = $this->getOneTimeEvents($start, $end, $filters);
-        $recurringEvents = $this->getRecurringEvents($start, $end, $filters);
-
-        $combined = $oneTimeEvents->concat($recurringEvents)->sortBy('occurs_at')->values();
-
-        return $page && $perPage
-            ? $this->paginateResults($combined, $page, $perPage)
-            : $combined;
-    } */
-
     private function getOneTimeEvents(Carbon $start, Carbon $end, array $filters): Collection
     {
         $query = Evento::query()

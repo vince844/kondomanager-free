@@ -38,6 +38,7 @@ export const columns: ColumnDef<Evento>[] = [
     accessorKey: 'title',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
     cell: ({ row }) => {
+      
       const occursISO = row.original.occurs as string;
       const occursAt = new Date(occursISO);
       const now = new Date();

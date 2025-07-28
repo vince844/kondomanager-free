@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref } from "vue";
-import { Clock } from 'lucide-vue-next';
+import { Clock, ClockAlert, ClockArrowUp } from 'lucide-vue-next';
 import type { Evento } from '@/types/eventi';
 
 const props = defineProps<{
@@ -28,23 +28,23 @@ const truncatedName = (name: string, length: number = 80) => {
   return name.length > length ? `${name.slice(0, length)}...` : name;
 };
 
-// Native JS version of day difference
 const getDaysRemaining = (dateInput: string | Date): number => {
   const now = new Date();
   const target = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-  const diffTime = target.getTime() - now.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.floor((target.getTime() - now.getTime()) / msPerDay);
 };
 
 const getIconAndColor = (daysRemaining: number) => {
   if (daysRemaining <= 7) {
-    return { icon: Clock, color: 'text-red-500' };
+    return { icon: ClockAlert, color: 'text-red-500' };
   } else if (daysRemaining <= 14) {
-    return { icon: Clock, color: 'text-yellow-500' };
+    return { icon: ClockArrowUp, color: 'text-yellow-500' };
   } else {
     return { icon: Clock, color: 'text-gray-400' };
   }
 };
+
 </script>
 
 <template>
