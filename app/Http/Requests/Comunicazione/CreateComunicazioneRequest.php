@@ -55,7 +55,9 @@ class CreateComunicazioneRequest extends FormRequest
 
         $this->merge([
             'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) ? true : false,
+            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) 
+            ? true 
+            : false,
         ]);
     }
 

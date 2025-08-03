@@ -3,7 +3,7 @@ import { router } from '@inertiajs/vue3';
 import DropdownAction from '@/components/eventi/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/eventi/DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
-import { ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
+import { ClockAlert, ClockArrowUp, Clock, ShieldCheck } from 'lucide-vue-next';
 import { visibilityConstants } from '@/lib/eventi/constants';
 import { Permission } from "@/enums/Permission";
 import { Badge } from '@/components/ui/badge';
@@ -23,24 +23,13 @@ export const columns: ColumnDef<Evento>[] = [
     },
   },
   {
-    accessorKey: 'categoria',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Categoria' }),
-    cell: ({ row }) => {
-      const categoria = row.original.categoria;
-
-      return h('div', { class: 'flex space-x-2 items-center' }, [
-        categoria
-          ? h(Badge, { variant: 'outline', class: 'rounded-md' }, () => categoria.name)
-          : null,
-      ]);
-    },
-  },
-  {
     accessorKey: 'title',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
-    cell: ({ row }) => {
-      
-      const occursISO = row.original.occurs as string;
+
+    cell: ({ row, table }) => {
+      const evento = row.original;
+
+      const occursISO = evento.occurs as string;
       const occursAt = new Date(occursISO);
       const now = new Date();
       const msPerDay = 1000 * 60 * 60 * 24;
@@ -57,9 +46,54 @@ export const columns: ColumnDef<Evento>[] = [
         iconColor = 'text-yellow-500';
       }
 
+      // Approval toggle logic
+      const toggleApproval = () => {
+        router.put(route(generateRoute('eventi.toggle-approval'), { id: evento.id }), {}, {
+          preserveScroll: true,
+          only: ['stats', 'eventi'],
+          onSuccess: () => {
+            evento.is_approved = !evento.is_approved;
+
+            table.options.meta?.updateData(row.index, {
+              ...evento,
+            });
+          },
+        });
+      };
+
+      const tooltip = evento.is_approved
+        ? 'Approvato - clicca per rimuovere approvazione'
+        : 'Non approvato - clicca per approvare';
+
+      const shieldIcon = hasPermission([Permission.APPROVE_EVENTS])
+        ? h('div', {
+            class: 'cursor-pointer',
+            title: tooltip,
+            onClick: toggleApproval,
+          }, [
+            h(ShieldCheck, {
+              class: evento.is_approved ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
+            }),
+          ])
+        : null;
+
       return h('div', { class: 'flex items-center gap-2 font-medium text-gray-900' }, [
         h(IconComponent, { class: `w-4 h-4 ${iconColor}` }),
+        shieldIcon,
         h('span', {}, row.getValue('title')),
+      ]);
+    },
+  },
+  {
+    accessorKey: 'categoria',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Categoria' }),
+    cell: ({ row }) => {
+      const categoria = row.original.categoria;
+
+      return h('div', { class: 'flex space-x-2 items-center' }, [
+        categoria
+          ? h(Badge, { variant: 'outline', class: 'rounded-md' }, () => categoria.name)
+          : null,
       ]);
     },
   },

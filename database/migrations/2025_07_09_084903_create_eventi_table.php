@@ -23,6 +23,7 @@ return new class extends Migration
             $table->foreignId('category_id')->nullable()->constrained('categorie_evento')->nullOnDelete();
             $table->foreignId('recurrence_id')->nullable()->constrained('ricorrenze_eventi')->nullOnDelete();
             $table->enum('visibility', ['public', 'private', 'hidden'])->default('public');
+            $table->boolean('is_approved')->default(false);
             $table->timestamps();
         });
     }

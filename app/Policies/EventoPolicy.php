@@ -59,6 +59,13 @@ class EventoPolicy
         return Response::deny(__('policies.edit_events'));
     }
 
+    public function approve(User $user, Evento $evento): Response
+    {
+        return $user->hasPermissionTo(Permission::APPROVE_EVENTS->value)  
+        ? Response::allow() 
+        : Response::deny(__('policies.approve_events'));
+    }
+
     /**
      * Determine whether the user can delete the model.
      */

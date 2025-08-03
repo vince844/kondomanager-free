@@ -170,9 +170,19 @@ class EventoController extends Controller
 
             DB::commit();
 
-            return to_route('user.eventi.index')->with(
-                $this->flashSuccess(__('eventi.success_create_event'))
-            );
+            if($validated['is_approved']){
+
+                return to_route('user.eventi.index')->with(
+                    $this->flashSuccess(__('eventi.success_create_event'))
+                );
+
+            }else{
+
+                return to_route('user.eventi.index')->with(
+                    $this->flashInfo(__('eventi.success_create_event_in_moderation'))
+                );
+
+            }
 
         } catch (\Exception $e) {
 

@@ -45,6 +45,7 @@ class CreateEventoRequest extends FormRequest
             'recurrence_by_month_day' => 'nullable|integer|min:1|max:31',
             'recurrence_until'        => 'nullable|date|after:start_time',
             'visibility'              => ['required', new Enum(VisibilityStatus::class)],
+            'is_approved'             => 'required|boolean',
         ];
     }
 
@@ -62,7 +63,8 @@ class CreateEventoRequest extends FormRequest
             'created_by'  => $user->id,
             'visibility' => $user->hasPermissionTo(Permission::PUBLISH_EVENTS->value)
                 ? VisibilityStatus::PUBLIC->value
-                : VisibilityStatus::HIDDEN->value
+                : VisibilityStatus::HIDDEN->value,
+            'is_approved' => $user->hasPermissionTo(Permission::APPROVE_EVENTS->value)
         ]);
     }
 

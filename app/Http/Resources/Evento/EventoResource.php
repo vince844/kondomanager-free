@@ -36,14 +36,15 @@ class EventoResource extends JsonResource
             'anagrafiche'     => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
             'timezone'        => $this->timezone,
             'visibility'      => $this->visibility,
-            'created_by' => $this->whenLoaded('createdBy', function () {
-                return [
-                    'user'       => new UserResource($this->createdBy),
-                    'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
-                        ? new AnagraficaResource($this->createdBy->anagrafica)
-                        : null,
-                ];
-            }),
+            'is_approved'     => $this->is_approved,
+            'created_by'      => $this->whenLoaded('createdBy', function () {
+                                    return [
+                                        'user'       => new UserResource($this->createdBy),
+                                        'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
+                                            ? new AnagraficaResource($this->createdBy->anagrafica)
+                                            : null,
+                                    ];
+                                 }),
         ];
     }
 }

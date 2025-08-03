@@ -47,4 +47,5 @@ export interface Evento {
   occurrence_index?: number;
   note?: string;
   visibility?: string;
+  is_approved: boolean;
 }
