@@ -9,6 +9,13 @@ export type Stats = {
   next_twentyeight_days: number,
 };
 
+export type Recurrence = {
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  interval: number;
+  by_day: string[]; // e.g., ['MO', 'TU']
+  until: string | null;
+};
+
 export interface Evento {
   id: number;
   title: string;
@@ -16,13 +23,19 @@ export interface Evento {
   created_at: string;
   occurs: string | Date;
   occurs_at: string;
+  start_time?: string;
+  end_time?: string;
   categoria: CategoriaEvento;
+  category_id?: number;
   recurrence_id: number | null;
+  recurrence?: Recurrence; 
   created_by: {
     user: User;
     anagrafica: Anagrafica;
   };
   condomini:  Building[];
+  condomini_ids?: number[];
   anagrafiche: Anagrafica[];
   occurrence_index?: number;
+  note?: string;
 }

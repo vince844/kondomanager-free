@@ -12,9 +12,11 @@ class EventoPolicy
     /**
      * Determine whether the user can view any models.
      */
-    public function viewAny(User $user): bool
+    public function viewAny(User $user): Response
     {
-        return false;
+        return $user->hasPermissionTo(Permission::VIEW_EVENTS->value)  
+               ? Response::allow() 
+               : Response::deny(__('policies.view_events'));
     }
 
     /**
@@ -42,9 +44,19 @@ class EventoPolicy
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, Evento $evento): bool
+    public function update(User $user, Evento $evento): Response
     {
-        return false;
+       if ($user->hasPermissionTo(Permission::EDIT_EVENTS->value)) {
+            return Response::allow();
+        }
+
+        if ($user->hasPermissionTo(Permission::EDIT_OWN_EVENTS->value)) {
+            if ($evento->created_by === $user->id) {
+                return Response::allow();
+            }
+        }
+
+        return Response::deny(__('policies.edit_events'));
     }
 
     /**

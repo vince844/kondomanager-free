@@ -44,7 +44,7 @@ const form = useForm({
   condomini_ids: props.documento?.condomini?.options?.map(c => c.value) ?? [],
   is_published: !!props.documento?.is_published,
   anagrafiche: (props.documento?.anagrafiche ?? []).map(anagrafica => anagrafica.id),
-  category_id: props.documento?.categoria?.id ?? null, // changed '' → null
+  category_id: props.documento?.categoria?.id ?? null, 
   file: null as File | null,
 });
 

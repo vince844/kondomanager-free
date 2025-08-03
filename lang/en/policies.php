@@ -35,5 +35,6 @@ return [
     'view_events'               => "You don't have sufficient permissions to view events.",
     'create_events'             => "You don't have sufficient permissions to create a new event.",
     'delete_events'             => "You don't have sufficient permissions to delete events.",
+    'edit_events'               => "You don't have sufficient permissions to edit events.",
 
 ];

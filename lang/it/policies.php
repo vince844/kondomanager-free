@@ -35,5 +35,6 @@ return [
     'view_events'               => "Non hai permessi sufficienti per visualizzare le scadenze in agenda!",
     'create_events'             => "Non hai permessi sufficienti per creare una scadenza in agenda!",
     'delete_events'             => 'Non hai permessi sufficienti per eliminare la scadenza in agenda!',
+    'edit_events'               => "Non hai permessi sufficienti per modificare la scadenza in agenda!",
 
 ];
