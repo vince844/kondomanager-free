@@ -91,15 +91,11 @@ const isRecurring = computed(() => {
 });
 
 const showNoResults = computed(() => {
-  const shouldShow = (
+  return (
     !isLoading.value &&
-    searchQuery.value &&
     filteredResults.value.length === 0 &&
-    (hasSearched.value || showNoResultsDelayed.value)
+    (hasSearched.value || !isInitialLoad.value || showNoResultsDelayed.value)
   );
-  
-  return shouldShow;
-
 });
 
 // Loading timers
@@ -196,6 +192,7 @@ async function handleSearch(query: string) {
     console.error('Search error:', error);
   }
 }
+
 async function handlePageChange(page: number) {
   try {
     incrementLoading();

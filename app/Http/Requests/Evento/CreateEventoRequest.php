@@ -43,7 +43,7 @@ class CreateEventoRequest extends FormRequest
             'recurrence_by_day.*'     => 'in:MO,TU,WE,TH,FR,SA,SU',
             'recurrence_by_month_day' => 'nullable|integer|min:1|max:31',
             'recurrence_until'        => 'nullable|date|after:start_time',
-            'visibility'              => 'nullable|in:public,private,hidden',
+            'visibility'              => 'required|in:public,private,hidden',
         ];
     }
 
@@ -84,6 +84,7 @@ class CreateEventoRequest extends FormRequest
             'category_id'      => __('validation.attributes.eventi.category_id'),
             'recurrence_until' => __('validation.attributes.eventi.recurrence_until'),
             'condomini_ids'    => __('validation.attributes.eventi.condomini_ids'),
+            'visibility'       => __('validation.attributes.eventi.visibility'),
         ];
     }
 

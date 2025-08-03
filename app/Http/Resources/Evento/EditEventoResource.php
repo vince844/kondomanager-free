@@ -21,6 +21,7 @@ class EditEventoResource extends JsonResource
             'title'           => $this->title,
             'description'     => $this->description,
             'note'            => $this->note,
+             'visibility'     => $this->visibility,
             'start_time'      => Carbon::parse($this->start_time)->format('Y-m-d\TH:i'),
             'end_time'        => Carbon::parse($this->end_time)->format('Y-m-d\TH:i'),
             'recurrence_id'   => $this->recurrence_id,

@@ -1,3 +1,4 @@
+import { Component } from 'vue';
 import { Anagrafica } from './anagrafiche';
 import { User } from './users';
 import { Building } from './buildings';
@@ -15,6 +16,13 @@ export type Recurrence = {
   by_day: string[]; // e.g., ['MO', 'TU']
   until: string | null;
 };
+
+export interface VisibilityType {
+  value: string;
+  label: string;
+  icon: Component;
+  colorClass: string;
+}
 
 export interface Evento {
   id: number;
@@ -38,4 +46,5 @@ export interface Evento {
   anagrafiche: Anagrafica[];
   occurrence_index?: number;
   note?: string;
+  visibility?: string;
 }

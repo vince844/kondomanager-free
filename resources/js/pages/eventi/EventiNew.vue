@@ -15,9 +15,11 @@ import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
 import axios from 'axios';
 import { usePermission } from "@/composables/permissions";
+import { visibilityConstants } from '@/lib/eventi/constants';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { CategoriaEvento } from '@/types/categorie-eventi';
+import { VisibilityType } from '@/types/eventi';
 
 const { generatePath, generateRoute } = usePermission();
 
@@ -53,10 +55,11 @@ const form = useForm({
   start_time: '',
   end_time: '',
   note: '',
+  visibility: 'hidden',
   recurrence_frequency: null,
   recurrence_interval: 1,
   recurrence_by_day: [],
-  recurrence_until: null,
+  recurrence_until: '',
   category_id: '',
   condomini_ids: [],
   anagrafiche: []
@@ -84,7 +87,7 @@ watch(showRecurrence, (enabled) => {
     form.recurrence_frequency = null;
     form.recurrence_interval = 1;
     form.recurrence_by_day = [];
-    form.recurrence_until = null;
+    form.recurrence_until = '';
   }
 });
 
@@ -197,7 +200,13 @@ const submit = () => {
             <div v-if="showRecurrence">
               <Label>Ricorrenza</Label>
               <div class="grid grid-cols-2 gap-4">
-                <v-select :options="frequencies" label="label" v-model="form.recurrence_frequency" :reduce="opt => opt.value" placeholder="Frequenza" />
+                <v-select 
+                  :options="frequencies" 
+                  label="label" 
+                  v-model="form.recurrence_frequency" 
+                  :reduce="(opt: { label: string; value: string }) => opt.value"
+                  placeholder="Frequenza" 
+                />
                 <Input type="number" min="1" v-model="form.recurrence_interval" placeholder="Intervallo" />
               </div>
 
@@ -229,6 +238,48 @@ const submit = () => {
 
           <!-- Side Form -->
           <div class="space-y-4 bg-white p-4 border rounded">
+
+            <div class="grid grid-cols-1 sm:grid-cols-6">
+              <div class="sm:col-span-6">
+                  <!-- Label text and icon in a flex row -->
+                  <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                      <Label for="stato">Stato pubblicazione</Label>
+
+                      <HoverCard>
+                          <HoverCardTrigger as-child>
+                          <button type="button" class="cursor-pointer">
+                              <Info class="w-4 h-4 text-muted-foreground" />
+                          </button>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80">
+                          <div class="flex justify-between space-x-4">
+                              <div class="space-y-1">
+                              <h4 class="text-sm font-semibold">
+                                  Stato pubblicazione
+                              </h4>
+                              <p class="text-sm">
+                                  Scegli se rendere visibile la scadenza nella bacheca o mantenerla nascosta.
+                              </p>
+                              </div>
+                          </div>
+                          </HoverCardContent>
+                      </HoverCard>
+                  </div>
+
+                  <!-- Select dropdown -->
+                  <v-select 
+                      id="stato" 
+                      :options="visibilityConstants" 
+                      label="label" 
+                      v-model="form.visibility"
+                      placeholder="Stato pubblicazione"
+                      @update:modelValue="form.clearErrors('visibility')" 
+                      :reduce="(visibility: VisibilityType) => visibility.value"
+                  />
+
+                  <InputError :message="form.errors.visibility" />
+              </div>
+            </div>
 
             <div>
               <Label>Categorie</Label>

@@ -4,6 +4,7 @@ import DropdownAction from '@/components/eventi/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/eventi/DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
 import { ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
+import { visibilityConstants } from '@/lib/eventi/constants';
 import { Permission } from "@/enums/Permission";
 import { Badge } from '@/components/ui/badge';
 import type { ColumnDef } from '@tanstack/vue-table';
@@ -198,6 +199,24 @@ export const columns: ColumnDef<Evento>[] = [
       }, avatars);
     },
 
+  },
+  {
+    accessorKey: 'visibility',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    cell: ({ row }) => {
+
+      const value = row.getValue('visibility');
+      const stato = visibilityConstants.find(p => p.value === value);
+  
+      if (!stato) return h('span', '–');
+  
+      return h('div', { class: 'flex items-center gap-2' }, [
+        h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
+        h('span', stato.label)
+      ]);
+    },
+    filterFn: (row, id, value) =>
+      value.includes(Boolean(row.getValue(id))),
   },
   {
     id: 'actions',

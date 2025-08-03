@@ -34,7 +34,7 @@ class EventoService
             [
                 'recurrence_id'  => $originalEvent->recurrence_id,
                 'exception_date' => $occurrenceDate,
-                'evento_id'     => $originalEvent->id,
+                'evento_id'      => $originalEvent->id,
             ],
             [
                 'is_deleted' => true,

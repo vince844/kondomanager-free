@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { visibilityConstants } from '@/lib/eventi/constants';
 import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
@@ -17,7 +18,7 @@ import axios from 'axios';
 import { usePermission } from "@/composables/permissions";
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { CategoriaEvento } from '@/types/categorie-eventi';
-import type { Evento } from '@/types/eventi';
+import type { Evento, VisibilityType } from '@/types/eventi';
 import type { Building } from '@/types/buildings';
 
 const { generatePath, generateRoute } = usePermission();
@@ -44,6 +45,7 @@ const form = useForm({
   condomini_ids: props.evento?.condomini_ids ?? [],
   category_id: props.evento?.category_id ?? null,
   note: props.evento?.note ?? '',
+  visibility: props.evento?.visibility,
   start_time: props.evento?.start_time ?? '',
   end_time: props.evento?.end_time ?? '',
   recurrence_frequency: props.evento?.recurrence?.frequency ?? null,
@@ -265,6 +267,22 @@ const submit = () => {
 
           <!-- Side Form -->
           <div class="space-y-4 bg-white p-4 border rounded">
+
+                <div class="grid grid-cols-1 sm:grid-cols-6">
+                  <div class="sm:col-span-6">
+                    <Label for="stato">Stato pubblicazione</Label>
+                    <v-select 
+                      id="stato" 
+                      :options="visibilityConstants" 
+                      label="label" 
+                      v-model="form.visibility"
+                      placeholder="Stato pubblicazione"
+                      @update:modelValue="form.clearErrors('visibility')" 
+                      :reduce="(visibility: VisibilityType) => visibility.value"
+                    />
+                    <InputError :message="form.errors.visibility" />
+                  </div>
+                </div>
 
             <div>
               <Label>Categorie</Label>

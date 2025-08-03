@@ -1,11 +1,4 @@
-import { 
-    CircleArrowUp,
-    CircleArrowRight,
-    CircleArrowDown,
-    CircleAlert,
-    CircleCheck,
-    CircleX
-} from 'lucide-vue-next';
+import { CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert, CircleCheck, CircleX } from 'lucide-vue-next';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
   
   export const priorityConstants: PriorityType[] = [

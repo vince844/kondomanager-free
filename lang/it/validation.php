@@ -281,6 +281,7 @@ return [
             'category_id' => 'categoria',
             'recurrence_until' => 'La data di fine ricorrenza',
             'condomini_ids' => 'condomini',
+            'visibility' => 'stato pubblicazione',
         ]
 
     ],

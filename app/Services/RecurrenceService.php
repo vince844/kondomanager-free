@@ -55,8 +55,8 @@ class RecurrenceService
     ): Collection {
         $query = Evento::query()
             ->whereNotNull('recurrence_id')
-            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
-        /*     ->where('is_published', true); */
+            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche'])
+            ->where('visibility', 'public');
 
         $this->applyFilters($query, $filters);
 
@@ -86,7 +86,7 @@ class RecurrenceService
         $query = Evento::query()
             ->whereNull('recurrence_id')
             ->with('categoria', 'condomini', 'anagrafiche')
-          /*   ->where('is_published', true) */
+            ->where('visibility', 'public')
             ->whereBetween('start_time', [$start, $end]);
 
         $this->applyFilters($query, $filters);
