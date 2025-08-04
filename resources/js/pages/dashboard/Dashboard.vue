@@ -161,37 +161,37 @@ const props = defineProps<{
                 </Card>
 
                 <Card class="w-full">
-
-                     <CardHeader class="p-3 ml-3">
+                    <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                             <div>
-                                <CardTitle class="text-lg">Possime scadenze</CardTitle>
+                                <CardTitle class="text-lg">Scadenze eventi in agenda</CardTitle>
                                 <CardDescription>
-                                 Elenco delle attività in scadenza entro i prossimi giorni
+                                    Elenco delle scadenze in agenda nei prossimi giorni
                                 </CardDescription>
                             </div>
 
                             <Link
                                 :href="route(generateRoute('eventi.index'))"
+                                v-if="hasPermission([Permission.VIEW_EVENTS])"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
-                                Visualizza tutti
+                                Visualizza tutte
                             </Link>
-                            </div>
+                        </div>
                     </CardHeader>
-                    <CardContent>
-                        <EventiList 
+                    <CardContent v-if="hasPermission([Permission.VIEW_EVENTS])">
+                        <EventiList
                             :eventi="eventi" 
                         />
                     </CardContent>
 
-       <!--              <CardContent v-else>
+                    <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le scadenze!</span>
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le scadenze in agenda!</span>
                         </div>
-                    </CardContent> -->
-                 
+                    </CardContent>
                 </Card>
+
 
             </div>
 

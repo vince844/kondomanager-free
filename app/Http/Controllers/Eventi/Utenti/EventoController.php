@@ -5,13 +5,17 @@ namespace App\Http\Controllers\Eventi\Utenti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Evento\EventoIndexRequest;
 use App\Http\Requests\Evento\Utenti\CreateEventoRequest;
+use App\Http\Requests\Evento\Utenti\EditEventoRequest;
+use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
+use App\Http\Resources\Evento\EditEventoResource;
 use App\Http\Resources\Evento\EventoResource;
 use App\Models\CategoriaEvento;
 use App\Models\EccezioneEvento;
 use App\Models\Evento;
 use App\Models\RicorrenzaEvento;
+use App\Services\EventoService;
 use App\Services\RecurrenceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
@@ -32,7 +36,10 @@ class EventoController extends Controller
 {
     use HasAnagrafica, HandleFlashMessages, HandlesUserCondominioData;
 
-    public function __construct(private RecurrenceService $recurrenceService) {}
+    public function __construct(
+        private RecurrenceService $recurrenceService,
+        private EventoService $eventoService
+    ) {}
 
     /**
      * Display a listing of the resource.
@@ -207,17 +214,96 @@ class EventoController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(Evento $evento, Request $request): Response
     {
-        //
+        Gate::authorize('update', $evento);
+
+        $request->validate([
+            'mode'            => 'nullable|in:only_this,all',
+            'occurrence_date' => 'nullable|date',
+        ]);
+
+        $mode = $request->query('mode', 'only_this');
+        $occurrenceDate = $request->query('occurrence_date', null);
+
+        $anagrafica = $this->getUserAnagrafica();
+        $condomini = $anagrafica->condomini;
+
+        $evento->loadMissing(['createdBy.anagrafica', 'condomini', 'ricorrenza', 'categoria']); 
+
+        return Inertia::render('eventi/user/EventiEdit', [
+            'evento'         => new EditEventoResource($evento),
+            'condomini'      => CondominioOptionsResource::collection($condomini),
+            'categorie'      => CategoriaEventoResource::collection(CategoriaEvento::all()),
+            'mode'           => $mode,
+            'occurrenceDate' => $occurrenceDate,
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(EditEventoRequest $request, Evento $evento): RedirectResponse
     {
-        //
+        Gate::authorize('update', $evento);
+
+        $validated = $request->validated();
+        $mode = $validated['mode'] ?? 'all';
+
+        DB::beginTransaction();
+        try {
+            $wasRecurring = $evento->recurrence_id !== null;
+            $willBeRecurring = !empty($validated['recurrence_frequency']);
+
+            switch ($mode) {
+                case 'only_this':
+                    if (!$wasRecurring) {
+                        if ($willBeRecurring) {
+                            $this->eventoService->convertToRecurringEvent($evento, $validated);
+                        } else {
+                            $this->eventoService->updateSingleEvent($evento, $validated);
+                        }
+                    } else {
+                        if (!isset($validated['occurrence_date'])) {
+                            throw new \InvalidArgumentException("Occurrence date is required");
+                        }
+                        $this->eventoService->handleSingleOccurrenceUpdate($evento, $validated);
+                    }
+                    break;
+
+                case 'all':
+                    if ($wasRecurring && !$willBeRecurring) {
+                        $this->eventoService->convertToSingleEvent($evento, $validated);
+                    } elseif (!$wasRecurring && $willBeRecurring) {
+                        $this->eventoService->convertToRecurringEvent($evento, $validated);
+                    } elseif ($wasRecurring && $willBeRecurring) {
+                        $this->eventoService->updateRecurringSeries($evento, $validated);
+                    } else {
+                        $this->eventoService->updateSingleEvent($evento, $validated);
+                    }
+                    break;
+
+                default:
+                    throw new \InvalidArgumentException("Invalid update mode");
+            }
+
+            DB::commit();
+
+            return to_route('user.eventi.index')->with(
+                $this->flashSuccess(__('eventi.success_update_event'))
+            );
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            Log::error("Event update failed: {$e->getMessage()}");
+
+            return back()->with(
+                $this->flashError(__('eventi.error_update_event'))
+            );
+
+        }
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Evento;
+namespace App\Http\Requests\Evento\Utenti;
 
 use App\Enums\Permission;
 use App\Enums\VisibilityStatus;
@@ -44,8 +44,6 @@ class EditEventoRequest extends FormRequest
             'recurrence_until'        => 'nullable|date',
             'condomini_ids'           => 'required|nullable|array',
             'condomini_ids.*'         => 'exists:condomini,id',
-            'anagrafiche'             => 'nullable|array',
-            'anagrafiche.*'           => 'exists:anagrafiche,id',
             'mode'                    => 'nullable|string',
             'occurrence_date'         => 'nullable|date',
             'created_by'              => 'required|exists:users,id',
@@ -93,9 +91,6 @@ class EditEventoRequest extends FormRequest
             'category_id'      => __('validation.attributes.eventi.category_id'),
             'recurrence_until' => __('validation.attributes.eventi.recurrence_until'),
             'condomini_ids'    => __('validation.attributes.eventi.condomini_ids'),
-            'visibility'       => __('validation.attributes.eventi.visibility'),
         ];
     }
 }
-
-

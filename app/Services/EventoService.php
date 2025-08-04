@@ -44,7 +44,7 @@ class EventoService
         // Create new standalone event with updated data
         $newEventData = $this->prepareEventData($validated, [
             'recurrence_id' => null, // Ensure it's a single event
-            'created_by' => $validated['created_by'] // Include created_by
+            'created_by'    => $validated['created_by'] // Include created_by
         ]);
 
         $newEvent = Evento::create($newEventData);

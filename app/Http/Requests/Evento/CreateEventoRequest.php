@@ -62,7 +62,7 @@ class CreateEventoRequest extends FormRequest
 
         $this->merge([
             'created_by'  => $user->id,
-            'visibility' => $user->hasPermissionTo(Permission::PUBLISH_EVENTS->value)
+            'visibility'  => $user->hasPermissionTo(Permission::PUBLISH_EVENTS->value)
                 ? VisibilityStatus::PUBLIC->value
                 : VisibilityStatus::HIDDEN->value,
             'is_approved' => $user->hasPermissionTo(Permission::APPROVE_EVENTS->value)

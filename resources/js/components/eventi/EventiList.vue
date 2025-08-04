@@ -41,7 +41,7 @@ const getIconAndColor = (daysRemaining: number) => {
   } else if (daysRemaining <= 14) {
     return { icon: ClockArrowUp, color: 'text-yellow-500' };
   } else {
-    return { icon: Clock, color: 'text-gray-400' };
+    return { icon: Clock, color: 'text-green-400' };
   }
 };
 
@@ -55,7 +55,7 @@ const getIconAndColor = (daysRemaining: number) => {
         class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300"
         role="alert"
       >
-        <span class="font-medium">Nessun documento in archivio ancora creato!</span>
+        <span class="font-medium">Nessuna scadenza in agenda ancora creata!</span>
       </div>
 
       <li v-for="evento in eventi" :key="evento.id" class="py-3 sm:py-4">

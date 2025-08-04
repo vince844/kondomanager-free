@@ -214,6 +214,11 @@ class EventoController extends Controller
     {
         Gate::authorize('update', $evento);
 
+        $request->validate([
+            'mode'            => 'nullable|in:only_this,all',
+            'occurrence_date' => 'nullable|date',
+        ]);
+
         $mode = $request->query('mode', 'only_this');
         $occurrenceDate = $request->query('occurrence_date', null);
 
@@ -281,13 +286,20 @@ class EventoController extends Controller
             }
 
             DB::commit();
-            return redirect()->route('admin.eventi.index')
-                ->with('success', __('eventi.success_update_event'));
+
+            return to_route('admin.eventi.index')->with(
+                $this->flashSuccess(__('eventi.success_update_event'))
+            );
 
         } catch (\Exception $e) {
+
             DB::rollBack();
+
             Log::error("Event update failed: {$e->getMessage()}");
-            return back()->with('error', __('eventi.error_update_event'));
+
+            return back()->with(
+                $this->flashError(__('eventi.error_update_event'))
+            );
         }
     }
 

@@ -226,30 +226,30 @@ function goToEdit(evento: Evento, e?: Event) {
   </AlertDialog>
 
   <AlertDialog v-model:open="isEditAlertOpen">
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Modifica evento ricorrente</AlertDialogTitle>
-      <AlertDialogDescription>
-        Questo evento fa parte di una serie ricorrente. Cosa vuoi modificare?
-        <RadioGroup v-model="editMode" class="mt-4 space-y-2">
-          <div class="flex items-center space-x-2">
-            <RadioGroupItem id="edit_only_this" value="only_this" />
-            <label for="edit_only_this" class="text-sm">Solo questo evento</label>
-          </div>
-          <div class="flex items-center space-x-2">
-            <RadioGroupItem id="edit_all" value="all" />
-            <label for="edit_all" class="text-sm">Tutta la serie</label>
-          </div>
-        </RadioGroup>
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel @click="closeEditModal">Annulla</AlertDialogCancel>
-      <AlertDialogAction @click="editEvento">
-        Continua
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Modifica evento ricorrente</AlertDialogTitle>
+        <AlertDialogDescription>
+          Questo evento fa parte di una serie ricorrente. Cosa vuoi modificare?
+          <RadioGroup v-model="editMode" class="mt-4 space-y-2">
+            <div class="flex items-center space-x-2">
+              <RadioGroupItem id="edit_only_this" value="only_this" />
+              <label for="edit_only_this" class="text-sm">Solo questo evento</label>
+            </div>
+            <div class="flex items-center space-x-2">
+              <RadioGroupItem id="edit_all" value="all" />
+              <label for="edit_all" class="text-sm">Tutta la serie</label>
+            </div>
+          </RadioGroup>
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel @click="closeEditModal">Annulla</AlertDialogCancel>
+        <AlertDialogAction @click="editEvento">
+          Continua
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 
 </template>

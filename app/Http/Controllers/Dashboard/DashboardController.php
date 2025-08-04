@@ -37,7 +37,7 @@ class DashboardController extends Controller
      */
     public function __invoke(Request $request): Response
     {
-        $events = $this->recurrenceService->getEventsInNextDays(days: 14)->take(3);
+        $events = $this->recurrenceService->getEventsInNextDays(days: 30)->take(3);
 
         return Inertia::render('dashboard/Dashboard', [
             'segnalazioni'  => SegnalazioneResource::collection(

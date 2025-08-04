@@ -61,6 +61,7 @@ const { eventi, meta, setEventi } = useEventi(props.eventi.data, {
 // State
 const searchQuery = ref(props.search ?? '');
 const deleteMode = ref<'only_this' | 'this_and_future' | 'all'>('only_this');
+const editMode = ref<'only_this' | 'all'>('all')
 const eventoID = ref<number | null>(null);
 const occurrenceDate = ref<string | null>(null);
 const loadingCount = ref(0);
@@ -71,6 +72,7 @@ const showNoResultsDelayed = ref(false);
 const isInitialLoad = ref(true);
 const isAlertOpen = ref(false);
 const isDeleting = ref(false);
+const isEditAlertOpen = ref(false)
 
 // Computed
 const flashMessage = computed(() => page.props.flash.message);
@@ -277,6 +279,69 @@ function deleteEvento() {
     }
   });
 }
+
+function handleEdit(evento: Evento) {
+  eventoID.value = evento.id
+  occurrenceDate.value = evento.occurs
+    ? typeof evento.occurs === 'string'
+      ? evento.occurs
+      : evento.occurs.toISOString()
+    : null
+ /*  isDropdownOpen.value = false */
+  
+  if (evento.recurrence_id) {
+    setTimeout(() => {
+      isEditAlertOpen.value = true
+    }, 200)
+  } else {
+    goToEdit(evento)
+  }
+}
+
+async function editEvento() {
+  if (eventoID.value === null) return
+  
+  try {
+    const routeParams = { evento: eventoID.value }
+    const queryParams = { 
+      mode: editMode.value,
+      occurrence_date: occurrenceDate.value
+    }
+    
+    router.visit(
+      route(generateRoute('eventi.edit'), routeParams),
+      {
+        data: queryParams,
+        preserveScroll: true,
+        onSuccess: () => {
+          closeEditModal()
+        },
+        onError: (errors) => {
+          console.error('Edit error:', errors)
+        }
+      }
+    )
+  } catch (error) {
+    console.error('Navigation error:', error)
+  }
+}
+
+function closeEditModal() {
+  isEditAlertOpen.value = false
+  eventoID.value = null
+  occurrenceDate.value = null
+ /*  isDropdownOpen.value = false */
+}
+
+function goToEdit(evento: Evento, e?: Event) {
+  if (e) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  
+  router.visit(route(generateRoute('eventi.edit'), { evento: evento.id }))
+}
+
 </script>
 
 <template>
@@ -398,21 +463,17 @@ function deleteEvento() {
                     <h3 class="font-semibold text-gray-900">{{ evento.title }}</h3>
 
                     <div class="flex items-center gap-2">
-                      <Link
-                        v-if="hasPermission([Permission.EDIT_EVENTS]) || 
-                            (hasPermission([Permission.EDIT_OWN_EVENTS]) && 
-                              evento.created_by.user.id === auth.user.id)"
-                        :href="route(generateRoute('eventi.edit'), { id: evento.id })"
+                      <button
+                        v-if="hasPermission([Permission.EDIT_EVENTS]) || (hasPermission([Permission.EDIT_OWN_EVENTS]) && evento.created_by.user.id === auth.user.id)"
+                        @click="handleEdit(evento)"
                         class="text-gray-700 hover:text-blue-600 transition-colors"
                         title="Modifica"
                       >
                         <Pencil class="w-4 h-4" />
-                      </Link>
+                    </button>
 
                       <button
-                        v-if="hasPermission([Permission.DELETE_EVENTS]) || 
-                            (hasPermission([Permission.DELETE_OWN_EVENTS]) && 
-                              evento.created_by.user.id === auth.user.id)"
+                        v-if="hasPermission([Permission.DELETE_EVENTS]) ||  (hasPermission([Permission.DELETE_OWN_EVENTS]) && evento.created_by.user.id === auth.user.id)"
                         @click="handleDelete(evento)"
                         class="text-gray-700 hover:text-red-600 transition-colors"
                         title="Elimina"
@@ -534,6 +595,34 @@ function deleteEvento() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog v-model:open="isEditAlertOpen">
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Modifica evento ricorrente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Questo evento fa parte di una serie ricorrente. Cosa vuoi modificare?
+              <RadioGroup v-model="editMode" class="mt-4 space-y-2">
+                <div class="flex items-center space-x-2">
+                  <RadioGroupItem id="edit_only_this" value="only_this" />
+                  <label for="edit_only_this" class="text-sm">Solo questo evento</label>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <RadioGroupItem id="edit_all" value="all" />
+                  <label for="edit_all" class="text-sm">Tutta la serie</label>
+                </div>
+              </RadioGroup>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel @click="closeEditModal">Annulla</AlertDialogCancel>
+            <AlertDialogAction @click="editEvento">
+              Continua
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
   </AppLayout>
 </template>
 
