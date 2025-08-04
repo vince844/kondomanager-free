@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Dashboard;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Comunicazioni\ComunicazioneResource;
 use App\Http\Resources\Documenti\DocumentoResource;
+use App\Http\Resources\Evento\EventoResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\SegnalazioneService;
 use App\Services\ComunicazioneService;
 use App\Services\DocumentoService;
+use App\Services\RecurrenceService;
 use Illuminate\Support\Facades\App;
 use Inertia\Response;
 
@@ -20,7 +22,7 @@ class UserDashboardController extends Controller
 {
     
     /**
-     * Inject the SegnalazioneService.
+     * Inject the services.
      *
      * @param  \App\Services\SegnalazioneService $segnalazioneService
      * @param  \App\Services\ComunicazioneService $comunicazioneService
@@ -29,7 +31,8 @@ class UserDashboardController extends Controller
     public function __construct(
         private SegnalazioneService $segnalazioneService,
         private ComunicazioneService $comunicazioneService,
-        private DocumentoService $documentoService
+        private DocumentoService $documentoService,
+        private RecurrenceService $recurrenceService
     ) {}
     
     /**
@@ -82,14 +85,22 @@ class UserDashboardController extends Controller
                 limit: 3
             );
 
+            $eventi = $this->recurrenceService->getEventsInNextDays(
+                days: 30,
+                anagrafica: $anagrafica,
+                condominioIds: $condominioIds
+            );
+
             /** @var \Illuminate\Pagination\LengthAwarePaginator $segnalazioni */
             $segnalazioniLimited = $segnalazioni->take(3);
             /** @var \Illuminate\Pagination\LengthAwarePaginator $comunicazioni */
             $comunicazioniLimited = $comunicazioni->take(3);
+            /** @var \Illuminate\Pagination\LengthAwarePaginator $eventi */
+            $eventiLimited = $eventi->take(3);
         
         } catch (\Exception $e) {
 
-            Log::error('Error getting user segnalazioni or comunicazioni or documents: ' . $e->getMessage());
+            Log::error('Error getting dashboard widgets: ' . $e->getMessage());
             abort(500, 'Unable to fetch reports.');
 
         }
@@ -97,6 +108,7 @@ class UserDashboardController extends Controller
         return Inertia::render('dashboard/UserDashboard', [
             'segnalazioni'  => SegnalazioneResource::collection($segnalazioniLimited),
             'comunicazioni' => ComunicazioneResource::collection($comunicazioniLimited),
+            'eventi'        => EventoResource::collection($eventiLimited),
             'documenti'     => DocumentoResource::collection($documenti),
         ]);
         

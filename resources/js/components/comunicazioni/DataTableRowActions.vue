@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'

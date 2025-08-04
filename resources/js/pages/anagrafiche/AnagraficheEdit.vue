@@ -3,9 +3,6 @@
 import { watch, onMounted } from "vue";
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import type { BreadcrumbItem } from '@/types';
-import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche'; 
 import { Button } from '@/components/ui/button';
 import { List, LoaderCircle, Plus } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
@@ -17,11 +14,17 @@ import { Textarea } from '@/components/ui/textarea';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
+import { usePermission } from '@/composables/permissions';
+import type { BreadcrumbItem } from '@/types';
+import type { Building } from '@/types/buildings';
+import type { Anagrafica } from '@/types/anagrafiche'; 
 
 const props = defineProps<{
   anagrafica: Anagrafica;
   condomini: Building[];
 }>();  
+
+const { generateRoute } = usePermission();
 
 const form = useForm({
     nome:  props.anagrafica?.nome,
@@ -76,7 +79,7 @@ const documents = [
 ];
 
 const submit = () => {
-    form.put(route("admin.anagrafiche.update", {id: props.anagrafica.id}), {
+    form.put(route(generateRoute('anagrafiche.update'), {id: props.anagrafica.id}), {
         preserveScroll: true
     });
 };
@@ -108,7 +111,7 @@ const submit = () => {
 
                 <Link
                   as="button"
-                  :href="route('admin.anagrafiche.index')"
+                  :href="route(generateRoute('anagrafiche.index'))"
                   class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
                   <List class="w-4 h-4" />

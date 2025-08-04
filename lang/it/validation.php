@@ -207,6 +207,9 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute deve essere successivo a oggi',
             'before:today' => ':attribute deve essere precedente a oggi',
+        ],
+        'evento' => [
+            'after_or_equal:today' => 'La :attribute deve essere successivo o uguale a oggi'
         ]
     ],
 
@@ -265,7 +268,22 @@ return [
             'is_published' => 'stato documento',
             'condomini_ids' => 'condomini',
             'category_id' => 'categoria',
+        ],
+        'categorie' => [
+            'name' => 'nome',
+            'description' => 'descrizione',
+        ],
+        'eventi' => [
+            'title' => 'titolo',
+            'description' => 'descrizione',
+            'start_time' => 'data inizio',
+            'end_time' => 'data fine',
+            'category_id' => 'categoria',
+            'recurrence_until' => 'La data di fine ricorrenza',
+            'condomini_ids' => 'condomini',
+            'visibility' => 'stato pubblicazione',
         ]
+
     ],
 
 ];

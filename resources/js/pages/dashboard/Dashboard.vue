@@ -7,11 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
+import EventiList from '@/components/eventi/EventiList.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';
+import type { Evento } from '@/types/eventi';
 import type { BreadcrumbItem } from '@/types';
 
 const { generateRoute, hasPermission } = usePermission();
@@ -27,6 +29,7 @@ const props = defineProps<{
   segnalazioni: Segnalazione[]; 
   comunicazioni: Comunicazione[]; 
   documenti: Documento[]; 
+  eventi: Evento[]; 
 }>()
 
 </script>
@@ -158,8 +161,37 @@ const props = defineProps<{
                 </Card>
 
                 <Card class="w-full">
-                 
+                    <CardHeader class="p-3 ml-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <CardTitle class="text-lg">Scadenze eventi in agenda</CardTitle>
+                                <CardDescription>
+                                    Elenco delle scadenze in agenda nei prossimi giorni
+                                </CardDescription>
+                            </div>
+
+                            <Link
+                                :href="route(generateRoute('eventi.index'))"
+                                v-if="hasPermission([Permission.VIEW_EVENTS])"
+                                class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
+                            >
+                                Visualizza tutte
+                            </Link>
+                        </div>
+                    </CardHeader>
+                    <CardContent v-if="hasPermission([Permission.VIEW_EVENTS])">
+                        <EventiList
+                            :eventi="eventi" 
+                        />
+                    </CardContent>
+
+                    <CardContent v-else>
+                        <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
+                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le scadenze in agenda!</span>
+                        </div>
+                    </CardContent>
                 </Card>
+
 
             </div>
 

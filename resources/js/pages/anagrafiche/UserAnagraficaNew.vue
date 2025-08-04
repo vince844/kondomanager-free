@@ -1,11 +1,8 @@
 <script setup lang="ts">
 
-import { Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import type { BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { List} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -16,6 +13,8 @@ import VueDatePicker from '@vuepic/vue-datepicker';
 import { LoaderCircle } from 'lucide-vue-next';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
+import { usePermission } from '@/composables/permissions';
+import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -23,6 +22,8 @@ const breadcrumbs: BreadcrumbItem[] = [
         href: '/user/anagrafiche/create',
     },
 ];
+
+const { generateRoute } = usePermission();
 
 type DocumentType = {
   label: string;
@@ -59,7 +60,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route("user.anagrafiche.store"), {
+    form.post(route(generateRoute('anagrafiche.store')), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()

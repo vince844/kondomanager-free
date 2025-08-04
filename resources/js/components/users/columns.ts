@@ -1,9 +1,9 @@
 import { h } from 'vue'
-import type { ColumnDef } from '@tanstack/vue-table'
-import type { User } from '@/types/users';
 import DropdownAction from '@/components/users/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/users/DataTableColumnHeader.vue';
 import { ShieldCheck } from 'lucide-vue-next';
+import type { ColumnDef } from '@tanstack/vue-table'
+import type { User } from '@/types/users';
 
 const roleClasses: Record<string, string> = {
   amministratore: "inline-flex items-center rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-700 ring-1 ring-red-600/10 ring-inset",

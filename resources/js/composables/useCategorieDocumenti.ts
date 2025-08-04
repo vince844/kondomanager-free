@@ -7,7 +7,7 @@ interface CategoriaDocumento {
 }
 
 export function useCategorieDocumenti() {
-  const categorie = ref<{ label: string; value: number }[]>([])
+  const categorie = ref<{ label: string; value: string }[]>([])
   const isLoading = ref(false)
   const isLoaded = ref(false)
   const error = ref<Error | null>(null)

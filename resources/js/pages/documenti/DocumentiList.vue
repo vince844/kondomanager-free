@@ -30,7 +30,7 @@ const flashMessage = computed(() => page.props.flash.message);
     <div class="px-4 py-6">
       <Heading
         title="Elenco archivio documenti"
-        description="Di seguito la tabella con l'elenco di tutti i docuemnti salvati nell'archivio del condominio"
+        description="Di seguito la tabella con l'elenco di tutti i documenti salvati nell'archivio del condominio"
       />
 
       <DocumentiStats :stats="stats" />

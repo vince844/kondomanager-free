@@ -1,29 +1,14 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref } from 'vue'
-import { router } from '@inertiajs/vue3'
-import type { 
-  ColumnDef, 
-  SortingState,
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  FlexRender,
-  getCoreRowModel,
-  useVueTable,
-  getSortedRowModel,
-} from '@tanstack/vue-table'
-import type { User } from '@/types/users'
-import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue'
-import DataTableToolbar from '@/components/users/DataTableToolbar.vue'
+import { ref } from 'vue';
+import { router } from '@inertiajs/vue3';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
+import { valueUpdater } from '@/lib/utils';
+import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTableToolbar from '@/components/users/DataTableToolbar.vue';
+import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import type { User } from '@/types/users';
 
 const props = defineProps<{
   columns: ColumnDef<User, any>[],

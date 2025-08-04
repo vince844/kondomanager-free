@@ -60,7 +60,7 @@ watch(flashMessage, (newValue) => {
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
-    <div class="p-4 sm:p-6 lg:p-8 space-y-6">
+    <div class="px-4 py-6">
       
       <Heading title="Elenco anagrafiche" description="Di seguito la tabella con l'elenco di tutte le anagrafiche registrate" />
     

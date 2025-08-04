@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { BellPlus } from 'lucide-vue-next';
+import { Plus, List } from 'lucide-vue-next';
 import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilter.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -12,7 +12,7 @@ import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 
-const { generateRoute, hasPermission, hasRole } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 const { categorie, isLoading, loadCategorie } = useCategorieDocumenti()
 
 // Change this to allow table reset when filter cleared
@@ -61,37 +61,49 @@ watchDebounced(
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
-    <div class="flex items-center space-x-2">
-      <!-- Subject Filter -->
-      <Input
-        placeholder="Filtra per titolo..."
-        v-model="nameFilter"
-        class="h-8 w-[150px] lg:w-[250px]"
-      />
+<div class="flex items-center justify-between w-full mb-3 mt-4">
+  <!-- Left: Filters -->
+  <div class="flex items-center space-x-2">
+    <!-- Subject Filter -->
+    <Input
+      placeholder="Filtra per titolo..."
+      v-model="nameFilter"
+      class="h-8 w-[150px] lg:w-[250px]"
+    />
 
-      <DataTableFacetedFilter
-        v-if="categoriaColumn"
-        :column="categoriaColumn"
-        title="Categoria"
-        :options="categorie"
-        :isLoading="isLoading"
-        @open="handleOpenDropdown"
-        @update:filter="() => {}"
-      />
+    <DataTableFacetedFilter
+      v-if="categoriaColumn"
+      :column="categoriaColumn"
+      title="Categoria"
+      :options="categorie"
+      :isLoading="isLoading"
+      @open="handleOpenDropdown"
+      @update:filter="() => {}"
+    />
+  </div>
 
-    </div>
-
+  <!-- Right: Action buttons -->
+  <div class="flex items-center space-x-2">
     <Link 
       as="button"
       v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
       :href="route(generateRoute('documenti.create'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
     >
-      <BellPlus class="w-4 h-4" />
+      <Plus class="w-4 h-4" />
       <span>Crea</span>
     </Link>
 
+    <Link 
+      as="button"
+      :href="route(generateRoute('categorie.index'))" 
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+    >
+      <List class="w-4 h-4" />
+      <span>Categorie</span>
+    </Link>
   </div>
+</div>
+
 
 </template>

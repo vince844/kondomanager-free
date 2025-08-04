@@ -1,12 +1,13 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/documenti/DataTableToolbar.vue';
+import { usePermission } from "@/composables/permissions";
 import type { Documento } from '@/types/documenti';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
@@ -21,6 +22,7 @@ const props = defineProps<{
   }
 }>()
 
+const { generateRoute } = usePermission();
 const sorting = ref<SortingState>([])
 const isPending = ref(false) 
 
@@ -55,7 +57,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route('admin.documenti.index'), {
+    router.get(route(generateRoute('documenti.index')), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {
@@ -72,82 +74,6 @@ const table = useVueTable({
   getSortedRowModel: getSortedRowModel(),
 })
 
-/* const props = defineProps<{
-  columns: ColumnDef<Documento, any>[],
-  data: Documento[],
-  meta: {
-    current_page: number,
-    per_page: number,
-    last_page: number,
-    total: number
-  }
-}>()
-
-const sorting = ref<SortingState>([])
-const isPending = ref(false) 
-const documenti = ref<Documento[]>([...props.data]);
-
-watch(() => props.data, (newData) => {
-  documenti.value = [...newData];
-});
-
-const table = useVueTable({
-  
-  get data() {
-    return documenti.value;
-  },
-  get columns() {
-    return props.columns ?? []
-  },
-  pageCount: props.meta.last_page,
-  state: {
-    pagination: {
-      pageIndex: props.meta.current_page - 1,
-      pageSize: props.meta.per_page,
-    },
-    get sorting() {
-      return sorting.value
-    },
-  },
-  manualPagination: true,
-  onPaginationChange: updater => {
-
-    // Prevent concurrent requests
-    if (isPending.value) return 
-    
-    isPending.value = true
-    
-    const nextPage = typeof updater === 'function'
-      ? updater(table.getState().pagination).pageIndex
-      : updater.pageIndex;
-
-    const nextPageSize = table.getState().pagination.pageSize;
-
-    router.get(route('admin.documenti.index'), {
-      page: nextPage + 1,
-      per_page: nextPageSize,
-    }, {
-      preserveState: true,
-      preserveScroll: true,
-      replace: true,
-      onFinish: () => {
-        isPending.value = false
-      }
-    });
-  },
-  onSortingChange: updaterOrValue => valueUpdater(updaterOrValue, sorting),
-  getCoreRowModel: getCoreRowModel(),
-  getSortedRowModel: getSortedRowModel(),
-  // This is important to update other cells if action happens on a row o cell
-  meta: {
-    updateData: (rowIndex, updatedRow) => {
-      documenti.value = documenti.value.map((item, i) =>
-        i === rowIndex ? updatedRow : item
-      );
-    },
-  }
-})
- */
 </script>
 
 <template>

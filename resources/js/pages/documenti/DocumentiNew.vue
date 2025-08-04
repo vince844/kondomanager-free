@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
+import { useToast } from '@/components/ui/toast';
 import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
@@ -30,6 +31,7 @@ const props = defineProps<{
 }>()
 
 const { generatePath } = usePermission()
+const { toast } = useToast()
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -77,6 +79,14 @@ const createCategory = async () => {
     newCategoryDescription.value = ''
   } catch (error) {
     console.error('Errore creazione categoria', error)
+
+    const backendMessage = error.response?.data?.error || 'Impossibile creare la categoria. Riprova più tardi.'
+
+    toast({
+      title: 'Errore',
+      description: backendMessage,
+      variant: 'destructive',
+    })
   }
 
 }

@@ -18,7 +18,6 @@
 
       <p class="mt-4 text-muted-foreground">
         @isset($exception)
-       {{--    {{ __($exception->getMessage()) }} --}}
           {{ $exception->getMessage() }}
         @else
           {{ __('errors.403_message') }}
@@ -26,7 +25,7 @@
       </p>
 
       <div class="mt-6">
-        <a href="{{ route(auth()->user()->hasRole(['amministratore', 'collaboratore']) ? 'admin.dashboard' : 'user.dashboard') }}"
+        <a href="{{ route(auth()->user()->hasPermissionTo('Accesso pannello amministratore') ? 'admin.dashboard' : 'user.dashboard') }}"
            class="inline-flex items-center rounded-md bg-black px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
           {{ __('errors.back_to_dashboard') }}
         </a>

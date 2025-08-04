@@ -28,16 +28,16 @@ class CreateComunicazioneRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'subject'        => 'required|string|max:255',
-            'description'    => 'required|string',
-            'priority'       => 'required|string',
-            'can_comment'    => 'required|boolean',
-            'is_featured'    => 'required|boolean',
-            'is_published'   => 'required|boolean',
-            'created_by'     => 'required|exists:users,id',
-            'is_approved'    => 'required|boolean',
-            'anagrafiche'    => ['nullable', 'array'],
-            'anagrafiche.*'  => ['integer', Rule::exists('anagrafiche', 'id')],
+            'subject'         => 'required|string|max:255',
+            'description'     => 'required|string',
+            'priority'        => 'required|string',
+            'can_comment'     => 'required|boolean',
+            'is_featured'     => 'required|boolean',
+            'is_published'    => 'required|boolean',
+            'created_by'      => 'required|exists:users,id',
+            'is_approved'     => 'required|boolean',
+            'anagrafiche'     => ['nullable', 'array'],
+            'anagrafiche.*'   => ['integer', Rule::exists('anagrafiche', 'id')],
             'condomini_ids'   => ['required', 'array'],
             'condomini_ids.*' => ['integer', Rule::exists('condomini', 'id')],
         ];
@@ -55,7 +55,9 @@ class CreateComunicazioneRequest extends FormRequest
 
         $this->merge([
             'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) ? true : false,
+            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value) 
+            ? true 
+            : false,
         ]);
     }
 

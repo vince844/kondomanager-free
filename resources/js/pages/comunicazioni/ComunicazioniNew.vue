@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import {Head, useForm, Link, usePage } from '@inertiajs/vue3';
+import {Head, useForm, Link } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { PriorityType, PublishedType } from '@/types/comunicazioni';
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 
 const props = defineProps<{
   condomini: Building[];
@@ -62,7 +62,7 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
 watch(() => form.condomini_ids, fetchAnagrafiche);
 
 const submit = () => {
-    form.post(route("admin.comunicazioni.store"), {
+    form.post(route(generateRoute('comunicazioni.store')), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -178,13 +178,13 @@ const submit = () => {
 
                             <!-- Select dropdown -->
                             <v-select 
-                            id="stato" 
-                            :options="publishedConstants" 
-                            label="label" 
-                            v-model="form.is_published"
-                            placeholder="Stato pubblicazione"
-                            @update:modelValue="form.clearErrors('is_published')" 
-                            :reduce="(is_published: PublishedType) => is_published.value"
+                                id="stato" 
+                                :options="publishedConstants" 
+                                label="label" 
+                                v-model="form.is_published"
+                                placeholder="Stato pubblicazione"
+                                @update:modelValue="form.clearErrors('is_published')" 
+                                :reduce="(is_published: PublishedType) => is_published.value"
                             />
 
                             <InputError :message="form.errors.is_published" />

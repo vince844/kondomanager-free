@@ -31,5 +31,11 @@ return [
     'approve_archive_documents' => "You don't have sufficient permissions to approve an archive document.",
     'delete_archive_documents'  => "You don't have sufficient permissions to delete an archive document.",
     'edit_archive_documents'    => "You don't have sufficient permissions to edit an archive document.",
+    // Events
+    'view_events'               => "You don't have sufficient permissions to view events.",
+    'create_events'             => "You don't have sufficient permissions to create a new event.",
+    'delete_events'             => "You don't have sufficient permissions to delete events.",
+    'edit_events'               => "You don't have sufficient permissions to edit events.",
+    'approve_events'            => "ou don't have sufficient permissions to approve events.",
 
 ];
