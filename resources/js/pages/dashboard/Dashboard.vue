@@ -164,7 +164,7 @@ const props = defineProps<{
                     <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                             <div>
-                                <CardTitle class="text-lg">Scadenze eventi in agenda</CardTitle>
+                                <CardTitle class="text-lg">Prossime scadenze in agenda</CardTitle>
                                 <CardDescription>
                                     Elenco delle scadenze in agenda nei prossimi giorni
                                 </CardDescription>

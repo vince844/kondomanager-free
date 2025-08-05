@@ -48,14 +48,14 @@ const mainNavItems: NavItem[] = [
         title: 'Condomini',
         href: '/condomini',
         icon: House,
-        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
+        permissions: [Permission.VIEW_CONDOMINI],
        
     },
     {
         title: 'Anagrafiche',
         href: generatePath('anagrafiche'),
         icon: SquareLibrary,
-        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
+        permissions: [Permission.VIEW_ANAGRAFICHE],
     },
     {
         title: 'Bacheca',

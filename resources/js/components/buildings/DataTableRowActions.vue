@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu'
-import { MoreHorizontal } from 'lucide-vue-next'
+import { MoreHorizontal, Trash2, FilePenLine } from 'lucide-vue-next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,10 +22,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { usePermission } from "@/composables/permissions"
+import { Permission } from "@/enums/Permission"
 import type { Building } from '@/types/buildings';
-import { Trash2, FilePenLine } from 'lucide-vue-next'
 
 defineProps<{ building: Building }>()
+
+const { hasPermission, generateRoute } = usePermission()
 
 const buildingID = ref('');
 
@@ -62,7 +65,12 @@ const editBuilding = (building: Building) => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu
+    v-if="hasPermission([
+      Permission.EDIT_CONDOMINI,
+      Permission.DELETE_CONDOMINI
+    ])"
+  >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
         <span class="sr-only">Azioni</span>
@@ -72,12 +80,18 @@ const editBuilding = (building: Building) => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem @click="editBuilding(building)" >
+      <DropdownMenuItem 
+        v-if="hasPermission([Permission.EDIT_CONDOMINI])"
+        @click="editBuilding(building)" 
+      >
         <FilePenLine class="w-4 h-4 text-xs" />
         Modifica
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="handleDelete(building)" >
+      <DropdownMenuItem 
+        v-if="hasPermission([Permission.DELETE_CONDOMINI])"
+        @click="handleDelete(building)" 
+      >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
       </DropdownMenuItem>

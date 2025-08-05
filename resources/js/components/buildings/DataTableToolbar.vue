@@ -5,6 +5,8 @@ import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
+import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 
@@ -13,6 +15,8 @@ interface DataTableToolbarProps {
 }
 
 const nameFilter = ref('')
+
+const { generateRoute, hasPermission } = usePermission();
 
 // Debounce search input (300ms delay)
 watchDebounced(
@@ -50,6 +54,7 @@ watchDebounced(
 
     <Link 
       as="button"
+      v-if="hasPermission([Permission.CREATE_CONDOMINI])"
       :href="route('condomini.create')" 
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
