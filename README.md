@@ -1,7 +1,7 @@
 
 # KondoManager - Gestione condominiale
 
-KondoManager è un innovatovo software open source per la gestione condominiale, realizzato in Laravel e database MySql e pensato per gli amministratori di condominio.
+KondoManager è un innovatovo software open source per la gestione condominiale, realizzato in Laravel e database MySql e pensato per gli amministratori di condominio ma anche per gli utenti del condominio.
 
 ## Screenshots
 
@@ -22,13 +22,14 @@ KondoManager è un innovatovo software open source per la gestione condominiale,
 
 ## Funzionalità del gestionale
 
-- Gestione condomini
-- Gestione anagrafiche
-- Gestione segnalazioni guasto
-- Gestione bacheca condominiale
-- Gestione archivio documenti e categorie
-- Gestione utenti
-- Gestione ruoli e permessi
+- Gestione dei condomini
+- Gestione delle anagrafiche
+- Gestione delle segnalazioni guasto
+- Gestione della bacheca condominiale
+- Gestione dell'archivio documenti e categorie
+- Gestione delle scadenze in agenda
+- Gestione degli utenti
+- Gestione dei ruoli e permessi
 - Notifiche email
 
 ## Requisiti minimi 
@@ -69,19 +70,33 @@ DB_DATABASE=your_database
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
 ```
-5. Esegui le migrazioni del database
+
+5. Configura il server SMTP nel file .env
+
+```bash
+MAIL_MAILER=smtp
+MAIL_SCHEME=null
+MAIL_HOST=
+MAIL_PORT=
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_FROM_ADDRESS=
+MAIL_FROM_NAME="${APP_NAME}"
+```
+
+6. Esegui le migrazioni del database
 
 ```bash
 php artisan migrate
 ```
 
-6. Popola il database con le configurazioni di default
+7. Popola il database con le configurazioni di default
 
 ```bash
 php artisan db:seed
 ```
 
-7. Avvia i server di sviluppo
+8. Avvia i server di sviluppo
 
 ```bash
 npm run dev
