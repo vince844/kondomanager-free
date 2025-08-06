@@ -3,6 +3,7 @@
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Condomini\FetchCondominiController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Permissions\PermissionController;
@@ -45,7 +46,6 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 |--------------------------------------------------------------------------
 */
 Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
-
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
 
 /*
@@ -57,6 +57,10 @@ Route::resource('/condomini', CondominioController::class)->middleware(['auth', 
     'condomini' => 'condominio'
 ]);
 Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
+
+Route::get('/fetch-condomini', FetchCondominiController::class)->middleware(['auth', 'verified']);
+
+
 
 /*
 |--------------------------------------------------------------------------

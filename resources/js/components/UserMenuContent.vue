@@ -2,10 +2,11 @@
 
 import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import type { User } from '@/types';
 import { Link, router } from '@inertiajs/vue3';
 import { LogOut, Settings, Users } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from '@/enums/Permission';
+import type { User } from '@/types';
 
 const { hasPermission } = usePermission();
 
@@ -22,7 +23,6 @@ function handleLogout() {
         }
     })
 }
-
 
 </script>
 
@@ -41,7 +41,7 @@ function handleLogout() {
             </Link>
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true">
-            <Link class="block w-full" :href="route('utenti.index')" as="button" v-if="hasPermission(['Visualizza utenti'])">
+            <Link class="block w-full" :href="route('utenti.index')" as="button" v-if="hasPermission([Permission.VIEW_USERS])">
                 <Users class="mr-2 h-4 w-4" />
                 Gestione utenti
             </Link>
