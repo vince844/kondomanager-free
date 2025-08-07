@@ -1,11 +1,11 @@
 <script setup lang="ts">
-
 import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
-import { ChevronDown, CirclePlus } from 'lucide-vue-next'
+import { ChevronDown, CirclePlus, CircleX } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { usePermission } from "@/composables/permissions";
 import {
   Command,
   CommandEmpty,
@@ -26,7 +26,10 @@ import type { Building } from '@/types/buildings'
 const condomini = ref<Building[]>([])
 const selectedCondominio = ref<Building | null>(null)
 const open = ref(false)
-const condominiLoaded = ref(false)  // track if already fetched
+const condominiLoaded = ref(false)
+const showError = ref(false)  // <-- error flag to highlight select
+
+const { generateRoute } = usePermission()
 
 // Fetch condomini
 const fetchCondomini = async () => {
@@ -41,16 +44,18 @@ const fetchCondomini = async () => {
       const found = response.data.find((c: Building) => c.id == storedId)
       if (found) selectedCondominio.value = found
     }
-
   } catch (error) {
     console.error('Errore nel recupero dei condomini:', error)
   }
 }
 
-// Watch dropdown open to trigger fetch
+// Watch dropdown open to trigger fetch and clear error
 watch(open, async (isOpen) => {
   if (isOpen && !condominiLoaded.value) {
     await fetchCondomini()
+  }
+  if (isOpen) {
+    showError.value = false  // clear error when dropdown opens
   }
 })
 
@@ -59,18 +64,24 @@ const selectCondominio = (condominio: Building) => {
   selectedCondominio.value = condominio
   localStorage.setItem('selectedCondominioId', condominio.id)
   open.value = false
+  showError.value = false  // clear error on valid selection
 }
 
 // Reset
 const resetCondominio = () => {
   selectedCondominio.value = null
   localStorage.removeItem('selectedCondominioId')
+  showError.value = false
 }
 
 // Navigate
 const goToGestionale = () => {
-  if (!selectedCondominio.value) return
-  router.visit(`/gestionale/${selectedCondominio.value.id}`)
+  if (!selectedCondominio.value) {
+    showError.value = true  // highlight error if nothing selected
+    return
+  }
+  const url = route(generateRoute('gestionale.index'), { condominio: selectedCondominio.value.id });
+  router.visit(url);
 }
 
 const goToCreateCondominio = () => {
@@ -78,9 +89,8 @@ const goToCreateCondominio = () => {
 }
 </script>
 
-
 <template>
-  <div class="flex items-center gap-1">
+  <div class="flex items-center gap-2">
     <Popover v-model:open="open">
       <PopoverTrigger as-child>
         <Button
@@ -88,7 +98,10 @@ const goToCreateCondominio = () => {
           role="combobox"
           aria-expanded="open"
           aria-label="Select Condominio"
-          :class="cn('w-[200px] justify-between')"
+          :class="cn(
+            'w-[300px] justify-between text-sm py-1.5 px-3',
+            showError ? 'border-red-500 ring-1 ring-red-500' : ''
+          )"
         >
           {{ selectedCondominio?.nome || 'Seleziona condominio' }}
           <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
@@ -123,22 +136,27 @@ const goToCreateCondominio = () => {
                 <CirclePlus class="mr-2 h-5 w-5" />
                 Crea condominio
               </CommandItem>
+
+              <CommandItem
+                value="reset-condominio"
+                @select="() => {
+                  resetCondominio()
+                  open = false
+                }"
+              >
+                <CircleX class="mr-2 h-5 w-5 text-red-600" />
+               Reset selezione
+              </CommandItem>
+
+
             </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
 
-    <Button variant="outline" @click="goToGestionale">
-      Vai al gestionale
-    </Button>
-
-    <Button
-      v-if="selectedCondominio"
-      variant="outline"
-      @click="resetCondominio"
-    >
-      Reset
+    <Button  class="text-sm py-1.5 px-4" @click="goToGestionale">
+      Gestione
     </Button>
   </div>
 </template>

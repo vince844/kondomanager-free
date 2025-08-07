@@ -79,4 +79,6 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
+
+    require __DIR__.'/gestionale.php';
 });
