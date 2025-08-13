@@ -20,6 +20,21 @@ KondoManager è un innovatovo software open source per la gestione condominiale,
   </tr>
 </table>
 
+## Prova la demo di KondoManager
+Puoi visualizzare una demo del progetto andando al seguente indirizzo [KondoManager Demo](https://rebrand.ly/kondomanager) 
+
+Attenzione per questioni di sicurezza alcune funzionalità sono state disattivate, puoi accedere con le seguenti credenziali:
+
+```
+Accedi come amministratore:
+email: admin@kondomanager.it
+password: Pa$$w0rd!
+
+Accedi come utente:
+email: user@kondomanager.it
+password: Pa$$w0rd!
+```
+
 ## Funzionalità del gestionale
 
 - Gestione dei condomini
