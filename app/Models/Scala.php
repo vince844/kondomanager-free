@@ -9,6 +9,8 @@ class Scala extends Model
 {
     use HasFactory;
 
+    protected $table = 'scale';
+
     protected $fillable = [
         'palazzina_id',
         'name',

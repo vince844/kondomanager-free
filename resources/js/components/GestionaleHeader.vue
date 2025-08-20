@@ -1,5 +1,7 @@
 <script setup lang="ts">
 
+import { computed } from 'vue';
+import { Link, usePage } from '@inertiajs/vue3';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
@@ -11,14 +13,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { Link, usePage } from '@inertiajs/vue3';
 import { GitGraph, BookText, Building2, LayoutGrid, Menu } from 'lucide-vue-next';
-import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
+import type { Building } from '@/types/buildings';
 
-const { generatePath, canAccess, hasPermission } = usePermission();
+const { generatePath, canAccess } = usePermission();
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -30,6 +31,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
+const condominio = computed<Building>(() => page.props.condominio as Building);
 
 const isCurrentRoute = (url: string) => {
     return page.url === url;
@@ -40,16 +42,20 @@ const activeItemStyles = computed(() => (url: string) => (isCurrentRoute(url) ? 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: generatePath('dashboard'),
+        href: generatePath('gestionale/:condominioId', { condominioId: condominio.value.id }),
         icon: LayoutGrid
     },
-/*     {
+    {
+        title: 'Struttura',
+        href: generatePath('gestionale/:condominioId/struttura', { condominioId: condominio.value.id }),
+        icon: LayoutGrid
+    },
+    {
         title: 'Immobili',
         href: '#',
         icon: Building2,
-        permissions: [Permission.VIEW_CONDOMINI],
        
-    } */
+    } 
 ];
 
 const rightNavItems: NavItem[] = [

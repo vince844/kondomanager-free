@@ -107,7 +107,7 @@ const goToCreateCondominio = () => {
           <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-[200px] p-0">
+      <PopoverContent class="w-[300px] p-0">
         <Command>
           <CommandInput placeholder="Cerca condominio..." />
           <CommandEmpty>Nessun condominio trovato.</CommandEmpty>

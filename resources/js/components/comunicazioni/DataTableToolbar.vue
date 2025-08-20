@@ -15,12 +15,10 @@ import type { Comunicazione } from '@/types/comunicazioni';
 
 const { generateRoute, hasPermission } = usePermission();
 
-// Change this to allow table reset when filter cleared
 const { table } = defineProps<{
   table: Table<Comunicazione>
 }>()
 
-// Read current priority filter from column state
 const priorityColumn = table.getColumn('priority')
 const nameFilter = ref('')
 

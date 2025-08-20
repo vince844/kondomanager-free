@@ -60,4 +60,9 @@ class Condominio extends Model
         return $this->belongsToMany(Evento::class, 'condominio_evento');
     }
 
+    public function palazzine()
+    {
+        return $this->hasMany(Palazzina::class);
+    }
+
 }
