@@ -1,3 +1,5 @@
+import { Palazzina } from './gestionale/palazzine';
+
 export interface Building {
     id: string
     nome: string
@@ -11,15 +13,13 @@ export interface Building {
     foglio_catasto: string,    
     particella_catasto: string,
     codice_identificativo: string,
-
+    palazzine: Palazzina | null, 
     value: number; 
     label: string; 
-
     option?: {
       value: number;
       label: string;
     };
-
     full?: Building;
   }
 

@@ -3,13 +3,8 @@
 namespace App\Http\Requests\Gestionale\Palazzina;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 
-/**
- * @method bool merge(string $key)
- * @method \Illuminate\Routing\Route|null route(string|null $param = null, mixed $default = null)
- */
-class CreatePalazzinaRequest extends FormRequest
+class UpdatePalazzinaRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -29,16 +24,8 @@ class CreatePalazzinaRequest extends FormRequest
         return [
             'name'                => 'required|string|max:255', 
             'description'         => 'required|string|max:255',
-            'note'                => 'sometimes|nullable|string',
-            'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')]
+            'note'                => 'sometimes|nullable|string'
         ];
-    }
-
-    protected function prepareForValidation()
-    {
-        $this->merge([
-            'condominio_id' => $this->route('condominio')->id,
-        ]);
     }
 
     /**

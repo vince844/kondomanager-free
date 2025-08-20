@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\Palazzina;
+namespace App\Http\Requests\Gestionale\Scala;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -9,7 +9,7 @@ use Illuminate\Validation\Rule;
  * @method bool merge(string $key)
  * @method \Illuminate\Routing\Route|null route(string|null $param = null, mixed $default = null)
  */
-class CreatePalazzinaRequest extends FormRequest
+class CreateScalaRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -30,7 +30,8 @@ class CreatePalazzinaRequest extends FormRequest
             'name'                => 'required|string|max:255', 
             'description'         => 'required|string|max:255',
             'note'                => 'sometimes|nullable|string',
-            'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')]
+            'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
+            'palazzina_id'        => ['nullable', 'integer', Rule::exists('palazzine', 'id')],
         ];
     }
 
@@ -49,8 +50,8 @@ class CreatePalazzinaRequest extends FormRequest
     public function attributes()
     {
         return [
-            'name'          => __('validation.attributes.palazzine.name'),
-            'description'   => __('validation.attributes.palazzine.description'),
+            'name'          => __('validation.attributes.scale.name'),
+            'description'   => __('validation.attributes.scale.description'),
         ];
     }
 }

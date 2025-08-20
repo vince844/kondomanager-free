@@ -12,7 +12,9 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import type { Building } from '@/types/buildings'
+import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { BreadcrumbItem } from '@/types';
+import vSelect from "vue-select";
 
 const props = defineProps<{
   condominio: Building;
@@ -30,10 +32,11 @@ const form = useForm({
   name: '',
   description: '',
   note: '',
+  palazzina_id: '',
 });
 
 const submit = () => {
-    form.post(route(...generateRoute('gestionale.palazzine.store', { condominio: props.condominio.id })), {
+    form.post(route(...generateRoute('gestionale.scale.store', { condominio: props.condominio.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -63,7 +66,7 @@ const submit = () => {
 
               <Link
                 as="button"
-                :href="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
+                :href="generatePath('gestionale/:condominio/scale', { condominio: props.condominio.id })"
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
@@ -79,15 +82,32 @@ const submit = () => {
                     <Input 
                       id="nome" 
                       class="mt-1 block w-full"
-                        v-model="form.name" 
-                        v-on:focus="form.clearErrors('name')"
-                        placeholder="Nome" 
+                      v-model="form.name" 
+                      v-on:focus="form.clearErrors('name')"
+                      placeholder="Nome scala" 
                     />
                     
                     <InputError :message="form.errors.name" />
           
                   </div>
-              </div> 
+
+                  <div class="sm:col-span-3">
+                      <Label for="palazzine">Palazzina</Label>
+
+                      <v-select 
+                          :options="condominio.palazzine" 
+                          label="name" 
+                          class="mt-1 block w-full"
+                          v-model="form.palazzina_id"
+                          placeholder="Associa ad una palazzina"
+                          @update:modelValue="form.clearErrors('palazzina_id')" 
+                          :reduce="(palazzina: Palazzina) => palazzina.id"
+                      />
+
+                      <InputError :message="form.errors.palazzina_id" />
+          
+                  </div>
+              </div>
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
@@ -95,9 +115,9 @@ const submit = () => {
                     <Input 
                       id="indirizzo" 
                       class="mt-1 block w-full"
-                        v-model="form.description" 
-                        v-on:focus="form.clearErrors('description')"
-                        placeholder="Descrizione" 
+                      v-model="form.description" 
+                      v-on:focus="form.clearErrors('description')"
+                      placeholder="Descrizione scala" 
                     />
                     
                     <InputError class="mt-2" :message="form.errors.description" />
@@ -129,3 +149,5 @@ const submit = () => {
     </GestionaleLayout>
 
   </template>
+
+  <style src="vue-select/dist/vue-select.css"></style>

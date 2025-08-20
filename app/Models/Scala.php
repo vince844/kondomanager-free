@@ -12,19 +12,26 @@ class Scala extends Model
     protected $table = 'scale';
 
     protected $fillable = [
+        'condominio_id',
         'palazzina_id',
         'name',
         'description',
         'note',
     ];
 
-    // 🔁 Relazione con la palazzina
+    // Relazione con il condominio (obbligatoria)
+    public function condominio()
+    {
+        return $this->belongsTo(Condominio::class);
+    }
+
+    // Relazione con la palazzina
     public function palazzina()
     {
         return $this->belongsTo(Palazzina::class);
     }
 
-    // 🔁 Una scala può avere molti immobili
+    // Una scala può avere molti immobili
     public function immobili()
     {
         return $this->hasMany(Immobile::class);

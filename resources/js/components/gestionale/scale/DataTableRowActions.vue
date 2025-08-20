@@ -22,21 +22,21 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
-import type { Palazzina } from '@/types/gestionale/palazzine'
+import type { Scala } from '@/types/gestionale/scale'
 import type { Building } from '@/types/buildings'
 
 // Destructure props so condominio and palazzina are usable directly
-const { palazzina, condominio } = defineProps<{ palazzina: Palazzina, condominio: Building }>()
+const { scala, condominio } = defineProps<{ scala: Scala, condominio: Building }>()
 
-const palazzinaID = ref<number | null>(null)
+const scalaID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { generateRoute } = usePermission()
 
-function handleDelete(targetPalazzina: Palazzina) {
-  palazzinaID.value = targetPalazzina.id
+function handleDelete(targetScala: Scala) {
+  scalaID.value = targetScala.id
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -44,21 +44,21 @@ function handleDelete(targetPalazzina: Palazzina) {
 }
 
 function closeModal() {
-  palazzinaID.value = null
+  scalaID.value = null
   isAlertOpen.value = false
   isDropdownOpen.value = false
 }
 
-function deletePalazzina() {
-  if (palazzinaID.value === null || isDeleting.value) return
+function deleteScala() {
+  if (scalaID.value === null || isDeleting.value) return
 
-  const id = palazzinaID.value
+  const id = scalaID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.palazzine.destroy'), { condominio: condominio.id, palazzina: id }), {
+  router.delete(route(generateRoute('gestionale.scale.destroy'), { condominio: condominio.id, scala: id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'palazzine'],
+    only: ['flash', 'scale'],
     onSuccess: () => {
       closeModal()
     },
@@ -89,7 +89,7 @@ function deletePalazzina() {
 
       >
         <Link
-          :href="route(generateRoute('gestionale.palazzine.edit'), { condominio: condominio.id, palazzina: palazzina.id })"
+          :href="route(generateRoute('gestionale.scale.edit'), { condominio: condominio.id, scala: scala.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -99,7 +99,7 @@ function deletePalazzina() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        @click="handleDelete(palazzina)"
+        @click="handleDelete(scala)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
@@ -110,14 +110,14 @@ function deletePalazzina() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questa palazzina?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler eliminare questa scala?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la palazzina e tutti i dati ad essa associati.
+          Questa azione non è reversibile. Eliminerà la scala e tutti i dati ad essa associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deletePalazzina">
+        <AlertDialogAction :disabled="isDeleting" @click="deleteScala">
           <span v-if="isDeleting">Eliminazione...</span>
           <span v-else>Continua</span>
         </AlertDialogAction>

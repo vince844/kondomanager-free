@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
-import type { Palazzina } from '@/types/gestionale/palazzine';
+import type { Scala } from '@/types/gestionale/scale';
 import type { Building } from '@/types/buildings';
 
 // Props
-const props = defineProps<{ table: Table<Palazzina> }>();
+const props = defineProps<{ table: Table<Scala> }>();
 
 // Page props
 const page = usePage<{ condominio: Building }>();
@@ -34,7 +34,7 @@ watchDebounced(
   [nameFilter],
   () => {
     router.get(
-      route(generateRoute('gestionale.palazzine.index'), { condominio: page.props.condominio.id }),
+      route(generateRoute('gestionale.scale.index'), { condominio: page.props.condominio.id }),
       filterParams.value,
       {
         preserveState: true,
@@ -65,7 +65,7 @@ watchDebounced(
     </div>
 
     <Link
-      :href="route('admin.gestionale.palazzine.create', { condominio: page.props.condominio.id })"
+      :href="route('admin.gestionale.scale.create', { condominio: page.props.condominio.id })"
       class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
       prefetch
     >

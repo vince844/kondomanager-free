@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { ref, watch, computed, PropType } from 'vue'
 import type { Component } from 'vue'
 import type { Column } from '@tanstack/vue-table'

@@ -8,5 +8,11 @@ return [
     'error_update_palazzina'            => "An error occurred while updating the palazzina.",
     'success_delete_palazzina'          => "The palazzina has been deleted successfully.",
     'error_delete_palazzina'            => "An error occurred while deleting the palazzina.",
+    'success_create_scala'              => "The new scala has been created successfully.",
+    'error_create_scala'                => "An error occurred while creating the new scala.",
+    'success_update_scala'              => "The scala has been updated successfully.",
+    'error_update_scala'                => "An error occurred while updating the scala.",
+    'success_delete_scala'              => "The scala has been deleted successfully.",
+    'error_delete_scala'                => "An error occurred while deleting the scala.",
     
 ];

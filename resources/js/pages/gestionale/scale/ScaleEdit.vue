@@ -12,10 +12,12 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import type { Building } from '@/types/buildings'
+import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   condominio: Building;
+  palazzina: Palazzina;
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -23,23 +25,25 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'crea palazzina', href: '#' },
+  { title: 'modifica palazzina', href: '#' },
 ]);
 
 const form = useForm({
-  name: '',
-  description: '',
-  note: '',
+  id: props.palazzina.id,
+  name: props.palazzina.name,
+  description: props.palazzina.description,
+  note: props.palazzina.note,
 });
 
 const submit = () => {
-    form.post(route(...generateRoute('gestionale.palazzine.store', { condominio: props.condominio.id })), {
+    form.put(route(...generateRoute('gestionale.palazzine.update', { condominio: props.condominio.id, palazzina: props.palazzina.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
         }
     });
 };
+
 
 </script>
 
@@ -63,7 +67,7 @@ const submit = () => {
 
               <Link
                 as="button"
-                :href="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
+                :href="generatePath(`gestionale/${props.condominio.id}/palazzine`)"
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
@@ -73,6 +77,7 @@ const submit = () => {
 
             <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
 
+              <!--  Name field -->
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-3">
                     <Label for="nome">Nome</Label>
@@ -89,6 +94,7 @@ const submit = () => {
                   </div>
               </div> 
 
+              <!--  Indirizzo field -->
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
                     <Label for="indirizzo">Descrizione</Label>
@@ -105,6 +111,7 @@ const submit = () => {
                   </div>
               </div>
 
+              <!--  Note -->
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
                       <Label for="note">Note</Label>

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
+use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +16,10 @@ use Illuminate\Support\Facades\Route;
         
         Route::resource('palazzine', PalazzinaController::class)->parameters([
             'palazzine' => 'palazzina'
+        ]);
+
+        Route::resource('scale', ScalaController::class)->parameters([
+            'scale' => 'scala'
         ]);
 
     });

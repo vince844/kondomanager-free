@@ -13,7 +13,9 @@ return new class extends Migration
     {
         Schema::create('palazzine', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('condominio_id')->constrained('condomini')->onDelete('cascade');
+            $table->foreignId('condominio_id')
+                ->constrained('condomini')
+                ->onDelete('cascade');
             $table->string('name');
             $table->string('description')->nullable();
             $table->text('note')->nullable(); 

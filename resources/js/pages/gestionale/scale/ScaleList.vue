@@ -4,20 +4,19 @@ import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
-import DataTable from '@/components/gestionale/palazzine/DataTable.vue'
-/* import { columns } from '@/components/gestionale/palazzine/columns' */
+import DataTable from '@/components/gestionale/scale/DataTable.vue'
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import type { Palazzina } from '@/types/gestionale/palazzine'
+import type { Scala } from '@/types/gestionale/scale'
 import type { Building } from '@/types/buildings'
 import type { PaginationMeta } from '@/types/pagination'
-import { getColumns } from '@/components/gestionale/palazzine/columns'
+import { getColumns } from '@/components/gestionale/scale/columns'
 
 const props = defineProps<{
   condominio: Building;
-  palazzine: Palazzina[];
+  scale: Scala[];
   meta: PaginationMeta;
 }>()
 
@@ -31,14 +30,14 @@ const flashMessage = computed(() => page.props.flash.message);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'palazzine', href: '#' },
+  { title: 'scale', href: '#' },
 ]);
 
 </script>
 
 <template>
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco palazzine" />
+    <Head title="Elenco scale" />
 
     <StrutturaLayout>
 
@@ -47,7 +46,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="columns" :data="props.palazzine" :meta="props.meta" :condominio="props.condominio"/>
+        <DataTable :columns="columns" :data="props.scale" :meta="props.meta" :condominio="props.condominio"/>
       </div>
 
     </StrutturaLayout>

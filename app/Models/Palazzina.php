@@ -18,19 +18,25 @@ class Palazzina extends Model
         'note',
     ];
 
-    // 🔁 Relazione con il condominio
+    // Relazione con il condominio
     public function condominio()
     {
         return $this->belongsTo(Condominio::class);
     }
 
-    // 🔁 Una palazzina ha molte scale
+    // Una palazzina ha molte scale
     public function scale()
     {
         return $this->hasMany(Scala::class);
     }
 
-    // 🔁 Una palazzina ha molti immobili (relazione diretta)
+     // Scale che appartengono a palazzine
+    public function scaleConPalazzina()
+    {
+        return $this->hasManyThrough(Scala::class, Palazzina::class);
+    }
+
+    // Una palazzina ha molti immobili (relazione diretta)
     public function immobili()
     {
         return $this->hasMany(Immobile::class);

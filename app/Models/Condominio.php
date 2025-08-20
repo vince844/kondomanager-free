@@ -65,4 +65,9 @@ class Condominio extends Model
         return $this->hasMany(Palazzina::class);
     }
 
+    public function scale()
+    {
+        return $this->hasMany(Scala::class);
+    }
+
 }
