@@ -11,13 +11,16 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
+import vSelect from "vue-select";
 import type { Building } from '@/types/buildings'
+import type { Scala } from '@/types/gestionale/scale';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   condominio: Building;
-  palazzina: Palazzina;
+  scala: Scala;
+  palazzine: Palazzina[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -29,14 +32,15 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 ]);
 
 const form = useForm({
-  id: props.palazzina.id,
-  name: props.palazzina.name,
-  description: props.palazzina.description,
-  note: props.palazzina.note,
+  id: props.scala.id,
+  name: props.scala.name,
+  description: props.scala.description,
+  note: props.scala.note,
+  palazzina_id: props.scala.palazzina?.id ?? null,
 });
 
 const submit = () => {
-    form.put(route(...generateRoute('gestionale.palazzine.update', { condominio: props.condominio.id, palazzina: props.palazzina.id })), {
+    form.put(route(...generateRoute('gestionale.scale.update', { condominio: props.condominio.id, scala: props.scala.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -67,7 +71,7 @@ const submit = () => {
 
               <Link
                 as="button"
-                :href="generatePath(`gestionale/${props.condominio.id}/palazzine`)"
+                :href="generatePath('gestionale/:condominio/scale', { condominio: props.condominio.id })"
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
@@ -90,6 +94,23 @@ const submit = () => {
                     />
                     
                     <InputError :message="form.errors.name" />
+          
+                  </div>
+
+                  <div class="sm:col-span-3">
+                      <Label for="palazzine">Palazzina</Label>
+
+                      <v-select 
+                          :options="palazzine" 
+                          label="name" 
+                          class="mt-1 block w-full"
+                          v-model="form.palazzina_id"
+                          placeholder="Associa ad una palazzina"
+                          @update:modelValue="form.clearErrors('palazzina_id')" 
+                          :reduce="(palazzina: Palazzina) => palazzina.id"
+                      />
+
+                      <InputError :message="form.errors.palazzina_id" />
           
                   </div>
               </div> 
@@ -136,3 +157,5 @@ const submit = () => {
     </GestionaleLayout>
 
   </template>
+
+   <style src="vue-select/dist/vue-select.css"></style>

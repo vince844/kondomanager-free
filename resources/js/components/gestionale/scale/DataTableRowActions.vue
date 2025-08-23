@@ -25,7 +25,6 @@ import { usePermission } from "@/composables/permissions"
 import type { Scala } from '@/types/gestionale/scale'
 import type { Building } from '@/types/buildings'
 
-// Destructure props so condominio and palazzina are usable directly
 const { scala, condominio } = defineProps<{ scala: Scala, condominio: Building }>()
 
 const scalaID = ref<number | null>(null)
