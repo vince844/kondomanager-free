@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili;
 
+use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\CreateImmobileRequest;
 use App\Http\Requests\Gestionale\Immobile\UpdateImmobileRequest;
@@ -19,64 +20,83 @@ use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Controller for managing Immobili (properties) within a Condominio.
+ *
+ * Handles all CRUD operations, including:
+ *  - Listing immobili
+ *  - Creating new immobile
+ *  - Viewing immobile details
+ *  - Editing immobile
+ *  - Updating immobile
+ *  - Deleting immobile
+ *
+ * Integrates flash messages via the HandleFlashMessages trait
+ * and uses RedirectHelper to manage "back or fallback" redirects cleanly.
+ */
 class ImmobileController extends Controller
 {
     use HandleFlashMessages;
 
     /**
-     * Display a listing of the resource.
+     * Display a paginated listing of immobili for a specific condominio.
+     *
+     * @param  Condominio  $condominio
+     * @return Response
      */
     public function index(Condominio $condominio): Response
     {
-         $immobili = $condominio
-        ->immobili()
-        ->with(['palazzina', 'scala', 'tipologiaImmobile']) 
-        ->paginate(config('pagination.default_per_page'));
+        $immobili = $condominio
+            ->immobili()
+            ->with(['palazzina', 'scala', 'tipologiaImmobile'])
+            ->paginate(config('pagination.default_per_page'));
 
         return Inertia::render('gestionale/immobili/ImmobiliList', [
-
             'condominio' => $condominio,
-            'immobili'  => ImmobileResource::collection($immobili)->resolve(), 
-            'meta' => [
+            'immobili'   => ImmobileResource::collection($immobili)->resolve(),
+            'meta'       => [
                 'current_page' => $immobili->currentPage(),
                 'last_page'    => $immobili->lastPage(),
                 'per_page'     => $immobili->perPage(),
                 'total'        => $immobili->total(),
-            ]
-
+            ],
         ]);
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new immobile.
+     *
+     * @param  Condominio  $condominio
+     * @return Response
      */
     public function create(Condominio $condominio): Response
     {
-        // Eager load relationships
         $condominio->load(['palazzine', 'scale']);
-    
+
         return Inertia::render('gestionale/immobili/ImmobiliNew', [
             'condominio' => $condominio,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
             'tipologie'  => TipologiaImmobile::all(),
-        ]); 
+        ]);
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created immobile in storage.
+     *
+     * @param  CreateImmobileRequest  $request
+     * @param  Condominio             $condominio
+     * @return RedirectResponse
+     * @throws \Throwable If an error occurs during creation
      */
     public function store(CreateImmobileRequest $request, Condominio $condominio): RedirectResponse
     {
         try {
             $data = $request->validated();
-
             Immobile::create($data);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
-                $this->flashSuccess(__('gestionale.success_create_immobile'))
-            );
-
+            return to_route('admin.gestionale.immobili.index', $condominio)
+                ->with($this->flashSuccess(__('gestionale.success_create_immobile')));
         } catch (\Throwable $e) {
             Log::error('Error creating immobile', [
                 'condominio_id' => $condominio->id,
@@ -84,26 +104,43 @@ class ImmobileController extends Controller
                 'trace'         => $e->getTraceAsString(),
             ]);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
-                $this->flashError(__('gestionale.error_create_immobile'))
-            );
+            return to_route('admin.gestionale.immobili.index', $condominio)
+                ->with($this->flashError(__('gestionale.error_create_immobile')));
         }
     }
 
     /**
-     * Display the specified resource.
+     * Display a specific immobile.
+     *
+     * @param  Condominio  $condominio
+     * @param  Immobile    $immobile
+     * @return Response
      */
-    public function show(Immobile $immobile)
+    public function show(Condominio $condominio, Immobile $immobile): Response
     {
-        //
+        $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
+
+        return Inertia::render('gestionale/immobili/ImmobiliView', [
+            'condominio' => $condominio,
+            'immobile'   => new ImmobileResource($immobile),
+        ]);
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing a specific immobile.
+     *
+     * Uses RedirectHelper::rememberUrl() to store the previous URL
+     * for redirecting after update.
+     *
+     * @param  Condominio  $condominio
+     * @param  Immobile    $immobile
+     * @return Response
      */
     public function edit(Condominio $condominio, Immobile $immobile): Response
     {
         $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
+
+        RedirectHelper::rememberUrl();
 
         return Inertia::render('gestionale/immobili/ImmobiliEdit', [
             'condominio' => $condominio,
@@ -115,20 +152,26 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update a specific immobile in storage.
+     *
+     * Redirects to the intended URL or a fallback route.
+     *
+     * @param  UpdateImmobileRequest  $request
+     * @param  Condominio             $condominio
+     * @param  Immobile               $immobile
+     * @return RedirectResponse
+     * @throws \Throwable If an error occurs during update
      */
     public function update(UpdateImmobileRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
-         try {
-
+        try {
             $data = $request->validated();
-
             $immobile->update($data);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
+            return RedirectHelper::backOr(
+                route('admin.gestionale.immobili.index', $condominio),
                 $this->flashSuccess(__('gestionale.success_update_immobile'))
             );
-
         } catch (\Throwable $e) {
             Log::error('Error updating immobile', [
                 'immobile_id'   => $immobile->id,
@@ -137,25 +180,28 @@ class ImmobileController extends Controller
                 'trace'         => $e->getTraceAsString(),
             ]);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
+            return RedirectHelper::backOr(
+                route('admin.gestionale.immobili.index', $condominio),
                 $this->flashError(__('gestionale.error_update_immobile'))
             );
         }
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove a specific immobile from storage.
+     *
+     * @param  Condominio  $condominio
+     * @param  Immobile    $immobile
+     * @return RedirectResponse
+     * @throws \Throwable If an error occurs during deletion
      */
     public function destroy(Condominio $condominio, Immobile $immobile): RedirectResponse
     {
         try {
-
             $immobile->delete();
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
-                $this->flashSuccess(__('gestionale.success_delete_immobile'))
-            );
-
+            return to_route('admin.gestionale.immobili.index', $condominio)
+                ->with($this->flashSuccess(__('gestionale.success_delete_immobile')));
         } catch (\Throwable $e) {
             Log::error('Error deleting immobile', [
                 'immobile_id'   => $immobile->id,
@@ -164,9 +210,8 @@ class ImmobileController extends Controller
                 'trace'         => $e->getTraceAsString(),
             ]);
 
-            return to_route('admin.gestionale.immobili.index', $condominio)->with(
-                $this->flashError(__('gestionale.error_delete_immobile'))
-            );
+            return to_route('admin.gestionale.immobili.index', $condominio)
+                ->with($this->flashError(__('gestionale.error_delete_immobile')));
         }
     }
 }

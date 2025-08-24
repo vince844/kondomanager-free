@@ -1,5 +1,7 @@
 // columns.ts
 import { h } from 'vue'
+import { Link } from '@inertiajs/vue3';
+import { usePermission } from "@/composables/permissions";
 import DropdownAction from '@/components/gestionale/immobili/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/immobili/DataTableColumnHeader.vue'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -7,16 +9,25 @@ import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
 import type { TipologiaImmobile } from '@/types/gestionale/tipologie-immobili'
 
+const { generateRoute } = usePermission();
+
 export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
   return [
     {
       accessorKey: 'nome',
-      header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Denominazione' }),
-      cell: ({ row }) =>
-        h('div', { class: 'flex space-x-2' }, [
-          h('span', { class: 'capitalize font-bold' }, row.getValue('nome') as string),
-        ]),
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
+      cell: ({ row }) => {
+
+        const immobile = row.original
+
+        return h('div', { class: 'flex items-center space-x-2' }, [
+          h(Link, {
+            href: route(generateRoute('gestionale.immobili.show'), { condominio: condominio.id, immobile: immobile.id }),
+            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+          }, () => immobile.nome)
+        ]);
+      }
+
     },
     {
       accessorKey: 'tipologia',

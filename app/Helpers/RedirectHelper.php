@@ -3,6 +3,7 @@
 namespace App\Helpers;
 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\RedirectResponse;
 
 class RedirectHelper
 {
@@ -34,5 +35,29 @@ class RedirectHelper
 
         // If the user has a profile, return the route for the user's dashboard
         return route('user.dashboard');
+    }
+
+    /**
+     * Store the previous URL as the intended URL.
+     *
+     * Example: RedirectHelper::rememberUrl();
+     */
+    public static function rememberUrl(): void
+    {
+        redirect()->setIntendedUrl(url()->previous());
+    }
+
+    /**
+     * Redirect back to the intended URL or fallback if none exists.
+     *
+     * Example:
+     * return RedirectHelper::backOr(
+     *     route('admin.gestionale.immobili.index', $condominio),
+     *     $this->flashSuccess('Aggiornato con successo')
+     * );
+     */
+    public static function backOr(string $fallback, array $with = []): RedirectResponse
+    {
+        return redirect()->intended($fallback)->with($with);
     }
 }

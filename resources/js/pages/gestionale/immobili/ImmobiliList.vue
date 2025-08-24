@@ -14,7 +14,6 @@ import type { Immobile } from '@/types/gestionale/immobili';
 import type { Building } from '@/types/buildings';
 import type { PaginationMeta } from '@/types/pagination';
 
-
 const props = defineProps<{
   condominio: Building;
   immobili: Immobile[];
@@ -38,7 +37,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
 <template>
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco palazzine" />
+    <Head title="Elenco immobili" />
 
     <ImmobiliLayout>
 
