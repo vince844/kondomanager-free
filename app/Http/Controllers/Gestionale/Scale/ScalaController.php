@@ -45,7 +45,7 @@ class ScalaController extends Controller
             ->when($validated['name'] ?? false, fn ($query, $name) =>
                 $query->where('name', 'like', "%{$name}%")
             )
-            ->paginate($validated['per_page'] ?? 10)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
 
         return Inertia::render('gestionale/scale/ScaleList', [

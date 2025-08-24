@@ -59,7 +59,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route(generateRoute('gestionale.immobili.index')), {
+    router.get(route(generateRoute('gestionale.immobili.index'), { condominio: props.condominio.id}), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {

@@ -26,7 +26,7 @@ class ImmobileController extends Controller
      */
     public function index(Condominio $condominio): Response
     {
-        $immobili = $condominio->immobili()->paginate(10);
+        $immobili = $condominio->immobili()->paginate(config('pagination.default_per_page'));
 
         return Inertia::render('gestionale/immobili/ImmobiliList', [
 

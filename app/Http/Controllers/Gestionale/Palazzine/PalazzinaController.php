@@ -42,7 +42,7 @@ class PalazzinaController extends Controller
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? 10)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
 
         return Inertia::render('gestionale/palazzine/PalazzineList', [
