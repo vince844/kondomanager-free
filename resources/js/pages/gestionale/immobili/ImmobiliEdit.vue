@@ -17,10 +17,12 @@ import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Scala } from '@/types/gestionale/scale';
+import type { Immobile } from '@/types/gestionale/immobili';
 import type { TipologiaImmobile } from '@/types/gestionale/tipologie-immobili';
 
 const props = defineProps<{
   condominio: Building;
+  immobile: Immobile;
   palazzine: Palazzina[];
   scale: Scala[];
   tipologie: TipologiaImmobile[]
@@ -31,31 +33,31 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'crea immobile', href: '#' },
+  { title: 'modifica immobile', href: '#' },
 ]);
 
 const form = useForm({
-  nome: '',
-  descrizione: '',
-  note: '',
-  comune_catasto: '',
-  codice_catasto: '',
-  sezione_catasto: '',
-  foglio_catasto: '',
-  particella_catasto: '',
-  subalterno_catasto: '',
-  interno: '',
-  piano: '',
-  superficie: '',
-  numero_vani: '',
-  palazzina_id: '',
-  scala_id: '',
-  tipologia_id: '',
+  nome: props.immobile.nome,
+  descrizione: props.immobile.descrizione,
+  note: props.immobile.note,
+  comune_catasto: props.immobile.comune_catasto,
+  codice_catasto: props.immobile.codice_catasto,
+  sezione_catasto: props.immobile.sezione_catasto,
+  foglio_catasto: props.immobile.foglio_catasto,
+  particella_catasto: props.immobile.particella_catasto,
+  subalterno_catasto: props.immobile.subalterno_catasto,
+  interno: props.immobile.interno,
+  piano: props.immobile.piano,
+  superficie: props.immobile.superficie,
+  numero_vani: props.immobile.numero_vani,
+  palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
+  scala_id: props.immobile.scala ? props.immobile.scala.id : '',
+  tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
 
 });
 
 const submit = () => {
-    form.post(route(...generateRoute('gestionale.immobili.store', { condominio: props.condominio.id })), {
+    form.put(route(...generateRoute('gestionale.immobili.update', { condominio: props.condominio.id, immobile: props.immobile.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -67,7 +69,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuovo immobile" />
+    <Head title="Modifica immobile" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 

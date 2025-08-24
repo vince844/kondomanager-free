@@ -18,6 +18,21 @@ export function getColumns(condominio: Building): ColumnDef<Scala>[] {
         ]),
     },
     {
+      accessorKey: 'palazzina',
+      header: ({ column }) =>
+
+        h(DataTableColumnHeader, { column, title: 'Palazzina' }),
+
+      cell: ({ row }) => {
+        const scala = row.original as Scala
+        const palazzina = scala.palazzina ? scala.palazzina.name : '-'
+        return h('div', { class: 'flex space-x-2' }, [
+          h('span', { class: 'capitalize' }, palazzina),
+        ])
+      }
+        
+    },
+    {
       accessorKey: 'description',
       header: ({ column }) =>
         h(DataTableColumnHeader, { column, title: 'Descrizione' }),

@@ -16,7 +16,7 @@ use Illuminate\Validation\Rule;
  * @property-read string $subalterno_catasto
  * @method string|null input(string $key, mixed $default = null)
  */
-class CreateImmobileRequest extends FormRequest
+class UpdateImmobileRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -33,7 +33,7 @@ class CreateImmobileRequest extends FormRequest
      */
     public function rules(): array
     {
-         return [
+        return [
             'nome'                => 'required|string|max:255', 
             'descrizione'         => 'required|string|max:255',
             'comune_catasto'      => 'sometimes|nullable|string|max:255',
@@ -47,7 +47,6 @@ class CreateImmobileRequest extends FormRequest
             'superficie'          => 'sometimes|nullable|numeric',
             'numero_vani'         => 'sometimes|nullable|integer',
             'note'                => 'sometimes|nullable|string',
-            'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
             'palazzina_id'        => ['sometimes', 'nullable', 'integer', Rule::exists('palazzine', 'id')],
             'scala_id'            => ['sometimes', 'nullable', 'integer', Rule::exists('scale', 'id')],
             'tipologia_id'        => ['required', 'integer', Rule::exists('tipologie_immobili', 'id')]
@@ -56,12 +55,11 @@ class CreateImmobileRequest extends FormRequest
 
     /**
      * Prepare data before validation.
-     * Uppercases relevant string fields and merges condominio_id from route.
+     * Uppercases relevant string fields.
      */
     protected function prepareForValidation()
     {
         $this->merge([
-            'condominio_id'  => $this->route('condominio')->id,
             'interno'        => strtoupper((string) $this->interno),
             'codice_catasto' => $this->codice_catasto
                 ? strtoupper($this->codice_catasto)

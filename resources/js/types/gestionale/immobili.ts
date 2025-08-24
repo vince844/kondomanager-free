@@ -1,10 +1,11 @@
 import { Palazzina } from './palazzine';
 import { Scala } from './scale';
+import { TipologiaImmobile } from './tipologie-immobili';
 
 export interface Immobile {
     id: number
-    name: string
-    description: string
+    nome: string
+    descrizione: string
     note: string,
     codice_interno: string,
     superficie: number,
@@ -13,9 +14,12 @@ export interface Immobile {
     foglio_catasto: string,
     particella_catasto: string,
     subalterno_catasto: string,
-    vani: number,
+    sezione_catasto: string,
+    attivo: boolean,
+    numero_vani: number,
     interno: string,
     piano: string,
     palazzina: Palazzina,
-    scala: Scala             
+    scala: Scala,
+    tipologia: TipologiaImmobile,             
   }

@@ -45,6 +45,7 @@ class ScalaController extends Controller
             ->when($validated['name'] ?? false, fn ($query, $name) =>
                 $query->where('name', 'like', "%{$name}%")
             )
+            ->with(['palazzina']) 
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
 

@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Gestionale\Immobili;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\CreateImmobileRequest;
+use App\Http\Requests\Gestionale\Immobile\UpdateImmobileRequest;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
+use App\Http\Resources\Gestionale\Immobili\TipologiaImmobileResource;
 use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Models\Condominio;
@@ -26,7 +28,10 @@ class ImmobileController extends Controller
      */
     public function index(Condominio $condominio): Response
     {
-        $immobili = $condominio->immobili()->paginate(config('pagination.default_per_page'));
+         $immobili = $condominio
+        ->immobili()
+        ->with(['palazzina', 'scala', 'tipologiaImmobile']) 
+        ->paginate(config('pagination.default_per_page'));
 
         return Inertia::render('gestionale/immobili/ImmobiliList', [
 
@@ -96,17 +101,46 @@ class ImmobileController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Immobile $immobile)
+    public function edit(Condominio $condominio, Immobile $immobile): Response
     {
-        //
+        $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
+
+        return Inertia::render('gestionale/immobili/ImmobiliEdit', [
+            'condominio' => $condominio,
+            'immobile'   => new ImmobileResource($immobile),
+            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
+            'scale'      => ScalaResource::collection($condominio->scale),
+            'tipologie'  => TipologiaImmobileResource::collection(TipologiaImmobile::all()),
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Immobile $immobile)
+    public function update(UpdateImmobileRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
-        //
+         try {
+
+            $data = $request->validated();
+
+            $immobile->update($data);
+
+            return to_route('admin.gestionale.immobili.index', $condominio)->with(
+                $this->flashSuccess(__('gestionale.success_update_immobile'))
+            );
+
+        } catch (\Throwable $e) {
+            Log::error('Error updating immobile', [
+                'immobile_id'   => $immobile->id,
+                'condominio_id' => $condominio->id,
+                'message'       => $e->getMessage(),
+                'trace'         => $e->getTraceAsString(),
+            ]);
+
+            return to_route('admin.gestionale.immobili.index', $condominio)->with(
+                $this->flashError(__('gestionale.error_update_immobile'))
+            );
+        }
     }
 
     /**

@@ -3,7 +3,7 @@
 import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
+import ImmobiliLayout from '@/layouts/gestionale/ImmobiliLayout.vue';
 import DataTable from '@/components/gestionale/immobili/DataTable.vue';
 import { getColumns } from '@/components/gestionale/immobili/columns';
 import Alert from "@/components/Alert.vue";
@@ -40,7 +40,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   <GestionaleLayout :breadcrumbs="breadcrumbs">
     <Head title="Elenco palazzine" />
 
-    <ImmobileLayout>
+    <ImmobiliLayout>
 
       <div v-if="flashMessage" class="py-3">
           <Alert :message="flashMessage.message" :type="flashMessage.type" />
@@ -50,6 +50,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
         <DataTable :columns="columns" :data="props.immobili" :meta="props.meta" :condominio="props.condominio"/>
       </div>
 
-    </ImmobileLayout>
+    </ImmobiliLayout>
   </GestionaleLayout>
 </template>
