@@ -28,7 +28,7 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'modifica palazzina', href: '#' },
+  { title: 'modifica scala', href: '#' },
 ]);
 
 const form = useForm({
@@ -53,7 +53,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuova palazzina" />
+    <Head title="Modifica scala" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 

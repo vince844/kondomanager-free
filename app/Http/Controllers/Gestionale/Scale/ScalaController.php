@@ -69,9 +69,12 @@ class ScalaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        // Eager load palazzine
+        $condominio->load('palazzine');
+        
         return Inertia::render('gestionale/scale/ScaleNew', [
             'condominio' => $condominio,
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine)->resolve(),
+            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
         ]);
     }
 
@@ -129,7 +132,7 @@ class ScalaController extends Controller
         return Inertia::render('gestionale/scale/ScaleEdit', [
             'condominio' => $condominio,
             'scala'      => new ScalaResource($scala),
-            'palazzine'  => PalazzinaResource::collection($condominio->palazzine)->resolve(),
+            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
         ]);
     }
 

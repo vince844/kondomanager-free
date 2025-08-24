@@ -4,16 +4,16 @@ import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
-import DataTable from '@/components/gestionale/palazzine/DataTable.vue'
-/* import { columns } from '@/components/gestionale/palazzine/columns' */
+import DataTable from '@/components/gestionale/palazzine/DataTable.vue';
+import { getColumns } from '@/components/gestionale/palazzine/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import type { Palazzina } from '@/types/gestionale/palazzine'
-import type { Building } from '@/types/buildings'
-import type { PaginationMeta } from '@/types/pagination'
-import { getColumns } from '@/components/gestionale/palazzine/columns'
+import type { Palazzina } from '@/types/gestionale/palazzine';
+import type { Building } from '@/types/buildings';
+import type { PaginationMeta } from '@/types/pagination';
+
 
 const props = defineProps<{
   condominio: Building;

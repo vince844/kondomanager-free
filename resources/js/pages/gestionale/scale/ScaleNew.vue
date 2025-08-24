@@ -10,11 +10,11 @@ import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
+import vSelect from "vue-select";
 import { Textarea } from '@/components/ui/textarea';
 import type { Building } from '@/types/buildings'
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { BreadcrumbItem } from '@/types';
-import vSelect from "vue-select";
 
 const props = defineProps<{
   condominio: Building;
@@ -25,7 +25,7 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'crea palazzina', href: '#' },
+  { title: 'crea scala', href: '#' },
 ]);
 
 const form = useForm({
@@ -48,7 +48,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuova palazzina" />
+    <Head title="Crea nuova scala" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 

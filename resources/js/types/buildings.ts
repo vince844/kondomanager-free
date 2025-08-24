@@ -1,4 +1,5 @@
 import { Palazzina } from './gestionale/palazzine';
+import { Scala } from './gestionale/scale';
 
 export interface Building {
     id: string
@@ -14,6 +15,7 @@ export interface Building {
     particella_catasto: string,
     codice_identificativo: string,
     palazzine: Palazzina | null, 
+    scale: Scala | null, 
     value: number; 
     label: string; 
     option?: {

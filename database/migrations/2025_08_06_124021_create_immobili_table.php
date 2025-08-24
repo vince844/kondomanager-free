@@ -28,6 +28,8 @@ return new class extends Migration
                 ->nullable()
                 ->constrained('tipologie_immobili')
                 ->onDelete('set null');
+            $table->string('nome');
+            $table->string('descrizione');
             $table->string('interno');
             $table->string('piano')->nullable();
             $table->decimal('superficie', 8, 2)->nullable(); 

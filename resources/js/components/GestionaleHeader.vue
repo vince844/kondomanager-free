@@ -42,17 +42,17 @@ const activeItemStyles = computed(() => (url: string) => (isCurrentRoute(url) ? 
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
-        href: generatePath('gestionale/:condominioId', { condominioId: condominio.value.id }),
+        href: generatePath('gestionale/:condominio', { condominio: condominio.value.id }),
         icon: LayoutGrid
     },
     {
         title: 'Struttura',
-        href: generatePath('gestionale/:condominioId/struttura', { condominioId: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
         icon: LayoutGrid
     },
     {
         title: 'Immobili',
-        href: '#',
+        href: generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
         icon: Building2,
        
     } 

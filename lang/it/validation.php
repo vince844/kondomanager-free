@@ -291,6 +291,9 @@ return [
             'name' => 'nome scala',
             'description' => 'descrizione scala',
         ],
+        'immobili' => [
+            'tipologia_id' => 'tipologia immobile',
+        ],
 
     ],
 

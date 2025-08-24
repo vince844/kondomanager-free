@@ -17,20 +17,16 @@ const { generatePath } = usePermission();
 
 const topbarNavItems: NavItem[] = [
     {
-        title: 'Struttura',
+        title: 'Dettagli',
         href:  generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
     },
     {
-        title: 'Palazzine',
-        href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
-    },
-    {
-        title: 'Scale',
+        title: 'Proprietari',
         href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
     },
-    {
+        {
         title: 'Documenti',
-        href: '#',
+        href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
     },
 ];
 

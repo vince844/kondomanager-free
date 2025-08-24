@@ -65,7 +65,7 @@ watchDebounced(
     </div>
 
     <Link
-      :href="route('admin.gestionale.scale.create', { condominio: page.props.condominio.id })"
+      :href="route(generateRoute('gestionale.scale.create'), { condominio: page.props.condominio.id })"
       class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
       prefetch
     >

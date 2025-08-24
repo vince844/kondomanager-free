@@ -16,7 +16,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Controller for managing Palazzine (buildings) inside a Condominio.
+ * Controller for managing Palazzine inside a Condominio.
  * 
  * Handles CRUD operations, validation, and error handling
  * with flash messages and Inertia responses.

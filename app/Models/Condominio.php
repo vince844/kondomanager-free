@@ -70,4 +70,9 @@ class Condominio extends Model
         return $this->hasMany(Scala::class);
     }
 
+    public function immobili()
+    {
+        return $this->hasMany(Immobile::class);
+    }
+
 }
