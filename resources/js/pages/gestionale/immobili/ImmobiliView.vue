@@ -25,6 +25,7 @@ const flashMessage = computed(() => page.props.flash.message);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
+  { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: 'dettagli immobile', href: '#' },
 ]);
 

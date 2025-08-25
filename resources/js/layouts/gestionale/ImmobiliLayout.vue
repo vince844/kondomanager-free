@@ -21,12 +21,8 @@ const topbarNavItems: NavItem[] = [
         href:  generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
     },
     {
-        title: 'Proprietari',
-        href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
-    },
-        {
         title: 'Documenti',
-        href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
+        href: '#',
     },
 ];
 

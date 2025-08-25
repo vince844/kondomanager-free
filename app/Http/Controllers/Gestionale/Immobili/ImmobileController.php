@@ -14,7 +14,6 @@ use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\TipologiaImmobile;
 use App\Traits\HandleFlashMessages;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;

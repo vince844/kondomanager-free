@@ -22,5 +22,8 @@ return [
     'error_update_immobile'             => "An error occurred while updating the flat.",
     'success_delete_immobile'           => "The flat has been deleted successfully.",
     'error_delete_immobile'             => "An error occurred while deleting the flat.",
+    // Anagrafica messages
+    'success_associate_anagrafica'         => "The anagrafica has been successfully associated to the flat.",
+    'error_associate_anagrafica'           => "An error occurred while associating the anagrafica to the flat.",
     
 ];

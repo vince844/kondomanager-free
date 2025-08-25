@@ -53,7 +53,7 @@ class Anagrafica extends Model
 
     }
 
-     /**
+    /**
      * Get the comunicazioni associated with the anagrafica.
      */
     public function comunicazioni()

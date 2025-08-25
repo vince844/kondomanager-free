@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
+use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
@@ -26,5 +27,12 @@ use Illuminate\Support\Facades\Route;
         Route::resource('immobili', ImmobileController::class)->parameters([
             'immobili' => 'immobile'
         ]);
+
+        Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
+            ->shallow()
+            ->parameters([
+                'immobili' => 'immobile',
+                'anagrafiche' => 'anagrafica'
+            ]);
 
     });

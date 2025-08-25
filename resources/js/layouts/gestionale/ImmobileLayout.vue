@@ -6,23 +6,26 @@ import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { NavItem } from '@/types';
 import type { Building } from '@/types/buildings';
+import type { Immobile } from '@/types/gestionale/immobili';
 
 const page = usePage<{
   condominio: Building;
+  immobile: Immobile
 }>();
 
 const condominio = computed(() => page.props.condominio);
+const immobile = computed(() => page.props.immobile);
 
 const { generatePath } = usePermission();
 
 const topbarNavItems: NavItem[] = [
     {
         title: 'Dettagli',
-        href:  generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
+        href:  generatePath('gestionale/:condominio/immobili/:immobile', { condominio: condominio.value.id, immobile: immobile.value.id }),
     },
     {
-        title: 'Proprietari',
-        href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
+        title: 'Anagrafiche',
+        href: generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: condominio.value.id, immobile: immobile.value.id }),
     },
         {
         title: 'Documenti',
@@ -42,7 +45,15 @@ const currentPath = window.location.pathname;
         v-for="item in topbarNavItems"
         :key="item.href"
         variant="ghost"
-        :class="['justify-start', { 'bg-muted': currentPath.startsWith(item.href) }]"
+        :class="[
+          'justify-start',
+          {
+            'bg-muted':
+              item.href === generatePath('gestionale/:condominio/immobili/:immobile', { condominio: condominio.id, immobile: immobile.id })
+                ? currentPath === item.href
+                : currentPath === item.href || currentPath.startsWith(item.href + '/')
+          }
+        ]"
         as-child
       >
         <Link :href="item.href">

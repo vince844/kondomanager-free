@@ -22,5 +22,8 @@ return [
     'error_update_immobile'             => "Si è verificato un errore durante l'aggiornamento dell'immobile.",
     'success_delete_immobile'           => "L'immobile è stato eliminato con successo.",
     'error_delete_immobile'             => "Si è verificato un errore durante l'eliminazione dell'immobile.",
+     // Anagrafica messages
+    'success_associate_anagrafica'      => "L'anagrafica è stata associata con successo all'immobile.",
+    'error_associate_anagrafica'        => "Si è verificato un errore durante l'associazione dell'anagrafica all'immobile.",
 
 ];

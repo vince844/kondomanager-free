@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\Immobili;
 
+use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use Illuminate\Http\Request;
@@ -36,6 +37,7 @@ class ImmobileResource extends JsonResource
             'tipologia'          => new TipologiaImmobileResource($this->whenLoaded('tipologiaImmobile')),
             'palazzina'          => new PalazzinaResource($this->whenLoaded('palazzina')),
             'scala'              => new ScalaResource($this->whenLoaded('scala')),
+            'anagrafiche'        => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
         ];
     }
 }
