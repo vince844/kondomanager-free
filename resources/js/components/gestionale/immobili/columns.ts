@@ -52,7 +52,7 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
 
       cell: ({ row }) => {
         const immobile = row.original as Immobile
-        const palazzina = immobile.palazzina ? immobile.palazzina.name : '-'
+        const palazzina = immobile.palazzina?.name ?? '-'
         return h('div', { class: 'flex space-x-2' }, [
           h('span', { class: 'capitalize' }, palazzina),
         ])
@@ -67,7 +67,7 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
 
       cell: ({ row }) => {
         const immobile = row.original as Immobile
-        const scala = immobile.scala ? immobile.scala.name : '-'
+        const scala = immobile.scala?.name ?? '-'
         return h('div', { class: 'flex space-x-2' }, [
           h('span', { class: 'capitalize' }, scala),
         ])

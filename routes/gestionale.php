@@ -29,7 +29,6 @@ use Illuminate\Support\Facades\Route;
         ]);
 
         Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
-            ->shallow()
             ->parameters([
                 'immobili' => 'immobile',
                 'anagrafiche' => 'anagrafica'

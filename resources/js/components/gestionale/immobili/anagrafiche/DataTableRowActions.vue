@@ -20,23 +20,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Unplug, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
+import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 
-// Destructure props so condominio and palazzina are usable directly
-const { immobile, condominio } = defineProps<{ immobile: Immobile, condominio: Building }>()
+const props = defineProps<{
+  anagrafica: AnagraficaWithPivot
+  immobile: Immobile
+  condominio: Building
+}>()
 
-const immobileID = ref<number | null>(null)
+const anagraficaID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { generateRoute } = usePermission()
 
-function handleDelete(targetImmobile: Immobile) {
-  immobileID.value = targetImmobile.id
+function handleDelete(targetAnagrafica: AnagraficaWithPivot) {
+  anagraficaID.value = targetAnagrafica.id
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -44,21 +48,25 @@ function handleDelete(targetImmobile: Immobile) {
 }
 
 function closeModal() {
-  immobileID.value = null
+  anagraficaID.value = null
   isAlertOpen.value = false
   isDropdownOpen.value = false
 }
 
-function deleteImmobile() {
-  if (immobileID.value === null || isDeleting.value) return
+function deleteAnagrafica() {
+  if (anagraficaID.value === null || isDeleting.value) return
 
-  const id = immobileID.value
+  const id = anagraficaID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.immobili.destroy'), { condominio: condominio.id, immobile: id }), {
+  router.delete(route(generateRoute('gestionale.immobili.anagrafiche.destroy'), 
+  { 
+    condominio: props.condominio.id, 
+    immobile: props.immobile.id,
+    anagrafica: id
+  }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'immobili'],
     onSuccess: () => {
       closeModal()
     },
@@ -72,11 +80,8 @@ function deleteImmobile() {
 }
 </script>
 
-
 <template>
-  <DropdownMenu
-
-  >
+  <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
@@ -89,7 +94,11 @@ function deleteImmobile() {
 
       >
         <Link
-          :href="route(generateRoute('gestionale.immobili.edit'), { condominio: condominio.id, immobile: immobile.id })"
+          :href="route(generateRoute('gestionale.immobili.anagrafiche.edit'), 
+          { condominio: condominio.id, 
+            immobile: immobile.id,
+            anagrafica: anagrafica.id
+          })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -99,10 +108,10 @@ function deleteImmobile() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        @click="handleDelete(immobile)"
+        @click="handleDelete(anagrafica)"
       >
-        <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        <Unplug class="w-4 h-4 text-xs" />
+        Dissocia
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
@@ -110,14 +119,14 @@ function deleteImmobile() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo immobile?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler dissociare questa anagrafica?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'immobile e tutti i dati ad essa associati.
+          Questa azione non è reversibile. Dissocierà l'anagrafica dall'immobile.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteImmobile">
+        <AlertDialogAction :disabled="isDeleting" @click="deleteAnagrafica">
           <span v-if="isDeleting">Eliminazione...</span>
           <span v-else>Continua</span>
         </AlertDialogAction>

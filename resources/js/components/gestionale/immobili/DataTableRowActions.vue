@@ -25,7 +25,6 @@ import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
 
-// Destructure props so condominio and palazzina are usable directly
 const { immobile, condominio } = defineProps<{ immobile: Immobile, condominio: Building }>()
 
 const immobileID = ref<number | null>(null)

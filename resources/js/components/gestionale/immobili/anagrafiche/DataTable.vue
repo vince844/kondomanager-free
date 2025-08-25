@@ -15,11 +15,11 @@ import {
 } from '@/components/ui/table'
 import DataTableToolbar from '@/components/gestionale/immobili/anagrafiche/DataTableToolbar.vue';
 import type { Immobile } from '@/types/gestionale/immobili';
-import type { Anagrafica } from '@/types/anagrafiche'
+import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 
 const props = defineProps<{
-  columns: ColumnDef<Anagrafica, any>[],
-  data: Anagrafica[],
+  columns: ColumnDef<AnagraficaWithPivot, any>[],
+  data: AnagraficaWithPivot[],
 }>()
 
 const table = useVueTable({
@@ -59,7 +59,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              No results.
+              Nessun risultato trovato
             </TableCell>
           </TableRow>
         </template>

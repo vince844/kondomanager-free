@@ -1,7 +1,7 @@
 import { Palazzina } from './palazzine';
 import { Scala } from './scale';
 import { TipologiaImmobile } from './tipologie-immobili';
-import { Anagrafica } from '../anagrafiche';
+import { AnagraficaWithPivot } from '../anagrafiche';
 
 export interface Immobile {
     id: number
@@ -23,5 +23,5 @@ export interface Immobile {
     palazzina: Palazzina,
     scala: Scala,
     tipologia: TipologiaImmobile, 
-    anagrafiche: Anagrafica[]          
+    anagrafiche: AnagraficaWithPivot[]          
   }

@@ -23,7 +23,11 @@ return [
     'success_delete_immobile'           => "L'immobile è stato eliminato con successo.",
     'error_delete_immobile'             => "Si è verificato un errore durante l'eliminazione dell'immobile.",
      // Anagrafica messages
-    'success_associate_anagrafica'      => "L'anagrafica è stata associata con successo all'immobile.",
-    'error_associate_anagrafica'        => "Si è verificato un errore durante l'associazione dell'anagrafica all'immobile.",
+    'success_attach_anagrafica'         => "L'anagrafica è stata associata con successo all'immobile.",
+    'error_attach_anagrafica'           => "Si è verificato un errore durante l'associazione dell'anagrafica all'immobile.",
+    'success_detach_anagrafica'         => "L'anagrafica è stata staccata con successo dall'immobile.",
+    'error_detach_anagrafica'           => "Si è verificato un errore durante lo stacco dell'anagrafica dall'immobile.",
+    'success_update_anagrafica'         => "L'anagrafica associata è stata aggiornata con successo.",
+    'error_update_anagrafica'           => "Si è verificato un errore nell'aggiornamento dell'anagrafica associata.",
 
 ];

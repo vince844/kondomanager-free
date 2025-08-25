@@ -90,12 +90,12 @@ const truncate = (text: string, length: number = 120) => {
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Palazzina:</span>
-                  <div>{{ immobile.palazzina.name }}</div>
+                  <div>{{ immobile.palazzina?.name ?? '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Scala:</span>
-                  <div>{{ immobile.scala.name }}</div>
+                  <div>{{ immobile.scala?.name ?? '-' }}</div>
                 </div>
               </div>
 
@@ -108,17 +108,17 @@ const truncate = (text: string, length: number = 120) => {
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Piano:</span>
-                  <div>{{ immobile.piano }}</div>
+                  <div>{{ immobile.piano ?? '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Superficie:</span>
-                  <div>{{ immobile.superficie }} Mq.</div>
+                  <div>{{ immobile.superficie ? immobile.superficie + ' Mq.' : '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Numero vani:</span>
-                  <div>{{ immobile.numero_vani }}</div>
+                  <div>{{ immobile.numero_vani ?? '-' }}</div>
                 </div>
               </div>
             </div>
@@ -139,17 +139,17 @@ const truncate = (text: string, length: number = 120) => {
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-30">Comune catasto:</span>
-                  <div>{{ immobile.comune_catasto }}</div>
+                  <div>{{ immobile.comune_catasto ?? '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-30">Codice catasto:</span>
-                  <div>{{ immobile.codice_catasto }}</div>
+                  <div>{{ immobile.codice_catasto ?? '-'}}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-30">Sezione:</span>
-                  <div>{{ immobile.sezione_catasto }}</div>
+                  <div>{{ immobile.sezione_catasto ?? '-' }}</div>
                 </div>
               </div>
 
@@ -157,17 +157,17 @@ const truncate = (text: string, length: number = 120) => {
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Foglio:</span>
-                  <div>{{ immobile.foglio_catasto }}</div>
+                  <div>{{ immobile.foglio_catasto ?? '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Particella:</span>
-                  <div>{{ immobile.particella_catasto }}</div>
+                  <div>{{ immobile.particella_catasto ?? '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Subalterno:</span>
-                  <div>{{ immobile.subalterno_catasto }}</div>
+                  <div>{{ immobile.subalterno_catasto ?? '-' }}</div>
                 </div>
               </div>
             </div>

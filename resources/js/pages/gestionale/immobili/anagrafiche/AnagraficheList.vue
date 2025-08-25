@@ -5,7 +5,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import DataTable from '@/components/gestionale/immobili/anagrafiche/DataTable.vue';
-import { columns } from '@/components/gestionale/immobili/anagrafiche/columns';
+import { createColumns } from '@/components/gestionale/immobili/anagrafiche/columns'
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem } from '@/types';
@@ -43,7 +43,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="columns" :data="props.immobile.anagrafiche"/>
+        <DataTable :columns="createColumns(props.condominio, props.immobile)" :data="props.immobile.anagrafiche"/>
       </div>
 
     </ImmobileLayout>

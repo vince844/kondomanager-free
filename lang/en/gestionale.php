@@ -23,7 +23,11 @@ return [
     'success_delete_immobile'           => "The flat has been deleted successfully.",
     'error_delete_immobile'             => "An error occurred while deleting the flat.",
     // Anagrafica messages
-    'success_associate_anagrafica'         => "The anagrafica has been successfully associated to the flat.",
-    'error_associate_anagrafica'           => "An error occurred while associating the anagrafica to the flat.",
+    'success_attach_anagrafica'         => "The anagrafica has been successfully associated to the flat.",
+    'error_attach_anagrafica'           => "An error occurred while associating the anagrafica to the flat.",
+    'success_detach_anagrafica'         => "The anagrafica has been successfully detached from the flat.",
+    'error_detach_anagrafica'           => "An error occurred while detaching the anagrafica from the flat.",
+    'success_update_anagrafica'         => "The anagrafica has been updated successfully.",
+    'error_update_anagrafica'           => "An error occurred while updating the anagrafica.",
     
 ];

@@ -2,8 +2,10 @@
 
 namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 
+use App\Traits\ValidatesImmobileAnagraficaPivot;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -14,6 +16,8 @@ use Illuminate\Validation\Rule;
  */
 class CreateImmobileAnagraficaRequest extends FormRequest
 {
+    use ValidatesImmobileAnagraficaPivot;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -39,6 +43,11 @@ class CreateImmobileAnagraficaRequest extends FormRequest
             'data_inizio'         => 'required|date',
             'data_fine'           => 'sometimes|nullable|date',
         ];
+    }
+
+    public function withValidator($validator)
+    {
+        $this->withPivotValidator($validator);
     }
 
     /**

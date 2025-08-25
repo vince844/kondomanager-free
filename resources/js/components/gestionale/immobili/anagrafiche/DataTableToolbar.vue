@@ -9,10 +9,10 @@ import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche'
+import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 
 // Props
-const props = defineProps<{ table: Table<Anagrafica> }>();
+const props = defineProps<{ table: Table<AnagraficaWithPivot> }>();
 
 // Page props
 const page = usePage<{ condominio: Building; immobile: Immobile }>()
