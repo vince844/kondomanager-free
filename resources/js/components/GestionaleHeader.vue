@@ -13,9 +13,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { GitGraph, BookText, Building2, LayoutGrid, Menu } from 'lucide-vue-next';
+import { GitGraph, HousePlus, Building as BuildingIcon, BookText, Building2, LayoutGrid, Menu } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
-import { Permission } from '@/enums/Permission';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -46,14 +45,14 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid
     },
     {
-        title: 'Struttura',
+        title: 'Condominio',
         href: generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
-        icon: LayoutGrid
+        icon: BuildingIcon
     },
     {
         title: 'Immobili',
         href: generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
-        icon: Building2,
+        icon: HousePlus,
        
     } 
 ];

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\Immobili;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\CreateImmobileRequest;
+use App\Http\Requests\Gestionale\Immobile\ImmobileIndexRequest;
 use App\Http\Requests\Gestionale\Immobile\UpdateImmobileRequest;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Http\Resources\Gestionale\Immobili\TipologiaImmobileResource;
@@ -43,12 +44,19 @@ class ImmobileController extends Controller
      * @param  Condominio  $condominio
      * @return Response
      */
-    public function index(Condominio $condominio): Response
+    public function index(ImmobileIndexRequest $request, Condominio $condominio): Response
     {
+        /** @var \Illuminate\Http\Request $request */
+        $validated = $request->validated();
+
         $immobili = $condominio
             ->immobili()
             ->with(['palazzina', 'scala', 'tipologiaImmobile'])
+            ->when($validated['nome'] ?? false, function ($query, $name) {
+                $query->where('nome', 'like', "%{$name}%");
+            })
             ->paginate(config('pagination.default_per_page'));
+            
 
         return Inertia::render('gestionale/immobili/ImmobiliList', [
             'condominio' => $condominio,
@@ -59,6 +67,7 @@ class ImmobileController extends Controller
                 'per_page'     => $immobili->perPage(),
                 'total'        => $immobili->total(),
             ],
+            'filters' => $request->only(['nome']), 
         ]);
     }
 

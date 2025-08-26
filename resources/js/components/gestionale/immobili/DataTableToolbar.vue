@@ -25,7 +25,7 @@ const nameFilter = ref('')
 // Computed params for router
 const filterParams = computed(() => {
   const params: Record<string, any> = { page: 1 }
-  if (nameFilter.value) params.name = nameFilter.value
+  if (nameFilter.value) params.nome = nameFilter.value
   return params
 })
 
