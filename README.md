@@ -46,6 +46,10 @@ password: Pa$$w0rd!
 - Gestione degli utenti
 - Gestione dei ruoli e permessi
 - Notifiche email
+- Gestionale
+  - Gestione palazzine
+  - Gestione scale
+  - Gestione immobili
 
 ## Requisiti minimi 
 
