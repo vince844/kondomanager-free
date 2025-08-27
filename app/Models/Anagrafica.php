@@ -53,7 +53,7 @@ class Anagrafica extends Model
 
     }
 
-     /**
+    /**
      * Get the comunicazioni associated with the anagrafica.
      */
     public function comunicazioni()
@@ -68,8 +68,22 @@ class Anagrafica extends Model
 
     public function eventi()
     {
-        /* return $this->belongsToMany(Evento::class, 'anagrafica_evento', 'anagrafica_id', 'evento_id'); */
         return $this->belongsToMany(Evento::class, 'anagrafica_evento');
+    }
+
+    public function immobili()
+    {
+        return $this->belongsToMany(Immobile::class, 'anagrafica_immobile')
+            ->withPivot([
+                'tipologia',
+                'quota',
+                'tipologie_spese',
+                'data_inizio',
+                'data_fine',
+                'attivo',
+                'note',
+            ])
+            ->withTimestamps();
     }
 
     

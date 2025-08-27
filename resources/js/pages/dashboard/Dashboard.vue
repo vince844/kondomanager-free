@@ -8,6 +8,7 @@ import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import EventiList from '@/components/eventi/EventiList.vue';
+import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import type { Segnalazione } from '@/types/segnalazioni';
@@ -38,7 +39,13 @@ const props = defineProps<{
     <Head title="Dashboard" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
+
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+
+            <div class="flex justify-end mb-2">
+                <BuildingsDropdown />
+            </div>
+
             <div class="grid auto-rows-min gap-4 md:grid-cols-3">
                 <div class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
                     <PlaceholderPattern />
@@ -164,7 +171,7 @@ const props = defineProps<{
                     <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                             <div>
-                                <CardTitle class="text-lg">Scadenze eventi in agenda</CardTitle>
+                                <CardTitle class="text-lg">Prossime scadenze in agenda</CardTitle>
                                 <CardDescription>
                                     Elenco delle scadenze in agenda nei prossimi giorni
                                 </CardDescription>

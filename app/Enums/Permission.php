@@ -21,6 +21,12 @@ enum Permission: string
     case DELETE_USERS = 'Elimina utenti';
     case VIEW_USERS = 'Visualizza utenti';
 
+    // Anagrafiche
+    case CREATE_ANAGRAFICHE = 'Crea anagrafiche';
+    case EDIT_ANAGRAFICHE = 'Modifica anagrafiche';
+    case DELETE_ANAGRAFICHE = 'Elimina anagrafiche';
+    case VIEW_ANAGRAFICHE = 'Visualizza anagrafiche';
+
     // Condomini
     case CREATE_CONDOMINI = 'Crea condomini';
     case EDIT_CONDOMINI = 'Modifica condomini';
@@ -104,6 +110,12 @@ enum Permission: string
             self::EDIT_USERS => 'Permette di modificare gli utenti registrati',
             self::DELETE_USERS => 'Permette di eliminare gli utenti registrati',
             self::VIEW_USERS => 'Permette di visualizzare gli utenti registrati',
+
+            // Anagrafiche
+            self::CREATE_ANAGRAFICHE => 'Permette di creare nuove anagrafiche',
+            self::EDIT_ANAGRAFICHE => 'Permette di modificare le anagrafiche registrate',
+            self::DELETE_ANAGRAFICHE => 'Permette di eliminare le anagrafiche registrate',
+            self::VIEW_ANAGRAFICHE => 'Permette di visualizzare le anagrafiche registrate',
 
             // Condomini
             self::CREATE_CONDOMINI => 'Permette di creare nuovi condomini',

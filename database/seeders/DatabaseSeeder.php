@@ -15,7 +15,8 @@ class DatabaseSeeder extends Seeder
             RolesAndPermissionsSeeder::class,
             UserSeeder::class,
             CategoriaDocumentoSeeder::class,
-            CategoriaEventoSeeder::class
+            CategoriaEventoSeeder::class,
+            TipologieImmobiliSeeder::class,
         ]);
     }
 }

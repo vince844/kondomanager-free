@@ -79,15 +79,34 @@ export function usePermission() {
     return 'user';
   };
 
-  const generateRoute = (routeName: string): string => {
+  function generateRoute(routeName: string): string;
+  function generateRoute(routeName: string, params: Record<string, any>): [string, Record<string, any>];
+
+  function generateRoute(routeName: string, params?: Record<string, any>) {
     const prefix = getRolePrefix();
-    return `${prefix}.${routeName}`;
+    const fullRoute = `${prefix}.${routeName}`;
+    
+    // If params are passed, return a tuple [routeName, params]
+    if (params) {
+      return [fullRoute, params] as const;
+    }
+
+    return fullRoute;
+  }
+
+  const generatePath = (path: string, params?: Record<string, string | number>): string => {
+    const prefix = getRolePrefix();
+    let finalPath = `/${prefix}/${path}`;
+
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        finalPath = finalPath.replace(`:${key}`, String(value));
+      });
+    }
+
+    return finalPath;
   };
 
-  const generatePath = (path: string): string => {
-    const prefix = getRolePrefix();
-    return `/${prefix}/${path}`;
-  };
 
   return { hasRole, hasPermission, canAccess, getRolePrefix, generateRoute, generatePath };
 }

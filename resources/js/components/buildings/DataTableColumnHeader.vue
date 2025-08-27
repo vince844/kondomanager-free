@@ -1,17 +1,11 @@
 <script setup lang="ts">
-import type { Column } from '@tanstack/vue-table'
-import type { Building} from '@/types/buildings';
-import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
-import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next'
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next';
+import type { Column } from '@tanstack/vue-table';
+import type { Building} from '@/types/buildings';
 
 interface DataTableColumnHeaderProps {
   column: Column<Building, any> 
@@ -19,6 +13,7 @@ interface DataTableColumnHeaderProps {
 }
 
 defineProps<DataTableColumnHeaderProps>()
+
 </script>
 
 <script lang="ts">

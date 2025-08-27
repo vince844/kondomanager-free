@@ -12,10 +12,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
+import { GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
-import { Role } from '@/enums/Role';
 import { Permission } from '@/enums/Permission';
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 
@@ -48,14 +47,14 @@ const mainNavItems: NavItem[] = [
         title: 'Condomini',
         href: '/condomini',
         icon: House,
-        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
+        permissions: [Permission.VIEW_CONDOMINI],
        
     },
     {
         title: 'Anagrafiche',
         href: generatePath('anagrafiche'),
         icon: SquareLibrary,
-        roles: [Role.AMMINISTRATORE, Role.COLLABORATORE]
+        permissions: [Permission.VIEW_ANAGRAFICHE],
     },
     {
         title: 'Bacheca',
@@ -89,12 +88,12 @@ const rightNavItems: NavItem[] = [
     {
         title: 'Repository',
         href: 'https://github.com/vince844/kondomanager-free',
-        icon: Folder,
+        icon: GitGraph,
     },
     {
         title: 'Documentazione',
         href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
-        icon: BookOpen,
+        icon: BookText,
     },
 ];
 
