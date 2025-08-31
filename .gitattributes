@@ -1,22 +1,23 @@
-# Existing settings
+# Your existing diff/export rules
 * text=auto eol=lf
-
 *.blade.php diff=html
 *.css diff=css
 *.html diff=html
 *.md diff=markdown
 *.php diff=php
-
 CHANGELOG.md export-ignore
 README.md export-ignore
 
-# --- GitHub Linguist language detection fixes ---
-
-# Tell Linguist to count PHP and Blade files as code
+# Ensure Laravel PHP is detected
 *.php linguist-detectable=true
 *.blade.php linguist-detectable=true
 
-# Ignore built JS and front-end artifacts
-resources/js/** linguist-vendored
-public/js/** linguist-vendored
+# Vendor only external dependencies
 node_modules/** linguist-vendored
+public/js/** linguist-vendored
+resources/js/** linguist-vendored
+
+# Make Vue/JS files count
+*.vue linguist-detectable=true linguist-language=Vue
+*.js linguist-detectable=true
+*.ts linguist-detectable=true
