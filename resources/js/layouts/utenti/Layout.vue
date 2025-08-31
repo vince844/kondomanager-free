@@ -29,7 +29,7 @@ const currentPath = window.location.pathname;
 
 <template>
     <div class="px-4 py-6">
-        <Heading title="Utenti registrati" description="Gestione degli utenti registrati" />
+        <Heading title="Gestione utenti" description="Di seguito un elenco degli utenti registrati, ruoli, permessi e inviti" />
 
         <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
             <aside class="w-full max-w-xl lg:w-48">

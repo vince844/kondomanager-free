@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
@@ -7,6 +8,8 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 Route::middleware('auth')->group(function () {
+
+    Route::get('impostazioni', ImpostazioniController::class)->name('impostazioni');
     
     Route::redirect('settings', 'settings/profile');
 
