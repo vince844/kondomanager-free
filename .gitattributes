@@ -1,3 +1,4 @@
+# Existing settings
 * text=auto eol=lf
 
 *.blade.php diff=html
@@ -8,3 +9,14 @@
 
 CHANGELOG.md export-ignore
 README.md export-ignore
+
+# --- GitHub Linguist language detection fixes ---
+
+# Tell Linguist to count PHP and Blade files as code
+*.php linguist-detectable=true
+*.blade.php linguist-detectable=true
+
+# Ignore built JS and front-end artifacts
+resources/js/** linguist-vendored
+public/js/** linguist-vendored
+node_modules/** linguist-vendored
