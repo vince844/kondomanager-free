@@ -3,7 +3,7 @@
 import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Link, router } from '@inertiajs/vue3';
-import { LogOut, CircleUserRound } from 'lucide-vue-next';
+import { LogOut, UserRound } from 'lucide-vue-next';
 import type { User } from '@/types';
 
 interface Props {
@@ -32,7 +32,7 @@ function handleLogout() {
     <DropdownMenuGroup>
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full" :href="route('profile.edit')" as="button">
-                <CircleUserRound class="mr-2 h-4 w-4" />
+                <UserRound class="mr-2 h-4 w-4" />
                 Profilo
             </Link>
         </DropdownMenuItem>

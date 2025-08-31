@@ -64,12 +64,12 @@ function submit() {
   <AppLayout>
     <Head title="Impostazioni notifiche" />
 
-    <SettingsLayout>
+    <SettingsLayout contentClass="w-full">
       <div v-if="flashMessage" class="py-2">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
-      <div class="flex flex-col space-y-6 max-w-3xl mx-auto">
+      <div class="flex flex-col space-y-6 ">
         <HeadingSmall title="Impostazioni notifiche" description="Di seguito puoi selezionare le notifiche email che vuoi ricevere" />
 
          <div v-if="preferences.length === 0" class="space-y-4 rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-200/10 dark:bg-blue-700/10">
@@ -85,7 +85,7 @@ function submit() {
               <div
                 v-for="pref in preferences"
                 :key="pref.type"
-                class="flex items-center justify-between gap-4"
+                class="flex items-center justify-between gap-4 border p-3 rounded"
               >
                 <div>
                   <Label class="block text-sm font-medium leading-none">{{ pref.label }}</Label>

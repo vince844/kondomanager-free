@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Impostazioni;
 
 use App\Http\Controllers\Controller;
+
 use App\Settings\GeneralSettings;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Gate;
 
 class ImpostazioniGeneraliController extends Controller
 {
@@ -17,8 +20,9 @@ class ImpostazioniGeneraliController extends Controller
      */
     public function __invoke(GeneralSettings $settings)
     {
+        Gate::authorize('manage', $settings);
+        
         return Inertia::render('impostazioni/impostazioniGenerali', [
-            // Ensure boolean is sent to frontend
             'can_register' => (bool) $settings->user_frontend_registration,
         ]);
     }
@@ -26,8 +30,11 @@ class ImpostazioniGeneraliController extends Controller
     /**
      * Store updated settings
      */
-    public function store(Request $request, GeneralSettings $settings)
+    public function store(Request $request, GeneralSettings $settings): RedirectResponse
     {
+
+        Gate::authorize('manage', $settings);
+
         $validated = $request->validate([
             'user_frontend_registration' => 'required|boolean',
         ]);
@@ -36,7 +43,7 @@ class ImpostazioniGeneraliController extends Controller
         $settings->save();
 
         return back()->with(
-            $this->flashSuccess(__('Impostazioni salvate correttamente'))
+            $this->flashSuccess(__('impostazioni.success_save_general_settings'))
         );
 
     }

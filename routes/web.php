@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Condomini\FetchCondominiController;
@@ -16,14 +15,8 @@ use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
-/* Route::get('/', function () {
-    return Inertia::render('Welcome');
-})->name('home'); */
-
- Route::get('/', WelcomeController::class)
-        ->name('home');
+Route::get('/', WelcomeController::class)->name('home');
 
 /*
 |--------------------------------------------------------------------------
@@ -63,8 +56,6 @@ Route::resource('/condomini', CondominioController::class)->middleware(['auth', 
 Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
 
 Route::get('/fetch-condomini', FetchCondominiController::class)->middleware(['auth', 'verified']);
-
-
 
 /*
 |--------------------------------------------------------------------------
