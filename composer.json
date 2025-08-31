@@ -17,6 +17,7 @@
         "pragmarx/google2fa": "^8.0",
         "simshaun/recurr": "^5.0",
         "spatie/laravel-permission": "^6.15",
+        "spatie/laravel-settings": "^3.4",
         "tightenco/ziggy": "^2.4"
     },
     "require-dev": {

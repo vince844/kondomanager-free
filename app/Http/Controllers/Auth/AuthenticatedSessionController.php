@@ -6,6 +6,7 @@ use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Models\User;
+use App\Settings\GeneralSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,11 +20,12 @@ class AuthenticatedSessionController extends Controller
     /**
      * Show the login page.
      */
-    public function create(Request $request): Response
+    public function create(Request $request, GeneralSettings $settings): Response
     {
         return Inertia::render('auth/Login', [
             'canResetPassword' => Route::has('password.request'),
-            'status' => $request->session()->get('status'),
+            'can_register'     => $settings->user_frontend_registration,
+            'status'           => $request->session()->get('status'),
         ]);
     }
 

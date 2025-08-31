@@ -4,6 +4,7 @@ use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
 use App\Http\Controllers\Condomini\FetchCondominiController;
+use App\Http\Controllers\Frontend\WelcomeController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Permissions\PermissionController;
@@ -17,9 +18,12 @@ use App\Http\Controllers\Users\UserStatusController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
+/* Route::get('/', function () {
     return Inertia::render('Welcome');
-})->name('home');
+})->name('home'); */
+
+ Route::get('/', WelcomeController::class)
+        ->name('home');
 
 /*
 |--------------------------------------------------------------------------

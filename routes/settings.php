@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
+use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
@@ -10,6 +11,12 @@ use Inertia\Inertia;
 Route::middleware('auth')->group(function () {
 
     Route::get('impostazioni', ImpostazioniController::class)->name('impostazioni');
+
+    Route::get('impostazioni/generali', [ImpostazioniGeneraliController::class, '__invoke'])
+        ->name('impostazioni.generali');
+
+    Route::post('impostazioni/generali', [ImpostazioniGeneraliController::class, 'store'])
+        ->name('impostazioni.generali.store');
     
     Route::redirect('settings', 'settings/profile');
 
