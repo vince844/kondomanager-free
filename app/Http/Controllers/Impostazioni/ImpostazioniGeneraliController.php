@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
+use Inertia\Response;
 
 class ImpostazioniGeneraliController extends Controller
 {
@@ -18,7 +19,7 @@ class ImpostazioniGeneraliController extends Controller
     /**
      * Show general settings page
      */
-    public function __invoke(GeneralSettings $settings)
+    public function __invoke(GeneralSettings $settings): Response
     {
         Gate::authorize('manage', $settings);
         

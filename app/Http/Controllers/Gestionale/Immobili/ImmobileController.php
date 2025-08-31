@@ -100,11 +100,13 @@ class ImmobileController extends Controller
     public function store(CreateImmobileRequest $request, Condominio $condominio): RedirectResponse
     {
         try {
+            
             $data = $request->validated();
             Immobile::create($data);
 
             return to_route('admin.gestionale.immobili.index', $condominio)
                 ->with($this->flashSuccess(__('gestionale.success_create_immobile')));
+
         } catch (\Throwable $e) {
             Log::error('Error creating immobile', [
                 'condominio_id' => $condominio->id,

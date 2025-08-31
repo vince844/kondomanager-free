@@ -102,6 +102,7 @@ const rightNavItems: NavItem[] = [
         href: '/impostazioni',
         icon: Settings,
         external: false,
+        permissions: [Permission.MANAGE_GENERAL_SETTINGS]
     },
 ];
 
@@ -223,7 +224,7 @@ const rightNavItems: NavItem[] = [
                                         </a>
 
                                         <!-- Internal links -->
-                                        <Link v-else :href="item.href">
+                                        <Link v-else :href="item.href" v-if="canAccess(item)">
                                             <span class="sr-only">{{ item.title }}</span>
                                             <component :is="item.icon" class="size-5 opacity-80 group-hover:opacity-100" />
                                         </Link>
