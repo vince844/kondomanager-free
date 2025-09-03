@@ -25,6 +25,7 @@ class ImpostazioniGeneraliController extends Controller
         
         return Inertia::render('impostazioni/impostazioniGenerali', [
             'can_register' => (bool) $settings->user_frontend_registration,
+            'language'     => (string) $settings->language
         ]);
     }
 
@@ -38,9 +39,11 @@ class ImpostazioniGeneraliController extends Controller
 
         $validated = $request->validate([
             'user_frontend_registration' => 'required|boolean',
+            'language'                   => 'required|in:it,en',
         ]);
 
         $settings->user_frontend_registration = $validated['user_frontend_registration'];
+        $settings->language = $validated['language'];
         $settings->save();
 
         return back()->with(

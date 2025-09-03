@@ -6,6 +6,15 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import Heading from '@/components/Heading.vue';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
@@ -19,10 +28,11 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Generali', href: '/impostazioni/generali' },
 ];
 
-const { can_register } = usePage().props;
+const { can_register, language } = usePage().props;
 
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
+  language: language || 'it',
 });
 
 const submit = () => {
@@ -47,9 +57,37 @@ const submit = () => {
       </div>
 
       <form @submit.prevent="submit">
-        <Card class="border-none shadow-none">
+
+        <Card class="border shadow-none p-6">
           <CardContent class="p-0 mb-3">
-            <div class="flex items-center gap-4 border rounded p-4">
+
+            <div class="flex items-center gap-4 border rounded p-4 mt-3">
+              <div class="flex-1 flex flex-col justify-center">
+                <label for="language" class="text-sm font-medium leading-none">
+                  Lingua applicazione
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  Seleziona la lingua principale per l'applicazione.
+                </p>
+              </div>
+
+              <Select v-model="form.language">
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleziona lingua applicazione" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="it">
+                    Italiano
+                  </SelectItem>
+                  <SelectItem value="en">
+                    Inglese
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+            </div>
+            
+            <div class="flex items-center gap-4 border rounded p-4 mt-3">
               <!-- Text next to switch -->
               <div class="flex-1 flex flex-col justify-center">
                 <label class="text-sm font-medium leading-none">

@@ -18,7 +18,7 @@ return [
     ],
     '403_title' => '403 - Accesso negato',
     '403_heading' => '403 - Accesso negato',
-    '403_message' => 'Non hai i permessi suffcienti per visualizzare o accedere a questa pagina.',
+    '403_message' => 'Non hai i permessi sufficienti per visualizzare o accedere a questa pagina.',
     'back_to_dashboard' => 'Torna alla Dashboard',
 
 ];
