@@ -35,7 +35,7 @@ watchDebounced(
   [nameFilter],
   () => {
     router.get(
-      route(generateRoute('gestionale.immobili.index'), { condominio: page.props.condominio.id }),
+      route(generateRoute('gestionale.immobili.anagrafiche.index'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id }),
       filterParams.value,
       {
         preserveState: true,

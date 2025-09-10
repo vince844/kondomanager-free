@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Gestionale\Immobili\Documenti;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Documento\CreateImmobileDocumentoRequest;
+use App\Http\Requests\Gestionale\Immobile\Documento\ImmobileDocumentoIndexRequest;
 use App\Http\Requests\Gestionale\Immobile\Documento\UpdateImmobileDocumentoRequest;
 use App\Http\Resources\Documenti\DocumentoResource;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
@@ -25,13 +26,19 @@ class ImmobileDocumentoController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(Condominio $condominio, Immobile $immobile): Response
+    public function index(ImmobileDocumentoIndexRequest $request, Condominio $condominio, Immobile $immobile): Response
     {
+
+         /** @var \Illuminate\Http\Request $request */
+        $validated = $request->validated();
 
         $documenti = $immobile->documenti()
             ->with(['condomini', 'createdBy.anagrafica'])
-            ->paginate(config('pagination.default_per_page'))
-            ->withQueryString();
+            ->when($validated['name'] ?? false, function ($query, $name) {
+                $query->where('name', 'like', "%{$name}%");
+            })
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
+            ->appends($request->all());;
 
         return Inertia::render('gestionale/immobili/documenti/DocumentiList', [
             'condominio' => $condominio,
@@ -43,6 +50,7 @@ class ImmobileDocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
+            'filters' => $request->only(['name']), 
         ]);
     }
 

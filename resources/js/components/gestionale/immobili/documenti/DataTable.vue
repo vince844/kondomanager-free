@@ -9,11 +9,15 @@ import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/immobili/documenti/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
 import type { Documento } from '@/types/documenti';
+import type { Immobile } from '@/types/gestionale/immobili';
+import type { Building } from '@/types/buildings';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
 const props = defineProps<{
   columns: ColumnDef<Documento, any>[],
   data: Documento[],
+  condominio: Building,
+  immobile: Immobile
   meta: {
     current_page: number,
     per_page: number,
@@ -57,7 +61,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route(generateRoute('documenti.index')), {
+     router.get(route(generateRoute('gestionale.immobili.documenti.index'), { condominio: props.condominio.id, immobile: props.immobile.id}), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {

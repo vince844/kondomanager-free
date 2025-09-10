@@ -48,7 +48,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="createColumns(props.condominio, props.immobile)" :data="props.documenti" :meta="meta"/>
+        <DataTable 
+          :columns="createColumns(props.condominio, props.immobile)" 
+          :data="props.documenti" 
+          :meta="meta" 
+          :condominio="props.condominio"
+          :immobile="props.immobile"
+        />
       </div> 
 
     </ImmobileLayout>

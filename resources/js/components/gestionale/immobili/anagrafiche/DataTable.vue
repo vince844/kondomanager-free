@@ -1,20 +1,10 @@
 <script setup lang="ts" generic="TData, TValue">
-import type { ColumnDef } from '@tanstack/vue-table'
-import {
-  FlexRender,
-  getCoreRowModel,
-  useVueTable,
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+
+import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import DataTableToolbar from '@/components/gestionale/immobili/anagrafiche/DataTableToolbar.vue';
 import type { AnagraficaWithPivot } from '@/types/anagrafiche'
+import type { ColumnDef } from '@tanstack/vue-table'
 
 const props = defineProps<{
   columns: ColumnDef<AnagraficaWithPivot, any>[],

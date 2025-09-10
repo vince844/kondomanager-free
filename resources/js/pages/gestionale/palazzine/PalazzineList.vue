@@ -47,7 +47,12 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="columns" :data="props.palazzine" :meta="props.meta" :condominio="props.condominio"/>
+        <DataTable 
+          :columns="columns" 
+          :data="props.palazzine" 
+          :meta="props.meta" 
+          :condominio="props.condominio"
+        />
       </div>
 
     </StrutturaLayout>

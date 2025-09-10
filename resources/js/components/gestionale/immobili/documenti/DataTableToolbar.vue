@@ -32,7 +32,7 @@ watchDebounced(
     if (name) params.name = name
 
     router.get(
-      route(generateRoute('documenti.index')),
+      route(generateRoute('gestionale.immobili.documenti.index'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id }),
       params,
       {
         preserveState: true,
