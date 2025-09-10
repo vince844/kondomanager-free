@@ -29,7 +29,7 @@ const topbarNavItems: NavItem[] = [
     },
         {
         title: 'Documenti',
-        href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: condominio.value.id, immobile: immobile.value.id }),
     },
 ];
 

@@ -115,4 +115,9 @@ class Immobile extends Model
             'immobile_id'
         )->withPivot('quota_possesso')->withTimestamps();
     }
+
+    public function documenti()
+    {
+        return $this->morphMany(Documento::class, 'documentable');
+    }
 }

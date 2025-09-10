@@ -99,7 +99,6 @@ class ImmobileAnagraficaController extends Controller
                 'immobile'   => $immobile->id,
             ])->with($this->flashSuccess(__('gestionale.success_attach_anagrafica')));
 
-
         } catch (\Throwable $e) {
 
             Log::error('Error attaching anagrafica to immobile', [

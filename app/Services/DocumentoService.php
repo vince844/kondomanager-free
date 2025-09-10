@@ -53,6 +53,7 @@ class DocumentoService
     protected function getAdminBaseQuery(array $validated): Builder
     {
         return Documento::with(['createdBy', 'condomini', 'anagrafiche', 'categoria'])
+                        ->whereNull('documentable_type')
                         ->orderBy('created_at', 'desc');
     }
 
@@ -69,6 +70,7 @@ class DocumentoService
         return Documento::with(['anagrafiche', 'condomini', 'createdBy.anagrafica', 'categoria'])
             ->where('is_published', true)
             ->where('is_approved', true)
+            ->whereNull('documentable_type')
             ->where(function ($query) use ($anagrafica, $condominioIds) {
                 $query->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagrafica->id))
                       ->orWhere(function ($q) use ($condominioIds) {

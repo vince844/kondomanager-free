@@ -14,7 +14,6 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import DataTableToolbar from '@/components/gestionale/immobili/anagrafiche/DataTableToolbar.vue';
-import type { Immobile } from '@/types/gestionale/immobili';
 import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 
 const props = defineProps<{

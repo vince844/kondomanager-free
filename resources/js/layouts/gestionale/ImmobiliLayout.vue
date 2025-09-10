@@ -19,11 +19,7 @@ const topbarNavItems: NavItem[] = [
     {
         title: 'Elenco',
         href:  generatePath('gestionale/:condominio/immobili', { condominio: condominio.value.id }),
-    },
-    {
-        title: 'Documenti',
-        href: '#',
-    },
+    }
 ];
 
 const currentPath = window.location.pathname;

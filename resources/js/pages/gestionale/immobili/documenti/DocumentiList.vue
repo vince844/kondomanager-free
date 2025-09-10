@@ -4,18 +4,22 @@ import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
-import DataTable from '@/components/gestionale/immobili/anagrafiche/DataTable.vue';
-import { createColumns } from '@/components/gestionale/immobili/anagrafiche/columns'
+import DataTable from '@/components/gestionale/immobili/documenti/DataTable.vue';
+import { createColumns } from '@/components/gestionale/immobili/documenti/columns'
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
 import type { Immobile } from '@/types/gestionale/immobili';
+import type { Documento } from '@/types/documenti';
+import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
   immobile: Immobile;
+  documenti: Documento[],
+  meta: PaginationMeta
 }>()
  
 const { generatePath } = usePermission();
@@ -28,7 +32,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: props.condominio.nome, href: '#' },
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'anagrafiche', href: '#' },
+  { title: 'documenti', href: '#' },
 ]);
 
 </script>
@@ -44,8 +48,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="createColumns(props.condominio, props.immobile)" :data="props.immobile.anagrafiche"/>
-      </div>
+        <DataTable :columns="createColumns(props.condominio, props.immobile)" :data="props.documenti" :meta="meta"/>
+      </div> 
 
     </ImmobileLayout>
   </GestionaleLayout>
