@@ -86,6 +86,12 @@ DB_USERNAME=your_username
 DB_PASSWORD=your_password
 ```
 
+Se necessario configura APP_URL specificando la porta
+```bash
+APP_URL=http://localhost:8000
+```
+
+
 5. Configura il server SMTP nel file .env
 
 ```bash
