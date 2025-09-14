@@ -29,5 +29,12 @@ return [
     'error_detach_anagrafica'           => "An error occurred while detaching the anagrafica from the flat.",
     'success_update_anagrafica'         => "The anagrafica has been updated successfully.",
     'error_update_anagrafica'           => "An error occurred while updating the anagrafica.",
+    // Tabelle millesimali
+    'success_create_table'           => "The new table has been created successfully.",
+    'error_create_table'             => "An error occurred while creating the new table.",
+    'success_update_table'           => "The table has been updated successfully.",
+    'error_update_table'             => "An error occurred while updating the table.",
+    'success_delete_table'           => "The table has been deleted successfully.",
+    'error_delete_table'             => "An error occurred while deleting the table.",
     
 ];

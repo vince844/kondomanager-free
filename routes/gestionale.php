@@ -7,6 +7,8 @@ use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
+use App\Http\Controllers\Gestionale\Tabelle\Quote\TabellaQuotaController;
+use App\Http\Controllers\Gestionale\Tabelle\TabellaController;
 use Illuminate\Support\Facades\Route;
 
     Route::get('/gestionale/{condominio}', DashboardController::class)
@@ -33,13 +35,23 @@ use Illuminate\Support\Facades\Route;
             ->parameters([
                 'immobili' => 'immobile',
                 'anagrafiche' => 'anagrafica'
-            ]);
+        ]);
 
         Route::resource('immobili.documenti', ImmobileDocumentoController::class)
             ->parameters([
                 'documenti' =>'documento',
                 'immobili' => 'immobile',
-            ]);
+        ]);
 
+        // Tabelle
+        Route::resource('tabelle', TabellaController::class)->parameters([
+            'tabelle' => 'tabella'
+        ]);
+
+        // Quote della tabella
+        Route::resource('tabelle.quote', TabellaQuotaController::class)->parameters([
+            'tabelle' => 'tabella',
+            'quote'   => 'quota',
+        ]);
 
     });

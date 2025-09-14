@@ -55,7 +55,7 @@ class ImmobileController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
-            ->paginate(config('pagination.default_per_page'));
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
             
 
         return Inertia::render('gestionale/immobili/ImmobiliList', [

@@ -22,20 +22,20 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
-import type { Immobile } from '@/types/gestionale/immobili'
+import type { Tabella } from '@/types/gestionale/tabelle'
 import type { Building } from '@/types/buildings'
 
-const { immobile, condominio } = defineProps<{ immobile: Immobile, condominio: Building }>()
+const { tabella, condominio } = defineProps<{ tabella: Tabella, condominio: Building }>()
 
-const immobileID = ref<number | null>(null)
+const tabellaID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { generateRoute } = usePermission()
 
-function handleDelete(targetImmobile: Immobile) {
-  immobileID.value = targetImmobile.id
+function handleDelete(targetTabella: Tabella) {
+  tabellaID.value = targetTabella.id
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -43,21 +43,21 @@ function handleDelete(targetImmobile: Immobile) {
 }
 
 function closeModal() {
-  immobileID.value = null
+  tabellaID.value = null
   isAlertOpen.value = false
   isDropdownOpen.value = false
 }
 
 function deleteImmobile() {
-  if (immobileID.value === null || isDeleting.value) return
+  if (tabellaID.value === null || isDeleting.value) return
 
-  const id = immobileID.value
+  const id = tabellaID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.immobili.destroy'), { condominio: condominio.id, immobile: id }), {
+  router.delete(route(generateRoute('gestionale.tabelle.destroy'), { condominio: condominio.id, tabella: id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'immobili'],
+    only: ['flash', 'tabelle'],
     onSuccess: () => {
       closeModal()
     },
@@ -88,7 +88,7 @@ function deleteImmobile() {
 
       >
         <Link
-          :href="route(generateRoute('gestionale.immobili.edit'), { condominio: condominio.id, immobile: immobile.id })"
+          :href="route(generateRoute('gestionale.tabelle.edit'), { condominio: condominio.id, tabella: tabella.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -98,7 +98,7 @@ function deleteImmobile() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        @click="handleDelete(immobile)"
+        @click="handleDelete(tabella)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
@@ -109,9 +109,9 @@ function deleteImmobile() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo immobile?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler eliminare questa tabella?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'immobile e tutti i dati ad esso associati.
+          Questa azione non è reversibile. Eliminerà la tabella e tutti i dati ad essa associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>

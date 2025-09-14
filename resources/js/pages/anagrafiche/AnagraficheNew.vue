@@ -242,7 +242,13 @@ const submit = () => {
 
             <div class="sm:col-span-2">
               <Label for="note">Note aggiuntive</Label>
-              <Textarea id="note" class="w-full" placeholder="Inserisci una nota qui" v-model="form.note" @focus="form.clearErrors('note')" />
+              <Textarea 
+                id="note" 
+                class="w-full" 
+                placeholder="Inserisci una nota qui" 
+                v-model="form.note" 
+                @focus="form.clearErrors('note')" 
+              />
               <InputError :message="form.errors.note" />
             </div>
           </div>
