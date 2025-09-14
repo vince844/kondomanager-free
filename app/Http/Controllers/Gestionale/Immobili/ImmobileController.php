@@ -175,6 +175,7 @@ class ImmobileController extends Controller
     public function update(UpdateImmobileRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
         try {
+
             $data = $request->validated();
             $immobile->update($data);
 
@@ -182,7 +183,9 @@ class ImmobileController extends Controller
                 route('admin.gestionale.immobili.index', $condominio),
                 $this->flashSuccess(__('gestionale.success_update_immobile'))
             );
+
         } catch (\Throwable $e) {
+
             Log::error('Error updating immobile', [
                 'immobile_id'   => $immobile->id,
                 'condominio_id' => $condominio->id,
@@ -194,6 +197,7 @@ class ImmobileController extends Controller
                 route('admin.gestionale.immobili.index', $condominio),
                 $this->flashError(__('gestionale.error_update_immobile'))
             );
+            
         }
     }
 
@@ -212,6 +216,7 @@ class ImmobileController extends Controller
 
             return to_route('admin.gestionale.immobili.index', $condominio)
                 ->with($this->flashSuccess(__('gestionale.success_delete_immobile')));
+                
         } catch (\Throwable $e) {
             Log::error('Error deleting immobile', [
                 'immobile_id'   => $immobile->id,

@@ -84,7 +84,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Associa anagrafica immobile" />
+    <Head title="Modifica anagrafica immobile" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 

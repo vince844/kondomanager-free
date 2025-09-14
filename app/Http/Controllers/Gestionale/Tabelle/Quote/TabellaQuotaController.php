@@ -3,16 +3,28 @@
 namespace App\Http\Controllers\Gestionale\Tabelle\Quote;
 
 use App\Http\Controllers\Controller;
+use App\Models\Condominio;
+use App\Models\QuotaTabella;
+use App\Models\Tabella;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class TabellaQuotaController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Condominio $condominio, Tabella $tabella): Response
     {
-        dd('pagina quote');
+
+        $millesimi = $tabella->quote()->with('immobile')->get();
+
+        return Inertia::render('gestionale/tabelle/quote/QuoteList', [
+            'condominio' => $condominio,
+            'tabella'    => $tabella,
+            'millesimi'  => $millesimi
+        ]);
     }
 
     /**

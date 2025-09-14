@@ -93,7 +93,7 @@ const submit = () => {
 
 
 <template>
-  <Head title="Modifica documento" />
+  <Head title="Modifica documento immobile" />
 
   <AppLayout >
     <div class="px-4 py-6">

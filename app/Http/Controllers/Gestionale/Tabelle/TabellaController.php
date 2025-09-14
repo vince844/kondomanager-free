@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\Tabelle;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Tabella\CreateTabellaRequest;
 use App\Http\Requests\Gestionale\Tabella\TabellaIndexRequest;
+use App\Http\Requests\Gestionale\Tabella\UpdateTabellaRequest;
 use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
@@ -12,9 +13,9 @@ use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Log;
 
 class TabellaController extends Controller
 {
@@ -69,7 +70,7 @@ class TabellaController extends Controller
      */
     public function store(CreateTabellaRequest $request, Condominio $condominio)
     {
-         $data = $request->validated();
+        $data = $request->validated();
 
         // Creazione della tabella
         $tabella = $condominio->tabelle()->create([
@@ -100,7 +101,7 @@ class TabellaController extends Controller
         return to_route('admin.gestionale.tabelle.quote.index', [
             'condominio' => $condominio->id,
             'tabella'    => $tabella->id,
-        ])->with('success', __('gestionale.success_create_table'));
+        ])->with('success', __('gestionale.success_create_tabella'));
 
     }
 
@@ -115,24 +116,71 @@ class TabellaController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Tabella $tabella)
+    public function edit(Condominio $condominio, Tabella $tabella): Response
     {
-        //
+        $tabella->loadMissing(['palazzina', 'scala']);
+
+        return Inertia::render('gestionale/tabelle/TabelleEdit', [
+            'condominio' => $condominio,
+            'tabella'    => new TabellaResource($tabella),
+            'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
+            'scale'      => ScalaResource::collection($condominio->scale)
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Tabella $tabella)
+    public function update(UpdateTabellaRequest $request, Condominio $condominio, Tabella $tabella): RedirectResponse
     {
-        //
+        try {
+
+            $data = $request->validated();
+            $tabella->update($data);
+
+            return to_route('admin.gestionale.tabelle.index', $condominio)->with(
+                $this->flashSuccess(__('gestionale.success_update_tabella'))
+            );
+
+        } catch (\Throwable $e) {
+
+            Log::error('Error updating tabella', [
+                'tabella_id'    => $tabella->id,
+                'condominio_id' => $condominio->id,
+                'message'       => $e->getMessage(),
+                'trace'         => $e->getTraceAsString(),
+            ]);
+
+            return to_route('admin.gestionale.tabelle.index', $condominio)->with(
+                $this->flashError(__('gestionale.error_update_tabella'))
+            );
+        }
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Tabella $tabella)
+    public function destroy(Condominio $condominio, Tabella $tabella): RedirectResponse
     {
-        //
+         try {
+
+            $tabella->delete();
+
+            return to_route('admin.gestionale.tabelle.index', $condominio)
+                ->with($this->flashSuccess(__('gestionale.success_delete_tabella')));
+                
+        } catch (\Throwable $e) {
+
+            Log::error('Error deleting tabella', [
+                'tabella_id'    => $tabella->id,
+                'condominio_id' => $condominio->id,
+                'message'       => $e->getMessage(),
+                'trace'         => $e->getTraceAsString(),
+            ]);
+
+            return to_route('admin.gestionale.tabelle.index', $condominio)
+                ->with($this->flashError(__('gestionale.error_delete_tabella')));
+                
+        }
     }
 }

@@ -113,7 +113,7 @@ const truncate = (text: string, length: number = 120) => {
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Superficie:</span>
-                  <div>{{ immobile.superficie ? immobile.superficie + ' Mq.' : '-' }}</div>
+                  <div>{{ immobile.superficie ? immobile.superficie + ' m²' : '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">

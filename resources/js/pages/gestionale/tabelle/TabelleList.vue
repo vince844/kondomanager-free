@@ -40,17 +40,18 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
   <GestionaleLayout :breadcrumbs="breadcrumbs">
     
-
     <div class="px-4 py-6">
+      <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
+        <section class="w-full">
+          <div v-if="flashMessage" class="py-3">
+              <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
 
-      <div v-if="flashMessage" class="py-3">
-          <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          <div class="container mx-auto p-0">
+            <DataTable :columns="columns" :data="props.tabelle" :meta="props.meta" :condominio="props.condominio"/>
+          </div>
+        </section>
       </div>
-
-      <div class="container mx-auto p-0">
-        <DataTable :columns="columns" :data="props.tabelle" :meta="props.meta" :condominio="props.condominio"/>
-      </div>
-
     </div>
 
   </GestionaleLayout>

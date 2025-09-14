@@ -54,7 +54,6 @@ const form = useForm({
   palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
   scala_id: props.immobile.scala ? props.immobile.scala.id : '',
   tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
-
 });
 
 const submit = () => {

@@ -10,8 +10,8 @@ export interface Tabella {
   tipo: 'standard' | 'ascensore' | 'scale' | 'riscaldamento' | 'acqua' | 'lastrico' | 'speciale' | 'altro';
   quota: 'millesimi' | 'persone' | 'kwatt' | 'mtcubi'| 'quote';
   regole_calcolo?: Record<string, any> | null;
-  descrizione?: string | null;
-  note?: string | null;
+  descrizione?: string;
+  note?: string;
   attiva: boolean;
   data_inizio?: string | null; 
   data_fine?: string | null; 

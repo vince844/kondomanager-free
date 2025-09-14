@@ -4,7 +4,7 @@ export interface Millesimo {
   id: number;
   tabella_id: number;
   immobile_id: number;
-  millesimi?: string;
+  valore?: string;
   coefficienti?: Record<string, any> | null;
   escluso: boolean;
   created_by?: number | null;

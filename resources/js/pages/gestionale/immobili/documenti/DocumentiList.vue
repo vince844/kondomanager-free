@@ -39,7 +39,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
 <template>
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco immobili" />
+    <Head title="Elenco documenti immobile" />
 
     <ImmobileLayout>
 
