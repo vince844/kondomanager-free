@@ -29,6 +29,12 @@ export function getColumns(condominio: Building): ColumnDef<Tabella>[] {
 
     },
     {
+      accessorKey: 'tipo',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Tipologia' }),
+      cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('tipo')),
+
+    },
+    {
       accessorKey: 'palazzina',
       header: ({ column }) =>
 

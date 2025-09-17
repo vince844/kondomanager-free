@@ -54,18 +54,20 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'tabelle', href: generatePath('gestionale/:condominio/tabelle', { condominio: props.condominio.id }) },
-  { title: 'crea tabella', href: '#' },
+  { title: props.tabella.nome, href: '#' },
+  { title: 'modifica tabella', href: '#' },
 ]);
 
 const form = useForm({
   nome: props.tabella.nome,
-  tipologia: props.tabella.tipo,
+  tipo: props.tabella.tipo,
   quota: props.tabella.quota,
   descrizione: props.tabella.descrizione,
   note: props.tabella.note,
   palazzina_id: props.tabella.palazzina ? props.tabella.palazzina.id : '',
   scala_id: props.tabella.scala ? props.tabella.scala.id : '',
 });
+
 
 const submit = () => {
     form.put(route(...generateRoute('gestionale.tabelle.update', { condominio: props.condominio.id, tabella: props.tabella.id })), {
@@ -146,11 +148,11 @@ const submit = () => {
                     class="w-full mt-1"
                     :options="tipologieTabelle"
                     label="label"
-                    v-model="form.tipologia"
+                    v-model="form.tipo"
                     :reduce="(d: TabellaType) => d.id"
                     placeholder="Seleziona tipologia tabella"
                   />
-                  <InputError :message="form.errors.tipologia" />
+                  <InputError :message="form.errors.tipo" />
                 </div>
 
                 <div class="sm:col-span-2">

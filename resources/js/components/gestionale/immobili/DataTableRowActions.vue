@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal, UserPlus } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
@@ -84,9 +84,7 @@ function deleteImmobile() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem
-
-      >
+      <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.immobili.edit'), { condominio: condominio.id, immobile: immobile.id })"
           preserve-state
@@ -94,6 +92,17 @@ function deleteImmobile() {
         >
           <FilePenLine class="w-4 h-4 text-xs" />
           Modifica
+        </Link>
+      </DropdownMenuItem>
+
+      <DropdownMenuItem>
+        <Link
+          :href="route(generateRoute('gestionale.immobili.anagrafiche.index'), { condominio: condominio.id, immobile: immobile.id })"
+          preserve-state
+          class="flex items-center gap-2"
+        >
+          <UserPlus class="w-4 h-4 text-xs" />
+          Anagrafiche
         </Link>
       </DropdownMenuItem>
 

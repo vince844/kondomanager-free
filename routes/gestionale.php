@@ -48,10 +48,11 @@ use Illuminate\Support\Facades\Route;
             'tabelle' => 'tabella'
         ]);
 
-        // Quote della tabella
-        Route::resource('tabelle.quote', TabellaQuotaController::class)->parameters([
-            'tabelle' => 'tabella',
-            'quote'   => 'quota',
-        ]);
+        // Quote tabella (solo index e updateAll)
+        Route::get('tabelle/{tabella}/quote', [TabellaQuotaController::class, 'index'])
+            ->name('tabelle.quote.index');
+
+        Route::put('tabelle/{tabella}/quote', [TabellaQuotaController::class, 'update'])
+            ->name('tabelle.quote.update');
 
     });

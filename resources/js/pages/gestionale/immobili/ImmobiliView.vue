@@ -62,7 +62,7 @@ const truncate = (text: string, length: number = 120) => {
           class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
         >
           <List class="w-4 h-4" />
-          <span>Elenco</span>
+          <span>Immobili</span>
         </Link>
       </div>
 

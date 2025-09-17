@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal, Percent } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Tabella } from '@/types/gestionale/tabelle'
 import type { Building } from '@/types/buildings'
@@ -84,9 +84,20 @@ function deleteImmobile() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem
+        <DropdownMenuItem>
+          <Link
+            :href="route(generateRoute('gestionale.tabelle.quote.index'), { condominio: condominio.id, tabella: tabella.id })"
+            preserve-state
+            class="flex items-center gap-2"
+            prefetch
+          >
+            <Percent class="w-4 h-4 text-xs" />
+            Millesimi
+          </Link>
+        </DropdownMenuItem>
 
-      >
+
+      <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.tabelle.edit'), { condominio: condominio.id, tabella: tabella.id })"
           preserve-state

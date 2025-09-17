@@ -13,6 +13,7 @@ use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -31,7 +32,7 @@ class TabellaController extends Controller
 
         $tabelle = $condominio
             ->tabelle()
-             ->with(['palazzina', 'scala'])
+            ->with(['palazzina', 'scala'])
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
@@ -76,6 +77,9 @@ class TabellaController extends Controller
         $tabella = $condominio->tabelle()->create([
             'nome'         => $data['nome'],
             'tipo'         => $data['tipologia'],
+            'quota'        => $data['quota'],
+            'palazzina_id' => $data['palazzina_id'] ?? null,
+            'scala_id'     => $data['scala_id'] ?? null,
             'descrizione'  => $data['descrizione'] ?? null,
             'note'         => $data['note'] ?? null,
             'attiva'       => true,
@@ -136,6 +140,7 @@ class TabellaController extends Controller
         try {
 
             $data = $request->validated();
+           
             $tabella->update($data);
 
             return to_route('admin.gestionale.tabelle.index', $condominio)->with(
