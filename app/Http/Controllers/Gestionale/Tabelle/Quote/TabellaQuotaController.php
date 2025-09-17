@@ -32,7 +32,7 @@ class TabellaQuotaController extends Controller
         return Inertia::render('gestionale/tabelle/quote/QuoteList', [
             'condominio' => $condominio,
             'tabella'    => $tabella,
-            'millesimi'  => $millesimi,
+            'millesimi'  => $millesimi->values(),
             'immobili'   => $immobili,
         ]);
     }

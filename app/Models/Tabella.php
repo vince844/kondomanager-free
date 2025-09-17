@@ -18,6 +18,7 @@ class Tabella extends Model
         'nome',
         'tipo',
         'quota',
+        'numero_decimali',
         'regole_calcolo',
         'descrizione',
         'note',
@@ -32,7 +33,7 @@ class Tabella extends Model
         'regole_calcolo' => 'array',
         'attiva' => 'boolean',
         'data_inizio' => 'date',
-        'data_fine' => 'date',
+        'data_fine' => 'date'
     ];
 
     /*

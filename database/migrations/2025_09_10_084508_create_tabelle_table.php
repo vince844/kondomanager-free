@@ -24,6 +24,7 @@ return new class extends Migration
             $table->string('nome');
             $table->enum('tipo', ['standard','ascensore','scale','riscaldamento','acqua','lastrico','speciale','altro'])->default('standard');
             $table->enum('quota', ['millesimi','persone','kwatt','mtcubi','quote'])->default('millesimi');
+            $table->unsignedTinyInteger('numero_decimali')->default(2);
             $table->json('regole_calcolo')->nullable();
             $table->text('descrizione')->nullable();
             $table->text('note')->nullable();

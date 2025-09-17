@@ -75,16 +75,17 @@ class TabellaController extends Controller
 
         // Creazione della tabella
         $tabella = $condominio->tabelle()->create([
-            'nome'         => $data['nome'],
-            'tipo'         => $data['tipologia'],
-            'quota'        => $data['quota'],
-            'palazzina_id' => $data['palazzina_id'] ?? null,
-            'scala_id'     => $data['scala_id'] ?? null,
-            'descrizione'  => $data['descrizione'] ?? null,
-            'note'         => $data['note'] ?? null,
-            'attiva'       => true,
-            'data_inizio'  => now(),
-            'created_by'   => $data['created_by'],
+            'nome'            => $data['nome'],
+            'tipo'            => $data['tipologia'],
+            'quota'           => $data['quota'],
+            'numero_decimali' => $data['numero_decimali'] ?? 2,
+            'palazzina_id'    => $data['palazzina_id'] ?? null,
+            'scala_id'        => $data['scala_id'] ?? null,
+            'descrizione'     => $data['descrizione'] ?? null,
+            'note'            => $data['note'] ?? null,
+            'attiva'          => true,
+            'data_inizio'     => now(),
+            'created_by'      => $data['created_by'],
         ]);
 
         // Se l’opzione "associa tutti" è selezionata

@@ -33,17 +33,17 @@ class QuotaTabella extends Model
         return $this->belongsTo(Immobile::class);
     }
 
-    /**
-     * Accessor: interpreta valore in base alla quota della tabella
-     */
+    // app/Models/QuotaTabella.php
     public function getValoreFormattatoAttribute(): string
     {
+        $decimali = $this->tabella->numero_decimali ?? 2;
+
         return match ($this->tabella->quota) {
-            'millesimi' => number_format($this->valore ?? 0, 5) . ' ‰',
+            'millesimi' => number_format($this->valore ?? 0, $decimali, ',', '.') . ' ‰',
             'persone'  => (int) $this->valore . ' pers.',
-            'kwatt'    => $this->valore . ' kW',
-            'mtcubi'   => $this->valore . ' m³',
-            'quote'    => $this->valore . ' q',
+            'kwatt'    => number_format($this->valore ?? 0, $decimali, ',', '.') . ' kW',
+            'mtcubi'   => number_format($this->valore ?? 0, $decimali, ',', '.') . ' m³',
+            'quote'    => number_format($this->valore ?? 0, $decimali, ',', '.') . ' q',
             default    => (string) $this->valore,
         };
     }

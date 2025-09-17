@@ -89,7 +89,6 @@ function deleteImmobile() {
             :href="route(generateRoute('gestionale.tabelle.quote.index'), { condominio: condominio.id, tabella: tabella.id })"
             preserve-state
             class="flex items-center gap-2"
-            prefetch
           >
             <Percent class="w-4 h-4 text-xs" />
             Millesimi

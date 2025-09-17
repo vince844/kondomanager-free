@@ -1,6 +1,5 @@
 <script setup lang="ts">
-
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { Head, useForm, Link } from "@inertiajs/vue3";
 import GestionaleLayout from "@/layouts/GestionaleLayout.vue";
 import { Button } from "@/components/ui/button";
@@ -27,9 +26,18 @@ const props = defineProps<{
 
 const showNoImmobiliDialog = ref(false);
 
+// Extract raw data from Proxy objects
+const rawMillesimi = JSON.parse(JSON.stringify(props.millesimi));
+const rawImmobili = JSON.parse(JSON.stringify(props.immobili));
+
+console.log('Raw Millesimi from backend:', rawMillesimi);
+console.log('Raw Immobili from backend:', rawImmobili);
+
 // Form separato a seconda del tipo tabella
 const form = useForm({
-  quote: props.millesimi.map((q) => {
+  quote: rawMillesimi.map((q: Millesimo) => {
+    console.log('Processing millesimo:', q);
+    
     if (props.tabella.tipo === "acqua") {
       return {
         id: q.id as number | null,
@@ -51,9 +59,15 @@ const form = useForm({
       }
     }
 
-    return {}
+    return {
+      id: q.id as number | null,
+      immobile: q.immobile as Immobile | null, 
+      valore: q.valore as string
+    }
   }),
 });
+
+console.log('Form quote:', form.quote);
 
 const { generatePath, generateRoute } = usePermission();
 
@@ -68,7 +82,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 // Calcola immobili disponibili
 const immobiliDisponibili = computed(() => {
   const usedIds = form.quote.map((q: any) => q.immobile?.id).filter(Boolean);
-  return props.immobili.filter((i) => !usedIds.includes(i.id));
+  console.log('Used immobile IDs:', usedIds);
+  console.log('Available immobili:', rawImmobili.filter((i: Immobile) => !usedIds.includes(i.id)));
+  return rawImmobili.filter((i: Immobile) => !usedIds.includes(i.id));
 });
 
 const addImmobile = () => {
@@ -77,26 +93,35 @@ const addImmobile = () => {
     return;
   }
 
+  let nuovoImmobile: any = {};
+
   if (props.tabella.tipo === "acqua") {
-    form.quote.push({
+    nuovoImmobile = {
       id: null,
       valore: "",
       immobile: null,
       has_contatore: false,
       ultima_lettura: ""
-    });
-  }
-
-  if (props.tabella.tipo === "riscaldamento") {
-    form.quote.push({
+    };
+  } else if (props.tabella.tipo === "riscaldamento") {
+    nuovoImmobile = {
       id: null,
       valore: "",
       immobile: null,
       coeff_dispersione: "",
       quota_fissa: "",
       quota_variabile: ""
-    });
+    };
+  } else {
+    nuovoImmobile = {
+      id: null,
+      valore: "",
+      immobile: null
+    };
   }
+
+  // Assegna un nuovo array invece di push
+  form.quote = [...form.quote, nuovoImmobile];
 };
 
 const removeImmobile = (index: number) => {
@@ -111,6 +136,13 @@ const submit = () => {
     }),
     { preserveScroll: true }
   );
+};
+
+// Debug function to check what's being rendered
+const debugRender = (q: any, idx: number) => {
+  console.log(`Rendering quote ${idx}:`, q);
+  console.log(`Has ID: ${q.id}, Has immobile: ${!!q.immobile}, Immobile ID: ${q.immobile?.id}`);
+  return true;
 };
 </script>
 
@@ -155,45 +187,85 @@ const submit = () => {
                 <Table>
                   
                   <TableHeader>
-  <TableRow>
-    <TableHead>Immobile</TableHead>
-    <TableHead>{{ props.tabella.quota.charAt(0).toUpperCase() + props.tabella.quota.slice(1) }}</TableHead>
+                    <TableRow>
+                      <TableHead>Immobile</TableHead>
+                      <TableHead>{{ props.tabella.quota.charAt(0).toUpperCase() + props.tabella.quota.slice(1) }}</TableHead>
 
-    <!-- Acqua -->
-    <TableHead v-if="props.tabella.tipo === 'acqua'" class="text-center">Contatore?</TableHead>
-    <TableHead v-if="props.tabella.tipo === 'acqua'">Ultima lettura (m³)</TableHead>
+                      <!-- Acqua -->
+                      <TableHead v-if="props.tabella.tipo === 'acqua'" class="text-center">Contatore?</TableHead>
+                      <TableHead v-if="props.tabella.tipo === 'acqua'">Ultima lettura (m³)</TableHead>
 
-    <!-- Riscaldamento -->
-    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota fissa (%)</TableHead>
-    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota variabile (%)</TableHead>
-    <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Coeff. dispersione</TableHead>
+                      <!-- Riscaldamento -->
+                      <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota fissa (%)</TableHead>
+                      <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Quota variabile (%)</TableHead>
+                      <TableHead v-if="props.tabella.tipo === 'riscaldamento'">Coeff. dispersione</TableHead>
 
-    <TableHead class="text-center w-[80px]">Azioni</TableHead>
-  </TableRow>
+                      <TableHead class="text-center w-[80px]">Azioni</TableHead>
+                    </TableRow>
                   </TableHeader>
 
                   <TableBody>
                     <TableRow v-for="(q, idx) in form.quote" :key="q.id ?? idx">
+                      <!-- Debug: Log what's being rendered -->
+                      <span v-if="debugRender(q, idx)" class="hidden"></span>
+                      
                       <!-- Immobile -->
                       <TableCell>
-                        <div v-if="q.immobile">
-                          <div class="font-medium">{{ q.immobile.nome }}</div>
+                        <!-- Mostra come testo se l'immobile è già associato (ha un ID) -->
+                        <div v-if="q.id && q.immobile">
+                          <div class="font-medium">{{ q.immobile?.nome ?? '—' }}</div>
                           <div class="text-xs text-gray-400">
                             Palazzina: {{ q.immobile?.palazzina?.name ?? "—" }} |
                             Scala: {{ q.immobile?.scala?.name ?? "—" }} |
-                            Interno: {{ q.immobile.interno ?? "—" }} |
+                            Interno: {{ q.immobile?.interno ?? "—" }} |
                             Piano: {{ q.immobile?.piano ?? "—" }} |
                             Sup: {{ q.immobile?.superficie ?? "—" }} m²
                           </div>
                         </div>
+                        
+                        <!-- Mostra dropdown per selezionare un nuovo immobile -->
                         <div v-else>
-                          <v-select class="w-full"
+                          <v-select
+                            class="w-full vs--custom"
                             :options="immobiliDisponibili"
                             v-model="q.immobile"
                             append-to-body
                             placeholder="Seleziona immobile"
                             :reduce="(i: Immobile) => i"
-                          />
+                            :value="q.immobile"
+                            @input="(value: Immobile) => q.immobile = value"
+                            label="nome"
+                            :getOptionLabel="(option: Immobile) => option.nome"
+                          >
+                            <!-- Template per le opzioni nel dropdown -->
+                            <template #option="option">
+                              <div class="flex flex-col py-2">
+                                <span class="font-medium">{{ option.nome }}</span>
+                                <span class="text-xs text-gray-500 mt-1">
+                                  Palazzina: {{ option.palazzina?.name ?? "—" }} |
+                                  Scala: {{ option.scala?.name ?? "—" }} |
+                                  Interno: {{ option.interno ?? "—" }} |
+                                  Piano: {{ option.piano ?? "—" }} |
+                                  Sup: {{ option.superficie ?? "—" }} m²
+                                </span>
+                              </div>
+                            </template>
+
+                            <!-- Template per l'opzione selezionata -->
+                            <template #selected-option="option">
+                              <div v-if="option" class="flex flex-col">
+                                <span class="font-medium">{{ option.nome }}</span>
+                                <span class="text-xs text-gray-500">
+                                  Palazzina: {{ option.palazzina?.name ?? "—" }} |
+                                  Scala: {{ option.scala?.name ?? "—" }} |
+                                  Interno: {{ option.interno ?? "—" }} |
+                                  Piano: {{ option.piano ?? "—" }} |
+                                  Sup: {{ option.superficie ?? "—" }} m²
+                                </span>
+                              </div>
+                              <div v-else class="text-gray-400">Seleziona immobile</div>
+                            </template>
+                          </v-select>
                         </div>
                       </TableCell>
 
@@ -255,3 +327,28 @@ const submit = () => {
     </AlertDialogContent>
   </AlertDialog>
 </template>
+
+<style>
+/* Custom styles for vue-select to show full information */
+.vs--custom .vs__dropdown-menu li {
+  padding: 0;
+  line-height: 1.4;
+}
+
+.vs--custom .vs__dropdown-option {
+  padding: 8px 12px;
+  white-space: normal;
+}
+
+.vs--custom .vs__dropdown-option--highlight {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.vs--custom .vs__selected {
+  padding: 4px 0;
+  margin: 0;
+  line-height: 1.4;
+  white-space: normal;
+}
+</style>
