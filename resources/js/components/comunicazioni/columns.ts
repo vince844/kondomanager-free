@@ -25,7 +25,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
 
           router.put(route(generateRoute('comunicazioni.toggle-approval'), { id: comunicazione.id }), {}, {
             preserveScroll: true,
-            only: ['stats', 'comunicazioni'],
+            only: ['stats', 'comunicazioni', 'flash'],
             onSuccess: () => {
               // Manually update the specific item
               comunicazione.is_approved = !comunicazione.is_approved;

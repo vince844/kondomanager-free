@@ -13,6 +13,7 @@ export interface Tabella {
   descrizione?: string;
   note?: string;
   attiva: boolean;
+  numero_decimali: number;
   data_inizio?: string | null; 
   data_fine?: string | null; 
   created_by?: number | null;

@@ -36,5 +36,6 @@ return [
     'error_update_tabella'              => "Si è verificato un errore durante l'aggiornamento della tabella millesimale.",
     'success_delete_tabella'            => "La tabella millesimale è stata eliminata con successo.",
     'error_delete_tabella'              => "Si è verificato un errore durante l'eliminazione della tabella millesimale.",
+    'success_update_quote_tabella'      => "I millesimi e le quote della tabella sono stati aggiornati con successo.",
 
 ];

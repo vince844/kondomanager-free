@@ -4,6 +4,7 @@ import { Head, useForm, Link } from "@inertiajs/vue3";
 import GestionaleLayout from "@/layouts/GestionaleLayout.vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import InputError from '@/components/InputError.vue';
 import Heading from '@/components/Heading.vue';
 import { List, Plus, LoaderCircle, Trash2 } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
@@ -25,13 +26,11 @@ const props = defineProps<{
 }>()
 
 const showNoImmobiliDialog = ref(false);
+const alertMessage = ref("");
 
 // Extract raw data from Proxy objects
 const rawMillesimi = JSON.parse(JSON.stringify(props.millesimi));
 const rawImmobili = JSON.parse(JSON.stringify(props.immobili));
-
-console.log('Raw Millesimi from backend:', rawMillesimi);
-console.log('Raw Immobili from backend:', rawImmobili);
 
 // Form separato a seconda del tipo tabella
 const form = useForm({
@@ -67,8 +66,6 @@ const form = useForm({
   }),
 });
 
-console.log('Form quote:', form.quote);
-
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -79,16 +76,17 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: props.tabella.nome, href: '#' },
 ]);
 
-// Calcola immobili disponibili
+// Calcola immobili disponibili - FIXED: Use reactive form data instead of raw data
 const immobiliDisponibili = computed(() => {
   const usedIds = form.quote.map((q: any) => q.immobile?.id).filter(Boolean);
-  console.log('Used immobile IDs:', usedIds);
-  console.log('Available immobili:', rawImmobili.filter((i: Immobile) => !usedIds.includes(i.id)));
   return rawImmobili.filter((i: Immobile) => !usedIds.includes(i.id));
 });
 
 const addImmobile = () => {
-  if (immobiliDisponibili.value.length === 0) {
+  const maxRows = rawImmobili.length;
+
+  if (form.quote.length >= maxRows) {
+    alertMessage.value = "Hai già raggiunto il numero massimo di righe consentite.";
     showNoImmobiliDialog.value = true;
     return;
   }
@@ -120,12 +118,17 @@ const addImmobile = () => {
     };
   }
 
-  // Assegna un nuovo array invece di push
   form.quote = [...form.quote, nuovoImmobile];
 };
 
 const removeImmobile = (index: number) => {
   form.quote.splice(index, 1);
+};
+
+// Funzione per generare placeholder dinamico in base al numero di decimali
+const valorePlaceholder = (decimali: number) => {
+  if (!decimali || decimali < 0) return "0";
+  return "0." + "0".repeat(decimali);
 };
 
 const submit = () => {
@@ -138,12 +141,6 @@ const submit = () => {
   );
 };
 
-// Debug function to check what's being rendered
-const debugRender = (q: any, idx: number) => {
-  console.log(`Rendering quote ${idx}:`, q);
-  console.log(`Has ID: ${q.id}, Has immobile: ${!!q.immobile}, Immobile ID: ${q.immobile?.id}`);
-  return true;
-};
 </script>
 
 <template>
@@ -188,7 +185,7 @@ const debugRender = (q: any, idx: number) => {
                   
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Immobile</TableHead>
+                      <TableHead class="w-[500px]">Immobile</TableHead>
                       <TableHead>{{ props.tabella.quota.charAt(0).toUpperCase() + props.tabella.quota.slice(1) }}</TableHead>
 
                       <!-- Acqua -->
@@ -206,9 +203,7 @@ const debugRender = (q: any, idx: number) => {
 
                   <TableBody>
                     <TableRow v-for="(q, idx) in form.quote" :key="q.id ?? idx">
-                      <!-- Debug: Log what's being rendered -->
-                      <span v-if="debugRender(q, idx)" class="hidden"></span>
-                      
+
                       <!-- Immobile -->
                       <TableCell>
                         <!-- Mostra come testo se l'immobile è già associato (ha un ID) -->
@@ -226,14 +221,14 @@ const debugRender = (q: any, idx: number) => {
                         <!-- Mostra dropdown per selezionare un nuovo immobile -->
                         <div v-else>
                           <v-select
-                            class="w-full vs--custom"
+                            class="w-full vs--wide-dropdown"
                             :options="immobiliDisponibili"
                             v-model="q.immobile"
                             append-to-body
                             placeholder="Seleziona immobile"
                             :reduce="(i: Immobile) => i"
                             :value="q.immobile"
-                            @input="(value: Immobile) => q.immobile = value"
+                            @input="(value: Immobile) => { q.immobile = value }"
                             label="nome"
                             :getOptionLabel="(option: Immobile) => option.nome"
                           >
@@ -266,12 +261,18 @@ const debugRender = (q: any, idx: number) => {
                               <div v-else class="text-gray-400">Seleziona immobile</div>
                             </template>
                           </v-select>
+                          <InputError :message="form.errors[`quote.${idx}.immobile.id`]" />
                         </div>
                       </TableCell>
 
                       <!-- Millesimi -->
                       <TableCell>
-                        <Input v-model="q.valore" class="w-28" placeholder="0.00" />
+                        <Input
+                          v-model="q.valore"
+                          class="w-28"
+                          :placeholder="valorePlaceholder(props.tabella.numero_decimali)"
+                        />
+                        <InputError :message="form.errors[`quote.${idx}.valore`]" />
                       </TableCell>
 
                       <!-- Solo acqua -->
@@ -316,9 +317,9 @@ const debugRender = (q: any, idx: number) => {
   <AlertDialog v-model:open="showNoImmobiliDialog">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Nessun immobile disponibile</AlertDialogTitle>
+        <AlertDialogTitle>Attenzione</AlertDialogTitle>
         <AlertDialogDescription>
-          Tutti gli immobili sono già stati associati a questa tabella.
+          {{ alertMessage }}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
@@ -326,29 +327,46 @@ const debugRender = (q: any, idx: number) => {
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+
 </template>
 
 <style>
 /* Custom styles for vue-select to show full information */
-.vs--custom .vs__dropdown-menu li {
+.vs--wide-dropdown .vs__dropdown-menu {
+  min-width: 400px;
+  width: auto;
+  max-width: 600px;
+}
+
+.vs--wide-dropdown .vs__dropdown-menu li {
   padding: 0;
   line-height: 1.4;
 }
 
-.vs--custom .vs__dropdown-option {
+.vs--wide-dropdown .vs__dropdown-option {
   padding: 8px 12px;
   white-space: normal;
 }
 
-.vs--custom .vs__dropdown-option--highlight {
+.vs--wide-dropdown .vs__dropdown-option--highlight {
   background-color: #3b82f6;
   color: white;
 }
 
-.vs--custom .vs__selected {
+.vs--wide-dropdown .vs__selected {
   padding: 4px 0;
   margin: 0;
   line-height: 1.4;
   white-space: normal;
+}
+
+/* Ensure the dropdown container is wide enough */
+.vs--wide-dropdown {
+  width: 100%;
+}
+
+/* Make sure the dropdown options are visible */
+.vs--wide-dropdown .vs__dropdown-menu {
+  z-index: 10000; /* Ensure it appears above other elements */
 }
 </style>

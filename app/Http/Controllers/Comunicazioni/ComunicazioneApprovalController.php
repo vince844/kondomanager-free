@@ -59,9 +59,12 @@ class ComunicazioneApprovalController extends Controller
 
             }
 
-            return back()->with(
-                $this->flashSuccess(__('comunicazioni.success_approve_communication'))
-            );
+             $message = $comunicazione->is_approved
+                ? $this->flashSuccess(__('comunicazioni.success_approve_communication'))
+                : $this->flashWarning(__('comunicazioni.success_disapprove_communication'));
+
+            return back()->with($message);
+
 
         } catch (\Throwable $e) {
         

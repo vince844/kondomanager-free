@@ -62,6 +62,7 @@ const form = useForm({
   nome: props.tabella.nome,
   tipo: props.tabella.tipo,
   quota: props.tabella.quota,
+  numero_decimali: props.tabella.numero_decimali,
   descrizione: props.tabella.descrizione,
   note: props.tabella.note,
   palazzina_id: props.tabella.palazzina ? props.tabella.palazzina.id : '',
@@ -125,36 +126,9 @@ const submit = () => {
                   <InputError :message="form.errors.nome" />
                 </div>
 
-                <div class="sm:col-span-2">
-                  <Label for="unit">Unità di misura</Label>
-                  <v-select
-                    class="w-full mt-1"
-                    :options="unitaMisura"
-                    label="label"
-                    v-model="form.quota"
-                    :reduce="(d: TabellaType) => d.id"
-                    placeholder="Seleziona unità di misura"
-                  />
-   
-                  <InputError :message="form.errors.quota" />
-                </div>
               </div>
 
-              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-
-                <div class="sm:col-span-2">
-                  <Label for="tipologia">Tipologia</Label>
-                  <v-select
-                    class="w-full mt-1"
-                    :options="tipologieTabelle"
-                    label="label"
-                    v-model="form.tipo"
-                    :reduce="(d: TabellaType) => d.id"
-                    placeholder="Seleziona tipologia tabella"
-                  />
-                  <InputError :message="form.errors.tipo" />
-                </div>
-
+              <div class="mt-6 grid grid-cols-1 sm:grid-cols-6 gap-4">
                 <div class="sm:col-span-2">
                   <Label for="palazzina">Palazzina</Label>
                     <v-select 
@@ -182,7 +156,48 @@ const submit = () => {
                   />
                   <InputError :message="form.errors.scala_id" />
                 </div>
-                
+              </div>
+
+              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+
+                <div class="sm:col-span-2">
+                  <Label for="tipologia">Tipologia</Label>
+                  <v-select
+                    class="w-full mt-1"
+                    :options="tipologieTabelle"
+                    label="label"
+                    v-model="form.tipo"
+                    :reduce="(d: TabellaType) => d.id"
+                    placeholder="Seleziona tipologia tabella"
+                  />
+                  <InputError :message="form.errors.tipo" />
+                </div>
+
+                 <div class="sm:col-span-2">
+                  <Label for="unit">Unità di misura</Label>
+                  <v-select
+                    class="w-full mt-1"
+                    :options="unitaMisura"
+                    label="label"
+                    v-model="form.quota"
+                    :reduce="(d: TabellaType) => d.id"
+                    placeholder="Seleziona unità di misura"
+                  />
+   
+                  <InputError :message="form.errors.quota" />
+                </div>
+
+                <div class="sm:col-span-2">
+                  <Label for="numero_decimali">Numero decimali</Label>
+                  <v-select
+                    id="numero_decimali"
+                    class="w-full mt-1"
+                    :options="[0,1,2,3,4,5]"
+                    v-model="form.numero_decimali"
+                    placeholder="Seleziona numero di decimali"
+                  />
+                  <InputError :message="form.errors.numero_decimali" />
+                </div>
               </div>
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
@@ -210,7 +225,6 @@ const submit = () => {
                   <InputError :message="form.errors.note" />
                 </div>
               </div>
-
             </div>
 
           </form>

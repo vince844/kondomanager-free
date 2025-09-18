@@ -43,6 +43,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <div class="px-4 py-6">
       <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
         <section class="w-full">
+          
           <div v-if="flashMessage" class="py-3">
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>

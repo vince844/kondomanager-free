@@ -3,17 +3,19 @@
 namespace App\Http\Controllers\Gestionale\Tabelle\Quote;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Gestionale\Tabella\Quota\UpdateQuoteRequest;
 use App\Models\Condominio;
-use App\Models\QuotaTabella;
 use App\Models\Tabella;
-use Illuminate\Http\Request;
+use App\Traits\HandleFlashMessages;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
 
 class TabellaQuotaController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
      * Display a listing of the resource.
      */
@@ -40,40 +42,41 @@ class TabellaQuotaController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, Condominio $condominio, Tabella $tabella)
+    public function update(UpdateQuoteRequest $request, Condominio $condominio, Tabella $tabella): RedirectResponse
     {
-        $quotes = $request->input('quote', []);
+        $validated = $request->validated();
+        $quotes = $validated['quote'] ?? [];
+        $createdBy = $validated['created_by'];
+        $updatedBy = $validated['updated_by'];
 
-        // Validazione generica
-        $request->validate([
-            'quote.*.immobile.id' => 'required|exists:immobili,id',
-            'quote.*.valore' => 'required|numeric',
-            'quote.*.has_contatore' => 'boolean',
-            'quote.*.ultima_lettura' => 'nullable|numeric',
-            'quote.*.coeff_dispersione' => 'nullable|numeric',
-            'quote.*.quota_fissa' => 'nullable|numeric',
-            'quote.*.quota_variabile' => 'nullable|numeric',
-        ]);
+        DB::transaction(function () use ($quotes, $tabella, $createdBy, $updatedBy) {
 
-        DB::transaction(function () use ($quotes, $tabella) {
+            // Cancella le righe che non sono più presenti nel form
+            $idsPresenti = collect($quotes)
+                ->pluck('id')
+                ->filter()
+                ->toArray();
+
+            $tabella->quote()
+                ->whereNotIn('id', $idsPresenti)
+                ->delete();
+
             foreach ($quotes as $q) {
-                $user = Auth::user();
                 $data = [
                     'immobile_id' => $q['immobile']['id'] ?? null,
                     'valore'      => $q['valore'] ?? 0,
-                    'updated_by'  => $user->id,
+                    'updated_by'  => $updatedBy,
                 ];
 
-                // Coefficienti in base al tipo tabella
+                // Coefficienti acqua
                 if ($tabella->tipo === 'acqua') {
                     $data['coefficienti'] = [
-                        'has_contatore' => $q['has_contatore'] ?? false,
-                        'ultima_lettura' => ($q['has_contatore'] ?? false)
-                            ? ($q['ultima_lettura'] ?? 0)
-                            : null,
+                        'has_contatore'  => $q['has_contatore'] ?? false,
+                        'ultima_lettura' => ($q['has_contatore'] ?? false) ? ($q['ultima_lettura'] ?? 0) : null,
                     ];
                 }
 
+                // Coefficienti riscaldamento
                 if ($tabella->tipo === 'riscaldamento') {
                     $data['coefficienti'] = [
                         'coeff_dispersione' => $q['coeff_dispersione'] ?? 0,
@@ -82,24 +85,22 @@ class TabellaQuotaController extends Controller
                     ];
                 }
 
-                // Aggiorna o crea il record
+                // Aggiornamento o creazione
                 if (!empty($q['id'])) {
-                    $record = $tabella->quote()->find($q['id']);
-                    if ($record) {
+                    if ($record = $tabella->quote()->find($q['id'])) {
                         $record->update($data);
                     }
                 } elseif (!empty($q['immobile']['id'])) {
-                    $user = Auth::user();
-                    $tabella->quote()->create($data + ['created_by' =>$user->id]);
+                    $tabella->quote()->create($data + ['created_by' => $createdBy]);
                 }
             }
         });
 
-        return redirect()
-            ->back()
-            ->with('success', 'Millesimi aggiornati correttamente.');
+        return to_route('admin.gestionale.tabelle.index', [
+            'condominio' => $condominio->id,
+            'tabella'    => $tabella->id,
+        ])->with($this->flashSuccess(__('gestionale.success_update_quote_tabella')));
+
     }
-
-
 
 }

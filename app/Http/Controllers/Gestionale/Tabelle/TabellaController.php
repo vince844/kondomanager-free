@@ -13,7 +13,6 @@ use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -69,7 +68,7 @@ class TabellaController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(CreateTabellaRequest $request, Condominio $condominio)
+    public function store(CreateTabellaRequest $request, Condominio $condominio): RedirectResponse
     {
         $data = $request->validated();
 

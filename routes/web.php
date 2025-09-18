@@ -14,6 +14,7 @@ use App\Http\Controllers\Segnalazioni\SegnalazioniStatsController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
+use App\Http\Controllers\Users\UserVerifyController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', WelcomeController::class)->name('home');
@@ -28,6 +29,7 @@ Route::put('/utenti/{user}/suspend', [UserStatusController::class, 'suspend'])->
 Route::put('/utenti/{user}/unsuspend', [UserStatusController::class, 'unsuspend'])->middleware(['auth', 'verified'])->name('utenti.unsuspend');
 Route::post('/utenti/reinvite/{email}', [UserReinviteController::class, 'reinviteUser'])->name('utenti.reinvite');
 Route::delete('users/{user}/permissions/{permission}', RevokePermissionFromUserController::class)->middleware(['auth', 'verified'])->name('users.permissions.destroy');
+Route::put('/utenti/{user}/toggle-verification', UserVerifyController::class)->middleware(['auth', 'verified'])->name('utenti.toggle-verification');
 
 /*
 |--------------------------------------------------------------------------

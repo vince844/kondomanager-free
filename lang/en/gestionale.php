@@ -36,5 +36,6 @@ return [
     'error_update_tabella'              => "An error occurred while updating the table.",
     'success_delete_tabella'            => "The table has been deleted successfully.",
     'error_delete_tabella'              => "An error occurred while deleting the table.",
+    'success_update_quote_tabella'      => "The new table quotes have been update successfully.",
     
 ];
