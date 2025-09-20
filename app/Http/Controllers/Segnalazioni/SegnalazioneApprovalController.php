@@ -60,14 +60,11 @@ class SegnalazioneApprovalController extends Controller
                 
             }
 
-            // Success message based on new state
-            $successMessage = $willBeApproved
-                ? __('segnalazioni.success_approve_ticket')
-                : __('segnalazioni.success_unapprove_ticket');
+            $message = $willBeApproved
+                ? $this->flashSuccess(__('segnalazioni.success_approve_ticket'))
+                : $this->flashWarning(__('segnalazioni.success_unapprove_ticket'));
 
-            return back()->with(
-                $this->flashSuccess($successMessage)
-            );
+            return back()->with($message);
 
         } catch (\Throwable $e) {
 

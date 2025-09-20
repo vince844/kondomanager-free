@@ -92,24 +92,18 @@ class NotificationPreferenceController extends Controller
                 ['enabled']
             );
 
-            return back()->with([
-                'message' => [
-                    'type'    => 'success',
-                    'message' => "Le preferenze sono state aggiornate con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('impostazioni.success_update_notification_preferences'))
+            );
 
         } catch (\Exception $e) {
 
             // Log any unexpected errors for debugging
             Log::error('Error updating notification preferences for user ' . $user->id . ': ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'aggiornamento delle preferenze!"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('impostazioni.error_update_notification_preferences'))
+            );
 
         }
     }

@@ -61,7 +61,11 @@ class DashboardController extends Controller
                     'condomini',
                     'anagrafiche',
                     'categoria',
-                ])->limit(3)->latest()->get()
+                ])
+                ->whereNull('documentable_type') // only generic documents
+                ->latest()
+                ->limit(3)
+                ->get()
             ),
             'eventi' => EventoResource::collection($events),
         ]);

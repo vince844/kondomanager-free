@@ -1,5 +1,8 @@
 // src/enums/Permission.ts
 export enum Permission {
+  // Settings
+  MANAGE_GENERAL_SETTINGS = 'Gestisci impostazioni generali',
+  // Access
   ACCESS_ADMIN_PANEL = 'Accesso pannello amministratore',
   // Utenti
   CREATE_USERS = 'Crea utenti',
@@ -71,4 +74,5 @@ export enum Permission {
   PUBLISH_EVENTS = 'Pubblica scadenze in agenda',
   APPROVE_EVENTS = 'Approva scadenze in agenda',
   DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda',
+
 }

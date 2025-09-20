@@ -34,6 +34,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
   { title: 'modifica immobile', href: '#' },
 ]);
 
@@ -54,7 +55,6 @@ const form = useForm({
   palazzina_id: props.immobile.palazzina ? props.immobile.palazzina.id : '',
   scala_id: props.immobile.scala ? props.immobile.scala.id : '',
   tipologia_id: props.immobile.tipologia ? props.immobile.tipologia.id : '',
-
 });
 
 const submit = () => {

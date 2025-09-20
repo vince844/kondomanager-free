@@ -3,23 +3,8 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Unplug, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
@@ -90,9 +75,7 @@ function deleteAnagrafica() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem
-
-      >
+      <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.immobili.anagrafiche.edit'), 
           { condominio: condominio.id, 
@@ -121,7 +104,7 @@ function deleteAnagrafica() {
       <AlertDialogHeader>
         <AlertDialogTitle>Sei sicuro di voler dissociare questa anagrafica?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Dissocierà l'anagrafica dall'immobile.
+          Questa azione non è reversibile e dissocierà l'anagrafica dall'immobile.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>

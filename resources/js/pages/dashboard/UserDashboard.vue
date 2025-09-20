@@ -133,10 +133,10 @@ const props = defineProps<{
                             </div>
 
                             <Link
-                                :href="route(generateRoute('categorie-documenti.index'))"
                                 v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])"
+                                :href="route('user.categorie-documenti.index')"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
-                            >
+                                >
                                 Visualizza tutti
                             </Link>
                         </div>

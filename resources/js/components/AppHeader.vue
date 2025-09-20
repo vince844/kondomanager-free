@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -89,11 +89,20 @@ const rightNavItems: NavItem[] = [
         title: 'Repository',
         href: 'https://github.com/vince844/kondomanager-free',
         icon: GitGraph,
+        external: true,
     },
     {
         title: 'Documentazione',
         href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
         icon: BookText,
+        external: true,
+    },
+    {
+        title: 'Impostazioni',
+        href: '/impostazioni',
+        icon: Settings,
+        external: false,
+        permissions: [Permission.MANAGE_GENERAL_SETTINGS]
     },
 ];
 
@@ -135,18 +144,31 @@ const rightNavItems: NavItem[] = [
 
                                 <!-- Right Navigation -->
                                 <div class="flex flex-col gap-4 px-3">
-                                    <a
-                                    v-for="item in rightNavItems"
-                                    :key="item.title"
-                                    :href="item.href"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="flex items-center gap-2 text-sm font-medium py-1"
-                                    >
-                                    <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
-                                    <span>{{ item.title }}</span>
-                                    </a>
+                                    <template v-for="item in rightNavItems" :key="item.title">
+                                        <!-- External -->
+                                        <a
+                                            v-if="item.external"
+                                            :href="item.href"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            class="flex items-center gap-2 text-sm font-medium py-1"
+                                        >
+                                            <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
+                                            <span>{{ item.title }}</span>
+                                        </a>
+
+                                        <!-- Internal -->
+                                        <Link
+                                            v-else
+                                            :href="item.href"
+                                            class="flex items-center gap-2 text-sm font-medium py-1"
+                                        >
+                                            <component v-if="item.icon" :is="item.icon" class="h-5 w-5" />
+                                            <span>{{ item.title }}</span>
+                                        </Link>
+                                    </template>
                                 </div>
+
                             </div>
 
                         </SheetContent>
@@ -187,22 +209,35 @@ const rightNavItems: NavItem[] = [
                         <div class="hidden space-x-1 lg:flex">
                             <template v-for="item in rightNavItems" :key="item.title">
                                 <TooltipProvider :delay-duration="0">
-                                    <Tooltip>
-                                        <TooltipTrigger>
-                                            <Button variant="ghost" size="icon" as-child class="group h-9 w-9 cursor-pointer">
-                                                <a :href="item.href" target="_blank" rel="noopener noreferrer">
-                                                    <span class="sr-only">{{ item.title }}</span>
-                                                    <component :is="item.icon" class="size-5 opacity-80 group-hover:opacity-100" />
-                                                </a>
-                                            </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>{{ item.title }}</p>
-                                        </TooltipContent>
-                                    </Tooltip>
+                                <Tooltip>
+                                    <TooltipTrigger>
+                                    <Button variant="ghost" size="icon" as-child class="group h-9 w-9 cursor-pointer">
+                                        <!-- External links -->
+                                        <a
+                                            v-if="item.external"
+                                            :href="item.href"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                        >
+                                            <span class="sr-only">{{ item.title }}</span>
+                                            <component :is="item.icon" class="size-5 opacity-80 group-hover:opacity-100" />
+                                        </a>
+
+                                        <!-- Internal links -->
+                                        <Link v-else :href="item.href" v-if="canAccess(item)">
+                                            <span class="sr-only">{{ item.title }}</span>
+                                            <component :is="item.icon" class="size-5 opacity-80 group-hover:opacity-100" />
+                                        </Link>
+                                    </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                    <p>{{ item.title }}</p>
+                                    </TooltipContent>
+                                </Tooltip>
                                 </TooltipProvider>
                             </template>
                         </div>
+
                     </div>
 
                     <DropdownMenu>

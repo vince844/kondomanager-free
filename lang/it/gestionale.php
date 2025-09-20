@@ -29,5 +29,13 @@ return [
     'error_detach_anagrafica'           => "Si è verificato un errore durante lo stacco dell'anagrafica dall'immobile.",
     'success_update_anagrafica'         => "L'anagrafica associata è stata aggiornata con successo.",
     'error_update_anagrafica'           => "Si è verificato un errore nell'aggiornamento dell'anagrafica associata.",
+        // Tabelle millesimali
+    'success_create_tabella'            => "La nuova tabella millesimale è stata creata con successo.",
+    'error_create_tabella'              => "Si è verificato un errore durante la creazione della nuova tabella millesimale.",
+    'success_update_tabella'            => "La tabella millesimale è stata aggiornata con successo.",
+    'error_update_tabella'              => "Si è verificato un errore durante l'aggiornamento della tabella millesimale.",
+    'success_delete_tabella'            => "La tabella millesimale è stata eliminata con successo.",
+    'error_delete_tabella'              => "Si è verificato un errore durante l'eliminazione della tabella millesimale.",
+    'success_update_quote_tabella'      => "I millesimi e le quote della tabella sono stati aggiornati con successo.",
 
 ];

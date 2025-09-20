@@ -146,7 +146,6 @@ const submit = () => {
 }
 </script>
 
-
 <template>
   <Head title="Crea nuovo documento" />
 
@@ -182,253 +181,253 @@ const submit = () => {
         <!-- Two-column layout (3:1 ratio) -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 ">
 
-            <!-- Main Card (3/4 width) -->
-            <div class="col-span-1 lg:col-span-3 mt-3">
-                <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
-                    
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-3">
-                          <Label for="nome">Nome documento</Label>
-                          <Input 
-                              id="name" 
-                              class="mt-1 block w-full"
-                              v-model="form.name" 
-                              v-on:focus="form.clearErrors('name')"
-                              placeholder="Nome documento" 
-                          />
-                          
-                          <InputError :message="form.errors.name" />
-              
-                      </div>
-                    </div> 
-
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                          <Label for="nome">Descrizione documento</Label>
-                          <Textarea 
-                              id="description" 
-                              class="mt-1 block w-full min-h-[200px]"
-                              v-model="form.description" 
-                              v-on:focus="form.clearErrors('description')"
-                              placeholder="Descrizone documento" 
-                          />
-                          
-                          <InputError :message="form.errors.description" />
-              
-                      </div>     
-                    </div> 
-
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                        <Label for="file-upload">Seleziona documento</Label>
-                        <label
-                          for="file-upload"
-                          class="mt-2 flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                        >
-                          <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
-                          <span class="text-gray-500 dark:text-gray-400 text-center">
-                            <strong>Clicca qui per selezionare il documento</strong>
-                          </span>
-                          <input
-                            id="file-upload"
-                            type="file"
-                            class="hidden"
-                            accept="application/pdf"
-                            @change="handleFileChange"
-                          />
-                        </label>
-
-                        <div v-if="file" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                          File selezionato: <strong>{{ file.name }}</strong>
-                        </div>
-                        <InputError :message="form.errors.file" />
-
-                        <!-- Progress bar -->
-                        <div v-if="progress !== null" class="mt-4">
-                          <div class="w-full h-2 bg-gray-200 rounded overflow-hidden">
-                            <div
-                              class="h-full bg-blue-600 transition-all duration-300"
-                              :style="{ width: `${progress}%` }"
-                            ></div>
-                          </div>
-                          <p class="text-xs text-gray-600 mt-1">{{ progress }}%</p>
-                        </div>
-                      </div>
-                    </div>
-
-                </div>
-            </div>
-
-            <!-- Side Card (1/4 width) -->
-            <div class="col-span-1 mt-3">
-                <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
-
-                    <div class="grid grid-cols-1 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-
-                        <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                          <Label for="stato">Stato pubblicazione</Label>
-
-                          <HoverCard>
-                            <HoverCardTrigger as-child>
-                            <button type="button" class="cursor-pointer">
-                                <Info class="w-4 h-4 text-muted-foreground" />
-                            </button>
-                            </HoverCardTrigger>
-                            <HoverCardContent class="w-80">
-                            <div class="flex justify-between space-x-4">
-                                <div class="space-y-1">
-                                <h4 class="text-sm font-semibold">
-                                    Stato pubblicazione
-                                </h4>
-                                <p class="text-sm">
-                                    Scegli se rendere visibile il documento o mantenerlo nascosto.
-                                </p>
-                                </div>
-                            </div>
-                            </HoverCardContent>
-                          </HoverCard>
-                        </div>
-
-                        <v-select 
-                          :options="publishedConstants" 
-                          label="label" 
-                          v-model="form.is_published"
-                          placeholder="Stato pubblicazione"
-                          @update:modelValue="form.clearErrors('is_published')" 
-                          :reduce="(is_published: PublishedType) => is_published.value"
+          <!-- Main Card (3/4 width) -->
+          <div class="col-span-1 lg:col-span-3 mt-3">
+              <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
+                  
+                  <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-3">
+                        <Label for="nome">Nome documento</Label>
+                        <Input 
+                            id="name" 
+                            class="mt-1 block w-full"
+                            v-model="form.name" 
+                            v-on:focus="form.clearErrors('name')"
+                            placeholder="Nome documento" 
                         />
+                        
+                        <InputError :message="form.errors.name" />
+            
+                    </div>
+                  </div> 
 
-                        <InputError :message="form.errors.is_published" />
+                  <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
+                        <Label for="nome">Descrizione documento</Label>
+                        <Textarea 
+                            id="description" 
+                            class="mt-1 block w-full min-h-[200px]"
+                            v-model="form.description" 
+                            v-on:focus="form.clearErrors('description')"
+                            placeholder="Descrizone documento" 
+                        />
+                        
+                        <InputError :message="form.errors.description" />
+            
+                    </div>     
+                  </div> 
+
+                  <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
+                      <Label for="file-upload">Seleziona documento</Label>
+                      <label
+                        for="file-upload"
+                        class="mt-2 flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                      >
+                        <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
+                        <span class="text-gray-500 dark:text-gray-400 text-center">
+                          <strong>Clicca qui per selezionare il documento</strong>
+                        </span>
+                        <input
+                          id="file-upload"
+                          type="file"
+                          class="hidden"
+                          accept="application/pdf"
+                          @change="handleFileChange"
+                        />
+                      </label>
+
+                      <div v-if="file" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        File selezionato: <strong>{{ file.name }}</strong>
+                      </div>
+                      <InputError :message="form.errors.file" />
+
+                      <!-- Progress bar -->
+                      <div v-if="progress !== null" class="mt-4">
+                        <div class="w-full h-2 bg-gray-200 rounded overflow-hidden">
+                          <div
+                            class="h-full bg-blue-600 transition-all duration-300"
+                            :style="{ width: `${progress}%` }"
+                          ></div>
+                        </div>
+                        <p class="text-xs text-gray-600 mt-1">{{ progress }}%</p>
+                      </div>
+                    </div>
+                  </div>
+
+              </div>
+          </div>
+
+          <!-- Side Card (1/4 width) -->
+          <div class="col-span-1 mt-3">
+              <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
+
+                  <div class="grid grid-cols-1 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
+
+                      <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                        <Label for="stato">Stato pubblicazione</Label>
+
+                        <HoverCard>
+                          <HoverCardTrigger as-child>
+                          <button type="button" class="cursor-pointer">
+                              <Info class="w-4 h-4 text-muted-foreground" />
+                          </button>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80">
+                          <div class="flex justify-between space-x-4">
+                              <div class="space-y-1">
+                              <h4 class="text-sm font-semibold">
+                                  Stato pubblicazione
+                              </h4>
+                              <p class="text-sm">
+                                  Scegli se rendere visibile il documento o mantenerlo nascosto.
+                              </p>
+                              </div>
+                          </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      </div>
+
+                      <v-select 
+                        :options="publishedConstants" 
+                        label="label" 
+                        v-model="form.is_published"
+                        placeholder="Stato pubblicazione"
+                        @update:modelValue="form.clearErrors('is_published')" 
+                        :reduce="(is_published: PublishedType) => is_published.value"
+                      />
+
+                      <InputError :message="form.errors.is_published" />
+            
+                    </div>
+                  </div>
+
+                  <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
+                    <div class="sm:col-span-6 space-y-1">
+
+                      <!-- Label + info icon -->
+                      <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
+                        <Label for="stato">Categoria</Label>
+                        <HoverCard>
+                          <HoverCardTrigger as-child>
+                            <button type="button" class="cursor-pointer">
+                              <Info class="w-4 h-4 text-muted-foreground" />
+                            </button>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80">
+                            <div class="space-y-1">
+                              <h4 class="text-sm font-semibold">Categoria documento</h4>
+                              <p class="text-sm">
+                                Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                              </p>
+                            </div>
+                          </HoverCardContent>
+                        </HoverCard>
+                      </div>
+
+                      <!-- v-select and plus button in one row -->
+                      <div class="flex items-center gap-2">
+                        <v-select
+                          :options="localCategories"
+                          label="name"
+                          v-model="form.category_id"
+                          :reduce="(option: Categoria) => option.id"
+                          placeholder="Seleziona categoria"
+                          class="flex-1"
+                          @update:modelValue="form.clearErrors('category_id')" 
+                        />
+                        <Sheet>
+                          <SheetTrigger as-child>
+                            <button type="button" class="p-2 rounded-md border hover:bg-muted transition">
+                              <Plus class="w-4 h-4 text-muted-foreground hover:text-primary" />
+                            </button>
+                          </SheetTrigger>
+                          <SheetContent side="right" class="p-6">
+                            <SheetHeader class="mt-4 p-0">
+                              <SheetTitle>Crea nuova categoria</SheetTitle>
+                              <SheetDescription>
+                                Aggiungi una nuova categoria per i documenti.
+                              </SheetDescription>
+                            </SheetHeader>
+
+                            <form @submit.prevent="createCategory" class="mt-6 space-y-4">
+                              <div>
+                                <Label for="new-category-name">Nome</Label>
+                                <Input
+                                  id="new-category-name"
+                                  v-model="newCategoryName"
+                                  placeholder="Nome della categoria"
+                                  class="w-full mt-1"
+                                />
+                              </div>
+
+                              <div>
+                                <Label for="new-category-description">Descrizione</Label>
+                                <Textarea
+                                  id="new-category-description"
+                                  v-model="newCategoryDescription"
+                                  placeholder="Descrizione della categoria"
+                                  class="w-full mt-1 min-h-[200px]"
+                                />
+                              </div>
+
+                              <div class="flex justify-end">
+                                <SheetClose as-child>
+                                  <Button type="submit">Salva</Button>
+                                </SheetClose>
+                              </div>
+                            </form>
+                          </SheetContent>
+                        </Sheet>
+                      </div>
+
+                      <InputError :message="form.errors.category_id" />
+                    </div>
+                  </div>
+
+                  <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
+                      <div class="sm:col-span-6">
+                          <Label for="condomini">Condominio</Label>
+
+                          <v-select 
+                            multiple
+                            :options="condomini" 
+                            label="nome" 
+                            v-model="form.condomini_ids"
+                            placeholder="Condomini"
+                            @update:modelValue="form.clearErrors('condomini_ids')" 
+                            :reduce="(condomini: Building) => condomini.id"
+                          />
+
+                          <InputError :message="form.errors.condomini_ids" />
               
                       </div>
-                    </div>
+                  </div>
 
-                    <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                      <div class="sm:col-span-6 space-y-1">
+                  <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
+                      <div class="sm:col-span-6">
+                          <Label for="condomini">Anagrafiche</Label>
 
-                        <!-- Label + info icon -->
-                        <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                          <Label for="stato">Categoria</Label>
-                          <HoverCard>
-                            <HoverCardTrigger as-child>
-                              <button type="button" class="cursor-pointer">
-                                <Info class="w-4 h-4 text-muted-foreground" />
-                              </button>
-                            </HoverCardTrigger>
-                            <HoverCardContent class="w-80">
-                              <div class="space-y-1">
-                                <h4 class="text-sm font-semibold">Categoria documento</h4>
-                                <p class="text-sm">
-                                  Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
-                                </p>
-                              </div>
-                            </HoverCardContent>
-                          </HoverCard>
-                        </div>
-
-                        <!-- v-select and plus button in one row -->
-                        <div class="flex items-center gap-2">
                           <v-select
-                            :options="localCategories"
-                            label="name"
-                            v-model="form.category_id"
-                            :reduce="(option: Categoria) => option.id"
-                            placeholder="Seleziona categoria"
-                            class="flex-1"
-                            @update:modelValue="form.clearErrors('category_id')" 
-                          />
-                          <Sheet>
-                            <SheetTrigger as-child>
-                              <button type="button" class="p-2 rounded-md border hover:bg-muted transition">
-                                <Plus class="w-4 h-4 text-muted-foreground hover:text-primary" />
-                              </button>
-                            </SheetTrigger>
-                            <SheetContent side="right" class="p-6">
-                              <SheetHeader class="mt-4 p-0">
-                                <SheetTitle>Crea nuova categoria</SheetTitle>
-                                <SheetDescription>
-                                  Aggiungi una nuova categoria per i documenti.
-                                </SheetDescription>
-                              </SheetHeader>
-
-                              <form @submit.prevent="createCategory" class="mt-6 space-y-4">
-                                <div>
-                                  <Label for="new-category-name">Nome</Label>
-                                  <Input
-                                    id="new-category-name"
-                                    v-model="newCategoryName"
-                                    placeholder="Nome della categoria"
-                                    class="w-full mt-1"
-                                  />
-                                </div>
-
-                                <div>
-                                  <Label for="new-category-description">Descrizione</Label>
-                                  <Textarea
-                                    id="new-category-description"
-                                    v-model="newCategoryDescription"
-                                    placeholder="Descrizione della categoria"
-                                    class="w-full mt-1 min-h-[200px]"
-                                  />
-                                </div>
-
-                                <div class="flex justify-end">
-                                  <SheetClose as-child>
-                                    <Button type="submit">Salva</Button>
-                                  </SheetClose>
-                                </div>
-                              </form>
-                            </SheetContent>
-                          </Sheet>
-                        </div>
-
-                        <InputError :message="form.errors.category_id" />
-                      </div>
-                    </div>
-
-                    <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                        <div class="sm:col-span-6">
-                            <Label for="condomini">Condominio</Label>
-
-                            <v-select 
                               multiple
-                              :options="condomini" 
-                              label="nome" 
-                              v-model="form.condomini_ids"
-                              placeholder="Condomini"
-                              @update:modelValue="form.clearErrors('condomini_ids')" 
-                              :reduce="(condomini: Building) => condomini.id"
-                            />
+                              id="anagrafiche"
+                              :options="anagraficheOptions"
+                              label="nome"
+                              v-model="form.anagrafiche"
+                              placeholder="Anagrafiche"
+                              @update:modelValue="form.clearErrors('anagrafiche')"
+                              :reduce="(anagrafica: Anagrafica) => anagrafica.id"
+                              :disabled="form.condomini_ids.length === 0"
+                          />
 
-                            <InputError :message="form.errors.condomini_ids" />
-                
-                        </div>
-                    </div>
-
-                    <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                        <div class="sm:col-span-6">
-                            <Label for="condomini">Anagrafiche</Label>
-
-                            <v-select
-                                multiple
-                                id="anagrafiche"
-                                :options="anagraficheOptions"
-                                label="nome"
-                                v-model="form.anagrafiche"
-                                placeholder="Anagrafiche"
-                                @update:modelValue="form.clearErrors('anagrafiche')"
-                                :reduce="(anagrafica: Anagrafica) => anagrafica.id"
-                                :disabled="form.condomini_ids.length === 0"
-                            />
-
-                            <InputError :message="form.errors.anagrafiche" />
-                
-                        </div>
-                    </div>
-                    
-                </div>
-            </div>
+                          <InputError :message="form.errors.anagrafiche" />
+              
+                      </div>
+                  </div>
+                  
+              </div>
+          </div>
         
         </div>
 

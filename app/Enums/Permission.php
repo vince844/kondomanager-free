@@ -12,8 +12,12 @@ namespace App\Enums;
  */
 enum Permission: string
 {
+    
     // Access
     case ACCESS_ADMIN_PANEL = 'Accesso pannello amministratore';
+
+    // Settings
+    case MANAGE_GENERAL_SETTINGS = 'Gestisci impostazioni generali';
 
     // Utenti
     case CREATE_USERS = 'Crea utenti';
@@ -104,6 +108,9 @@ enum Permission: string
         return match ($this) {
             // Access
             self::ACCESS_ADMIN_PANEL => 'Permette di dare accesso al layout amministratore',
+
+            // Settings
+            self::MANAGE_GENERAL_SETTINGS => 'Permette di gestire le impostazioni generali',
 
             // Utenti
             self::CREATE_USERS => 'Permette di creare nuovi utenti',

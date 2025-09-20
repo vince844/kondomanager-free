@@ -6,6 +6,9 @@ import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 
+const props = defineProps<{ contentClass?: string }>();
+const contentClass = props.contentClass || 'max-w-xl';
+
 const { generatePath } = usePermission();
 
 const sidebarNavItems: NavItem[] = [
@@ -34,6 +37,8 @@ const sidebarNavItems: NavItem[] = [
 
 const currentPath = window.location.pathname;
 
+
+
 </script>
 
 <template>
@@ -61,7 +66,7 @@ const currentPath = window.location.pathname;
             <Separator class="my-6 md:hidden" />
 
             <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
-                <section class="max-w-xl">
+                <section :class="contentClass">
                     <slot />
                 </section>
             </div> 

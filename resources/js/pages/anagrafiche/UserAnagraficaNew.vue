@@ -84,7 +84,7 @@ const submit = () => {
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
                     <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-                        <div class="shadow ring-1 ring-black ring-opacity-5 md:rounded-lg" >
+                        <div class="border md:rounded-lg" >
                             <form class="space-y-2 p-2" @submit.prevent="submit">
 
                                 <div class="pt-3">

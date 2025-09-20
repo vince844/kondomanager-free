@@ -75,4 +75,12 @@ class Condominio extends Model
         return $this->hasMany(Immobile::class);
     }
 
+     /**
+     * Le tabelle millesimali associate al condominio
+     */
+    public function tabelle()
+    {
+        return $this->hasMany(Tabella::class);
+    }
+
 }

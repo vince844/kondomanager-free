@@ -27,14 +27,15 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
-  { title: 'anagrafiche immobile', href: '#' },
+  { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
+  { title: 'anagrafiche', href: '#' },
 ]);
 
 </script>
 
 <template>
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco immobili" />
+    <Head title="Elenco anagrafiche immobile" />
 
     <ImmobileLayout>
 
@@ -43,7 +44,10 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       </div>
 
       <div class="container mx-auto p-0">
-        <DataTable :columns="createColumns(props.condominio, props.immobile)" :data="props.immobile.anagrafiche"/>
+        <DataTable 
+          :columns="createColumns(props.condominio, props.immobile)" 
+          :data="props.immobile.anagrafiche"
+        />
       </div>
 
     </ImmobileLayout>

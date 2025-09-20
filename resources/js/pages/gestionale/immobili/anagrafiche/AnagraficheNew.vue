@@ -32,6 +32,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
   { title: 'associa anagrafica', href: '#' },
 ]);
 
@@ -154,7 +155,6 @@ const submit = () => {
                       </div>
                     </template>
                   </v-select>
-
 
                   <InputError :message="form.errors.anagrafica_id" />
                 </div>

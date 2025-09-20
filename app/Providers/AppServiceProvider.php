@@ -6,11 +6,14 @@ use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SegnalazionePolicy;
+use App\Settings\GeneralSettings;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Gate;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Schema;
+use Spatie\LaravelSettings\Exceptions\MissingSettings;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,5 +34,16 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
+
+         if (Schema::hasTable('settings')) {
+            try {
+                $settings = app(GeneralSettings::class);
+                app()->setLocale($settings->language ?? 'it');
+            } catch (MissingSettings $e) {
+                app()->setLocale('it');
+            }
+        } else {
+            app()->setLocale('it');
+        }
     }
 }

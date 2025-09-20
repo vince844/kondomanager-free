@@ -148,13 +148,16 @@ class ScalaController extends Controller
     public function update(UpdateScalaRequest $request, Condominio $condominio, Scala $scala): RedirectResponse
     {
         try {
+
             $data = $request->validated();
             $scala->update($data);
 
             return to_route('admin.gestionale.scale.index', $condominio)->with(
                 $this->flashSuccess(__('gestionale.success_update_scala'))
             );
+
         } catch (\Throwable $e) {
+
             Log::error('Error updating scala', [
                 'scala_id'      => $scala->id,
                 'condominio_id' => $condominio->id,
@@ -165,6 +168,7 @@ class ScalaController extends Controller
             return to_route('admin.gestionale.scale.index', $condominio)->with(
                 $this->flashError(__('gestionale.error_update_scala'))
             );
+            
         }
     }
 

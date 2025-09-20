@@ -61,7 +61,7 @@ const updatePassword = () => {
     <AppLayout :breadcrumbs="breadcrumbItems">
         <Head title="Impostazioni profilo" />
 
-        <SettingsLayout>
+        <SettingsLayout contentClass="max-w-xl">
             <div class="space-y-6">
                 <HeadingSmall title="Aggiorna password" description="Assicurati di utilizzare una password lunga e casuale per rimanere sicuro" />
 

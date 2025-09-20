@@ -17,6 +17,7 @@ export interface NavItem {
     href: string;
     icon?: LucideIcon;
     isActive?: boolean;
+    external?: boolean;
     roles?: Role[];
     permissions?: Permission[];
 }

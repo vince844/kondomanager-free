@@ -26,7 +26,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
-  { title: 'dettagli immobile', href: '#' },
+  { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
 ]);
 
 const truncate = (text: string, length: number = 120) => {
@@ -62,7 +62,7 @@ const truncate = (text: string, length: number = 120) => {
           class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
         >
           <List class="w-4 h-4" />
-          <span>Elenco</span>
+          <span>Immobili</span>
         </Link>
       </div>
 
@@ -113,7 +113,7 @@ const truncate = (text: string, length: number = 120) => {
 
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Superficie:</span>
-                  <div>{{ immobile.superficie ? immobile.superficie + ' Mq.' : '-' }}</div>
+                  <div>{{ immobile.superficie ? immobile.superficie + ' m²' : '-' }}</div>
                 </div>
 
                 <div class="flex items-center gap-2">

@@ -175,9 +175,46 @@ return [
     */
 
     'custom' => [
-        'attribute-name' => [
-            'rule-name' => 'custom-message',
+        'email' => [
+            'required' => 'The field :attribute is required',
+            'unique' => 'The field :attribute is already taken',
+            'lowercase' => 'The field :attribute has to be lowercase',
+            'email' => 'The field :attribute has to be a valid email address'
         ],
+        'email_secondaria' => [
+            'required' => 'The field :attribute èis required',
+            'unique' => 'The field :attribute is already taken',
+            'lowercase' => 'The field :attribute has to be loweercase',
+            'email' => 'The field :attribute has to be a valid email address'
+        ],
+        'pec' => [
+            'required' => 'The field :attribute is required',
+            'unique' => 'The field :attribute is already taken',
+            'lowercase' => 'The field :attribute has to be lower case',
+            'email' => 'The field :attribute has to be a valid email address'
+        ],
+        'name' => [
+            'required' => 'The field :attribute is required'
+        ],
+        'password' => [
+            'required' => 'The field :attribute is required',
+            'confirmed' => "The field :attribute doesn't match"
+        ],
+        'building' => [
+            'required' => 'The field :attribute is required',
+            'unique' => 'You already have a building registered with this :attribute',
+            'codice_fiscale' => [
+                'required' => 'The field :attribute is required',
+                'unique' => 'You already have a building registered with this :attribute'
+            ]
+        ],
+        'anagrafica' => [
+            'after:today' => ':attribute has to be after today date',
+            'before:today' => ':attribute has to be before today date',
+        ],
+        'evento' => [
+            'after_or_equal:today' => 'The :attribute must be later than or equal to today'
+        ]
     ],
 
     /*
@@ -191,6 +228,79 @@ return [
     |
     */
 
-    'attributes' => [],
+    
+    'attributes' => [
+        'email' => 'email address',
+        'email_secondaria' => 'email address',
+        'pec' => 'email address',
+        'name' => 'name and surname',
+        'building' => [
+            'nome' => 'denomination',
+            'roles' => 'The field roles'
+        ],
+        'user' => [
+            'roles' => 'role'
+        ],
+        'anagrafica' => [
+            'nome' => 'The field name and surname',
+            'indirizzo' => 'The field address',
+            'scadenza_documento' => 'The field document expiry',
+            'data_nascita' => 'The field date of birth',
+        ],
+        'ruoli' => [
+            'name' => 'role name',
+            'description' => 'role description',
+        ],
+        'comunicazioni' => [
+            'subject' => 'subject',
+            'description' => 'descriprion',
+            'is_published' => 'published status',
+            'priority' => 'priority',
+            'stato' => 'status',
+            'condomini_ids' => 'buildings',
+        ],
+        'segnalazioni' => [
+            'subject' => 'ticket object',
+            'description' => 'ticket description',
+            'is_published' => 'ticket published status',
+            'priority' => 'ticket priority',
+            'stato' => 'ticket status',
+            'condominio_id' => 'building',
+        ],
+        'documenti' => [
+            'name' => 'name',
+            'description' => 'description',
+            'is_published' => 'status',
+            'condomini_ids' => 'buildings',
+            'category_id' => 'category',
+        ],
+        'categorie' => [
+            'name' => 'name',
+            'description' => 'description',
+        ],
+        'eventi' => [
+            'title' => 'title',
+            'description' => 'description',
+            'start_time' => 'start date',
+            'end_time' => 'end date',
+            'category_id' => 'category',
+            'recurrence_until' => 'recurrency end date',
+            'condomini_ids' => 'buildings',
+            'visibility' => 'visibility status',
+        ],
+        'palazzine' => [
+            'name' => 'name palazzina',
+            'description' => 'description palazzina',
+        ],
+        'scale' => [
+            'name' => 'noame scala',
+            'description' => 'description scala',
+        ],
+        'immobili' => [
+            'tipologia_id' => 'immobile type',
+        ],
+
+    ],
+
 
 ];

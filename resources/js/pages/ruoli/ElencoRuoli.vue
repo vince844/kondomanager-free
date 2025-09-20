@@ -6,10 +6,10 @@ import { columns } from '@/components/roles/columns';
 import { Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
+import Alert from "@/components/Alert.vue";
 import { type BreadcrumbItem } from '@/types';
 import type { Role } from '@/types/roles';
 import type { Flash } from '@/types/flash';
-import Alert from "@/components/Alert.vue";
 
 defineProps<{ roles: Role[] }>();
 
@@ -20,10 +20,9 @@ const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Ruoli registrati',
-        href: '/ruoli',
-    },
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'ruoli', href: '#' },
 ];
 
 </script>
