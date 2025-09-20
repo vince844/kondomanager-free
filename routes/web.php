@@ -1,8 +1,9 @@
 <?php
 
-use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Condomini\FetchCondominiController;
+use App\Http\Controllers\Frontend\WelcomeController;
 use App\Http\Controllers\Inviti\InvitoController;
 use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use App\Http\Controllers\Permissions\PermissionController;
@@ -13,12 +14,10 @@ use App\Http\Controllers\Segnalazioni\SegnalazioniStatsController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
+use App\Http\Controllers\Users\UserVerifyController;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome');
-})->name('home');
+Route::get('/', WelcomeController::class)->name('home');
 
 /*
 |--------------------------------------------------------------------------
@@ -30,6 +29,7 @@ Route::put('/utenti/{user}/suspend', [UserStatusController::class, 'suspend'])->
 Route::put('/utenti/{user}/unsuspend', [UserStatusController::class, 'unsuspend'])->middleware(['auth', 'verified'])->name('utenti.unsuspend');
 Route::post('/utenti/reinvite/{email}', [UserReinviteController::class, 'reinviteUser'])->name('utenti.reinvite');
 Route::delete('users/{user}/permissions/{permission}', RevokePermissionFromUserController::class)->middleware(['auth', 'verified'])->name('users.permissions.destroy');
+Route::put('/utenti/{user}/toggle-verification', UserVerifyController::class)->middleware(['auth', 'verified'])->name('utenti.toggle-verification');
 
 /*
 |--------------------------------------------------------------------------
@@ -45,7 +45,6 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 |--------------------------------------------------------------------------
 */
 Route::get('/permessi', [PermissionController::class, 'index'] )->middleware(['auth', 'verified']);
-
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middleware(['auth', 'verified'])->name('segnalazioni.stats');
 
 /*
@@ -53,10 +52,12 @@ Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)->middlewar
 | Condomini Routes
 |--------------------------------------------------------------------------
 */
-Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->parameters([
+Route::resource('/condomini', CondominioController::class)->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])->parameters([
     'condomini' => 'condominio'
 ]);
 Route::get('/condomini/options', [CondominioController::class, 'options'])->name('condomini.options');
+
+Route::get('/fetch-condomini', FetchCondominiController::class)->middleware(['auth', 'verified']);
 
 /*
 |--------------------------------------------------------------------------

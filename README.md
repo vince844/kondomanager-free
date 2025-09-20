@@ -46,6 +46,10 @@ password: Pa$$w0rd!
 - Gestione degli utenti
 - Gestione dei ruoli e permessi
 - Notifiche email
+- Gestionale
+  - Gestione palazzine
+  - Gestione scale
+  - Gestione immobili
 
 ## Requisiti minimi 
 
@@ -61,21 +65,14 @@ password: Pa$$w0rd!
 https://github.com/vince844/kondomanager-free.git
 ```
 
-2. Installa librerie
-
-```bash
-composer install
-npm install
-```
-
-3. Genera il file .env
+2. Genera il file .env
 
 ```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-4. Configura il database MySql nel file .env
+3. Configura il database MySql nel file .env
 
 ```bash
 DB_CONNECTION=mysql
@@ -85,14 +82,7 @@ DB_DATABASE=your_database
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
 ```
-
-Se necessario configura APP_URL specificando la porta
-```bash
-APP_URL=http://localhost:8000
-```
-
-
-5. Configura il server SMTP nel file .env
+4. Configura il server SMTP nel file .env
 
 ```bash
 MAIL_MAILER=smtp
@@ -103,6 +93,13 @@ MAIL_USERNAME=
 MAIL_PASSWORD=
 MAIL_FROM_ADDRESS=
 MAIL_FROM_NAME="${APP_NAME}"
+```
+
+5. Installa librerie
+
+```bash
+composer install
+npm install
 ```
 
 6. Esegui le migrazioni del database
@@ -126,6 +123,12 @@ php artisan serve
 
 🎉 That's it! Visita http://localhost:8000 per iniziare a lavorare con KondoManager.
 
+Se necessario configura APP_URL specificando la porta
+
+```bash
+APP_URL=http://localhost:8000
+```
+
 Per accedere al pannello di amministrazione usa le seguenti credenziali:
 
 ```bash
@@ -134,6 +137,7 @@ Password: password
 ```
 
 Ricordati di modificare l'indirizzo email e la password al primo login andando all'indirizzo /settings/profile
+
 ## Documenti utili
 
 - [Laravel Documentation](https://laravel.com/docs)
@@ -152,6 +156,7 @@ Visualizza la pagina `contributing.md` per consigli e direttive sulle contribuzi
 Ti prego di aderire al nostro `code of conduct`.
 
 ## Sostieni il progetto
+
 Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto.
 
 [Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)

@@ -1,6 +1,8 @@
 <?php
 
 return [
+    // Settings
+    'manage_general_settings'   => "You don't have sufficient permissions to manage general settings.",
     // Communications
     'create_communication'      => "You don't have sufficient permissions to create a new communication.",
     'approve_communication'     => "You don't have sufficient permissions to approve a communication",

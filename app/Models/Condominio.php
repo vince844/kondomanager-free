@@ -57,8 +57,30 @@ class Condominio extends Model
 
     public function eventi()
     {
-        /* return $this->belongsToMany(Evento::class, 'condominio_evento', 'condominio_id', 'evento_id'); */
         return $this->belongsToMany(Evento::class, 'condominio_evento');
+    }
+
+    public function palazzine()
+    {
+        return $this->hasMany(Palazzina::class);
+    }
+
+    public function scale()
+    {
+        return $this->hasMany(Scala::class);
+    }
+
+    public function immobili()
+    {
+        return $this->hasMany(Immobile::class);
+    }
+
+     /**
+     * Le tabelle millesimali associate al condominio
+     */
+    public function tabelle()
+    {
+        return $this->hasMany(Tabella::class);
     }
 
 }

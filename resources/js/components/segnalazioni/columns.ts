@@ -22,7 +22,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
 
           router.put(route(generateRoute('segnalazioni.toggle-approval'), { id: segnalazione.id }), {}, {
             preserveScroll: true,
-            only: ['stats', 'segnalazioni'],
+            only: ['stats', 'segnalazioni', 'flash'],
             onSuccess: () => {
               // Manually update the specific item
               segnalazione.is_approved = !segnalazione.is_approved;

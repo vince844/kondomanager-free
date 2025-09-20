@@ -10,6 +10,7 @@ return [
     'success_delete_communication'                => "La comunicazione è stata eliminata con successo.",
     'error_delete_communication'                  => "Si è verificato un errore durante l'eliminazione della comunicazione.",
     'success_approve_communication'               => "La comunicazione è stata approvata con successo.",
+    'success_disapprove_communication'            => "La comunicazione è stata disapprovata con successo.",
     'error_approve_communication'                 => "Si è verificato un errore durante l'approvazione della comunicazione.",
     'error_notify_new_communication'              => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica.",
     'error_notify_approved_communication'         => "La comunicazione è stata approvata, ma si è verificato un errore nell'invio della notifica."

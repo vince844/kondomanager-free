@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CheckHasAnagrafica;
 use App\Http\Middleware\CheckSuspendedUser;
+use App\Http\Middleware\CheckUserRegistration;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -24,8 +25,9 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'CheckSuspendedUser' => CheckSuspendedUser::class,
-            'CheckHasAnagrafica' => CheckHasAnagrafica::class,
+            'CheckSuspendedUser'    => CheckSuspendedUser::class,
+            'CheckHasAnagrafica'    => CheckHasAnagrafica::class,
+            'CheckUserRegistration' => CheckUserRegistration::class,
             'ensure-two-factor-challenge-session' => EnsureTwoFactorChallengeSession::class,
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,

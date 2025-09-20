@@ -3,8 +3,6 @@
 import { Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import { type BreadcrumbItem } from '@/types';
-import type { Permission } from '@/types/permissions';
 import { LoaderCircle, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,16 +11,17 @@ import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select";
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { type BreadcrumbItem } from '@/types';
+import type { Permission } from '@/types/permissions';
 
 defineProps<{ permissions: Permission[] }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Nuovo ruolo',
-        href: '/ruoli',
-    },
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'ruoli', href: '/ruoli' },
+  { title: 'crea ruolo', href: '#' },
 ];
 
 const form = useForm({

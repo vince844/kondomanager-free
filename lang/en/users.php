@@ -13,6 +13,10 @@ return [
     'success_suspend_user'               => "The new user has been suspended successfully.",
     'error_suspend_user'                 => "An error occurred while suspending the new user.",
     'success_unsuspend_user'             => "The new user has been unsuspended successfully.",
-    'error_unsuspend_user'               => "An error occurred while unsuspending the new user."
+    'error_unsuspend_user'               => "An error occurred while unsuspending the new user.",
+    'success_verify_user'                => "The user has been verified successfully.",
+    'success_revoke_verify_user'         => "User verification has been revoked.",
+    'error_verify_user'                  => "An error occurred while verifying the user.",
+
     
 ];

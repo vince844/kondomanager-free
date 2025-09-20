@@ -1,6 +1,8 @@
 <?php
 
 return [
+    // Settings
+    'manage_general_settings'   => "Non hai permessi sufficienti per gestire le impostazioni generali!",
     // Communications
     'create_communication'      => "Non hai permessi sufficienti per creare una comunicazione in bacheca!",
     'approve_communication'     => "Non hai permessi sufficienti per approvare una comunicazione in bacheca!",

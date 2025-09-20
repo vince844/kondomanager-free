@@ -39,4 +39,9 @@ class Documento extends Model
     {
         return $this->belongsToMany(Condominio::class, 'condominio_documento');
     }
+
+    public function documentable()
+    {
+        return $this->morphTo();
+    }
 }

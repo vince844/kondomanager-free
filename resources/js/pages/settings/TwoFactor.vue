@@ -68,7 +68,7 @@ const toggleRecoveryCodes = () => {
 <template>
   <AppLayout :breadcrumbs="breadcrumbs">
     <Head title="Two-Factor Authentication" />
-    <SettingsLayout>
+    <SettingsLayout contentClass="w-full">
       <div class="space-y-6">
         <HeadingSmall title="Autenticazione a due fattori" description="Gestione delle impostazioni per l'autenticazione a due fattori" />
         
@@ -86,11 +86,17 @@ const toggleRecoveryCodes = () => {
             <strong>Google Authenticator</strong>
             sul tuo telefono. Puoi scaricare l'app qui:
             <br>
-            <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline dark:text-blue-400">
+            <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-blue-600 underline dark:text-blue-400 block mt-2">
               Google Play Store (Android)
             </a>
-            <br>
-            <a href="https://apps.apple.com/app/google-authenticator/id388497605" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline dark:text-blue-400">
+
+            <a href="https://apps.apple.com/app/google-authenticator/id388497605"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-blue-600 underline dark:text-blue-400 block mt-2">
               Apple App Store (iOS)
             </a>
             <br>

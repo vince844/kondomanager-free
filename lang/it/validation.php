@@ -282,7 +282,18 @@ return [
             'recurrence_until' => 'La data di fine ricorrenza',
             'condomini_ids' => 'condomini',
             'visibility' => 'stato pubblicazione',
-        ]
+        ],
+        'palazzine' => [
+            'name' => 'nome palazzina',
+            'description' => 'descrizione palazzina',
+        ],
+        'scale' => [
+            'name' => 'nome scala',
+            'description' => 'descrizione scala',
+        ],
+        'immobili' => [
+            'tipologia_id' => 'tipologia immobile',
+        ],
 
     ],
 

@@ -6,14 +6,21 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import type { Permission } from '@/types/permissions';
+import type { BreadcrumbItem } from '@/types';
 
 defineProps<{ permissions: Permission[] }>();
+
+const breadcrumbs: BreadcrumbItem[] = [
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'permessi', href: '#' },
+];
 
 </script>
 
 <template>
     
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Elenco ruoli registrati" />
 
         <UtentiLayout>

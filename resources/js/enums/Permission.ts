@@ -1,11 +1,19 @@
 // src/enums/Permission.ts
 export enum Permission {
+  // Settings
+  MANAGE_GENERAL_SETTINGS = 'Gestisci impostazioni generali',
+  // Access
   ACCESS_ADMIN_PANEL = 'Accesso pannello amministratore',
   // Utenti
   CREATE_USERS = 'Crea utenti',
   EDIT_USERS = 'Modifica utenti',
   DELETE_USERS = 'Elimina utenti',
   VIEW_USERS = 'Visualizza utenti',
+  // Anagrafiche
+  CREATE_ANAGRAFICHE = 'Crea anagrafiche',
+  EDIT_ANAGRAFICHE = 'Modifica anagrafiche',
+  DELETE_ANAGRAFICHE = 'Elimina anagrafiche',
+  VIEW_ANAGRAFICHE = 'Visualizza anagrafiche',
   // Condomini
   CREATE_CONDOMINI = 'Crea condomini',
   EDIT_CONDOMINI = 'Modifica condomini',
@@ -66,4 +74,5 @@ export enum Permission {
   PUBLISH_EVENTS = 'Pubblica scadenze in agenda',
   APPROVE_EVENTS = 'Approva scadenze in agenda',
   DELETE_OWN_EVENTS = 'Elimina proprie scadenza in agenda',
+
 }

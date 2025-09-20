@@ -85,7 +85,7 @@ const submit = () => {
                 </Button>
             </div>
 
-            <div class="text-center text-sm text-muted-foreground">
+            <div  v-if="$page.props.can_register" class="text-center text-sm text-muted-foreground">
                 Non hai ancora un account?
                 <TextLink :href="route('register')" :tabindex="5">Registrati</TextLink>
             </div>
