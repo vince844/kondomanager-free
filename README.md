@@ -50,6 +50,7 @@ password: Pa$$w0rd!
   - Gestione palazzine
   - Gestione scale
   - Gestione immobili
+  - Tabelle millesimali
 
 ## Requisiti minimi 
 
@@ -123,7 +124,7 @@ php artisan serve
 
 🎉 That's it! Visita http://localhost:8000 per iniziare a lavorare con KondoManager.
 
-Se necessario configura APP_URL specificando la porta
+Se necessario configura APP_URL nel file .env specificando la porta
 
 ```bash
 APP_URL=http://localhost:8000
