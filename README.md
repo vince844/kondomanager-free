@@ -82,7 +82,6 @@ DB_DATABASE=your_database
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
 ```
-
 4. Configura il server SMTP nel file .env
 
 ```bash
@@ -124,6 +123,12 @@ php artisan serve
 
 🎉 That's it! Visita http://localhost:8000 per iniziare a lavorare con KondoManager.
 
+Se necessario configura APP_URL specificando la porta
+
+```bash
+APP_URL=http://localhost:8000
+```
+
 Per accedere al pannello di amministrazione usa le seguenti credenziali:
 
 ```bash
@@ -132,6 +137,7 @@ Password: password
 ```
 
 Ricordati di modificare l'indirizzo email e la password al primo login andando all'indirizzo /settings/profile
+
 ## Documenti utili
 
 - [Laravel Documentation](https://laravel.com/docs)
@@ -150,6 +156,7 @@ Visualizza la pagina `contributing.md` per consigli e direttive sulle contribuzi
 Ti prego di aderire al nostro `code of conduct`.
 
 ## Sostieni il progetto
+
 Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto.
 
 [Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
