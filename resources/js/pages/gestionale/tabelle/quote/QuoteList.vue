@@ -250,13 +250,6 @@ const submit = () => {
                             <template #selected-option="option">
                               <div v-if="option" class="flex flex-col">
                                 <span class="font-medium">{{ option.nome }}</span>
-                                <span class="text-xs text-gray-500">
-                                  Palazzina: {{ option.palazzina?.name ?? "—" }} |
-                                  Scala: {{ option.scala?.name ?? "—" }} |
-                                  Interno: {{ option.interno ?? "—" }} |
-                                  Piano: {{ option.piano ?? "—" }} |
-                                  Sup: {{ option.superficie ?? "—" }} m²
-                                </span>
                               </div>
                               <div v-else class="text-gray-400">Seleziona immobile</div>
                             </template>
@@ -329,44 +322,3 @@ const submit = () => {
   </AlertDialog>
 
 </template>
-
-<style>
-/* Custom styles for vue-select to show full information */
-.vs--wide-dropdown .vs__dropdown-menu {
-  min-width: 400px;
-  width: auto;
-  max-width: 600px;
-}
-
-.vs--wide-dropdown .vs__dropdown-menu li {
-  padding: 0;
-  line-height: 1.4;
-}
-
-.vs--wide-dropdown .vs__dropdown-option {
-  padding: 8px 12px;
-  white-space: normal;
-}
-
-.vs--wide-dropdown .vs__dropdown-option--highlight {
-  background-color: #3b82f6;
-  color: white;
-}
-
-.vs--wide-dropdown .vs__selected {
-  padding: 4px 0;
-  margin: 0;
-  line-height: 1.4;
-  white-space: normal;
-}
-
-/* Ensure the dropdown container is wide enough */
-.vs--wide-dropdown {
-  width: 100%;
-}
-
-/* Make sure the dropdown options are visible */
-.vs--wide-dropdown .vs__dropdown-menu {
-  z-index: 10000; /* Ensure it appears above other elements */
-}
-</style>

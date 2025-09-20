@@ -4,8 +4,6 @@ import { Head, useForm, Link } from '@inertiajs/vue3';
 import { watch, onMounted } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
-import type { Permission } from '@/types/permissions';
-import type { Role } from '@/types/roles';
 import { LoaderCircle, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -15,12 +13,22 @@ import vSelect from "vue-select"
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Separator } from '@/components/ui/separator';
+import type { Permission } from '@/types/permissions';
+import type { Role } from '@/types/roles';
+import { type BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   role: Role;
   permissions: Permission[];
   accessAdmin: boolean;
 }>(); 
+
+const breadcrumbs: BreadcrumbItem[] = [
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'ruoli', href: '/ruoli' },
+  { title: 'modifica ruolo', href: '#' },
+];
 
 const form = useForm({
     name:  props.role?.name,
@@ -48,7 +56,7 @@ const submit = () => {
 
 <template>
     
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Crea nuovo ruolo" />
 
         <UtentiLayout>

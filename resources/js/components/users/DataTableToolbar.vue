@@ -2,14 +2,13 @@
 
 import { ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
-import { router } from '@inertiajs/vue3'
-import type { Table } from '@tanstack/vue-table'
-import type { User } from '@/types/users'
+import { router, Link } from '@inertiajs/vue3'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Link } from '@inertiajs/vue3';
 import { Settings, UserPlus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import type { Table } from '@tanstack/vue-table'
+import type { User } from '@/types/users'
 
 const { hasPermission, generatePath } = usePermission();
 

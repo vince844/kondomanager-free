@@ -156,7 +156,6 @@ const submit = () => {
                     </template>
                   </v-select>
 
-
                   <InputError :message="form.errors.anagrafica_id" />
                 </div>
 

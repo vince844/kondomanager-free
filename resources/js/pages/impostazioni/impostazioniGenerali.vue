@@ -1,20 +1,13 @@
 <script setup lang="ts">
 
 import { computed } from 'vue';
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, useForm, usePage, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Settings } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
@@ -25,7 +18,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Impostazioni', href: '/impostazioni' },
-  { title: 'Generali', href: '/impostazioni/generali' },
+  { title: 'generali', href: '/impostazioni/generali' },
 ];
 
 const { can_register, language } = usePage().props;
@@ -58,7 +51,19 @@ const submit = () => {
 
       <form @submit.prevent="submit">
 
-        <Card class="border shadow-none p-6">
+        <Card class="border shadow-none p-4">
+
+          <div class="flex flex-col w-full sm:flex-row sm:justify-end">
+            <Link
+              as="button"
+              :href="'/impostazioni'"
+              class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+            >
+              <Settings class="w-4 h-4" />
+              <span>Impostazioni</span>
+            </Link>
+          </div>
+
           <CardContent class="p-0 mb-3">
 
             <div class="flex items-center gap-4 border rounded p-4 mt-3">

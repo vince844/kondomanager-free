@@ -18,6 +18,7 @@ class UserVerifyController extends Controller
     public function __invoke(User $user): RedirectResponse
     {
         try {
+            
             // Autorizzazione
             Gate::authorize('update', User::class);
 
@@ -26,17 +27,19 @@ class UserVerifyController extends Controller
             $user->save();
 
             $message = $user->email_verified_at
-                ? $this->flashSuccess('Utente verificato correttamente.')
-                : $this->flashWarning('Verifica utente revocata.');
+                ? $this->flashSuccess(__('users.success_verify_user'))
+                : $this->flashWarning(__('users.success_revoke_verify_user'));
 
             return back()->with($message);
 
         } catch (\Throwable $e) {
+
             Log::error('Errore durante la verifica utente ID ' . $user->id . ': ' . $e->getMessage());
 
             return back()->with(
-                $this->flashError('Errore durante la verifica dell\'utente. Riprova più tardi.')
+                $this->flashError(__('users.error_verify_user'))
             );
+
         }
     }
 

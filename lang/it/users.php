@@ -13,7 +13,11 @@ return [
     'success_suspend_user'               => "L'utente è stato sospeso con successo.",
     'error_suspend_user'                 => "Si è verificato un errore durante il tentativo di sospendere l'utente.",
     'success_unsuspend_user'             => "L'utente è stato riattivato con successo.",
-    'error_unsuspend_user'               => "Si è verificato un errore durante il tentativo di riattivare l'utente."
+    'error_unsuspend_user'               => "Si è verificato un errore durante il tentativo di riattivare l'utente.",
+    'success_verify_user'                => "L'utente è stato verificato con successo.",
+    'success_revoke_verify_user'         => "La verifica dell'utente è stata revocata.",
+    'error_verify_user'                  => "Si è verificato un errore durante la verifica dell'utente.",
+    
 
 
 ];
