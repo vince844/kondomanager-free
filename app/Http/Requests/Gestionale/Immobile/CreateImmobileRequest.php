@@ -33,7 +33,7 @@ class CreateImmobileRequest extends FormRequest
      */
     public function rules(): array
     {
-         return [
+        return [
             'nome'                => 'required|string|max:255', 
             'descrizione'         => 'required|string|max:255',
             'comune_catasto'      => 'sometimes|nullable|string|max:255',

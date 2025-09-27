@@ -20,22 +20,22 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Trash2, FilePenLine, MoreHorizontal, UserPlus } from 'lucide-vue-next'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
-import type { Immobile } from '@/types/gestionale/immobili'
+import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { Building } from '@/types/buildings'
 
-const { immobile, condominio } = defineProps<{ immobile: Immobile, condominio: Building }>()
+const { esercizio, condominio } = defineProps<{ esercizio: Esercizio, condominio: Building }>()
 
-const immobileID = ref<number | null>(null)
+const esercizioID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { generateRoute } = usePermission()
 
-function handleDelete(targetImmobile: Immobile) {
-  immobileID.value = targetImmobile.id
+function handleDelete(targetEsercizio: Esercizio) {
+  esercizioID.value = targetEsercizio.id
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -43,21 +43,21 @@ function handleDelete(targetImmobile: Immobile) {
 }
 
 function closeModal() {
-  immobileID.value = null
+  esercizioID.value = null
   isAlertOpen.value = false
   isDropdownOpen.value = false
 }
 
-function deleteImmobile() {
-  if (immobileID.value === null || isDeleting.value) return
+function deleteEsercizio() {
+  if (esercizioID.value === null || isDeleting.value) return
 
-  const id = immobileID.value
+  const id = esercizioID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.immobili.destroy'), { condominio: condominio.id, immobile: id }), {
+  router.delete(route(generateRoute('gestionale.esercizi.destroy'), { condominio: condominio.id, esercizio: id }), {
     preserveScroll: true,
     preserveState: true,
-    only: ['flash', 'immobili'],
+    only: ['flash', 'esercizi'],
     onSuccess: () => {
       closeModal()
     },
@@ -84,7 +84,7 @@ function deleteImmobile() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('gestionale.immobili.edit'), { condominio: condominio.id, immobile: immobile.id })"
+          :href="route(generateRoute('gestionale.esercizi.edit'), { condominio: condominio.id, esercizio: esercizio.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -93,19 +93,8 @@ function deleteImmobile() {
         </Link>
       </DropdownMenuItem>
 
-      <DropdownMenuItem>
-        <Link
-          :href="route(generateRoute('gestionale.immobili.anagrafiche.index'), { condominio: condominio.id, immobile: immobile.id })"
-          preserve-state
-          class="flex items-center gap-2"
-        >
-          <UserPlus class="w-4 h-4 text-xs" />
-          Anagrafiche
-        </Link>
-      </DropdownMenuItem>
-
       <DropdownMenuItem
-        @click="handleDelete(immobile)"
+        @click="handleDelete(esercizio)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
@@ -116,14 +105,14 @@ function deleteImmobile() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo immobile?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler eliminare questo esercizio?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'immobile e tutti i dati ad esso associati.
+          Questa azione non è reversibile. Eliminerà l'esercizio e tutti i dati ad esso associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteImmobile">
+        <AlertDialogAction :disabled="isDeleting" @click="deleteEsercizio">
           <span v-if="isDeleting">Eliminazione...</span>
           <span v-else>Continua</span>
         </AlertDialogAction>

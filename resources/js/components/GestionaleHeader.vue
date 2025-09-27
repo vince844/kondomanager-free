@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table } from 'lucide-vue-next';
+import { SquareLibrary, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
@@ -60,6 +60,12 @@ const mainNavItems: NavItem[] = [
         href: generatePath('gestionale/:condominio/tabelle', { condominio: condominio.value.id }),
         icon: Table,
        
+    },
+    {
+        title: 'Esercizi',
+        href: generatePath('gestionale/:condominio/esercizi', { condominio: condominio.value.id }),
+        icon: SquareLibrary,
+       
     } 
 ];
 
@@ -72,7 +78,7 @@ const rightNavItems: NavItem[] = [
     },
     {
         title: 'Documentazione',
-        href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
+        href: 'https://kondomanager.com/docs/index.html',
         icon: BookText,
         external: true,
     },

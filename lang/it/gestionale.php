@@ -37,5 +37,12 @@ return [
     'success_delete_tabella'            => "La tabella millesimale è stata eliminata con successo.",
     'error_delete_tabella'              => "Si è verificato un errore durante l'eliminazione della tabella millesimale.",
     'success_update_quote_tabella'      => "I millesimi e le quote della tabella sono stati aggiornati con successo.",
+    // Esercizi 
+    'success_create_esercizio'          => "Il nuovo esercizio è stato creato con successo.",
+    'error_create_esercizio'            => "Si è verificato un errore durante la creazione del nuovo esercizio.",
+    'success_update_esercizio'          => "L'esercizio è stato aggiornato con successo.",
+    'error_update_esercizio'            => "Si è verificato un errore durante l'aggiornamento dell'esercizio.",
+    'success_delete_esercizio'          => "L'esercizio è stato eliminato con successo.",
+    'error_delete_esercizio'            => "Si è verificato un errore durante l'eliminazione dell'esercizio.",
 
 ];

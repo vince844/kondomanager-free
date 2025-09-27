@@ -14,6 +14,7 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Schema;
 use Spatie\LaravelSettings\Exceptions\MissingSettings;
+use Illuminate\Support\Facades\DB;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -35,14 +36,22 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
 
-         if (Schema::hasTable('settings')) {
-            try {
-                $settings = app(GeneralSettings::class);
-                app()->setLocale($settings->language ?? 'it');
-            } catch (MissingSettings $e) {
+        try {
+            // Test if DB connection works
+            DB::connection()->getPdo();
+
+            if (Schema::hasTable('settings')) {
+                try {
+                    $settings = app(GeneralSettings::class);
+                    app()->setLocale($settings->language ?? 'it');
+                } catch (MissingSettings $e) {
+                    app()->setLocale('it');
+                }
+            } else {
                 app()->setLocale('it');
             }
-        } else {
+        } catch (\Throwable $e) {
+            // No DB connection yet → just use fallback locale
             app()->setLocale('it');
         }
     }

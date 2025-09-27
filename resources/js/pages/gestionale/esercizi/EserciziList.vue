@@ -3,19 +3,19 @@
 import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import DataTable from '@/components/gestionale/immobili/DataTable.vue';
-import { getColumns } from '@/components/gestionale/immobili/columns';
+import DataTable from '@/components/gestionale/esercizi/DataTable.vue';
+import { getColumns } from '@/components/gestionale/esercizi/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import type { Immobile } from '@/types/gestionale/immobili';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Building } from '@/types/buildings';
 import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
-  immobili: Immobile[];
+  esercizi: Esercizio[];
   meta: PaginationMeta;
 }>()
 
@@ -29,14 +29,14 @@ const flashMessage = computed(() => page.props.flash.message);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'immobili', href: '#' },
+  { title: 'esercizi', href: '#' },
 ]);
 
 </script>
 
 <template>
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco immobili" />
+    <Head title="Elenco esercizi" />
 
       <div class="px-4 py-6">
         <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
@@ -47,7 +47,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             </div>
 
             <div class="container mx-auto p-0">
-              <DataTable :columns="columns" :data="props.immobili" :meta="props.meta" :condominio="props.condominio"/>
+              <DataTable :columns="columns" :data="props.esercizi" :meta="props.meta" :condominio="props.condominio"/>
             </div>
 
           </section>

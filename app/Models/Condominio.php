@@ -83,4 +83,9 @@ class Condominio extends Model
         return $this->hasMany(Tabella::class);
     }
 
+     public function esercizi()
+    {
+        return $this->hasMany(Esercizio::class);
+    }
+
 }

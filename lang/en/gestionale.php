@@ -37,5 +37,12 @@ return [
     'success_delete_tabella'            => "The table has been deleted successfully.",
     'error_delete_tabella'              => "An error occurred while deleting the table.",
     'success_update_quote_tabella'      => "The new table quotes have been update successfully.",
+    // Esercizi 
+    'success_create_esercizio'          => "The new fiscal year has been created successfully.",
+    'error_create_esercizio'            => "An error occurred while creating the new fiscal year.",
+    'success_update_esercizio'          => "The fiscal year has been updated successfully.",
+    'error_update_esercizio'            => "An error occurred while updating the fiscal year.",
+    'success_delete_esercizio'          => "The fiscal year has been deleted successfully.",
+    'error_delete_esercizio'            => "An error occurred while deleting the fiscal year.",
     
 ];

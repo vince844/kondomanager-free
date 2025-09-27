@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
+use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
@@ -54,5 +55,9 @@ use Illuminate\Support\Facades\Route;
 
         Route::put('tabelle/{tabella}/quote', [TabellaQuotaController::class, 'update'])
             ->name('tabelle.quote.update');
+
+        Route::resource('esercizi', EsercizioController::class)->parameters([
+            'esercizi' => 'esercizio'
+        ]);
 
     });

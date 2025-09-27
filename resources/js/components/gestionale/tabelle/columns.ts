@@ -15,17 +15,7 @@ export function getColumns(condominio: Building): ColumnDef<Tabella>[] {
     {
       accessorKey: 'nome',
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
-      cell: ({ row }) => {
-
-        const tabella = row.original
-
-        return h('div', { class: 'flex items-center space-x-2' }, [
-          h(Link, {
-            href: route(generateRoute('gestionale.immobili.show'), { condominio: condominio.id, immobile: tabella.id }),
-            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
-          }, () => tabella.nome)
-        ]);
-      }
+      cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
 
     },
     {
