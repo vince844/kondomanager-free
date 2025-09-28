@@ -7,6 +7,7 @@ import DataTable from '@/components/gestionale/immobili/DataTable.vue';
 import { getColumns } from '@/components/gestionale/immobili/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -15,6 +16,7 @@ import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   immobili: Immobile[];
   meta: PaginationMeta;
 }>()
@@ -28,31 +30,37 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
-  { title: 'immobili', href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
+  { title: 'elenco immobili', href: '#' },
 ]);
 
 </script>
 
 <template>
+
+  <Head title="Elenco immobili" />
+
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco immobili" />
 
-      <div class="px-4 py-6">
-        <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
-          <section class="w-full">
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
 
-            <div v-if="flashMessage" class="py-3">
-                <Alert :message="flashMessage.message" :type="flashMessage.type" />
-            </div>
+    <div class="px-4 py-6">
+      <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
+        <section class="w-full">
 
-            <div class="container mx-auto p-0">
-              <DataTable :columns="columns" :data="props.immobili" :meta="props.meta" :condominio="props.condominio"/>
-            </div>
+          <div v-if="flashMessage" class="py-3">
+              <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
 
-          </section>
-        </div>
+          <div class="container mx-auto p-0">
+            <DataTable :columns="columns" :data="props.immobili" :meta="props.meta" :condominio="props.condominio"/>
+          </div>
+
+        </section>
       </div>
+    </div>
 
   </GestionaleLayout>
 </template>

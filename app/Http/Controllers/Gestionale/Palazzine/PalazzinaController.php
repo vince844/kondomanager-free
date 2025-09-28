@@ -10,6 +10,7 @@ use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Models\Condominio;
 use App\Models\Palazzina;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +25,7 @@ use Illuminate\Support\Facades\Log;
 
 class PalazzinaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini;
 
     /**
      * Display a listing of the palazzine with optional name filter.
@@ -44,9 +45,12 @@ class PalazzinaController extends Controller
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
+        
+        $condomini = $this->getCondomini();
 
         return Inertia::render('gestionale/palazzine/PalazzineList', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($palazzine)->resolve(), 
             'meta' => [
                 'current_page' => $palazzine->currentPage(),
@@ -66,8 +70,11 @@ class PalazzinaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        $condomini = $this->getCondomini();
+
         return Inertia::render('gestionale/palazzine/PalazzineNew', [
-            'condominio' => $condominio
+            'condominio' => $condominio,
+            'condomini'  => $condomini,
         ]); 
     }
 

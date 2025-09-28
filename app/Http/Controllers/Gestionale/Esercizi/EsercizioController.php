@@ -10,7 +10,7 @@ use App\Http\Resources\Gestionale\Esercizi\EsercizioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Traits\HandleFlashMessages;
-use Illuminate\Http\Request;
+use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 
 class EsercizioController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini;
 
     /**
      * Display a listing of the resource.
@@ -33,9 +33,12 @@ class EsercizioController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+        
+        $condomini = $this->getCondomini();
             
         return Inertia::render('gestionale/esercizi/EserciziList', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'esercizi'   => EsercizioResource::collection($esercizi)->resolve(),
             'meta'       => [
                 'current_page' => $esercizi->currentPage(),
@@ -52,8 +55,11 @@ class EsercizioController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        $condomini = $this->getCondomini();
+
         return Inertia::render('gestionale/esercizi/EserciziNew', [
             'condominio' => $condominio,
+             'condomini' => $condomini,
         ]);
     }
 

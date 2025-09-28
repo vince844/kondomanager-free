@@ -15,6 +15,7 @@ use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\TipologiaImmobile;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +37,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ImmobileController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini;
 
     /**
      * Display a paginated listing of immobili for a specific condominio.
@@ -56,10 +57,12 @@ class ImmobileController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+        
+        $condomini = $this->getCondomini();
             
-
         return Inertia::render('gestionale/immobili/ImmobiliList', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'immobili'   => ImmobileResource::collection($immobili)->resolve(),
             'meta'       => [
                 'current_page' => $immobili->currentPage(),
@@ -81,8 +84,11 @@ class ImmobileController extends Controller
     {
         $condominio->load(['palazzine', 'scale']);
 
+        $condomini = $this->getCondomini();
+
         return Inertia::render('gestionale/immobili/ImmobiliNew', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
             'tipologie'  => TipologiaImmobile::all(),

@@ -5,6 +5,7 @@ import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -16,13 +17,14 @@ import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
   { title: 'crea palazzina', href: '#' },
 ]);
 
@@ -48,6 +50,10 @@ const submit = () => {
     <Head title="Crea nuova palazzina" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
+
+      <template #breadcrumb-condominio>
+        <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+      </template>
 
       <StrutturaLayout>
 

@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -20,6 +21,7 @@ import type { TipologiaImmobile } from '@/types/gestionale/tipologie-immobili';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   palazzine: Palazzina[];
   scale: Scala[];
   tipologie: TipologiaImmobile[]
@@ -29,7 +31,7 @@ const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
   { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: 'crea immobile', href: '#' },
 ]);
@@ -51,7 +53,6 @@ const form = useForm({
   palazzina_id: '',
   scala_id: '',
   tipologia_id: '',
-
 });
 
 const submit = () => {
@@ -70,6 +71,10 @@ const submit = () => {
     <Head title="Crea nuovo immobile" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
+
+       <template #breadcrumb-condominio>
+        <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+      </template>
 
       <div class="px-4 py-6">
         <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">

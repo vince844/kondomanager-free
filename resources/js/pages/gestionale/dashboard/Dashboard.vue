@@ -5,18 +5,20 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
 }>()
 
 const { generatePath } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-    {title: props.condominio.nome, href: '#' }
+    { title: props.condominio.nome, component: "condominio-dropdown" } as any,
 ]);
 
 </script>
@@ -25,6 +27,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <Head title="Dashboard gestionale" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
+        <template #breadcrumb-condominio>
+            <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+        </template>
 
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
 

@@ -3,42 +3,25 @@
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { computed } from 'vue';
-import { Head, usePage } from '@inertiajs/vue3';
-import Heading from '@/components/Heading.vue';
+import { Head } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
-import TreeCondominio from '@/components/TreeCondominio.vue';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
-import type { Palazzina } from '@/types/gestionale/palazzine';
-import Alert from '@/components/Alert.vue';
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
+import type { Building } from "@/types/buildings";
 
-// Types
-interface Condominio {
-  id: number;
-  nome: string;
-  palazzine?: Palazzina[];
-}
-
-// Get Inertia page props
-const page = usePage<{
-  condominio: Condominio;
-  palazzine: Palazzina[];
-  meta: any;
-  flash?: { message?: string; type?: string };
+const props = defineProps<{
+  condominio: Building;
+  condomini: Building[];
 }>();
 
 const { generatePath } = usePermission();
 
 // Condominio data
-const condominio = computed<Condominio>(() => page.props.condominio);
-
-// Flash messages
-const flashMessage = computed(() => page.props.flash?.message);
+const condominio = computed<Building>(() => props.condominio);
 
 // Breadcrumbs
 const breadcrumbs = computed(() => [
   { title: 'Gestionale', href:generatePath('gestionale/:condominio', { condominio: condominio.value.id }) },
-  { title: condominio.value?.nome, href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
   { title: 'struttura', href: '#' },
 ]);
 </script>
@@ -48,6 +31,10 @@ const breadcrumbs = computed(() => [
   <Head title="Dashboard gestionale" />
 
   <GestionaleLayout :breadcrumbs="breadcrumbs">
+
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
 
     <StrutturaLayout>
         pagina struttura

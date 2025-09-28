@@ -8,15 +8,16 @@ import DataTable from '@/components/gestionale/palazzine/DataTable.vue';
 import { getColumns } from '@/components/gestionale/palazzine/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Building } from '@/types/buildings';
 import type { PaginationMeta } from '@/types/pagination';
 
-
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   palazzine: Palazzina[];
   meta: PaginationMeta;
 }>()
@@ -30,15 +31,21 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
-  { title: 'palazzine', href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
+  { title: 'elenco palazzine', href: '#' },
 ]);
 
 </script>
 
 <template>
+
+  <Head title="Elenco palazzine" />
+
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco palazzine" />
+
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
 
     <StrutturaLayout>
 

@@ -12,6 +12,7 @@ use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
 use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Log;
 
 class TabellaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini;
 
     /**
      * Display a listing of the resource.
@@ -36,10 +37,12 @@ class TabellaController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate(config('pagination.default_per_page'));
-            
+        
+        $condomini = $this->getCondomini();
 
         return Inertia::render('gestionale/tabelle/TabelleList', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
             'meta'       => [
                 'current_page' => $tabelle->currentPage(),
@@ -58,8 +61,11 @@ class TabellaController extends Controller
     {
         $condominio->load(['palazzine', 'scale']);
 
+        $condomini = $this->getCondomini();
+
         return Inertia::render('gestionale/tabelle/TabelleNew', [
             'condominio' => $condominio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
         ]);
