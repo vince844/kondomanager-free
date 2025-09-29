@@ -24,7 +24,7 @@ class GenerateQrCodeAndSecretKey
         $google2fa = new Google2FA();
         $google2fa->setOneTimePasswordLength(6);
         
-        // Generate a standard 16-character secret key
+        // Generate a standard 32-character secret key
         $secret_key = $google2fa->generateSecretKey();
         
         // Set company name from config

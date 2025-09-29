@@ -22,10 +22,14 @@ const condominio = computed<Building>(() => props.condominio);
 const breadcrumbs = computed(() => [
   { title: 'Gestionale', href:generatePath('gestionale/:condominio', { condominio: condominio.value.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'struttura', href: '#' },
+  { title: 'dettagli condominio', href: '#' },
 ]);
-</script>
 
+const truncate = (text: string, length: number = 120) => {
+  return text.length > length ? `${text.slice(0, length)}...` : text;
+};
+
+</script>
 
 <template>
   <Head title="Dashboard gestionale" />
@@ -37,7 +41,98 @@ const breadcrumbs = computed(() => [
     </template>
 
     <StrutturaLayout>
-        pagina struttura
+          
+      <div class="container mx-auto p-0">
+        <div class="bg-card mb-6 grid grid-cols-1 md:grid-cols-2 gap-6 rounded-lg border p-6 text-sm mt-4">
+
+          <!-- Left block -->
+          <div class="space-y-6 pr-6 border-r">
+            <div class="border-b pb-2 mb-8">
+              <h3 class="text-lg font-bold capitalize">{{condominio.nome}}</h3>
+              <p class="text-muted-foreground text-sm ">
+                Di seguito i dettagli registrati per il condominio {{ condominio.nome }}
+              </p> 
+            </div>
+    
+            <div class="grid grid-cols-1 md:grid-cols-1 gap-12">
+              <!-- Column 1 -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-36">Indirizzo:</span>
+                  <div class="capitalize">{{ condominio.indirizzo }}</div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-36">Codice fiscale:</span>
+                  <div>{{ condominio.codice_fiscale ?? '-' }}</div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-36">Codice identificativo:</span>
+                  <div>{{ condominio.codice_identificativo ?? '-' }}</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Right block -->
+          <div class="space-y-6 ">
+
+            <div class="border-b pb-2 mb-8">
+              <h3 class="text-lg font-bold">Dati catastali</h3>
+              <p class="text-muted-foreground text-sm ">
+                Di seguito i dati catastali registrati per il condominio {{ condominio.nome }}
+              </p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Column 3 -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-30">Comune catasto:</span>
+                  <div>{{ condominio.comune_catasto ?? '-' }}</div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-30">Codice catasto:</span>
+                  <div>{{ condominio.codice_catasto ?? '-'}}</div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-30">Sezione catasto:</span>
+                  <div>{{ condominio.sezione_catasto ?? '-' }}</div>
+                </div>
+              </div>
+
+              <!-- Column 4 -->
+              <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-24">Foglio:</span>
+                  <div>{{ condominio.foglio_catasto ?? '-' }}</div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground font-semibold w-24">Particella:</span>
+                  <div>{{ condominio.particella_catasto ?? '-' }}</div>
+                </div>
+                
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="bg-card mb-2 rounded-lg border p-6 text-sm">
+        <div class="border-b pb-2 mb-4">
+          <h3 class="text-lg font-bold">Note registrate</h3>
+        </div>
+
+        <p class="text-sm text-gray-700">
+          {{ condominio.note || 'Nessuna nota inserita per questo condominio.' }}
+        </p>
+      </div>
 
     </StrutturaLayout>
    

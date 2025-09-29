@@ -14,7 +14,7 @@
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "pragmarx/google2fa": "^8.0",
+        "pragmarx/google2fa": "^9.0",
         "simshaun/recurr": "^5.0",
         "spatie/laravel-permission": "^6.15",
         "spatie/laravel-settings": "^3.4",

@@ -91,8 +91,8 @@ const goToCreateCondominio = () => {
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <Popover v-model:open="open">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <Popover v-model:open="open" class="flex-1">
       <PopoverTrigger as-child>
         <Button
           variant="outline"
@@ -100,7 +100,8 @@ const goToCreateCondominio = () => {
           aria-expanded="open"
           aria-label="Select Condominio"
           :class="cn(
-            'w-[300px] justify-between text-sm py-1.5 px-3',
+            // full width on mobile, fixed on md+
+            'w-full sm:w-[300px] justify-between text-sm py-2 px-3',
             showError ? 'border-red-500 ring-1 ring-red-500' : ''
           )"
         >
@@ -108,7 +109,7 @@ const goToCreateCondominio = () => {
           <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-[300px] p-0">
+      <PopoverContent class="w-full sm:w-[300px] p-0">
         <Command>
           <CommandInput placeholder="Cerca condominio..." />
           <CommandEmpty>Nessun condominio trovato.</CommandEmpty>
@@ -146,17 +147,15 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CircleX class="mr-2 h-5 w-5 text-red-600" />
-               Reset selezione
+                Reset selezione
               </CommandItem>
-
-
             </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
 
-    <Button  class="text-sm py-1.5 px-4" @click="goToGestionale">
+    <Button class="w-full sm:w-auto text-sm py-2 px-4" @click="goToGestionale">
       Gestione
     </Button>
   </div>
