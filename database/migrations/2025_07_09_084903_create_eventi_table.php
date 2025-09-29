@@ -17,8 +17,8 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
             $table->text('note')->nullable();
-            $table->timestamp('start_time');
-            $table->timestamp('end_time');
+            $table->dateTime('start_time');
+            $table->dateTime('end_time');
             $table->string('timezone')->default('UTC');
             $table->foreignId('category_id')->nullable()->constrained('categorie_evento')->nullOnDelete();
             $table->foreignId('recurrence_id')->nullable()->constrained('ricorrenze_eventi')->nullOnDelete();
