@@ -25,10 +25,10 @@ class GenerateQrCodeAndSecretKey
         $google2fa->setOneTimePasswordLength(6);
         
         // Generate a standard 16-character secret key
-        $secret_key = $google2fa->generateSecretKey(16);
+        $secret_key = $google2fa->generateSecretKey();
         
         // Set company name from config
-        $this->companyName = config('app.name', 'Laravel');
+        $this->companyName = config('app.name', 'Kondomanager');
         
         // Generate the QR code URL
         $g2faUrl = $google2fa->getQRCodeUrl(

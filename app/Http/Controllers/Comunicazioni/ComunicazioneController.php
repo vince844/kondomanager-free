@@ -242,12 +242,8 @@ class ComunicazioneController extends Controller
 
             $comunicazione->condomini()->sync($validated['condomini_ids'] ?? []);
 
-            if (!empty($validated['anagrafiche'])) {
-
-                $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
-        
-            }
-
+            $comunicazione->anagrafiche()->sync($validated['anagrafiche'] ?? []);
+    
             DB::commit();
 
             return to_route('admin.comunicazioni.index')->with(

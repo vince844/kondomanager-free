@@ -28,7 +28,7 @@ const props = defineProps<{
   anagrafiche: Anagrafica[];
 }>();  
 
-const { generateRoute } = usePermission();
+const { generateRoute,generatePath } = usePermission();
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
 
@@ -65,7 +65,7 @@ watch(
   async (newCondominiIds) => {
     if (newCondominiIds.length > 0) {
       try {
-        const response = await axios.get('/fetch-anagrafiche', {
+        const response = await axios.get(generatePath('fetch-anagrafiche'), {
           params: { condomini_ids: newCondominiIds }
         });
 

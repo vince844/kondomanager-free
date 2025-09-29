@@ -1,3 +1,4 @@
+import { Component } from 'vue';
 
 export interface Esercizio {
     id: number
@@ -7,4 +8,11 @@ export interface Esercizio {
     data_inizio: string,
     data_fine: string | null,
     stato: 'aperto' | 'chiuso';         
+}
+
+export interface StatusType {
+  value: string;
+  label: string;
+  icon: Component;
+  colorClass: string;
 }
