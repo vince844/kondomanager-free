@@ -2,23 +2,24 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class Esercizio extends Model
+class Gestione extends Model
 {
     use HasFactory;
 
-    protected $table = 'esercizi';
+    protected $table = 'gestioni';
 
     protected $fillable = [
         'condominio_id',
         'nome',
         'descrizione',
+        'tipo',
+        'attiva',
         'data_inizio',
         'data_fine',
-        'stato',
-        'note', 
+        'note',
     ];
 
     public function condominio()
@@ -26,9 +27,9 @@ class Esercizio extends Model
         return $this->belongsTo(Condominio::class);
     }
 
-    public function gestioni()
+    public function esercizi()
     {
-        return $this->belongsToMany(Gestione::class, 'esercizio_gestione')
+        return $this->belongsToMany(Esercizio::class, 'esercizio_gestione')
                     ->withPivot(['attiva', 'data_inizio', 'data_fine'])
                     ->withTimestamps();
     }
