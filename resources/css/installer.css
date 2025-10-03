@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+:root {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, Open Sans, Helvetica Neue, sans-serif
+}
+
+* {
+    @apply border-gray-200;
+}
+
+body {
+    @apply text-gray-700;
+}
+
+label {
+    @apply block mb-1 text-sm text-gray-500
+}
+
+input[type=text],
+input[type=email],
+input[type=password] {
+    @apply w-full rounded-lg px-3 py-1.5 outline-gray-300 border-1 disabled:bg-gray-200 disabled:text-gray-400;
+}
+
+.group-header {
+    @apply border-b w-full pb-1 text-gray-400;
+}
+
+.btn-primary {
+    @apply min-w-32 cursor-pointer bg-gray-800 text-white font-semibold text-center px-3 py-1.5 rounded-lg active:scale-95 disabled:pointer-events-none disabled:bg-gray-300 disabled:text-gray-400 transition-all duration-200;
+}
+
+.error {
+    @apply text-sm text-red-500;
+}
+
+.hint {
+    @apply text-sm text-gray-400;
+}
+
+.link {
+    @apply cursor-pointer text-sm text-blue-500 underline-offset-2 hover:text-blue-600 hover:underline transition-all duration-200;
+}
