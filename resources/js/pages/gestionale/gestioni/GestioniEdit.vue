@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -16,12 +17,13 @@ import vSelect from "vue-select";
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import type { Building } from '@/types/buildings';
-import type { Esercizio } from '@/types/gestionale/esercizi';
+import type { Gestione } from '@/types/gestionale/gestioni';
 import type { BreadcrumbItem } from '@/types';
+import type { DropdownType } from '@/types/dropdown';
 
 const props = defineProps<{
   condominio: Building;
-  esercizio: Esercizio
+  gestione: Gestione;
 }>()
 
 const { generatePath, generateRoute } = usePermission();
@@ -30,34 +32,29 @@ const { toBackend } = useDateConverter();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'esercizi', href: generatePath('gestionale/:condominio/esercizi', { condominio: props.condominio.id }) },
-  { title: props.esercizio.nome, href: '#' },
-  { title: 'modifica esercizio', href: '#' },
+  { title: 'gestioni', href: generatePath('gestionale/:condominio/gestioni', { condominio: props.condominio.id }) },
+  { title: props.gestione.nome, href: '#' },
+  { title: 'modifica gestione', href: '#' },
 ]);
 
-type DocumentType = {
-  label: string;
-  id: string;
-};
-
-const stati = [
+const tipologie = [
   {
-      label: 'Aperto',
-      id: 'aperto',
+      label: 'Ordinaria',
+      id: 'ordinaria',
   },
   {
-      label: "Chiuso",
-      id: 'chiuso',
+      label: "Straordinaria",
+      id: 'straordinaria',
   }
 ];
 
 const form = useForm({
-  nome: props.esercizio.nome,
-  descrizione: props.esercizio.descrizione,
-  note: props.esercizio.note,
-  data_inizio: props.esercizio.data_inizio,
-  data_fine: props.esercizio.data_fine,
-  stato: props.esercizio.stato,
+  nome: props.gestione.nome,
+  descrizione: props.gestione.descrizione,
+  note: props.gestione.note,
+  data_inizio: props.gestione.data_inizio,
+  data_fine: props.gestione.data_fine,
+  tipo: props.gestione.tipo,
 });
 
 const submit = () => {
@@ -65,7 +62,7 @@ const submit = () => {
     form.data_inizio = toBackend(form.data_inizio);
     form.data_fine   = toBackend(form.data_fine);
 
-    form.put(route(...generateRoute('gestionale.esercizi.update', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
+    form.put(route(...generateRoute('gestionale.gestioni.update', { condominio: props.condominio.id, gestione: props.gestione.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -77,7 +74,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Modifica esercizio" />
+    <Head title="Modifica gestione" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 
@@ -98,11 +95,11 @@ const submit = () => {
 
                         <Link
                             as="button"
-                            :href="generatePath('gestionale/:condominio/esercizi', { condominio: props.condominio.id })"
+                            :href="generatePath('gestionale/:condominio/gestioni', { condominio: props.condominio.id })"
                             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                         >
                             <List class="w-4 h-4" />
-                            <span>Esercizi</span>
+                            <span>Gestioni</span>
                         </Link>
                         </div>
 
@@ -145,17 +142,17 @@ const submit = () => {
                         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
             
                             <div class="sm:col-span-2">
-                            <Label for="tipologia">Stato</Label>
+                            <Label for="tipologia">Tipologia</Label>
                             <v-select 
-                                :options="stati" 
+                                :options="tipologie" 
                                 label="label" 
                                 class="block w-full"
-                                v-model="form.stato"
-                                placeholder="Stato dell'esercizio"
-                                @update:modelValue="form.clearErrors('stato')" 
-                                :reduce="(d: DocumentType) => d.id"
+                                v-model="form.tipo"
+                                placeholder="Tipologia gestione"
+                                @update:modelValue="form.clearErrors('tipo')" 
+                                :reduce="(d: DropdownType) => d.id"
                             />
-                            <InputError :message="form.errors.stato" />
+                            <InputError :message="form.errors.tipo" />
                             </div>
 
                             <div class="sm:col-span-2">
@@ -166,8 +163,8 @@ const submit = () => {
                                     format="dd/MM/yyyy"
                                     locale="it"
                                     :enable-time-picker="false"
-                                    @update:modelValue="form.clearErrors('data_inizio')" 
                                     auto-apply
+                                    @update:modelValue="form.clearErrors('data_inizio')" 
                                     placeholder="Data inizio"
                                 />
                                 <InputError :message="form.errors.data_inizio" />
@@ -181,8 +178,8 @@ const submit = () => {
                                     format="dd/MM/yyyy"
                                     locale="it"
                                     :enable-time-picker="false"
-                                    @update:modelValue="form.clearErrors('data_fine')"
                                     auto-apply
+                                    @update:modelValue="form.clearErrors('data_fine')"
                                     placeholder="Data fine"
                                 />
                                 <InputError :message="form.errors.data_fine" />

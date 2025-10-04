@@ -4,6 +4,7 @@ namespace App\Http\Resources\Condominio;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class CondominioResource extends JsonResource
 {
@@ -16,7 +17,7 @@ class CondominioResource extends JsonResource
     {
         return [
             'id'                    => $this->id,
-            'nome'                  => $this->nome,
+            'nome'                  => Str::ucfirst($this->nome),
             'indirizzo'             => $this->indirizzo,
             'email'                 => $this->email,
             'note'                  => $this->note,

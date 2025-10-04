@@ -3,24 +3,12 @@
 import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
-import { ChevronDown, CirclePlus, CircleX } from 'lucide-vue-next'
+import { ChevronDown, CirclePlus, CircleX, Loader2 } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePermission } from "@/composables/permissions";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator
-} from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Building } from '@/types/buildings'
 
 // State
@@ -28,18 +16,19 @@ const condomini = ref<Building[]>([])
 const selectedCondominio = ref<Building | null>(null)
 const open = ref(false)
 const condominiLoaded = ref(false)
-const showError = ref(false)  // <-- error flag to highlight select
+const showError = ref(false) 
+const loading = ref(false)
 
 const { generateRoute } = usePermission()
 
 // Fetch condomini
 const fetchCondomini = async () => {
+  loading.value = true
   try {
     const response = await axios.get('/fetch-condomini')
     condomini.value = response.data
     condominiLoaded.value = true
 
-    // Restore selected condominio from localStorage
     const storedId = localStorage.getItem('selectedCondominioId')
     if (storedId) {
       const found = response.data.find((c: Building) => c.id == storedId)
@@ -47,6 +36,8 @@ const fetchCondomini = async () => {
     }
   } catch (error) {
     console.error('Errore nel recupero dei condomini:', error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -110,9 +101,14 @@ const goToCreateCondominio = () => {
         </Button>
       </PopoverTrigger>
       <PopoverContent class="w-full sm:w-[300px] p-0">
-        <Command>
+        <div v-if="loading" class="flex items-center justify-center py-6">
+          <Loader2 class="h-5 w-5 animate-spin text-gray-500" />
+          <span class="ml-2 text-sm text-gray-500">Caricamento...</span>
+        </div>
+        <Command v-else>
           <CommandInput placeholder="Cerca condominio..." />
           <CommandEmpty>Nessun condominio trovato.</CommandEmpty>
+
           <CommandList>
             <CommandGroup>
               <CommandItem
@@ -125,7 +121,9 @@ const goToCreateCondominio = () => {
               </CommandItem>
             </CommandGroup>
           </CommandList>
+
           <CommandSeparator />
+
           <CommandList>
             <CommandGroup>
               <CommandItem
@@ -154,7 +152,6 @@ const goToCreateCondominio = () => {
         </Command>
       </PopoverContent>
     </Popover>
-
     <Button class="w-full sm:w-auto text-sm py-2 px-4" @click="goToGestionale">
       Gestione
     </Button>

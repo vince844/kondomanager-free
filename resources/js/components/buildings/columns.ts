@@ -23,7 +23,7 @@ export const columns: ColumnDef<Building>[] = [
         label ? h(Badge, { variant: 'outline', class: 'rounded-md' }, () => label) : null,
         h(Link, {
           href: route(generateRoute('gestionale.index'), { condominio: condominio.id }),
-          class: 'capitalize font-bold ',
+          class: 'font-bold ',
         }, () => condominio.nome)
       ]);
     }

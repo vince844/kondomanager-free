@@ -1,9 +1,9 @@
 // columns.ts
 import { h } from 'vue'
-import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 import DropdownAction from '@/components/gestionale/tabelle/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/tabelle/DataTableColumnHeader.vue'
+import { typeConstants } from '@/lib/gestionale/tabelle/constants';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Tabella } from '@/types/gestionale/tabelle'
 import type { Building } from '@/types/buildings'
@@ -15,13 +15,7 @@ export function getColumns(condominio: Building): ColumnDef<Tabella>[] {
     {
       accessorKey: 'nome',
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
-      cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
-
-    },
-    {
-      accessorKey: 'tipo',
-      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Tipologia' }),
-      cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('tipo')),
+      cell: ({ row }) => h('div', { class: 'font-bold' }, row.getValue('nome')),
 
     },
     {
@@ -53,6 +47,22 @@ export function getColumns(condominio: Building): ColumnDef<Tabella>[] {
         ])
       }
         
+    },
+    {
+      accessorKey: 'tipo',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Tipologia' }),
+      cell: ({ row }) => {
+  
+        const value = row.getValue('tipo');
+        const stato = typeConstants.find(p => p.value === value);
+    
+        if (!stato) return h('span', '–');
+    
+        return h('div', { class: 'flex items-center gap-2' }, [
+          h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
+          h('span', stato.label)
+        ]);
+      }
     },
     {
       id: 'actions',

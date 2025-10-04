@@ -4,6 +4,7 @@ namespace App\Http\Resources\Gestionale\Gestioni;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class GestioneResource extends JsonResource
 {
@@ -14,11 +15,13 @@ class GestioneResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+         
          return [
             'id'                => $this->id,
-            'nome'              => $this->nome,
+            'nome'              => Str::ucfirst($this->nome),
             'descrizione'       => $this->descrizione,
             'note'              => $this->note,
+            'tipo'              => $this->tipo,
             'data_inizio'       => $this->data_inizio,
             'data_fine'         => $this->data_fine,
         ];

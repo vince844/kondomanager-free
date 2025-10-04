@@ -72,7 +72,7 @@ const submit = () => {
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 
-       <template #breadcrumb-condominio>
+      <template #breadcrumb-condominio>
         <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
       </template>
 
@@ -96,7 +96,7 @@ const submit = () => {
                   class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
                   <List class="w-4 h-4" />
-                  <span>Elenco</span>
+                  <span>Immobili</span>
                 </Link>
               </div>
 
@@ -145,7 +145,7 @@ const submit = () => {
                         label="nome" 
                         class="mt-1 block w-full"
                         v-model="form.tipologia_id"
-                        placeholder="Associa tipologia immobile"
+                        placeholder="Tipologia immobile"
                         @update:modelValue="form.clearErrors('tipologia_id')" 
                         :reduce="(tipologia: TipologiaImmobile) => tipologia.id"
                     />

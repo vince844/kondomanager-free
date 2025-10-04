@@ -21,6 +21,11 @@ class Esercizio extends Model
         'note', 
     ];
 
+    protected $casts = [
+        'data_inizio' => 'date',
+        'data_fine'   => 'date',
+    ];
+
     public function condominio()
     {
         return $this->belongsTo(Condominio::class);

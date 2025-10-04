@@ -6,8 +6,8 @@ import type { Building } from "@/types/buildings";
  * Composable per cambiare il condominio mantenendo la stessa pagina
  */
 export function useCondominioDropdown() {
+
   const page = usePage<{ condominio: Building }>(); 
-  const { generatePath } = usePermission();
 
   const selectCondominio = (id: string | number) => {
     // Prendi la URL corrente come array

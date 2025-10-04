@@ -1,3 +1,5 @@
+import { Component } from 'vue';
+
 export interface Gestione {
     id: number
     nome: string
@@ -6,4 +8,11 @@ export interface Gestione {
     data_inizio: string,
     data_fine: string,
     tipo: 'ordinaria' | 'straordinaria';         
+}
+
+export interface StatusType {
+  value: string;
+  label: string;
+  icon: Component;
+  colorClass: string;
 }

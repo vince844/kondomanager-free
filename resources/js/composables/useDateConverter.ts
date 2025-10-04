@@ -1,5 +1,5 @@
 // composables/useDateConverter.ts
-import { parse, format, isValid } from 'date-fns';
+import { parse, parseISO, format, isValid } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 export function useDateConverter() {
@@ -38,32 +38,22 @@ export function useDateConverter() {
   const toItalian = (input: string | Date | null | undefined): string => {
     if (!input) return '';
 
+    // Convert input to Date
     let date: Date;
-    try {
-      if (input instanceof Date) {
-        date = input;
-      } else if (typeof input === 'string') {
-        // Try parsing as ISO format first (from backend)
-        date = new Date(input);
-        
-        // If that fails, try Italian format
-        if (!isValid(date)) {
-          date = parse(input, 'dd/MM/yyyy', new Date(), { locale: it });
-        }
-      } else {
-        throw new Error('Invalid date input type');
-      }
-
+    if (input instanceof Date) {
+      date = input;
+    } else if (typeof input === 'string') {
+      // Try ISO first
+      date = parseISO(input);
+      // If invalid, try Italian format
       if (!isValid(date)) {
-        console.warn('Invalid date value:', input);
-        return '';
+        date = parse(input, 'dd/MM/yyyy', new Date(), { locale: it });
       }
-
-      return format(date, 'dd/MM/yyyy', { locale: it });
-    } catch (err) {
-      console.error('Date conversion failed:', err);
+    } else {
       return '';
     }
+
+    return isValid(date) ? format(date, 'dd/MM/yyyy', { locale: it }) : '';
   };
 
   // Helper to check if a value is empty

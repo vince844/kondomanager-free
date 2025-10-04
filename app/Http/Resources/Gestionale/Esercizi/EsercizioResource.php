@@ -4,6 +4,7 @@ namespace App\Http\Resources\Gestionale\Esercizi;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class EsercizioResource extends JsonResource
 {
@@ -14,9 +15,10 @@ class EsercizioResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+
         return [
             'id'                => $this->id,
-            'nome'              => $this->nome,
+            'nome'              => Str::ucfirst($this->nome),
             'descrizione'       => $this->descrizione,
             'note'              => $this->note,
             'data_inizio'       => $this->data_inizio,
