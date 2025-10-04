@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Gestioni;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Gestionale\Gestione\CreateGestioneRequest;
 use App\Http\Requests\Gestionale\Gestione\GestioneIndexRequest;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use App\Models\Condominio;
@@ -12,6 +13,10 @@ use App\Traits\HasCondomini;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redirect;
 
 class GestioneController extends Controller
 {
@@ -55,17 +60,64 @@ class GestioneController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create()
+    public function create(Condominio $condominio): Response
     {
-        //
+        $condomini = $this->getCondomini();
+
+        return Inertia::render('gestionale/gestioni/GestioniNew', [
+            'condominio' => $condominio,
+            'condomini'  => $condomini,
+        ]);
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(CreateGestioneRequest $request, Condominio $condominio): RedirectResponse
     {
-        //
+        try {
+
+            DB::beginTransaction();
+            
+            $data = $request->validated();
+
+            // Recupero esercizio aperto
+            $esercizio = $condominio->esercizi()
+                ->where('stato', 'aperto')
+                ->firstOrFail();
+
+            // Crea la gestione (durata complessiva)
+            $gestione = Gestione::create($data);
+
+            // Calcolo intervallo di validità della gestione nell’esercizio corrente
+            $pivotInizio = max($gestione->data_inizio, $esercizio->data_inizio);
+            $pivotFine   = min($gestione->data_fine, $esercizio->data_fine);
+
+            // Associa la gestione all’esercizio aperto
+            $esercizio->gestioni()->attach($gestione->id, [
+                'attiva'      => true,
+                'data_inizio' => $pivotInizio,
+                'data_fine'   => $pivotFine,
+            ]);
+
+            DB::commit();
+
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            Log::error('Error creating gestione', [
+                'condominio_id' => $condominio->id,
+                'exception'     => $e,
+            ]);
+
+            return to_route('admin.gestionale.gestioni.index', $condominio)
+                ->with($this->flashError(__('gestionale.error_create_gestione')));
+        }
+
+        return to_route('admin.gestionale.gestioni.index', $condominio)
+            ->with($this->flashSuccess(__('gestionale.success_create_gestione')));
+        
     }
 
     /**
@@ -95,8 +147,26 @@ class GestioneController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Gestione $gestione)
+    public function destroy(Condominio $condominio, Gestione $gestione): RedirectResponse
     {
-        //
+        try {
+
+            $gestione->delete();
+
+            return to_route('admin.gestionale.gestioni.index', $condominio)
+                ->with($this->flashSuccess(__('gestionale.success_delete_gestione')));
+                
+        } catch (\Throwable $e) {
+
+            Log::error('Error deleting gestione', [
+                'gestione_id'    => $gestione->id,
+                'condominio_id'  => $condominio->id,
+                'exception'      => $e,
+            ]);
+
+            return to_route('admin.gestionale.gestioni.index', $condominio)
+                ->with($this->flashError(__('gestionale.error_delete_gestione')));
+
+        }
     }
 }

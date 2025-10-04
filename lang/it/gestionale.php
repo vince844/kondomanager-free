@@ -44,5 +44,12 @@ return [
     'error_update_esercizio'            => "Si è verificato un errore durante l'aggiornamento dell'esercizio.",
     'success_delete_esercizio'          => "L'esercizio è stato eliminato con successo.",
     'error_delete_esercizio'            => "Si è verificato un errore durante l'eliminazione dell'esercizio.",
+    // Gestioni
+    'success_create_gestione'           => "Il nuovo periodo di gestione è stato creato con successo.",
+    'error_create_gestione'             => "Si è verificato un errore durante la creazione del nuovo periodo di gestione.",
+    'success_update_gestione'           => "Il periodo di gestione è stato aggiornato con successo.",
+    'error_update_gestione'             => "Si è verificato un errore durante l'aggiornamento del periodo di gestione.",
+    'success_delete_gestione'           => "Il periodo di gestione è stato eliminato con successo.",
+    'error_delete_gestione'             => "Si è verificato un errore durante l'eliminazione del periodo di gestione"
 
 ];

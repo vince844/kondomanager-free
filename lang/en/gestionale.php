@@ -44,5 +44,12 @@ return [
     'error_update_esercizio'            => "An error occurred while updating the fiscal year.",
     'success_delete_esercizio'          => "The fiscal year has been deleted successfully.",
     'error_delete_esercizio'            => "An error occurred while deleting the fiscal year.",
+    // Gestioni
+    'success_create_gestione'           => "The new management period has been created successfully.",
+    'error_create_gestione'             => "An error occurred while creating the new management period.",
+    'success_update_gestione'           => "The management period has been updated successfully.",
+    'error_update_gestione'             => "An error occurred while updating the management period.",
+    'success_delete_gestione'           => "The management period has been deleted successfully.",
+    'error_delete_gestione'             => "An error occurred while deleting the management period"
     
 ];

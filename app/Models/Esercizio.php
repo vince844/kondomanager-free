@@ -29,7 +29,7 @@ class Esercizio extends Model
     public function gestioni()
     {
         return $this->belongsToMany(Gestione::class, 'esercizio_gestione')
-                    ->withPivot(['attiva', 'data_inizio', 'data_fine'])
-                    ->withTimestamps();
+            ->withPivot(['attiva', 'data_inizio', 'data_fine'])
+            ->withTimestamps();
     }
 }

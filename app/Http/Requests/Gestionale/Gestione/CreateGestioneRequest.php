@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\Esercizio;
+namespace App\Http\Requests\Gestionale\Gestione;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -10,7 +10,7 @@ use Illuminate\Validation\Rule;
  * @method bool input(string $key)
  * @method \Illuminate\Routing\Route|null route(string|null $param = null, mixed $default = null)
  */
-class CreateEsercizioRequest extends FormRequest
+class CreateGestioneRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -32,7 +32,8 @@ class CreateEsercizioRequest extends FormRequest
             'descrizione'         => 'required|string|max:255',
             'data_inizio'         => 'required|date',
             'data_fine'           => 'required|date|after_or_equal:data_inizio',
-            'stato'               => 'required|string|in:aperto,chiuso',
+            'tipo'                => 'required|string|in:ordinaria,straordinaria',
+            'attiva'              => 'required|boolean',
             'note'                => 'sometimes|nullable|string',
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
         ];
@@ -46,6 +47,7 @@ class CreateEsercizioRequest extends FormRequest
     {
         $this->merge([
             'condominio_id'  => $this->route('condominio')->id,
+            'attiva'         => true,
         ]);
     }
 }
