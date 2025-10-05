@@ -10,6 +10,7 @@ use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Immobile;
+use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -83,6 +84,7 @@ class ImmobileAnagraficaController extends Controller
         $data = $request->validated();
 
         try {
+
             // Attach the anagrafica to the immobile with pivot data
             $immobile->anagrafiche()->attach($data['anagrafica_id'], [
                 'tipologia'       => $data['tipologia'],
@@ -93,6 +95,24 @@ class ImmobileAnagraficaController extends Controller
                 'attivo'          => true,
                 'note'            => $data['note'] ?? null,
             ]);
+
+             // Recupera l’esercizio aperto
+            $esercizio = $condominio->esercizi()->where('stato', 'aperto')->first();
+
+            if ($esercizio) {
+                Saldo::updateOrCreate(
+                    [
+                        'esercizio_id'  => $esercizio->id,
+                        'condominio_id' => $condominio->id,
+                        'anagrafica_id' => $data['anagrafica_id'],
+                        'immobile_id'   => $immobile->id,
+                    ],
+                    [
+                        'saldo_iniziale' => $data['saldo_iniziale'] ?? 0,
+                        'saldo_finale'   => 0,
+                    ]
+                );
+            }
 
            return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,

@@ -86,6 +86,9 @@ class Anagrafica extends Model
             ->withTimestamps();
     }
 
-    
+    public function saldi()
+    {
+        return $this->hasMany(Saldo::class, 'anagrafica_id');
+    }
 
 }

@@ -10,6 +10,17 @@ export interface AnagraficaPivot {
   note: string | null;
 }
 
+export interface SaldoAmounts {
+  iniziale: number;
+  finale: number;
+}
+
+export interface Saldo {
+  iniziale: string; // già formattato dal backend, es. "€ -2.345,67"
+  finale: string;   // già formattato
+  amounts: SaldoAmounts; // valori numerici raw per logica colore o calcoli
+}
+
 export interface Anagrafica {
   id: number
   nome: string
@@ -31,4 +42,5 @@ export interface Anagrafica {
 
 export interface AnagraficaWithPivot extends Anagrafica {
   pivot: AnagraficaPivot
+  saldo: Saldo
 }

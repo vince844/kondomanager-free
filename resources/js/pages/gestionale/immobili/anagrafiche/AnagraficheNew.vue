@@ -6,12 +6,14 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { List, Plus, LoaderCircle, Info} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { useDateConverter } from '@/composables/useDateConverter';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
@@ -19,6 +21,7 @@ import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Anagrafica } from '@/types/anagrafiche';
+import type { DropdownType } from '@/types/dropdown';
 
 const props = defineProps<{
   condominio: Building;
@@ -27,6 +30,7 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
+const { toBackend } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -35,11 +39,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
   { title: 'associa anagrafica', href: '#' },
 ]);
-
-type tipologia = {
-  label: string;
-  id: string;
-};
 
 const tipologia = [
   {
@@ -61,12 +60,17 @@ const form = useForm({
   data_inizio: '',
   data_fine: '',
   quota: '',
+  saldo_iniziale: '',
   note: '',
   anagrafica_id: '',
 
 });
 
 const submit = () => {
+
+    form.data_inizio = toBackend(form.data_inizio);
+    form.data_fine   = toBackend(form.data_fine);
+    
     form.post(route(...generateRoute('gestionale.immobili.anagrafiche.store', { condominio: props.condominio.id, immobile: props.immobile.id })), {
         preserveScroll: true,
         onSuccess: () => {
@@ -118,15 +122,12 @@ const submit = () => {
                     :options="tipologia"
                     label="label"
                     v-model="form.tipologia"
-                    :reduce="(d: tipologia) => d.id"
+                    :reduce="(d: DropdownType) => d.id"
                     placeholder="Seleziona tipologia"
                   />
                   <InputError :message="form.errors.tipologia" />
                 </div>
 
-              </div>
-
-              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-4">
                   <Label for="tipologia">Anagrafica</Label>
                   <v-select
@@ -138,7 +139,6 @@ const submit = () => {
                     placeholder="Seleziona anagrafica"
                   >
                     <!-- Dropdown options: stacked layout -->
-                    <!-- @ts-ignore -->
                     <template #option="{ nome, indirizzo }">
                       <div class="flex flex-col">
                         <span class="font-medium">{{ nome }}</span>
@@ -147,7 +147,6 @@ const submit = () => {
                     </template>
 
                     <!-- Selected option: single-line layout -->
-                    <!-- @ts-ignore -->
                     <template #selected-option="{ nome, indirizzo }">
                       <div class="flex items-center gap-2">
                         <span class="font-medium">{{ nome }}</span>
@@ -159,16 +158,68 @@ const submit = () => {
                   <InputError :message="form.errors.anagrafica_id" />
                 </div>
 
-                <div class="sm:col-span-2">
-                    <Label for="quota">Quota</Label>
-                    <Input
-                        id="quota" 
-                        placeholder="Quota anagrafica" 
-                        v-model="form.quota" 
-                        v-on:focus="form.clearErrors('quota')"
-                    />
+              </div>
 
-                    <InputError :message="form.errors.quota" />
+              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+     
+                <div class="sm:col-span-3">
+                  <Label for="quota">Quota</Label>
+
+                    <HoverCard>
+                      <HoverCardTrigger as-child>
+                        <button type="button" class="cursor-pointer">
+                          <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent class="w-80 z-50">
+                        <div class="flex justify-between space-x-4">
+                          <div class="space-y-1">
+                            <h4 class="text-sm font-semibold">Quota anagrafica</h4>
+                            <p class="text-sm">
+                             In questo campo puoi inserire la quota di proprietà dell'anagrafica
+                            </p>
+                          </div>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  <Input
+                    id="quota" 
+                    placeholder="Quota anagrafica" 
+                    v-model="form.quota" 
+                    v-on:focus="form.clearErrors('quota')"
+                  />
+
+                  <InputError :message="form.errors.quota" />
+                </div>
+
+                <div class="sm:col-span-3">
+                  <Label for="saldo">Saldo iniziale</Label>
+
+                     <HoverCard>
+                      <HoverCardTrigger as-child>
+                        <button type="button" class="cursor-pointer">
+                          <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                        </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent class="w-80 z-50">
+                        <div class="flex justify-between space-x-4">
+                          <div class="space-y-1">
+                            <h4 class="text-sm font-semibold">Saldo iniziale</h4>
+                            <p class="text-sm">
+                             In questo campo puoi impostare il saldo iniziale dell'anagrafica, per registrare un saldo negativo inserisci il segno - prima del valore numerico, se il saldo è positivo non è necessario inserire il segno +
+                            </p>
+                          </div>
+                        </div>
+                      </HoverCardContent>
+                    </HoverCard>
+                  <Input
+                    id="saldo" 
+                    v-model="form.saldo_iniziale" 
+                    placeholder="0,00"
+                    v-on:focus="form.clearErrors('saldo_iniziale')"
+                  />
+
+                  <InputError :message="form.errors.saldo_iniziale" />
                 </div>
 
               </div>

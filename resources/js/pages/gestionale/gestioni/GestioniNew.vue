@@ -26,7 +26,7 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
-const { toBackend, toItalian } = useDateConverter();
+const { toBackend } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },

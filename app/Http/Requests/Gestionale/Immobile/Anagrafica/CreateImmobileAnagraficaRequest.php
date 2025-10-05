@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Cknow\Money\Money;
 
 /**
  * @method bool merge(string $key)
@@ -35,13 +36,14 @@ class CreateImmobileAnagraficaRequest extends FormRequest
     {
           return [
             'quota'               => 'required|numeric', 
+            'saldo_iniziale'      => 'nullable|numeric',
             'note'                => 'sometimes|nullable|string',
             'anagrafica_id'       => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
             'immobile_id'         => ['required', 'integer', Rule::exists('immobili', 'id')],
             'tipologia'           => 'required|in:proprietario,inquilino,usufruttuario',
             'data_inizio'         => 'required|date',
-            'data_fine'           => 'sometimes|nullable|date',
+            'data_fine'           => 'sometimes|nullable|date|after_or_equal:data_inizio',
         ];
     }
 
@@ -58,19 +60,11 @@ class CreateImmobileAnagraficaRequest extends FormRequest
     {
         $this->merge([
             'condominio_id'  => $this->route('condominio')->id,
-            'immobile_id'  => $this->route('immobile')->id,
+            'immobile_id'    => $this->route('immobile')->id,
+            'saldo_iniziale' => $this->saldo_iniziale !== null
+                ? (int) Money::EUR($this->saldo_iniziale)->getAmount() // ← converte in centesimi
+                : 0,
         ]);
 
-        if ($this->filled('data_inizio')) {
-            $this->merge([
-                'data_inizio' => Carbon::parse($this->input('data_inizio'))->toDateString(),
-            ]);
-        }
-
-        $this->merge([
-            'data_fine' => $this->filled('data_fine')
-                ? Carbon::parse($this->input('data_fine'))->toDateString()
-                : null,
-        ]);
     }
 }

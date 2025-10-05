@@ -40,6 +40,9 @@ class GestioneController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
+            ->with(['esercizi' => function ($query) use ($esercizio) {
+                $query->where('esercizio_id', $esercizio->id);
+            }])
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
         
         $condomini = $this->getCondomini();

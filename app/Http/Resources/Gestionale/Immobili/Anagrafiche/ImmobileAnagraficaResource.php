@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\Immobili\Anagrafiche;
 
+use Cknow\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,6 +15,10 @@ class ImmobileAnagraficaResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $saldo = $this->saldi()
+            ->whereHas('esercizio', fn ($q) => $q->where('stato', 'aperto'))
+            ->first();
+
          return [
             'id'        => $this->id,
             'nome'      => $this->nome,
@@ -27,6 +32,17 @@ class ImmobileAnagraficaResource extends JsonResource
                 'attivo'          => $this->pivot->attivo,
                 'note'            => $this->pivot->note,
             ],
+
+            'saldo' => [
+                'iniziale' => $saldo?->saldo_iniziale 
+                 ? '€ ' . $saldo->saldo_iniziale->formatByIntlLocalizedDecimal(null, null, \NumberFormatter::DECIMAL)
+                 : '€ 0,00', 
+                'finale'   => $saldo?->saldo_finale?->formatByIntlLocalizedDecimal(null, null, \NumberFormatter::DECIMAL) ?? '€ 0,00',
+                'amounts'  => [
+                    'iniziale' => $saldo?->saldo_iniziale?->getAmount() ?? 0,
+                    'finale'   => $saldo?->saldo_finale?->getAmount() ?? 0,
+                ],
+            ]
 
         ];
     }
