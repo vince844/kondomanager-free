@@ -17,6 +17,7 @@ import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingI
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 const { generatePath, canAccess } = usePermission();
 
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
 const condominio = computed<Building>(() => page.props.condominio as Building);
+const esercizio = computed<Esercizio>(() => page.props.esercizio as Esercizio);
 
 const isCurrentRoute = (url: string) => {
     return page.url === url;
@@ -67,13 +69,16 @@ const mainNavItems: NavItem[] = [
         icon: Library,
        
     }, 
-    {
+    
+      {
         title: 'Gestioni',
-        href: generatePath('gestionale/:condominio/gestioni', { condominio: condominio.value.id }),
+        href: esercizio.value
+              ? generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id })
+              : '#',
         icon: ListPlus,
        
-    } 
-];
+    }   
+]; 
 
 const rightNavItems: NavItem[] = [
     {

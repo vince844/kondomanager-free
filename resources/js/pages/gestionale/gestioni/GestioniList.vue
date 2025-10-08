@@ -1,27 +1,30 @@
 <script setup lang="ts">
 
 import { computed } from "vue";
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, usePage, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/gestioni/DataTable.vue';
 import { getColumns } from '@/components/gestionale/gestioni/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from "@/components/CondominioDropdown.vue";
+import { Plus } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from "@/types/gestionale/esercizi";
 import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
+  esercizio: Esercizio | null;
   condomini: Building[];
   gestioni: Gestione[];
   meta: PaginationMeta;
 }>()
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 
 const columns = computed(() => getColumns(props.condominio));
 
@@ -54,7 +57,34 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
-          <div class="container mx-auto p-0">
+          <!-- Messaggio quando non c'è esercizio aperto -->
+          <div v-if="!esercizio" class="py-8">
+            <div class="text-center">
+       
+              <h2 class="text-xl font-semibold text-gray-900 mb-2">
+                Nessun esercizio ancora aperto
+              </h2>
+              
+              <p class="text-gray-600 max-w-2xl mx-auto mb-8">
+                Non è presente alcun esercizio contabile aperto per <strong>{{ condominio.nome }}</strong>. 
+                Per visualizzare e gestire le gestioni, è necessario prima aprire un esercizio contabile.
+              </p>
+
+              <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <Link
+                    as="button"
+                     :href="route(generateRoute('gestionale.esercizi.create'), { condominio: props.condominio.id })"
+                    class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+                >
+                    <Plus class="w-4 h-4" />
+                    <span>Crea nuovo esercizio</span>
+                </Link>
+              </div>
+
+            </div>
+          </div>
+
+          <div v-else class="container mx-auto p-0">
             <DataTable :columns="columns" :data="props.gestioni" :meta="props.meta" :condominio="props.condominio"/>
           </div>
 

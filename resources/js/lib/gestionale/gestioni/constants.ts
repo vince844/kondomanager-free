@@ -13,7 +13,7 @@ import type { StatusType } from '@/types/gestionale/gestioni';
       value: 'straordinaria', 
       label: 'Straordinaria',
       icon: Zap, 
-      colorClass: 'text-red-500 bg-transparent'
+      colorClass: 'text-yellow-500 bg-transparent'
     }
   ];
   

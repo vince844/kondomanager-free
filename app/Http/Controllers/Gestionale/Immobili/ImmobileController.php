@@ -12,10 +12,12 @@ use App\Http\Resources\Gestionale\Immobili\TipologiaImmobileResource;
 use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\TipologiaImmobile;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +39,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ImmobileController extends Controller
 {
-    use HandleFlashMessages, HasCondomini;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a paginated listing of immobili for a specific condominio.
@@ -45,11 +47,12 @@ class ImmobileController extends Controller
      * @param  Condominio  $condominio
      * @return Response
      */
-    public function index(ImmobileIndexRequest $request, Condominio $condominio): Response
+    public function index(ImmobileIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Get a list of all the esercizi create to show in the datatable
         $immobili = $condominio
             ->immobili()
             ->with(['palazzina', 'scala', 'tipologiaImmobile'])
@@ -57,11 +60,16 @@ class ImmobileController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
-        
+
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcrumb
         $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
             
         return Inertia::render('gestionale/immobili/ImmobiliList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'immobili'   => ImmobileResource::collection($immobili)->resolve(),
             'meta'       => [
@@ -136,8 +144,12 @@ class ImmobileController extends Controller
     {
         $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/immobili/ImmobiliView', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile),
         ]);
     }
@@ -156,10 +168,14 @@ class ImmobileController extends Controller
     {
         $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         RedirectHelper::rememberUrl();
 
         return Inertia::render('gestionale/immobili/ImmobiliEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile),
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),

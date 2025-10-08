@@ -8,16 +8,15 @@ use App\Http\Requests\Gestionale\Gestione\GestioneIndexRequest;
 use App\Http\Requests\Gestionale\Gestione\UpdateGestioneRequest;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Gestione;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 
 class GestioneController extends Controller
 {
@@ -26,7 +25,7 @@ class GestioneController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index(GestioneIndexRequest $request, Condominio $condominio): Response
+    public function index(GestioneIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
@@ -34,7 +33,27 @@ class GestioneController extends Controller
         // Recupero esercizio aperto
         $esercizio = $condominio->esercizi()
             ->where('stato', 'aperto')
-            ->firstOrFail();
+            ->first();
+        
+        // Se non c'è un esercizio aperto, restituisci la vista con un messaggio
+        if (!$esercizio) {
+
+            $condomini = $this->getCondomini();
+                
+            return Inertia::render('gestionale/gestioni/GestioniList', [
+                'condominio' => $condominio,
+                'esercizio'  => null,
+                'condomini'  => $condomini,
+                'gestioni'   => [],
+                'meta'       => [
+                    'current_page' => 1,
+                    'last_page'    => 1,
+                    'per_page'     => config('pagination.default_per_page'),
+                    'total'        => 0,
+                ],
+                'filters' => $request->only(['nome'])
+            ]);
+        }
 
         $gestioni = $esercizio->gestioni()
             ->when($validated['nome'] ?? false, function ($query, $name) {
@@ -50,6 +69,7 @@ class GestioneController extends Controller
         return Inertia::render('gestionale/gestioni/GestioniList', [
             'condominio' => $condominio,
             'condomini'  => $condomini,
+            'esercizio'  => $esercizio,
             'gestioni'   => GestioneResource::collection($gestioni)->resolve(),
             'meta'       => [
                 'current_page' => $gestioni->currentPage(),
@@ -64,20 +84,21 @@ class GestioneController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(Condominio $condominio): Response
+    public function create(Condominio $condominio, Esercizio $esercizio): Response
     {
         $condomini = $this->getCondomini();
 
         return Inertia::render('gestionale/gestioni/GestioniNew', [
             'condominio' => $condominio,
             'condomini'  => $condomini,
+            'esercizio'  => $esercizio
         ]);
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(CreateGestioneRequest $request, Condominio $condominio): RedirectResponse
+    public function store(CreateGestioneRequest $request, Condominio $condominio, Esercizio $esercizio): RedirectResponse
     {
         try {
 
@@ -120,13 +141,18 @@ class GestioneController extends Controller
                 'exception'     => $e,
             ]);
 
-            return to_route('admin.gestionale.gestioni.index', $condominio)
-                ->with($this->flashError(__('gestionale.error_create_gestione')));
+            return to_route('admin.gestionale.esercizi.gestioni.index', [
+                'condominio'  => $condominio->id,
+                'esercizio'   => $esercizio->id,
+            ])->with($this->flashError(__('gestionale.error_create_gestione')));
+
         }
 
-        return to_route('admin.gestionale.gestioni.index', $condominio)
-            ->with($this->flashSuccess(__('gestionale.success_create_gestione')));
-        
+        return to_route('admin.gestionale.esercizi.gestioni.index', [
+            'condominio' => $condominio->id,
+            'esercizio'   => $esercizio->id,
+        ])->with($this->flashSuccess(__('gestionale.success_create_gestione')));
+
     }
 
     /**
@@ -151,7 +177,7 @@ class GestioneController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(UpdateGestioneRequest $request, Condominio $condominio, Gestione $gestione): RedirectResponse
+    public function update(UpdateGestioneRequest $request, Condominio $condominio, Esercizio $esercizio, Gestione $gestione): RedirectResponse
     {
         try {
 
@@ -196,25 +222,33 @@ class GestioneController extends Controller
                 'exception'     => $e,
             ]);
 
-            return to_route('admin.gestionale.gestioni.index', $condominio)
-                ->with($this->flashError(__('gestionale.error_update_gestione')));
+            return to_route('admin.gestionale.esercizi.gestioni.index', [
+                'condominio'  => $condominio->id,
+                'esercizio'   => $esercizio->id,
+            ])->with($this->flashError(__('gestionale.error_update_gestione')));
+
         }
 
-        return to_route('admin.gestionale.gestioni.index', $condominio)
-            ->with($this->flashSuccess(__('gestionale.success_update_gestione')));
+        return to_route('admin.gestionale.esercizi.gestioni.index', [
+            'condominio'  => $condominio->id,
+            'esercizio'   => $esercizio->id,
+        ])->with($this->flashSuccess(__('gestionale.success_update_gestione')));
+
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Condominio $condominio, Gestione $gestione): RedirectResponse
+    public function destroy(Condominio $condominio, Esercizio $esercizio, Gestione $gestione): RedirectResponse
     {
         try {
 
             $gestione->delete();
 
-            return to_route('admin.gestionale.gestioni.index', $condominio)
-                ->with($this->flashSuccess(__('gestionale.success_delete_gestione')));
+            return to_route('admin.gestionale.esercizi.gestioni.index', [
+                'condominio'  => $condominio->id,
+                'esercizio'   => $esercizio->id,
+            ])->with($this->flashSuccess(__('gestionale.success_delete_gestione')));
                 
         } catch (\Throwable $e) {
 
@@ -224,8 +258,10 @@ class GestioneController extends Controller
                 'exception'      => $e,
             ]);
 
-            return to_route('admin.gestionale.gestioni.index', $condominio)
-                ->with($this->flashError(__('gestionale.error_delete_gestione')));
+            return to_route('admin.gestionale.esercizi.gestioni.index', [
+                'condominio'  => $condominio->id,
+                'esercizio'   => $esercizio->id,
+            ])->with($this->flashError(__('gestionale.error_delete_gestione')));
 
         }
     }

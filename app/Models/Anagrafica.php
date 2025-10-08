@@ -91,4 +91,5 @@ class Anagrafica extends Model
         return $this->hasMany(Saldo::class, 'anagrafica_id');
     }
 
+
 }

@@ -9,12 +9,13 @@ import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 // Props
 const props = defineProps<{ table: Table<Gestione> }>();
 
 // Page props
-const page = usePage<{ condominio: Building }>();
+const page = usePage<{ condominio: Building; esercizio: Esercizio }>();
 
 // Permissions / routes
 const { generateRoute } = usePermission();
@@ -65,7 +66,7 @@ watchDebounced(
     </div>
 
     <Link
-      :href="route(generateRoute('gestionale.gestioni.create'), { condominio: page.props.condominio.id })"
+      :href="route(generateRoute('gestionale.esercizi.gestioni.create'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id })"
       class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
       prefetch
     >

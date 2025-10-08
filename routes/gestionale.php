@@ -35,14 +35,14 @@ Route::prefix('/gestionale/{condominio}')->name('gestionale.')->group(function (
 
     Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
         ->parameters([
-            'immobili' => 'immobile',
+            'immobili'    => 'immobile',
             'anagrafiche' => 'anagrafica'
     ]);
 
     Route::resource('immobili.documenti', ImmobileDocumentoController::class)
         ->parameters([
             'documenti' =>'documento',
-            'immobili' => 'immobile',
+            'immobili'  => 'immobile',
     ]);
 
     Route::resource('tabelle', TabellaController::class)->parameters([
@@ -59,8 +59,14 @@ Route::prefix('/gestionale/{condominio}')->name('gestionale.')->group(function (
         'esercizi' => 'esercizio'
     ]);
 
-    Route::resource('gestioni', GestioneController::class)->parameters([
+    Route::resource('esercizi.gestioni', GestioneController::class)
+    ->parameters([
+        'esercizi'    => 'esercizio',
         'gestioni' => 'gestione'
     ]);
+
+/*     Route::resource('gestioni', GestioneController::class)->parameters([
+        'gestioni' => 'gestione'
+    ]); */
 
 });

@@ -120,4 +120,5 @@ class Immobile extends Model
     {
         return $this->morphMany(Documento::class, 'documentable');
     }
+
 }

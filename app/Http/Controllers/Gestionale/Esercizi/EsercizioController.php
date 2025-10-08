@@ -11,6 +11,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -18,7 +19,7 @@ use Illuminate\Support\Facades\Log;
 
 class EsercizioController extends Controller
 {
-    use HandleFlashMessages, HasCondomini;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a listing of the resource.
@@ -28,16 +29,22 @@ class EsercizioController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
+        // Get a list of all the esercizi create to show in the datatable
         $esercizi = $condominio->esercizi()
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
-        
+
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcrumb
         $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
             
         return Inertia::render('gestionale/esercizi/EserciziList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'esercizi'   => EsercizioResource::collection($esercizi)->resolve(),
             'meta'       => [
@@ -57,9 +64,13 @@ class EsercizioController extends Controller
     {
         $condomini = $this->getCondomini();
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/esercizi/EserciziNew', [
             'condominio' => $condominio,
-             'condomini' => $condomini,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
         ]);
     }
 

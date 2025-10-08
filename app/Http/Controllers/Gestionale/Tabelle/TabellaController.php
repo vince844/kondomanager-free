@@ -13,6 +13,7 @@ use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -20,7 +21,7 @@ use Illuminate\Support\Facades\Log;
 
 class TabellaController extends Controller
 {
-    use HandleFlashMessages, HasCondomini;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a listing of the resource.
@@ -38,10 +39,15 @@ class TabellaController extends Controller
             })
             ->paginate(config('pagination.default_per_page'));
         
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/tabelle/TabelleList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
             'meta'       => [
@@ -61,10 +67,15 @@ class TabellaController extends Controller
     {
         $condominio->load(['palazzine', 'scale']);
 
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
         $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/tabelle/TabelleNew', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
@@ -130,8 +141,12 @@ class TabellaController extends Controller
     {
         $tabella->loadMissing(['palazzina', 'scala']);
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/tabelle/TabelleEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'tabella'    => new TabellaResource($tabella),
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale)

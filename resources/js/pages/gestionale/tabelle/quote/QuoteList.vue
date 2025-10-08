@@ -35,8 +35,6 @@ const rawImmobili = JSON.parse(JSON.stringify(props.immobili));
 // Form separato a seconda del tipo tabella
 const form = useForm({
   quote: rawMillesimi.map((q: Millesimo) => {
-    console.log('Processing millesimo:', q);
-    
     if (props.tabella.tipo === "acqua") {
       return {
         id: q.id as number | null,

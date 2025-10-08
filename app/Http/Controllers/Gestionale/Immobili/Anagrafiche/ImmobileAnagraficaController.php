@@ -9,6 +9,7 @@ use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
@@ -44,9 +45,13 @@ class ImmobileAnagraficaController extends Controller
      */
     public function index(Condominio $condominio, Immobile $immobile): Response
     {
-
-        // Eager load anagrafiche (and any other relationships you want)
-        $immobile->loadMissing(['anagrafiche']);
+        $esercizioAperto = Esercizio::where('stato', 'aperto')->first();
+    
+        $immobile->loadMissing(['anagrafiche.saldi' => function($query) use ($immobile, $esercizioAperto) {
+            $query->where('immobile_id', $immobile->id)
+                ->where('esercizio_id', $esercizioAperto->id)
+                ->with('esercizio');
+        }]);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,

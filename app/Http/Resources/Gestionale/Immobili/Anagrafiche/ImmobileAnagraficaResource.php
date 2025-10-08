@@ -15,11 +15,12 @@ class ImmobileAnagraficaResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $saldo = $this->saldi()
-            ->whereHas('esercizio', fn ($q) => $q->where('stato', 'aperto'))
-            ->first();
 
-         return [
+        $saldo = $this->whenLoaded('saldi') 
+            ? $this->saldi->first() 
+            : null;
+
+        return [
             'id'        => $this->id,
             'nome'      => $this->nome,
             'indirizzo' => $this->indirizzo,
