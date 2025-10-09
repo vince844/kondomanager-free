@@ -7,15 +7,14 @@ import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
-import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Building } from '@/types/buildings';
-import type { Esercizio } from '@/types/gestionale/esercizi';
+import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
 
 // Props
-const props = defineProps<{ table: Table<Gestione> }>();
+const props = defineProps<{ table: Table<PianoDeiConti> }>();
 
 // Page props
-const page = usePage<{ condominio: Building; esercizio: Esercizio }>();
+const page = usePage<{ condominio: Building }>();
 
 // Permissions / routes
 const { generateRoute } = usePermission();
@@ -35,7 +34,7 @@ watchDebounced(
   [nameFilter],
   () => {
     router.get(
-      route(generateRoute('gestionale.esercizi.gestioni.index'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id }),
+      route(generateRoute('gestionale.conti.index'), { condominio: page.props.condominio.id }),
       filterParams.value,
       {
         preserveState: true,
@@ -66,7 +65,7 @@ watchDebounced(
     </div>
 
     <Link
-      :href="route(generateRoute('gestionale.esercizi.gestioni.create'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id})"
+      :href="route(generateRoute('gestionale.conti.create'), { condominio: page.props.condominio.id })"
       class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
       prefetch
     >

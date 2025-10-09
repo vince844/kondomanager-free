@@ -7,11 +7,12 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Gestione } from '@/types/gestionale/gestioni'
 import type { Building } from '@/types/buildings'
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 const { toItalian } = useDateConverter();
 
-export function getColumns(condominio: Building): ColumnDef<Gestione>[] {
-  return [
+/* export function getColumns(condominio: Building): ColumnDef<Gestione>[] { */
+export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<Gestione>[] => [
     {
       accessorKey: 'nome',
       header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
@@ -58,9 +59,8 @@ export function getColumns(condominio: Building): ColumnDef<Gestione>[] {
       cell: ({ row }) => {
         const gestione = row.original as Gestione
         return h('div', { class: 'relative' },
-          h(DropdownAction, { gestione, condominio })
+          h(DropdownAction, { gestione, condominio, esercizio })
         )
       },
     },
   ]
-}

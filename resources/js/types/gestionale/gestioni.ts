@@ -1,4 +1,5 @@
 import { Component } from 'vue';
+import { Esercizio } from './esercizi';
 
 export interface Gestione {
     id: number
@@ -7,7 +8,8 @@ export interface Gestione {
     note: string,
     data_inizio: string,
     data_fine: string,
-    tipo: 'ordinaria' | 'straordinaria';         
+    tipo: 'ordinaria' | 'straordinaria';   
+    esercizio: Esercizio       
 }
 
 export interface StatusType {

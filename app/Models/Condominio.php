@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Gestionale\PianoConto;
 use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -82,6 +83,11 @@ class Condominio extends Model
     public function gestioni()
     {
         return $this->hasMany(Gestione::class);
+    }
+
+    public function pianiDeiConti()
+    {
+        return $this->hasMany(PianoConto::class);
     }
 
 }

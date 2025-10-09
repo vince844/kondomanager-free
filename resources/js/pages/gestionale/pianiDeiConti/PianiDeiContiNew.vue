@@ -14,57 +14,36 @@ import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { useDateConverter } from '@/composables/useDateConverter';
 import vSelect from "vue-select";
-import VueDatePicker from '@vuepic/vue-datepicker';
-import '@vuepic/vue-datepicker/dist/main.css';
 import type { Building } from '@/types/buildings';
-import type { Gestione } from '@/types/gestionale/gestioni';
 import type { BreadcrumbItem } from '@/types';
-import type { DropdownType } from '@/types/dropdown';
-import type { Esercizio } from '@/types/gestionale/esercizi';
+import { Gestione } from '@/types/gestionale/gestioni';
 
 const props = defineProps<{
   condominio: Building;
-  gestione: Gestione;
-  esercizio: Esercizio
+  condomini: Building[];
+  gestioni: Gestione[]
 }>()
 
 const { generatePath, generateRoute } = usePermission();
-const { toBackend } = useDateConverter();
+const { toBackend, toItalian } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
-  { title: 'gestioni', href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
-  { title: props.gestione.nome, href: '#' },
-  { title: 'modifica gestione', href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
+  { title: 'piani conti', href: generatePath('gestionale/:condominio/conti', { condominio: props.condominio.id }) },
+  { title: 'crea piano conti', href: '#' },
 ]);
 
-const tipologie = [
-  {
-      label: 'Ordinaria',
-      id: 'ordinaria',
-  },
-  {
-      label: "Straordinaria",
-      id: 'straordinaria',
-  }
-];
-
 const form = useForm({
-  nome: props.gestione.nome,
-  descrizione: props.gestione.descrizione,
-  note: props.gestione.note,
-  data_inizio: props.gestione.data_inizio,
-  data_fine: props.gestione.data_fine,
-  tipo: props.gestione.tipo,
+  nome: '',
+  descrizione: '',
+  note: '',
+  gestione_id: ''
 });
 
 const submit = () => {
 
-    form.data_inizio = toBackend(form.data_inizio);
-    form.data_fine   = toBackend(form.data_fine);
-
-    form.put(route(...generateRoute('gestionale.esercizi.gestioni.update', { condominio: props.condominio.id, esercizio: props.esercizio.id, gestione: props.gestione.id })), {
+    form.post(route(...generateRoute('gestionale.conti.store', { condominio: props.condominio.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -76,9 +55,13 @@ const submit = () => {
 
 <template>
 
-    <Head title="Modifica gestione" />
+    <Head title="Crea nuovo piano conti" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
+
+        <template #breadcrumb-condominio>
+            <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+        </template>
 
         <div class="px-4 py-6">
 
@@ -97,11 +80,11 @@ const submit = () => {
 
                         <Link
                             as="button"
-                            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+                            :href="generatePath('gestionale/:condominio/conti', { condominio: props.condominio.id })"
                             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                         >
                             <List class="w-4 h-4" />
-                            <span>Gestioni</span>
+                            <span>Piani dei conti</span>
                         </Link>
                         </div>
 
@@ -123,6 +106,23 @@ const submit = () => {
                                 <InputError :message="form.errors.nome" />
                     
                             </div>
+
+                              <div class="sm:col-span-3">
+                                 <Label for="gestione">Gestione</Label>
+
+                                <v-select 
+                                    multiple
+                                    :options="gestioni" 
+                                    label="nome" 
+                                     class="mt-1 block w-full"
+                                    v-model="form.gestione_id"
+                                    placeholder="Seleziona una gestione"
+                                    @update:modelValue="form.clearErrors('gestione_id')" 
+                                    :reduce="(gestioni: Gestione) => gestioni.id"
+                                />
+
+                                <InputError :message="form.errors.gestione_id" />
+                            </div>
                         </div> 
 
                         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
@@ -139,54 +139,6 @@ const submit = () => {
                             <InputError class="mt-2" :message="form.errors.descrizione" />
                     
                             </div>
-                        </div>
-
-                        <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-            
-                            <div class="sm:col-span-2">
-                            <Label for="tipologia">Tipologia</Label>
-                            <v-select 
-                                :options="tipologie" 
-                                label="label" 
-                                class="block w-full"
-                                v-model="form.tipo"
-                                placeholder="Tipologia gestione"
-                                @update:modelValue="form.clearErrors('tipo')" 
-                                :reduce="(d: DropdownType) => d.id"
-                            />
-                            <InputError :message="form.errors.tipo" />
-                            </div>
-
-                            <div class="sm:col-span-2">
-                                <Label for="data_inizio">Data inizio</Label>
-                                <VueDatePicker
-                                    v-model="form.data_inizio"
-                                    class="w-full"
-                                    format="dd/MM/yyyy"
-                                    locale="it"
-                                    :enable-time-picker="false"
-                                    auto-apply
-                                    @update:modelValue="form.clearErrors('data_inizio')" 
-                                    placeholder="Data inizio"
-                                />
-                                <InputError :message="form.errors.data_inizio" />
-                            </div>
-
-                            <div class="sm:col-span-2">
-                                <Label for="data_fine">Data fine</Label>
-                                <VueDatePicker
-                                    v-model="form.data_fine"
-                                    class="w-full"
-                                    format="dd/MM/yyyy"
-                                    locale="it"
-                                    :enable-time-picker="false"
-                                    auto-apply
-                                    @update:modelValue="form.clearErrors('data_fine')"
-                                    placeholder="Data fine"
-                                />
-                                <InputError :message="form.errors.data_fine" />
-                            </div>
-                        
                         </div>
 
                         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">

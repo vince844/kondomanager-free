@@ -3,29 +3,39 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Unplug, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
-import type { Immobile } from '@/types/gestionale/immobili'
+import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Building } from '@/types/buildings'
-import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 
-const props = defineProps<{
-  anagrafica: AnagraficaWithPivot
-  immobile: Immobile
-  condominio: Building
-}>()
+const { pianoDeiConti, condominio } = defineProps<{ pianoDeiConti: PianoDeiConti, condominio: Building }>()
 
-const anagraficaID = ref<number | null>(null)
+const pianoDeiContiID = ref<number | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
 const { generateRoute } = usePermission()
 
-function handleDelete(targetAnagrafica: AnagraficaWithPivot) {
-  anagraficaID.value = targetAnagrafica.id
+function handleDelete(targetPianoDeiConti: PianoDeiConti) {
+  pianoDeiContiID.value = targetPianoDeiConti.id
   isDropdownOpen.value = false
   setTimeout(() => {
     isAlertOpen.value = true
@@ -33,25 +43,21 @@ function handleDelete(targetAnagrafica: AnagraficaWithPivot) {
 }
 
 function closeModal() {
-  anagraficaID.value = null
+  pianoDeiContiID.value = null
   isAlertOpen.value = false
   isDropdownOpen.value = false
 }
 
-function deleteAnagrafica() {
-  if (anagraficaID.value === null || isDeleting.value) return
+function deletePianoDeiConti() {
+  if (pianoDeiContiID.value === null || isDeleting.value) return
 
-  const id = anagraficaID.value
+  const id = pianoDeiContiID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.immobili.anagrafiche.destroy'), 
-  { 
-    condominio: props.condominio.id, 
-    immobile: props.immobile.id,
-    anagrafica: id
-  }), {
+  router.delete(route(generateRoute('gestionale.conti.destroy'), { condominio: condominio.id, pianoDeiConti: id }), {
     preserveScroll: true,
     preserveState: true,
+    only: ['flash', 'conti'],
     onSuccess: () => {
       closeModal()
     },
@@ -65,6 +71,7 @@ function deleteAnagrafica() {
 }
 </script>
 
+
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
@@ -77,7 +84,7 @@ function deleteAnagrafica() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('gestionale.immobili.anagrafiche.edit'), { condominio: condominio.id, immobile: immobile.id, anagrafica: anagrafica.id })"
+          :href="route(generateRoute('gestionale.conti.edit'), { condominio: condominio.id, pianoDeiConti: pianoDeiConti.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -87,10 +94,10 @@ function deleteAnagrafica() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
-        @click="handleDelete(anagrafica)"
+        @click="handleDelete(pianoDeiConti)"
       >
-        <Unplug class="w-4 h-4 text-xs" />
-        Dissocia
+        <Trash2 class="w-4 h-4 text-xs" />
+        Elimina
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
@@ -98,14 +105,14 @@ function deleteAnagrafica() {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler dissociare questa anagrafica?</AlertDialogTitle>
+        <AlertDialogTitle>Sei sicuro di voler eliminare questo piano dei conti?</AlertDialogTitle>
         <AlertDialogDescription>
-          Questa azione non è reversibile e dissocierà l'anagrafica dall'immobile.
+          Questa azione non è reversibile. Eliminerà il piano dei conti e tutti i dati ad esso associati.
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteAnagrafica">
+        <AlertDialogAction :disabled="isDeleting" @click="deletePianoDeiConti">
           <span v-if="isDeleting">Eliminazione...</span>
           <span v-else>Continua</span>
         </AlertDialogAction>

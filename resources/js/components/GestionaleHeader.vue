@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2 } from 'lucide-vue-next';
+import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2, HandCoins } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
@@ -69,13 +69,15 @@ const mainNavItems: NavItem[] = [
         icon: Library,
        
     }, 
-    
-      {
+        {
         title: 'Gestioni',
-        href: esercizio.value
-              ? generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id })
-              : '#',
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), // Fallback se per caso non c'è esercizio aperto
         icon: ListPlus,
+    }, 
+    {
+        title: 'Piano conti',
+        href: generatePath('gestionale/:condominio/conti', { condominio: condominio.value.id }),
+        icon: HandCoins,
        
     }   
 ]; 
@@ -263,6 +265,9 @@ const rightNavItems: NavItem[] = [
                     <!-- Forward dello slot condominio -->
                     <template #breadcrumb-condominio>
                         <slot name="breadcrumb-condominio" />
+                    </template>
+                    <template #breadcrumb-esercizio>
+                        <slot name="breadcrumb-esercizio" />
                     </template>
                 </Breadcrumbs>
             </div>

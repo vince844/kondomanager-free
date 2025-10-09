@@ -30,6 +30,10 @@ defineProps<{
             <slot name="breadcrumb-condominio" />
           </template>
 
+          <template v-else-if="item.component === 'esercizio-dropdown'">
+            <slot name="breadcrumb-esercizio" />
+          </template>
+
           <!-- Ultimo elemento = pagina corrente -->
           <template v-else-if="index === breadcrumbs.length - 1">
             <BreadcrumbPage>{{ item.title }}</BreadcrumbPage>

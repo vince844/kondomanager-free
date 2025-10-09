@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('conto_tabella_millesimale_id')->constrained('conto_tabella_millesimale')->onDelete('cascade');
             $table->enum('soggetto', ['proprietario', 'inquilino', 'usufruttuario'])->default('proprietario');
-            $table->unsignedDecimal('percentuale', 5, 2)->default(100.00);
+            $table->decimal('percentuale', 5, 2)->default(100.00);
             $table->timestamps();
         });
     }

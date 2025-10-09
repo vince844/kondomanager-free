@@ -30,30 +30,11 @@ class GestioneController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
-        // Recupero esercizio aperto
-        $esercizio = $condominio->esercizi()
-            ->where('stato', 'aperto')
-            ->first();
-        
-        // Se non c'è un esercizio aperto, restituisci la vista con un messaggio
-        if (!$esercizio) {
+        $condomini = $this->getCondomini();
 
-            $condomini = $this->getCondomini();
-                
-            return Inertia::render('gestionale/gestioni/GestioniList', [
-                'condominio' => $condominio,
-                'esercizio'  => null,
-                'condomini'  => $condomini,
-                'gestioni'   => [],
-                'meta'       => [
-                    'current_page' => 1,
-                    'last_page'    => 1,
-                    'per_page'     => config('pagination.default_per_page'),
-                    'total'        => 0,
-                ],
-                'filters' => $request->only(['nome'])
-            ]);
-        }
+        $esercizi = $condominio->esercizi()
+            ->orderBy('data_inizio', 'desc')
+            ->get(['id', 'nome', 'stato']);
 
         $gestioni = $esercizio->gestioni()
             ->when($validated['nome'] ?? false, function ($query, $name) {
@@ -63,13 +44,12 @@ class GestioneController extends Controller
                 $query->where('esercizio_id', $esercizio->id);
             }])
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
-        
-        $condomini = $this->getCondomini();
-            
+
         return Inertia::render('gestionale/gestioni/GestioniList', [
             'condominio' => $condominio,
             'condomini'  => $condomini,
             'esercizio'  => $esercizio,
+            'esercizi'   => $esercizi,
             'gestioni'   => GestioneResource::collection($gestioni)->resolve(),
             'meta'       => [
                 'current_page' => $gestioni->currentPage(),
@@ -166,10 +146,11 @@ class GestioneController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Condominio $condominio, Gestione $gestione): Response
+    public function edit(Condominio $condominio, Esercizio $esercizio, Gestione $gestione): Response
     {
         return Inertia::render('gestionale/gestioni/GestioniEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'gestione'   => new GestioneResource($gestione),
         ]);
     }

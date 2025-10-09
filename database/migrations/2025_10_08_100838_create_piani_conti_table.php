@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('piani_conti', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('condominio_id')->constrained('condomini')->onDelete('cascade');
             $table->foreignId('gestione_id')->constrained('gestioni')->onDelete('cascade');
             $table->string('nome');
             $table->text('descrizione')->nullable();

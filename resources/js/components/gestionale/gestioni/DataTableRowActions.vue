@@ -3,29 +3,19 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Gestione } from '@/types/gestionale/gestioni'
 import type { Building } from '@/types/buildings'
+import type { Esercizio } from '@/types/gestionale/esercizi'
 
-const { gestione, condominio } = defineProps<{ gestione: Gestione, condominio: Building }>()
+const props = defineProps<{
+  gestione: Gestione,
+  esercizio: Esercizio
+  condominio: Building
+}>()
 
 const gestioneID = ref<number | null>(null)
 const isAlertOpen = ref(false)
@@ -54,7 +44,7 @@ function deleteGestione() {
   const id = gestioneID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.gestioni.destroy'), { condominio: condominio.id, gestione: id }), {
+  router.delete(route(generateRoute('gestionale.esercizi.gestioni.destroy'), { condominio: props.condominio.id, esercizio: props.esercizio.id, gestione: props.gestione.id }), {
     preserveScroll: true,
     preserveState: true,
     only: ['flash', 'gestioni'],
@@ -84,7 +74,7 @@ function deleteGestione() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('gestionale.gestioni.edit'), { condominio: condominio.id, gestione: gestione.id })"
+          :href="route(generateRoute('gestionale.esercizi.gestioni.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, gestione: props.gestione.id })"
           preserve-state
           class="flex items-center gap-2"
         >

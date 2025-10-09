@@ -10,51 +10,64 @@ use Illuminate\Support\Facades\Log;
 class CondominioService
 {
     /**
-     * Crea un nuovo condominio con il suo esercizio per l'anno corrente
+     * Crea un nuovo condominio con un esercizio per l'anno corrente.
      */
     public function createCondominioWithEsercizio(array $condominioData): Condominio
     {
         return DB::transaction(function () use ($condominioData) {
-            // Crea il condominio
             $condominio = Condominio::create($condominioData);
-            
-            // Crea l'esercizio per l'anno corrente
+
+            // Crea automaticamente l'esercizio per l'anno corrente
             $this->createEsercizioForCondominio($condominio);
-            
+
             return $condominio;
         });
     }
-    
+
     /**
-     * Crea un esercizio per l'anno corrente per il condominio
+     * Crea un esercizio per l'anno corrente se non esiste già per il condominio.
      */
-    protected function createEsercizioForCondominio(Condominio $condominio): Esercizio
+    public function createEsercizioForCondominio(Condominio $condominio): Esercizio
     {
         $currentYear = now()->year;
         $nomeEsercizio = "Esercizio anno {$currentYear}";
-        
-        $esercizioData = [
-            'condominio_id' => $condominio->id,
-            'nome'          => $nomeEsercizio,
-            'descrizione'   => "Esercizio anno {$currentYear}",
-            'data_inizio'   => "{$currentYear}-01-01",
-            'data_fine'     => "{$currentYear}-12-31",
-            'stato'         => 'aperto',
-            'note'          => 'Esercizio creato automaticamente alla creazione del condominio',
-        ];
-        
-        $esercizio = Esercizio::create($esercizioData);
-        
-        return $esercizio;
+
+        // Se esiste già un esercizio per l'anno corrente, lo restituisce
+        $existing = $condominio->esercizi()
+            ->whereYear('data_inizio', $currentYear)
+            ->whereYear('data_fine', $currentYear)
+            ->first();
+
+        if ($existing) {
+            Log::info("Esercizio {$currentYear} già esistente per '{$condominio->nome}' (ID: {$existing->id})");
+            return $existing;
+        }
+
+        // Crea il nuovo esercizio
+        return DB::transaction(function () use ($condominio, $currentYear, $nomeEsercizio) {
+            $esercizio = Esercizio::create([
+                'condominio_id' => $condominio->id,
+                'nome'          => $nomeEsercizio,
+                'descrizione'   => "Esercizio anno {$currentYear}",
+                'data_inizio'   => now()->startOfYear(),
+                'data_fine'     => now()->endOfYear(),
+                'stato'         => 'aperto',
+                'note'          => 'Esercizio creato automaticamente.',
+            ]);
+
+            Log::info("Creato esercizio '{$esercizio->nome}' per condominio '{$condominio->nome}' (ID: {$condominio->id})");
+
+            return $esercizio;
+        });
     }
-    
+
     /**
-     * Verifica se esiste già un esercizio per l'anno corrente
+     * Verifica se esiste già un esercizio per l'anno corrente.
      */
     public function esercizioCorrenteExists(Condominio $condominio): bool
     {
         $currentYear = now()->year;
-        
+
         return $condominio->esercizi()
             ->whereYear('data_inizio', $currentYear)
             ->whereYear('data_fine', $currentYear)

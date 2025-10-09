@@ -17,6 +17,7 @@ return new class extends Migration
             $table->foreignId('parent_id')->nullable()->constrained('conti')->onDelete('cascade'); // sottoconto
             $table->string('nome');
             $table->text('descrizione')->nullable();
+            $table->boolean('attivo')->default(true);
             $table->enum('tipo', ['spesa', 'entrata']);
             $table->bigInteger('importo')->default(0); // cast con Money
             $table->nullableMorphs('destinazione'); // Condominio / Scala / Palazzina

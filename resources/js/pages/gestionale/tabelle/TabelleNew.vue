@@ -132,7 +132,7 @@ const submit = () => {
                 <div class="sm:col-span-2">
                   <Label for="palazzina">Palazzina</Label>
                     <v-select 
-                        :options="condominio.palazzine" 
+                        :options="palazzine" 
                         label="name" 
                         class="mt-1 block w-full"
                         v-model="form.palazzina_id"
@@ -146,7 +146,7 @@ const submit = () => {
                 <div class="sm:col-span-2">
                   <Label for="scala">Scala</Label>
                   <v-select 
-                      :options="condominio.scale" 
+                      :options="scale" 
                       label="name" 
                       class="mt-1 block w-full"
                       v-model="form.scala_id"

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Gestionale\Conti\PianoContiController;
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
@@ -11,10 +12,11 @@ use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use App\Http\Controllers\Gestionale\Tabelle\Quote\TabellaQuotaController;
 use App\Http\Controllers\Gestionale\Tabelle\TabellaController;
+use App\Http\Middleware\EnsureCondominioHasEsercizio;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/gestionale/{condominio}', DashboardController::class)
-    ->name('gestionale.index'); 
+    ->name('gestionale.index')->middleware(EnsureCondominioHasEsercizio::class); 
 
 Route::prefix('/gestionale/{condominio}')->name('gestionale.')->group(function () {
 
@@ -61,12 +63,12 @@ Route::prefix('/gestionale/{condominio}')->name('gestionale.')->group(function (
 
     Route::resource('esercizi.gestioni', GestioneController::class)
     ->parameters([
-        'esercizi'    => 'esercizio',
+        'esercizi' => 'esercizio',
         'gestioni' => 'gestione'
     ]);
 
-/*     Route::resource('gestioni', GestioneController::class)->parameters([
-        'gestioni' => 'gestione'
-    ]); */
+    Route::resource('conti', PianoContiController::class)->parameters([
+        'conti' => 'conto'
+    ]);
 
 });

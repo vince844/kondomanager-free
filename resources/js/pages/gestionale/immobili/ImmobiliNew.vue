@@ -5,6 +5,7 @@ import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
+import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -77,6 +78,12 @@ const submit = () => {
       </template>
 
       <div class="px-4 py-6">
+
+          <Heading 
+                :title="`Crea nuovo immobile per il condominio - ${props.condominio.nome.toLowerCase()}`" 
+                :description="`Compila il seguente modulo per la creazione di un nuovo immobile per il condominio - ${props.condominio.nome.toLowerCase()}`"
+            />
+
         <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
           <section class="w-full">
 
@@ -155,13 +162,13 @@ const submit = () => {
                   <div class="sm:col-span-2">
                     <Label for="palazzina">Palazzina</Label>
                       <v-select 
-                          :options="condominio.palazzine" 
-                          label="name" 
-                          class="mt-1 block w-full"
-                          v-model="form.palazzina_id"
-                          placeholder="Associa ad una palazzina"
-                          @update:modelValue="form.clearErrors('palazzina_id')" 
-                          :reduce="(palazzina: Palazzina) => palazzina.id"
+                        :options="palazzine" 
+                        label="name" 
+                        class="mt-1 block w-full"
+                        v-model="form.palazzina_id"
+                        placeholder="Associa ad una palazzina"
+                        @update:modelValue="form.clearErrors('palazzina_id')" 
+                        :reduce="(palazzina: Palazzina) => palazzina.id"
                       />
                     <InputError :message="form.errors.palazzina_id" />
                   </div>
@@ -169,13 +176,13 @@ const submit = () => {
                   <div class="sm:col-span-2">
                     <Label for="scala">Scala</Label>
                     <v-select 
-                        :options="condominio.scale" 
-                        label="name" 
-                        class="mt-1 block w-full"
-                        v-model="form.scala_id"
-                        placeholder="Associa ad una scala"
-                        @update:modelValue="form.clearErrors('scala_id')" 
-                        :reduce="(scala: Scala) => scala.id"
+                      :options="scale" 
+                      label="name" 
+                      class="mt-1 block w-full"
+                      v-model="form.scala_id"
+                      placeholder="Associa ad una scala"
+                      @update:modelValue="form.clearErrors('scala_id')" 
+                      :reduce="(scala: Scala) => scala.id"
                     />
                     <InputError :message="form.errors.scala_id" />
                   </div>

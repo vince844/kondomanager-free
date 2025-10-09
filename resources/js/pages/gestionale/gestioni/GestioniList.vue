@@ -4,10 +4,11 @@ import { computed } from "vue";
 import { Head, usePage, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/gestioni/DataTable.vue';
-import { getColumns } from '@/components/gestionale/gestioni/columns';
+import { createColumns } from '@/components/gestionale/gestioni/columns'
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from "@/components/CondominioDropdown.vue";
+import EsercizioDropdown from "@/components/EsercizioDropdown.vue";
 import { Plus } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
@@ -19,6 +20,7 @@ import type { PaginationMeta } from '@/types/pagination';
 const props = defineProps<{
   condominio: Building;
   esercizio: Esercizio | null;
+  esercizi: Esercizio[],
   condomini: Building[];
   gestioni: Gestione[];
   meta: PaginationMeta;
@@ -26,7 +28,7 @@ const props = defineProps<{
 
 const { generatePath, generateRoute } = usePermission();
 
-const columns = computed(() => getColumns(props.condominio));
+/* const columns = computed(() => getColumns(props.condominio)); */
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -34,6 +36,7 @@ const flashMessage = computed(() => page.props.flash.message);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
+  { title: props.esercizio?.nome ?? 'Nessun esercizio', component: "esercizio-dropdown" } as any,
   { title: 'elenco gestioni', href: '#' },
 ]);
 
@@ -48,6 +51,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     <template #breadcrumb-condominio>
       <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
     </template>
+
+    <template #breadcrumb-esercizio>
+        <EsercizioDropdown
+            :condominio="props.condominio"
+            :esercizio="props.esercizio"
+            :esercizi="props.esercizi"
+        />
+    </template> 
   
     <div class="px-4 py-6">
       <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
@@ -85,7 +96,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
           </div>
 
           <div v-else class="container mx-auto p-0">
-            <DataTable :columns="columns" :data="props.gestioni" :meta="props.meta" :condominio="props.condominio"/>
+        
+              <DataTable 
+                :columns="createColumns(props.condominio, esercizio)" 
+                :meta="props.meta" 
+                :condominio="props.condominio"
+                :data="props.gestioni"
+              />
+       
           </div>
 
         </section>
