@@ -138,7 +138,7 @@ class DocumentoService
      */
     protected function getAdminDocumentiStats(): object
     {
-        $query = Documento::query();
+        $query = Documento::query()->whereNull('documentable_type');
 
         return (object) [
             'total_storage_bytes' => (int) $query->sum('file_size'),
