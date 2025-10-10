@@ -28,7 +28,14 @@ class CondominioResource extends JsonResource
             'sezione_catasto'       => $this->sezione_catasto,
             'foglio_catasto'        => $this->foglio_catasto,
             'particella_catasto'    => $this->particella_catasto,
-            'codice_identificativo' => $this->codice_identificativo
+            'codice_identificativo' => $this->codice_identificativo,
+            // Aggiungi l’esercizio aperto
+            'esercizio_aperto' => new EsercizioResource(
+                $this->esercizi()
+                    ->where('stato', 'aperto')
+                    ->latest('data_inizio')
+                    ->first()
+            ),
         ];
     }
 }

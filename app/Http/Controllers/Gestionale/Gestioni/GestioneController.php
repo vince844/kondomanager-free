@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Gestione\CreateGestioneRequest;
 use App\Http\Requests\Gestionale\Gestione\GestioneIndexRequest;
 use App\Http\Requests\Gestionale\Gestione\UpdateGestioneRequest;
+use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -30,8 +31,6 @@ class GestioneController extends Controller
         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
-        $condomini = $this->getCondomini();
-
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
@@ -47,7 +46,7 @@ class GestioneController extends Controller
 
         return Inertia::render('gestionale/gestioni/GestioniList', [
             'condominio' => $condominio,
-            'condomini'  => $condomini,
+            'condomini'  => CondominioResource::collection($this->getCondomini()),
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'gestioni'   => GestioneResource::collection($gestioni)->resolve(),

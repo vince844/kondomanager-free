@@ -1,29 +1,42 @@
 import { usePage, router } from "@inertiajs/vue3";
-import { usePermission } from "@/composables/permissions";
 import type { Building } from "@/types/buildings";
 
-/**
- * Composable per cambiare il condominio mantenendo la stessa pagina
- */
 export function useCondominioDropdown() {
-
-  const page = usePage<{ condominio: Building }>(); 
+  const page = usePage<{
+    condominio: Building;
+    condomini: (Building & { esercizio_aperto?: { id: number } | null })[];
+  }>();
 
   const selectCondominio = (id: string | number) => {
-    // Prendi la URL corrente come array
-    const segments = page.url.split('/'); // es: ["admin","gestionale","1","tabelle"]
+    const currentUrl = page.url; // es: /admin/gestionale/1/esercizi/6/gestioni
+    const segments = currentUrl.split("/");
 
-    // Trova l'indice del condominio corrente
-    const currentCondIndex = segments.findIndex(
+    // Trova il condominio selezionato tra quelli disponibili
+    const selected = page.props.condomini.find((c) => String(c.id) === String(id));
+
+    // Trova l’indice del condominio attuale nella URL
+    const condIndex = segments.findIndex(
       (s) => s === page.props.condominio.id.toString()
     );
 
-    if (currentCondIndex !== -1) {
-      segments[currentCondIndex] = id.toString(); // sostituisci solo il condominio
+    // Sostituisci il condominio se trovato
+    if (condIndex !== -1) segments[condIndex] = id.toString();
+
+    // Se siamo nella pagina delle gestioni, aggiorna anche l’esercizio aperto
+    const isGestionePage = segments.includes("gestioni");
+
+    if (isGestionePage && selected?.esercizio_aperto?.id) {
+      const esercizioIndex = segments.findIndex(
+        (s, i) => segments[i - 1] === "esercizi"
+      );
+      if (esercizioIndex !== -1) {
+        segments[esercizioIndex] = selected.esercizio_aperto.id.toString();
+      }
     }
 
-    const newUrl = segments.join('/');
-    router.visit(newUrl);
+    // Naviga verso la nuova URL
+    const newUrl = segments.join("/");
+    router.visit(newUrl, { preserveState: false, preserveScroll: true });
   };
 
   return { selectCondominio };

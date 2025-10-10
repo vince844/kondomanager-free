@@ -7,7 +7,7 @@ import type { Building } from "@/types/buildings";
 
 const props = defineProps<{
   condominio: Building;
-  condomini: Building[];
+  condomini: (Building & { esercizio_aperto?: { id: number } | null })[];
 }>();
 
 const { selectCondominio } = useCondominioDropdown();

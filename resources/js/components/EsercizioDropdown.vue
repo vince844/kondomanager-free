@@ -26,7 +26,7 @@ watch(() => props.condominio.id, () => {
 <template>
   <DropdownMenu>
   <DropdownMenuTrigger class="flex items-center gap-1 font-medium">
-    <span v-if="selected">{{ selected.nome }}</span>
+    <span v-if="selected">{{ selected.nome.toLowerCase() }}</span>
     <span v-else class="text-gray-400">Seleziona esercizio</span>
     <ChevronDown class="h-4 w-4 mt-1" />
   </DropdownMenuTrigger>
@@ -52,6 +52,5 @@ watch(() => props.condominio.id, () => {
     </DropdownMenuContent>
   </DropdownMenuPortal>
 </DropdownMenu>
-
 
 </template>

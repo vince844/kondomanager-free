@@ -44,6 +44,8 @@ return [
     'error_update_esercizio'            => "Si è verificato un errore durante l'aggiornamento dell'esercizio.",
     'success_delete_esercizio'          => "L'esercizio è stato eliminato con successo.",
     'error_delete_esercizio'            => "Si è verificato un errore durante l'eliminazione dell'esercizio.",
+    'error_delete_last_esercizio'       => "Non puoi eliminare l'unico esercizio rimasto. Assicurati di aver almeno un esercizio aperto",
+    'error_delete_opened_esercizio'     => "Non puoi eliminare l'esercizio aperto. Devi prima aprire un altro esercizio.",
     // Gestioni
     'success_create_gestione'           => "Il nuovo periodo di gestione è stato creato con successo.",
     'error_create_gestione'             => "Si è verificato un errore durante la creazione del nuovo periodo di gestione.",

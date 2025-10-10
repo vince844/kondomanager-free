@@ -19,7 +19,7 @@ import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
-  esercizio: Esercizio | null;
+  esercizio: Esercizio;
   esercizi: Esercizio[],
   condomini: Building[];
   gestioni: Gestione[];
@@ -36,7 +36,7 @@ const flashMessage = computed(() => page.props.flash.message);
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: props.esercizio?.nome ?? 'Nessun esercizio', component: "esercizio-dropdown" } as any,
+  { title: props.esercizio?.nome, component: "esercizio-dropdown" } as any,
   { title: 'elenco gestioni', href: '#' },
 ]);
 
