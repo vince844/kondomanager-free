@@ -138,15 +138,21 @@ class DocumentoService
      */
     protected function getAdminDocumentiStats(): object
     {
-        $query = Documento::query()->whereNull('documentable_type');
+         $stats = Documento::whereNull('documentable_type')
+            ->selectRaw('COUNT(*) as total_documents')
+            ->selectRaw('SUM(file_size) as total_storage_bytes')
+            ->selectRaw('AVG(file_size) as average_size_bytes')
+            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->month, 
+                now()->year
+            ])
+            ->first();
 
         return (object) [
-            'total_storage_bytes' => (int) $query->sum('file_size'),
-            'total_documents' => (int) $query->count(),
-            'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
-                                                 ->whereYear('created_at', now()->year)
-                                                 ->count(),
-            'average_size_bytes' => (float) $query->avg('file_size') ?: 0,
+            'total_storage_bytes' => (int) ($stats->total_storage_bytes ?? 0),
+            'total_documents'     => (int) ($stats->total_documents ?? 0),
+            'uploaded_this_month' => (int) ($stats->uploaded_this_month ?? 0),
+            'average_size_bytes'  => (float) ($stats->average_size_bytes ?? 0),
         ];
     }
 
@@ -161,21 +167,27 @@ class DocumentoService
         if (!$anagrafica || $condominioIds->isEmpty()) {
             return (object) [
                 'total_storage_bytes' => 0,
-                'total_documents' => 0,
+                'total_documents'     => 0,
                 'uploaded_this_month' => 0,
-                'average_size_bytes' => 0,
+                'average_size_bytes'  => 0,
             ];
         }
 
-        $query = $this->getUserBaseQuery($anagrafica, $condominioIds);
+        $stats = $this->getUserBaseQuery($anagrafica, $condominioIds)
+            ->selectRaw('COUNT(*) as total_documents')
+            ->selectRaw('COALESCE(SUM(file_size), 0) as total_storage_bytes')
+            ->selectRaw('COALESCE(AVG(file_size), 0) as average_size_bytes')
+            ->selectRaw('SUM(CASE WHEN MONTH(created_at) = ? AND YEAR(created_at) = ? THEN 1 ELSE 0 END) as uploaded_this_month', [
+                now()->month,
+                now()->year
+            ])
+            ->first();
 
         return (object) [
-            'total_storage_bytes' => (int) $query->sum('file_size'),
-            'total_documents' => (int) $query->count(),
-            'uploaded_this_month' => (int) $query->whereMonth('created_at', now()->month)
-                                                ->whereYear('created_at', now()->year)
-                                                ->count(),
-            'average_size_bytes' => (float) $query->avg('file_size') ?: 0,
+            'total_storage_bytes' => (int) $stats->total_storage_bytes,
+            'total_documents'     => (int) $stats->total_documents,
+            'uploaded_this_month' => (int) $stats->uploaded_this_month,
+            'average_size_bytes'  => (float) $stats->average_size_bytes,
         ];
     }
 

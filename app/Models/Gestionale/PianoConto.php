@@ -14,6 +14,7 @@ class PianoConto extends Model
 
     protected $fillable = [
         'gestione_id',
+        'condominio_id',
         'nome',
         'descrizione',
         'note',
@@ -29,4 +30,5 @@ class PianoConto extends Model
     {
         return $this->hasMany(Conto::class, 'piano_conto_id');
     }
+    
 }

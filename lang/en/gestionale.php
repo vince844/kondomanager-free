@@ -52,6 +52,9 @@ return [
     'success_update_gestione'           => "The management period has been updated successfully.",
     'error_update_gestione'             => "An error occurred while updating the management period.",
     'success_delete_gestione'           => "The management period has been deleted successfully.",
-    'error_delete_gestione'             => "An error occurred while deleting the management period"
+    'error_delete_gestione'             => "An error occurred while deleting the management period",
+    // Piani conti
+    'success_create_piano_conto'        => "A new piano dei conti has been created successfully",
+    'error_create_piano_conto'          => "An error occurred while creating the new piano dei conti.",
     
 ];

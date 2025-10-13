@@ -9,12 +9,13 @@ import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 // Props
 const props = defineProps<{ table: Table<PianoDeiConti> }>();
 
 // Page props
-const page = usePage<{ condominio: Building }>();
+const page = usePage<{ condominio: Building; esercizio: Esercizio }>();
 
 // Permissions / routes
 const { generateRoute } = usePermission();
@@ -34,7 +35,7 @@ watchDebounced(
   [nameFilter],
   () => {
     router.get(
-      route(generateRoute('gestionale.conti.index'), { condominio: page.props.condominio.id }),
+      route(generateRoute('gestionale.esercizi.conti.index'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id  }),
       filterParams.value,
       {
         preserveState: true,
@@ -65,7 +66,7 @@ watchDebounced(
     </div>
 
     <Link
-      :href="route(generateRoute('gestionale.conti.create'), { condominio: page.props.condominio.id })"
+      :href="route(generateRoute('gestionale.esercizi.conti.create'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id })"
       class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
       prefetch
     >

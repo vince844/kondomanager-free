@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\PianiDeiConti;
 
+use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -19,7 +20,8 @@ class PianoDeiContiResource extends JsonResource
             'id'                => $this->id,
             'nome'              => Str::ucfirst($this->nome),
             'descrizione'       => $this->descrizione,
-            'note'              => $this->note
+            'note'              => $this->note,
+            'gestione'          => new GestioneResource($this->whenLoaded('gestione')),
         ];
     }
 }

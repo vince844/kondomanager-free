@@ -35,17 +35,31 @@ use Illuminate\Support\Facades\Log;
  *  - Deleting immobile
  *
  * Integrates flash messages via the HandleFlashMessages trait
- * and uses RedirectHelper to manage "back or fallback" redirects cleanly.
+ * Integrates list of registered condomini via the HasCondomini trait
+ * Integrates current opened esercio via the HasEsercizio trait
+ * Uses RedirectHelper to manage "back or fallback" redirects cleanly.
  */
 class ImmobileController extends Controller
 {
     use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
-     * Display a paginated listing of immobili for a specific condominio.
+     * Display a paginated listing of immobili (properties) for a specific condominio and esercizio.
      *
-     * @param  Condominio  $condominio
-     * @return Response
+     * This method handles the index page for immobili management, providing filtered and paginated results
+     * based on request parameters. It includes related data for the datatable view.
+     *
+     * @param \App\Http\Requests\ImmobileIndexRequest $request The validated request containing filter parameters
+     * @param \App\Models\Condominio $condominio The condominio context for the immobili
+     * @param \App\Models\Esercizio $esercizio The esercizio context for the immobili
+     * 
+     * @return \Inertia\Response Inertia response with immobili data and related context
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
+     *
+     * @example
+     * GET /gestionale/condomini/1/esercizi/1/immobili?nome=villa&per_page=15
      */
     public function index(ImmobileIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
@@ -61,10 +75,10 @@ class ImmobileController extends Controller
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
 
-        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcrumb
+        // Get a list of all the registered condomini 
         $condomini = $this->getCondomini();
 
-        // Get the current active and open esercizio this is important to navigate gestioni menu
+        // Get the current active and open esercizio 
         $esercizio = $this->getEsercizioCorrente($condominio);
             
         return Inertia::render('gestionale/immobili/ImmobiliList', [
@@ -83,10 +97,31 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Show the form for creating a new immobile.
+     * Display the immobile creation form for a specific condominio.
      *
-     * @param  Condominio  $condominio
-     * @return Response
+     * Prepares and returns all necessary data for rendering the immobile creation interface:
+     * - Condominio context and available condomini for navigation
+     * - Current esercizio for financial context
+     * - Related entities (palazzine, scale, tipologie) for form selection
+     *
+     * @param \App\Models\Condominio $condominio The condominio instance where the new immobile will be created.
+     *                                           Loaded with palazzine and scale relationships for the form.
+     * 
+     * @return \Inertia\Response Returns an Inertia response containing:
+     *                           - condominio: Current condominio context
+     *                           - esercizio: Current active esercizio
+     *                           - condomini: List of available condomini for navigation
+     *                           - palazzine: Collection of palazzine in the condominio
+     *                           - scale: Collection of scale in the condominio  
+     *                           - tipologie: All available tipologie immobile
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to create immobili
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException When condominio doesn't exist
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException When esercizio is not available
+     *
+     * @example
+     * // Typical usage - navigates to immobile creation form
+     * $response = $controller->create($condominio);
      */
     public function create(Condominio $condominio): Response
     {
@@ -94,8 +129,12 @@ class ImmobileController extends Controller
 
         $condomini = $this->getCondomini();
 
+        // Get the current active and open esercizio 
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/immobili/ImmobiliNew', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
@@ -104,12 +143,34 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Store a newly created immobile in storage.
+     * Create a new immobile record in the database.
      *
-     * @param  CreateImmobileRequest  $request
-     * @param  Condominio             $condominio
-     * @return RedirectResponse
-     * @throws \Throwable If an error occurs during creation
+     * Processes the validated form data to create a new immobile associated with the given condominio.
+     * The method includes try-catch error handling with detailed logging for troubleshooting.
+     * On success, redirects with a success message; on failure, redirects with an error message.
+     *
+     * @param \App\Http\Requests\CreateImmobileRequest $request The form request containing validated immobile data.
+     *                                                         Includes authorization and validation rules.
+     * @param \App\Models\Condominio $condominio The parent condominio to which the immobile will belong.
+     * 
+     * @return \Illuminate\Http\RedirectResponse 
+     *         - On success: Redirects to immobili index with success flash message
+     *         - On error: Redirects to immobili index with error flash message and logs the exception
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to create immobili
+     * @throws \Illuminate\Validation\ValidationException When request data fails validation
+     * 
+     * @example
+     * // Successful creation
+     * $response = $controller->store($request, $condominio);
+     * // Redirects with success message: "Immobile created successfully"
+     * 
+     * // Failed creation
+     * $response = $controller->store($request, $condominio);  
+     * // Redirects with error message: "Error creating immobile" and logs details
+     *
+     * @uses \App\Models\Immobile::create()
+     * @see \App\Http\Requests\CreateImmobileRequest
      */
     public function store(CreateImmobileRequest $request, Condominio $condominio): RedirectResponse
     {
@@ -134,17 +195,47 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Display a specific immobile.
+     * Show detailed information for a specific immobile.
      *
-     * @param  Condominio  $condominio
-     * @param  Immobile    $immobile
-     * @return Response
+     * Retrieves and displays the complete details of an immobile including its relationships
+     * with palazzina, scala, and tipologia. The method ensures all required relationships
+     * are loaded and provides the current esercizio context for financial reference.
+     *
+     * @param \App\Models\Condominio $condominio The parent condominio model that contains the immobile.
+     *                                           Used for context and authorization.
+     * @param \App\Models\Immobile $immobile The immobile model instance to display.
+     *                                       Automatically loaded with missing relationships:
+     *                                       - palazzina: The building reference
+     *                                       - scala: The staircase/reference  
+     *                                       - tipologiaImmobile: The property type classification
+     * 
+     * @return \Inertia\Response Returns an Inertia response containing:
+     *                           - condominio: The parent condominio context
+     *                           - esercizio: The current active esercizio for financial context
+     *                           - immobile: The immobile data formatted via ImmobileResource
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to view the immobile
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException When immobile or condominio doesn't exist
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException When esercizio is not available
+     *
+     * @example
+     * // Typical usage - displays immobile details page
+     * $response = $controller->show($condominio, $immobile);
+     * 
+     * // Route definition would typically be:
+     * // Route::get('/condomini/{condominio}/immobili/{immobile}', [ImmobileController::class, 'show']);
+     *
+     * @uses \App\Models\Immobile::loadMissing() For eager loading relationships
+     * @uses \App\Http\Resources\ImmobileResource For API resource transformation
+     * @see \App\Models\Palazzina
+     * @see \App\Models\Scala
+     * @see \App\Models\TipologiaImmobile
      */
     public function show(Condominio $condominio, Immobile $immobile): Response
     {
         $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
 
-        // Get the current active and open esercizio this is important to navigate gestioni menu
+        // Get the current active and open esercizio 
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/immobili/ImmobiliView', [
@@ -155,14 +246,44 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Show the form for editing a specific immobile.
+     * Display the immobile editing form with pre-populated data.
      *
-     * Uses RedirectHelper::rememberUrl() to store the previous URL
-     * for redirecting after update.
+     * Prepares the edit interface for an existing immobile by loading its current data
+     * and all necessary related entities for form selection. The method includes URL
+     * remembering functionality to facilitate proper redirects after form submission.
      *
-     * @param  Condominio  $condominio
-     * @param  Immobile    $immobile
-     * @return Response
+     * @param \App\Models\Condominio $condominio The parent condominio model that contains the immobile.
+     *                                           Used for context and to fetch related palazzine and scale.
+     * @param \App\Models\Immobile $immobile The immobile model instance to be edited.
+     *                                       Loaded with missing relationships:
+     *                                       - palazzina: Current building assignment
+     *                                       - scala: Current staircase assignment
+     *                                       - tipologiaImmobile: Current property type
+     * 
+     * @return \Inertia\Response Returns an Inertia response containing:
+     *                           - condominio: Parent condominio context
+     *                           - esercizio: Current active esercizio for navigation context
+     *                           - immobile: The immobile data formatted via ImmobileResource
+     *                           - palazzine: All palazzine in condominio for dropdown
+     *                           - scale: All scale in condominio for dropdown
+     *                           - tipologie: All available property types for dropdown
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to edit immobili
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException When immobile or condominio doesn't exist
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException When esercizio is not available
+     *
+     * @example
+     * // Typical usage - displays immobile edit form
+     * $response = $controller->edit($condominio, $immobile);
+     * 
+     * // The method remembers the current URL for post-update redirects
+     * RedirectHelper::rememberUrl(); // Enables returning to this page after update
+     *
+     * @uses \App\Helpers\RedirectHelper::rememberUrl() Stores current URL for redirect back after update
+     * @uses \App\Http\Resources\ImmobileResource For transforming immobile data
+     * @uses \App\Http\Resources\PalazzinaResource For transforming palazzina data  
+     * @uses \App\Http\Resources\ScalaResource For transforming scala data
+     * @uses \App\Http\Resources\TipologiaImmobileResource For transforming tipologie data
      */
     public function edit(Condominio $condominio, Immobile $immobile): Response
     {
@@ -184,15 +305,38 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Update a specific immobile in storage.
+     * Update an existing immobile record in the database.
      *
-     * Redirects to the intended URL or a fallback route.
+     * Processes validated form data to update the specified immobile. The method features
+     * intelligent redirect behavior that returns to the previously remembered URL (typically
+     * from the edit form) or falls back to the immobili index page. Includes comprehensive
+     * error handling with detailed logging for debugging purposes.
      *
-     * @param  UpdateImmobileRequest  $request
-     * @param  Condominio             $condominio
-     * @param  Immobile               $immobile
-     * @return RedirectResponse
-     * @throws \Throwable If an error occurs during update
+     * @param \App\Http\Requests\UpdateImmobileRequest $request The form request containing validated update data.
+     *                                                         Includes authorization and validation rules.
+     * @param \App\Models\Condominio $condominio The parent condominio model for context and authorization.
+     * @param \App\Models\Immobile $immobile The immobile model instance to be updated.
+     * 
+     * @return \Illuminate\Http\RedirectResponse 
+     *         - On success: Redirects to remembered URL or index with success flash message
+     *         - On error: Redirects to remembered URL or index with error flash message and logs exception
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to update immobili
+     * @throws \Illuminate\Validation\ValidationException When request data fails validation
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException When immobile or condominio doesn't exist
+     *
+     * @example
+     * // Successful update - redirects to previously remembered URL (edit page)
+     * $response = $controller->update($request, $condominio, $immobile);
+     * // Redirects with success message: "Immobile updated successfully"
+     * 
+     * // Failed update - redirects with error message
+     * $response = $controller->update($request, $condominio, $immobile);
+     * // Redirects with error message: "Error updating immobile" and logs details
+     *
+     * @uses \App\Helpers\RedirectHelper::backOr() For intelligent redirect behavior
+     * @uses \App\Models\Immobile::update() For database update operation
+     * @see \App\Http\Requests\UpdateImmobileRequest For validation rules
      */
     public function update(UpdateImmobileRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
@@ -224,22 +368,50 @@ class ImmobileController extends Controller
     }
 
     /**
-     * Remove a specific immobile from storage.
+     * Delete an immobile record from the database.
      *
-     * @param  Condominio  $condominio
-     * @param  Immobile    $immobile
-     * @return RedirectResponse
-     * @throws \Throwable If an error occurs during deletion
+     * Permanently removes the specified immobile from the system. This operation
+     * includes comprehensive error handling and logging to track deletion issues.
+     * The method always redirects back to the immobili index page with appropriate
+     * flash messages indicating success or failure of the operation.
+     *
+     * @param \App\Models\Condominio $condominio The parent condominio model for context and authorization.
+     *                                           Used to maintain proper navigation context after deletion.
+     * @param \App\Models\Immobile $immobile The immobile model instance to be deleted.
+     * 
+     * @return \Illuminate\Http\RedirectResponse 
+     *         - On success: Redirects to immobili index with success flash message
+     *         - On error: Redirects to immobili index with error flash message and logs exception
+     *
+     * @throws \Illuminate\Auth\Access\AuthorizationException When user lacks permission to delete immobili
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException When immobile or condominio doesn't exist
+     * @throws \Illuminate\Database\QueryException When database constraints prevent deletion
+     *
+     * @example
+     * // Successful deletion
+     * $response = $controller->destroy($condominio, $immobile);
+     * // Redirects with success message: "Immobile deleted successfully"
+     * 
+     * // Failed deletion (e.g., due to foreign key constraints)
+     * $response = $controller->destroy($condominio, $immobile);
+     * // Redirects with error message: "Error deleting immobile" and logs details
+     *
+     * @uses \App\Models\Immobile::delete() Performs the actual deletion operation
+     * 
+     * @warning This operation may be irreversible if soft deletes are not implemented.
+     * @note Consider implementing soft deletes if you need to preserve data for audit purposes.
      */
     public function destroy(Condominio $condominio, Immobile $immobile): RedirectResponse
     {
         try {
+
             $immobile->delete();
 
             return to_route('admin.gestionale.immobili.index', $condominio)
                 ->with($this->flashSuccess(__('gestionale.success_delete_immobile')));
                 
         } catch (\Throwable $e) {
+
             Log::error('Error deleting immobile', [
                 'immobile_id'   => $immobile->id,
                 'condominio_id' => $condominio->id,

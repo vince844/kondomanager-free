@@ -2,45 +2,78 @@
 
 namespace App\Helpers;
 
+use App\Enums\Permission;
+use App\Enums\Role;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 
+/**
+ * Helper class for managing redirects and navigation flows
+ * 
+ * Provides centralized redirect logic for user authentication flows,
+ * URL remembering, and intelligent fallback redirects.
+ * 
+ * @package App\Helpers
+ * @static
+ */
 class RedirectHelper
 {
     /**
-     * Redirects the user to the appropriate home route based on their role and anagrafica status.
+     * Determine the appropriate home route based on user role and profile status
      *
-     * - If the user is an "amministratore" or "collaboratore", they are redirected to the admin dashboard.
-     * - If the user does not have a anagrafica, they are redirected to create one.
-     * - If the user has a anagrafica, they are redirected to the user dashboard.
+     * This method handles the post-login/registration redirect logic:
+     * - Administrators and collaborators are redirected to admin dashboard
+     * - Users without an associated profile are redirected to profile creation
+     * - Regular users with profiles are redirected to user dashboard
      *
-     * @return string The URL for the appropriate route based on the user's status.
+     * @return string The URL for the appropriate route based on user status
+     *
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     *
+     * @example
+     * // Usage in LoginController or RegisterController
+     * public function redirectTo(): string
+     * {
+     *     return RedirectHelper::userHomeRoute();
+     * }
+     *
+     * @see \App\Http\Controllers\Auth\LoginController
+     * @see \App\Http\Controllers\Auth\RegisterController
      */
     public static function userHomeRoute(): string
     {
-        // Get the currently authenticated user
         $user = Auth::user();
 
-        // Check if the user has one of the specified roles (amministratore or collaboratore)
-        if ($user->hasRole(['amministratore', 'collaboratore']) || $user->hasPermissionTo('Accesso pannello amministratore')) {
-            // If the user is an administrator or collaborator, return the admin dashboard route
+        if ($user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
             return route('admin.dashboard');
         }
 
-        // Check if the user doesn't have an associated "anagrafica"
         if (!$user->anagrafica) {
-            // If no profile is found, return the route for creating an "anagrafica" 
             return route('user.anagrafiche.create');
         }
 
-        // If the user has a profile, return the route for the user's dashboard
         return route('user.dashboard');
     }
 
     /**
-     * Store the previous URL as the intended URL.
+     * Store the current URL as the intended URL for later redirect
      *
-     * Example: RedirectHelper::rememberUrl();
+     * Useful for remembering the page a user was on before being redirected
+     * to authentication or other intermediate pages. Typically used in edit
+     * methods to return users to the same page after form submission.
+     *
+     * @return void
+     *
+     * @example
+     * // In a controller edit method
+     * public function edit($id)
+     * {
+     *     RedirectHelper::rememberUrl();
+     *     return view('edit.form');
+     * }
+     *
+     * @see RedirectHelper::backOr()
+     * @uses \Illuminate\Routing\Redirector::setIntendedUrl()
      */
     public static function rememberUrl(): void
     {
@@ -48,13 +81,31 @@ class RedirectHelper
     }
 
     /**
-     * Redirect back to the intended URL or fallback if none exists.
+     * Redirect to the intended URL or fallback to a default route
      *
-     * Example:
-     * return RedirectHelper::backOr(
-     *     route('admin.gestionale.immobili.index', $condominio),
-     *     $this->flashSuccess('Aggiornato con successo')
-     * );
+     * This method works in conjunction with rememberUrl() to provide
+     * intelligent redirect behavior. It first attempts to redirect to
+     * the URL stored by rememberUrl(), then falls back to the provided
+     * default route if no intended URL is set.
+     *
+     * @param string $fallback The fallback route to use if no intended URL is set
+     * @param array $with Flash data to include with the redirect
+     * @return \Illuminate\Http\RedirectResponse
+     *
+     * @example
+     * // In a controller update method
+     * public function update(Request $request, $id)
+     * {
+     *     // Update logic...
+     *     
+     *     return RedirectHelper::backOr(
+     *         route('items.index'),
+     *         ['success' => 'Item updated successfully']
+     *     );
+     * }
+     *
+     * @see RedirectHelper::rememberUrl()
+     * @uses \Illuminate\Routing\Redirector::intended()
      */
     public static function backOr(string $fallback, array $with = []): RedirectResponse
     {

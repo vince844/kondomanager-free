@@ -13,6 +13,7 @@ use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -34,7 +35,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ImmobileAnagraficaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasEsercizio;
     
     /**
      * Display a listing of the resource.
@@ -45,16 +46,18 @@ class ImmobileAnagraficaController extends Controller
      */
     public function index(Condominio $condominio, Immobile $immobile): Response
     {
-        $esercizioAperto = Esercizio::where('stato', 'aperto')->first();
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
     
-        $immobile->loadMissing(['anagrafiche.saldi' => function($query) use ($immobile, $esercizioAperto) {
+        $immobile->loadMissing(['anagrafiche.saldi' => function($query) use ($immobile, $esercizio) {
             $query->where('immobile_id', $immobile->id)
-                ->where('esercizio_id', $esercizioAperto->id)
+                ->where('esercizio_id', $esercizio->id)
                 ->with('esercizio');
         }]);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile)
         ]);
     }
@@ -68,9 +71,12 @@ class ImmobileAnagraficaController extends Controller
      */
     public function create(Condominio $condominio, Immobile $immobile): Response
     {
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheNew', [
             'condominio'  => $condominio,
+            'esercizio'   => $esercizio,
             'immobile'    => $immobile,
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
         ]);
@@ -160,8 +166,12 @@ class ImmobileAnagraficaController extends Controller
     {
         $anagrafica = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheEdit', [
             'condominio'  => $condominio,
+            'esercizio'   => $esercizio,
             'immobile'    => new ImmobileResource($immobile),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             'anagrafica'  => $anagrafica,

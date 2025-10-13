@@ -52,6 +52,9 @@ return [
     'success_update_gestione'           => "Il periodo di gestione è stato aggiornato con successo.",
     'error_update_gestione'             => "Si è verificato un errore durante l'aggiornamento del periodo di gestione.",
     'success_delete_gestione'           => "Il periodo di gestione è stato eliminato con successo.",
-    'error_delete_gestione'             => "Si è verificato un errore durante l'eliminazione del periodo di gestione"
+    'error_delete_gestione'             => "Si è verificato un errore durante l'eliminazione del periodo di gestione",
+    // Piani conti
+    'success_create_piano_conto'        => "Il nuovo piano dei conti è stato creato con successo",
+    'error_create_piano_conto'          => "Si è verificato un errore durante la creazione del nuovo piano dei conti",
 
 ];

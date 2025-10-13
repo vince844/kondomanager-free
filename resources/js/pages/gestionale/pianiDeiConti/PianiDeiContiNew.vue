@@ -5,6 +5,7 @@ import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
+import EsercizioDropdown from "@/components/EsercizioDropdown.vue";
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -12,25 +13,26 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { useDateConverter } from '@/composables/useDateConverter';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
-import { Gestione } from '@/types/gestionale/gestioni';
+import type { Gestione } from '@/types/gestionale/gestioni';
+import type { Esercizio } from "@/types/gestionale/esercizi";
 
 const props = defineProps<{
   condominio: Building;
+  esercizio: Esercizio;
+  esercizi: Esercizio[],
   condomini: Building[];
   gestioni: Gestione[]
 }>()
 
 const { generatePath, generateRoute } = usePermission();
-const { toBackend, toItalian } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'piani conti', href: generatePath('gestionale/:condominio/conti', { condominio: props.condominio.id }) },
+  { title: props.esercizio?.nome, component: "esercizio-dropdown" } as any,
   { title: 'crea piano conti', href: '#' },
 ]);
 
@@ -42,8 +44,8 @@ const form = useForm({
 });
 
 const submit = () => {
-
-    form.post(route(...generateRoute('gestionale.conti.store', { condominio: props.condominio.id })), {
+    
+    form.post(route(...generateRoute('gestionale.esercizi.conti.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -62,6 +64,14 @@ const submit = () => {
         <template #breadcrumb-condominio>
             <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
         </template>
+
+        <template #breadcrumb-esercizio>
+            <EsercizioDropdown
+                :condominio="props.condominio"
+                :esercizio="props.esercizio"
+                :esercizi="props.esercizi"
+            />
+        </template> 
 
         <div class="px-4 py-6">
 
@@ -111,7 +121,6 @@ const submit = () => {
                                  <Label for="gestione">Gestione</Label>
 
                                 <v-select 
-                                    multiple
                                     :options="gestioni" 
                                     label="nome" 
                                      class="mt-1 block w-full"

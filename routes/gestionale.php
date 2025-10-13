@@ -1,6 +1,5 @@
 <?php
 
-use App\Http\Controllers\Gestionale\Conti\PianoContiController;
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
@@ -8,6 +7,7 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaContr
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
+use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use App\Http\Controllers\Gestionale\Tabelle\Quote\TabellaQuotaController;
@@ -67,8 +67,21 @@ Route::prefix('/gestionale/{condominio}')->name('gestionale.')->group(function (
         'gestioni' => 'gestione'
     ]);
 
-    Route::resource('conti', PianoContiController::class)->parameters([
+    Route::resource('esercizi.conti', PianoContiController::class)
+    ->parameters([
+        'esercizi' => 'esercizio',
+        'conti'    => 'conto',
+    ]);
+
+/*     Route::resource('conti', PianoContiController::class)->parameters([
         'conti' => 'conto'
     ]);
+
+    Route::resource('conti.spese', ImmobileDocumentoController::class)
+        ->parameters([
+            'conti' =>'conto',
+            'spesa'  => 'spesa',
+    ]); */
+
 
 });

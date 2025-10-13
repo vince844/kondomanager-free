@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\Conto;
+namespace App\Http\Requests\Gestionale\PianoConto;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class ContoIndexRequest extends FormRequest
+class PianoContoIndexRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

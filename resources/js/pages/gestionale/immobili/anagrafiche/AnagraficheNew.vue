@@ -115,7 +115,7 @@ const submit = () => {
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
   
-                <div class="sm:col-span-2">
+                <div class="sm:col-span-3">
                   <Label for="tipologia">Tipologia</Label>
                   <v-select
                     class="w-full"
@@ -128,7 +128,7 @@ const submit = () => {
                   <InputError :message="form.errors.tipologia" />
                 </div>
 
-                <div class="sm:col-span-4">
+                <div class="sm:col-span-3">
                   <Label for="tipologia">Anagrafica</Label>
                   <v-select
                     class="w-full"

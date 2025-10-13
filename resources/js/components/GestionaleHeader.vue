@@ -71,15 +71,21 @@ const mainNavItems: NavItem[] = [
     }, 
         {
         title: 'Gestioni',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), // Fallback se per caso non c'è esercizio aperto
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), 
         icon: ListPlus,
     }, 
     {
         title: 'Piano conti',
-        href: generatePath('gestionale/:condominio/conti', { condominio: condominio.value.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: HandCoins,
        
     }   
+/*     {
+        title: 'Piano conti',
+        href: generatePath('gestionale/:condominio/conti', { condominio: condominio.value.id }),
+        icon: HandCoins,
+       
+    }    */
 ]; 
 
 const rightNavItems: NavItem[] = [
