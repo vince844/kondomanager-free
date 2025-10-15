@@ -1,37 +1,18 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent,
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { MoreHorizontal } from 'lucide-vue-next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import type { Role } from '@/types/roles';
 import { Trash2, FilePenLine} from 'lucide-vue-next'
 
 defineProps<{ role: Role }>()
 
 const roleID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
 // Function to delete user: first close menu, then open dialog
@@ -61,6 +42,7 @@ const editRole = (role: Role) => {
 </script>
 
 <template>
+  
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
@@ -84,19 +66,11 @@ const editRole = (role: Role) => {
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
-   <AlertDialog v-model:open="isAlertOpen" >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questo ruolo?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà il ruolo e tutti i dati ad esso associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteRole()">Continua</AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di volere eliminare questo ruolo?"
+    description="Questa azione non è reversibile. Eliminerà il ruolo e tutti i dati ad esso associati."
+    @confirm="deleteRole"
+  />
+
 </template>

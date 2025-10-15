@@ -15,11 +15,7 @@ defineProps<{ building: Building }>()
 const { hasPermission } = usePermission()
 
 const buildingID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
 // Function to delete building first close menu, then open dialog

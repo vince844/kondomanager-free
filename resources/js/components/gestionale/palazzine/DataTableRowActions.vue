@@ -3,23 +3,8 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Palazzina } from '@/types/gestionale/palazzine'
@@ -71,11 +56,8 @@ function deletePalazzina() {
 }
 </script>
 
-
 <template>
-  <DropdownMenu
-
-  >
+  <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
@@ -84,9 +66,7 @@ function deletePalazzina() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem
-
-      >
+      <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.palazzine.edit'), { condominio: condominio.id, palazzina: palazzina.id })"
           preserve-state
@@ -106,21 +86,12 @@ function deletePalazzina() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questa palazzina?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la palazzina e tutti i dati ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deletePalazzina">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler eliminare questa palazzina?"
+    description="Questa azione non è reversibile. Eliminerà la palazzina e tutti i dati ad essa associati."
+    :loading="isDeleting"
+    @confirm="deletePalazzina"
+  />
+
 </template>

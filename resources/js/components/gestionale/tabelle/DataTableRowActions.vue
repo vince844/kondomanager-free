@@ -3,23 +3,8 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal, Percent } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Tabella } from '@/types/gestionale/tabelle'
@@ -48,7 +33,7 @@ function closeModal() {
   isDropdownOpen.value = false
 }
 
-function deleteImmobile() {
+function deleteTabella() {
   if (tabellaID.value === null || isDeleting.value) return
 
   const id = tabellaID.value
@@ -71,11 +56,8 @@ function deleteImmobile() {
 }
 </script>
 
-
 <template>
-  <DropdownMenu
-
-  >
+  <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
@@ -116,21 +98,12 @@ function deleteImmobile() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questa tabella?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la tabella e tutti i dati ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteImmobile">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler eliminare questa tabella?"
+    description="Questa azione non è reversibile. Eliminerà la tabella e tutti i dati ad essa associati."
+    :loading="isDeleting"
+    @confirm="deleteTabella"
+  />
+
 </template>

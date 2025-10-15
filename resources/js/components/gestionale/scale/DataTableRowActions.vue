@@ -3,23 +3,8 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Scala } from '@/types/gestionale/scale'
@@ -71,11 +56,8 @@ function deleteScala() {
 }
 </script>
 
-
 <template>
-  <DropdownMenu
-
-  >
+  <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
         <MoreHorizontal class="w-4 h-4" />
@@ -84,9 +66,7 @@ function deleteScala() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem
-
-      >
+      <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.scale.edit'), { condominio: condominio.id, scala: scala.id })"
           preserve-state
@@ -106,21 +86,12 @@ function deleteScala() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questa scala?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la scala e tutti i dati ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteScala">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler eliminare questa scala?"
+    description="  Questa azione non è reversibile. Eliminerà la scala e tutti i dati ad essa associati."
+    :loading="isDeleting"
+    @confirm="deleteScala"
+  />
+
 </template>

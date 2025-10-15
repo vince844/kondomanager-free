@@ -4,7 +4,7 @@ import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Unplug, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
@@ -17,7 +17,7 @@ const props = defineProps<{
   condominio: Building
 }>()
 
-const anagraficaID = ref<number | null>(null)
+const anagraficaID = ref<string | null>(null)
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
@@ -95,21 +95,12 @@ function deleteAnagrafica() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler dissociare questa anagrafica?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile e dissocierà l'anagrafica dall'immobile.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteAnagrafica">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler dissociare questa anagrafica?"
+    description="Questa azione non è reversibile e dissocierà l'anagrafica dall'immobile."
+    :loading="isDeleting"
+    @confirm="deleteAnagrafica"
+  />
+
 </template>

@@ -61,7 +61,6 @@ function deletePianoDeiConti() {
 }
 </script>
 
-
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>

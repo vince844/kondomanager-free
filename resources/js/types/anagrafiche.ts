@@ -16,13 +16,13 @@ export interface SaldoAmounts {
 }
 
 export interface Saldo {
-  iniziale: string; // già formattato dal backend, es. "€ -2.345,67"
-  finale: string;   // già formattato
-  amounts: SaldoAmounts; // valori numerici raw per logica colore o calcoli
+  iniziale: string; 
+  finale: string;   
+  amounts: SaldoAmounts; 
 }
 
 export interface Anagrafica {
-  id: number
+  id: string
   nome: string
   indirizzo: string
   codice_fiscale: string

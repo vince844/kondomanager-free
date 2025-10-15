@@ -1,29 +1,16 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { Permission } from "@/enums/Permission"
 import { useSegnalazioni } from '@/composables/useSegnalazioni'
 import type { Segnalazione } from '@/types/segnalazioni'
+
 
 defineProps<{ segnalazione: Segnalazione }>()
 
@@ -112,21 +99,12 @@ function deleteSegnalazione() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questa segnalazione?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteSegnalazione">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di volere eliminare questa segnalazione?"
+    description="Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati."
+    :loading="isDeleting"
+    @confirm="deleteSegnalazione"
+  />
+
 </template>

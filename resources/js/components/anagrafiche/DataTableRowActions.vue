@@ -4,18 +4,14 @@ import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, } from '@/components/ui/alert-dialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import type { Anagrafica } from '@/types/anagrafiche';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 
 defineProps<{ anagrafica: Anagrafica }>()
 
 const anagraficaID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
 function handleDelete(anagrafica: Anagrafica) {
@@ -68,19 +64,11 @@ const deleteAnagrafica = () => {
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
-   <AlertDialog v-model:open="isAlertOpen" >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questa anagrafica?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'anagrafica e tutti i dati ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteAnagrafica()">Continua</AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di volere eliminare questa anagrafica?"
+    description="Questa azione non è reversibile. Eliminerà l'anagrafica e tutti i dati ad essa associati."
+    @confirm="deleteAnagrafica"
+  />
+
 </template>

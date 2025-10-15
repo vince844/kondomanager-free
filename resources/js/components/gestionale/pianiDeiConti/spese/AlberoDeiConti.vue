@@ -1,8 +1,8 @@
 <!-- components/gestionale/pianiDeiConti/spese/AlberoDeiConti.vue -->
 <script setup lang="ts">
+
 import { Folder, FileText } from 'lucide-vue-next'
 import type { Conto } from '@/types/gestionale/conti'
-import { Badge } from '@/components/ui/badge'
 
 interface Props {
   conti: Conto[]
@@ -69,23 +69,16 @@ const isCapitolo = (conto: Conto) => {
           <!-- Nome conto -->
           <span class="text-sm font-medium flex-1 truncate">{{ conto.nome }}</span>
 
-          <!-- Badge tipo -->
-          <Badge 
-            :variant="conto.tipo === 'spesa' ? 'destructive' : 'default'"
-            class="text-xs"
-          >
-            {{ conto.tipo === 'spesa' ? 'Uscita' : 'Entrata' }}
-          </Badge>
-
           <!-- Importo (solo se non è capitolo) -->
           <span 
             v-if="!isCapitolo(conto) && conto.importo > 0" 
-            class="text-sm font-medium text-foreground ml-2"
+            class="text-sm font-medium ml-2"
+            :class="conto.tipo === 'spesa' ? 'text-red-600' : 'text-green-600'"
           >
             {{ formatImporto(conto.importo) }}
           </span>
           <span v-else-if="isCapitolo(conto)" class="text-sm text-muted-foreground ml-2">
-            Capitolo
+            Capitolo di spesa
           </span>
         </div>
 
@@ -107,18 +100,11 @@ const isCapitolo = (conto: Conto) => {
             <!-- Nome sottoconto -->
             <span class="text-sm font-medium flex-1 truncate">{{ sottoconto.nome }}</span>
 
-            <!-- Badge tipo -->
-            <Badge 
-              :variant="sottoconto.tipo === 'spesa' ? 'destructive' : 'default'"
-              class="text-xs"
-            >
-              {{ sottoconto.tipo === 'spesa' ? 'Uscita' : 'Entrata' }}
-            </Badge>
-
             <!-- Importo sottoconto -->
             <span 
               v-if="sottoconto.importo > 0" 
               class="text-sm font-medium text-foreground ml-2"
+              :class="sottoconto.tipo === 'spesa' ? 'text-red-600' : 'text-green-600'"
             >
               {{ formatImporto(sottoconto.importo) }}
             </span>

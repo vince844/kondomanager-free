@@ -29,30 +29,32 @@ class SpesaController extends Controller
     public function index(Condominio $condominio, Esercizio $esercizio, PianoConto $conto): Response
     {
 
-        $contiDisponibili = Conto::where('piano_conto_id', $conto->id) // ← Usa Conto
+        $contiDisponibili = Conto::where('piano_conto_id', $conto->id)
             ->whereNull('parent_id')
             ->select(['id', 'nome'])
             ->orderBy('nome')
             ->get();
-        
-         // Albero dei conti con relazioni
-        $conti = Conto::with(['sottoconti' => function($query) { // ← Usa Conto
-                $query->orderBy('nome');
-            }])
-            ->where('piano_conto_id', $conto->id)
-            ->whereNull('parent_id')
-            ->orderBy('nome')
-            ->get();
-        
+
+        $conti = Conto::with([
+            'sottoconti.tabelleMillesimali.tabella',
+            'sottoconti.tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
+            'tabelleMillesimali.tabella',
+            'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto')
+        ])
+        ->where('piano_conto_id', $conto->id)
+        ->whereNull('parent_id')
+        ->orderBy('nome')
+        ->get();
+
         $tabelle = $condominio->tabelle()->select(['id', 'nome'])->orderBy('nome')->get();
 
         return Inertia::render('gestionale/pianiDeiConti/Spese/SpeseNew', [
             'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'tabelle'    => $tabelle,
-            'conto'      => $conto,
-            'conti'      => $conti,
-            'contiDisponibili'  => $contiDisponibili,
+            'esercizio' => $esercizio,
+            'tabelle' => $tabelle,
+            'conto' => $conto,
+            'conti' => $conti,
+            'contiDisponibili' => $contiDisponibili,
         ]);
     }
 
