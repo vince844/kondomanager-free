@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\PianiConti;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\PianoConto\CreatePianoContoRequest;
 use App\Http\Requests\Gestionale\PianoConto\PianoContoIndexRequest;
+use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\PianiDeiConti\PianoDeiContiResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -60,46 +61,43 @@ class PianoContiController extends Controller
      * - filters: Current filter values for UI state persistence
      */
     public function index(PianoContoIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
-{
-    /** @var \Illuminate\Http\Request $request */
-    $validated = $request->validated();
+    {
+        /** @var \Illuminate\Http\Request $request */
+        $validated = $request->validated();
 
-    // Filtriamo i piani dei conti del condominio, relativi alle gestioni collegate all'esercizio selezionato
-    $pianiDeiConti = $condominio->pianiDeiConti()
-        ->whereHas('gestione.esercizi', function ($q) use ($esercizio) {
-            $q->where('esercizio_id', $esercizio->id);
-        })
-        ->with(['gestione.esercizi' => function ($q) use ($esercizio) {
-            $q->where('esercizio_id', $esercizio->id);
-        }])
-        ->when($validated['nome'] ?? false, function ($query, $nome) {
-            $query->where('nome', 'like', "%{$nome}%");
-        })
-        ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+        // Filtriamo i piani dei conti del condominio, relativi alle gestioni collegate all'esercizio selezionato
+        $pianiDeiConti = $condominio->pianiDeiConti()
+            ->whereHas('gestione.esercizi', function ($q) use ($esercizio) {
+                $q->where('esercizio_id', $esercizio->id);
+            })
+            ->with(['gestione.esercizi' => function ($q) use ($esercizio) {
+                $q->where('esercizio_id', $esercizio->id);
+            }])
+            ->when($validated['nome'] ?? false, function ($query, $nome) {
+                $query->where('nome', 'like', "%{$nome}%");
+            })
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
 
-    // Tutti i condomini (per dropdown globale)
-    $condomini = $this->getCondomini();
+        // Tutti gli esercizi del condominio, ordinati
+        $esercizi = $condominio->esercizi()
+            ->orderBy('data_inizio', 'desc')
+            ->get(['id', 'nome', 'stato']);
 
-    // Tutti gli esercizi del condominio, ordinati
-    $esercizi = $condominio->esercizi()
-        ->orderBy('data_inizio', 'desc')
-        ->get(['id', 'nome', 'stato']);
-
-    return Inertia::render('gestionale/pianiDeiConti/PianiDeiContiList', [
-        'condominio'      => $condominio,
-        'esercizio'       => $esercizio,
-        'esercizi'        => $esercizi,
-        'condomini'       => $condomini,
-        'pianiDeiConti'   => PianoDeiContiResource::collection($pianiDeiConti)->resolve(),
-        'meta' => [
-            'current_page' => $pianiDeiConti->currentPage(),
-            'last_page'    => $pianiDeiConti->lastPage(),
-            'per_page'     => $pianiDeiConti->perPage(),
-            'total'        => $pianiDeiConti->total(),
-        ],
-        'filters' => $request->only(['nome']),
-    ]);
-}
+        return Inertia::render('gestionale/pianiDeiConti/PianiDeiContiList', [
+            'condominio'      => $condominio,
+            'esercizio'       => $esercizio,
+            'esercizi'        => $esercizi,
+            'condomini'       => CondominioResource::collection($this->getCondomini()),
+            'pianiDeiConti'   => PianoDeiContiResource::collection($pianiDeiConti)->resolve(),
+            'meta' => [
+                'current_page' => $pianiDeiConti->currentPage(),
+                'last_page'    => $pianiDeiConti->lastPage(),
+                'per_page'     => $pianiDeiConti->perPage(),
+                'total'        => $pianiDeiConti->total(),
+            ],
+            'filters' => $request->only(['nome']),
+        ]);
+    }
 
     /**
      * Show the form for creating a new chart of accounts entry (Piano dei Conti).
@@ -176,10 +174,13 @@ class PianoContiController extends Controller
             
             $data = $request->validated();
             
-            PianoConto::create($data);
+            $pianoConto = PianoConto::create($data);
 
-            return to_route('admin.gestionale.esercizi.conti.index', $condominio)
-                ->with($this->flashSuccess(__('gestionale.success_create_piano_conto')));
+            return to_route('admin.gestionale.spese.index', [
+                'condominio' => $condominio->id,
+                'conto'    => $pianoConto->id,
+            ])->with('success', __('gestionale.success_create_piano_conto'));
+
 
         } catch (\Throwable $e) {
 
@@ -205,9 +206,25 @@ class PianoContiController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(Condominio $condominio, Esercizio $esercizio, PianoConto $conto): Response
     {
-        //
+
+        $conto->loadMissing(['gestione']);
+
+        $gestioni = Gestione::whereHas('esercizi', function ($query) use ($esercizio) {
+                $query->where('esercizio_id', $esercizio->id);
+            })
+            ->with(['esercizi' => function ($query) use ($esercizio) {
+                $query->where('esercizio_id', $esercizio->id);
+            }])
+            ->get();
+
+         return Inertia::render('gestionale/pianiDeiConti/PianiDeiContiEdit', [
+            'condominio'   => $condominio,
+            'esercizio'    => $esercizio,
+            'gestioni'     => $gestioni,
+            'pianoConti'   => new PianoDeiContiResource($conto),
+        ]);
     }
 
     /**

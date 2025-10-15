@@ -3,29 +3,19 @@
 import { ref } from 'vue'
 import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Building } from '@/types/buildings'
+import type { Esercizio } from '@/types/gestionale/esercizi'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
-const { pianoDeiConti, condominio } = defineProps<{ pianoDeiConti: PianoDeiConti, condominio: Building }>()
+const props = defineProps<{
+  pianoDeiConti: PianoDeiConti,
+  esercizio: Esercizio
+  condominio: Building
+}>()
 
 const pianoDeiContiID = ref<number | null>(null)
 const isAlertOpen = ref(false)
@@ -54,7 +44,7 @@ function deletePianoDeiConti() {
   const id = pianoDeiContiID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.conti.destroy'), { condominio: condominio.id, pianoDeiConti: id }), {
+  router.delete(route(generateRoute('gestionale.esercizi.conti.destroy'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoDeiConti.id }), {
     preserveScroll: true,
     preserveState: true,
     only: ['flash', 'conti'],
@@ -84,7 +74,7 @@ function deletePianoDeiConti() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('gestionale.conti.edit'), { condominio: condominio.id, pianoDeiConti: pianoDeiConti.id })"
+          :href="route(generateRoute('gestionale.esercizi.conti.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, conto: props.pianoDeiConti.id })"
           preserve-state
           class="flex items-center gap-2"
         >
@@ -102,21 +92,11 @@ function deletePianoDeiConti() {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo piano dei conti?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà il piano dei conti e tutti i dati ad esso associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deletePianoDeiConti">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler eliminare questo piano dei conti?"
+    description="Questa azione non è reversibile. Eliminerà il piano dei conti e tutti i dati ad esso associati."
+    @confirm="deletePianoDeiConti"
+  />
+
 </template>

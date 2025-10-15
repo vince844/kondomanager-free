@@ -3,9 +3,7 @@
 namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 
 use App\Traits\ValidatesImmobileAnagraficaPivot;
-use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Cknow\Money\Money;
 

@@ -14,7 +14,7 @@ export const columns: ColumnDef<Building>[] = [
     accessorKey: 'nome',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }), 
 
-      cell: ({ row }) => {
+    cell: ({ row }) => {
 
       const condominio = row.original
       const label = row.original.codice_identificativo

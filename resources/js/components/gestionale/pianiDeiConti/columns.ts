@@ -1,18 +1,31 @@
 // columns.ts
 import { h } from 'vue'
+import { Link } from '@inertiajs/vue3';
 import DropdownAction from '@/components/gestionale/pianiDeiConti/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/pianiDeiConti/DataTableColumnHeader.vue'
+import { usePermission } from "@/composables/permissions";
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
+const { generateRoute } = usePermission();
+
 export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<PianoDeiConti>[] => [
   {
     accessorKey: 'nome',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
-    cell: ({ row }) => h('div', { class: 'font-bold' }, row.getValue('nome')),
+    cell: ({ row }) => {
 
+      const conto = row.original
+
+      return h('div', { class: 'flex items-center space-x-2' }, [
+        h(Link, {
+          href: route(generateRoute('gestionale.esercizi.conti.spese.index'), { condominio: condominio.id, esercizio: esercizio.id,  conto: conto.id }),
+          class: 'font-bold ',
+        }, () => conto.nome)
+      ]);
+    } 
   },
   {
     accessorKey: 'descrizione',
@@ -64,9 +77,9 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
     cell: ({ row }) => {
       const pianoDeiConti = row.original as PianoDeiConti
       return h('div', { class: 'relative' },
-        h(DropdownAction, { pianoDeiConti, condominio })
+        h(DropdownAction, { pianoDeiConti, condominio, esercizio })
       )
     },
-  },
+   }
 ]
 

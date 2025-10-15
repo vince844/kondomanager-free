@@ -183,6 +183,7 @@ class ImmobileController extends Controller
                 ->with($this->flashSuccess(__('gestionale.success_create_immobile')));
 
         } catch (\Throwable $e) {
+            
             Log::error('Error creating immobile', [
                 'condominio_id' => $condominio->id,
                 'message'       => $e->getMessage(),

@@ -34,6 +34,18 @@ export function useCondominioDropdown() {
       }
     }
 
+    // Se siamo nella pagina dei conti, aggiorna anche l’esercizio aperto
+    const isContiPage = segments.includes("conti");
+
+    if (isContiPage && selected?.esercizio_aperto?.id) {
+      const esercizioIndex = segments.findIndex(
+        (s, i) => segments[i - 1] === "esercizi"
+      );
+      if (esercizioIndex !== -1) {
+        segments[esercizioIndex] = selected.esercizio_aperto.id.toString();
+      }
+    }
+
     // Naviga verso la nuova URL
     const newUrl = segments.join("/");
     router.visit(newUrl, { preserveState: false, preserveScroll: true });

@@ -23,11 +23,7 @@ class Conto extends Model
         'destinazione_tipo',
         'note',
     ];
-
-    protected $casts = [
-        'importo' => MoneyCast::class . ':EUR', // memorizzato come integer
-    ];
-
+    
     /** RELAZIONI */
     public function pianoConto()
     {

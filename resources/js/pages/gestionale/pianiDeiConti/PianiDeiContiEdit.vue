@@ -18,34 +18,35 @@ import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Esercizio } from "@/types/gestionale/esercizi";
+import { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
 
 const props = defineProps<{
   condominio: Building;
   esercizio: Esercizio;
-  esercizi: Esercizio[],
-  condomini: Building[];
   gestioni: Gestione[]
+  pianoConti: PianoDeiConti
 }>()
 
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: props.esercizio?.nome, component: "esercizio-dropdown" } as any,
-  { title: 'crea piano conti', href: '#' },
+  { title: props.condominio.nome, href: '#' },
+  { title: 'conti', href: generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
+  { title: props.pianoConti.nome, href: '#' },
+  { title: 'modifica gestione', href: '#' },
 ]);
 
 const form = useForm({
-  nome: '',
-  descrizione: '',
-  note: '',
-  gestione_id: ''
+  nome: props.pianoConti.nome,
+  descrizione: props.pianoConti.descrizione,
+  note: props.pianoConti.note,
+  gestione_id: props.pianoConti.gestione.id,
 });
 
 const submit = () => {
     
-    form.post(route(...generateRoute('gestionale.esercizi.conti.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
+    form.put(route(...generateRoute('gestionale.esercizi.conti.update', { condominio: props.condominio.id, esercizio: props.esercizio.id, conto: props.pianoConti.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -57,21 +58,9 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuovo piano conti" />
+    <Head title="Modifica piano conti" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
-
-        <template #breadcrumb-condominio>
-            <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
-        </template>
-
-        <template #breadcrumb-esercizio>
-            <EsercizioDropdown
-                :condominio="props.condominio"
-                :esercizio="props.esercizio"
-                :esercizi="props.esercizi"
-            />
-        </template> 
 
         <div class="px-4 py-6">
 
@@ -82,20 +71,20 @@ const submit = () => {
 
                         <!-- Action buttons -->
                         <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
-                        <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-                            <Plus class="w-4 h-4" v-if="!form.processing" />
-                            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                            Salva
-                        </Button>
+                            <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
+                                <Plus class="w-4 h-4" v-if="!form.processing" />
+                                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                                Salva
+                            </Button>
 
-                        <Link
-                            as="button"
-                            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-                            class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-                        >
-                            <List class="w-4 h-4" />
-                            <span>Piani dei conti</span>
-                        </Link>
+                            <Link
+                                as="button"
+                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+                                class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+                            >
+                                <List class="w-4 h-4" />
+                                <span>Piani dei conti</span>
+                            </Link>
                         </div>
 
                         <Separator class="my-4" />

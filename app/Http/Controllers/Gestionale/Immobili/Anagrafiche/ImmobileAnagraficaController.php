@@ -9,7 +9,6 @@ use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
-use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
