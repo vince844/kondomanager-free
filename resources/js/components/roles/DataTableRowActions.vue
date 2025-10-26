@@ -1,21 +1,26 @@
 <script setup lang="ts">
-
-import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3";
+import { ref, computed } from 'vue'
+import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { MoreHorizontal } from 'lucide-vue-next'
 import type { Role } from '@/types/roles';
-import { Trash2, FilePenLine} from 'lucide-vue-next'
+import { Trash2, FilePenLine } from 'lucide-vue-next'
 
-defineProps<{ role: Role }>()
+interface Props {
+  role: Role
+}
+
+const props = defineProps<Props>()
 
 const roleID = ref('');
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 
-// Function to delete user: first close menu, then open dialog
+// Computed per sicurezza
+const userCount = computed(() => props.role.users_count || 0)
+
 function handleDelete(role: Role) {
   roleID.value = role.id;
   isDropdownOpen.value = false 
@@ -39,10 +44,12 @@ const editRole = (role: Role) => {
   router.get(route('ruoli.edit', { id: role.id}))
 }
 
+// Debug
+console.log('Role data:', props.role)
+console.log('Users count:', userCount.value)
 </script>
 
 <template>
-  
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
@@ -53,24 +60,24 @@ const editRole = (role: Role) => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
       
-      <DropdownMenuItem @click="editRole(role)" >
+      <DropdownMenuItem @click="editRole(role)">
         <FilePenLine class="w-4 h-4 text-xs" />
         Modifica 
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="handleDelete(role)" >
+      <DropdownMenuItem @click="handleDelete(role)">
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina 
       </DropdownMenuItem>
-
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere eliminare questo ruolo?"
-    description="Questa azione non è reversibile. Eliminerà il ruolo e tutti i dati ad esso associati."
+    :title="`Sei sicuro di volere eliminare il ruolo ${role.name}?`"
+    :description="userCount > 0
+      ? `Il ruolo ${role.name} ha ${userCount} utenti associati che verranno automaticamente assegnati al ruolo utente default.`
+      : 'Questa azione non è reversibile. Eliminerà il ruolo e tutti i dati ad esso associati.'"
     @confirm="deleteRole"
   />
-
 </template>

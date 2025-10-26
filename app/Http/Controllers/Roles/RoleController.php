@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Roles;
 
 use App\Enums\Permission as EnumsPermission;
+use App\Enums\Role as EnumsRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ruolo\CreateRuoloRequest;
 use App\Http\Requests\Ruolo\UpdateRuoloRequest;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
+use App\Models\User;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasProtectedRoles;
 use Illuminate\Http\RedirectResponse;
@@ -35,9 +37,23 @@ class RoleController extends Controller
     {
         Gate::authorize('view', Role::class);
         
-        return Inertia::render('ruoli/ElencoRuoli', [
-            'roles' => RoleResource::collection(Role::all())
-        ]);
+          $roles = Role::all();
+    
+    // Prendi tutti i conteggi in una singola query
+    $userCounts = DB::table('model_has_roles')
+        ->where('model_type', User::class)
+        ->select('role_id', DB::raw('COUNT(*) as count'))
+        ->groupBy('role_id')
+        ->pluck('count', 'role_id');
+    
+    // Assegna i conteggi ai ruoli
+    $roles->each(function($role) use ($userCounts) {
+        $role->users_count = $userCounts[$role->id] ?? 0;
+    });
+    
+    return Inertia::render('ruoli/ElencoRuoli', [
+        'roles' => RoleResource::collection($roles)
+    ]);
     }
 
     /**
@@ -226,29 +242,47 @@ class RoleController extends Controller
         $role = Role::findOrFail($id);
 
         if ($this->isProtectedRole($role->name)) {
-
             return to_route('ruoli.index')->with(
                 $this->flashInfo(__('ruoli.cannot_delete_default_role', ['role' => $role->name]))
             );
-  
+        }
+
+        $userCount = $role->users()->count();
+        
+        if ($userCount > 0) {
+            $defaultRole = Role::where('name', EnumsRole::UTENTE->value)->first();
+            
+            if (!$defaultRole) {
+                return back()->with(
+                    $this->flashError(__('ruoli.default_role_not_found'))
+                );
+            }
+
+            foreach($role->users as $user) {
+                $user->syncRoles([$defaultRole->name]);
+            }
         }
 
         try {
 
             $role->delete();
-
-            return back()->with(
-                $this->flashSuccess(__('ruoli.success_delete_role'))
-            );
+            
+            $message = $userCount > 0 
+                ? __('ruoli.success_delete_with_reassign', [
+                    'count' => $userCount,
+                    'default_role' => EnumsRole::UTENTE->value
+                ])
+                : __('ruoli.success_delete_role');
+                
+            return back()->with($this->flashSuccess($message));
             
         } catch (\Exception $e) {
             
             Log::error('Error deleting role: ' . $e->getMessage());
-
             return back()->with(
                 $this->flashError(__('ruoli.error_delete_role'))
             );
         }
-
     }
+
 }

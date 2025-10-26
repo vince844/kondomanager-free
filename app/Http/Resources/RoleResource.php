@@ -19,6 +19,7 @@ class RoleResource extends JsonResource
             'id'          => $this->id,
             'name'        => Str::of($this->name)->ucfirst(), 
             'description' => $this->description, 
+            'users_count' => $this->users_count ?? 0,
             'permissions' => PermissionResource::collection($this->whenLoaded('permissions'))
         ];
     }
