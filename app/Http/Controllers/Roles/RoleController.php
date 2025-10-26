@@ -37,23 +37,23 @@ class RoleController extends Controller
     {
         Gate::authorize('view', Role::class);
         
-          $roles = Role::all();
-    
-    // Prendi tutti i conteggi in una singola query
-    $userCounts = DB::table('model_has_roles')
-        ->where('model_type', User::class)
-        ->select('role_id', DB::raw('COUNT(*) as count'))
-        ->groupBy('role_id')
-        ->pluck('count', 'role_id');
-    
-    // Assegna i conteggi ai ruoli
-    $roles->each(function($role) use ($userCounts) {
-        $role->users_count = $userCounts[$role->id] ?? 0;
-    });
-    
-    return Inertia::render('ruoli/ElencoRuoli', [
-        'roles' => RoleResource::collection($roles)
-    ]);
+        $roles = Role::all();
+        
+        // Prendi tutti i conteggi in una singola query
+        $userCounts = DB::table('model_has_roles')
+            ->where('model_type', User::class)
+            ->select('role_id', DB::raw('COUNT(*) as count'))
+            ->groupBy('role_id')
+            ->pluck('count', 'role_id');
+        
+        // Assegna i conteggi ai ruoli
+        $roles->each(function($role) use ($userCounts) {
+            $role->users_count = $userCounts[$role->id] ?? 0;
+        });
+        
+        return Inertia::render('ruoli/ElencoRuoli', [
+            'roles' => RoleResource::collection($roles)
+        ]);
     }
 
     /**

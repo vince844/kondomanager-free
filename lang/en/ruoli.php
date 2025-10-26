@@ -12,6 +12,5 @@ return [
     'cannot_edit_default_role'     => 'Cannot edit the default role ":role".',
     'cannot_delete_default_role'   => 'Cannot delete the default role ":role".',
     'default_role_not_found'       => 'Default role not found.',
-    'success_delete_role'          => 'The role has been deleted successfully.',
     'success_delete_with_reassign' => 'The role has been deleted and all associated users have been reassigned to the :default_role role.',
 ];

@@ -5,5 +5,6 @@ export interface Role {
     name: string
     description: string
     users_count: number
+    is_protected: boolean
     permissions: Permission[]
 }
