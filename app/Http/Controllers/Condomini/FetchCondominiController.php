@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Condomini;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
-use Illuminate\Http\Request;
 
 class FetchCondominiController extends Controller
 {

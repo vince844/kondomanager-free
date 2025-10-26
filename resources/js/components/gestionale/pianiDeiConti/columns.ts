@@ -17,13 +17,14 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
     cell: ({ row }) => {
 
-      const conto = row.original
+      const pianoConto = row.original
 
       return h('div', { class: 'flex items-center space-x-2' }, [
         h(Link, {
-          href: route(generateRoute('gestionale.esercizi.conti.spese.index'), { condominio: condominio.id, esercizio: esercizio.id,  conto: conto.id }),
+          prefetch: true,
+          href: route(generateRoute('gestionale.esercizi.piani-conti.show'), { condominio: condominio.id, esercizio: esercizio.id,  pianoConto: pianoConto.id }),
           class: 'font-bold ',
-        }, () => conto.nome)
+        }, () => pianoConto.nome)
       ]);
     } 
   },

@@ -30,7 +30,7 @@ class CreateDocumentoRequest extends FormRequest
         return [
             'name'            => 'required|string|max:255',
             'description'     => 'required|string',
-            'category_id'     => 'required|string|exists:categorie_documento,id',
+            'category_id'     => 'required|integer|exists:categorie_documento,id',
             'is_published'    => 'required|boolean',
             'is_approved'     => 'required|boolean',
             'created_by'      => 'required|exists:users,id',

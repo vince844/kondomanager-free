@@ -1,30 +1,48 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\PianoConto\Spesa;
+namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Cknow\Money\Money;
 
-class CreateSpesaRequest extends FormRequest
+/**
+ * @method bool merge(string $key)
+ * @property-read string $isCapitolo
+ * @property-read string $isSottoConto
+ * @property-read string $importo
+ * @property-read string $parent_id
+ * @property-read string $percentuale_proprietario
+ * @property-read string $percentuale_inquilino
+ * @property-read string $percentuale_usufruttuario
+ */
+class CreateContoRequest extends FormRequest
 {
+    /**
+     * Determine if the user is authorized to make this request.
+     */
     public function authorize(): bool
     {
         return true;
     }
 
+    /**
+     * Get the validation rules that apply to the request.
+     *
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
+     */
+
     public function rules(): array
     {
         $rules = [
-            'nome' => 'required|string|max:255',
-            'descrizione' => 'nullable|string',
-            'tipo' => 'required|in:spesa,entrata',
-            'note' => 'nullable|string',
-            'isCapitolo' => 'required|boolean',
-            'isSottoConto' => 'required|boolean', 
+            'nome'                   => 'required|string|max:255',
+            'descrizione'            => 'nullable|string',
+            'tipo'                   => 'required|in:spesa,entrata',
+            'note'                   => 'nullable|string',
+            'isCapitolo'             => 'required|boolean',
+            'isSottoConto'           => 'required|boolean', 
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
-            'importo'      => 'required|numeric',
-            'parent_id' => 'nullable|exists:conti,id',
+            'importo'                => 'required|string',
+            'parent_id'              => 'nullable|exists:conti,id',
         ];
 
         // Importo obbligatorio solo se non è un capitolo
@@ -74,19 +92,5 @@ class CreateSpesaRequest extends FormRequest
             }
         });
     }
-
-     /**
-     * Prepare data before validation.
-     * Uppercases relevant string fields and merges condominio_id from route.
-     */
-    protected function prepareForValidation()
-    {
-        $this->merge([
-            'importo' => $this->importo !== null
-                ? (int) Money::EUR($this->importo)->getAmount() // ← converte in centesimi
-                : 0,
-        ]);
-
-    }
-
+    
 }

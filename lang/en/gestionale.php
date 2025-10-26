@@ -56,5 +56,17 @@ return [
     // Piani conti
     'success_create_piano_conto'        => "A new piano dei conti has been created successfully",
     'error_create_piano_conto'          => "An error occurred while creating the new piano dei conti.",
+    'success_delete_piano_conto'        => "The piano dei conti has been deleted successfully.",
+    'error_delete_piano_conto'          => "An error occurred while deleting the piano dei conti.",
+    'success_update_piano_conto'        => "The piano dei conti has been updated successfully.",
+    'error_update_piano_conto'          => "An error occurred while updating the piano dei conti.",
+    // Conti
+    'success_create_conto'              => "A new expense has been created successfully.",
+    'error_create_conto'                => "An error occurred while creating the new expense.",
+    'success_delete_conto'              => "The expense has been deleted successfully.",
+    'error_delete_conto'                => "An error occurred while deleting the expense.",
+    'success_update_conto'              => "The expense has been updated successfully.",
+    'error_update_conto'                => "An error occurred while updating the expense.",
+    'error_conto_has_sottoconti'        => "Unable to delete the expense because it contains sub-expenses. Please delete the sub-expenses first.",
     
 ];

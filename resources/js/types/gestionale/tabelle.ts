@@ -33,3 +33,8 @@ export interface StatusType {
   icon: Component;
   colorClass: string;
 }
+
+export interface TabellaDropdown {
+  id: number;
+  nome: string;
+}

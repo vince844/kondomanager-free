@@ -41,13 +41,10 @@ function closeModal() {
 function deletePianoDeiConti() {
   if (pianoDeiContiID.value === null || isDeleting.value) return
 
-  const id = pianoDeiContiID.value
   isDeleting.value = true
 
-  router.delete(route(generateRoute('gestionale.esercizi.conti.destroy'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoDeiConti.id }), {
+  router.delete(route(generateRoute('gestionale.esercizi.piani-conti.destroy'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoDeiConti.id }), {
     preserveScroll: true,
-    preserveState: true,
-    only: ['flash', 'conti'],
     onSuccess: () => {
       closeModal()
     },
@@ -73,7 +70,7 @@ function deletePianoDeiConti() {
 
       <DropdownMenuItem>
         <Link
-          :href="route(generateRoute('gestionale.esercizi.conti.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, conto: props.pianoDeiConti.id })"
+          :href="route(generateRoute('gestionale.esercizi.piani-conti.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoDeiConti.id })"
           preserve-state
           class="flex items-center gap-2"
         >

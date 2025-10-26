@@ -45,7 +45,7 @@ const form = useForm({
 
 const submit = () => {
     
-    form.post(route(...generateRoute('gestionale.esercizi.conti.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
+    form.post(route(...generateRoute('gestionale.esercizi.piani-conti.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -90,7 +90,7 @@ const submit = () => {
 
                         <Link
                             as="button"
-                            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+                            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
                             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                         >
                             <List class="w-4 h-4" />

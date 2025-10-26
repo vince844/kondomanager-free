@@ -7,10 +7,14 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaContr
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
-use App\Http\Controllers\Gestionale\PianiConti\Spese\SpesaController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
+use App\Http\Controllers\Gestionale\Tabelle\FetchTabelleController;
 use App\Http\Controllers\Gestionale\Tabelle\Quote\TabellaQuotaController;
 use App\Http\Controllers\Gestionale\Tabelle\TabellaController;
 use App\Http\Middleware\EnsureCondominioHasEsercizio;
@@ -25,6 +29,10 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/', DashboardController::class)->name('index');
     
     Route::get('/struttura', [StrutturaController::class, 'index'])->name('struttura.index');
+
+    Route::get('/fetch-tabelle', FetchTabelleController::class)->name('fetch-tabelle');
+
+    Route::get('/fetch-capitoli-conti', FetchCapitoliContiController::class)->name('fetch-capitoli-conti');
     
     Route::resource('palazzine', PalazzinaController::class)
         ->parameters(['palazzine' => 'palazzina']);
@@ -54,7 +62,7 @@ Route::prefix('/gestionale/{condominio}')
         Route::get('/quote', [TabellaQuotaController::class, 'index'])->name('tabelle.quote.index');
         Route::put('/quote', [TabellaQuotaController::class, 'update'])->name('tabelle.quote.update');
     });
-    
+
     Route::resource('esercizi', EsercizioController::class)
         ->parameters(['esercizi' => 'esercizio']);
     
@@ -64,16 +72,24 @@ Route::prefix('/gestionale/{condominio}')
             'gestioni' => 'gestione'
         ]);
     
-    Route::resource('esercizi.conti', PianoContiController::class)
+    Route::resource('esercizi.piani-conti', PianoContiController::class)
         ->parameters([
-            'esercizi' => 'esercizio',
-            'conti'    => 'conto'
+            'esercizi'    => 'esercizio',
+            'piani-conti' => 'pianoConto'
         ]);
     
-    Route::resource('esercizi.conti.spese', SpesaController::class)
+    Route::resource('esercizi.piani-conti.conti', ContoController::class)
         ->parameters([
-            'esercizi' => 'esercizio',
-            'conti'    => 'conto',
-            'spese'    => 'spesa'
+            'esercizi'    => 'esercizio',
+            'piani-conti' => 'pianoConto',
+            'conti'       => 'conto'
         ]); 
+    
+    Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/associa-tabella', AssociaTabellaController::class)
+    ->name('esercizi.piani-conti.conti.associa-tabella');
+
+    Route::delete('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/dissocia-tabella/{tabella}', DissociaTabellaController::class)
+    ->name('esercizi.piani-conti.conti.dissocia-tabella');
+    
+
 });

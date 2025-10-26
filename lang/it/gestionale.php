@@ -56,5 +56,17 @@ return [
     // Piani conti
     'success_create_piano_conto'        => "Il nuovo piano dei conti è stato creato con successo",
     'error_create_piano_conto'          => "Si è verificato un errore durante la creazione del nuovo piano dei conti",
+    'success_delete_piano_conto'        => "Il piano dei conti è stato eliminato con successo.",
+    'error_delete_piano_conto'          => "Si è verificato un errore durante l'eliminazione del piano dei conti.",
+    'success_update_piano_conto'        => "Il piano dei conti è stato aggiornato con successo.",
+    'error_update_piano_conto'          => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
+    // Conti
+    'success_create_conto'              => "La nuova voce di spesa è stata creata con successo.",
+    'error_create_conto'                => "Si è verificato un errore durante la creazione della nuova voce di spesa.",
+    'success_delete_conto'              => "La voce di spesa è stata eliminata con successo.",
+    'error_delete_conto'                => "Si è verificato un errore durante l'eliminazione della voce di spesa.",
+    'success_update_conto'              => "La voce di spesa è stata aggiornata con successo.",
+    'error_update_conto'                => "Si è verificato un errore durante l'aggiornamento della voce di spesa.",
+    'error_conto_has_sottoconti'        => "Impossibile eliminare la voce di spesa perché contiene sottoconti. Elimina prima i sottoconti.",
 
 ];

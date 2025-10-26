@@ -32,7 +32,7 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'conti', href: generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
+  { title: 'piani conti', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: props.pianoConti.nome, href: '#' },
   { title: 'modifica gestione', href: '#' },
 ]);
@@ -46,7 +46,7 @@ const form = useForm({
 
 const submit = () => {
     
-    form.put(route(...generateRoute('gestionale.esercizi.conti.update', { condominio: props.condominio.id, esercizio: props.esercizio.id, conto: props.pianoConti.id })), {
+    form.put(route(...generateRoute('gestionale.esercizi.piani-conti.update', { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoConto: props.pianoConti.id })), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset()
@@ -79,7 +79,7 @@ const submit = () => {
 
                             <Link
                                 as="button"
-                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
                                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                             >
                                 <List class="w-4 h-4" />

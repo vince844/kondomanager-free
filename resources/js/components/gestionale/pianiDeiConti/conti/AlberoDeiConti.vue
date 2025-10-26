@@ -1,7 +1,8 @@
 <!-- components/gestionale/pianiDeiConti/spese/AlberoDeiConti.vue -->
 <script setup lang="ts">
 
-import { Folder, FileText } from 'lucide-vue-next'
+import { Folder, FolderOpen, FileText } from 'lucide-vue-next'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { Conto } from '@/types/gestionale/conti'
 
 interface Props {
@@ -15,15 +16,6 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-// Funzione per formattare l'importo in euro
-const formatImporto = (importo: number) => {
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-    minimumFractionDigits: 2
-  }).format(importo / 100)
-}
-
 // Seleziona un conto
 const selezionaConto = (conto: Conto) => {
   emit('seleziona', conto)
@@ -36,16 +28,32 @@ const hasSottoconti = (conto: Conto) => {
 
 // Verifica se è un capitolo (importo 0 e ha sottoconti)
 const isCapitolo = (conto: Conto) => {
-  return conto.importo === 0 && hasSottoconti(conto)
+  // Ora importo è una stringa, controlla se è "€ 0,00" o simile
+  return (conto.importo === '€ 0,00' || conto.importo === '0,00') && hasSottoconti(conto)
 }
+
+// Verifica se l'importo è positivo (per il colore)
+const hasImportoPositivo = (conto: Conto) => {
+  // Controlla se l'importo formattato non è "€ 0,00"
+  return conto.importo !== '€ 0,00' && conto.importo !== '0,00'
+}
+
 </script>
 
 <template>
   <div class="albero-conti">
     <div v-if="props.conti.length === 0" class="text-center py-8 text-muted-foreground">
-      <Folder class="w-12 h-12 mx-auto mb-3 text-muted-foreground/50" />
-      <p class="text-sm">Nessun conto creato</p>
-      <p class="text-xs text-muted-foreground mt-1">Crea il primo conto per iniziare</p>
+      <Empty class="border border-dashed">
+        <EmptyHeader class="max-w-lg">
+          <EmptyMedia variant="icon">
+            <FolderOpen/>
+          </EmptyMedia>
+          <EmptyTitle>Nessuna voce di spesa creata</EmptyTitle>
+          <EmptyDescription>
+            Crea la prima voce di spesa per iniziare a creare il tuo piano dei conti.
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
     </div>
     
     <div v-else class="space-y-0">
@@ -63,29 +71,26 @@ const isCapitolo = (conto: Conto) => {
           <div class="w-6"></div>
 
           <!-- Icona conto -->
-          <Folder v-if="isCapitolo(conto)" class="w-4 h-4 text-muted-foreground" />
-          <FileText v-else class="w-4 h-4 text-muted-foreground" />
+          <Folder v-if="isCapitolo(conto)" class="w-4 h-4" />
+          <Folder v-else class="w-4 h-4 font-bold" />
 
           <!-- Nome conto -->
-          <span class="text-sm font-medium flex-1 truncate">{{ conto.nome }}</span>
+          <span class="text-sm font-medium flex-1 truncate font-bold text-md">{{ conto.nome }}</span>
 
-          <!-- Importo (solo se non è capitolo) -->
+          <!-- Importo (solo se non è capitolo e ha importo positivo) -->
           <span 
-            v-if="!isCapitolo(conto) && conto.importo > 0" 
+            v-if="!isCapitolo(conto) && hasImportoPositivo(conto)" 
             class="text-sm font-medium ml-2"
             :class="conto.tipo === 'spesa' ? 'text-red-600' : 'text-green-600'"
           >
-            {{ formatImporto(conto.importo) }}
-          </span>
-          <span v-else-if="isCapitolo(conto)" class="text-sm text-muted-foreground ml-2">
-            Capitolo di spesa
+            {{ conto.importo }} 
           </span>
         </div>
 
         <!-- Sottoconti (sempre visibili se esistono) -->
         <div 
           v-if="hasSottoconti(conto)" 
-          class="sottoconti border-l-2 border-muted ml-6"
+          class="sottoconti border-l-2 border-muted ml-6 border-b"
         >
           <div
             v-for="sottoconto in conto.sottoconti"
@@ -95,18 +100,18 @@ const isCapitolo = (conto: Conto) => {
             @click="selezionaConto(sottoconto)"
           >
             <!-- Icona sottoconto -->
-            <FileText class="w-4 h-4 text-muted-foreground" />
+            <FileText class="w-4 h-4" />
 
             <!-- Nome sottoconto -->
             <span class="text-sm font-medium flex-1 truncate">{{ sottoconto.nome }}</span>
 
             <!-- Importo sottoconto -->
             <span 
-              v-if="sottoconto.importo > 0" 
+              v-if="hasImportoPositivo(sottoconto)" 
               class="text-sm font-medium text-foreground ml-2"
               :class="sottoconto.tipo === 'spesa' ? 'text-red-600' : 'text-green-600'"
             >
-              {{ formatImporto(sottoconto.importo) }}
+              {{ sottoconto.importo }} <!-- Già formattato -->
             </span>
           </div>
         </div>
