@@ -47,16 +47,33 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: props.pianoConti.nome, href: '#' }
 ])
 
-// Watch per aggiornare contoSelezionato quando i conti cambiano
-watch(() => props.conti, (newConti) => {
-  if (contoSelezionato.value) {
-    // Trova il conto aggiornato con lo stesso ID
-    const contoAggiornato = newConti.find(c => c.id === contoSelezionato.value?.id)
-    if (contoAggiornato) {
-      contoSelezionato.value = contoAggiornato
+// Funzione ricorsiva per trovare un conto o sottoconto per ID
+function trovaContoInArray(conti: Conto[], id: number): Conto | null {
+  for (const conto of conti) {
+    if (conto.id === id) return conto;
+    if (conto.sottoconti && conto.sottoconti.length) {
+      const sottoconto = trovaContoInArray(conto.sottoconti, id);
+      if (sottoconto) return sottoconto;
     }
   }
-}, { deep: true })
+  return null;
+}
+
+// Watch per aggiornare contoSelezionato quando i conti cambiano
+watch(
+  () => props.conti,
+  (newConti) => {
+    if (contoSelezionato.value) {
+      const contoAggiornato = trovaContoInArray(newConti, contoSelezionato.value.id);
+      if (contoAggiornato) {
+        contoSelezionato.value = contoAggiornato;
+      } else {
+        contoSelezionato.value = null;
+      }
+    }
+  },
+  { deep: true }
+);
 
 // Seleziona un conto
 const selezionaConto = (conto: Conto) => {

@@ -189,16 +189,7 @@ class ContoController extends Controller
                 'note'           => $data['note'] ?? null,
             ];
 
-            // Aggiorna il conto
             $conto->update($contoData);
-
-            // Gestione tabelle millesimali e ripartizioni
-            if (!$isCapitolo && !empty($data['tabella_millesimale_id'])) {
-                $this->aggiornaAssociazioneTabella($conto, $condominio, $data);
-            } else {
-                // Se è un capitolo o non ha tabella, rimuovi le associazioni esistenti
-                $this->rimuoviAssociazioniTabella($conto);
-            }
 
             DB::commit();
 
@@ -310,91 +301,6 @@ class ContoController extends Controller
                     'pianoConto' => $pianoConto->id,
                 ])
                 ->with($this->flashError(__('gestionale.error_delete_conto')));
-        }
-    }
-
-    /**
-     * Aggiorna l'associazione con la tabella millesimale e le ripartizioni
-     */
-    private function aggiornaAssociazioneTabella(Conto $conto, Condominio $condominio, array $data): void
-    {
-        // Prima rimuovi le associazioni esistenti
-        $this->rimuoviAssociazioniTabella($conto);
-
-        // Trova la tabella selezionata
-        $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
-            ->where('condominio_id', $condominio->id)
-            ->first();
-        
-        if (!$tabella) {
-            throw new \Exception('Tabella millesimale selezionata non trovata');
-        }
-
-        // Crea nuova associazione con la tabella
-        $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-            'conto_id'     => $conto->id, 
-            'tabella_id'   => $tabella->id,
-            'coefficiente' => 100.00, 
-            'created_at'   => now(),
-            'updated_at'   => now(),
-        ]);
-
-        // Prepara e inserisci le ripartizioni
-        $ripartizioni = [
-            [
-                'soggetto' => 'proprietario',
-                'percentuale' => $data['percentuale_proprietario']
-            ],
-            [
-                'soggetto' => 'inquilino', 
-                'percentuale' => $data['percentuale_inquilino']
-            ],
-            [
-                'soggetto' => 'usufruttuario',
-                'percentuale' => $data['percentuale_usufruttuario']
-            ]
-        ];
-
-        $ripartizioniData = [];
-        foreach ($ripartizioni as $ripartizione) {
-            if ($ripartizione['percentuale'] > 0) {
-                $ripartizioniData[] = [
-                    'conto_tabella_millesimale_id' => $contoTabellaId,
-                    'soggetto'                     => $ripartizione['soggetto'],
-                    'percentuale'                  => $ripartizione['percentuale'],
-                    'created_at'                   => now(),
-                    'updated_at'                   => now(),
-                ];
-            }
-        }
-
-        // Inserisci tutte le ripartizioni in una sola query
-        if (!empty($ripartizioniData)) {
-            DB::table('conto_tabella_ripartizioni')->insert($ripartizioniData);
-        }
-    }
-
-    /**
-     * Rimuove tutte le associazioni con le tabelle millesimali per un conto
-     */
-    private function rimuoviAssociazioniTabella(Conto $conto): void
-    {
-        // Trova tutti i record in conto_tabella_millesimale per questo conto
-        $contoTabellaIds = DB::table('conto_tabella_millesimale')
-            ->where('conto_id', $conto->id)
-            ->pluck('id');
-
-        // Se ci sono associazioni, rimuovi prima le ripartizioni e poi le associazioni
-        if ($contoTabellaIds->isNotEmpty()) {
-            // Rimuovi tutte le ripartizioni in una sola query
-            DB::table('conto_tabella_ripartizioni')
-                ->whereIn('conto_tabella_millesimale_id', $contoTabellaIds)
-                ->delete();
-            
-            // Rimuovi tutte le associazioni in una sola query
-            DB::table('conto_tabella_millesimale')
-                ->where('conto_id', $conto->id)
-                ->delete();
         }
     }
 

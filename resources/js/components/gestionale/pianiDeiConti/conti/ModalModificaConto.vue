@@ -1,20 +1,17 @@
 <script setup lang="ts">
 
-import { useForm, router } from '@inertiajs/vue3'
-import { ref, watch, computed, onMounted } from 'vue'
+import { useForm } from '@inertiajs/vue3'
+import { ref, watch, computed } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import InputError from '@/components/InputError.vue'
-import { useTabelle } from '@/composables/useTabelle'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import vSelect from 'vue-select'
-import type { TabellaDropdown } from '@/types/gestionale/tabelle'
-import type { Conto } from '@/types/gestionale/conti'
 import MoneyInput from '@/components/MoneyInput.vue'
+import type { Conto } from '@/types/gestionale/conti'
 
 interface Emits {
   (e: 'update:show', value: boolean): void
@@ -34,7 +31,6 @@ const emit = defineEmits<Emits>()
 
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
-const { tabelle, isLoading: isLoadingTabelle, fetchTabelle } = useTabelle()
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti } = useCapitoliConti()
 
 const moneyOptions = ref({
@@ -54,10 +50,6 @@ const form = useForm({
   descrizione: '',
   note: '',
   parent_id: null as number | null,
-  tabella_millesimale_id: null as number | null,
-  percentuale_proprietario: 100,
-  percentuale_inquilino: 0,
-  percentuale_usufruttuario: 0,
   isCapitolo: false,
   isSottoConto: false,
 })
@@ -66,30 +58,15 @@ const form = useForm({
 watch(() => props.show, (newVal) => {
   if (newVal && props.conto) {
     // Carica immediatamente i dati per i dropdown
-    fetchTabelle(props.condominioId)
     fetchCapitoliConti(props.condominioId, props.pianoContoId)
   }
 })
-
-// Funzione per trovare l'oggetto tabella per ID
-const findTabellaById = (id: number | null) => {
-  if (!id) return null
-  return tabelle.value.find(t => t.id === id) || null
-}
 
 // Funzione per trovare l'oggetto capitolo per ID
 const findCapitoloById = (id: number | null) => {
   if (!id) return null
   return capitoli.value.find(c => c.id === id) || null
 }
-
-// Computed per gli oggetti selezionati (per mostrare i nomi nei dropdown)
-const selectedTabella = computed({
-  get: () => findTabellaById(form.tabella_millesimale_id),
-  set: (val: TabellaDropdown | null) => {
-    form.tabella_millesimale_id = val ? val.id : null
-  }
-})
 
 const selectedCapitolo = computed({
   get: () => findCapitoloById(form.parent_id),
@@ -151,31 +128,6 @@ watch(() => props.conto, (newConto) => {
     } else {
       form.importo = ''
     }
-    
-    // Gestisci tabelle millesimali (solo se non è capitolo)
-    if (!isContoCapitolo.value && newConto.tabelle_millesimali && newConto.tabelle_millesimali.length > 0) {
-      const tabella = newConto.tabelle_millesimali[0]
-      form.tabella_millesimale_id = tabella.tabella.id
-      
-      // Imposta le percentuali dalle ripartizioni
-      if (tabella.ripartizioni && tabella.ripartizioni.length > 0) {
-        tabella.ripartizioni.forEach(ripartizione => {
-          if (ripartizione.soggetto === 'proprietario') {
-            form.percentuale_proprietario = ripartizione.percentuale
-          } else if (ripartizione.soggetto === 'inquilino') {
-            form.percentuale_inquilino = ripartizione.percentuale
-          } else if (ripartizione.soggetto === 'usufruttuario') {
-            form.percentuale_usufruttuario = ripartizione.percentuale
-          }
-        })
-      }
-    } else {
-      // Reset dei valori se non ci sono tabelle associate
-      form.tabella_millesimale_id = null
-      form.percentuale_proprietario = 100
-      form.percentuale_inquilino = 0
-      form.percentuale_usufruttuario = 0
-    }
   }
 }, { immediate: true })
 
@@ -184,11 +136,7 @@ watch(isCapitolo, (val) => {
   if (val) {
     isSottoConto.value = false
     form.parent_id = null
-    form.importo = '' // Pulisci l'importo per i capitoli
-    form.tabella_millesimale_id = null // Pulisci la tabella per i capitoli
-    form.percentuale_proprietario = 0 // Resetta le percentuali per i capitoli
-    form.percentuale_inquilino = 0
-    form.percentuale_usufruttuario = 0
+    form.importo = ''
   }
   form.isCapitolo = val 
 })
@@ -203,19 +151,12 @@ watch(isSottoConto, (val) => {
 
 const closeModal = () => {
   emit('update:show', false)
-  resetForm()
 }
 
 const resetForm = () => {
   form.reset()
   isCapitolo.value = false
   isSottoConto.value = false
-}
-
-const onDropdownTabelleOpen = () => {
-  if (tabelle.value.length === 0) {
-    fetchTabelle(props.condominioId)
-  }
 }
 
 const onDropdownCapitoliOpen = () => {
@@ -227,41 +168,29 @@ const onDropdownCapitoliOpen = () => {
 const submit = () => {
   if (!props.conto) return
 
-  // Prepara i dati per l'invio
-  const formData = {
-    ...form.data(),
-    // Converti l'importo in centesimi solo se non è un capitolo e c'è un importo
-    importo: !isCapitolo.value && form.importo 
-      ? Math.round(extractNumericValue(form.importo) * 100)
-      : 0,
-    // Assicurati che parent_id sia null se non è un sotto-conto
-    parent_id: isSottoConto.value ? form.parent_id : null,
-    // Assicurati che tabella_millesimale_id sia null se è un capitolo
-    tabella_millesimale_id: isCapitolo.value ? null : form.tabella_millesimale_id,
-    // Resetta le percentuali se è un capitolo
-    percentuale_proprietario: isCapitolo.value ? 0 : form.percentuale_proprietario,
-    percentuale_inquilino: isCapitolo.value ? 0 : form.percentuale_inquilino,
-    percentuale_usufruttuario: isCapitolo.value ? 0 : form.percentuale_usufruttuario,
-  }
-
   const routeParams = {
     condominio: props.condominioId,
     esercizio: props.esercizioId,
     pianoConto: props.pianoContoId,
-    conto: props.conto.id
+    conto: props.conto.id,
   }
 
-  form.put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
+  form.transform((data) => ({
+    ...data,
+    importo: isCapitolo.value ? 0 : data.importo,
+    parent_id: isSottoConto.value ? data.parent_id : null,
+  })).put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
     preserveScroll: true,
-    data: formData,
     onSuccess: () => {
+      console.log('Form data sent:', form.data())
       resetForm()
       emit('success')
       closeModal()
     },
     onError: (errors) => {
       console.error('Errore nella modifica della voce di spesa:', errors)
-    }
+      console.error('Form data sent:', form.data())
+    },
   })
 }
 </script>
@@ -348,66 +277,6 @@ const submit = () => {
               <p class="text-xs text-gray-500 mt-1">
                 Inserisci l'importo nel formato italiano (es. 1.234,56)
               </p>
-            </div>
-
-            <div v-if="!isCapitolo">
-              <Label>Tabella millesimale</Label>
-              <v-select
-                :options="tabelle"
-                label="nome"
-                v-model="selectedTabella"
-                placeholder="Seleziona tabella millesimale"
-                :reduce="(t: TabellaDropdown) => t"
-                @open="onDropdownTabelleOpen"
-                :loading="isLoadingTabelle"
-                :clearable="true"
-              >
-                <template #no-options>
-                  <div class="text-sm text-gray-500 p-2">
-                    {{ isLoadingTabelle ? 'Caricamento tabelle...' : 'Nessuna tabella disponibile' }}
-                  </div>
-                </template>
-                <template #option="option">
-                  <div class="flex items-center">
-                    <span>{{ option.nome }}</span>
-                  </div>
-                </template>
-              </v-select>
-              <InputError :message="form.errors.tabella_millesimale_id" />
-            </div>
-
-            <!-- Percentuali -->
-            <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 mt-4">
-              <div>
-                <Label>Proprietario %</Label>
-                <Input 
-                  type="number" 
-                  v-model="form.percentuale_proprietario" 
-                  placeholder="100" 
-                  min="0" 
-                  max="100" 
-                />
-              </div>
-              <div>
-                <Label>Inquilino %</Label>
-                <Input 
-                  type="number" 
-                  v-model="form.percentuale_inquilino" 
-                  placeholder="0" 
-                  min="0" 
-                  max="100" 
-                />
-              </div>
-              <div>
-                <Label>Usufruttuario %</Label>
-                <Input 
-                  type="number" 
-                  v-model="form.percentuale_usufruttuario" 
-                  placeholder="0" 
-                  min="0" 
-                  max="100" 
-                />
-              </div>
             </div>
 
             <div>
