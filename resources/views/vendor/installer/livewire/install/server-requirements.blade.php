@@ -23,7 +23,7 @@
      </div>
 
      {{-- Extensions --}}
-     <h2 class="group-header mt-4">{{ __('Extensions') }}</h2>
+     <h2 class="border-b w-full pb-1 text-amber-500 mt-4">{{ __('Extensions') }}</h2>
      <div class="space-y-2">
          @foreach ($requirements['extensions'] as $key => $value)
              <div class="flex gap-2 justify-between items-center py-2">
@@ -46,7 +46,7 @@
      </div>
 
      {{-- Permissions --}}
-     <h2 class="group-header mt-12">{{ __('Permissions') }}</h2>
+     <h2 class="border-b w-full pb-1 text-amber-500 mt-6">{{ __('Permissions') }}</h2>
      <div class="space-y-2">
          @foreach ($requirements['permissions'] as $key => $value)
              <div class="flex gap-2 justify-between items-center py-2">

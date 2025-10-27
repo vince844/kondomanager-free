@@ -4,6 +4,8 @@ return [
 
     'app_name' => 'KondoManager',
 
+    'run_installer' => 'true',
+
     /*
     |--------------------------------------------------------------------------
     | Installation Steps
@@ -36,10 +38,18 @@ return [
             'component' => \Eii\Installer\Livewire\Install\EnvironmentSettings::class,
         ],
         [
+            'key' => 'mail',
+            'label' => 'Impostazioni di posta',
+            'description' => 'Impostazioni della posta in uscita',
+            'component' => \Eii\Installer\Livewire\Install\MailSettings::class,
+            'optional' => true,
+        ],
+        [
             'key' => 'admin',
             'label' => 'Crea amministratore',
             'description' => 'Crea utente amministratore',
             'component' => \Eii\Installer\Livewire\Install\CreateAdmin::class,
+            'optional' => true,
         ],
         [
             'key' => 'finish',
@@ -81,7 +91,6 @@ return [
             'database' => true,         // Ask for mail details
             'mail' => true,
         ],
-        'create_admin' => true,     // True to use the 'create admin' step 
         'link_storage' => true,     // True to link storage
         'seed_database' => true,    // Enable DB seeding after migrations
     ],
