@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2, HandCoins } from 'lucide-vue-next';
+import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2, HandCoins, Wallet } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
@@ -75,9 +75,14 @@ const mainNavItems: NavItem[] = [
         icon: ListPlus,
     }, 
     {
-        title: 'Piano conti',
+        title: 'Piani conti',
         href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: HandCoins,
+    },
+    {
+        title: 'Piani rate',
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        icon: Wallet,
     }
 ]; 
 

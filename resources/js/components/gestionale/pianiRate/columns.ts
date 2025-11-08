@@ -1,0 +1,86 @@
+// columns.ts
+import { h } from 'vue'
+import { Link } from '@inertiajs/vue3';
+import DropdownAction from '@/components/gestionale/pianiRate/DataTableRowActions.vue'
+import DataTableColumnHeader from '@/components/gestionale/pianiRate/DataTableColumnHeader.vue'
+import { usePermission } from "@/composables/permissions";
+import type { ColumnDef } from '@tanstack/vue-table'
+import type { PianoRate } from '@/types/gestionale/piani-rate'
+import type { Building } from '@/types/buildings'
+import type { Esercizio } from '@/types/gestionale/esercizi';
+
+const { generateRoute } = usePermission();
+
+export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<PianoRate>[] => [
+  {
+    accessorKey: 'nome',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
+    cell: ({ row }) => {
+
+      const pianoRate = row.original
+
+      return h('div', { class: 'flex items-center space-x-2' }, [
+        h(Link, {
+          prefetch: true,
+          href: route(generateRoute('gestionale.esercizi.piani-rate.show'), { condominio: condominio.id, esercizio: esercizio.id,  pianoRate: pianoRate.id }),
+          class: 'font-bold ',
+        }, () => pianoRate.nome)
+      ]);
+    } 
+  },
+  {
+    accessorKey: 'descrizione',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Descrizione' }),
+    cell: ({ row }) => h('div', row.getValue('descrizione')),
+
+  },
+/*   {
+    accessorKey: 'esercizio',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Esercizio' }),
+    cell: ({ row }) => {
+      const pianoDeiConti = row.original
+      const gestione = pianoDeiConti.gestione
+      
+      // Controlla se esistono esercizi
+      if (!gestione || !gestione.esercizio || !Array.isArray(gestione.esercizio) || gestione.esercizio.length === 0) {
+        return h('span', { class: 'text-gray-400' }, 'N/A')
+      }
+      
+      // Prendi il primo esercizio dall'array
+      const primoEsercizio = gestione.esercizio[0]
+      
+      if (!primoEsercizio) {
+        return h('span', { class: 'text-gray-400' }, 'N/A')
+      }
+      
+      return h('div', { class: 'flex flex-col gap-1' }, [
+        h('span', primoEsercizio.nome),
+      ])
+    },
+  },
+  {
+    accessorKey: 'gestione',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Gestione' }),
+    cell: ({ row }) => {
+      const pianoDeiConti = row.original
+      const gestione = pianoDeiConti.gestione
+      
+      if (!gestione) {
+        return h('span', { class: 'text-gray-400' }, 'N/A')
+      }
+      
+      return h('span', gestione.nome)
+    },
+  }, */
+  {
+    id: 'actions',
+    enableHiding: false,
+    cell: ({ row }) => {
+      const pianoRate = row.original as PianoRate
+      return h('div', { class: 'relative' },
+        h(DropdownAction, { pianoRate, condominio, esercizio })
+      )
+    },
+   }
+]
+

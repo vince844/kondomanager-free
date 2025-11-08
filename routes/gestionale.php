@@ -12,6 +12,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use App\Http\Controllers\Gestionale\Tabelle\FetchTabelleController;
@@ -90,6 +91,12 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::delete('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/dissocia-tabella/{tabella}', DissociaTabellaController::class)
     ->name('esercizi.piani-conti.conti.dissocia-tabella');
+
+    Route::resource('esercizi.piani-rate', PianoRateController::class)
+        ->parameters([
+            'esercizi'   => 'esercizio',
+            'piani-rate' => 'pianoRate',
+        ]);
     
 
 });

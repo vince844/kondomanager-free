@@ -4,8 +4,6 @@ import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
-import CondominioDropdown from '@/components/CondominioDropdown.vue';
-import EsercizioDropdown from "@/components/EsercizioDropdown.vue";
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -18,7 +16,7 @@ import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Esercizio } from "@/types/gestionale/esercizi";
-import { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
+import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti';
 
 const props = defineProps<{
   condominio: Building;

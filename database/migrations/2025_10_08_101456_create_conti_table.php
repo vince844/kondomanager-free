@@ -14,13 +14,13 @@ return new class extends Migration
         Schema::create('conti', function (Blueprint $table) {
             $table->id();
             $table->foreignId('piano_conto_id')->constrained('piani_conti')->onDelete('cascade');
-            $table->foreignId('parent_id')->nullable()->constrained('conti')->onDelete('cascade'); // sottoconto
+            $table->foreignId('parent_id')->nullable()->constrained('conti')->onDelete('cascade'); 
             $table->string('nome');
             $table->text('descrizione')->nullable();
             $table->boolean('attivo')->default(true);
             $table->enum('tipo', ['spesa', 'entrata']);
-            $table->bigInteger('importo')->default(0); // cast con Money
-            $table->nullableMorphs('destinazione'); // Condominio / Scala / Palazzina
+            $table->bigInteger('importo')->default(0); 
+            $table->nullableMorphs('destinazione'); 
             $table->text('note')->nullable();
             $table->timestamps();
             $table->index('parent_id');
