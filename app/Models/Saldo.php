@@ -19,9 +19,14 @@ class Saldo extends Model
     ];
 
     protected $casts = [
+        'saldo_iniziale' => 'integer',
+        'saldo_finale'   => 'integer',
+    ];
+
+/*     protected $casts = [
         'saldo_iniziale' => MoneyIntegerCast::class . ':EUR',
         'saldo_finale'   => MoneyIntegerCast::class . ':EUR',
-    ];
+    ]; */
 
     public function esercizio() 
     { 

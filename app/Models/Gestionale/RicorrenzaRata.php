@@ -2,11 +2,13 @@
 
 namespace App\Models\Gestionale;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RicorrenzaRata extends Model
 {
+    use HasFactory;
+
     protected $table = 'ricorrenze_rate';
 
     protected $fillable = [
@@ -25,15 +27,9 @@ class RicorrenzaRata extends Model
         'until' => 'datetime',
     ];
 
-    // === RELAZIONI ===
-    public function pianoRate(): BelongsTo
+    public function pianoRate()
     {
-        return $this->belongsTo(PianoRate::class, 'piano_rate_id');
-    }
-
-    // === METODI UTILI ===
-    public function isScaduta(): bool
-    {
-        return $this->until && $this->until->isPast();
+        return $this->belongsTo(PianoRate::class);
     }
 }
+

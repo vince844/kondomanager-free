@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreateImmobileAnagraficaRequest;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\UpdateImmobileAnagraficaRequest;
@@ -118,7 +119,7 @@ class ImmobileAnagraficaController extends Controller
                         'immobile_id'   => $immobile->id,
                     ],
                     [
-                        'saldo_iniziale' => $data['saldo_iniziale'] ?? 0,
+                        'saldo_iniziale' => MoneyHelper::toCents($data['saldo_iniziale']) ?? 0,
                         'saldo_finale'   => 0,
                     ]
                 );

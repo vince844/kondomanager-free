@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('nome');
             $table->text('descrizione')->nullable();
             $table->integer('numero_rate')->default(12);
-            $table->enum('tipo', ['ordinario', 'straordinario', 'anticipo', 'conguaglio'])->default('ordinario');
+            $table->integer('giorno_scadenza')->default(5);
             $table->enum('metodo_calcolo', ['proporzionale', 'tabella', 'manuale'])->default('tabella'); 
             $table->boolean('attivo')->default(true);
             $table->text('note')->nullable();

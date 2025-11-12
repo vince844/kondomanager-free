@@ -35,7 +35,7 @@ class CreateImmobileAnagraficaRequest extends FormRequest
     {
           return [
             'quota'               => 'required|numeric', 
-            'saldo_iniziale'      => 'nullable|numeric',
+            'saldo_iniziale'      => 'nullable|string',
             'note'                => 'sometimes|nullable|string',
             'anagrafica_id'       => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
@@ -60,9 +60,6 @@ class CreateImmobileAnagraficaRequest extends FormRequest
         $this->merge([
             'condominio_id'  => $this->route('condominio')->id,
             'immobile_id'    => $this->route('immobile')->id,
-            'saldo_iniziale' => $this->saldo_iniziale !== null
-                ? (int) Money::EUR($this->saldo_iniziale)->getAmount() // ← converte in centesimi
-                : 0,
         ]);
 
     }

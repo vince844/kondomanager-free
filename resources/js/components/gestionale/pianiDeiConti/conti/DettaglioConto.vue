@@ -56,9 +56,22 @@ const modificaConto = () => {
 }
 
 // Check if account is a chapter
-const isCapitolo = (conto: Conto) => {
+/* const isCapitolo = (conto: Conto) => {
   const importoZero = conto.importo === '€0,00' || conto.importo === '0,00€' || conto.importo.includes('0,00')
   return importoZero || (!!conto.sottoconti && conto.sottoconti.length > 0)
+} */
+
+const isCapitolo = (conto: Conto) => {
+  const importoZero = 
+    conto.importo === '€ 0,00' || 
+    conto.importo === '0,00' || 
+    conto.importo === '€0,00' || 
+    conto.importo === '0,00€' ||
+    conto.importo.includes('0,00')
+
+  const haSottoconti = conto.sottoconti && conto.sottoconti.length > 0
+
+  return importoZero && haSottoconti
 }
 
 // Get associated tables

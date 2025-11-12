@@ -51,12 +51,12 @@ const form = useForm({
   gestione_id: '',
   nome: '',
   descrizione: '',
-  tipo: 'ordinario',
   metodo_calcolo: 'tabella',
   numero_rate: 12,
   giorno_scadenza: 5,
-  data_inizio: '',
+
   note: '',
+  genera_subito: false,
 
   // RRULE
   recurrence_enabled: false,
@@ -75,13 +75,14 @@ watch(showRecurrence, (enabled) => {
 })
 
 const submit = () => {
-  form.post(route(generateRoute('esercizi.piani-rate.store'), {
-    condominio: props.condominio.id,
-    esercizio: props.esercizio.id
-  }), {
-    preserveScroll: true,
-    onSuccess: () => form.reset()
-  })
+
+  form.post(route(...generateRoute('gestionale.esercizi.piani-rate.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset()
+        }
+    });
+
 }
 </script>
 
@@ -148,21 +149,6 @@ const submit = () => {
 
             <!-- Tipo e Metodo -->
             <div class="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Tipo gestione</Label>
-                <v-select
-                  :options="[
-                    { label: 'Ordinario', value: 'ordinario' },
-                    { label: 'Straordinario', value: 'straordinario' },
-                    { label: 'Anticipo', value: 'anticipo' },
-                    { label: 'Conguaglio', value: 'conguaglio' }
-                  ]"
-                  label="label"
-                  v-model="form.tipo"
-                  :reduce="(opt: {label: string, value: string}) => opt.value"
-                />
-                <InputError :message="form.errors.tipo" />
-              </div>
 
               <div>
                 <Label>Metodo di calcolo</Label>
@@ -195,16 +181,35 @@ const submit = () => {
             </div>
 
             <!-- Data inizio -->
-            <div>
-              <Label>Data inizio gestione rate</Label>
-              <Input type="date" v-model="form.data_inizio" />
-              <InputError :message="form.errors.data_inizio" />
+            <div class="bg-blue-50 p-3 rounded border border-blue-200">
+              <div class="flex items-center gap-2">
+                <Info class="w-4 h-4 text-blue-600" />
+                <p class="text-sm text-blue-700">
+                  Le date delle rate partiranno automaticamente dalla data di inizio della gestione selezionata.
+                </p>
+              </div>
             </div>
 
             <!-- Note -->
             <div>
               <Label>Note</Label>
               <Textarea v-model="form.note" placeholder="Note interne o aggiuntive" />
+            </div>
+
+            <div class="flex items-center gap-2 mt-4">
+              <Checkbox id="genera_subito" v-model:checked="form.genera_subito" />
+              <Label for="genera_subito">Genera subito il piano rate dopo il salvataggio</Label>
+              <HoverCard>
+                <HoverCardTrigger as-child>
+                  <Info class="w-4 h-4 text-muted-foreground cursor-pointer" />
+                </HoverCardTrigger>
+                <HoverCardContent class="w-80">
+                  <p class="text-sm">
+                    Se abilitato, il sistema calcolerà e creerà immediatamente tutte le rate e le
+                    relative quote per ogni anagrafica in base al piano dei conti.
+                  </p>
+                </HoverCardContent>
+              </HoverCard>
             </div>
 
             <!-- Ricorrenza -->

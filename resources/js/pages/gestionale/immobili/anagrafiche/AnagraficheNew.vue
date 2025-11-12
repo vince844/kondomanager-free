@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
@@ -17,6 +17,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
+import MoneyInput from '@/components/MoneyInput.vue'
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -28,6 +29,17 @@ const props = defineProps<{
   immobile: Immobile;
   anagrafiche: Anagrafica[];
 }>()
+
+const moneyOptions = ref({
+  prefix: '',              
+  suffix: '',              
+  thousands: '.',          
+  decimal: ',',          
+  precision: 2, 
+  allowNegative: true,           
+  allowBlank: false,
+  masked: true 
+})
 
 const { generatePath, generateRoute } = usePermission();
 const { toBackend } = useDateConverter();
@@ -195,31 +207,38 @@ const submit = () => {
                 <div class="sm:col-span-3">
                   <Label for="saldo">Saldo iniziale</Label>
 
-                     <HoverCard>
-                      <HoverCardTrigger as-child>
-                        <button type="button" class="cursor-pointer">
-                          <Info class="ml-1 w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent class="w-80 z-50">
-                        <div class="flex justify-between space-x-4">
-                          <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">Saldo iniziale</h4>
-                            <p class="text-sm">
-                             In questo campo puoi impostare il saldo iniziale dell'anagrafica, per registrare un saldo negativo inserisci il segno - prima del valore numerico, se il saldo è positivo non è necessario inserire il segno +
-                            </p>
-                          </div>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="flex justify-between space-x-4">
+                        <div class="space-y-1">
+                          <h4 class="text-sm font-semibold">Saldo iniziale</h4>
+                          <p class="text-sm">
+                            In questo campo puoi impostare il saldo iniziale dell'anagrafica, per registrare un saldo negativo inserisci il segno - prima del valore numerico, se il saldo è positivo non è necessario inserire il segno +
+                          </p>
                         </div>
-                      </HoverCardContent>
-                    </HoverCard>
-                  <Input
-                    id="saldo" 
-                    v-model="form.saldo_iniziale" 
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+
+                  <MoneyInput
+                    id="importo"
+                    v-model="form.saldo_iniziale"
+                    :money-options="moneyOptions"
+                    :lazy="true" 
                     placeholder="0,00"
-                    v-on:focus="form.clearErrors('saldo_iniziale')"
+                    @focus="form.clearErrors('saldo_iniziale')"
                   />
 
                   <InputError :message="form.errors.saldo_iniziale" />
+                  <p class="text-xs text-gray-500 mt-1">
+                    Inserisci l'importo nel formato italiano (es. 1.234,56)
+                    <strong>Per saldo negativo, usa il segno -</strong>
+                  </p>
                 </div>
 
               </div>

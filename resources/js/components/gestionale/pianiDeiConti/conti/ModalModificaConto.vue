@@ -182,7 +182,6 @@ const submit = () => {
   })).put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
     preserveScroll: true,
     onSuccess: () => {
-      console.log('Form data sent:', form.data())
       resetForm()
       emit('success')
       closeModal()

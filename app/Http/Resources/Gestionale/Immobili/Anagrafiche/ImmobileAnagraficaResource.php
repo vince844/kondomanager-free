@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\Immobili\Anagrafiche;
 
+use App\Helpers\MoneyHelper;
 use Cknow\Money\Money;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -16,9 +17,9 @@ class ImmobileAnagraficaResource extends JsonResource
     public function toArray(Request $request): array
     {
 
-        $saldo = $this->whenLoaded('saldi') 
+       $saldo = $this->whenLoaded('saldi') 
             ? $this->saldi->first() 
-            : null;
+            : null; 
 
         return [
             'id'        => $this->id,
@@ -35,13 +36,11 @@ class ImmobileAnagraficaResource extends JsonResource
             ],
 
             'saldo' => [
-                'iniziale' => $saldo?->saldo_iniziale 
-                 ? '€ ' . $saldo->saldo_iniziale->formatByIntlLocalizedDecimal(null, null, \NumberFormatter::DECIMAL)
-                 : '€ 0,00', 
-                'finale'   => $saldo?->saldo_finale?->formatByIntlLocalizedDecimal(null, null, \NumberFormatter::DECIMAL) ?? '€ 0,00',
-                'amounts'  => [
-                    'iniziale' => $saldo?->saldo_iniziale?->getAmount() ?? 0,
-                    'finale'   => $saldo?->saldo_finale?->getAmount() ?? 0,
+                'iniziale' => MoneyHelper::format($saldo?->saldo_iniziale ?? 0),
+                'finale'   => MoneyHelper::format($saldo?->saldo_finale ?? 0),
+                'amounts' => [
+                    'iniziale' => $saldo?->saldo_iniziale ?? 0,
+                    'finale'   => $saldo?->saldo_finale ?? 0,
                 ],
             ]
 

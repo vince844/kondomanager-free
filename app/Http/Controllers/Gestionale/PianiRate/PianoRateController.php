@@ -3,30 +3,30 @@
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Gestionale\PianoRate\CreatePianoRateRequest;
 use App\Http\Requests\Gestionale\PianoRate\PianoRateIndexRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
+use App\Services\PianoRateGenerator;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Recurr\Rule;
 
 class PianoRateController extends Controller
 {
     use HandleFlashMessages, HasCondomini;
 
-    /**
-     * Display a listing of the resource.
-     */
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
-         /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
-        
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->whereHas('gestione.esercizi', function ($q) use ($esercizio) {
@@ -34,42 +34,36 @@ class PianoRateController extends Controller
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
 
-        // Tutti gli esercizi del condominio, ordinati
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
-        
-         return Inertia::render('gestionale/pianiRate/PianiRateList', [
-            'condominio'      => $condominio,
-            'esercizio'       => $esercizio,
-            'esercizi'        => $esercizi,
-            'condomini'       => CondominioResource::collection($this->getCondomini()),
-            'pianiRate'       => $pianiRate,
+
+        return Inertia::render('gestionale/pianiRate/PianiRateList', [
+            'condominio' => $condominio,
+            'esercizio' => $esercizio,
+            'esercizi' => $esercizi,
+            'condomini' => CondominioResource::collection($this->getCondomini()),
+            'pianiRate' => $pianiRate,
             'meta' => [
                 'current_page' => $pianiRate->currentPage(),
-                'last_page'    => $pianiRate->lastPage(),
-                'per_page'     => $pianiRate->perPage(),
-                'total'        => $pianiRate->total(),
+                'last_page' => $pianiRate->lastPage(),
+                'per_page' => $pianiRate->perPage(),
+                'total' => $pianiRate->total(),
             ],
             'filters' => $request->only(['nome']),
         ]);
-
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create(Condominio $condominio, Esercizio $esercizio): Response
     {
         $condomini = $this->getCondomini();
-
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
 
         $gestioni = Gestione::whereHas('esercizi', function ($query) use ($esercizio) {
-                $query->where('esercizio_id', $esercizio->id);
-            })
+            $query->where('esercizio_id', $esercizio->id);
+        })
             ->with(['esercizi' => function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
             }])
@@ -77,50 +71,178 @@ class PianoRateController extends Controller
 
         return Inertia::render('gestionale/pianiRate/PianiRateNew', [
             'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'esercizi'   => $esercizi,
-            'condomini'  => $condomini,
-            'gestioni'   => $gestioni,
+            'esercizio' => $esercizio,
+            'esercizi' => $esercizi,
+            'condomini' => $condomini,
+            'gestioni' => $gestioni,
         ]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio, PianoRateGenerator $generator)
     {
-        //
+        $validated = $request->validated();
+
+        try {
+            DB::beginTransaction();
+
+            $gestione = $this->verificaGestione($validated['gestione_id']);
+            $pianoRate = $this->creaPianoRate($validated, $condominio);
+
+            if (!empty($validated['recurrence_enabled'])) {
+                $this->creaRicorrenza($pianoRate, $validated);
+            }
+
+            $statistiche = [];
+            if (!empty($validated['genera_subito'])) {
+                $statistiche = $generator->genera($pianoRate);
+            }
+
+            DB::commit();
+
+            return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error("Errore creazione piano rate", [
+                'condominio_id' => $condominio->id,
+                'esercizio_id' => $esercizio->id,
+                'errore' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return back()->withInput()->with('error', $e->getMessage());
+        }
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
     {
-        //
+        $pianoRate->load([
+            'gestione',
+            'rate.rateQuote.anagrafica',
+            'rate.rateQuote.immobile',
+        ]);
+
+        // Quote per Anagrafica
+        $quotePerAnagrafica = $pianoRate->rate
+            ->flatMap->rateQuote
+            ->groupBy('anagrafica_id')
+            ->map(function ($quotes) {
+                return [
+                    'anagrafica' => [
+                        'id' => $quotes->first()->anagrafica->id ?? null,
+                        'nome' => $quotes->first()->anagrafica->nome ?? 'Sconosciuto',
+                    ],
+                    'totale' => $quotes->sum('importo'), // centesimi
+                    'rate' => $quotes->groupBy('rata_id')->map(function ($q) {
+                        $rata = $q->first()->rata;
+                        return [
+                            'numero' => $rata->numero_rata,
+                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'importo' => $q->sum('importo'),
+                            'stato' => $q->first()->stato,
+                        ];
+                    })->sortBy(fn($r) => $r['numero'])->values(),
+                ];
+            })->values();
+
+        // Quote per Immobile
+        $quotePerImmobile = $pianoRate->rate
+            ->flatMap->rateQuote
+            ->whereNotNull('immobile_id')
+            ->groupBy('immobile_id')
+            ->map(function ($quotes) {
+                return [
+                    'immobile' => [
+                        'id' => $quotes->first()->immobile->id ?? null,
+                        'nome' => $quotes->first()->immobile->nome ?? 'Sconosciuto',
+                    ],
+                    'totale' => $quotes->sum('importo'), // centesimi
+                    'rate' => $quotes->groupBy('rata_id')->map(function ($q) {
+                        $rata = $q->first()->rata;
+                        return [
+                            'numero' => $rata->numero_rata,
+                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'importo' => $q->sum('importo'),
+                            'stato' => $q->first()->stato,
+                        ];
+                    })->sortBy(fn($r) => $r['numero'])->values(),
+                ];
+            })->values();
+
+        return Inertia::render('gestionale/pianiRate/PianiRateShow', [
+            'condominio' => $condominio,
+            'esercizio' => $esercizio,
+            'pianoRate' => [
+                'id' => $pianoRate->id,
+                'nome' => $pianoRate->nome,
+                'numero_rate' => $pianoRate->numero_rate,
+                'data_inizio' => $pianoRate->data_inizio,
+                'gestione' => $pianoRate->gestione->nome,
+            ],
+            'quotePerAnagrafica' => $quotePerAnagrafica,
+            'quotePerImmobile' => $quotePerImmobile,
+        ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
+    protected function verificaGestione(int $gestioneId): Gestione
     {
-        //
+        $gestione = Gestione::with(['pianoConto.conti', 'esercizi'])->findOrFail($gestioneId);
+        if (!$gestione->pianoConto) {
+            throw new \RuntimeException("La gestione non ha un piano conti associato.");
+        }
+        if (!$gestione->data_inizio) {
+            throw new \RuntimeException("La gestione non ha una data di inizio definita.");
+        }
+        return $gestione;
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    protected function creaPianoRate(array $validated, Condominio $condominio): PianoRate
     {
-        //
+        return PianoRate::create([
+            'gestione_id' => $validated['gestione_id'],
+            'condominio_id' => $condominio->id,
+            'nome' => $validated['nome'],
+            'descrizione' => $validated['descrizione'] ?? null,
+            'metodo_calcolo' => $validated['metodo_calcolo'],
+            'numero_rate' => $validated['numero_rate'],
+            'giorno_scadenza' => $validated['giorno_scadenza'] ?? 1,
+            'note' => $validated['note'] ?? null,
+            'attivo' => true,
+        ]);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    protected function creaRicorrenza(PianoRate $pianoRate, array $validated): void
     {
-        //
+        $gestione = $pianoRate->gestione;
+        $start = new \DateTime($gestione->data_inizio, new \DateTimeZone('Europe/Rome'));
+        $rule = (new Rule())
+            ->setStartDate($start)
+            ->setFreq($validated['recurrence_frequency'])
+            ->setInterval($validated['recurrence_interval'] ?? 1);
+
+        if ($validated['recurrence_frequency'] === 'MONTHLY') {
+            $rule->setByMonthDay([$validated['giorno_scadenza'] ?? $pianoRate->giorno_scadenza]);
+        }
+
+        $pianoRate->ricorrenza()->create([
+            'frequency' => strtolower($validated['recurrence_frequency']),
+            'interval' => $validated['recurrence_interval'] ?? 1,
+            'by_month_day' => $validated['giorno_scadenza'] ?? $pianoRate->giorno_scadenza,
+            'rrule' => $rule->getString(),
+        ]);
+    }
+
+    protected function redirectSuccess(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate, array $validated, array $statistiche = [])
+    {
+        $message = $validated['genera_subito']
+            ? "Piano rate creato e generato con successo! Rate create: {$statistiche['rate_create']}, Quote create: {$statistiche['quote_create']}"
+            : "Piano rate creato con successo! Genera le rate quando sei pronto.";
+
+        return redirect()
+            ->route('admin.gestionale.esercizi.piani-rate.show', [
+                'condominio' => $condominio->id,
+                'esercizio' => $esercizio->id,
+                'pianoRate' => $pianoRate->id
+            ])
+            ->with('success', $message);
     }
 }

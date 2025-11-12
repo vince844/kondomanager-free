@@ -2,15 +2,13 @@
 
 namespace App\Models\Gestionale;
 
-use App\Models\Condominio;
-use App\Models\Gestione;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class PianoRate extends Model
 {
+    use HasFactory;
+
     protected $table = 'piani_rate';
 
     protected $fillable = [
@@ -18,56 +16,45 @@ class PianoRate extends Model
         'condominio_id',
         'nome',
         'descrizione',
-        'tipo',
         'metodo_calcolo',
+        'numero_rate',
+        'giorno_scadenza',
+        'data_inizio',
         'attivo',
-        'note'
+        'note',
     ];
 
     protected $casts = [
+        'data_inizio' => 'date',
         'attivo' => 'boolean',
     ];
 
-    // === RELAZIONI ===
-    public function gestione(): BelongsTo
+    /*
+    |--------------------------------------------------------------------------
+    | RELAZIONI
+    |--------------------------------------------------------------------------
+    */
+
+    public function gestione()
     {
-        return $this->belongsTo(Gestione::class);
+        return $this->belongsTo(\App\Models\Gestione::class);
     }
 
-    public function condominio(): BelongsTo
+    public function condominio()
     {
-        return $this->belongsTo(Condominio::class);
+        return $this->belongsTo(\App\Models\Condominio::class);
     }
 
-    public function rate(): HasMany
+    public function ricorrenza()
     {
-        return $this->hasMany(Rata::class, 'piano_rate_id');
+        return $this->hasOne(\App\Models\Gestionale\RicorrenzaRata::class);
     }
 
-    public function ricorrenza(): HasOne
+    public function rate()
     {
-        return $this->hasOne(RicorrenzaRata::class, 'piano_rate_id');
+        return $this->hasMany(\App\Models\Gestionale\Rata::class);
     }
 
-    // === SCOPES ===
-    public function scopeAttivo($query)
-    {
-        return $query->where('attivo', true);
-    }
-
-    public function scopeTipo($query, string $tipo)
-    {
-        return $query->where('tipo', $tipo);
-    }
-
-    // === METODI UTILI ===
-    public function haRicorrenza(): bool
-    {
-        return $this->ricorrenza()->exists();
-    }
-
-    public function haRateGenerate(): bool
-    {
-        return $this->rate()->exists();
-    }
+    
 }
+

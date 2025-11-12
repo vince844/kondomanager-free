@@ -12,8 +12,8 @@ import InputError from '@/components/InputError.vue'
 import { useTabelle } from '@/composables/useTabelle'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import vSelect from 'vue-select'
-import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 import MoneyInput from '@/components/MoneyInput.vue'
+import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 
 interface Emits {
   (e: 'update:show', value: boolean): void
