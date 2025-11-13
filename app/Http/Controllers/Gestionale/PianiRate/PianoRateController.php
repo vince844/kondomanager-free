@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\PianoRate\CreatePianoRateRequest;
 use App\Http\Requests\Gestionale\PianoRate\PianoRateIndexRequest;
 use App\Http\Resources\Condominio\CondominioResource;
+use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
+use App\Http\Resources\Gestionale\PianiRate\PianoRateResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
@@ -13,7 +15,6 @@ use App\Models\Gestione;
 use App\Services\PianoRateGenerator;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\DB;
@@ -43,7 +44,7 @@ class PianoRateController extends Controller
             'esercizio' => $esercizio,
             'esercizi' => $esercizi,
             'condomini' => CondominioResource::collection($this->getCondomini()),
-            'pianiRate' => $pianiRate,
+            'pianiRate' => PianoRateResource::collection($pianiRate)->resolve(),
             'meta' => [
                 'current_page' => $pianiRate->currentPage(),
                 'last_page' => $pianiRate->lastPage(),
@@ -114,75 +115,103 @@ class PianoRateController extends Controller
     }
 
     public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
-    {
-        $pianoRate->load([
-            'gestione',
-            'rate.rateQuote.anagrafica',
-            'rate.rateQuote.immobile',
-        ]);
+{
+    $pianoRate->load([
+        'gestione',
+        'rate.rateQuote.anagrafica',
+        'rate.rateQuote.immobile',
+    ]);
 
-        // Quote per Anagrafica
-        $quotePerAnagrafica = $pianoRate->rate
-            ->flatMap->rateQuote
-            ->groupBy('anagrafica_id')
-            ->map(function ($quotes) {
-                return [
-                    'anagrafica' => [
-                        'id' => $quotes->first()->anagrafica->id ?? null,
-                        'nome' => $quotes->first()->anagrafica->nome ?? 'Sconosciuto',
-                    ],
-                    'totale' => $quotes->sum('importo'), // centesimi
-                    'rate' => $quotes->groupBy('rata_id')->map(function ($q) {
-                        $rata = $q->first()->rata;
-                        return [
-                            'numero' => $rata->numero_rata,
-                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
-                            'importo' => $q->sum('importo'),
-                            'stato' => $q->first()->stato,
-                        ];
-                    })->sortBy(fn($r) => $r['numero'])->values(),
-                ];
-            })->values();
+    $oggi = now()->format('Y-m-d');
 
-        // Quote per Immobile
-        $quotePerImmobile = $pianoRate->rate
-            ->flatMap->rateQuote
-            ->whereNotNull('immobile_id')
-            ->groupBy('immobile_id')
-            ->map(function ($quotes) {
-                return [
-                    'immobile' => [
-                        'id' => $quotes->first()->immobile->id ?? null,
-                        'nome' => $quotes->first()->immobile->nome ?? 'Sconosciuto',
-                    ],
-                    'totale' => $quotes->sum('importo'), // centesimi
-                    'rate' => $quotes->groupBy('rata_id')->map(function ($q) {
-                        $rata = $q->first()->rata;
-                        return [
-                            'numero' => $rata->numero_rata,
-                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
-                            'importo' => $q->sum('importo'),
-                            'stato' => $q->first()->stato,
-                        ];
-                    })->sortBy(fn($r) => $r['numero'])->values(),
-                ];
-            })->values();
+    // === QUOTE PER ANAGRAFICA ===
+    $quotePerAnagrafica = $pianoRate->rate
+        ->flatMap->rateQuote
+        ->groupBy('anagrafica_id')
+        ->map(function ($quotes) use ($oggi) {
+            $anagrafica = $quotes->first()->anagrafica;
 
-        return Inertia::render('gestionale/pianiRate/PianiRateShow', [
-            'condominio' => $condominio,
-            'esercizio' => $esercizio,
-            'pianoRate' => [
-                'id' => $pianoRate->id,
-                'nome' => $pianoRate->nome,
-                'numero_rate' => $pianoRate->numero_rate,
-                'data_inizio' => $pianoRate->data_inizio,
-                'gestione' => $pianoRate->gestione->nome,
-            ],
-            'quotePerAnagrafica' => $quotePerAnagrafica,
-            'quotePerImmobile' => $quotePerImmobile,
-        ]);
-    }
+            $rate = $quotes
+                ->groupBy(fn($q) => $q->rata->numero_rata)
+                ->map(function ($q) use ($oggi) {
+                    $rata = $q->first()->rata;
+                    $importo = $q->sum('importo');
+                    $pagate = $q->where('stato', 'pagata')->sum('importo');
+                    $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
 
+                    return [
+                        'numero' => $rata->numero_rata,
+                        'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                        'importo' => $importo,
+                        'stato' => $stato,
+                    ];
+                })
+                ->sortBy('numero')
+                ->values();
+
+            return [
+                'anagrafica' => [
+                    'id' => $anagrafica->id,
+                    'nome' => $anagrafica->nome,
+                ],
+                'rate' => $rate,
+            ];
+        })
+        ->values();
+
+    // === QUOTE PER IMMOBILE ===
+    $quotePerImmobile = $pianoRate->rate
+        ->flatMap->rateQuote
+        ->whereNotNull('immobile_id')
+        ->groupBy('immobile_id')
+        ->map(function ($quotes) use ($oggi) {
+            $immobile = $quotes->first()->immobile;
+
+            $rate = $quotes
+                ->groupBy('rata_id')
+                ->map(function ($q) use ($oggi) {
+                    $rata = $q->first()->rata;
+                    $importo = $q->sum('importo');
+                    $pagate = $q->where('stato', 'pagata')->sum('importo');
+                    $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
+
+                    return [
+                        'numero' => $rata->numero_rata,
+                        'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                        'importo' => $importo,
+                        'stato' => $stato,
+                    ];
+                })
+                ->sortBy(fn($r) => $r['numero'])
+                ->values();
+
+            return [
+                'immobile' => [
+                    'id' => $immobile->id,
+                    'nome' => $immobile->nome ?? 'Sconosciuto',
+                    'interno' => $immobile->interno,
+                    'piano' => $immobile->piano,
+                    'superficie' => $immobile->superficie,
+                ],
+                'rate' => $rate,
+            ];
+        })
+        ->values();
+
+    return Inertia::render('gestionale/pianiRate/PianiRateShow', [
+        'condominio' => $condominio,
+        'esercizio' => $esercizio,
+        'pianoRate' => [
+            'id' => $pianoRate->id,
+            'nome' => $pianoRate->nome,
+            'numero_rate' => $pianoRate->numero_rate,
+            'data_inizio' => $pianoRate->data_inizio,
+            'gestione' => $pianoRate->gestione->nome,
+        ],
+        'quotePerAnagrafica' => $quotePerAnagrafica,
+        'quotePerImmobile' => $quotePerImmobile,
+    ]);
+}
     protected function verificaGestione(int $gestioneId): Gestione
     {
         $gestione = Gestione::with(['pianoConto.conti', 'esercizi'])->findOrFail($gestioneId);

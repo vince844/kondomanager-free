@@ -8,19 +8,23 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Servizio per il calcolo delle quote di spesa/entrata per ogni gestione.
- * 
- * Logica aggiornata novembre 2025:
- * - Itera ogni conto e sottoconto
- * - Per ogni tabella millesimale associata, applica il coefficiente
- * - Divide l’importo tra immobili in base ai millesimi
- * - Divide la quota tra proprietari / inquilini / usufruttuari secondo ripartizione
- * - Se mancano inquilini o usufruttuari, attribuisce la quota ai proprietari
- * - Restituisce array [anagrafica_id][immobile_id] => importo_centesimi
+ *
+ * Logica aggiornata:
+ * - Somma finale delle quote = importo totale della gestione (centesimi) SENZA differenze
+ * - Distribuzione tramite pesi (coefficiente, millesimi, ripartizioni, quote anagrafiche)
+ * - Un SOLO passaggio di arrotondamento per conto (no round stratificati)
+ * - Output finale: [anagrafica_id][immobile_id] => importo_centesimi (int)
  */
 class CalcoloQuoteService
 {
     private ?Gestione $gestioneCorrente = null;
 
+    /**
+     * Calcola le quote per una gestione.
+     *
+     * @param  Gestione  $gestione
+     * @return array [anagrafica_id => [immobile_id => importo_centesimi]]
+     */
     public function calcolaPerGestione(Gestione $gestione): array
     {
         $this->gestioneCorrente = $gestione;
@@ -29,122 +33,256 @@ class CalcoloQuoteService
         $pianoConto = $gestione->pianoConto;
         if (!$pianoConto) {
             Log::warning("Nessun piano conti trovato per la gestione", [
-                'gestione_id' => $gestione->id
+                'gestione_id' => $gestione->id,
             ]);
             return [];
         }
 
         Log::info("=== INIZIO CALCOLO QUOTE ===", [
-            'gestione_id' => $gestione->id,
-            'tipo_gestione' => $gestione->tipo
+            'gestione_id'   => $gestione->id,
+            'tipo_gestione' => $gestione->tipo,
         ]);
 
         $conti = $pianoConto->conti()
             ->with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
                 'tabelleMillesimali.ripartizioni',
-                'sottoconti.sottoconti'
+                'sottoconti.sottoconti',
             ])
             ->get();
 
         $this->processaConti($conti, $totali);
 
-        // Calcolo totale finale
         $totaleCentesimi = array_sum(array_map('array_sum', $totali));
 
         Log::info("=== FINE CALCOLO QUOTE ===", [
-            'gestione_id' => $gestione->id,
-            'importo_totale_centesimi' => $totaleCentesimi,
-            'importo_totale_euro' => number_format($totaleCentesimi / 100, 2, ',', '.')
+            'gestione_id'             => $gestione->id,
+            'importo_totale_centesimi'=> $totaleCentesimi,
+            'importo_totale_euro'     => number_format($totaleCentesimi / 100, 2, ',', '.'),
         ]);
 
         return $totali;
     }
 
     /**
-     * Itera ricorsivamente conti e sottoconti e distribuisce le quote.
+     * Itera ricorsivamente i conti e sottoconti,
+     * distribuendo le quote per anagrafica e immobile tramite pesi.
      */
     private function processaConti(Collection $conti, array &$totali): void
     {
         foreach ($conti as $conto) {
-            if ($conto->importo <= 0) continue;
+            $importoLordo = (int) $conto->importo;
 
-            // Tipo: 'uscita' (spesa, negativa) o 'entrata' (credito, positiva)
-            // Si mantiene il segno coerente: spesa -> negativo, entrata -> positivo
-            $importoConto = $conto->tipo === 'uscita'
-                ? -abs($conto->importo)
-                : abs($conto->importo);
+            if ($importoLordo === 0) {
+                continue;
+            }
+
+            // Tipo: gestiamo sia "spesa"/"uscita" che "entrata"
+            $tipo = $conto->tipo ?? 'spesa';
+
+            // Spese / Uscite => importo positivo (debito)
+            // Entrate / Fondi / Crediti => importo negativo (riduzione del debito)
+            if (in_array($tipo, ['spesa', 'uscita'])) {
+                $importoConto = abs($importoLordo);
+            } else {
+                $importoConto = -abs($importoLordo);
+            }
+
+            // Se per qualche motivo importoConto è 0, saltiamo
+            if ($importoConto === 0) {
+                continue;
+            }
+
+            // Matrice pesi per questo conto: "anagrafica_id|immobile_id" => peso (float)
+            $weights = [];
 
             foreach ($conto->tabelleMillesimali as $ctm) {
                 $tabella = $ctm->tabella;
-                if (!$tabella) continue;
+                if (!$tabella) {
+                    continue;
+                }
 
-                // Importo allocato su questa tabella (applica coefficiente %)
-                $importoTabella = (int) round($importoConto * ($ctm->coefficiente / 100));
+                $coeff = (float) $ctm->coefficiente; // es. "100.00"
+                if ($coeff <= 0) {
+                    continue;
+                }
+                // Peso del coefficiente (es. 100% = 1.0)
+                $weightCoeff = $coeff / 100.0;
 
                 $quote = $tabella->quote;
-                if ($quote->isEmpty()) continue;
+                if ($quote->isEmpty()) {
+                    continue;
+                }
 
-                $sommaValori = $quote->sum('valore') ?: 1;
+                $sommaValori = (float) $quote->sum('valore');
+                if ($sommaValori <= 0.0) {
+                    continue;
+                }
 
-                // 🔁 Per ogni immobile nella tabella millesimale
+                // Per ogni quota (immobile)
                 foreach ($quote as $quota) {
                     $immobile = $quota->immobile;
-                    if (!$immobile) continue;
+                    if (!$immobile) {
+                        continue;
+                    }
 
-                    $importoImmobile = (int) round($importoTabella * ($quota->valore / $sommaValori));
+                    $valore = (float) $quota->valore;
+                    if ($valore <= 0.0) {
+                        continue;
+                    }
 
-                    // Ripartizioni (proprietario, inquilino, usufruttuario)
+                    // Peso dell'immobile rispetto alla tabella
+                    $weightImmobile = $weightCoeff * ($valore / $sommaValori);
+
+                    // Ripartizioni (proprietario / inquilino / usufruttuario)
                     $ripartizioni = $ctm->ripartizioni->isNotEmpty()
                         ? $ctm->ripartizioni
-                        : collect([(object)['soggetto' => 'proprietario', 'percentuale' => 100]]);
+                        : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100]]);
 
                     foreach ($ripartizioni as $rip) {
-                        $importoRip = (int) round($importoImmobile * ($rip->percentuale / 100));
-
-                        // Recupera anagrafiche attive per tipo soggetto
-                        $anagrafiche = $immobile->anagrafiche
-                            ->where('pivot.tipologia', $rip->soggetto)
-                            ->where('pivot.attivo', true);
-
-                        // Se mancano inquilini/usufruttuari → passa ai proprietari
-                        if ($anagrafiche->isEmpty() && in_array($rip->soggetto, ['inquilino', 'usufruttuario'])) {
-                            $anagrafiche = $immobile->anagrafiche
-                                ->where('pivot.tipologia', 'proprietario')
-                                ->where('pivot.attivo', true);
+                        $percent = (float) $rip->percentuale;
+                        if ($percent <= 0.0) {
+                            continue;
                         }
 
-                        if ($anagrafiche->isEmpty()) continue;
+                        $weightRip = $weightImmobile * ($percent / 100.0);
 
-                        $sommaQuote = $anagrafiche->sum('pivot.quota') ?: 1;
+                        // Anagrafiche per tipologia
+                        $anagrafiche = $immobile->anagrafiche
+                            ->where('pivot.attivo', true)
+                            ->where('pivot.tipologia', $rip->soggetto);
+
+                        // Fallback inquilino / usufruttuario → proprietari
+                        if ($anagrafiche->isEmpty() && in_array($rip->soggetto, ['inquilino', 'usufruttuario'])) {
+                            $anagrafiche = $immobile->anagrafiche
+                                ->where('pivot.attivo', true)
+                                ->where('pivot.tipologia', 'proprietario');
+                        }
+
+                        if ($anagrafiche->isEmpty()) {
+                            continue;
+                        }
+
+                        $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
+                        if ($sommaQuote <= 0.0) {
+                            $sommaQuote = 1.0;
+                        }
 
                         foreach ($anagrafiche as $anag) {
-                            $importoAnagrafica = (int) round($importoRip * ($anag->pivot->quota / $sommaQuote));
+                            $quotaAnag = (float) $anag->pivot->quota;
+                            if ($quotaAnag <= 0.0) {
+                                continue;
+                            }
+
+                            // Peso finale per (anagrafica, immobile)
+                            $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
 
                             $aid = $anag->id;
                             $iid = $immobile->id;
+                            $key = $aid . '|' . $iid;
 
-                            // Somma importo per anagrafica e immobile
-                            $totali[$aid][$iid] = ($totali[$aid][$iid] ?? 0) + $importoAnagrafica;
-
-                            Log::debug("Quota aggiunta", [
-                                'conto_id' => $conto->id,
-                                'conto_nome' => $conto->nome ?? null,
-                                'anagrafica_id' => $aid,
-                                'immobile_id' => $iid,
-                                'importo_centesimi' => $importoAnagrafica,
-                                'tipo_conto' => $conto->tipo,
-                                'coefficiente' => $ctm->coefficiente,
-                            ]);
+                            $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
                         }
                     }
                 }
             }
 
-            // Ricorsione su sottoconti
+            if (empty($weights)) {
+                continue;
+            }
+
+            // Normalizziamo i pesi a 1.0
+            $pesoTotale = array_sum($weights);
+            if ($pesoTotale <= 0.0) {
+                continue;
+            }
+
+            foreach ($weights as $key => $w) {
+                $weights[$key] = $w / $pesoTotale;
+            }
+
+            // Distribuzione esatta dell'importo del conto sui pesi (in centesimi)
+            $importiDistributi = $this->distribuisciImporto($weights, $importoConto);
+
+            foreach ($importiDistributi as $key => $importoCentesimi) {
+                [$aid, $iid] = array_map('intval', explode('|', $key));
+
+                $totali[$aid][$iid] = ($totali[$aid][$iid] ?? 0) + $importoCentesimi;
+
+                Log::debug('Quota aggiunta', [
+                    'conto_id'          => $conto->id,
+                    'conto_nome'        => $conto->nome ?? null,
+                    'anagrafica_id'     => $aid,
+                    'immobile_id'       => $iid,
+                    'importo_centesimi' => $importoCentesimi,
+                    'tipo_conto'        => $tipo,
+                ]);
+            }
+
+            // Ricorsione su eventuali sottoconti
             if ($conto->sottoconti && $conto->sottoconti->count() > 0) {
                 $this->processaConti($conto->sottoconti, $totali);
             }
         }
+    }
+
+    /**
+     * Converte una matrice di pesi in importi in centesimi
+     * in modo che la somma degli importi sia ESATTAMENTE $importoTotale.
+     *
+     * @param  array  $weights  [key => peso_normalizzato]
+     * @param  int    $importoTotale  importo in centesimi (può essere negativo)
+     * @return array [key => importo_centesimi]
+     */
+    private function distribuisciImporto(array $weights, int $importoTotale): array
+    {
+        $result = [];
+
+        if ($importoTotale === 0) {
+            foreach ($weights as $key => $_) {
+                $result[$key] = 0;
+            }
+            return $result;
+        }
+
+        $sign   = $importoTotale < 0 ? -1 : 1;
+        $totAbs = abs($importoTotale);
+
+        $bases      = [];
+        $remainders = [];
+        $sumBase    = 0;
+
+        // 1) Calcolo base (floor) e resto decimale
+        foreach ($weights as $key => $w) {
+            $raw  = $totAbs * $w;           // es: 52300 * 0.25 = 13075.0
+            $base = (int) floor($raw);      // parte intera in centesimi
+            $rem  = $raw - $base;           // resto < 1
+
+            $bases[$key]      = $base;
+            $remainders[$key] = $rem;
+            $sumBase         += $base;
+        }
+
+        // 2) Differenza da distribuire (in centesimi)
+        $diff = $totAbs - $sumBase; // 0 <= diff < count($weights)
+
+        if ($diff > 0) {
+            // Ordiniamo i resti dal più grande al più piccolo
+            arsort($remainders);
+            $keys = array_keys($remainders);
+
+            // Aggiungiamo +1 cent ai primi $diff elementi
+            $countKeys = count($keys);
+            for ($i = 0; $i < $diff && $i < $countKeys; $i++) {
+                $bases[$keys[$i]]++;
+            }
+        }
+
+        // 3) Applichiamo il segno
+        foreach ($bases as $key => $b) {
+            $result[$key] = $b * $sign;
+        }
+
+        return $result;
     }
 }

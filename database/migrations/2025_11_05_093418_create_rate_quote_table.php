@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('immobile_id')->nullable()->constrained('immobili')->onDelete('set null');
             $table->bigInteger('importo')->default(0); // in centesimi
             $table->bigInteger('importo_pagato')->default(0); // in centesimi
-            $table->enum('stato', ['da_pagare', 'parzialmente_pagata', 'pagata', 'annullata'])->default('da_pagare');
+            $table->enum('stato', ['da_pagare', 'parzialmente_pagata', 'pagata', 'annullata', 'credito'])->default('da_pagare');
             $table->date('data_scadenza')->nullable();
             $table->date('data_pagamento')->nullable();
             $table->string('riferimento_pagamento')->nullable();
