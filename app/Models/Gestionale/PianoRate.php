@@ -17,6 +17,7 @@ class PianoRate extends Model
         'nome',
         'descrizione',
         'metodo_calcolo',
+        'metodo_distribuzione',
         'numero_rate',
         'giorno_scadenza',
         'data_inizio',

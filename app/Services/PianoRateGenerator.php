@@ -51,20 +51,20 @@ class PianoRateGenerator
             throw new \RuntimeException("Esercizio non trovato per la gestione.");
         }
 
-        // 1️⃣ Calcolo quote per gestione (ogni valore è in centesimi)
+        // Calcolo quote per gestione (ogni valore è in centesimi)
         $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione);
 
-        // 2️⃣ Recupera saldi (solo gestione ordinaria)
+        // Recupera saldi (solo gestione ordinaria)
         $saldi = $this->recuperaSaldi($pianoRate, $gestione, $esercizio);
 
-        // 3️⃣ Genera le date delle rate
+        // Genera le date delle rate
         $dateRate = $this->generaDateRate($pianoRate, $gestione);
         Log::info('DATE RATE', array_map(fn($d) => $d->format('Y-m-d'), $dateRate));
 
-        // 4️⃣ Crea rate e quote
+        // Crea rate e quote
         $statisticheRate = $this->generaRateEQuote($pianoRate, $totaliPerImmobile, $dateRate, $saldi);
 
-        // 5️⃣ Statistiche finali
+        // Statistiche finali
         return array_merge([
             'piano_rate_id'           => $pianoRate->id,
             'rate_create'             => count($dateRate),
@@ -117,18 +117,19 @@ class PianoRateGenerator
      * Genera rate e relative quote:
      * - Per ogni (anagrafica, immobile) divide il totale in N rate
      *   usando intdiv + resto → nessun centesimo perso
-     * - Applica il saldo solo alla prima rata
+     * - Applica il saldo solo alla prima rata (se metodo_distribuzione = 'prima_rata')
+     * - Distribuisce il saldo su tutte le rate (se metodo_distribuzione = 'tutte_rate')
      */
-    protected function generaRateEQuote(
+   protected function generaRateEQuote(
         PianoRate $pianoRate,
         array $totaliPerImmobile,
         array $dateRate,
         array $saldi = []
     ): array {
-        $numeroRate              = count($dateRate);
-        $rateCreate              = 0;
-        $quoteCreate             = 0;
-        $importoTotaleGenerato   = 0;
+        $numeroRate = count($dateRate);
+        $rateCreate = 0;
+        $quoteCreate = 0;
+        $importoTotaleGenerato = 0;
 
         foreach ($dateRate as $index => $dataScadenza) {
             $numeroRata = $index + 1;
@@ -147,43 +148,64 @@ class PianoRateGenerator
 
             foreach ($totaliPerImmobile as $aid => $immobili) {
                 foreach ($immobili as $iid => $totaleImmobile) {
-                    $totaleImmobile = (int) $totaleImmobile;
-                    if ($totaleImmobile === 0) {
-                        continue;
-                    }
 
-                    // Suddivisione del totale in N rate con intdiv + resto
-                    $segno   = $totaleImmobile < 0 ? -1 : 1;
-                    $absTot  = abs($totaleImmobile);
-                    $base    = intdiv($absTot, $numeroRate);
-                    $resto   = $absTot % $numeroRate;
+                    $totaleImmobile = (int) $totaleImmobile;
+                    if ($totaleImmobile === 0) continue;
+
+                    // Suddivisione base delle spese in rate
+                    $segno = $totaleImmobile < 0 ? -1 : 1;
+                    $absTot = abs($totaleImmobile);
+
+                    $base = intdiv($absTot, $numeroRate);
+                    $resto = $absTot % $numeroRate;
 
                     $importoRata = $base;
                     if ($numeroRata <= $resto) {
                         $importoRata += 1;
                     }
+
                     $importoRata *= $segno;
 
-                    // Saldo solo sulla prima rata
-                    if ($numeroRata === 1) {
-                        $saldoDaApplicare = $saldi[$aid][$iid] ?? 0;
-                        if ($saldoDaApplicare != 0) {
-                            // saldo > 0 = credito → riduce la rata
-                            // saldo < 0 = debito → aumenta la rata
-                            $importoRata -= $saldoDaApplicare;
+                    // Gestione saldo
+                    $saldoDaApplicare = $saldi[$aid][$iid] ?? 0;
 
-                            Log::info("APPLICO SALDO", [
-                                'anagrafica_id' => $aid,
-                                'immobile_id'   => $iid,
-                                'saldo'         => $saldoDaApplicare,
-                                'rata'          => $numeroRata,
-                                'nuovo_importo' => $importoRata,
-                            ]);
+                    if ($saldoDaApplicare !== 0) {
+
+                        // Caso A → tutto in prima rata
+                        if ($pianoRate->metodo_distribuzione === 'prima_rata') {
+                            if ($numeroRata === 1) {
+                                // saldo>0 = credito → diminuisce la rata
+                                // saldo<0 = debito → aumenta la rata
+                                $importoRata -= $saldoDaApplicare;
+                            }
+                        }
+
+                        // Caso B → saldo distribuito su tutte le rate
+                        elseif ($pianoRate->metodo_distribuzione === 'tutte_rate') {
+
+                            $segnoSaldo = $saldoDaApplicare < 0 ? -1 : 1;
+                            $absSaldo   = abs($saldoDaApplicare);
+
+                            $baseSaldo = intdiv($absSaldo, $numeroRate);
+                            $restoSaldo = $absSaldo % $numeroRate;
+
+                            $quotaSaldo = $baseSaldo;
+                            if ($numeroRata <= $restoSaldo) {
+                                $quotaSaldo += 1;
+                            }
+
+                            $quotaSaldo *= $segnoSaldo;
+
+                            // credito>0 → riduce la rata
+                            // debito<0 → aumenta
+                            $importoRata -= $quotaSaldo;
                         }
                     }
 
+                    // Stato della quota
                     $statoQuota = $importoRata < 0 ? 'credito' : 'da_pagare';
 
+                    // Creazione della quota
                     RataQuote::create([
                         'rata_id'        => $rata->id,
                         'anagrafica_id'  => $aid,
@@ -199,15 +221,8 @@ class PianoRateGenerator
                 }
             }
 
+            // Aggiorna il totale della rata
             $rata->update(['importo_totale' => $importoRataTotale]);
-
-            Log::info("RATA CREATA", [
-                'rata_id'                 => $rata->id,
-                'numero'                  => $numeroRata,
-                'scadenza'                => $dataScadenza->format('Y-m-d'),
-                'totale_rata'             => $importoRataTotale,
-                'quote_create_fino_ad_ora'=> $quoteCreate,
-            ]);
 
             $importoTotaleGenerato += $importoRataTotale;
             $rateCreate++;

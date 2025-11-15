@@ -52,6 +52,7 @@ const form = useForm({
   nome: '',
   descrizione: '',
   metodo_calcolo: 'tabella',
+  metodo_distribuzione: 'prima_rata',
   numero_rate: 12,
   giorno_scadenza: 5,
 
@@ -87,195 +88,212 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title= "Crea nuovo piano rate"  />
+  <Head title="Crea nuovo piano rate" />
 
   <GestionaleLayout>
-    <div class="px-4 py-6 max-w-6xl mx-auto">
-      <Heading
-        :title="`Nuovo piano rate - ${condominio.nome}`" 
-        description="Definisci il piano rate per una specifica gestione, con eventuale ricorrenza automatica."
-      />
 
-      <form @submit.prevent="submit" class="space-y-4">
-        <!-- Buttons -->
-        <div class="flex flex-col lg:flex-row lg:justify-end gap-2">
-          <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-            <Plus v-if="!form.processing" class="w-4 h-4" />
-            <LoaderCircle v-else class="w-4 h-4 animate-spin" />
-            <span>Salva piano rate</span>
-          </Button>
+    <div class="px-4 py-6">
 
-          <Link
-            as="button"
-            :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-            class="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
-          >
-            <List class="w-4 h-4" />
-            <span>Elenco piani</span>
-          </Link>
-        </div>
+      <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
 
-        <!-- Main Form -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <!-- Colonna sinistra -->
-          <div class="lg:col-span-2 space-y-4 bg-white p-4 border rounded">
-            <!-- Gestione -->
-            <div>
-              <Label for="gestione_id">Gestione</Label>
-              <v-select
-                id="gestione_id"
-                :options="gestioni"
-                label="nome"
-                v-model="form.gestione_id"
-                :reduce="(opt: Gestione) => opt.id"
-                placeholder="Seleziona gestione"
-              />
-              <InputError :message="form.errors.gestione_id" />
+        <section class="w-full">
+          <form class="space-y-2" @submit.prevent="submit">
+
+            <!-- Action buttons -->
+            <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
+              <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
+                <Plus class="w-4 h-4" v-if="!form.processing" />
+                <LoaderCircle v-else class="h-4 w-4 animate-spin" />
+                Salva piano rate
+              </Button>
+
+              <Link
+                as="button"
+                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', {
+                  condominio: condominio.id,
+                  esercizio: esercizio.id
+                })"
+                class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md 
+                       bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+              >
+                <List class="w-4 h-4" />
+                <span>Elenco piani</span>
+              </Link>
             </div>
 
-            <!-- Nome -->
-            <div>
-              <Label for="nome">Nome piano rate</Label>
-              <Input id="nome" v-model="form.nome" placeholder="Es. Piano Ordinario 2025" />
-              <InputError :message="form.errors.nome" />
-            </div>
+            <Separator class="my-4" />
 
-            <!-- Descrizione -->
-            <div>
-              <Label for="descrizione">Descrizione</Label>
-              <Textarea id="descrizione" v-model="form.descrizione" class="min-h-[100px]" />
-              <InputError :message="form.errors.descrizione" />
-            </div>
+            <!-- FORM BOX -->
+            <div class="bg-white dark:bg-muted rounded space-y-6 mt-3 p-4">
 
-            <!-- Tipo e Metodo -->
-            <div class="grid grid-cols-2 gap-3">
+              <!-- Riga 1: Nome + Gestione -->
+              <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+                <div class="sm:col-span-3">
+                  <Label for="nome">Nome piano rate</Label>
+                  <Input
+                    id="nome"
+                    class="mt-1 block w-full"
+                    v-model="form.nome"
+                    v-on:focus="form.clearErrors('nome')"
+                    placeholder="Es. Piano rate ordinario"
+                  />
+                  <InputError :message="form.errors.nome" />
+                </div>
 
-              <div>
-                <Label>Metodo di calcolo</Label>
-                <v-select
-                  :options="[
-                    { label: 'Proporzionale', value: 'proporzionale' },
-                    { label: 'Per Tabella', value: 'tabella' },
-                    { label: 'Manuale', value: 'manuale' }
-                  ]"
-                  label="label"
-                  v-model="form.metodo_calcolo"
-                  :reduce="(opt: {label: string, value: string}) => opt.value"
-                />
-                <InputError :message="form.errors.metodo_calcolo" />
+                <div class="sm:col-span-3">
+                  <Label for="gestione_id">Gestione</Label>
+                  <v-select
+                    class="mt-1 block w-full"
+                    id="gestione_id"
+                    :options="gestioni"
+                    label="nome"
+                    v-model="form.gestione_id"
+                    placeholder="Seleziona gestione"
+                    :reduce="(g: Gestione) => g.id"
+                    @update:modelValue="form.clearErrors('gestione_id')"
+                  />
+                  <InputError :message="form.errors.gestione_id" />
+                </div>
               </div>
-            </div>
 
-            <!-- Numero rate e giorno -->
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Numero rate</Label>
-                <Input type="number" min="1" max="24" v-model="form.numero_rate" />
-                <InputError :message="form.errors.numero_rate" />
+              <!-- Descrizione -->
+              <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+                <div class="sm:col-span-6">
+                  <Label for="descrizione">Descrizione</Label>
+                  <Textarea
+                    id="descrizione"
+                    class="mt-1 block w-full min-h-[100px]"
+                    v-model="form.descrizione"
+                    placeholder="Descrizione del piano rate"
+                    v-on:focus="form.clearErrors('descrizione')"
+                  />
+                  <InputError :message="form.errors.descrizione" />
+                </div>
               </div>
-              <div>
-                <Label>Giorno scadenza</Label>
-                <Input type="number" min="1" max="31" v-model="form.giorno_scadenza" />
-                <InputError :message="form.errors.giorno_scadenza" />
-              </div>
-            </div>
 
-            <!-- Data inizio -->
-            <div class="bg-blue-50 p-3 rounded border border-blue-200">
-              <div class="flex items-center gap-2">
-                <Info class="w-4 h-4 text-blue-600" />
+              <!-- Info timeline -->
+              <div class="bg-blue-50 p-3 rounded border border-blue-200 flex items-start gap-2">
+                <Info class="w-4 h-4 text-blue-600 mt-1" />
                 <p class="text-sm text-blue-700">
-                  Le date delle rate partiranno automaticamente dalla data di inizio della gestione selezionata.
+                  Le rate partiranno automaticamente dalla <strong>data di inizio della gestione selezionata</strong>.
                 </p>
               </div>
-            </div>
 
-            <!-- Note -->
-            <div>
-              <Label>Note</Label>
-              <Textarea v-model="form.note" placeholder="Note interne o aggiuntive" />
-            </div>
-
-            <div class="flex items-center gap-2 mt-4">
-              <Checkbox id="genera_subito" v-model:checked="form.genera_subito" />
-              <Label for="genera_subito">Genera subito il piano rate dopo il salvataggio</Label>
-              <HoverCard>
-                <HoverCardTrigger as-child>
-                  <Info class="w-4 h-4 text-muted-foreground cursor-pointer" />
-                </HoverCardTrigger>
-                <HoverCardContent class="w-80">
-                  <p class="text-sm">
-                    Se abilitato, il sistema calcolerà e creerà immediatamente tutte le rate e le
-                    relative quote per ogni anagrafica in base al piano dei conti.
-                  </p>
-                </HoverCardContent>
-              </HoverCard>
-            </div>
-
-            <!-- Ricorrenza -->
-            <div class="mt-6 flex items-center gap-2">
-              <Checkbox id="recurrenceToggle" v-model:checked="showRecurrence" />
-              <Label for="recurrenceToggle">Imposta ricorrenza automatica (RRULE)</Label>
-              <HoverCard>
-                <HoverCardTrigger as-child>
-                  <Info class="w-4 h-4 text-muted-foreground cursor-pointer" />
-                </HoverCardTrigger>
-                <HoverCardContent class="w-80">
-                  <p class="text-sm">
-                    Se attivi questa opzione, potrai generare automaticamente le date di scadenza delle rate
-                    secondo una regola di ricorrenza (es. ogni 5 del mese).
-                  </p>
-                </HoverCardContent>
-              </HoverCard>
-            </div>
-
-            <div v-if="showRecurrence" class="mt-4 space-y-4">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Frequenza</Label>
+              <!-- Metodo calcolo + metodo distribuzione -->
+              <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+                <div class="sm:col-span-3">
+                  <Label>Metodo di calcolo</Label>
                   <v-select
-                    :options="frequencies"
-                    label="label"
-                    v-model="form.recurrence_frequency"
-                    :reduce="(opt: any) => opt.value"
+                    class="mt-1 block w-full"
+                    :options="[
+                      { label: 'Proporzionale', value: 'proporzionale' },
+                      { label: 'Per tabella', value: 'tabella' },
+                      { label: 'Manuale', value: 'manuale' }
+                    ]"
+                    v-model="form.metodo_calcolo"
+                    :reduce="(opt) => opt.value"
                   />
+                  <InputError :message="form.errors.metodo_calcolo" />
                 </div>
-                <div>
-                  <Label>Intervallo</Label>
-                  <Input type="number" min="1" v-model="form.recurrence_interval" />
+
+                <div class="sm:col-span-3">
+                  <Label>Distribuzione saldo iniziale</Label>
+                  <v-select
+                    class="mt-1 block w-full"
+                    :options="[
+                      { label: 'Tutto sulla prima rata', value: 'prima_rata' },
+                      { label: 'Distribuito su tutte le rate', value: 'tutte_rate' }
+                    ]"
+                    v-model="form.metodo_distribuzione"
+                    :reduce="(opt) => opt.value"
+                  />
+                  <InputError :message="form.errors.metodo_distribuzione" />
                 </div>
               </div>
 
-              <div>
-                <Label>Giorni specifici</Label>
-                <div class="grid grid-cols-3 gap-2 mt-2">
-                  <div v-for="day in weekdays" :key="day.value" class="flex items-center gap-2">
-                    <input type="checkbox" :id="day.value" :value="day.value" v-model="form.recurrence_by_day" />
-                    <label :for="day.value">{{ day.label }}</label>
+              <!-- Numero rate + giorno -->
+              <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+                <div class="sm:col-span-3">
+                  <Label>Numero rate</Label>
+                  <Input type="number" min="1" max="24" v-model="form.numero_rate" class="mt-1 block w-full" />
+                  <InputError :message="form.errors.numero_rate" />
+                </div>
+
+                <div class="sm:col-span-3">
+                  <Label>Giorno scadenza</Label>
+                  <Input type="number" min="1" max="31" v-model="form.giorno_scadenza" class="mt-1 block w-full" />
+                  <InputError :message="form.errors.giorno_scadenza" />
+                </div>
+              </div>
+
+              <!-- Genera Subito -->
+              <div class="flex items-center gap-2">
+                <Checkbox id="genera_subito" v-model:checked="form.genera_subito" />
+                <Label for="genera_subito">Genera subito il piano rate dopo il salvataggio</Label>
+              </div>
+
+              <!-- Ricorrenza -->
+              <div class="space-y-4">
+
+                <div class="flex items-center gap-2">
+                  <Checkbox id="recurrenceToggle" v-model:checked="showRecurrence" />
+                  <Label for="recurrenceToggle">Ricorrenza automatica avanzata</Label>
+                </div>
+
+                <div v-if="showRecurrence" class="space-y-4">
+
+                  <div class="grid grid-cols-1 sm:grid-cols-6 gap-4">
+                    <div class="sm:col-span-3">
+                      <Label>Frequenza</Label>
+                      <v-select
+                        :options="frequencies"
+                        v-model="form.recurrence_frequency"
+                        :reduce="o => o.value"
+                        class="mt-1 block w-full"
+                      />
+                    </div>
+
+                    <div class="sm:col-span-3">
+                      <Label>Intervallo</Label>
+                      <Input type="number" min="1" v-model="form.recurrence_interval" class="mt-1 block w-full" />
+                    </div>
+                  </div>
+
+                  <!-- Giorni specifici -->
+                  <div>
+                    <Label>Giorni specifici</Label>
+                    <div class="grid grid-cols-3 gap-2 mt-2">
+                      <div v-for="day in weekdays" :key="day.value" class="flex items-center gap-2">
+                        <input type="checkbox" :value="day.value" v-model="form.recurrence_by_day" />
+                        <label>{{ day.label }}</label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Until -->
+                  <div>
+                    <Label>Ripeti fino al</Label>
+                    <Input type="date" v-model="form.recurrence_until" class="mt-1 block w-full" />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <Label>Ripeti fino al</Label>
-                <Input type="date" v-model="form.recurrence_until" />
+              <!-- Note -->
+              <div class="border-t pt-4">
+                <Label for="note">Note aggiuntive</Label>
+                <Textarea id="note" v-model="form.note" placeholder="Note interne o aggiuntive" class="mt-1 block w-full" />
+                <InputError :message="form.errors.note" />
               </div>
-            </div>
-          </div>
 
-          <!-- Colonna destra -->
-          <div class="space-y-4 bg-white p-4 border rounded">
-            <div class="flex items-center gap-2">
-              <Info class="w-4 h-4 text-muted-foreground" />
-              <p class="text-sm text-muted-foreground">
-                Dopo aver salvato, potrai generare automaticamente le rate e visualizzarle per ogni anagrafica o immobile.
-              </p>
             </div>
-          </div>
-        </div>
-      </form>
+
+          </form>
+        </section>
+      </div>
+
     </div>
   </GestionaleLayout>
 </template>
+
 
 <style src="vue-select/dist/vue-select.css"></style>

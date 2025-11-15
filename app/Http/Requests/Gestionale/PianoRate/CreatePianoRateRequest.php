@@ -26,9 +26,9 @@ class CreatePianoRateRequest extends FormRequest
             'nome'                 => ['required', 'string', 'max:255'],
             'descrizione'          => ['nullable', 'string'],
             'metodo_calcolo'       => ['required', 'in:proporzionale,tabella,manuale'],
+            'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate'], 
             'numero_rate'          => ['required', 'integer', 'min:1', 'max:36'],
             'giorno_scadenza'      => ['nullable', 'integer', 'min:1', 'max:31'],
-           /*  'data_inizio'          => ['required', 'date'], */
             'note'                 => ['nullable', 'string'],
             'recurrence_enabled'   => ['sometimes', 'boolean'],
             'recurrence_frequency' => ['nullable', 'in:DAILY,WEEKLY,MONTHLY,YEARLY'],

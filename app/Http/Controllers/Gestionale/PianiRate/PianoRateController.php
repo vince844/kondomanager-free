@@ -115,103 +115,104 @@ class PianoRateController extends Controller
     }
 
     public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
-{
-    $pianoRate->load([
-        'gestione',
-        'rate.rateQuote.anagrafica',
-        'rate.rateQuote.immobile',
-    ]);
+    {
+        $pianoRate->load([
+            'gestione',
+            'rate.rateQuote.anagrafica',
+            'rate.rateQuote.immobile',
+        ]);
 
-    $oggi = now()->format('Y-m-d');
+        $oggi = now()->format('Y-m-d');
 
-    // === QUOTE PER ANAGRAFICA ===
-    $quotePerAnagrafica = $pianoRate->rate
-        ->flatMap->rateQuote
-        ->groupBy('anagrafica_id')
-        ->map(function ($quotes) use ($oggi) {
-            $anagrafica = $quotes->first()->anagrafica;
+        // === QUOTE PER ANAGRAFICA ===
+        $quotePerAnagrafica = $pianoRate->rate
+            ->flatMap->rateQuote
+            ->groupBy('anagrafica_id')
+            ->map(function ($quotes) use ($oggi) {
+                $anagrafica = $quotes->first()->anagrafica;
 
-            $rate = $quotes
-                ->groupBy(fn($q) => $q->rata->numero_rata)
-                ->map(function ($q) use ($oggi) {
-                    $rata = $q->first()->rata;
-                    $importo = $q->sum('importo');
-                    $pagate = $q->where('stato', 'pagata')->sum('importo');
-                    $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
+                $rate = $quotes
+                    ->groupBy(fn($q) => $q->rata->numero_rata)
+                    ->map(function ($q) use ($oggi) {
+                        $rata = $q->first()->rata;
+                        $importo = $q->sum('importo');
+                        $pagate = $q->where('stato', 'pagata')->sum('importo');
+                        $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
 
-                    return [
-                        'numero' => $rata->numero_rata,
-                        'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
-                        'importo' => $importo,
-                        'stato' => $stato,
-                    ];
-                })
-                ->sortBy('numero')
-                ->values();
+                        return [
+                            'numero' => $rata->numero_rata,
+                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'importo' => $importo,
+                            'stato' => $stato,
+                        ];
+                    })
+                    ->sortBy('numero')
+                    ->values();
 
-            return [
-                'anagrafica' => [
-                    'id' => $anagrafica->id,
-                    'nome' => $anagrafica->nome,
-                ],
-                'rate' => $rate,
-            ];
-        })
-        ->values();
+                return [
+                    'anagrafica' => [
+                        'id' => $anagrafica->id,
+                        'nome' => $anagrafica->nome,
+                    ],
+                    'rate' => $rate,
+                ];
+            })
+            ->values();
 
-    // === QUOTE PER IMMOBILE ===
-    $quotePerImmobile = $pianoRate->rate
-        ->flatMap->rateQuote
-        ->whereNotNull('immobile_id')
-        ->groupBy('immobile_id')
-        ->map(function ($quotes) use ($oggi) {
-            $immobile = $quotes->first()->immobile;
+        // === QUOTE PER IMMOBILE ===
+        $quotePerImmobile = $pianoRate->rate
+            ->flatMap->rateQuote
+            ->whereNotNull('immobile_id')
+            ->groupBy('immobile_id')
+            ->map(function ($quotes) use ($oggi) {
+                $immobile = $quotes->first()->immobile;
 
-            $rate = $quotes
-                ->groupBy('rata_id')
-                ->map(function ($q) use ($oggi) {
-                    $rata = $q->first()->rata;
-                    $importo = $q->sum('importo');
-                    $pagate = $q->where('stato', 'pagata')->sum('importo');
-                    $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
+                $rate = $quotes
+                    ->groupBy('rata_id')
+                    ->map(function ($q) use ($oggi) {
+                        $rata = $q->first()->rata;
+                        $importo = $q->sum('importo');
+                        $pagate = $q->where('stato', 'pagata')->sum('importo');
+                        $stato = $pagate == $importo && $importo > 0 ? 'pagata' : 'non_pagata';
 
-                    return [
-                        'numero' => $rata->numero_rata,
-                        'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
-                        'importo' => $importo,
-                        'stato' => $stato,
-                    ];
-                })
-                ->sortBy(fn($r) => $r['numero'])
-                ->values();
+                        return [
+                            'numero' => $rata->numero_rata,
+                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'importo' => $importo,
+                            'stato' => $stato,
+                        ];
+                    })
+                    ->sortBy(fn($r) => $r['numero'])
+                    ->values();
 
-            return [
-                'immobile' => [
-                    'id' => $immobile->id,
-                    'nome' => $immobile->nome ?? 'Sconosciuto',
-                    'interno' => $immobile->interno,
-                    'piano' => $immobile->piano,
-                    'superficie' => $immobile->superficie,
-                ],
-                'rate' => $rate,
-            ];
-        })
-        ->values();
+                return [
+                    'immobile' => [
+                        'id' => $immobile->id,
+                        'nome' => $immobile->nome ?? 'Sconosciuto',
+                        'interno' => $immobile->interno,
+                        'piano' => $immobile->piano,
+                        'superficie' => $immobile->superficie,
+                    ],
+                    'rate' => $rate,
+                ];
+            })
+            ->values();
 
-    return Inertia::render('gestionale/pianiRate/PianiRateShow', [
-        'condominio' => $condominio,
-        'esercizio' => $esercizio,
-        'pianoRate' => [
-            'id' => $pianoRate->id,
-            'nome' => $pianoRate->nome,
-            'numero_rate' => $pianoRate->numero_rate,
-            'data_inizio' => $pianoRate->data_inizio,
-            'gestione' => $pianoRate->gestione->nome,
-        ],
-        'quotePerAnagrafica' => $quotePerAnagrafica,
-        'quotePerImmobile' => $quotePerImmobile,
-    ]);
-}
+        return Inertia::render('gestionale/pianiRate/PianiRateShow', [
+            'condominio' => $condominio,
+            'esercizio' => $esercizio,
+            'pianoRate' => [
+                'id' => $pianoRate->id,
+                'nome' => $pianoRate->nome,
+                'numero_rate' => $pianoRate->numero_rate,
+                'data_inizio' => $pianoRate->data_inizio,
+                'gestione' => $pianoRate->gestione->nome,
+            ],
+            'quotePerAnagrafica' => $quotePerAnagrafica,
+            'quotePerImmobile' => $quotePerImmobile,
+        ]);
+    }
+    
     protected function verificaGestione(int $gestioneId): Gestione
     {
         $gestione = Gestione::with(['pianoConto.conti', 'esercizi'])->findOrFail($gestioneId);
@@ -227,15 +228,16 @@ class PianoRateController extends Controller
     protected function creaPianoRate(array $validated, Condominio $condominio): PianoRate
     {
         return PianoRate::create([
-            'gestione_id' => $validated['gestione_id'],
-            'condominio_id' => $condominio->id,
-            'nome' => $validated['nome'],
-            'descrizione' => $validated['descrizione'] ?? null,
-            'metodo_calcolo' => $validated['metodo_calcolo'],
-            'numero_rate' => $validated['numero_rate'],
-            'giorno_scadenza' => $validated['giorno_scadenza'] ?? 1,
-            'note' => $validated['note'] ?? null,
-            'attivo' => true,
+            'gestione_id'          => $validated['gestione_id'],
+            'condominio_id'        => $condominio->id,
+            'nome'                 => $validated['nome'],
+            'descrizione'          => $validated['descrizione'] ?? null,
+            'metodo_calcolo'       => $validated['metodo_calcolo'],
+            'metodo_distribuzione' => $validated['metodo_distribuzione'] ?? 'prima_rata',
+            'numero_rate'          => $validated['numero_rate'],
+            'giorno_scadenza'      => $validated['giorno_scadenza'] ?? 1,
+            'note'                 => $validated['note'] ?? null,
+            'attivo'               => true,
         ]);
     }
 
