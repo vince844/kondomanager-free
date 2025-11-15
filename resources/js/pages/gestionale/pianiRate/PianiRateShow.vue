@@ -1,8 +1,11 @@
 <script setup lang="ts">
+
 import { ref, computed } from "vue";
 import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import { useDateConverter } from '@/composables/useDateConverter';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,8 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Link } from "@inertiajs/vue3";
 import { Filter } from "lucide-vue-next";
 import type { BreadcrumbItem } from '@/types';
-import { Building } from "@/types/buildings";
-import { Esercizio } from "@/types/gestionale/esercizi";
+import type { Building } from "@/types/buildings";
+import type { Esercizio } from "@/types/gestionale/esercizi";
 
 const props = defineProps<{
   condominio: Building;
@@ -22,22 +25,14 @@ const props = defineProps<{
 }>()
 
 const { generatePath } = usePermission();
+const { toItalian } = useDateConverter();
+const { euro } = useCurrencyFormatter();
 
 const tab = ref<"anagrafica" | "immobile">("anagrafica");
 const showOnlyCredits = ref(false);
 
 const today = new Date();
 today.setHours(0, 0, 0, 0);
-
-const euro = (v: number) =>
-  (v / 100).toLocaleString("it-IT", { style: "currency", currency: "EUR" });
-
-const formatShortDate = (d: string | Date) => {
-  const date = d instanceof Date ? d : new Date(d);
-  return date
-    .toLocaleDateString("it-IT", { day: "numeric", month: "short" })
-    .replace(" ", "\u00A0");
-};
 
 // Dettagli immobile
 const immobileDettagli = (immobile: any) => {
@@ -72,7 +67,7 @@ const rateColumns = computed(() => {
   });
 });
 
-// 🔥 MAPPATURA RIGHE – allineata al gestionale
+// MAPPATURA RIGHE – allineata al gestionale
 const dataWithMap = computed(() => {
   if (!isReady.value) return [];
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
@@ -106,13 +101,13 @@ const dataWithMap = computed(() => {
       .filter((r: any) => r.importo < 0)
       .reduce((sum: number, r: any) => sum + Math.abs(r.importo), 0);
 
-    // 🔥 Totale rate = somma NETTA di tutte le rate (come nel gestionale)
+    // Totale rate = somma NETTA di tutte le rate (come nel gestionale)
     const totaleRate = rate.reduce(
       (sum: number, r: any) => sum + (r.importo ?? 0),
       0
     );
 
-    // 🔥 Da incassare = scadute nette − versato (minimo 0)
+    // Da incassare = scadute nette − versato (minimo 0)
     const daIncassareRiga = Math.max(scadute - versato, 0);
 
     return {
@@ -136,7 +131,7 @@ const currentData = computed(() => {
     : data;
 });
 
-// 🔥 AGGREGATI TOTALI – stessa logica del gestionale
+// AGGREGATI TOTALI – stessa logica del gestionale
 const aggregates = computed(() => {
   if (!isReady.value) {
     return {
@@ -369,7 +364,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                               <div class="text-xs opacity-75">
                                 {{
                                   col.scadenza
-                                    ? formatShortDate(col.scadenza)
+                                    ? toItalian(col.scadenza)
                                     : "—"
                                 }}
                               </div>
@@ -452,7 +447,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                     {{ euro(item.rateMap[col.numero].importo) }}
                                   </div>
                                   <div class="text-[10px] opacity-75 mt-0.5">
-                                    {{ formatShortDate(item.rateMap[col.numero].scadenza) }}
+                                    {{ toItalian(item.rateMap[col.numero].scadenza) }}
                                   </div>
                                 </div>
                               </template>

@@ -1,6 +1,5 @@
 // columns.ts
 import { h } from 'vue'
-import { usePermission } from "@/composables/permissions";
 import DropdownAction from '@/components/gestionale/esercizi/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/esercizi/DataTableColumnHeader.vue'
 import { statusConstants } from '@/lib/gestionale/esercizi/constants';

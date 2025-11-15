@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import InputError from '@/components/InputError.vue'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
 import { Plus, LoaderCircle, Info, List } from 'lucide-vue-next'
 import vSelect from 'vue-select'
