@@ -43,8 +43,6 @@ class UserService
                 $this->userRepository->linkAnagrafica($user, $validatedData['anagrafica']);
             }
 
-            $user->notify(new NewUserEmailNotification($user));
-
             return $user;
         });
     }

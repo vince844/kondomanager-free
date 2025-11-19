@@ -80,9 +80,9 @@ const submit = () => {
       <div class="px-4 py-6">
 
           <Heading 
-                :title="`Crea nuovo immobile per il condominio - ${props.condominio.nome.toLowerCase()}`" 
-                :description="`Compila il seguente modulo per la creazione di un nuovo immobile per il condominio - ${props.condominio.nome.toLowerCase()}`"
-            />
+            title="Crea nuovo immobile per il condominio" 
+            :description="`Compila il seguente modulo per la creazione di un nuovo immobile per il condominio - ${props.condominio.nome.toLowerCase()}`"
+          />
 
         <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
           <section class="w-full">

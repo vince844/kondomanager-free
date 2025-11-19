@@ -150,8 +150,8 @@ const submit = () => {
         <section class="w-full">
 
           <Heading 
-            :title="`Associa immobli alla tabella - ${props.tabella.nome}`" 
-            description="Di seguito puoi specificare i millesimi per ogni immobile associato alla tabella"
+            title="Associa immobli alla tabella millesimale" 
+            :description="`Di seguito puoi specificare i millesimi per ogni immobile associato alla tabella - ${props.tabella.nome}`"
           />
 
           <div class="flex flex-wrap flex-col lg:flex-row lg:justify-end gap-2 items-start lg:items-center mb-4">

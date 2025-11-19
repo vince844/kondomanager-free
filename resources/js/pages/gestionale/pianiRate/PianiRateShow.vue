@@ -8,10 +8,11 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import Heading from '@/components/Heading.vue';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Link } from "@inertiajs/vue3";
-import { Filter } from "lucide-vue-next";
+import { Filter, List } from "lucide-vue-next";
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
@@ -24,7 +25,7 @@ const props = defineProps<{
   quotePerImmobile: any[],
 }>()
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 const { toItalian } = useDateConverter();
 const { euro } = useCurrencyFormatter();
 
@@ -204,7 +205,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 ]);
 </script>
 
-
 <template>
 
   <Head title="Dettaglio piano rate" />
@@ -215,47 +215,23 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
       <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
         <section class="w-full">
 
-          <div class="flex-1 space-y-6 pt-6">
-            <!-- HEADER -->
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-3xl font-bold tracking-tight">
-                  {{ props.pianoRate?.nome || "Caricamento..." }}
-                </h2>
-                <p class="text-sm text-muted-foreground">
-                  {{ props.pianoRate?.gestione || "" }} •
-                  {{
-                    props.pianoRate?.data_inizio
-                      ? new Date(props.pianoRate.data_inizio).toLocaleDateString("it-IT")
-                      : ""
-                  }}
-                  • {{ props.pianoRate?.numero_rate || 0 }} rate
-                </p>
-              </div>
-              <div class="flex gap-2">
-                <Button variant="outline" size="sm" @click="showOnlyCredits = !showOnlyCredits">
-                  <Filter class="h-4 w-4 mr-2" />
-                  {{ showOnlyCredits ? "Tutte" : "Solo Crediti" }}
-                </Button>
-                <Button as-child variant="outline" size="sm">
-                  <Link
-                    :href="route('admin.gestionale.esercizi.piani-rate.show', [condominio.id, esercizio.id, pianoRate.id])"
-                    class="flex items-center gap-2"
-                  >
-                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                      />
-                    </svg>
-                    Indietro
-                  </Link>
-                </Button>
-              </div>
-            </div>
+          <Heading 
+            title="Piano rate per immobile e anagrafica" 
+            :description="`Di seguito le rate organizzate per anagrafica o per immobile per il piano rate - ${props.pianoRate.nome}`"
+          />
 
+          <div class="flex flex-wrap flex-col lg:flex-row lg:justify-end gap-2 items-start lg:items-center mb-4">
+
+            <Link 
+              :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
+              class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
+            >
+              <List class="w-4 h-4" />
+              <span>Piani rate</span>
+            </Link>
+          </div>
+
+          <div class="flex-1 space-y-6">
             <!-- TABS -->
             <Tabs v-model="tab" class="space-y-4">
               <TabsList>
@@ -268,7 +244,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 <div v-if="isReady" class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                   <Card>
                     <CardHeader class="pb-2">
-                      <CardTitle class="text-sm font-medium">Totale Rate</CardTitle>
+                      <CardTitle class="text-sm font-medium">Totale rate</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div class="text-2xl font-bold">
@@ -282,7 +258,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                   <Card>
                     <CardHeader class="pb-2">
-                      <CardTitle class="text-sm font-medium">Rate Scadute</CardTitle>
+                      <CardTitle class="text-sm font-medium">Rate scadute</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div class="text-2xl font-bold text-amber-600">
@@ -320,14 +296,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                   <Card>
                     <CardHeader class="pb-2">
-                      <CardTitle class="text-sm font-medium">Totale Netto</CardTitle>
+                      <CardTitle class="text-sm font-medium">Totale netto</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div class="text-2xl font-bold text-emerald-700">
                         {{ euro(aggregates.totaleGenerale) }}
                       </div>
                       <p class="text-xs text-muted-foreground">
-                        Scadute − Versato − Crediti (min 0)
+                        Scadute − Versato − Crediti
                       </p>
                     </CardContent>
                   </Card>

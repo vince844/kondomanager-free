@@ -12,6 +12,7 @@ use App\Http\Resources\User\EditUserResource;
 use App\Http\Resources\User\UserResource;
 use App\Models\Anagrafica;
 use App\Models\User;
+use App\Notifications\NewUserEmailNotification;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -135,11 +136,7 @@ class UserController extends Controller
 
         try {
 
-            $this->userService->createUser($request->validated());
-    
-            return to_route('utenti.index')->with(
-                $this->flashSuccess(__('users.success_create_user'))
-            );
+            $user = $this->userService->createUser($request->validated());
 
         } catch (Exception $e) {
 
@@ -149,6 +146,24 @@ class UserController extends Controller
                 $this->flashError(__('users.error_create_user'))
             );
         }
+
+        // Send email *outside* DB transaction
+        try {
+
+            $user->notify(new NewUserEmailNotification($user));
+
+        } catch (\Throwable $emailError) {
+            
+            Log::error('Error sending email to user ID ' . $user->id . ': ' . $emailError->getMessage());
+
+            return to_route('utenti.index')
+                ->with($this->flashWarning(__('users.error_email_not_sent')));
+        }
+
+        return to_route('utenti.index')->with(
+            $this->flashSuccess(__('users.success_create_user'))
+        );
+
     }
 
     /**

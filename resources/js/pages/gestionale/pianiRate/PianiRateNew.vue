@@ -14,7 +14,6 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
 import { Plus, LoaderCircle, Info, List } from 'lucide-vue-next'
 import vSelect from 'vue-select'
-import axios from 'axios'
 import { usePermission } from '@/composables/permissions'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
@@ -58,7 +57,7 @@ const form = useForm({
   giorno_scadenza: 5,
 
   note: '',
-  genera_subito: false,
+  genera_subito: true,
 
   // RRULE
   recurrence_enabled: false,
