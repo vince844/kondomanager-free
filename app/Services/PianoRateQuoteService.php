@@ -47,8 +47,9 @@ class PianoRateQuoteService
 
                 return [
                     'anagrafica' => [
-                        'id'   => $anagrafica->id,
-                        'nome' => $anagrafica->nome,
+                        'id'        => $anagrafica->id,
+                        'nome'      => $anagrafica->nome,
+                        'indirizzo' => $anagrafica->indirizzo,
                     ],
                     'rate' => $rate,
                 ];

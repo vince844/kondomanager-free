@@ -19,7 +19,6 @@ return new class extends Migration
             $table->text('descrizione')->nullable();
             $table->integer('numero_rate')->default(12);
             $table->integer('giorno_scadenza')->default(5);
-            $table->enum('metodo_calcolo', ['proporzionale', 'tabella', 'manuale'])->default('tabella'); 
             $table->enum('metodo_distribuzione', ['prima_rata', 'tutte_rate'])->default('prima_rata'); 
             $table->boolean('attivo')->default(true);
             $table->text('note')->nullable();

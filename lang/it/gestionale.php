@@ -68,5 +68,12 @@ return [
     'success_update_conto'              => "La voce di spesa è stata aggiornata con successo.",
     'error_update_conto'                => "Si è verificato un errore durante l'aggiornamento della voce di spesa.",
     'error_conto_has_sottoconti'        => "Impossibile eliminare la voce di spesa perché contiene sottoconti. Elimina prima i sottoconti.",
+    // Piano rate
+    'success_create_piano_rate'         => "Il nuovo piano rate è stato creato con successo.",
+    'error_create_piano_rate'           => "Si è verificato un errore durante la creazione del nuovo piano rate.",
+    'success_update_piano_rate'         => "Il piano rate è stato aggiornato con successo.",
+    'error_update_piano_rate'           => "Si è verificato un errore durante l'aggiornamento del piano rate.",     
+    'success_delete_piano_rate'         => "Il piano rate è stato eliminato con successo.",
+    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate."
 
 ];

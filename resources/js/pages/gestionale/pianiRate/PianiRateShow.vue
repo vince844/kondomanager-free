@@ -375,6 +375,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                             >
                               <div v-if="tab === 'anagrafica'">
                                 {{ item.anagrafica.nome }}
+                                <div class="text-xs text-muted-foreground mt-0.5">
+                                  {{ item.anagrafica.indirizzo }}
+                                </div>
                               </div>
                               <div v-else>
                                 <div class="font-semibold">
@@ -384,13 +387,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                   {{ immobileDettagli(item.immobile) }}
                                 </div>
                               </div>
-                              <Badge
-                                v-if="item.creditiRiga > 0"
-                                variant="destructive"
-                                class="ml-0 mt-1 text-[10px]"
-                              >
-                                CREDITO
-                              </Badge>
                             </td>
 
                             <td

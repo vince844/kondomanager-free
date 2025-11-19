@@ -16,7 +16,6 @@ class PianoRate extends Model
         'condominio_id',
         'nome',
         'descrizione',
-        'metodo_calcolo',
         'metodo_distribuzione',
         'numero_rate',
         'giorno_scadenza',

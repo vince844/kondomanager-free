@@ -68,5 +68,11 @@ return [
     'success_update_conto'              => "The expense has been updated successfully.",
     'error_update_conto'                => "An error occurred while updating the expense.",
     'error_conto_has_sottoconti'        => "Unable to delete the expense because it contains sub-expenses. Please delete the sub-expenses first.",
-    
+    // Piano rate
+    'success_create_piano_rate'         => "A new rate plan has been created successfully.",
+    'error_create_piano_rate'           => "An error occurred while creating the new rate plan.",
+    'success_update_piano_rate'         => "The rate plan has been updated successfully.",
+    'error_update_piano_rate'           => "An error occurred while updating the rate plan.",
+    'success_delete_piano_rate'         => "The rate plan has been deleted successfully.",
+    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan."
 ];

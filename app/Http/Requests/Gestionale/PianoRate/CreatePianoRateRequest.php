@@ -25,7 +25,6 @@ class CreatePianoRateRequest extends FormRequest
             'gestione_id'          => ['required', 'exists:gestioni,id'],
             'nome'                 => ['required', 'string', 'max:255'],
             'descrizione'          => ['nullable', 'string'],
-            'metodo_calcolo'       => ['required', 'in:proporzionale,tabella,manuale'],
             'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate'], 
             'numero_rate'          => ['required', 'integer', 'min:1', 'max:36'],
             'giorno_scadenza'      => ['nullable', 'integer', 'min:1', 'max:31'],

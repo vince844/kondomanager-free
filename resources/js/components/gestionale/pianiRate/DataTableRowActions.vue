@@ -5,11 +5,11 @@ import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions"
 import type { PianoRate } from '@/types/gestionale/piani-rate'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const props = defineProps<{
   pianoRate: PianoRate,
@@ -90,8 +90,8 @@ function deletePianoRate() {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo piano dei conti?"
-    description="Questa azione non è reversibile. Eliminerà il piano dei conti e tutti i dati ad esso associati."
+    title="Sei sicuro di voler eliminare questo piano rate?"
+    description="Questa azione non è reversibile. Eliminerà il piano rate e tutti i dati ad esso associati."
     @confirm="deletePianoRate"
   />
 

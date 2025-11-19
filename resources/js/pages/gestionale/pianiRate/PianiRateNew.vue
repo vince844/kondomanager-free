@@ -51,7 +51,6 @@ const form = useForm({
   gestione_id: '',
   nome: '',
   descrizione: '',
-  metodo_calcolo: 'tabella',
   metodo_distribuzione: 'prima_rata',
   numero_rate: 12,
   giorno_scadenza: 5,
@@ -181,21 +180,6 @@ const submit = () => {
 
               <!-- Metodo calcolo + metodo distribuzione -->
               <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
-                <div class="sm:col-span-3">
-                  <Label>Metodo di calcolo</Label>
-                  <v-select
-                    class="mt-1 block w-full"
-                    :options="[
-                      { label: 'Proporzionale', value: 'proporzionale' },
-                      { label: 'Per tabella', value: 'tabella' },
-                      { label: 'Manuale', value: 'manuale' }
-                    ]"
-                    v-model="form.metodo_calcolo"
-                    :reduce="(opt) => opt.value"
-                  />
-                  <InputError :message="form.errors.metodo_calcolo" />
-                </div>
-
                 <div class="sm:col-span-3">
                   <Label>Distribuzione saldo iniziale</Label>
                   <v-select

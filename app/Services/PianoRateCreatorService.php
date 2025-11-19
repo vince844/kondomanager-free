@@ -57,7 +57,6 @@ class PianoRateCreatorService
             'condominio_id'        => $condominio->id,
             'nome'                 => $data['nome'],
             'descrizione'          => $data['descrizione'] ?? null,
-            'metodo_calcolo'       => $data['metodo_calcolo'],
             'metodo_distribuzione' => $data['metodo_distribuzione'] ?? 'prima_rata',
             'numero_rate'          => $data['numero_rate'],
             'giorno_scadenza'      => $data['giorno_scadenza'] ?? 1,

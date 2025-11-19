@@ -18,6 +18,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -34,6 +35,8 @@ class PianoRateController extends Controller
      *
      * @param  PianoRateQuoteService   $pianoRateQuoteService
      * @param  PianoRateCreatorService $pianoRateCreatorService
+     * 
+     * @since 1.7.0
      */
     public function __construct(
         private PianoRateQuoteService $pianoRateQuoteService,
@@ -52,6 +55,8 @@ class PianoRateController extends Controller
      * @param  Condominio            $condominio
      * @param  Esercizio             $esercizio
      * @return Response
+     * 
+     * @since 1.7.0
      */
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
@@ -95,6 +100,8 @@ class PianoRateController extends Controller
      * @param  Condominio $condominio
      * @param  Esercizio  $esercizio
      * @return Response
+     * 
+     * @since 1.7.0
      */
     public function create(Condominio $condominio, Esercizio $esercizio): Response
     {
@@ -142,6 +149,8 @@ class PianoRateController extends Controller
      * @param  Condominio             $condominio
      * @param  Esercizio              $esercizio
      * @return \Illuminate\Http\RedirectResponse
+     * 
+     * @since 1.7.0
      */
     public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio)
     {
@@ -195,6 +204,8 @@ class PianoRateController extends Controller
      * @param  Esercizio  $esercizio
      * @param  PianoRate  $pianoRate
      * @return Response
+     * 
+     * @since 1.7.0
      */
     public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
     {
@@ -213,6 +224,55 @@ class PianoRateController extends Controller
     }
 
     /**
+     * Remove the specified payment plan from storage
+     *
+     * Permanently deletes a PianoRate record and handles any exceptions that may occur
+     * during the deletion process. Logs detailed error information for debugging.
+     *
+     * @param Condominio $condominio The condominium context
+     * @param Esercizio $esercizio The financial exercise context  
+     * @param PianoRate $pianoRate The payment plan model to delete
+     * @return RedirectResponse Redirects to payment plans index with status message
+     * 
+     * @throws \Throwable Captures and logs any unexpected errors during deletion
+     * 
+     * @uses \Illuminate\Support\Facades\Log For error logging
+     * 
+     * @since 1.7.0
+     */
+    public function destroy(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): RedirectResponse
+    {
+        try {
+
+            $pianoRate->delete();
+
+            return to_route('admin.gestionale.esercizi.piani-rate.index', [
+                    'condominio' => $condominio->id,
+                    'esercizio'  => $esercizio->id,
+                    'pianoRate' => $pianoRate->id
+                ])
+                ->with($this->flashSuccess(__('gestionale.success_delete_piano_rate')));
+                
+        } catch (\Throwable $e) {
+
+            Log::error('Error deleting piano rate', [
+                'condominio_id'  => $condominio->id,
+                'esercizio_id'   => $esercizio->id,
+                'piano_rate_id' => $pianoRate->id,
+                'message'        => $e->getMessage(),
+                'trace'          => $e->getTraceAsString(),
+            ]);
+
+            return to_route('admin.gestionale.esercizi.piani-rate.index', [
+                    'condominio' => $condominio->id,
+                    'esercizio'  => $esercizio->id,
+                    'pianoRate' => $pianoRate->id
+                ])
+                ->with($this->flashError(__('gestionale.error_delete_piano_rate')));
+        }
+    }
+
+    /**
      * Redirect helper used after successfully creating a rate plan.
      *
      * Includes dynamic success message depending on whether
@@ -224,6 +284,8 @@ class PianoRateController extends Controller
      * @param  array      $validated
      * @param  array      $statistiche
      * @return \Illuminate\Http\RedirectResponse
+     * 
+     * @since 1.7.0
      */
     protected function redirectSuccess(
         Condominio $condominio,
