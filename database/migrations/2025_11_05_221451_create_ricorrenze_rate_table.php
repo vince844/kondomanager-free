@@ -18,6 +18,8 @@ return new class extends Migration
             $table->integer('interval')->default(1);
             $table->json('by_day')->nullable(); // ['MO', 'WE']
             $table->integer('by_month_day')->nullable();
+            $table->integer('by_set_pos')->nullable();
+             $table->integer('count')->nullable();
             $table->timestamp('until')->nullable(); // null = infinite
             $table->text('rrule');
             $table->string('timezone')->default('Europe/Rome');

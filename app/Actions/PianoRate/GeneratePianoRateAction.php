@@ -24,6 +24,9 @@ class GeneratePianoRateAction
     {
         Log::info("=== GENERAZIONE PIANO RATE INIZIATA ===");
 
+        // 🔥 FIX: CARICA LA RICORRENZA!
+        $pianoRate->load('ricorrenza');
+
         $gestione = $pianoRate->gestione;
 
         $esercizio = $gestione->esercizi()->wherePivot('attiva', true)->first()

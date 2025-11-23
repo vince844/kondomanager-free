@@ -68,7 +68,7 @@ function deletePianoRate() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem>
+      <!-- <DropdownMenuItem>
         <Link
           :href="route(generateRoute('gestionale.esercizi.piani-rate.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: props.pianoRate.id })"
           preserve-state
@@ -77,7 +77,7 @@ function deletePianoRate() {
           <FilePenLine class="w-4 h-4 text-xs" />
           Modifica
         </Link>
-      </DropdownMenuItem>
+      </DropdownMenuItem> -->
 
       <DropdownMenuItem
         @click="handleDelete(pianoRate)"

@@ -11,8 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import InputError from '@/components/InputError.vue'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator';
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card'
-import { Plus, LoaderCircle, Info, List } from 'lucide-vue-next'
+import { Info, Plus, LoaderCircle, List } from 'lucide-vue-next'
 import vSelect from 'vue-select'
 import { usePermission } from '@/composables/permissions'
 import type { Building } from '@/types/buildings'
@@ -27,7 +26,7 @@ const props = defineProps<{
 
 const { generateRoute, generatePath } = usePermission()
 
-// Ricorrenze
+// Toggle ricorrenza
 const showRecurrence = ref(false)
 
 const frequencies = [
@@ -63,25 +62,33 @@ const form = useForm({
   recurrence_frequency: 'MONTHLY',
   recurrence_interval: 1,
   recurrence_by_day: [],
-  recurrence_until: ''
 })
 
+// Sincronizzazione ricorrenza
 watch(showRecurrence, (enabled) => {
   form.recurrence_enabled = enabled
+
   if (!enabled) {
     form.recurrence_by_day = []
-    form.recurrence_until = ''
   }
 })
 
+// Se si usano BYDAY → ignora giorno_scadenza
+const usingByDay = computed(() =>
+  showRecurrence.value &&
+  Array.isArray(form.recurrence_by_day) &&
+  form.recurrence_by_day.length > 0
+)
+
 const submit = () => {
 
-  form.post(route(...generateRoute('gestionale.esercizi.piani-rate.store', { condominio: props.condominio.id, esercizio: props.esercizio.id })), {
-        preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
-    });
+  form.post(route(...generateRoute(
+    'gestionale.esercizi.piani-rate.store',
+    { condominio: props.condominio.id, esercizio: props.esercizio.id }
+  )), {
+    preserveScroll: true,
+    onSuccess: () => form.reset()
+  })
 
 }
 </script>
@@ -125,7 +132,7 @@ const submit = () => {
             <!-- FORM BOX -->
             <div class="bg-white dark:bg-muted rounded space-y-6 mt-3 p-4">
 
-              <!-- Riga 1: Nome + Gestione -->
+              <!-- Nome + Gestione -->
               <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
                 <div class="sm:col-span-3">
                   <Label for="nome">Nome piano rate</Label>
@@ -133,7 +140,6 @@ const submit = () => {
                     id="nome"
                     class="mt-1 block w-full"
                     v-model="form.nome"
-                    v-on:focus="form.clearErrors('nome')"
                     placeholder="Es. Piano rate ordinario"
                   />
                   <InputError :message="form.errors.nome" />
@@ -149,25 +155,20 @@ const submit = () => {
                     v-model="form.gestione_id"
                     placeholder="Seleziona gestione"
                     :reduce="(g: Gestione) => g.id"
-                    @update:modelValue="form.clearErrors('gestione_id')"
                   />
                   <InputError :message="form.errors.gestione_id" />
                 </div>
               </div>
 
               <!-- Descrizione -->
-              <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
-                <div class="sm:col-span-6">
-                  <Label for="descrizione">Descrizione</Label>
-                  <Textarea
-                    id="descrizione"
-                    class="mt-1 block w-full min-h-[100px]"
-                    v-model="form.descrizione"
-                    placeholder="Descrizione del piano rate"
-                    v-on:focus="form.clearErrors('descrizione')"
-                  />
-                  <InputError :message="form.errors.descrizione" />
-                </div>
+              <div>
+                <Label for="descrizione">Descrizione</Label>
+                <Textarea
+                  id="descrizione"
+                  class="mt-1 block w-full min-h-[100px]"
+                  v-model="form.descrizione"
+                />
+                <InputError :message="form.errors.descrizione" />
               </div>
 
               <!-- Info timeline -->
@@ -177,9 +178,9 @@ const submit = () => {
                   Le rate partiranno automaticamente dalla <strong>data di inizio della gestione selezionata</strong>.
                 </p>
               </div>
-
-              <!-- Metodo calcolo + metodo distribuzione -->
+ 
               <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+                <!-- Distribuzione -->
                 <div class="sm:col-span-3">
                   <Label>Distribuzione saldo iniziale</Label>
                   <v-select
@@ -195,17 +196,18 @@ const submit = () => {
                 </div>
               </div>
 
-              <!-- Numero rate + giorno -->
+              <!-- Numero rate + giorno scadenza -->
               <div class="grid grid-cols-1 sm:grid-cols-6 gap-y-6 gap-x-4">
+
                 <div class="sm:col-span-3">
                   <Label>Numero rate</Label>
-                  <Input type="number" min="1" max="24" v-model="form.numero_rate" class="mt-1 block w-full" />
+                  <Input v-model.number="form.numero_rate" class="mt-1 block w-full" />
                   <InputError :message="form.errors.numero_rate" />
                 </div>
 
-                <div class="sm:col-span-3">
+                <div class="sm:col-span-3" v-if="!usingByDay">
                   <Label>Giorno scadenza</Label>
-                  <Input type="number" min="1" max="31" v-model="form.giorno_scadenza" class="mt-1 block w-full" />
+                  <Input v-model.number="form.giorno_scadenza" class="mt-1 block w-full" />
                   <InputError :message="form.errors.giorno_scadenza" />
                 </div>
               </div>
@@ -252,20 +254,16 @@ const submit = () => {
                         <label>{{ day.label }}</label>
                       </div>
                     </div>
+                    <InputError :message="form.errors.recurrence_by_day" />
                   </div>
 
-                  <!-- Until -->
-                  <div>
-                    <Label>Ripeti fino al</Label>
-                    <Input type="date" v-model="form.recurrence_until" class="mt-1 block w-full" />
-                  </div>
                 </div>
               </div>
 
               <!-- Note -->
               <div class="border-t pt-4">
                 <Label for="note">Note aggiuntive</Label>
-                <Textarea id="note" v-model="form.note" placeholder="Note interne o aggiuntive" class="mt-1 block w-full" />
+                <Textarea id="note" v-model="form.note" class="mt-1 block w-full" />
                 <InputError :message="form.errors.note" />
               </div>
 
@@ -278,6 +276,5 @@ const submit = () => {
     </div>
   </GestionaleLayout>
 </template>
-
 
 <style src="vue-select/dist/vue-select.css"></style>

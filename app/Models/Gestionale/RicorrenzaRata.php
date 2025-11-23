@@ -17,14 +17,18 @@ class RicorrenzaRata extends Model
         'interval',
         'by_day',
         'by_month_day',
+        'by_set_pos',
+        'count',
         'until',
         'rrule',
         'timezone',
     ];
 
     protected $casts = [
-        'by_day' => 'array',
-        'until' => 'datetime',
+        'by_day'     => 'array',
+        'until'      => 'datetime',
+        'by_set_pos' => 'integer',
+        'count'      => 'integer',
     ];
 
     public function pianoRate()
