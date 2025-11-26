@@ -12,6 +12,7 @@
         "php": "^8.2",
         "bacon/bacon-qr-code": "^3.0",
         "cknow/laravel-money": "^8.4",
+        "eii/laravel-installer": "^1.1",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
