@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Gestionale\PianoConto;
 use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,17 +35,11 @@ class Condominio extends Model
         'particella_catasto',
     ];
 
-    /**
-     * The anagrafiche that belong to the building.
-     */
     public function anagrafiche()
     {
         return $this->belongsToMany(Anagrafica::class);
     }
 
-     /**
-     * The comunicazioni that belong to the condominio.
-     */
     public function comunicazioni()
     {
         return $this->belongsToMany(Comunicazione::class, 'comunicazione_condominio')->withTimestamps();
@@ -75,12 +70,24 @@ class Condominio extends Model
         return $this->hasMany(Immobile::class);
     }
 
-     /**
-     * Le tabelle millesimali associate al condominio
-     */
     public function tabelle()
     {
         return $this->hasMany(Tabella::class);
+    }
+
+    public function esercizi()
+    {
+        return $this->hasMany(Esercizio::class);
+    }
+
+    public function gestioni()
+    {
+        return $this->hasMany(Gestione::class);
+    }
+
+    public function pianiDeiConti()
+    {
+        return $this->hasMany(PianoConto::class);
     }
 
 }

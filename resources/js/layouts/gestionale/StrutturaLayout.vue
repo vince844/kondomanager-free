@@ -17,7 +17,7 @@ const { generatePath } = usePermission();
 
 const topbarNavItems: NavItem[] = [
     {
-        title: 'Struttura',
+        title: 'Dettagli',
         href:  generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
     },
     {

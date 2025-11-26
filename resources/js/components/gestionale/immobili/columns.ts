@@ -7,7 +7,6 @@ import DataTableColumnHeader from '@/components/gestionale/immobili/DataTableCol
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
-import type { TipologiaImmobile } from '@/types/gestionale/tipologie-immobili'
 
 const { generateRoute } = usePermission();
 
@@ -31,10 +30,7 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
     },
     {
       accessorKey: 'tipologia',
-      header: ({ column }) =>
-        
-        h(DataTableColumnHeader, { column, title: 'Tipologia' }),
-
+      header: ({ column }) =>  h(DataTableColumnHeader, { column, title: 'Tipologia' }),
       cell: ({ row }) => {
         const immobile = row.original as Immobile
         const tipologia = immobile.tipologia ? immobile.tipologia.nome : '-'

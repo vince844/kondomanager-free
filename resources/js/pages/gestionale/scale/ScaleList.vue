@@ -8,6 +8,7 @@ import DataTable from '@/components/gestionale/scale/DataTable.vue';
 import { getColumns } from '@/components/gestionale/scale/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Scala } from '@/types/gestionale/scale';
@@ -16,6 +17,7 @@ import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   scale: Scala[];
   meta: PaginationMeta;
 }>()
@@ -29,15 +31,21 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
-  { title: 'scale', href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
+  { title: 'elenco scale', href: '#' },
 ]);
 
 </script>
 
 <template>
+
+  <Head title="Elenco scale" />
+
   <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <Head title="Elenco scale" />
+    
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
 
     <StrutturaLayout>
 

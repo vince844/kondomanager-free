@@ -6,25 +6,25 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
       value: 'bassa', 
       label: 'Bassa', 
       icon: CircleArrowDown,
-      colorClass: 'text-green-500 bg-green-50'
+      colorClass: 'text-green-500 bg-transparent'
     },
     { 
       value: 'media', 
       label: 'Media', 
       icon: CircleArrowRight,
-      colorClass: 'text-blue-500 bg-blue-50'
+      colorClass: 'text-blue-500 bg-transparent'
     },
     { 
       value: 'alta', 
       label: 'Alta', 
       icon: CircleArrowUp,
-      colorClass: 'text-orange-500 bg-orange-50'
+      colorClass: 'text-orange-500 bg-transparent'
     },
     { 
       value: 'urgente', 
       label: 'Urgente', 
       icon: CircleAlert, 
-      colorClass: 'text-red-500 bg-red-50'
+      colorClass: 'text-red-500 bg-transparent'
     }
   ];
   
@@ -33,13 +33,13 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
       value: false, 
       label: 'Bozza',
       icon: CircleX, 
-      colorClass: 'text-red-500 bg-red-50'
+      colorClass: 'text-red-500 bg-transparent'
     },
     { 
       value: true, 
       label: 'Pubblicata',
       icon: CircleCheck, 
-      colorClass: 'text-green-500 bg-green-50'
+      colorClass: 'text-green-500 bg-transparent'
     }
   ];
   

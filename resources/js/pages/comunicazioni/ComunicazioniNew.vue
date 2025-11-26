@@ -194,7 +194,7 @@ const submit = () => {
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
                                 
-                                  <!-- Label with HoverCard -->
+                                <!-- Label with HoverCard -->
                                 <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
                                     <Label for="priority">Priorità comunicazione</Label>
 

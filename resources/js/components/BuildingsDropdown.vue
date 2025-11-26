@@ -1,25 +1,14 @@
 <script setup lang="ts">
+
 import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
-import { ChevronDown, CirclePlus, CircleX } from 'lucide-vue-next'
+import { ChevronDown, CirclePlus, CircleX, Loader2 } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePermission } from "@/composables/permissions";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator
-} from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { Building } from '@/types/buildings'
 
 // State
@@ -27,18 +16,19 @@ const condomini = ref<Building[]>([])
 const selectedCondominio = ref<Building | null>(null)
 const open = ref(false)
 const condominiLoaded = ref(false)
-const showError = ref(false)  // <-- error flag to highlight select
+const showError = ref(false) 
+const loading = ref(false)
 
 const { generateRoute } = usePermission()
 
 // Fetch condomini
 const fetchCondomini = async () => {
+  loading.value = true
   try {
     const response = await axios.get('/fetch-condomini')
     condomini.value = response.data
     condominiLoaded.value = true
 
-    // Restore selected condominio from localStorage
     const storedId = localStorage.getItem('selectedCondominioId')
     if (storedId) {
       const found = response.data.find((c: Building) => c.id == storedId)
@@ -46,6 +36,8 @@ const fetchCondomini = async () => {
     }
   } catch (error) {
     console.error('Errore nel recupero dei condomini:', error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -90,8 +82,8 @@ const goToCreateCondominio = () => {
 </script>
 
 <template>
-  <div class="flex items-center gap-2">
-    <Popover v-model:open="open">
+  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+    <Popover v-model:open="open" class="flex-1">
       <PopoverTrigger as-child>
         <Button
           variant="outline"
@@ -99,7 +91,8 @@ const goToCreateCondominio = () => {
           aria-expanded="open"
           aria-label="Select Condominio"
           :class="cn(
-            'w-[300px] justify-between text-sm py-1.5 px-3',
+            // full width on mobile, fixed on md+
+            'w-full sm:w-[300px] justify-between text-sm py-2 px-3',
             showError ? 'border-red-500 ring-1 ring-red-500' : ''
           )"
         >
@@ -107,10 +100,15 @@ const goToCreateCondominio = () => {
           <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-[300px] p-0">
-        <Command>
+      <PopoverContent class="w-full sm:w-[300px] p-0">
+        <div v-if="loading" class="flex items-center justify-center py-6">
+          <Loader2 class="h-5 w-5 animate-spin text-gray-500" />
+          <span class="ml-2 text-sm text-gray-500">Caricamento...</span>
+        </div>
+        <Command v-else>
           <CommandInput placeholder="Cerca condominio..." />
           <CommandEmpty>Nessun condominio trovato.</CommandEmpty>
+
           <CommandList>
             <CommandGroup>
               <CommandItem
@@ -123,7 +121,9 @@ const goToCreateCondominio = () => {
               </CommandItem>
             </CommandGroup>
           </CommandList>
+
           <CommandSeparator />
+
           <CommandList>
             <CommandGroup>
               <CommandItem
@@ -145,17 +145,14 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CircleX class="mr-2 h-5 w-5 text-red-600" />
-               Reset selezione
+                Reset selezione
               </CommandItem>
-
-
             </CommandGroup>
           </CommandList>
         </Command>
       </PopoverContent>
     </Popover>
-
-    <Button  class="text-sm py-1.5 px-4" @click="goToGestionale">
+    <Button class="w-full sm:w-auto text-sm py-2 px-4" @click="goToGestionale">
       Gestione
     </Button>
   </div>

@@ -13,10 +13,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
-import { Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table } from 'lucide-vue-next';
+import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2, HandCoins, Wallet } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import type { BreadcrumbItem, NavItem, Auth} from '@/types';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 const { generatePath, canAccess } = usePermission();
 
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
 const condominio = computed<Building>(() => page.props.condominio as Building);
+const esercizio = computed<Esercizio>(() => page.props.esercizio as Esercizio);
 
 const isCurrentRoute = (url: string) => {
     return page.url === url;
@@ -58,10 +60,31 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Tabelle',
         href: generatePath('gestionale/:condominio/tabelle', { condominio: condominio.value.id }),
-        icon: Table,
+        icon: Table2,
        
-    } 
-];
+    },
+    {
+        title: 'Esercizi',
+        href: generatePath('gestionale/:condominio/esercizi', { condominio: condominio.value.id }),
+        icon: Library,
+       
+    }, 
+    {
+        title: 'Gestioni',
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }), 
+        icon: ListPlus,
+    }, 
+    {
+        title: 'Piani conti',
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        icon: HandCoins,
+    },
+    {
+        title: 'Piani rate',
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
+        icon: Wallet,
+    }
+]; 
 
 const rightNavItems: NavItem[] = [
     {
@@ -72,7 +95,7 @@ const rightNavItems: NavItem[] = [
     },
     {
         title: 'Documentazione',
-        href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
+        href: 'https://kondomanager.com/docs/index.html',
         icon: BookText,
         external: true,
     },
@@ -242,7 +265,15 @@ const rightNavItems: NavItem[] = [
 
         <div v-if="props.breadcrumbs.length > 1" class="flex w-full border-b border-sidebar-border/70">
             <div class="mx-auto flex h-12 w-full items-center justify-start px-4 text-neutral-500 md:max-w-7xl">
-                <Breadcrumbs :breadcrumbs="breadcrumbs" />
+                <Breadcrumbs :breadcrumbs="breadcrumbs">
+                    <!-- Forward dello slot condominio -->
+                    <template #breadcrumb-condominio>
+                        <slot name="breadcrumb-condominio" />
+                    </template>
+                    <template #breadcrumb-esercizio>
+                        <slot name="breadcrumb-esercizio" />
+                    </template>
+                </Breadcrumbs>
             </div>
         </div>
     </div>

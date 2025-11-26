@@ -2,8 +2,10 @@
 
 namespace App\Http\Resources\Condominio;
 
+use App\Http\Resources\Gestionale\Esercizi\EsercizioResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class CondominioResource extends JsonResource
 {
@@ -16,7 +18,7 @@ class CondominioResource extends JsonResource
     {
         return [
             'id'                    => $this->id,
-            'nome'                  => $this->nome,
+            'nome'                  => Str::ucfirst($this->nome),
             'indirizzo'             => $this->indirizzo,
             'email'                 => $this->email,
             'note'                  => $this->note,
@@ -26,7 +28,14 @@ class CondominioResource extends JsonResource
             'sezione_catasto'       => $this->sezione_catasto,
             'foglio_catasto'        => $this->foglio_catasto,
             'particella_catasto'    => $this->particella_catasto,
-            'codice_identificativo' => $this->codice_identificativo
+            'codice_identificativo' => $this->codice_identificativo,
+            // Aggiungi l’esercizio aperto
+            'esercizio_aperto' => new EsercizioResource(
+                $this->esercizi()
+                    ->where('stato', 'aperto')
+                    ->latest('data_inizio')
+                    ->first()
+            ),
         ];
     }
 }

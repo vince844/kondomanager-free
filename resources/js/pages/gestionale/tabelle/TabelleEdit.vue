@@ -69,7 +69,6 @@ const form = useForm({
   scala_id: props.tabella.scala ? props.tabella.scala.id : '',
 });
 
-
 const submit = () => {
     form.put(route(...generateRoute('gestionale.tabelle.update', { condominio: props.condominio.id, tabella: props.tabella.id })), {
         preserveScroll: true,
@@ -106,7 +105,7 @@ const submit = () => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>Tabelle</span>
               </Link>
             </div>
 

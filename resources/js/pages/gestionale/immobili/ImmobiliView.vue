@@ -41,8 +41,8 @@ const truncate = (text: string, length: number = 120) => {
 
     <ImmobileLayout>
 
-       <div v-if="flashMessage" class="py-3">
-          <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      <div v-if="flashMessage" class="py-3">
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
        <!-- Action buttons -->

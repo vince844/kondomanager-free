@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Immobili\Anagrafiche;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\CreateImmobileAnagraficaRequest;
 use App\Http\Requests\Gestionale\Immobile\Anagrafica\UpdateImmobileAnagraficaRequest;
@@ -10,7 +11,9 @@ use App\Http\Resources\Gestionale\Immobili\ImmobileResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
 use App\Models\Immobile;
+use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,7 +35,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ImmobileAnagraficaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasEsercizio;
     
     /**
      * Display a listing of the resource.
@@ -43,12 +46,18 @@ class ImmobileAnagraficaController extends Controller
      */
     public function index(Condominio $condominio, Immobile $immobile): Response
     {
-
-        // Eager load anagrafiche (and any other relationships you want)
-        $immobile->loadMissing(['anagrafiche']);
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+    
+        $immobile->loadMissing(['anagrafiche.saldi' => function($query) use ($immobile, $esercizio) {
+            $query->where('immobile_id', $immobile->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->with('esercizio');
+        }]);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'immobile'   => new ImmobileResource($immobile)
         ]);
     }
@@ -62,9 +71,12 @@ class ImmobileAnagraficaController extends Controller
      */
     public function create(Condominio $condominio, Immobile $immobile): Response
     {
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheNew', [
             'condominio'  => $condominio,
+            'esercizio'   => $esercizio,
             'immobile'    => $immobile,
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
         ]);
@@ -83,6 +95,7 @@ class ImmobileAnagraficaController extends Controller
         $data = $request->validated();
 
         try {
+
             // Attach the anagrafica to the immobile with pivot data
             $immobile->anagrafiche()->attach($data['anagrafica_id'], [
                 'tipologia'       => $data['tipologia'],
@@ -93,6 +106,24 @@ class ImmobileAnagraficaController extends Controller
                 'attivo'          => true,
                 'note'            => $data['note'] ?? null,
             ]);
+
+             // Recupera l’esercizio aperto
+            $esercizio = $condominio->esercizi()->where('stato', 'aperto')->first();
+
+            if ($esercizio) {
+                Saldo::updateOrCreate(
+                    [
+                        'esercizio_id'  => $esercizio->id,
+                        'condominio_id' => $condominio->id,
+                        'anagrafica_id' => $data['anagrafica_id'],
+                        'immobile_id'   => $immobile->id,
+                    ],
+                    [
+                        'saldo_iniziale' => MoneyHelper::toCents($data['saldo_iniziale']) ?? 0,
+                        'saldo_finale'   => 0,
+                    ]
+                );
+            }
 
            return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
@@ -135,8 +166,12 @@ class ImmobileAnagraficaController extends Controller
     {
         $anagrafica = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheEdit', [
             'condominio'  => $condominio,
+            'esercizio'   => $esercizio,
             'immobile'    => new ImmobileResource($immobile),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             'anagrafica'  => $anagrafica,

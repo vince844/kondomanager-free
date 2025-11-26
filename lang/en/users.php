@@ -17,6 +17,6 @@ return [
     'success_verify_user'                => "The user has been verified successfully.",
     'success_revoke_verify_user'         => "User verification has been revoked.",
     'error_verify_user'                  => "An error occurred while verifying the user.",
+    'error_email_not_sent'               => "The user was created successfully, but the invitation email could not be sent.",
 
-    
 ];

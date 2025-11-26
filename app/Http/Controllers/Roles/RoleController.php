@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Roles;
 
+use App\Enums\Permission as EnumsPermission;
+use App\Enums\Role as EnumsRole;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ruolo\CreateRuoloRequest;
 use App\Http\Requests\Ruolo\UpdateRuoloRequest;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use App\Models\User;
+use App\Traits\HandleFlashMessages;
+use App\Traits\HasProtectedRoles;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
@@ -15,36 +19,56 @@ use Inertia\Response;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class RoleController extends Controller
 {
+    use AuthorizesRequests, HandleFlashMessages, HasProtectedRoles;
 
-    use AuthorizesRequests;
     /**
-     * Display a listing of the resource.
+     * Display a listing of all roles.
+     * 
+     * @return \Inertia\Response
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function index()
     {
         Gate::authorize('view', Role::class);
         
+        $roles = Role::all();
+        
+        // Prendi tutti i conteggi in una singola query
+        $userCounts = DB::table('model_has_roles')
+            ->where('model_type', User::class)
+            ->select('role_id', DB::raw('COUNT(*) as count'))
+            ->groupBy('role_id')
+            ->pluck('count', 'role_id');
+        
+        // Assegna i conteggi ai ruoli
+        $roles->each(function($role) use ($userCounts) {
+            $role->users_count = $userCounts[$role->id] ?? 0;
+        });
+        
         return Inertia::render('ruoli/ElencoRuoli', [
-            'roles' => RoleResource::collection(Role::all())
+            'roles' => RoleResource::collection($roles)
         ]);
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new role.
+     * 
+     * @return \Inertia\Response
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
      */
     public function create(): Response
     {
         Gate::authorize('create', Role::class);
 
-    /*     return Inertia::render('ruoli/NuovoRuolo',[
-            'permissions' => PermissionResource::collection(Permission::all())
-        ]);
- */
         // Exclude specific permissions (e.g., 'Accesso pannello amministratore')
-        $permissions = Permission::whereNotIn('name', ['Accesso pannello amministratore'])->get();
+        $permissions = Permission::whereNotIn('name', [EnumsPermission::ACCESS_ADMIN_PANEL->value])->get();
 
         // Transform the permissions using PermissionResource
         $permissions = PermissionResource::collection($permissions);
@@ -54,7 +78,13 @@ class RoleController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created role in storage.
+     * 
+     * @param \App\Http\Requests\Ruolo\CreateRuoloRequest $request
+     * @return \Illuminate\Http\RedirectResponse
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws \Exception
      */
     public function store(CreateRuoloRequest $request): RedirectResponse
     {
@@ -62,25 +92,40 @@ class RoleController extends Controller
 
         $validated = $request->validated(); 
 
-        $role = Role::create([
-            'name'        => $validated['name'],
-            'description' => $validated['description']
-        ]);
+        try {
+
+            DB::beginTransaction();
+
+            $role = Role::create([
+                'name'        => $validated['name'],
+                'description' => $validated['description']
+            ]);
+            
+            if (!empty($validated['permissions'])) {
+                $role->syncPermissions($validated['permissions']);
+            }
+
+            if ($validated['accessAdmin']) {
+                $role->givePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value); 
+            }
+
+            DB::commit();
+
+        }catch (\Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error creating role: ' . $e->getMessage());
         
-        if (!empty($validated['permissions'])) {
-            $role->syncPermissions($validated['permissions']);
+            return to_route('ruoli.index')->with(
+                $this->flashError(__('ruoli.error_create_role'))
+            );
+
         }
 
-        if ($validated['accessAdmin']) {
-            $role->givePermissionTo('Accesso pannello amministratore'); 
-        }
-
-       return to_route('ruoli.index')->with([
-            'message' => [
-                'type'    => 'success',
-                'message' => 'Il nuovo ruolo è stato creato con successo!'
-            ]
-        ]);
+        return to_route('ruoli.index')->with(
+            $this->flashSuccess(__('ruoli.success_create_role'))
+        );
 
     }
 
@@ -93,24 +138,25 @@ class RoleController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified role.
+     * 
+     * @param string $id
+     * @return \Illuminate\Http\RedirectResponse|\Inertia\Response
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      */
     public function edit(string $id)
     {
         Gate::authorize('update', Role::class);
 
-        $role = Role::findById($id);
+        $role = Role::findOrFail($id);
 
-        $protectedRoles = ['amministratore', 'fornitore', 'collaboratore', 'utente'];
+        if ($this->isProtectedRole($role->name)) {
 
-        if (in_array($role->name, $protectedRoles)) {
-        
-            return back()->with([
-                'message' => [
-                    'type'    => 'info',
-                    'message' => 'Non è possibile modificare il ruolo di default "'.$role->name.'"' 
-                ]
-            ]);
+            return to_route('ruoli.index')->with(
+                $this->flashInfo(__('ruoli.cannot_edit_default_role', ['role' => $role->name]))
+            );
   
         }
 
@@ -123,65 +169,120 @@ class RoleController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified role in storage.
+     * 
+     * @param \App\Http\Requests\Ruolo\UpdateRuoloRequest $request
+     * @param \Spatie\Permission\Models\Role $ruoli
+     * @return \Illuminate\Http\RedirectResponse
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws \Exception
      */
     public function update(UpdateRuoloRequest $request, Role $ruoli): RedirectResponse
     {
         Gate::authorize('update', Role::class);
+
+        // Check if role is protected
+        if ($this->isProtectedRole($ruoli->name)) {
+            return to_route('ruoli.index')->with(
+                $this->flashInfo(__('ruoli.cannot_edit_default_role', ['role' => $ruoli->name]))
+            );
+        }
         
         $validated = $request->validated(); 
 
-        $ruoli->update([
-            'name' => $validated['name'],
-            'description' => $validated['description']
-        ]);  
+        try {
 
-        $ruoli->syncPermissions($validated['permissions']);
+            DB::beginTransaction();
 
-        if ($validated['accessAdmin']) {
-            $ruoli->givePermissionTo('Accesso pannello amministratore');
-        } else {
-            $ruoli->revokePermissionTo('Accesso pannello amministratore');
+            $ruoli->update([
+                'name'        => $validated['name'],
+                'description' => $validated['description']
+            ]);  
+
+            $ruoli->syncPermissions($validated['permissions']);
+
+            if ($validated['accessAdmin']) {
+                $ruoli->givePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value);
+            } else {
+                $ruoli->revokePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value);
+            }
+        
+        }catch (\Exception $e) {
+
+            DB::rollback();
+
+            Log::error('Error updating role: ' . $e->getMessage());
+        
+            return to_route('ruoli.index')->with(
+                $this->flashError(__('ruoli.error_update_role'))
+            );
+
         }
-        return to_route('ruoli.index')->with([
-            'message' => [
-                'type'    => 'success',
-                'message' => 'Il ruolo è stato aggiornato con successo!' 
-            ]
-        ]);
+
+        return to_route('ruoli.index')->with(
+            $this->flashSuccess(__('ruoli.success_update_role'))
+        );
 
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified role from storage.
+     * 
+     * @param string $id
+     * @return \Illuminate\Http\RedirectResponse
+     * 
+     * @throws \Illuminate\Auth\Access\AuthorizationException
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException
      */
     public function destroy(string $id): RedirectResponse
     {
         Gate::authorize('delete', Role::class);
 
-        $role = Role::findById($id);
+        $role = Role::findOrFail($id);
 
-        $protectedRoles = ['amministratore', 'fornitore', 'collaboratore', 'utente'];
-
-        if (in_array($role->name, $protectedRoles)) {
-
-            return back()->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => 'Non è possibile eliminare il ruolo "'.$role->name.'" di default!'
-                ]
-            ]);
-
+        if ($this->isProtectedRole($role->name)) {
+            return to_route('ruoli.index')->with(
+                $this->flashInfo(__('ruoli.cannot_delete_default_role', ['role' => $role->name]))
+            );
         }
 
-        $role->delete();
+        $userCount = $role->users()->count();
+        
+        if ($userCount > 0) {
+            $defaultRole = Role::where('name', EnumsRole::UTENTE->value)->first();
+            
+            if (!$defaultRole) {
+                return back()->with(
+                    $this->flashError(__('ruoli.default_role_not_found'))
+                );
+            }
 
-        return back()->with([
-            'message' => [
-                'type'    => 'success',
-                'message' => 'Il ruolo "'.$role->name.'" è stato eliminato con successo!'
-            ]
-        ]);
+            foreach($role->users as $user) {
+                $user->syncRoles([$defaultRole->name]);
+            }
+        }
 
+        try {
+
+            $role->delete();
+            
+            $message = $userCount > 0 
+                ? __('ruoli.success_delete_with_reassign', [
+                    'count' => $userCount,
+                    'default_role' => EnumsRole::UTENTE->value
+                ])
+                : __('ruoli.success_delete_role');
+                
+            return back()->with($this->flashSuccess($message));
+            
+        } catch (\Exception $e) {
+            
+            Log::error('Error deleting role: ' . $e->getMessage());
+            return back()->with(
+                $this->flashError(__('ruoli.error_delete_role'))
+            );
+        }
     }
+
 }

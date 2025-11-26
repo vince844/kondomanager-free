@@ -10,6 +10,8 @@ use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Models\Condominio;
 use App\Models\Palazzina;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -24,7 +26,7 @@ use Illuminate\Support\Facades\Log;
 
 class PalazzinaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a listing of the palazzine with optional name filter.
@@ -44,9 +46,17 @@ class PalazzinaController extends Controller
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
+        
+         // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcrumb
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/palazzine/PalazzineList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($palazzine)->resolve(), 
             'meta' => [
                 'current_page' => $palazzine->currentPage(),
@@ -66,8 +76,15 @@ class PalazzinaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/palazzine/PalazzineNew', [
-            'condominio' => $condominio
+            'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
         ]); 
     }
 
@@ -122,8 +139,12 @@ class PalazzinaController extends Controller
      */
     public function edit(Condominio $condominio, Palazzina $palazzina): Response
     {
+         // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/palazzine/PalazzineEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'palazzina'  => new PalazzinaResource($palazzina),
         ]); 
     }

@@ -1,54 +1,34 @@
 <script setup lang="ts">
 
 import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3";
+import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent,
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { MoreHorizontal, Trash2, FilePenLine } from 'lucide-vue-next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
 import { usePermission } from "@/composables/permissions"
 import { Permission } from "@/enums/Permission"
 import type { Building } from '@/types/buildings';
 
 defineProps<{ building: Building }>()
 
-const { hasPermission, generateRoute } = usePermission()
+const { hasPermission } = usePermission()
 
 const buildingID = ref('');
-
-// State for AlertDialog
 const isAlertOpen = ref(false)
-
-// Reference for DropdownMenu
 const isDropdownOpen = ref(false)
 
-// Function to delete user: first close menu, then open dialog
+// Function to delete building first close menu, then open dialog
 function handleDelete(building: Building) {
   buildingID.value = building.id;
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
   setTimeout(() => {
-    isAlertOpen.value = true // Open alert after a small delay
-  }, 200) // Delay helps avoid event conflicts
+    isAlertOpen.value = true 
+  }, 200) 
 }
 
 const closeModal = () => {
-  isDropdownOpen.value = false // Close dropdown first
+  isDropdownOpen.value = false 
 }
 
 const deleteBuilding = () => {
@@ -65,6 +45,7 @@ const editBuilding = (building: Building) => {
 </script>
 
 <template>
+
   <DropdownMenu
     v-if="hasPermission([
       Permission.EDIT_CONDOMINI,
@@ -99,19 +80,11 @@ const editBuilding = (building: Building) => {
     </DropdownMenuContent>
   </DropdownMenu>
 
-   <!-- AlertDialog moved outside DropdownMenu -->
-   <AlertDialog v-model:open="isAlertOpen" >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questo condominio?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà il condominio e tutti i dati ad esso associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="isAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteBuilding()">Continua</AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di volere eliminare questo condominio?"
+    description="Questa azione non è reversibile. Eliminerà il condominio e tutti i dati ad esso associati."
+    @confirm="deleteBuilding"
+  />
+
 </template>

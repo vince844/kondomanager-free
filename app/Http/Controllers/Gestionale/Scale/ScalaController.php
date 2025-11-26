@@ -11,6 +11,8 @@ use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use App\Models\Condominio;
 use App\Models\Scala;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -27,7 +29,7 @@ use Illuminate\Support\Facades\Log;
  */
 class ScalaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a paginated listing of scale for a given condominium.
@@ -48,9 +50,16 @@ class ScalaController extends Controller
             ->with(['palazzina']) 
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->appends($request->all());
+        
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/scale/ScaleList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
             'scale'      => ScalaResource::collection($scale)->resolve(),
             'meta'       => [
                 'current_page' => $scale->currentPage(),
@@ -72,9 +81,16 @@ class ScalaController extends Controller
     {
         // Eager load palazzine
         $condominio->load('palazzine');
+
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
         
         return Inertia::render('gestionale/scale/ScaleNew', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
         ]);
     }
@@ -130,8 +146,12 @@ class ScalaController extends Controller
     {
         $scala->loadMissing(['palazzina']);
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/scale/ScaleEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'scala'      => new ScalaResource($scala),
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
         ]);

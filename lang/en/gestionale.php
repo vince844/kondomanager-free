@@ -37,5 +37,42 @@ return [
     'success_delete_tabella'            => "The table has been deleted successfully.",
     'error_delete_tabella'              => "An error occurred while deleting the table.",
     'success_update_quote_tabella'      => "The new table quotes have been update successfully.",
-    
+    // Esercizi 
+    'success_create_esercizio'          => "The new fiscal year has been created successfully.",
+    'error_create_esercizio'            => "An error occurred while creating the new fiscal year.",
+    'success_update_esercizio'          => "The fiscal year has been updated successfully.",
+    'error_update_esercizio'            => "An error occurred while updating the fiscal year.",
+    'success_delete_esercizio'          => "The fiscal year has been deleted successfully.",
+    'error_delete_esercizio'            => "An error occurred while deleting the fiscal year.",
+    'error_delete_last_esercizio'       => "You can't delete the last esercizo left. Make sure you have at least an open esercizio",
+    'error_delete_opened_esercizio'     => "You can't delete an opened esercizio. First create a new esercizio.",
+    // Gestioni
+    'success_create_gestione'           => "The new management period has been created successfully.",
+    'error_create_gestione'             => "An error occurred while creating the new management period.",
+    'success_update_gestione'           => "The management period has been updated successfully.",
+    'error_update_gestione'             => "An error occurred while updating the management period.",
+    'success_delete_gestione'           => "The management period has been deleted successfully.",
+    'error_delete_gestione'             => "An error occurred while deleting the management period",
+    // Piani conti
+    'success_create_piano_conto'        => "A new piano dei conti has been created successfully",
+    'error_create_piano_conto'          => "An error occurred while creating the new piano dei conti.",
+    'success_delete_piano_conto'        => "The piano dei conti has been deleted successfully.",
+    'error_delete_piano_conto'          => "An error occurred while deleting the piano dei conti.",
+    'success_update_piano_conto'        => "The piano dei conti has been updated successfully.",
+    'error_update_piano_conto'          => "An error occurred while updating the piano dei conti.",
+    // Conti
+    'success_create_conto'              => "A new expense has been created successfully.",
+    'error_create_conto'                => "An error occurred while creating the new expense.",
+    'success_delete_conto'              => "The expense has been deleted successfully.",
+    'error_delete_conto'                => "An error occurred while deleting the expense.",
+    'success_update_conto'              => "The expense has been updated successfully.",
+    'error_update_conto'                => "An error occurred while updating the expense.",
+    'error_conto_has_sottoconti'        => "Unable to delete the expense because it contains sub-expenses. Please delete the sub-expenses first.",
+    // Piano rate
+    'success_create_piano_rate'         => "A new rate plan has been created successfully.",
+    'error_create_piano_rate'           => "An error occurred while creating the new rate plan.",
+    'success_update_piano_rate'         => "The rate plan has been updated successfully.",
+    'error_update_piano_rate'           => "An error occurred while updating the rate plan.",
+    'success_delete_piano_rate'         => "The rate plan has been deleted successfully.",
+    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan."
 ];

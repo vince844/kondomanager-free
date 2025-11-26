@@ -59,27 +59,26 @@ watchDebounced(
   <div class="flex items-center justify-between w-full mb-3 mt-4">
     <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
-      <div class="flex items-center space-x-2">
-        <Input
-          placeholder="Filtra per nome..."
-          v-model="nameFilter"
-          class="h-8 w-[150px] lg:w-[250px]"
+
+      <Input
+        placeholder="Filtra per nome..."
+        v-model="nameFilter"
+        class="h-8 w-[150px] lg:w-[250px]"
+      />
+
+      <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
+        <DataTableFacetedFilter
+          v-if="priorityColumn"
+          :column="priorityColumn"
+          title="Priorità"
+          :options="priorityConstants"
+          :isLoading="false"
+          @update:filter="() => {}"
+          class="w-full lg:w-auto"
         />
 
-         <div class="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <DataTableFacetedFilter
-            v-if="priorityColumn"
-            :column="priorityColumn"
-            title="Priorità"
-            :options="priorityConstants"
-            :isLoading="false"
-            @update:filter="() => {}"
-            class="w-full lg:w-auto"
-          />
-
-        </div>
-
       </div>
+        
     </div>
 
     <Button

@@ -14,8 +14,8 @@ export interface Building {
     foglio_catasto: string,    
     particella_catasto: string,
     codice_identificativo: string,
-    palazzine: Palazzina | null, 
-    scale: Scala | null, 
+    palazzine: Palazzina, 
+    scale: Scala, 
     value: number; 
     label: string; 
     option?: {

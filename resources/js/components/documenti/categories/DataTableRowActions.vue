@@ -6,23 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '@/components/ui/alert-dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
@@ -120,14 +105,6 @@ const editCategory = () => {
 
       <FilePenLine class="w-4 h-4 text-xs" />
         Modifica
-<!--         <Link
-          :href="route(generateRoute('categorie.edit'), { id: categoria.id })"
-          preserve-state
-          class="flex items-center gap-2"
-        >
-          <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
-        </Link> -->
       </DropdownMenuItem>
 
       <DropdownMenuItem
@@ -139,25 +116,15 @@ const editCategory = () => {
     </DropdownMenuContent>
   </DropdownMenu>
 
-  <AlertDialog v-model:open="isAlertOpen">
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questa categoria?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà la categoria e tutti i documenti ad essa associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
-        <AlertDialogAction :disabled="isDeleting" @click="deleteCategoria">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
-        </AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    title="Sei sicuro di voler eliminare questa categoria?"
+    description="Questa azione non è reversibile. Eliminerà la categoria e tutti i documenti ad essa associati."
+    :loading="isDeleting"
+    @confirm="deleteCategoria"
+  />
 
-    <Sheet v-model:open="isEditCategorySheetOpen">
+  <Sheet v-model:open="isEditCategorySheetOpen">
     <SheetContent side="right" class="p-6">
       <SheetHeader class="mt-4 p-0">
         <SheetTitle>Modifica categoria {{ props.categoria.name.toLowerCase()  }}</SheetTitle>
@@ -167,7 +134,7 @@ const editCategory = () => {
       </SheetHeader>
 
       <form @submit.prevent="editCategory" class="mt-6 space-y-4">
-       <!-- Name -->
+      <!-- Name -->
         <div>
           <Label for="new-category-name">Nome</Label>
           <Input

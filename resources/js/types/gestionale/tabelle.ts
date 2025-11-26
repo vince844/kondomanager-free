@@ -2,6 +2,7 @@ import { Millesimo } from './millesimi';
 import { Palazzina } from './palazzine';
 import { Scala } from './scale';
 import { Building } from '../buildings';
+import { Component } from 'vue';
 
 export interface Tabella {
   id: number;
@@ -24,4 +25,16 @@ export interface Tabella {
   condominio: Building
   palazzina: Palazzina;
   scala: Scala;
+}
+
+export interface StatusType {
+  value: string;
+  label: string;
+  icon: Component;
+  colorClass: string;
+}
+
+export interface TabellaDropdown {
+  id: number;
+  nome: string;
 }

@@ -24,4 +24,4 @@ export interface Immobile {
     scala: Scala,
     tipologia: TipologiaImmobile, 
     anagrafiche: AnagraficaWithPivot[]          
-  }
+}

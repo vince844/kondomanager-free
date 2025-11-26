@@ -10,8 +10,19 @@ export interface AnagraficaPivot {
   note: string | null;
 }
 
+export interface SaldoAmounts {
+  iniziale: number;
+  finale: number;
+}
+
+export interface Saldo {
+  iniziale: string; 
+  finale: string;   
+  amounts: SaldoAmounts; 
+}
+
 export interface Anagrafica {
-  id: number
+  id: string
   nome: string
   indirizzo: string
   codice_fiscale: string
@@ -31,4 +42,5 @@ export interface Anagrafica {
 
 export interface AnagraficaWithPivot extends Anagrafica {
   pivot: AnagraficaPivot
+  saldo: Saldo
 }

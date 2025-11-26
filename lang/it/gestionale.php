@@ -37,5 +37,43 @@ return [
     'success_delete_tabella'            => "La tabella millesimale è stata eliminata con successo.",
     'error_delete_tabella'              => "Si è verificato un errore durante l'eliminazione della tabella millesimale.",
     'success_update_quote_tabella'      => "I millesimi e le quote della tabella sono stati aggiornati con successo.",
+    // Esercizi 
+    'success_create_esercizio'          => "Il nuovo esercizio è stato creato con successo.",
+    'error_create_esercizio'            => "Si è verificato un errore durante la creazione del nuovo esercizio.",
+    'success_update_esercizio'          => "L'esercizio è stato aggiornato con successo.",
+    'error_update_esercizio'            => "Si è verificato un errore durante l'aggiornamento dell'esercizio.",
+    'success_delete_esercizio'          => "L'esercizio è stato eliminato con successo.",
+    'error_delete_esercizio'            => "Si è verificato un errore durante l'eliminazione dell'esercizio.",
+    'error_delete_last_esercizio'       => "Non puoi eliminare l'unico esercizio rimasto. Assicurati di aver almeno un esercizio aperto",
+    'error_delete_opened_esercizio'     => "Non puoi eliminare l'esercizio aperto. Devi prima aprire un altro esercizio.",
+    // Gestioni
+    'success_create_gestione'           => "Il nuovo periodo di gestione è stato creato con successo.",
+    'error_create_gestione'             => "Si è verificato un errore durante la creazione del nuovo periodo di gestione.",
+    'success_update_gestione'           => "Il periodo di gestione è stato aggiornato con successo.",
+    'error_update_gestione'             => "Si è verificato un errore durante l'aggiornamento del periodo di gestione.",
+    'success_delete_gestione'           => "Il periodo di gestione è stato eliminato con successo.",
+    'error_delete_gestione'             => "Si è verificato un errore durante l'eliminazione del periodo di gestione",
+    // Piani conti
+    'success_create_piano_conto'        => "Il nuovo piano dei conti è stato creato con successo",
+    'error_create_piano_conto'          => "Si è verificato un errore durante la creazione del nuovo piano dei conti",
+    'success_delete_piano_conto'        => "Il piano dei conti è stato eliminato con successo.",
+    'error_delete_piano_conto'          => "Si è verificato un errore durante l'eliminazione del piano dei conti.",
+    'success_update_piano_conto'        => "Il piano dei conti è stato aggiornato con successo.",
+    'error_update_piano_conto'          => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
+    // Conti
+    'success_create_conto'              => "La nuova voce di spesa è stata creata con successo.",
+    'error_create_conto'                => "Si è verificato un errore durante la creazione della nuova voce di spesa.",
+    'success_delete_conto'              => "La voce di spesa è stata eliminata con successo.",
+    'error_delete_conto'                => "Si è verificato un errore durante l'eliminazione della voce di spesa.",
+    'success_update_conto'              => "La voce di spesa è stata aggiornata con successo.",
+    'error_update_conto'                => "Si è verificato un errore durante l'aggiornamento della voce di spesa.",
+    'error_conto_has_sottoconti'        => "Impossibile eliminare la voce di spesa perché contiene sottoconti. Elimina prima i sottoconti.",
+    // Piano rate
+    'success_create_piano_rate'         => "Il nuovo piano rate è stato creato con successo.",
+    'error_create_piano_rate'           => "Si è verificato un errore durante la creazione del nuovo piano rate.",
+    'success_update_piano_rate'         => "Il piano rate è stato aggiornato con successo.",
+    'error_update_piano_rate'           => "Si è verificato un errore durante l'aggiornamento del piano rate.",     
+    'success_delete_piano_rate'         => "Il piano rate è stato eliminato con successo.",
+    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate."
 
 ];

@@ -8,6 +8,7 @@ use App\Http\Requests\Condominio\UpdateCondominioRequest;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
+use App\Services\CondominioService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,6 +21,15 @@ use Inertia\Response;
 class CondominioController extends Controller
 {
     use HandleFlashMessages;
+
+    /**
+     * Create a new controller instance.
+     *
+     * @param  \App\Services\CondominioService
+     */
+    public function __construct(
+        private CondominioService $condominioService,
+    ) {}
 
     /**
      * Display a list of condomini with optional filtering and pagination.
@@ -99,19 +109,13 @@ class CondominioController extends Controller
 
         try {
 
-            DB::beginTransaction();
-
-            Condominio::create($request->validated());
-
-            DB::commit();
+            $this->condominioService->createCondominioWithEsercizio($request->validated());
 
             return to_route('condomini.index')->with(
                 $this->flashSuccess(__('condomini.success_create_building'))
             );
 
         } catch (\Exception $e) {
-
-            DB::rollback();
 
             Log::error('Error during condominio creation: ' . $e->getMessage());
 

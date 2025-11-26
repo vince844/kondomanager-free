@@ -12,14 +12,17 @@ use App\Http\Resources\Gestionale\Tabelle\TabellaResource;
 use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class TabellaController extends Controller
 {
-    use HandleFlashMessages;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Display a listing of the resource.
@@ -36,10 +39,17 @@ class TabellaController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             ->paginate(config('pagination.default_per_page'));
-            
+        
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/tabelle/TabelleList', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
             'tabelle'    => TabellaResource::collection($tabelle)->resolve(),
             'meta'       => [
                 'current_page' => $tabelle->currentPage(),
@@ -58,8 +68,16 @@ class TabellaController extends Controller
     {
         $condominio->load(['palazzine', 'scale']);
 
+        // Get a list of all the registered condomini this is important to populate dropdown condomini in the dropdown breadcummb
+        $condomini = $this->getCondomini();
+
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/tabelle/TabelleNew', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'condomini'  => $condomini,
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale),
         ]);
@@ -70,42 +88,68 @@ class TabellaController extends Controller
      */
     public function store(CreateTabellaRequest $request, Condominio $condominio): RedirectResponse
     {
-        $data = $request->validated();
+        try {
 
-        // Creazione della tabella
-        $tabella = $condominio->tabelle()->create([
-            'nome'            => $data['nome'],
-            'tipo'            => $data['tipologia'],
-            'quota'           => $data['quota'],
-            'numero_decimali' => $data['numero_decimali'] ?? 2,
-            'palazzina_id'    => $data['palazzina_id'] ?? null,
-            'scala_id'        => $data['scala_id'] ?? null,
-            'descrizione'     => $data['descrizione'] ?? null,
-            'note'            => $data['note'] ?? null,
-            'attiva'          => true,
-            'data_inizio'     => now(),
-            'created_by'      => $data['created_by'],
-        ]);
+            $data = $request->validated();
 
-        // Se l’opzione "associa tutti" è selezionata
-        if (!empty($data['all_flats'])) {
+            DB::beginTransaction();
 
-            $immobili = $condominio->immobili()->get(['id']);
+            // Creazione della tabella
+            $tabella = $condominio->tabelle()->create([
+                'nome'            => $data['nome'],
+                'tipo'            => $data['tipologia'],
+                'quota'           => $data['quota'],
+                'numero_decimali' => $data['numero_decimali'] ?? 2,
+                'palazzina_id'    => $data['palazzina_id'] ?? null,
+                'scala_id'        => $data['scala_id'] ?? null,
+                'descrizione'     => $data['descrizione'] ?? null,
+                'note'            => $data['note'] ?? null,
+                'attiva'          => true,
+                'data_inizio'     => now(),
+                'created_by'      => $data['created_by'],
+            ]);
 
-            foreach ($immobili as $immobile) {
-                $tabella->quote()->create([
-                    'immobile_id'  => $immobile->id,
-                    'valore'       => null,
-                    'coefficienti' => null,
-                    'created_by'   => null,
-                ]);
+            // Se l’opzione "associa tutti" è selezionata
+            if (!empty($data['all_flats'])) {
+
+                $immobili = $condominio->immobili()->get(['id']);
+
+                foreach ($immobili as $immobile) {
+                    $tabella->quote()->create([
+                        'immobile_id'  => $immobile->id,
+                        'valore'       => null,
+                        'coefficienti' => null,
+                        'created_by'   => null,
+                    ]);
+                }
             }
-        }
 
-        return to_route('admin.gestionale.tabelle.quote.index', [
-            'condominio' => $condominio->id,
-            'tabella'    => $tabella->id,
-        ])->with('success', __('gestionale.success_create_tabella'));
+            DB::commit();
+
+            return to_route('admin.gestionale.tabelle.quote.index', [
+                'condominio' => $condominio->id,
+                'tabella'    => $tabella->id,
+            ])->with(
+                $this->flashSuccess(__('gestionale.success_create_tabella'))
+            );
+
+        } catch (\Exception $e) {
+                
+            DB::rollBack();
+
+            Log::error('Error creating tabella: ' . $e->getMessage(), [
+                'condominio_id' => $condominio->id,
+                'data' => $data,
+                'exception' => $e
+            ]);
+
+            return to_route('admin.gestionale.tabelle.quote.index', [
+                'condominio' => $condominio->id,
+                'tabella'    => $tabella->id,
+            ])->with(
+                $this->flashError(__('gestionale.error_create_tabella'))
+            );
+        }
 
     }
 
@@ -124,8 +168,12 @@ class TabellaController extends Controller
     {
         $tabella->loadMissing(['palazzina', 'scala']);
 
+        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
         return Inertia::render('gestionale/tabelle/TabelleEdit', [
             'condominio' => $condominio,
+            'esercizio'  => $esercizio,
             'tabella'    => new TabellaResource($tabella),
             'palazzine'  => PalazzinaResource::collection($condominio->palazzine),
             'scale'      => ScalaResource::collection($condominio->scale)
@@ -171,8 +219,9 @@ class TabellaController extends Controller
 
             $tabella->delete();
 
-            return to_route('admin.gestionale.tabelle.index', $condominio)
-                ->with($this->flashSuccess(__('gestionale.success_delete_tabella')));
+            return to_route('admin.gestionale.tabelle.index', $condominio)->with(
+                    $this->flashSuccess(__('gestionale.success_delete_tabella'))
+                );
                 
         } catch (\Throwable $e) {
 
@@ -183,8 +232,9 @@ class TabellaController extends Controller
                 'trace'         => $e->getTraceAsString(),
             ]);
 
-            return to_route('admin.gestionale.tabelle.index', $condominio)
-                ->with($this->flashError(__('gestionale.error_delete_tabella')));
+            return to_route('admin.gestionale.tabelle.index', $condominio)->with(
+                    $this->flashError(__('gestionale.error_delete_tabella'))
+                );
                 
         }
     }

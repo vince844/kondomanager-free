@@ -1,7 +1,7 @@
 
 # KondoManager - Gestione condominiale
 
-KondoManager è un innovatovo software open source per la gestione condominiale, realizzato in Laravel e database MySql e pensato per gli amministratori di condominio ma anche per gli utenti del condominio.
+KondoManager è un innovativo software open source per la gestione condominiale, realizzato in Laravel e database MySQL, pensato per gli amministratori di condominio ma anche per gli utenti del condominio.
 
 ## Screenshots
 
@@ -51,14 +51,24 @@ password: Pa$$w0rd!
   - Gestione scale
   - Gestione immobili
   - Tabelle millesimali
+  - Gestione esercizi
+  - Gestioni ordinarie e straordinarie
+  - Creazione piano dei conti (preventivo spesa)
+  - Creazione piano rate
 
 ## Requisiti minimi 
 
     PHP >= 8.2
-    Node.js & NPM (Latest LTS)
-    Composer
+    Database MySQL
+    Node.js & NPM (Per installazione manuale)
+    Composer (Per installazione manuale)
 
-## Installazione del gestionale
+## Installazione guidata del gestionale
+
+Per gli utenti meno esperti e che volessero installare Kondomanager su server condiviso, abbiamo creato un wizard guidato per il processo di installazione
+Scarica il [file di installazione](https://kondomanager.short.gy/installer) e carica il file index.php sul tuo server, quindi segui il processo di installazione guidato, per maggiori informazioni visita la pagina della [guida ufficiale](https://www.kondomanager.com/docs/installation.html) 
+
+## Installazione manuale del gestionale
 
 1. Clona la repository
 
@@ -66,14 +76,21 @@ password: Pa$$w0rd!
 https://github.com/vince844/kondomanager-free.git
 ```
 
-2. Genera il file .env
+2. Installa librerie
+
+```bash
+composer install
+npm install
+```
+
+3. Genera il file .env
 
 ```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-3. Configura il database MySql nel file .env
+4. Configura il database MySql nel file .env
 
 ```bash
 DB_CONNECTION=mysql
@@ -83,7 +100,7 @@ DB_DATABASE=your_database
 DB_USERNAME=your_username
 DB_PASSWORD=your_password
 ```
-4. Configura il server SMTP nel file .env
+5. Configura il server SMTP nel file .env
 
 ```bash
 MAIL_MAILER=smtp
@@ -94,13 +111,6 @@ MAIL_USERNAME=
 MAIL_PASSWORD=
 MAIL_FROM_ADDRESS=
 MAIL_FROM_NAME="${APP_NAME}"
-```
-
-5. Installa librerie
-
-```bash
-composer install
-npm install
 ```
 
 6. Esegui le migrazioni del database
@@ -147,32 +157,39 @@ Ricordati di modificare l'indirizzo email e la password al primo login andando a
 - [Inertia.js Documentation](https://inertiajs.com/)
 - [TanStack Table Documentation](https://tanstack.com/table/v8)
 
-
 ## Come contribuire al progetto
 
 Chi volesse contribuire a far crescre il progetto è sempre il benvenuto!
 
-Visualizza la pagina `contributing.md` per consigli e direttive sulle contribuzioni.
+Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING).
 
-Ti prego di aderire al nostro `code of conduct`.
+Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issue](https://github.com/vince844/kondomanager-free/issues).
 
 ## Sostieni il progetto
 
-Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto.
-
-[Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
+Sviluppare un software open source richiede molto impegno e dedizione, ti sarò grato se decidi di sostenere il progetto. [Sostieni KondoManager su Patreon](https://www.patreon.com/KondoManager)
 
 ## Feedback
 
-Per chi volesse inviare dei feedback o consigli su moglioramenti può farlo nell'apposita sezione all'interno di questa repository
-
+Per chi volesse inviare dei feedback o consigli su moglioramenti può farlo nell'apposita sezione all'interno di questa repository oppure aprire un [ticket su uservoice](https://feedback.userreport.com/92d7d7e1-d2e5-4654-a90d-066dd5d2fe10/#ideas/popular)
 
 ## Supporto
 
-Per supporto o richieste di personalizzazione del codice, potete contattarmi utlizzando l'apposito modulo contatti che trovate su https://kondomanager.com
-
+Per supporto o richieste di personalizzazione del codice, potete contattarmi utlizzando l'apposito [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) 
 
 ## Licenza
 
 [AGPL-3.0](https://github.com/vince844/kondomanager-free?tab=AGPL-3.0-1-ov-file#readme)
+
+## Credits
+
+### Lead Developer
+- **Vincenzo Vecchio** - Project founder and main developer
+
+### Contributors
+
+Thanks to these amazing people who have contributed to this project:
+
+- [Amnit Haldar](https://github.com/amit-eiitech) - Amazing laravel developer
+
 

@@ -93,7 +93,7 @@ const rightNavItems: NavItem[] = [
     },
     {
         title: 'Documentazione',
-        href: 'https://kondomanager-1.gitbook.io/kondomanager-docs',
+        href: 'https://kondomanager.com/docs/index.html',
         icon: BookText,
         external: true,
     },

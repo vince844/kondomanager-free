@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import { Button } from '@/components/ui/button';
 import { List, Info, Plus, LoaderCircle } from 'lucide-vue-next';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,6 +22,7 @@ import type { Scala } from '@/types/gestionale/scale';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   palazzine: Palazzina[];
   scale: Scala[];
 }>()
@@ -52,7 +54,7 @@ const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
+  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
   { title: 'tabelle', href: generatePath('gestionale/:condominio/tabelle', { condominio: props.condominio.id }) },
   { title: 'crea tabella', href: '#' },
 ]);
@@ -81,6 +83,10 @@ const submit = () => {
 
   <GestionaleLayout :breadcrumbs="breadcrumbs">
 
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
+
     <div class="px-4 py-6">
 
       <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
@@ -101,7 +107,7 @@ const submit = () => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>Tabelle</span>
               </Link>
             </div>
 
@@ -126,7 +132,7 @@ const submit = () => {
                 <div class="sm:col-span-2">
                   <Label for="palazzina">Palazzina</Label>
                     <v-select 
-                        :options="condominio.palazzine" 
+                        :options="palazzine" 
                         label="name" 
                         class="mt-1 block w-full"
                         v-model="form.palazzina_id"
@@ -140,7 +146,7 @@ const submit = () => {
                 <div class="sm:col-span-2">
                   <Label for="scala">Scala</Label>
                   <v-select 
-                      :options="condominio.scale" 
+                      :options="scale" 
                       label="name" 
                       class="mt-1 block w-full"
                       v-model="form.scala_id"

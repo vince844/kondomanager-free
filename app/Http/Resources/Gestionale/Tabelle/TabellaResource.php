@@ -6,6 +6,7 @@ use App\Http\Resources\Gestionale\Palazzine\PalazzinaResource;
 use App\Http\Resources\Gestionale\Scale\ScalaResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Str;
 
 class TabellaResource extends JsonResource
 {
@@ -18,7 +19,7 @@ class TabellaResource extends JsonResource
     {
          return [
             'id'                 => $this->id,
-            'nome'               => $this->nome,
+            'nome'               => Str::ucfirst($this->nome),
             'descrizione'        => $this->descrizione,
             'tipo'               => $this->tipo,
             'note'               => $this->note,

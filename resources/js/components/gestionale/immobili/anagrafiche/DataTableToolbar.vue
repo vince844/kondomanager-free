@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-vue-next';
+import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -18,7 +18,7 @@ const props = defineProps<{ table: Table<AnagraficaWithPivot> }>();
 const page = usePage<{ condominio: Building; immobile: Immobile }>()
 
 // Permissions / routes
-const { generateRoute } = usePermission();
+const { generateRoute, generatePath } = usePermission();
 
 // Filters
 const nameFilter = ref('')
@@ -65,14 +65,26 @@ watchDebounced(
       </div>
     </div>
 
-    <Link
-      :href="route(generateRoute('gestionale.immobili.anagrafiche.create'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id })"
-      class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
-      prefetch
-    >
-      <Plus class="w-4 h-4" />
-      <span>Associa</span>
-    </Link> 
+    <!-- Right: Action buttons -->
+    <div class="flex items-center space-x-2">
 
+      <Link
+        :href="route(generateRoute('gestionale.immobili.anagrafiche.create'), { condominio: page.props.condominio.id, immobile: page.props.immobile.id })"
+        class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
+        prefetch
+      >
+        <Plus class="w-4 h-4" />
+        <span>Associa</span>
+      </Link> 
+
+      <Link
+        as="button"
+        :href="generatePath('gestionale/:condominio/immobili', { condominio: page.props.condominio.id })"
+        class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+      >
+        <List class="w-4 h-4" />
+        <span>Immobili</span>
+      </Link>
+    </div>
   </div>
 </template>
