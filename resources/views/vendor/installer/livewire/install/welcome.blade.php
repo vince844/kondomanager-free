@@ -6,7 +6,7 @@
     <ul class="ps-6 list-decimal mt-6 space-y-6">
         <li>
             <strong>PHP:</strong> Il server deve avere installato la versione {{ $php }} o maggiore.
-            <a class="link block" href="https://www.php.net/manual/en/function.phpversion.php">Come controllare la versione di PHP installata</a>
+            <a class="link block" target="_blank" href="https://www.php.net/manual/en/function.phpversion.php">Come controllare la versione di PHP installata</a>
         </li>
 
         @isset($extensions)
