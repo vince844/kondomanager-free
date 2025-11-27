@@ -11,21 +11,24 @@ import { Settings } from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import Alert from "@/components/Alert.vue";
 import type { BreadcrumbItem } from '@/types';
-import type { Flash } from '@/types/flash';
+import type { GeneralSettings } from '@/types/GeneralSettings';
 
-const page = usePage<{ flash: { message?: Flash } }>();
-const flashMessage = computed(() => page.props.flash.message);
+const page = usePage<GeneralSettings>();
+const flashMessage = computed(() => page.props.flash?.message);
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Impostazioni', href: '/impostazioni' },
-  { title: 'generali', href: '/impostazioni/generali' },
+  { title: 'Generali', href: '/impostazioni/generali' },
 ];
 
-const { can_register, language } = usePage().props;
+// Props da Inertia
+const { can_register,language, open_condominio_on_login, default_condominio_id, condomini } = page.props;
 
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: language || 'it',
+  open_condominio_on_login: Boolean(open_condominio_on_login),
+  default_condominio_id,
 });
 
 const submit = () => {
@@ -33,6 +36,7 @@ const submit = () => {
     preserveScroll: true,
   });
 };
+
 </script>
 
 <template>
@@ -91,7 +95,49 @@ const submit = () => {
               </Select>
 
             </div>
-            
+
+            <div class="flex items-center gap-4 border rounded p-4 mt-3">
+              <div class="flex-1 flex flex-col justify-center">
+                <label class="text-sm font-medium leading-none">
+                  Apri condominio al login
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  Se attivato, l'utente verrà reindirizzato direttamente al condominio selezionato.
+                </p>
+              </div>
+
+              <Switch v-model="form.open_condominio_on_login" class="shrink-0" />
+            </div>
+
+            <div 
+              v-if="form.open_condominio_on_login" 
+              class="flex items-center gap-4 border rounded p-4 mt-3"
+            >
+              <div class="flex-1 flex flex-col justify-center">
+                <label class="text-sm font-medium leading-none">
+                  Condominio predefinito
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  Seleziona il condominio da aprire automaticamente il gestionale dopo il login.
+                </p>
+              </div>
+
+              <Select v-model="form.default_condominio_id">
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleziona condominio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem 
+                    v-for="c in condomini" 
+                    :key="c.id" 
+                    :value="c.id"
+                  >
+                    {{ c.nome }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <div class="flex items-center gap-4 border rounded p-4 mt-3">
               <!-- Text next to switch -->
               <div class="flex-1 flex flex-col justify-center">
@@ -99,7 +145,7 @@ const submit = () => {
                   Abilita registrazione utenti
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  Se attivato, gli utenti possono registrarsi dalla pagina frontend.
+                  Se attivato, gli utenti possono registrarsi dalla home page.
                 </p>
               </div>
 

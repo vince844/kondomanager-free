@@ -4,6 +4,7 @@ namespace App\Helpers;
 
 use App\Enums\Permission;
 use App\Enums\Role;
+use App\Settings\GeneralSettings;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\RedirectResponse;
 
@@ -43,6 +44,18 @@ class RedirectHelper
     public static function userHomeRoute(): string
     {
         $user = Auth::user();
+        $prefs = $user->userPreferences; 
+
+        if (
+            $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])
+            && $prefs
+            && $prefs->open_condominio_on_login
+            && $prefs->default_condominio_id
+        ) {
+            return route('admin.gestionale.index', [
+                'condominio' => $prefs->default_condominio_id,
+            ]);
+        }
 
         if ($user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
             return route('admin.dashboard');
