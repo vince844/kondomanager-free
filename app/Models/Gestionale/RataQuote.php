@@ -26,9 +26,9 @@ class RataQuote extends Model
     ];
 
     protected $casts = [
-        'importo' => 'integer',
+        'importo'        => 'integer',
         'importo_pagato' => 'integer',
-        'data_scadenza' => 'date',
+        'data_scadenza'  => 'date',
         'data_pagamento' => 'date',
     ];
 

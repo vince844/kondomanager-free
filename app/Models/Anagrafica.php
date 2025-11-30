@@ -91,5 +91,18 @@ class Anagrafica extends Model
         return $this->hasMany(Saldo::class, 'anagrafica_id');
     }
 
+    public function fornitori()
+    {
+        return $this->belongsToMany(
+                Fornitore::class,
+                'anagrafica_fornitore',
+                'anagrafica_id',
+                'fornitore_id'
+            )
+            ->using(AnagraficaFornitore::class)
+            ->withPivot(['ruolo', 'referente_principale'])
+            ->withTimestamps();
+    }
+
 
 }

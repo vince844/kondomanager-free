@@ -32,6 +32,8 @@ const props = defineProps<{
 const anagraficheOptions = ref<Anagrafica[]>([]);
 const showRecurrence = ref(false);
 
+
+
 const frequencies = [
   { label: 'Giornaliera', value: 'daily' },
   { label: 'Settimanale', value: 'weekly' },
@@ -83,6 +85,7 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
 watch(() => form.condomini_ids, fetchAnagrafiche);
 
 watch(showRecurrence, (enabled) => {
+  console.log(showRecurrence.value)
   if (!enabled) {
     form.recurrence_frequency = null;
     form.recurrence_interval = 1;
@@ -173,7 +176,7 @@ const submit = () => {
             </div>
 
             <div class="flex items-center space-x-2">
-              <Checkbox class="size-4"  id="recurrenceToggle" v-model:checked="showRecurrence" />
+              <Checkbox class="size-4"  id="recurrenceToggle" v-model="showRecurrence" />
               <Label for="recurrenceToggle">Imposta evento ricorrente</Label>
               <HoverCard>
                 <HoverCardTrigger as-child>

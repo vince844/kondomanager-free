@@ -58,7 +58,7 @@ const props = defineProps<{
                             <div>
                                 <CardTitle class="text-lg">Ultime comunicazioni</CardTitle>
                                 <CardDescription>
-                                Elenco delle ultime comunicazioni pubblicate in bacheca
+                                    Elenco delle ultime comunicazioni pubblicate in bacheca
                                 </CardDescription>
                             </div>
 

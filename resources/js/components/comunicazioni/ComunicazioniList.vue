@@ -50,14 +50,14 @@ const truncate = (text: string, length: number = 120) => {
   
               <Link
                 :href="route(generateRoute(routeName), { id: comunicazione.id })"
-                class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold"
+                class="inline-flex items-center gap-2 text-sm font-bold hover:text-muted-foreground transition-colors"
               >
                 <component
                   :is="priorityIcons[comunicazione.priority]"
                   class="w-4 h-4"
                   :class="{
                     'text-green-400': comunicazione.priority === 'bassa',
-                    'text-blue-300': comunicazione.priority === 'media',
+                    'text-blue-400': comunicazione.priority === 'media',
                     'text-orange-400': comunicazione.priority === 'alta',
                     'text-red-500': comunicazione.priority === 'urgente',
                   }"

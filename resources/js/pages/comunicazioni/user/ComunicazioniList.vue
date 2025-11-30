@@ -11,15 +11,9 @@ import { Button } from "@/components/ui/button";
 import { useComunicazioni } from '@/composables/useComunicazioni';
 import { usePermission } from "@/composables/permissions";
 import { Permission }  from "@/enums/Permission";
-import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus } from "lucide-vue-next";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Pagination, PaginationEllipsis, PaginationFirst, PaginationLast,
-  PaginationList, PaginationListItem, PaginationNext, PaginationPrev,
-} from "@/components/ui/pagination";
+import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus, ChevronLeftIcon, ChevronRightIcon } from "lucide-vue-next";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { getPriorityMeta } from "@/types/comunicazioni";
 import type { PaginationMeta } from '@/types/pagination';
 import type { Comunicazione } from "@/types/comunicazioni";
@@ -308,7 +302,7 @@ async function confirmDelete() {
                 <div class="flex items-center justify-between">
                   <Link
                     :href="route(generateRoute('comunicazioni.show'), { id: comunicazione.id })"
-                    class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-blue-600 transition-colors"
+                    class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-muted-foreground transition-colors"
                   >
                     <component
                       :is="getPriorityMeta(comunicazione.priority).icon"
@@ -386,7 +380,7 @@ async function confirmDelete() {
 
         <!-- Pagination -->
         <Pagination
-          v-slot="{ page }"
+          v-if="meta.total > 0"
           :items-per-page="meta.per_page"
           :total="meta.total"
           :default-page="meta.current_page"
@@ -394,35 +388,42 @@ async function confirmDelete() {
           show-edges
           @update:page="handlePageChange"
         >
-          <PaginationList
-            v-slot="{ items }"
-            class="flex items-center justify-center gap-1 mt-4"
-          >
-            <PaginationFirst :disabled="shouldShowLoading" />
-            <PaginationPrev :disabled="shouldShowLoading" />
+          <PaginationContent v-slot="{ items }" class="mt-4">
+            <!-- Prima pagina - doppia freccia sinistra -->
+            <PaginationFirst :disabled="shouldShowLoading">
+              <ChevronLeftIcon class="w-4 h-4" />
+              <ChevronLeftIcon class="w-4 h-4 -ml-2" />
+            </PaginationFirst>
+            
+            <!-- Pagina precedente - singola freccia sinistra -->
+            <PaginationPrevious :disabled="shouldShowLoading">
+              <ChevronLeftIcon class="w-4 h-4" />
+            </PaginationPrevious>
 
             <template v-for="(item, index) in items" :key="index">
-              <PaginationListItem
+              <PaginationItem
                 v-if="item.type === 'page'"
                 :value="item.value"
-                as-child
+                :is-active="item.value === meta.current_page"
                 :disabled="shouldShowLoading"
               >
-                <Button
-                  class="w-10 h-10 p-0"
-                  :variant="item.value === page ? 'default' : 'outline'"
-                  :disabled="shouldShowLoading"
-                >
-                  {{ item.value }}
-                </Button>
-              </PaginationListItem>
-
+                {{ item.value }}
+              </PaginationItem>
+              
               <PaginationEllipsis v-else :index="index" />
             </template>
 
-            <PaginationNext :disabled="shouldShowLoading" />
-            <PaginationLast :disabled="shouldShowLoading" />
-          </PaginationList>
+            <!-- Pagina successiva - singola freccia destra -->
+            <PaginationNext :disabled="shouldShowLoading">
+              <ChevronRightIcon class="w-4 h-4" />
+            </PaginationNext>
+            
+            <!-- Ultima pagina - doppia freccia destra -->
+            <PaginationLast :disabled="shouldShowLoading">
+              <ChevronRightIcon class="w-4 h-4" />
+              <ChevronRightIcon class="w-4 h-4 -ml-2" />
+            </PaginationLast>
+          </PaginationContent>
         </Pagination>
       </div>
     </div>

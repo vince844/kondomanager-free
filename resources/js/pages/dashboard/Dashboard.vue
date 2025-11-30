@@ -105,7 +105,7 @@ const props = defineProps<{
                                 Ultime segnalazioni
                             </CardTitle>
                             <CardDescription>
-                                Elenco delle ultime segnalazioni guasto
+                                Elenco delle ultime segnalazioni guasto inviate
                             </CardDescription>
                         </div>
 
@@ -143,7 +143,7 @@ const props = defineProps<{
                             <div>
                                 <CardTitle class="text-lg">Ultimi documenti</CardTitle>
                                 <CardDescription>
-                                Elenco degli ultimi documenti in archivio
+                                    Elenco degli ultimi documenti in archivio caricati
                                 </CardDescription>
                             </div>
 

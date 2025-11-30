@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CircleArrowUp, CircleArrowRight, CircleArrowDown, CircleAlert } from 'lucide-vue-next';
 

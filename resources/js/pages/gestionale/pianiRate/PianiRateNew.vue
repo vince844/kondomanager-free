@@ -3,7 +3,6 @@
 import { Head, useForm, Link } from '@inertiajs/vue3'
 import { ref, watch, computed } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import Heading from '@/components/Heading.vue'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -222,7 +221,7 @@ const submit = () => {
               <div class="space-y-4">
 
                 <div class="flex items-center gap-2">
-                  <Checkbox id="recurrenceToggle" v-model:checked="showRecurrence" />
+                  <Checkbox id="recurrenceToggle" v-model="showRecurrence" />
                   <Label for="recurrenceToggle">Ricorrenza automatica avanzata</Label>
                 </div>
 

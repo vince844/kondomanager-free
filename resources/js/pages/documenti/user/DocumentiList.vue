@@ -11,8 +11,8 @@ import { useDocumenti } from '@/composables/useDocumenti';
 import { Permission } from '@/enums/Permission';
 import { Button } from "@/components/ui/button";
 import Alert from "@/components/Alert.vue";
-import { CircleAlert, Loader2, SearchX, Plus, List } from "lucide-vue-next";
-import { Pagination, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationList, PaginationListItem, PaginationNext, PaginationPrev } from "@/components/ui/pagination";
+import { CircleAlert, List, Loader2, SearchX, Plus, ChevronLeftIcon, ChevronRightIcon } from "lucide-vue-next";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 import type { PaginationMeta } from '@/types/pagination';
@@ -359,7 +359,7 @@ watch(searchQuery, (val) => {
 
         <!-- Pagination -->
         <Pagination
-          v-slot="{ page }"
+          v-if="meta.total > 0"
           :items-per-page="meta.per_page"
           :total="meta.total"
           :default-page="meta.current_page"
@@ -367,32 +367,42 @@ watch(searchQuery, (val) => {
           show-edges
           @update:page="handlePageChange"
         >
-          <PaginationList
-            v-slot="{ items }"
-            class="flex items-center justify-center gap-1 mt-4"
-          >
-            <PaginationFirst :disabled="shouldShowLoading" />
-            <PaginationPrev :disabled="shouldShowLoading" />
+          <PaginationContent v-slot="{ items }" class="mt-4">
+            <!-- Prima pagina - doppia freccia sinistra -->
+            <PaginationFirst :disabled="shouldShowLoading">
+              <ChevronLeftIcon class="w-4 h-4" />
+              <ChevronLeftIcon class="w-4 h-4 -ml-2" />
+            </PaginationFirst>
+            
+            <!-- Pagina precedente - singola freccia sinistra -->
+            <PaginationPrevious :disabled="shouldShowLoading">
+              <ChevronLeftIcon class="w-4 h-4" />
+            </PaginationPrevious>
+
             <template v-for="(item, index) in items" :key="index">
-              <PaginationListItem
+              <PaginationItem
                 v-if="item.type === 'page'"
                 :value="item.value"
-                as-child
+                :is-active="item.value === meta.current_page"
                 :disabled="shouldShowLoading"
               >
-                <Button
-                  class="w-10 h-10 p-0"
-                  :variant="item.value === page ? 'default' : 'outline'"
-                  :disabled="shouldShowLoading"
-                >
-                  {{ item.value }}
-                </Button>
-              </PaginationListItem>
+                {{ item.value }}
+              </PaginationItem>
+              
               <PaginationEllipsis v-else :index="index" />
             </template>
-            <PaginationNext :disabled="shouldShowLoading" />
-            <PaginationLast :disabled="shouldShowLoading" />
-          </PaginationList>
+
+            <!-- Pagina successiva - singola freccia destra -->
+            <PaginationNext :disabled="shouldShowLoading">
+              <ChevronRightIcon class="w-4 h-4" />
+            </PaginationNext>
+            
+            <!-- Ultima pagina - doppia freccia destra -->
+            <PaginationLast :disabled="shouldShowLoading">
+              <ChevronRightIcon class="w-4 h-4" />
+              <ChevronRightIcon class="w-4 h-4 -ml-2" />
+            </PaginationLast>
+          </PaginationContent>
         </Pagination>
       </div>
     </div>

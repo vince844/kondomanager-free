@@ -47,7 +47,7 @@ export const columns: ColumnDef<User>[] = [
             class: user.email_verified_at ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
           })
         ]),
-        h('span', { class: 'font-medium' }, user.name),
+        h('span', { class: 'font-bold' }, user.name),
       ]);
     },
   },
