@@ -3,16 +3,16 @@
 import { ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import type { ColumnDef, SortingState } from '@tanstack/vue-table'
-import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
-import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table'
+import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
+import {FlexRender,getCoreRowModel,useVueTable,getSortedRowModel } from '@tanstack/vue-table'
 import { valueUpdater } from '@/lib/utils'
 import DataTablePagination from '@/components/DataTablePagination.vue'
-import DataTableToolbar from '@/components/anagrafiche/DataTableToolbar.vue'
-import type { Anagrafica } from '@/types/anagrafiche'
+import DataTableToolbar from '@/components/fornitori/DataTableToolbar.vue'
+import type { Fornitore } from '@/types/fornitori'
 
 const props = defineProps<{
-  columns: ColumnDef<Anagrafica, any>[],
-  data: Anagrafica[],
+  columns: ColumnDef<Fornitore, any>[],
+  data: Fornitore[],
   meta: {
     current_page: number,
     per_page: number,
@@ -55,7 +55,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route('admin.anagrafiche.index'), {
+    router.get(route('admin.fornitori.index'), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {

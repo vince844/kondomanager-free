@@ -57,7 +57,7 @@ class CondominioController extends Controller
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
-            ->paginate($validated['per_page'] ?? 15);
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
     
         return Inertia::render('buildings/BuildingsList', [
             'buildings' => CondominioResource::collection($condomini)->response()->getData(true)['data'],

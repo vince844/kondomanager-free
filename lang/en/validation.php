@@ -179,7 +179,8 @@ return [
             'required' => 'The field :attribute is required',
             'unique' => 'The field :attribute is already taken',
             'lowercase' => 'The field :attribute has to be lowercase',
-            'email' => 'The field :attribute has to be a valid email address'
+            'email' => 'The field :attribute has to be a valid email address',
+            'unique_email_across_tables' => "This email address is already taken.",
         ],
         'email_secondaria' => [
             'required' => 'The field :attribute èis required',

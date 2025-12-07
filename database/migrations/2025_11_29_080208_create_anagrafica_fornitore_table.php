@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('fornitore_id')->constrained('fornitori')->onDelete('cascade');
             $table->foreignId('anagrafica_id')->constrained('anagrafiche')->onDelete('cascade');
-            $table->enum('ruolo', ['titolare','amministrativo','commerciale','tecnico','altro'])->default('altro');
+            $table->enum('ruolo', ['titolare','amministrativo','commerciale','tecnico','referente','altro'])->default('referente');
             $table->boolean('referente_principale')->default(false);
             $table->timestamps();
             $table->unique(['fornitore_id', 'anagrafica_id']);

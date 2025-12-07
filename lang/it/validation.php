@@ -175,7 +175,8 @@ return [
             'required' => 'Il campo :attribute è richiesto',
             'unique' => 'Il campo :attribute è già in uso',
             'lowercase' => 'Il campo :attribute deve essere in minuscolo',
-            'email' => 'Il campo :attribute deve essere un indirizzo email valido'
+            'email' => 'Il campo :attribute deve essere un indirizzo email valido',
+            'unique_email_across_tables' => "Questo indirizzo email è già in uso."
         ],
         'email_secondaria' => [
             'required' => 'Il campo :attribute è richiesto',

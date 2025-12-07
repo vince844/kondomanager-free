@@ -1,22 +1,21 @@
 import { h } from 'vue'
-import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue';
-import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue';
+import DropdownAction from '@/components/fornitori/DataTableRowActions.vue';
+import DataTableColumnHeader from '@/components/fornitori/DataTableColumnHeader.vue';
 import type { ColumnDef } from '@tanstack/vue-table'
-import type { Anagrafica } from '@/types/anagrafiche';
-import type { Building } from '@/types/buildings';
+import type { Fornitore } from '@/types/fornitori';
 
-export const columns: ColumnDef<Anagrafica>[] = [
+export const columns: ColumnDef<Fornitore>[] = [
   {
-    accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Nome e cognome' }), 
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
+    accessorKey: 'ragione_sociale',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ragione sociale' }), 
+    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('ragione_sociale')),
   },
-  {
+/*   {
     accessorKey: 'indirizzo',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Indirizzo' }), 
     cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
-  },
-  {
+  }, */
+/*   {
     accessorKey: 'condomini',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
     
@@ -58,14 +57,14 @@ export const columns: ColumnDef<Anagrafica>[] = [
       const condomini = row.original.condomini ?? [];
       return condomini.some((condominio: Building) => value.includes(condominio.id));
     }
-  },
+  }, */
   {
     id: 'actions',
     enableHiding: false,
     cell: ({ row }) => {
-      const anagrafica = row.original
+      const fornitore = row.original
       return h('div', { class: 'relative' }, h(DropdownAction, {
-        anagrafica,
+        fornitore,
       }))
     },
   }

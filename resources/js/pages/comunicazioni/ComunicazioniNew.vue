@@ -297,7 +297,7 @@ const submit = () => {
                                     :checked="form.can_comment"
                                     v-model="form.can_comment" 
                                     id="can_comment" 
-                                    @update:checked="(val) => form.can_comment = val" 
+                                    @update:checked="(val: boolean) => form.can_comment = val" 
                                     />
                                 <label
                                     for="can_comment"
@@ -335,7 +335,7 @@ const submit = () => {
                                     class="size-4" 
                                     v-model="form.is_featured"
                                     id="is_featured"
-                                    @update:checked="(val) => form.is_featured = val"
+                                    @update:checked="(val: boolean) => form.is_featured = val"
                                 />
 
                                 <!-- Label only -->

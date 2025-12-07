@@ -7,6 +7,7 @@ import type { BreadcrumbItem } from '@/types'
 import { ref, computed } from 'vue'
 import { Users, Settings, DatabaseBackup } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -19,7 +20,7 @@ const apps = [
   {
     name: "Impostazioni generali",
     logo: Settings,
-    desc: "Impostazioni generali di Kondomanager",
+    desc: "Impostazioni generali di configurazione dell'applicazione",
     href: "/impostazioni/generali", 
   },
   {
@@ -47,7 +48,6 @@ const filteredApps = computed(() => {
 
 <template>
   <AppLayout :breadcrumbs="breadcrumbs">
-    
     <Head title="Impostazioni" />
 
     <div class="px-4 py-6">
@@ -57,7 +57,7 @@ const filteredApps = computed(() => {
       />
 
       <!-- Filters -->
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div class="flex gap-4">
           <input
             v-model="searchTerm"
@@ -68,31 +68,34 @@ const filteredApps = computed(() => {
         </div>
       </div>
 
-      <!-- App Grid -->
-      <ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pt-4">
-        <li
+      <div class="grid gap-4 sm:grid-cols-3">
+        <Item
           v-for="app in filteredApps"
           :key="app.name"
-          class="rounded-lg border p-4 hover:shadow-md"
+          variant="outline"
         >
-          <div class="mb-6 flex items-center justify-between">
-            <div class="bg-gray-100 flex size-10 items-center justify-center rounded-lg p-2">
-              <component :is="app.logo" class="text-black w-5 h-5" />
+          <ItemMedia variant="icon">
+            <div class="flex h-8 w-13 items-center justify-center rounded-lg bg-gray-100">
+              <component :is="app.logo" class="h-5 w-5 text-gray-700" />
             </div>
-
+          </ItemMedia>
+          
+          <ItemContent>
+            <ItemTitle>{{ app.name }}</ItemTitle>
+            <ItemDescription>
+              {{ app.desc }}
+            </ItemDescription>
+          </ItemContent>
+          
+          <ItemActions>
             <Button as-child variant="outline" size="sm">
               <Link :href="app.href">
                 Gestisci
               </Link>
             </Button>
-          </div>
-
-          <div>
-            <h2 class="font-semibold mb-1">{{ app.name }}</h2>
-            <p class="text-gray-500 text-sm">{{ app.desc }}</p>
-          </div>
-        </li>
-      </ul>
+          </ItemActions>
+        </Item>
+      </div>
     </div>
   </AppLayout>
 </template>

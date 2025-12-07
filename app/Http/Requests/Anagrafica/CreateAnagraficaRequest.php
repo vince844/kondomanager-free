@@ -45,7 +45,7 @@ class CreateAnagraficaRequest extends FormRequest
             'scadenza_documento'  => 'nullable|date|after:today',
             'data_nascita'        => 'nullable|date|before:today',
             'note'                => 'nullable|string',
-            'buildings'           => ['nullable', 'array', Rule::exists('condomini', 'id')],
+            'buildings'           => ['nullable','array',Rule::exists('condomini', 'id')],
         ];
     }
 

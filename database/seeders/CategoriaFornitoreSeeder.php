@@ -45,11 +45,7 @@ class CategoriaFornitoreSeeder extends Seeder
             [
                 'name' => 'Azienda multiservizi',
                 'description' => 'Fornitori che offrono servizi multipli: manutenzione, pulizie, assistenza tecnica e gestione strutture.',
-            ],
-            [
-                'name' => 'Altro',
-                'description' => 'Fornitori non rientranti nelle categorie predefinite o con specializzazioni particolari.',
-            ],
+            ]
         ];
 
         foreach ($categories as $category) {

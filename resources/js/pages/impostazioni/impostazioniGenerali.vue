@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Switch } from '@/components/ui/switch';
@@ -22,20 +22,26 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 // Props da Inertia
-const { can_register,language, open_condominio_on_login, default_condominio_id, condomini } = page.props;
+const { can_register, language, open_condominio_on_login, default_condominio_id, condomini } = page.props;
 
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: language || 'it',
   open_condominio_on_login: Boolean(open_condominio_on_login),
-  default_condominio_id,
+  default_condominio_id: default_condominio_id ? String(default_condominio_id) : null,
+});
+
+watch(() => form.default_condominio_id, (newValue) => {
+  if (newValue) {
+    form.clearErrors('default_condominio_id');
+  }
 });
 
 const submit = () => {
   form.post(route('impostazioni.generali.store'), {
     preserveScroll: true,
   });
-};
+}; 
 
 </script>
 
@@ -46,7 +52,7 @@ const submit = () => {
     <div class="px-4 py-6">
       <Heading
         title="Impostazioni generali"
-        description="Im questa pagina puoi gestire le impostazioni generali dell'applicazione"
+        description="In questa pagina puoi gestire le impostazioni generali dell'applicazione"
       />
 
       <div v-if="flashMessage" class="py-2">
@@ -57,7 +63,7 @@ const submit = () => {
 
         <Card class="border shadow-none p-4">
 
-          <div class="flex flex-col w-full sm:flex-row sm:justify-end">
+          <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
             <Link
               as="button"
               :href="'/impostazioni'"
@@ -68,11 +74,12 @@ const submit = () => {
             </Link>
           </div>
 
-          <CardContent class="p-0 mb-3">
+          <CardContent class="space-y-4 p-0">
 
-            <div class="flex items-center gap-4 border rounded p-4 mt-3">
-              <div class="flex-1 flex flex-col justify-center">
-                <label for="language" class="text-sm font-medium leading-none">
+            <!-- Lingua applicazione -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label for="language" class="block text-sm font-medium leading-none mb-1">
                   Lingua applicazione
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -80,25 +87,27 @@ const submit = () => {
                 </p>
               </div>
 
-              <Select v-model="form.language">
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleziona lingua applicazione" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="it">
-                    Italiano
-                  </SelectItem>
-                  <SelectItem value="en">
-                    Inglese
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Select v-model="form.language">
+                  <SelectTrigger class="w-full">
+                    <SelectValue placeholder="Seleziona lingua" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" :side-offset="4" align="start" class="min-w-[var(--reka-select-trigger-width)]">
+                    <SelectItem value="it">
+                      Italiano
+                    </SelectItem>
+                    <SelectItem value="en">
+                      Inglese
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
-            <div class="flex items-center gap-4 border rounded p-4 mt-3">
-              <div class="flex-1 flex flex-col justify-center">
-                <label class="text-sm font-medium leading-none">
+            <!-- Apri condominio al login -->
+            <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
                   Apri condominio al login
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -106,15 +115,18 @@ const submit = () => {
                 </p>
               </div>
 
-              <Switch v-model="form.open_condominio_on_login" class="shrink-0" />
+              <div class="shrink-0">
+                <Switch v-model="form.open_condominio_on_login" />
+              </div>
             </div>
 
+            <!-- Condominio predefinito (mostrato solo se open_condominio_on_login è true) -->
             <div 
               v-if="form.open_condominio_on_login" 
-              class="flex items-center gap-4 border rounded p-4 mt-3"
+              class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4"
             >
-              <div class="flex-1 flex flex-col justify-center">
-                <label class="text-sm font-medium leading-none">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
                   Condominio predefinito
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -122,26 +134,31 @@ const submit = () => {
                 </p>
               </div>
 
-              <Select v-model="form.default_condominio_id">
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleziona condominio" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem 
-                    v-for="c in condomini" 
-                    :key="c.id" 
-                    :value="c.id"
-                  >
-                    {{ c.nome }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Select v-model="form.default_condominio_id">
+                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_condominio_id }">
+                    <SelectValue placeholder="Seleziona condominio" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" :side-offset="4" align="start" class="min-w-[var(--reka-select-trigger-width)]">
+                    <SelectItem 
+                      v-for="c in condomini" 
+                      :key="c.id" 
+                      :value="c.id"
+                    >
+                      {{ c.nome }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p v-if="form.errors.default_condominio_id" class="text-sm text-red-500 mt-1">
+                  {{ form.errors.default_condominio_id }}
+                </p>
+              </div>
             </div>
 
-            <div class="flex items-center gap-4 border rounded p-4 mt-3">
-              <!-- Text next to switch -->
-              <div class="flex-1 flex flex-col justify-center">
-                <label class="text-sm font-medium leading-none">
+            <!-- Abilita registrazione utenti -->
+            <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
                   Abilita registrazione utenti
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -149,15 +166,14 @@ const submit = () => {
                 </p>
               </div>
 
-              <!-- Switch -->
-              <Switch
-                v-model="form.user_frontend_registration"
-                class="shrink-0"
-              />
+              <div class="shrink-0">
+                <Switch v-model="form.user_frontend_registration" />
+              </div>
             </div>
+
           </CardContent>
 
-          <CardFooter class="pl-0 flex items-center gap-4">
+          <CardFooter class="px-0 pt-6 flex items-center gap-4">
             <Button :disabled="form.processing">
               <span
                 v-if="form.processing"

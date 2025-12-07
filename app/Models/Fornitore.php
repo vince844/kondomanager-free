@@ -14,32 +14,26 @@ class Fornitore extends Model
         'ragione_sociale',
         'partita_iva',
         'codice_fiscale',
-        // Sede
         'indirizzo',
         'cap',
         'comune',
         'provincia',
         'nazione',
-        // Dati societari
         'iscrizione_cciaa',
         'data_iscrizione_cciaa',
         'codice_ateco',
         'numero_iscrizione_ordine',
-        'tipologia_ordine',
-        'tipologia_fornitore',
+        'categoria_id',
         'certificazione_iso',
         'capitale_sociale',
-        // Contatti
         'telefono',
         'cellulare',
         'fax',
         'email',
         'pec',
         'sito_web',
-        // Stato
         'stato',
         'note',
-        // Codici bancari / SEPA
         'codice_sia',
         'codice_cuc',
         'codice_sepa',
@@ -62,7 +56,6 @@ class Fornitore extends Model
                 'fornitore_id',
                 'anagrafica_id'
             )
-            ->using(AnagraficaFornitore::class)
             ->withPivot(['ruolo', 'referente_principale'])
             ->withTimestamps();
     }

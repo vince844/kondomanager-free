@@ -29,7 +29,7 @@ class CreateUserRequest extends FormRequest
             'email'       => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'roles'       => ['required'],
             'permissions' => ['sometimes', 'array'],
-            'anagrafica' => [
+            'anagrafica'  => [
                 'nullable',
                 Rule::exists('anagrafiche', 'id'), 
                 function ($attribute, $value, $fail) {

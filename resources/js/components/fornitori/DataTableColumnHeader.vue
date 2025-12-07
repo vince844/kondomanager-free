@@ -1,15 +1,14 @@
 <script setup lang="ts">
 
-
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {DropdownMenu,DropdownMenuContent,DropdownMenuItem,DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next'
 import type { Column } from '@tanstack/vue-table'
-import type { Anagrafica } from '@/types/anagrafiche';
+import type { Fornitore } from '@/types/fornitori';
 
 interface DataTableColumnHeaderProps {
-  column: Column<Anagrafica, any> 
+  column: Column<Fornitore, any> 
   title: string
 }
 
@@ -17,6 +16,7 @@ defineProps<DataTableColumnHeaderProps>()
 </script>
 
 <script lang="ts">
+  
 export default {
   inheritAttrs: false,
 }

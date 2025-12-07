@@ -25,7 +25,24 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'user_frontend_registration' => 'required|boolean',
             'language'                   => 'required|in:it,en',
             'open_condominio_on_login'   => 'required|boolean',
-            'default_condominio_id'      => 'nullable|exists:condomini,id',
+            'default_condominio_id'      => [
+                'required_if:open_condominio_on_login,true',
+                'nullable',
+                'exists:condomini,id',
+            ],
+        ];
+    }
+
+    /**
+     * Get custom messages for validator errors.
+     *
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            'default_condominio_id.required_if' => 'Devi selezionare un condominio.',
+            'default_condominio_id.exists' => 'Il condominio selezionato non è valido.',
         ];
     }
 }

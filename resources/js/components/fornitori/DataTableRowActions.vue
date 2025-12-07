@@ -6,16 +6,16 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
-import type { Anagrafica } from '@/types/anagrafiche';
+import type { Fornitore } from '@/types/fornitori';
 
-defineProps<{ anagrafica: Anagrafica }>()
+defineProps<{ fornitore: Fornitore }>()
 
-const anagraficaID = ref('');
+const fornitoreID = ref('');
 const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 
-function handleDelete(anagrafica: Anagrafica) {
-  anagraficaID.value = anagrafica.id;
+function handleDelete(fornitore: Fornitore) {
+  fornitoreID.value = fornitore.id;
   isDropdownOpen.value = false 
   setTimeout(() => {
     isAlertOpen.value = true
@@ -26,8 +26,8 @@ const closeModal = () => {
   isDropdownOpen.value = false 
 }
 
-const deleteAnagrafica = () => {
-    router.delete(route('admin.anagrafiche.destroy', { id: anagraficaID.value }),{
+const deleteFornitore = () => {
+    router.delete(route('admin.fornitori.destroy', { id: fornitoreID.value }),{
         preserveScroll: true,
         onSuccess: () => closeModal()
     })
@@ -48,7 +48,7 @@ const deleteAnagrafica = () => {
 
        <DropdownMenuItem>
         <Link
-          :href="route('admin.anagrafiche.edit', { id: anagrafica.id })"
+          :href="route('admin.fornitori.edit', { id: fornitore.id })"
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
@@ -56,7 +56,7 @@ const deleteAnagrafica = () => {
         </Link>
       </DropdownMenuItem> 
 
-      <DropdownMenuItem @click="handleDelete(anagrafica)" >
+      <DropdownMenuItem @click="handleDelete(fornitore)" >
         <Trash2 class="w-4 h-4 text-xs" />
         Elimina
       </DropdownMenuItem>
@@ -66,9 +66,9 @@ const deleteAnagrafica = () => {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere eliminare questa anagrafica?"
-    description="Questa azione non è reversibile. Eliminerà l'anagrafica e tutti i dati ad essa associati."
-    @confirm="deleteAnagrafica"
+    title="Sei sicuro di volere eliminare questo fornitore?"
+    description="Questa azione non è reversibile. Eliminerà il fornitore e tutti i dati ad esso associati."
+    @confirm="deleteFornitore"
   />
 
 </template>

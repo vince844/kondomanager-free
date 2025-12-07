@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Anagrafiche;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Anagrafica\AnagraficaIndexRequest;
 use App\Http\Requests\Anagrafica\CreateAnagraficaRequest;
 use App\Http\Requests\Anagrafica\UpdateAnagraficaRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
@@ -38,29 +39,25 @@ class AnagraficaController extends Controller
      * @param \Illuminate\Http\Request $request
      * @return \Illuminate\Http\Response
      */
-    public function index(Request $request): Response
+    public function index(AnagraficaIndexRequest $request): Response
     {   
 
-        $validated = $request->validate([
-            'page' => ['sometimes', 'integer', 'min:1'],
-            'per_page' => ['sometimes', 'integer', 'between:10,100'],
-            'nome' => ['sometimes', 'string', 'max:255'], 
-        ]);
+        $validated = $request->validated();
 
         $anagrafiche = Anagrafica::with(['condomini:id,nome'])
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
-            ->paginate($validated['per_page'] ?? 15)
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
     
         return Inertia::render('anagrafiche/AnagraficheList', [
             'anagrafiche' => AnagraficaResource::collection($anagrafiche)->resolve(),
             'meta' => [
                 'current_page' => $anagrafiche->currentPage(),
-                'last_page' => $anagrafiche->lastPage(),
-                'per_page' => $anagrafiche->perPage(),
-                'total' => $anagrafiche->total(),
+                'last_page'    => $anagrafiche->lastPage(),
+                'per_page'     => $anagrafiche->perPage(),
+                'total'        => $anagrafiche->total(),
             ],
             'filters' => $request->only(['nome']) 
         ]);

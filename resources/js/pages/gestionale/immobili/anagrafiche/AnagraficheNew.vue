@@ -177,23 +177,24 @@ const submit = () => {
                 <div class="sm:col-span-3">
                   <Label for="quota">Quota</Label>
 
-                    <HoverCard>
-                      <HoverCardTrigger as-child>
-                        <button type="button" class="cursor-pointer">
-                          <Info class="ml-1 w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent class="w-80 z-50">
-                        <div class="flex justify-between space-x-4">
-                          <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">Quota anagrafica</h4>
-                            <p class="text-sm">
-                             In questo campo puoi inserire la quota di proprietà dell'anagrafica
-                            </p>
-                          </div>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="flex justify-between space-x-4">
+                        <div class="space-y-1">
+                          <h4 class="text-sm font-semibold">Quota anagrafica</h4>
+                          <p class="text-sm">
+                            In questo campo puoi inserire la quota di proprietà dell'anagrafica
+                          </p>
                         </div>
-                      </HoverCardContent>
-                    </HoverCard>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                  
                   <Input
                     id="quota" 
                     placeholder="Quota anagrafica" 

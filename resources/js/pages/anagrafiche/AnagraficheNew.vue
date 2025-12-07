@@ -44,7 +44,7 @@ const documents = [
   }
 ];
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const form = useForm({
     nome: '',
@@ -108,14 +108,14 @@ const submit = () => {
         </div>
 
         <!-- Form card -->
-        <div class="bg-white dark:bg-muted rounded shadow-sm p-4 sm:p-6 border space-y-6">
+        <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3">
 
           <!-- Section: Dati anagrafici -->
-          <div class="space-y-1">
-            <h3 class="text-lg font-medium text-gray-900">Dati anagrafici</h3>
-            <p class="text-sm text-gray-500">Specifica i dati generici dell'anagrafica</p>
+          <div class="pt-3">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
+            <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati anagrafici generici dell'anagrafica</p>
           </div>
-          <Separator />
+          <Separator class="my-4"/>
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -162,11 +162,12 @@ const submit = () => {
           </div>
 
           <!-- Section: Dati fiscali -->
-          <div class="space-y-1">
-            <h3 class="text-lg font-medium text-gray-900">Dati fiscali</h3>
-            <p class="text-sm text-gray-500">Specifica i dati fiscali dell'anagrafica</p>
+          <div class="pt-3">
+            <h3 class="text-lg font-medium leading-6 text-gray-900">Dati fiscali</h3>
+            <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati fiscali dell'anagrafica</p>
           </div>
-          <Separator />
+          
+          <Separator class="my-4" />
 
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -193,6 +194,7 @@ const submit = () => {
                 v-model="form.scadenza_documento"
                 class="w-full"
                 format="dd/MM/yyyy"
+                position="left" 
                 locale="it"
                 :enable-time-picker="false"
                 auto-apply
@@ -219,6 +221,7 @@ const submit = () => {
                 v-model="form.data_nascita"
                 class="w-full"
                 format="dd/MM/yyyy"
+                position="left" 
                 locale="it"
                 :enable-time-picker="false"
                 auto-apply
