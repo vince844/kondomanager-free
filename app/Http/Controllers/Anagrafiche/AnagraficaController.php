@@ -15,7 +15,6 @@ use App\Traits\HandleFlashMessages;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Response;
 
@@ -75,7 +74,7 @@ class AnagraficaController extends Controller
     public function create(): Response
     {
         return Inertia::render('anagrafiche/AnagraficheNew', [
-            'buildings' => CondominioResource::collection(Condominio::all())
+            'condomini' => CondominioResource::collection(Condominio::all())
         ]);
     }
 
@@ -104,7 +103,7 @@ class AnagraficaController extends Controller
             DB::beginTransaction();
 
             $anagrafica = Anagrafica::create($validated);
-            $anagrafica->condomini()->attach($validated['buildings']);
+            $anagrafica->condomini()->attach($validated['condomini']);
 
             DB::commit();
 
@@ -146,13 +145,13 @@ class AnagraficaController extends Controller
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Inertia\Response
      */
-    public function edit(Anagrafica $anagrafiche): Response
+    public function edit(Anagrafica $anagrafica): Response
     {
         
-       $anagrafiche->loadMissing(['condomini']);
+       $anagrafica->loadMissing(['condomini']);
 
        return Inertia::render('anagrafiche/AnagraficheEdit', [
-            'anagrafica'  => new EditAnagraficaResource($anagrafiche),
+            'anagrafica'  => new EditAnagraficaResource($anagrafica),
             'condomini'   => CondominioResource::collection(Condominio::all())
        ]);
        
@@ -173,7 +172,7 @@ class AnagraficaController extends Controller
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafiche): RedirectResponse
+    public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
 
         $validated = $request->validated(); 
@@ -182,8 +181,8 @@ class AnagraficaController extends Controller
 
             DB::beginTransaction();
 
-            $anagrafiche->update($validated);
-            $anagrafiche->condomini()->sync($validated['condomini']);
+            $anagrafica->update($validated);
+            $anagrafica->condomini()->sync($validated['condomini']); 
 
             DB::commit();
 
@@ -217,10 +216,10 @@ class AnagraficaController extends Controller
      * @param  \App\Models\Anagrafica  $anagrafiche
      * @return \Illuminate\Http\RedirectResponse
      */
-    public function destroy(Anagrafica $anagrafiche): RedirectResponse
+    public function destroy(Anagrafica $anagrafica): RedirectResponse
     {
         // Check if the anagrafica has any condomini associated with it
-        if ($anagrafiche->condomini()->exists()) {
+        if ($anagrafica->condomini()->exists()) {
             return back()->with(
                 $this->flashError(__('anagrafiche.anagrafica_has_building'))
             );
@@ -228,7 +227,7 @@ class AnagraficaController extends Controller
     
         try {
 
-            $anagrafiche->delete();
+            $anagrafica->delete();
 
             return back()->with(
                 $this->flashSuccess(__('anagrafiche.success_delete_anagrafica'))

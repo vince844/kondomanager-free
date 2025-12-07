@@ -5,8 +5,12 @@ namespace App\Rules;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Translation\PotentiallyTranslatedString;
 
+/**
+ * Validates that an email or PEC is unique across multiple tables.
+ * Checks specified columns in multiple database tables to ensure email uniqueness.
+ * @since v1.8.0
+ */
 class UniqueEmailAcrossTables implements ValidationRule
 {
     public function __construct(
@@ -15,15 +19,14 @@ class UniqueEmailAcrossTables implements ValidationRule
     ) {}
 
     /**
-     * Controlla che l’email (o PEC) non esista già in nessuna delle tabelle/colonne configurate.
+     * Check if email exists in any configured table/column.
      *
-     * @param  string  $attribute Nome del campo (es. "email")
-     * @param  mixed   $value Valore da validare
-     * @param  Closure(string): PotentiallyTranslatedString  $fail
+     * @param string $attribute Field name being validated
+     * @param mixed $value Email/PEC value to check
+     * @param Closure $fail Callback to fail validation
      */
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        // tabella => colonne da controllare
         $tablesToCheck = [
             'anagrafiche' => ['email', 'pec'],
             'fornitori'   => ['email', 'pec'],
@@ -34,14 +37,13 @@ class UniqueEmailAcrossTables implements ValidationRule
             foreach ($columns as $column) {
                 $query = DB::table($table)->where($column, $value);
 
-                // Se stiamo aggiornando un record, escludiamo quell’id dalla ricerca
                 if ($this->ignoreId !== null && $this->ignoreTable === $table) {
                     $query->where('id', '!=', $this->ignoreId);
                 }
 
                 if ($query->exists()) {
                     $fail(__('validation.custom.email.unique_email_across_tables'));
-                    return; 
+                    return;
                 }
             }
         }

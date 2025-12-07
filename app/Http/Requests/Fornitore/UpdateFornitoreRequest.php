@@ -10,7 +10,7 @@ use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Illuminate\Support\Str;
 
-class CreateFornitoreRequest extends FormRequest
+class UpdateFornitoreRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -28,9 +28,9 @@ class CreateFornitoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'ragione_sociale'          => 'required|string|max:255|unique:'.Fornitore::class.',ragione_sociale',
-            'partita_iva'              => 'nullable|string|max:20|unique:'.Fornitore::class.',partita_iva',
-            'codice_fiscale'           => 'nullable|string|max:255|unique:'.Fornitore::class.',codice_fiscale',
+            'ragione_sociale'          => ['required','string','max:255',Rule::unique(Fornitore::class)->ignore($this->fornitore->id)],
+            'partita_iva'              => ['nullable','string','max:20',Rule::unique(Fornitore::class)->ignore($this->fornitore->id)],
+            'codice_fiscale'           => ['nullable','string','max:255',Rule::unique(Fornitore::class)->ignore($this->fornitore->id)],
             'nazione'                  => 'nullable|string|max:100',
             'indirizzo'                => 'nullable|string|max:255',
             'comune'                   => 'nullable|string|max:100', 
@@ -39,8 +39,8 @@ class CreateFornitoreRequest extends FormRequest
             'telefono'                 => 'nullable|string|max:20',
             'cellulare'                => 'nullable|string|max:20',
             'fax'                      => 'nullable|string|max:20',
-            'email'                    => ['nullable','email','max:255',new UniqueEmailAcrossTables()],
-            'pec'                      => ['nullable','email','max:255','different:email',new UniqueEmailAcrossTables()],
+            'email'                    => ['nullable','email','max:255',new UniqueEmailAcrossTables($this->fornitore->id, 'fornitori')],
+            'pec'                      => ['nullable','email','max:255','different:email',new UniqueEmailAcrossTables($this->fornitore->id, 'fornitori')],
             'sito_web'                 => 'nullable|string|max:255',
             'note'                     => 'nullable|string',
             'iscrizione_cciaa'         => 'nullable|string|max:100',
@@ -67,5 +67,4 @@ class CreateFornitoreRequest extends FormRequest
             'pec'                   => $this->pec ? Str::lower($this->input('pec')) : null,
         ]);
     }
-
 }

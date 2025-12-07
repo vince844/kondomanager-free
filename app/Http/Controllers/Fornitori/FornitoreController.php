@@ -5,16 +5,18 @@ namespace App\Http\Controllers\Fornitori;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
 use App\Http\Requests\Fornitore\FornitoreIndexRequest;
+use App\Http\Requests\Fornitore\UpdateFornitoreRequest;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\Fornitore\Categorie\CategoriaFornitoreResource;
+use App\Http\Resources\Fornitore\EditFornitoreResource;
 use App\Http\Resources\Fornitore\FornitoreResource;
 use App\Models\Anagrafica;
 use App\Models\CategoriaFornitore;
 use App\Models\Fornitore;
 use App\Traits\HandleFlashMessages;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\RedirectResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
@@ -23,13 +25,20 @@ class FornitoreController extends Controller
     use HandleFlashMessages;
     
     /**
-     * Display a listing of the resource.
+     * Display paginated list of fornitori with filtering options.
+     * 
+     * Returns fornitori data for the index page with optional ragione_sociale filter.
+     * Includes pagination metadata and current filters for the frontend.
+     *
+     * @param FornitoreIndexRequest $request Validated request with filters
+     * @return Response Inertia response with fornitori data and pagination info
+     * @since v1.8.0
      */
     public function index(FornitoreIndexRequest $request): Response
     {
         $validated = $request->validated();
 
-        $fornitori = Fornitore::with(['referenti:id,nome'])
+        $fornitori = Fornitore::with(['referenti:id,nome,indirizzo'])
             ->when($validated['ragione_sociale'] ?? false, function ($query, $ragioneSociale) {
                 $query->where('ragione_sociale', 'like', "%{$ragioneSociale}%");
             })
@@ -49,7 +58,11 @@ class FornitoreController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new fornitore.
+     * Returns an Inertia response with data needed for the create form.
+     *
+     * @return Response
+     * @since v1.8.0
      */
     public function create(): Response
     {
@@ -60,9 +73,15 @@ class FornitoreController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a newly created fornitore in storage.
+     * Creates a new fornitore record and attaches related referenti.
+     *
+     * @param CreateFornitoreRequest $request Validated request data
+     * @param Fornitore $fornitore Fornitore model instance
+     * @return RedirectResponse Redirects to index with success/error message
+     * @since v1.8.0
      */
-    public function store(CreateFornitoreRequest $request, Fornitore $fornitore)
+    public function store(CreateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
     {
 
         $data = $request->validated();
@@ -102,30 +121,83 @@ class FornitoreController extends Controller
      */
     public function show(Fornitore $fornitore)
     {
-        //
+     
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified fornitore.
+     * Returns data needed for the edit form including related categories.
+     *
+     * @param Fornitore $fornitore Fornitore to edit
+     * @return Response
+     * @since v1.8.0
      */
-    public function edit(Fornitore $fornitore)
+    public function edit(Fornitore $fornitore): Response
     {
-        //
+        return Inertia::render('fornitori/FornitoriEdit', [
+            'fornitore'   => new EditFornitoreResource($fornitore),
+            'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all())
+       ]);
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified fornitore in storage.
+     * Updates fornitore data and redirects with success/error message.
+     *
+     * @param UpdateFornitoreRequest $request Validated request data
+     * @param Fornitore $fornitore Fornitore to update
+     * @return RedirectResponse Redirects to index with message
+     * @since v1.8.0
      */
-    public function update(Request $request, Fornitore $fornitore)
+    public function update(UpdateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
     {
-        //
+        $validated = $request->validated(); 
+
+         try {
+
+            $fornitore->update($validated);
+
+            return to_route('admin.fornitori.index')->with(
+                $this->flashSuccess(__('fornitori.success_update_fornitore'))
+            );
+
+        } catch (\Exception $e) {
+
+            Log::error('Error updating fornitore: ' . $e->getMessage());
+
+            return to_route('admin.fornitori.index')->with(
+                $this->flashError(__('fornitori.error_update_fornitore'))
+            );
+        }
+
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Remove the specified fornitore from storage.
+     * Deletes a fornitore record and returns appropriate response.
+     *
+     * @param Fornitore $fornitore Fornitore to delete
+     * @return RedirectResponse Redirects back with success/error message
+     * @since v1.8.0
      */
-    public function destroy(Fornitore $fornitore)
+    public function destroy(Fornitore $fornitore): RedirectResponse
     {
-        //
+        try {
+
+            $fornitore->delete();
+
+            return back()->with(
+                $this->flashSuccess(__('fornitori.success_delete_fornitore'))
+            );
+
+        } catch (\Exception $e) {
+
+            Log::error('Error deleting fornitore: ' . $e->getMessage());
+
+            return back()->with(
+                $this->flashError(__('fornitori.error_delete_fornitore'))
+            );
+
+        }
     }
 }

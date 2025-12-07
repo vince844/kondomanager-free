@@ -10,54 +10,113 @@ export const columns: ColumnDef<Fornitore>[] = [
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ragione sociale' }), 
     cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('ragione_sociale')),
   },
-/*   {
+  {
     accessorKey: 'indirizzo',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Indirizzo' }), 
-    cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
-  }, */
-/*   {
-    accessorKey: 'condomini',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
-    
+    header: ({ column }) =>
+      h(DataTableColumnHeader, { column, title: 'Indirizzo' }),
+
     cell: ({ row }) => {
-      const condomini = row.original.condomini ?? [];
+      const f = row.original as Fornitore
+
+      // Prendi i dati (o stringa vuota)
+      const indirizzo = f.indirizzo?.trim() || ''
+      const cap = f.cap?.trim() || ''
+      const comune = f.comune?.trim() || ''
+      const provincia = f.provincia?.trim() || ''
+
+      // Costruisci la parte "CAP Comune"
+      const capComune = [cap, comune].filter(Boolean).join(' ')
+
+      // Costruisci la parte "provincia" con parentesi
+      const prov = provincia ? `(${provincia})` : ''
+
+      // Costruisci l'indirizzo completo senza buchi
+      const dettagli = [indirizzo, capComune, prov]
+        .filter(Boolean)   // rimuove stringhe vuote
+        .join(', ')        // unisce correttamente
+
+      // Se non c'è nessun dato valido → "—"
+      return h('div', { class: 'flex space-x-2' }, [
+        h('span', dettagli || '')
+      ])
+    },
+  },
+  {
+    accessorKey: 'partita_iva',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Partita IVA' }), 
+    cell: ({ row }) => h('div', { class: 'uppercase' }, row.getValue('partita_iva')),
+  },
+  {
+    accessorKey: 'codice_fiscale',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Codice fiscale' }), 
+    cell: ({ row }) => h('div', { class: 'uppercase' }, row.getValue('codice_fiscale')),
+  },
+  {
+    accessorKey: 'referenti',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Referenti' }),
   
-      if (!Array.isArray(condomini) || condomini.length === 0) {
+    cell: ({ row }) => {
+
+      const anagrafiche = row.original.referenti;
+    
+      if (!Array.isArray(anagrafiche) || anagrafiche.length === 0) {
         return '—';
       }
-  
+    
       const maxAvatars = 3;
-      const visibleCondomini = condomini.slice(0, maxAvatars);
-      const remainingCount = condomini.length - maxAvatars;
-  
-      const createAvatar = (text: string, index: number, tooltip?: string) => h('div', {
-        key: `${text}-${index}`,
-        title: tooltip ?? text,
-        class: 'absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold flex items-center justify-center border border-white shadow',
-        style: `z-index: ${10 + index}; left: ${index * 18}px; top: 50%; transform: translateY(-50%);`
-      }, text);
-  
-      const avatars = visibleCondomini.map((option, index) => {
-        const initials = (option.nome || '?')
-          .split(' ')
+      const visibleAnagrafiche = anagrafiche.slice(0, maxAvatars);
+      const remainingCount = anagrafiche.length - maxAvatars;
+    
+      const avatars = visibleAnagrafiche.map((item, index) => {
+        const initials = item.nome
+          ?.split(' ')
           .map(word => word[0]?.toUpperCase())
           .join('')
-          .slice(0, 2);
-        return createAvatar(initials, index, option.nome);
+          .slice(0, 2) || '?';
+    
+          const tooltip = item.nome || '—';
+    
+        return h('div', {
+          key: `${item.nome}-${index}`,
+          title: tooltip,
+          class: `
+            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
+            flex items-center justify-center border border-white shadow
+          `,
+          style: `
+            z-index: ${10 + index};
+            left: ${index * 18}px;
+            top: 50%;
+            transform: translateY(-50%);
+          `,
+        }, initials);
       });
-  
+    
       if (remainingCount > 0) {
-        avatars.push(createAvatar(`+${remainingCount}`, visibleCondomini.length, `+${remainingCount} altri condomini`));
+        avatars.push(
+          h('div', {
+            key: 'more-anagrafiche',
+            title: `+${remainingCount} altre persone`,
+            class: `
+              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
+              flex items-center justify-center border border-white shadow
+            `,
+            style: `
+              z-index: ${10 + maxAvatars};
+              left: ${maxAvatars * 18}px;
+              top: 50%;
+              transform: translateY(-50%);
+            `,
+          }, `+${remainingCount}`)
+        );
       }
-  
-      return h('div', { class: 'relative flex items-center h-10' }, avatars);
+    
+      return h('div', {
+        class: 'relative flex items-center h-10',
+      }, avatars);
     },
-  
-    filterFn: (row, id, value) => {
-      const condomini = row.original.condomini ?? [];
-      return condomini.some((condominio: Building) => value.includes(condominio.id));
-    }
-  }, */
+
+  },
   {
     id: 'actions',
     enableHiding: false,

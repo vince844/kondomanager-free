@@ -28,6 +28,6 @@ export interface Fornitore {
   codice_sia: string
   codice_cuc: string
   codice_sepa: string
-  referente: Anagrafica[] 
+  referenti: Anagrafica[] 
 }
 

@@ -18,7 +18,7 @@ import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
-  buildings: Building[];
+  condomini: Building[];
 }>();  
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -61,7 +61,7 @@ const form = useForm({
     telefono: '',
     cellulare: '',
     note: '',
-    buildings: [],
+    condomini: [],
 });
 
 const submit = () => {
@@ -235,9 +235,9 @@ const submit = () => {
               <v-select
                 multiple
                 class="w-full"
-                :options="buildings"
+                :options="condomini"
                 label="nome"
-                v-model="form.buildings"
+                v-model="form.condomini"
                 :reduce="(option: Building) => option.id"
                 placeholder="Seleziona condomini"
               />
@@ -261,6 +261,5 @@ const submit = () => {
     </div>
   </AppLayout>
 </template>
-
 
 <style src="vue-select/dist/vue-select.css"></style>

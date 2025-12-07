@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -18,17 +18,17 @@ import vSelect from "vue-select";
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import type { BreadcrumbItem } from '@/types';
-import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
+import type {Fornitore } from '@/types/fornitori';
 
 const props = defineProps<{
-  anagrafiche: Anagrafica[];
+  fornitore: Fornitore;
   categorie: Categoria[];
 }>()
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
-      title: 'Elenco fornitori',
+      title: 'Modifica fornitore',
       href: '/fornitori',
   }
 ];
@@ -36,30 +36,30 @@ const breadcrumbs: BreadcrumbItem[] = [
 const { generateRoute } = usePermission();
 
 const form = useForm({
-    ragione_sociale: '',
-    codice_fiscale: '',
-    partita_iva: '',
-    nazione: 'Italia',
-    indirizzo: '',
-    comune: '',
-    provincia: '',
-    cap: '',
-    iscrizione_cciaa: '',
-    data_iscrizione_cciaa: '',
-    capitale_sociale: '',
-    categoria_id: '',
-    codice_ateco: '',
-    certificazione_iso: false,
-    numero_iscrizione_ordine: '',
-    note: '',
-    telefono: '',
-    cellulare: '',
-    fax: '',
-    email: '',
-    pec: '',
-    sito_web: '',
-    anagrafica_id: ''
+    ragione_sociale: props.fornitore?.ragione_sociale,
+    codice_fiscale: props.fornitore?.codice_fiscale,
+    partita_iva: props.fornitore?.partita_iva,
+    nazione: props.fornitore?.nazione,
+    indirizzo: props.fornitore?.indirizzo,
+    comune: props.fornitore?.comune,
+    provincia: props.fornitore?.provincia,
+    cap: props.fornitore?.cap,
+    iscrizione_cciaa: props.fornitore?.iscrizione_cciaa,
+    data_iscrizione_cciaa: props.fornitore?.data_iscrizione_cciaa,
+    capitale_sociale: props.fornitore?.capitale_sociale,
+    categoria_id: props.fornitore?.categoria_id,
+    codice_ateco: props.fornitore?.codice_ateco,
+    certificazione_iso: props.fornitore?.certificazione_iso,
+    numero_iscrizione_ordine: props.fornitore?.numero_iscrizione_ordine,
+    note: props.fornitore?.note,
+    telefono: props.fornitore?.telefono,
+    cellulare: props.fornitore?.cellulare,
+    fax: props.fornitore?.fax,
+    email: props.fornitore.email,
+    pec: props.fornitore?.pec,
+    sito_web: props.fornitore?.sito_web,
 });
+
 
 const moneyOptions = ref({
   prefix: '',              
@@ -73,11 +73,8 @@ const moneyOptions = ref({
 })
 
 const submit = () => {
-    form.post(route(generateRoute('fornitori.store')), {
-        preserveScroll: true,
-   /*      onSuccess: () => {
-            form.reset()
-        } */
+    form.put(route(generateRoute('fornitori.update'), {id: props.fornitore.id}), {
+        preserveScroll: true
     });
 };
 
@@ -85,15 +82,15 @@ const submit = () => {
 
 <template>
 
-  <Head title="Crea nuovo fornitore" />
+  <Head title="Nodifica fornitore" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
       <Heading 
-        title="Crea fornitore" 
-        description="Compila il seguente modulo per la creazione di un nuovo fornitore" 
+        title="Modifica fornitore" 
+        description="Compila il seguente modulo per modificare i dati del fornitore" 
       />
 
       <form class="space-y-2" @submit.prevent="submit">
@@ -141,35 +138,6 @@ const submit = () => {
     
             </div>
 
-             <div class="sm:col-span-3">
-              <Label for="tipologia">Referente</Label>
-              <v-select
-                class="w-full"
-                :options="anagrafiche"
-                v-model="form.anagrafica_id"
-                :reduce="(d: Anagrafica) => d.id"
-                label="nome"
-                placeholder="Seleziona referente"
-              >
-                <!-- Dropdown options: stacked layout -->
-                <template #option="{ nome, indirizzo }">
-                  <div class="flex flex-col">
-                    <span class="font-medium">{{ nome }}</span>
-                    <span class="text-sm text-gray-500">{{ indirizzo }}</span>
-                  </div>
-                </template>
-
-                <!-- Selected option: single-line layout -->
-                <template #selected-option="{ nome, indirizzo }">
-                  <div class="flex items-center gap-2">
-                    <span class="font-medium">{{ nome }}</span>
-                    <span class="text-gray-500 text-sm">– {{ indirizzo }}</span>
-                  </div>
-                </template>
-              </v-select>
-
-              <InputError :message="form.errors.anagrafica_id" />
-            </div>
           </div> 
 
           <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">

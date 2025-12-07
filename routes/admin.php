@@ -36,9 +36,13 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
     Route::get('/fetch-categorie-eventi', EventiFetchCategorieController::class)
         ->name('categorie.eventi');
     
-    Route::resource('anagrafiche', AnagraficaController::class);
+    Route::resource('anagrafiche', AnagraficaController::class)->parameters([
+        'anagrafiche' => 'anagrafica'
+    ]);
 
-    Route::resource('fornitori', FornitoreController::class);
+    Route::resource('fornitori', FornitoreController::class)->parameters([
+        'fornitori' => 'fornitore'
+    ]);
 
     Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
    
