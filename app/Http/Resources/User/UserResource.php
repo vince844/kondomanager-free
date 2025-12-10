@@ -22,9 +22,7 @@ class UserResource extends JsonResource
             'suspended_at'       => $this->suspended_at,
             'email_verified_at'  => $this->email_verified_at,
             'roles'              => $this->getRoleNames(),
-         /*    'permissions'        => $this->getAllPermissions()->pluck('name'), */
-            'permissions'        => PermissionResource::collection($this->getAllPermissions()),
-    
+            'permissions'        => $this->getAllPermissions()->pluck('name'),
         ];
     }
 }
