@@ -4,7 +4,7 @@ import { ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { List, Plus, LoaderCircle, Info} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { usePermission } from '@/composables/permissions';
 import vSelect from "vue-select";
@@ -126,7 +127,7 @@ const submit = () => {
           <Separator class="my-4" />
 
           <!--  Ragione sociale field -->
-          <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+          <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
             <div class="sm:col-span-3">
               <Label for="ragione_sociale">Ragione sociale</Label>
               <Input 
@@ -141,8 +142,33 @@ const submit = () => {
     
             </div>
 
-             <div class="sm:col-span-3">
-              <Label for="tipologia">Referente</Label>
+            <div class="sm:col-span-3 pt-1">
+              <div class="flex items-center text-sm font-medium gap-x-2 pb-2">
+                  <Label for="referente">Referente</Label>
+
+                  <HoverCard>
+                      <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                          <Info class="w-4 h-4 text-muted-foreground" />
+                      </button>
+                      </HoverCardTrigger>
+                      <HoverCardContent class="w-80">
+                      <div class="flex justify-between space-x-4">
+                          <div class="space-y-1">
+                          <h4 class="text-sm font-semibold">
+                              Referente
+                          </h4>
+                          <p class="text-sm">
+                              Puoi associare l'anagrafica del referente al fornitore, 
+                              se l'anagrafica è associata ad un utente allora potrà accedere al portale online per visualizzare i dati associati a questo fornitore.
+                              Qualora volessi associare ulteriori referenti, potrai farlo nella pagina dei dettagli del fornitore.
+                          </p>
+                          </div>
+                      </div>
+                      </HoverCardContent>
+                  </HoverCard>
+              </div>
+
               <v-select
                 class="w-full"
                 :options="anagrafiche"
@@ -494,7 +520,7 @@ const submit = () => {
             <div class="sm:col-span-3">
               <Label for="tipologia_ordine">Categoria fornitore</Label>
                <v-select
-                class="w-full"
+                class="w-full py-1"
                 :options="categorie"
                 v-model="form.categoria_id"
                 :reduce="(d: Categoria) => d.id"

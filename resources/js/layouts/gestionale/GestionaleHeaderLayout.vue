@@ -24,8 +24,6 @@ withDefaults(defineProps<Props>(), {
             <template #breadcrumb-esercizio>
                 <slot name="breadcrumb-esercizio" />
             </template>
-
-            
         </AppHeader>
         <AppContent>
             <slot />

@@ -6,12 +6,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard, ChevronRight } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard, ChevronRight, BriefcaseBusiness, UsersRound } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -49,8 +49,8 @@ const mainNavItems: NavItem[] = [
         title: 'Rubrica',
         icon: SquareLibrary,
         children: [
-            { type: 'link', title: 'Anagrafiche', href: generatePath('anagrafiche'), permissions: [Permission.VIEW_ANAGRAFICHE] },
-            { type: 'link', title: 'Fornitori', href: generatePath('fornitori'), permissions: [Permission.VIEW_ANAGRAFICHE] },
+            { type: 'link', title: 'Anagrafiche', icon: UsersRound, href: generatePath('anagrafiche'), permissions: [Permission.VIEW_ANAGRAFICHE] },
+            { type: 'link', title: 'Fornitori', icon: BriefcaseBusiness, href: generatePath('fornitori'), permissions: [Permission.VIEW_ANAGRAFICHE] },
         ]
     },
     { type: 'link', title: 'Bacheca', href: generatePath('comunicazioni'), icon: LayoutDashboard, permissions: [Permission.VIEW_COMUNICAZIONI] },
@@ -214,9 +214,10 @@ const isMobileItemExpanded = (title: string) =>
                                             v-for="child in getAccessibleChildren(item)"
                                             :key="child.title"
                                             :href="child.href"
-                                            class="block px-3 py-2 rounded-md text-sm hover:bg-accent"
+                                            class="flex items-center text-sm font-medium px-3 py-2 rounded-md text-sm hover:bg-accent"
                                             :class="isCurrentRoute(child.href) ? 'bg-accent text-accent-foreground' : ''"
                                         >
+                                         <component v-if="child.icon" :is="child.icon" class="mr-2 h-4 w-4" />
                                             {{ child.title }}
                                         </Link>
                                     </nav>

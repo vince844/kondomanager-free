@@ -1,4 +1,5 @@
 import { Anagrafica } from './anagrafiche';
+import { Categoria } from './categorie';
 
 export interface Fornitore {
   id: string
@@ -13,7 +14,7 @@ export interface Fornitore {
   iscrizione_cciaa: string
   data_iscrizione_cciaa: string
   codice_ateco: string
-  numero_iscrizione_ordine: string
+  numero_ordine: string
   categoria_id: string
   certificazione_iso: boolean
   capitale_sociale: string
@@ -28,6 +29,7 @@ export interface Fornitore {
   codice_sia: string
   codice_cuc: string
   codice_sepa: string
-  referenti: Anagrafica[] 
+  referenti: Anagrafica[]
+  categoria: Categoria
 }
 

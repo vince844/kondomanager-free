@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\User;
 
+use App\Http\Resources\PermissionResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,7 +22,9 @@ class UserResource extends JsonResource
             'suspended_at'       => $this->suspended_at,
             'email_verified_at'  => $this->email_verified_at,
             'roles'              => $this->getRoleNames(),
-            'permissions'        => $this->getAllPermissions()->pluck('name'),
+         /*    'permissions'        => $this->getAllPermissions()->pluck('name'), */
+            'permissions'        => PermissionResource::collection($this->getAllPermissions()),
+    
         ];
     }
 }

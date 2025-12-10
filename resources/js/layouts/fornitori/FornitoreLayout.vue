@@ -5,32 +5,31 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { LinkItem } from '@/types';
-import type { Building } from '@/types/buildings';
+import type { Fornitore } from '@/types/fornitori';
 
 const page = usePage<{
-  condominio: Building;
+  fornitore: Fornitore;
 }>();
 
-const condominio = computed(() => page.props.condominio);
-
+const fornitore = computed(() => page.props.fornitore);
 const { generatePath } = usePermission();
 
 const topbarNavItems: LinkItem[] = [
-  { 
+  {
     type: 'link',
     title: 'Dettagli',
-    href:  generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
+    href:  generatePath('fornitori/:fornitore', { fornitore: fornitore.value.id }),
   },
   {
     type: 'link',
-    title: 'Palazzine',
-    href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
+    title: 'Referenti',
+    href:  generatePath('fornitori/:fornitore/anagrafiche', { fornitore: fornitore.value.id }),
   },
-  {
+  {   
     type: 'link',
-    title: 'Scale',
-    href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
-  }
+    title: 'Documenti',
+    href:  generatePath('fornitori/:fornitore/documenti', { fornitore: fornitore.value.id }),
+  }, 
 ];
 
 const currentPath = window.location.pathname;
@@ -45,7 +44,15 @@ const currentPath = window.location.pathname;
         v-for="item in topbarNavItems"
         :key="item.href"
         variant="ghost"
-        :class="['justify-start', { 'bg-muted': currentPath.startsWith(item.href) }]"
+        :class="[
+          'justify-start',
+          {
+            'bg-muted':
+              item.href === generatePath('fornitori/:fornitore', { fornitore: fornitore.id })
+                ? currentPath === item.href
+                : currentPath === item.href || currentPath.startsWith(item.href + '/')
+          }
+        ]"
         as-child
       >
         <Link :href="item.href">

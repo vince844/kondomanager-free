@@ -38,7 +38,7 @@ class FornitoreController extends Controller
     {
         $validated = $request->validated();
 
-        $fornitori = Fornitore::with(['referenti:id,nome,indirizzo'])
+        $fornitori = Fornitore::with(['referenti:id,nome,indirizzo', 'categoria'])
             ->when($validated['ragione_sociale'] ?? false, function ($query, $ragioneSociale) {
                 $query->where('ragione_sociale', 'like', "%{$ragioneSociale}%");
             })
@@ -119,8 +119,14 @@ class FornitoreController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Fornitore $fornitore)
+    public function show(Fornitore $fornitore): Response
     {
+
+        $fornitore->loadMissing('referenti', 'categoria');
+
+        return Inertia::render('fornitori/FornitoriView', [
+            'fornitore' => new FornitoreResource($fornitore),
+        ]);
      
     }
 

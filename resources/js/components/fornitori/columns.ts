@@ -1,14 +1,29 @@
 import { h } from 'vue'
+import { Link } from '@inertiajs/vue3';
 import DropdownAction from '@/components/fornitori/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/fornitori/DataTableColumnHeader.vue';
+import { usePermission } from "@/composables/permissions";
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Fornitore } from '@/types/fornitori';
+
+const { generateRoute } = usePermission();
 
 export const columns: ColumnDef<Fornitore>[] = [
   {
     accessorKey: 'ragione_sociale',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ragione sociale' }), 
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('ragione_sociale')),
+
+    cell: ({ row }) => {
+
+      const fornitore = row.original
+
+      return h('div', { class: 'flex items-center space-x-2' }, [
+          h(Link, {
+            href: route(generateRoute('fornitori.show'), { fornitore: fornitore.id }),
+            class: 'hover:text-zinc-500 font-bold transition-colors duration-150',
+          }, () => fornitore.ragione_sociale)
+        ]);
+    }
   },
   {
     accessorKey: 'indirizzo',
@@ -35,7 +50,6 @@ export const columns: ColumnDef<Fornitore>[] = [
         .filter(Boolean)   // rimuove stringhe vuote
         .join(', ')        // unisce correttamente
 
-      // Se non c'è nessun dato valido → "—"
       return h('div', { class: 'flex space-x-2' }, [
         h('span', dettagli || '')
       ])

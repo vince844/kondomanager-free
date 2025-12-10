@@ -87,10 +87,10 @@ Route::prefix('/gestionale/{condominio}')
         ]); 
     
     Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/associa-tabella', AssociaTabellaController::class)
-    ->name('esercizi.piani-conti.conti.associa-tabella');
+        ->name('esercizi.piani-conti.conti.associa-tabella');
 
     Route::delete('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/dissocia-tabella/{tabella}', DissociaTabellaController::class)
-    ->name('esercizi.piani-conti.conti.dissocia-tabella');
+        ->name('esercizi.piani-conti.conti.dissocia-tabella');
 
     Route::resource('esercizi.piani-rate', PianoRateController::class)
         ->parameters([
