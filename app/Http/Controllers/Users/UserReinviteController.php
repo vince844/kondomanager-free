@@ -37,7 +37,7 @@ class UserReinviteController extends Controller
             $user->notify(new NewUserEmailNotification($user));
     
             return to_route('utenti.index')->with(
-                $this->flashSuccess(__('users.success_invite_user'))
+                $this->flashSuccess(__('users.success_send_user_invite'))
             );
 
         } catch (\Exception $e) {
@@ -45,7 +45,7 @@ class UserReinviteController extends Controller
             Log::error('Error reinviting user: ' . $e->getMessage());
 
             return to_route('utenti.index')->with(
-                $this->flashError(__('users.error_invite_user'))
+                $this->flashError(__('users.error_send_user_invite'))
             );
         
         }

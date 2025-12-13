@@ -9,6 +9,7 @@ use App\Models\Invito;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Notifications\InviteUserNotification;
+use App\Traits\HandleFlashMessages;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Exception;
@@ -18,6 +19,8 @@ use Inertia\Response;
 
 class InvitoController extends Controller
 {
+    use HandleFlashMessages;
+
     /**
      * Display a listing of the inviti.
      *
@@ -68,8 +71,8 @@ class InvitoController extends Controller
             DB::beginTransaction();
 
             $request->validate([
-                'emails' => 'required|array|min:1',  
-                'emails.*' => 'email|unique:inviti,email',  
+                'emails'    => 'required|array|min:1',  
+                'emails.*'  => 'email|unique:inviti,email',  
                 'buildings' => 'required|array', 
             ]);
 
@@ -77,9 +80,9 @@ class InvitoController extends Controller
             foreach ($request->emails as $email) {
                 
                 $invito = Invito::create([
-                    'email' => $email,
+                    'email'          => $email,
                     'building_codes' => $request->buildings,
-                    'expires_at' => Carbon::now()->addMinutes(60),
+                    'expires_at'     => Carbon::now()->addMinutes(60),
                 ]);
 
                 $invito->notify(new InviteUserNotification($invito));
@@ -88,12 +91,9 @@ class InvitoController extends Controller
 
             DB::commit();
 
-            return to_route('inviti.index')->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "Il nuovo invito è stato inviato con successo!"
-                ]
-            ]);
+            return to_route('inviti.index')->with(
+                $this->flashSuccess(__('users.success_send_user_invite'))
+            );
 
         } catch (Exception $e) {
             
@@ -101,12 +101,10 @@ class InvitoController extends Controller
 
             Log::error('Error sending invite: ' . $e->getMessage());
 
-            return to_route('inviti.index')->with([
-                'message' => [
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore durante l'invio dell'invito!"
-                ]
-            ]);
+            return to_route('utenti.index')->with(
+                $this->flashError(__('users.error_send_user_invite'))
+            );
+
         }
 
     }
@@ -131,23 +129,17 @@ class InvitoController extends Controller
 
             $inviti->delete();
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'success',
-                    'message' => "L'invito è stato eliminato con successo"
-                ]
-            ]);
+            return back()->with(
+                $this->flashSuccess(__('users.success_delete_user_invite'))
+            );
 
         } catch (\Exception $e) {
             
             Log::error('Error deleting invito: ' . $e->getMessage());
 
-            return back()->with([
-                'message' => [ 
-                    'type'    => 'error',
-                    'message' => "Si è verificato un errore nel tentativo di eliminare l'invito"
-                ]
-            ]);
+            return back()->with(
+                $this->flashError(__('users.error_delete_user_invite'))
+            );
         }
 
     }

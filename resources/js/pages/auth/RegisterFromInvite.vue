@@ -1,4 +1,5 @@
 <script setup lang="ts">
+    
 import InputError from '@/components/InputError.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
@@ -20,12 +21,18 @@ const form = useForm({
     password: '',
     password_confirmation: '',
 });
-
+/* 
 const submit = () => {
     form.post(route('register'), {
         onFinish: () => form.reset('password', 'password_confirmation'),
     });
+}; */
+const submit = () => {
+    form.post(route('invito.register.store'), {
+        onFinish: () => form.reset('password', 'password_confirmation'),
+    });
 };
+
 </script>
 
 <template>

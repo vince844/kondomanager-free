@@ -7,7 +7,6 @@ use App\Http\Requests\Settings\CreateImpostazioniGeneraliRequest;
 use App\Models\Condominio;
 use App\Settings\GeneralSettings;
 use App\Traits\HandleFlashMessages;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;

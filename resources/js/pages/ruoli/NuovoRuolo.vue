@@ -113,7 +113,7 @@ const submit = () => {
 
                 <div class="mb-4">
                     <label class="flex items-center space-x-2">
-                        <Checkbox v-model:checked="form.accessAdmin" />
+                        <Checkbox v-model="form.accessAdmin" />
                         <span class="font-medium">Dai accessso al layout amministratore</span>
 
                               <HoverCard>

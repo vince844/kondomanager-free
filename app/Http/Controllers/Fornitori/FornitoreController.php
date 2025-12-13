@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Fornitori;
 
+use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
 use App\Http\Requests\Fornitore\FornitoreIndexRequest;
@@ -140,6 +141,8 @@ class FornitoreController extends Controller
      */
     public function edit(Fornitore $fornitore): Response
     {
+        RedirectHelper::rememberUrl();
+
         return Inertia::render('fornitori/FornitoriEdit', [
             'fornitore'   => new EditFornitoreResource($fornitore),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all())
@@ -163,7 +166,8 @@ class FornitoreController extends Controller
 
             $fornitore->update($validated);
 
-            return to_route('admin.fornitori.index')->with(
+            return RedirectHelper::backOr(
+                route('admin.fornitori.index'),
                 $this->flashSuccess(__('fornitori.success_update_fornitore'))
             );
 
@@ -171,7 +175,8 @@ class FornitoreController extends Controller
 
             Log::error('Error updating fornitore: ' . $e->getMessage());
 
-            return to_route('admin.fornitori.index')->with(
+             return RedirectHelper::backOr(
+                route('admin.fornitori.index'),
                 $this->flashError(__('fornitori.error_update_fornitore'))
             );
         }

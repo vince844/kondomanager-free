@@ -1,10 +1,10 @@
 <script setup lang="ts">
 
-import { ref, watch, onMounted } from 'vue';
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Link, Head, useForm, usePage , router} from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { List, Plus, LoaderCircle, ArrowLeft} from 'lucide-vue-next';
 import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,10 @@ const breadcrumbs: BreadcrumbItem[] = [
   }
 ];
 
+const page = usePage();
+
+const backUrl = page.props.back_url as string || route('fornitori.index');
+
 const { generateRoute } = usePermission();
 
 const form = useForm({
@@ -50,7 +54,7 @@ const form = useForm({
     categoria_id: props.fornitore?.categoria_id,
     codice_ateco: props.fornitore?.codice_ateco,
     certificazione_iso: props.fornitore?.certificazione_iso,
-    numero_iscrizione_ordine: props.fornitore?.numero_iscrizione_ordine,
+    numero_iscrizione_ordine: props.fornitore?.numero_ordine,
     note: props.fornitore?.note,
     telefono: props.fornitore?.telefono,
     cellulare: props.fornitore?.cellulare,
@@ -82,7 +86,7 @@ const submit = () => {
 
 <template>
 
-  <Head title="Nodifica fornitore" />
+  <Head title="Modifica fornitore" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
@@ -105,11 +109,11 @@ const submit = () => {
 
           <Link
             as="button"
-             :href="route(generateRoute('fornitori.index'))"
+            @click="router.visit(backUrl)"
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
           >
-            <List class="w-4 h-4" />
-            <span>Elenco</span>
+            <ArrowLeft class="w-4 h-4" />
+            <span>Indietro</span>
           </Link>
         </div>
 

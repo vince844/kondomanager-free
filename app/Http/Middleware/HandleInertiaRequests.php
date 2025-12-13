@@ -54,7 +54,13 @@ class HandleInertiaRequests extends Middleware
             ],
 
             // Share CSRF token only if user is logged in
-            'csrf_token' => fn () => $request->user() ? csrf_token() : null,
+            'csrf_token' => fn () => $request->user() 
+                ? csrf_token() 
+                : null,
+
+            'back_url' => fn () => $request->method() === 'GET'
+                ? url()->previous()
+                : null,
         ];
     }
 }

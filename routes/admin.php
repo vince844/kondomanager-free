@@ -21,7 +21,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Accesso pannello amministratore'])->group(function () {
 
-    Route::get('/dashboard', DashboardController::class)->name('dashboard');
+    Route::get('/dashboard', DashboardController::class)
+        ->name('dashboard');
 
     Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
 

@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
-import { List, Pencil, CircleCheck, CircleX, ShieldCheck, ShieldOff } from 'lucide-vue-next';
+import { List, Pencil, ShieldCheck, ShieldOff } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Fornitore } from '@/types/fornitori';

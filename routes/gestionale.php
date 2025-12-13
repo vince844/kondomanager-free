@@ -22,27 +22,34 @@ use App\Http\Middleware\EnsureCondominioHasEsercizio;
 use Illuminate\Support\Facades\Route;
 
 // All gestionale routes with consistent middleware
-Route::prefix('/gestionale/{condominio}')
-    ->name('gestionale.')
-    ->middleware([EnsureCondominioHasEsercizio::class])
-    ->group(function () {
+Route::prefix('/gestionale/{condominio}')->name('gestionale.')->middleware([EnsureCondominioHasEsercizio::class])->group(function () {
     
-    Route::get('/', DashboardController::class)->name('index');
+    Route::get('/', DashboardController::class)
+        ->name('index');
     
-    Route::get('/struttura', [StrutturaController::class, 'index'])->name('struttura.index');
+    Route::get('/struttura', [StrutturaController::class, 'index'])
+        ->name('struttura.index');
 
-    Route::get('/fetch-tabelle', FetchTabelleController::class)->name('fetch-tabelle');
+    Route::get('/fetch-tabelle', FetchTabelleController::class)
+        ->name('fetch-tabelle');
 
-    Route::get('/fetch-capitoli-conti', FetchCapitoliContiController::class)->name('fetch-capitoli-conti');
+    Route::get('/fetch-capitoli-conti', FetchCapitoliContiController::class)
+        ->name('fetch-capitoli-conti');
     
     Route::resource('palazzine', PalazzinaController::class)
-        ->parameters(['palazzine' => 'palazzina']);
+        ->parameters([
+            'palazzine' => 'palazzina'
+        ]);
     
     Route::resource('scale', ScalaController::class)
-        ->parameters(['scale' => 'scala']);
+        ->parameters([
+            'scale' => 'scala'
+        ]);
     
     Route::resource('immobili', ImmobileController::class)
-        ->parameters(['immobili' => 'immobile']);
+        ->parameters([
+            'immobili' => 'immobile'
+        ]);
 
     Route::resource('immobili.anagrafiche', ImmobileAnagraficaController::class)
         ->parameters([
@@ -57,11 +64,18 @@ Route::prefix('/gestionale/{condominio}')
         ]);
     
     Route::resource('tabelle', TabellaController::class)
-        ->parameters(['tabelle' => 'tabella']);
+        ->parameters([
+            'tabelle' => 'tabella'
+        ]);
     
     Route::prefix('tabelle/{tabella}')->group(function () {
-        Route::get('/quote', [TabellaQuotaController::class, 'index'])->name('tabelle.quote.index');
-        Route::put('/quote', [TabellaQuotaController::class, 'update'])->name('tabelle.quote.update');
+
+        Route::get('/quote', [TabellaQuotaController::class, 'index'])
+            ->name('tabelle.quote.index');
+
+        Route::put('/quote', [TabellaQuotaController::class, 'update'])
+            ->name('tabelle.quote.update');
+
     });
 
     Route::resource('esercizi', EsercizioController::class)
@@ -98,5 +112,4 @@ Route::prefix('/gestionale/{condominio}')
             'piani-rate' => 'pianoRate',
         ]);
     
-
 });

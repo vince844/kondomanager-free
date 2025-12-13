@@ -20,7 +20,6 @@ import { type BreadcrumbItem } from '@/types';
 const props = defineProps<{
   role: Role;
   permissions: Permission[];
-  accessAdmin: boolean;
 }>(); 
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -118,7 +117,7 @@ const submit = () => {
 
                 <div class="mb-4">
                     <label class="flex items-center space-x-2 mt-6">
-                        <Checkbox v-model:checked="form.accessAdmin" />
+                        <Checkbox v-model="form.accessAdmin" />
                         <span class="font-medium">Dai accessso al layout amministratore</span>
 
                         <!-- Tooltip with icon -->

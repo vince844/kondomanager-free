@@ -4,6 +4,7 @@ namespace App\Http\Resources\Fornitore;
 
 use App\Helpers\MoneyHelper;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
+use App\Http\Resources\Fornitore\Categorie\CategoriaFornitoreResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -33,11 +34,12 @@ class FornitoreResource extends JsonResource
             'capitale_sociale'      => MoneyHelper::format($this->capitale_sociale ?? 0),
             'iscrizione_cciaa'      => $this->iscrizione_cciaa,
             'data_iscrizione_cciaa' => $this->data_iscrizione_cciaa->format('d/m/Y'),
+            'certificazione_iso'    => $this->certificazione_iso,
             'codice_ateco'          => $this->codice_ateco,
             'numero_ordine'         => $this->numero_iscrizione_ordine,
             'note'                  => $this->note,
             'referenti'             => AnagraficaResource::collection($this->whenLoaded('referenti')),
-            'categoria'             => $this->whenLoaded('categoria')
+            'categoria'             => new CategoriaFornitoreResource($this->whenLoaded('categoria'))
         ];
     }
 }
