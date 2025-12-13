@@ -192,11 +192,11 @@ class UserController extends Controller
     {
         Gate::authorize('update', User::class);
 
-        $utenti->load(['roles', 'permissions', 'anagrafica']);
+        $utenti->load(['roles.permissions', 'permissions', 'anagrafica']);
 
         return Inertia::render('utenti/ModificaUtente', [
             'user'        => new EditUserResource($utenti),
-            'roles'       => RoleResource::collection(Role::all()),
+            'roles'       => RoleResource::collection(Role::with('permissions')->get()),
             'permissions' => PermissionResource::collection(Permission::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
         ]);

@@ -76,9 +76,9 @@ const moneyOptions = ref({
 const submit = () => {
     form.post(route(generateRoute('fornitori.store')), {
         preserveScroll: true,
-   /*      onSuccess: () => {
+        onSuccess: () => {
             form.reset()
-        } */
+        } 
     });
 };
 
