@@ -108,7 +108,9 @@ class UserController extends Controller
         Gate::authorize('create', User::class);
 
         return Inertia::render('utenti/NuovoUtente',[
-            'roles'       => RoleResource::collection(Role::all()),
+          /*   'roles'       => RoleResource::collection(Role::all()), */
+            'roles'       => RoleResource::collection(Role::with('permissions')->get()),
+            
             'permissions' => PermissionResource::collection(Permission::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
         ]);

@@ -27,6 +27,13 @@ return [
     'create_users'              => "You don't have sufficient permissions to create users.",
     'edit_users'                => "You don't have sufficient permissions to edit users.",
     'delete_users'              => "You don't have sufficient permissions to delete users.",
+    // Roles
+    'view_roles'                => "You don't have sufficient permissions to view roles.",
+    'create_roles'              => "You don't have sufficient permissions to create a new role.",
+    'edit_roles'                => "You don't have sufficient permissions to edit roles.",
+    'delete_roles'              => "You don't have sufficient permissions to delete roles.",
+    // Permissions
+    'view_permissions'          => "You don't have sufficient permissions to view permissions.",
     // Archive documents
     'view_archive_documents'    => "You don't have sufficient permissions to view archived documents.",
     'create_archive_documents'  => "You don't have sufficient permissions to create archive documents.",

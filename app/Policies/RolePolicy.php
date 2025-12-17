@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
@@ -12,9 +13,9 @@ class RolePolicy
      */
     public function view(User $user): Response
     {
-        return $user->hasRole(['amministratore', 'collaboratore'])  
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])  
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per gestire i ruoli utente!');
+        : Response::deny(__('policies.view_roles'));
     }
 
     /**
@@ -22,9 +23,9 @@ class RolePolicy
      */
     public function create(User $user): Response
     {
-        return $user->hasRole(['amministratore', 'collaboratore'])  
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])  
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per creare un nuovo ruolo!'); 
+        : Response::deny(__('policies.create_roles')); 
     }
 
     /**
@@ -32,9 +33,9 @@ class RolePolicy
      */
     public function update(User $user): Response
     {
-        return $user->hasRole(['amministratore', 'collaboratore'])
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per aggiornare il ruolo!');
+        : Response::deny(__('policies.edit_roles'));
     }
 
     /**
@@ -42,8 +43,8 @@ class RolePolicy
      */
     public function delete(User $user): Response
     {
-        return $user->hasRole(['amministratore', 'collaboratore'])
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per eliminare il ruolo!');
+        : Response::deny(__('policies.delete_roles'));
     }
 }

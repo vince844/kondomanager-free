@@ -62,7 +62,6 @@ class TwoFactorAuthChallengeController extends Controller
         if ($valid) {
             app(CompleteTwoFactorAuthentication::class)($user);
             RateLimiter::clear($this->throttleKey($user));
-            /* return redirect()->intended(route('dashboard', absolute: false)); */
             return redirect()->intended(RedirectHelper::userHomeRoute());
         }
         
@@ -101,7 +100,6 @@ class TwoFactorAuthChallengeController extends Controller
         RateLimiter::clear($this->throttleKey($user));
         
         // Redirect to the intended page
-      /*   return redirect()->intended(route('dashboard', absolute: false)); */
         return redirect()->intended(RedirectHelper::userHomeRoute());
     }
     

@@ -37,7 +37,6 @@ class RoleController extends Controller
     {
         Gate::authorize('view', Role::class);
 
-
         $roles = Role::all()->load('permissions');
         
         // Prendi tutti i conteggi in una singola query
@@ -146,24 +145,25 @@ class RoleController extends Controller
      */
     public function edit(string $id)
     {
-        Gate::authorize('update', Role::class);
+       Gate::authorize('update', Role::class);
 
         $role = Role::findOrFail($id);
 
         if ($this->isProtectedRole($role->name)) {
-
             return to_route('ruoli.index')->with(
                 $this->flashInfo(__('ruoli.cannot_edit_default_role', ['role' => $role->name]))
             );
-  
         }
 
-       $role->load('permissions');
+        $role->load('permissions');
 
-       return Inertia::render('ruoli/ModificaRuolo', [
-        'role'        => new RoleResource($role),
-        'permissions' => PermissionResource::collection(Permission::all())
-       ]);
+        // Exclude the admin panel permission from the list
+        $permissions = Permission::whereNotIn('name', [EnumsPermission::ACCESS_ADMIN_PANEL->value])->get();
+
+        return Inertia::render('ruoli/ModificaRuolo', [
+            'role'        => new RoleResource($role),
+            'permissions' => PermissionResource::collection($permissions) 
+        ]);
     }
 
     /**

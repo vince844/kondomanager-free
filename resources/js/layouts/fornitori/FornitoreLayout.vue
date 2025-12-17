@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
+import { UsersRound, Folders, TextSearch } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Fornitore } from '@/types/fornitori';
 
@@ -17,16 +18,19 @@ const { generatePath } = usePermission();
 const topbarNavItems: LinkItem[] = [
   {
     type: 'link',
+    icon: TextSearch,
     title: 'Dettagli',
     href:  generatePath('fornitori/:fornitore', { fornitore: fornitore.value.id }),
   },
   {
     type: 'link',
+    icon: UsersRound,
     title: 'Referenti',
     href:  generatePath('fornitori/:fornitore/anagrafiche', { fornitore: fornitore.value.id }),
   },
   {   
     type: 'link',
+    icon: Folders,
     title: 'Documenti',
     href:  generatePath('fornitori/:fornitore/documenti', { fornitore: fornitore.value.id }),
   }, 
@@ -56,6 +60,7 @@ const currentPath = window.location.pathname;
         as-child
       >
         <Link :href="item.href">
+          <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
           {{ item.title }}
         </Link>
       </Button>

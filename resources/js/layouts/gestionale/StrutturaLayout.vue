@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
+import { Building2, ArrowUpNarrowWide, TextSearch } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -18,16 +19,19 @@ const { generatePath } = usePermission();
 const topbarNavItems: LinkItem[] = [
   { 
     type: 'link',
+    icon: TextSearch,
     title: 'Dettagli',
     href:  generatePath('gestionale/:condominio/struttura', { condominio: condominio.value.id }),
   },
   {
     type: 'link',
+    icon: Building2,
     title: 'Palazzine',
     href: generatePath('gestionale/:condominio/palazzine', { condominio: condominio.value.id }),
   },
   {
     type: 'link',
+    icon: ArrowUpNarrowWide,
     title: 'Scale',
     href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
   }
@@ -49,6 +53,7 @@ const currentPath = window.location.pathname;
         as-child
       >
         <Link :href="item.href">
+          <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
           {{ item.title }}
         </Link>
       </Button>

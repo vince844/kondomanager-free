@@ -213,7 +213,7 @@ const submit = () => {
 
               <!-- Genera Subito -->
               <div class="flex items-center gap-2">
-                <Checkbox id="genera_subito" v-model:checked="form.genera_subito" />
+                <Checkbox id="genera_subito" v-model="form.genera_subito" />
                 <Label for="genera_subito">Genera subito il piano rate dopo il salvataggio</Label>
               </div>
 

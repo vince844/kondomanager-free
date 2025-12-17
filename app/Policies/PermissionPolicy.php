@@ -2,6 +2,7 @@
 
 namespace App\Policies;
 
+use App\Enums\Role;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
@@ -12,8 +13,8 @@ class PermissionPolicy
      */
     public function view(User $user): Response
     {
-        return $user->hasRole(['amministratore', 'collaboratore'])  
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])  
         ? Response::allow() 
-        : Response::deny('Non hai permessi sufficienti per gestire i permessi utente!');
+        : Response::deny(__('policies.view_permissions'));
     }
 }

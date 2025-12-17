@@ -6,6 +6,7 @@ use App\Models\Anagrafica;
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 
 class CreateUserRequest extends FormRequest
 {
@@ -26,7 +27,7 @@ class CreateUserRequest extends FormRequest
     {
         return [
             'name'        => 'required|string|max:255',
-            'email'       => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'email'       => 'required|string|email|max:255|unique:'.User::class,
             'roles'       => ['required'],
             'permissions' => ['sometimes', 'array'],
             'anagrafica'  => [
@@ -44,6 +45,17 @@ class CreateUserRequest extends FormRequest
             ],
 
         ];
+    }
+
+    /**
+     * Prepare data before validation.
+     * Uppercases relevant string fields and merges condominio_id from route.
+     */
+    protected function prepareForValidation()
+    {
+        $this->merge([
+            'email'  => Str::lower($this->input('email')),
+        ]);
     }
 
     /**
