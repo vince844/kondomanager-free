@@ -4,7 +4,8 @@ import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { Plus } from 'lucide-vue-next';
+import { Plus, X } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button';
 import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFilter.vue';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
@@ -62,6 +63,18 @@ watchDebounced(
   { debounce: 300 }
 )
 
+const clearAllFilters = () => {
+  subjectFilter.value = ''
+  statoColumn?.setFilterValue(undefined)
+  priorityColumn?.setFilterValue(undefined)
+
+  router.get(route(generateRoute('segnalazioni.index')), { page: 1 }, {
+    preserveState: true,
+    replace: true,
+    preserveScroll: true,
+  })
+}
+
 </script>
 
 <template>
@@ -96,6 +109,15 @@ watchDebounced(
           @update:filter="() => {}"
           class="w-full lg:w-auto"
         />
+
+         <Button
+          variant="outline"
+          size="sm"
+          @click="clearAllFilters"
+        >
+        <X />
+          Resetta tutti i filtri
+        </Button>
       </div>
     </div>
 

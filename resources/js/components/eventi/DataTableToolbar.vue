@@ -5,7 +5,7 @@ import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Calendar as CalendarIcon } from 'lucide-vue-next';
+import { Plus, Calendar as CalendarIcon , X} from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { Permission }  from "@/enums/Permission";
 import { useCategorieEventi } from '@/composables/useCategorieEventi';
@@ -175,6 +175,8 @@ const formattedRange = computed(() => {
           size="sm"
           @click="clearAllFilters"
         >
+
+         <X />
           Resetta tutti i filtri
         </Button>
       </div>
