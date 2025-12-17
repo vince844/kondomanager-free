@@ -1,9 +1,6 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
-import { watchDebounced } from '@vueuse/core';
-import { router, usePage, Link } from '@inertiajs/vue3';
-import { Input } from '@/components/ui/input';
+import { usePage, Link } from '@inertiajs/vue3';
 import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';

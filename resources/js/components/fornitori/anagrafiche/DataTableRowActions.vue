@@ -1,11 +1,11 @@
 <script setup lang="ts">
 
 import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3";
+import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { Unplug, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Fornitore } from '@/types/fornitori';
@@ -57,19 +57,9 @@ const deleteAnagrafica = () => {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-       <DropdownMenuItem>
-        <Link
-          :href="route(generateRoute('fornitori.anagrafiche.edit'), { fornitore: fornitore.id, anagrafica: anagrafica.id })"
-          class="flex items-center gap-2"
-        >
-          <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
-        </Link>
-      </DropdownMenuItem> 
-
       <DropdownMenuItem @click="handleDelete(anagrafica)" >
-        <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        <Unplug class="w-4 h-4 text-xs" />
+        Dissocia
       </DropdownMenuItem>
 
     </DropdownMenuContent>
@@ -77,7 +67,7 @@ const deleteAnagrafica = () => {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere disslciarre questa anagrafica dal fonrnitore?"
+    title="Sei sicuro di volere dissociare questa anagrafica dal fornitore?"
     description="Questa azione non è reversibile. L'anagrafica verrà dissociata e non potrà più visualizzare i dati del fornitore."
     @confirm="deleteAnagrafica"
   />

@@ -12,7 +12,7 @@ use App\Http\Controllers\Documenti\FetchCategorieController;
 use App\Http\Controllers\Eventi\ApprovalController;
 use App\Http\Controllers\Eventi\EventoController;
 use App\Http\Controllers\Eventi\FetchCategorieController as EventiFetchCategorieController;
-use App\Http\Controllers\Fornitori\Anagrafiche\FornitoreAanagraficaController;
+use App\Http\Controllers\Fornitori\Anagrafiche\FornitoreAnagraficaController;
 use App\Http\Controllers\Fornitori\FornitoreController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
@@ -52,7 +52,7 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
             'fornitori' => 'fornitore'
         ]);
     
-    Route::resource('fornitori.anagrafiche', FornitoreAanagraficaController::class)
+    Route::resource('fornitori.anagrafiche', FornitoreAnagraficaController::class)
         ->parameters([
             'fornitori' => 'fornitore',
             'anagrafiche' => 'anagrafica'
