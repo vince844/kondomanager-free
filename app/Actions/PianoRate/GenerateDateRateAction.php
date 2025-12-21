@@ -38,7 +38,7 @@ class GenerateDateRateAction
                 $date = Carbon::instance($occ->getStart());
                 $giorno = $pianoRate->giorno_scadenza ?? 5;
 
-                // ✅ Post-processing applicato SOLO se BYMONTHDAY=-1
+                // Post-processing applicato SOLO se BYMONTHDAY=-1
                 if ($ric->by_month_day === -1 && $giorno <= $date->daysInMonth) {
                     return $date->setDay($giorno);
                 }

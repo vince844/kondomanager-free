@@ -33,7 +33,7 @@ class FornitoreResource extends JsonResource
             'codice_fiscale'        => $this->codice_fiscale,
             'capitale_sociale'      => MoneyHelper::format($this->capitale_sociale ?? 0),
             'iscrizione_cciaa'      => $this->iscrizione_cciaa,
-            'data_iscrizione_cciaa' => $this->data_iscrizione_cciaa->format('d/m/Y'),
+            'data_iscrizione_cciaa' => $this->data_iscrizione_cciaa?->format('d/m/Y'),
             'certificazione_iso'    => $this->certificazione_iso,
             'codice_ateco'          => $this->codice_ateco,
             'numero_ordine'         => $this->numero_iscrizione_ordine,

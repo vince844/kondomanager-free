@@ -1,43 +1,31 @@
 <script setup lang="ts">
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
+import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle, UploadCloud, Info, FileText, X } from 'lucide-vue-next';
-import Heading from '@/components/Heading.vue';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { useToast } from '@/components/ui/toast';
-import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
 import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
-import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche';
-import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
+import type { Fornitore } from '@/types/fornitori';
 
 const props = defineProps<{
+  fornitore: Fornitore;
   documento: Documento;
-  condomini: Building[];
-  categories: Categoria[];
-  anagrafiche: Anagrafica[];
 }>()
 
 const { generatePath, generateRoute } = usePermission();
-const { toast } = useToast();
 
-const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
-const localCategories = ref<Categoria[]>([...props.categories]);
-const newCategoryName = ref('')
-const newCategoryDescription = ref('')
 const file = ref<File | null>(null)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const showFileInput = ref(false)
@@ -54,20 +42,17 @@ const showExistingFile = computed(() => {
 const form = useForm({
   name: props.documento?.name ?? '',
   description: props.documento?.description ?? '',
-  condomini_ids: props.documento?.condomini?.options?.map(c => c.value) ?? [],
   is_published: !!props.documento?.is_published,
-  anagrafiche: (props.documento?.anagrafiche ?? []).map(anagrafica => anagrafica.id),
-  category_id: props.documento?.categoria?.id ?? null, 
   file: null as File | null,
 });
 
 // Validazione file
 const validateFile = (selectedFile: File): boolean => {
-  const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+  const allowedTypes = ['application/pdf'];
   const maxSize = 20 * 1024 * 1024; // 20MB
   
   if (!allowedTypes.includes(selectedFile.type)) {
-    form.setError('file', 'Sono ammessi solo file PDF, JPEG, PNG');
+    form.setError('file', 'Sono ammessi solo file PDF');
     return false;
   }
   
@@ -156,87 +141,26 @@ const getFileName = (): string => {
   return props.documento.name;
 }
 
-const createCategory = async (): Promise<void> => {
-  if (!newCategoryName.value) return
-
-  try {
-    const response = await axios.post(route(generateRoute('categorie.store')), {
-      name: newCategoryName.value,
-      description: newCategoryDescription.value
-    })
-
-    const newCat = response.data
-    localCategories.value.push(newCat)
-    form.category_id = newCat.id
-
-    newCategoryName.value = ''
-    newCategoryDescription.value = ''
-    
-    toast({
-      title: 'Successo',
-      description: 'Categoria creata con successo',
-      variant: 'default',
-    })
-  } catch (error: any) {
-    const backendMessage = error.response?.data?.error || 'Impossibile creare la categoria. Riprova più tardi.'
-
-    toast({
-      title: 'Errore',
-      description: backendMessage,
-      variant: 'destructive',
-    })
-  }
-}
-
-const fetchAnagrafiche = async (condomini_ids: number[]): Promise<void> => {
-  try {
-    const response = await axios.get(generatePath('fetch-anagrafiche'), {
-      params: { condomini_ids },
-    });
-
-    form.anagrafiche = []; // clear selected items
-    anagraficheOptions.value = response.data.map((item: { id: number, nome: string }) => ({
-      id: item.id,
-      nome: item.nome,
-    }));
-  } catch (error) {
-    console.error('Error fetching anagrafiche:', error);
-  }
-};
-
-watch(() => form.condomini_ids, (newIds: number[]) => {
-  if (newIds.length > 0) {
-    fetchAnagrafiche(newIds);
-  } else {
-    anagraficheOptions.value = [];
-    form.anagrafiche = [];
-  }
-});
-
 const submit = (): void => {
-  form.put(route(generateRoute('documenti.update'), { id: props.documento.id }), {
+  form.put(route(...generateRoute('fornitori.documenti.update', 
+  { 
+    fornitore: props.fornitore.id, 
+    documento: props.documento.id
+  })), {
     preserveScroll: true,
     onSuccess: () => {
       form.reset()
-      file.value = null
-      showFileInput.value = false
     }
   });
 };
 
 </script>
 
-
 <template>
-  <Head title="Modifica documento" />
+  <Head title="Modifica documento fornitore" />
 
   <AppLayout>
-    <div class="px-4 py-6">
-      <Heading
-        title="Modifica documento archivio"
-        description="Compila il seguente modulo per modificare documento per l'archivio del condominio"
-      />
-
+    <FornitoreLayout>
       <form @submit.prevent="submit" class="space-y-2">
         <!-- Action buttons -->
         <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
@@ -248,7 +172,7 @@ const submit = (): void => {
 
           <Link
             as="button"
-            :href="route(generateRoute('documenti.index'))"
+            :href="generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id })"
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
@@ -256,11 +180,12 @@ const submit = (): void => {
           </Link>
         </div>
 
-        <!-- Two-column layout (3:1 ratio) -->
+        <!-- Two-column layout -->
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-3">
-          <!-- Main Card (3/4 width) -->
+          <!-- Main Card -->
           <div class="col-span-1 lg:col-span-3 mt-3">
             <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
+              
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-3">
                   <Label for="nome" class="font-medium">Nome documento</Label>
@@ -277,7 +202,7 @@ const submit = (): void => {
 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="nome" class="font-medium">Descrizione documento</Label>
+                  <Label for="nome" class="font-medium">Descrizione</Label>
                   <Textarea 
                     id="description" 
                     class="mt-1 block w-full min-h-[200px]"
@@ -340,7 +265,7 @@ const submit = (): void => {
                           <EmptyDescription>
                             Oppure <strong>clicca</strong> per selezionarlo.
                             <div class="text-xs text-muted-foreground mt-1">
-                              Formati supportati: PDF, JPEG, PNG (max 20MB)
+                              Solo PDF, max 20MB
                             </div>
                           </EmptyDescription>
                         </EmptyHeader>
@@ -350,7 +275,7 @@ const submit = (): void => {
                         id="file-upload"
                         type="file"
                         class="hidden"
-                        accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png,image/jpg"
+                        accept=".pdf,application/pdf"
                         @change="handleFileChange"
                         ref="fileInputRef"
                       />
@@ -406,9 +331,9 @@ const submit = (): void => {
             </div>
           </div>
 
-          <!-- Side Card (1/4 width) -->
+          <!-- Side Card -->
           <div class="col-span-1 mt-3">
-            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border space-y-4">
+            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
               <div class="grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
                   <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
@@ -420,15 +345,11 @@ const submit = (): void => {
                         </button>
                       </HoverCardTrigger>
                       <HoverCardContent class="w-80">
-                        <div class="flex justify-between space-x-4">
-                          <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">
-                              Stato pubblicazione
-                            </h4>
-                            <p class="text-sm">
-                              Scegli se rendere visibile il documento o mantenerlo nascosto.
-                            </p>
-                          </div>
+                        <div class="space-y-1">
+                          <h4 class="text-sm font-semibold">Stato pubblicazione</h4>
+                          <p class="text-sm">
+                            Scegli se rendere visibile il documento o mantenerlo nascosto.
+                          </p>
                         </div>
                       </HoverCardContent>
                     </HoverCard>
@@ -438,130 +359,17 @@ const submit = (): void => {
                     :options="publishedConstants" 
                     label="label" 
                     v-model="form.is_published"
-                    placeholder="Stato pubblicazione"
+                    placeholder="Seleziona stato"
                     @update:modelValue="form.clearErrors('is_published')" 
                     :reduce="(is_published: PublishedType) => is_published.value"
                     class="mt-1"
                   />
+
                   <InputError :message="form.errors.is_published" />
                 </div>
               </div>
 
-              <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                <div class="sm:col-span-6 space-y-1">
-                  <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                    <Label for="stato">Categoria</Label>
-                    <HoverCard>
-                      <HoverCardTrigger as-child>
-                        <button type="button" class="cursor-pointer">
-                          <Info class="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent class="w-80">
-                        <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Categoria documento</h4>
-                          <p class="text-sm">
-                            Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
-                          </p>
-                        </div>
-                      </HoverCardContent>
-                    </HoverCard>
-                  </div>
-
-                  <div class="flex items-center gap-2">
-                    <v-select
-                      :options="localCategories"
-                      label="name"
-                      v-model="form.category_id"
-                      :reduce="(option: Categoria) => option.id"
-                      placeholder="Seleziona categoria"
-                      class="flex-1"
-                      @update:modelValue="form.clearErrors('category_id')" 
-                    />
-                    <Sheet>
-                      <SheetTrigger as-child>
-                        <button type="button" class="p-2 rounded-md border hover:bg-muted transition">
-                          <Plus class="w-4 h-4 text-muted-foreground hover:text-primary" />
-                        </button>
-                      </SheetTrigger>
-                      <SheetContent side="right" class="p-6">
-                        <SheetHeader class="mt-4 p-0">
-                          <SheetTitle>Crea nuova categoria</SheetTitle>
-                          <SheetDescription>
-                            Aggiungi una nuova categoria per i documenti.
-                          </SheetDescription>
-                        </SheetHeader>
-
-                        <form @submit.prevent="createCategory" class="mt-6 space-y-4">
-                          <div>
-                            <Label for="new-category-name">Nome</Label>
-                            <Input
-                              id="new-category-name"
-                              v-model="newCategoryName"
-                              placeholder="Nome della categoria"
-                              class="w-full mt-1"
-                            />
-                          </div>
-
-                          <div>
-                            <Label for="new-category-description">Descrizione</Label>
-                            <Textarea
-                              id="new-category-description"
-                              v-model="newCategoryDescription"
-                              placeholder="Descrizione della categoria"
-                              class="w-full mt-1 min-h-[200px]"
-                            />
-                          </div>
-
-                          <div class="flex justify-end">
-                            <SheetClose as-child>
-                              <Button type="submit">Salva</Button>
-                            </SheetClose>
-                          </div>
-                        </form>
-                      </SheetContent>
-                    </Sheet>
-                  </div>
-
-                  <InputError :message="form.errors.category_id" />
-                </div>
-              </div>
-
-              <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <Label for="condomini">Condominio</Label>
-                  <v-select 
-                    multiple
-                    :options="condomini"
-                    label="label"
-                    v-model="form.condomini_ids"
-                    placeholder="Condomini"
-                    @update:modelValue="form.clearErrors('condomini_ids')" 
-                    :reduce="(option: Building) => option.value"
-                  />
-                  <InputError :message="form.errors.condomini_ids" />
-                </div>
-              </div>
-
-              <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <Label for="condomini">Anagrafiche</Label>
-                  <v-select
-                    multiple
-                    id="anagrafiche"
-                    :options="anagraficheOptions"
-                    label="nome"
-                    v-model="form.anagrafiche"
-                    placeholder="Anagrafiche"
-                    @update:modelValue="form.clearErrors('anagrafiche')"
-                    :reduce="(anagrafica: Anagrafica) => anagrafica.id"
-                    :disabled="form.condomini_ids.length === 0"
-                  />
-                  <InputError :message="form.errors.anagrafiche" />
-                </div>
-              </div>
-
-              <div class="pt-3 border-t">
+              <div class="pt-3 border-t mt-3">
                 <h4 class="text-sm font-medium mb-2">Informazioni</h4>
                 <div class="space-y-2 text-sm">
                   <div v-if="props.documento.created_at" class="flex justify-between">
@@ -580,7 +388,7 @@ const submit = (): void => {
           </div>
         </div>
       </form>
-    </div>
+    </FornitoreLayout>
   </AppLayout>
 </template>
 

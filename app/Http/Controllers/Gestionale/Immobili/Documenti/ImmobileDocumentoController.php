@@ -13,7 +13,6 @@ use App\Models\Documento;
 use App\Models\Immobile;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -53,8 +52,6 @@ class ImmobileDocumentoController extends Controller
      */
     public function index(ImmobileDocumentoIndexRequest $request, Condominio $condominio, Immobile $immobile): Response
     {
-
-        /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
         $documenti = $immobile->documenti()
@@ -162,7 +159,6 @@ class ImmobileDocumentoController extends Controller
     {
         $validated = $request->validated();
 
-        /** @var \Illuminate\Http\Request $request */
         if (!$request->hasFile('file') || !$request->file('file')->isValid()) {
 
             return to_route('admin.gestionale.immobili.documenti.index', [
@@ -176,7 +172,6 @@ class ImmobileDocumentoController extends Controller
 
             DB::beginTransaction();
 
-            /** @var \Illuminate\Http\Request $request */
             $uploadedFile = $request->file('file');
 
             $path = $uploadedFile->storeAs('documenti', $uploadedFile->hashName(), 'local');
@@ -212,14 +207,6 @@ class ImmobileDocumentoController extends Controller
                 'immobile'   => $immobile->id,
             ])->with($this->flashSuccess(__('documenti.success_create_document')));
 
-    }
-
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
     }
 
     /**
@@ -327,7 +314,6 @@ class ImmobileDocumentoController extends Controller
 
             DB::beginTransaction();
 
-            /** @var \Illuminate\Http\Request $request */
             if ($request->hasFile('file') && $request->file('file')->isValid()) {
                 // Delete old file if exists
                 if (Storage::exists($documento->path)) {
@@ -429,16 +415,12 @@ class ImmobileDocumentoController extends Controller
     public function destroy(Condominio $condominio, Immobile $immobile, Documento $documento): RedirectResponse
     {
         try {
-           
-            DB::beginTransaction();
 
             if (Storage::exists($documento->path)) {
                 Storage::delete($documento->path);
             }
 
             $documento->delete();
-
-            DB::commit();
 
             return to_route('admin.gestionale.immobili.documenti.index', [
                 'condominio' => $condominio->id,
@@ -447,8 +429,6 @@ class ImmobileDocumentoController extends Controller
 
 
         } catch (\Exception $e) {
-            
-            DB::rollBack();
 
             Log::error('Error deleting documento immobile', [
                 'document_id' => $documento->id,

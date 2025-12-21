@@ -41,7 +41,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornito
   },
   {
     accessorKey: 'user_id',
-    header: 'Accesso Login',
+    header: 'Accesso login',
     cell: ({ row }) => {
       const anagrafica = row.original 
       const hasAccess = anagrafica.user_id !== null

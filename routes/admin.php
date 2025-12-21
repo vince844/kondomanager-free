@@ -13,6 +13,7 @@ use App\Http\Controllers\Eventi\ApprovalController;
 use App\Http\Controllers\Eventi\EventoController;
 use App\Http\Controllers\Eventi\FetchCategorieController as EventiFetchCategorieController;
 use App\Http\Controllers\Fornitori\Anagrafiche\FornitoreAnagraficaController;
+use App\Http\Controllers\Fornitori\Documenti\FornitoreDocumentoController;
 use App\Http\Controllers\Fornitori\FornitoreController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
@@ -56,6 +57,13 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
         ->parameters([
             'fornitori' => 'fornitore',
             'anagrafiche' => 'anagrafica'
+        ]);
+
+    Route::resource('fornitori.documenti', FornitoreDocumentoController::class)
+        ->parameters([
+            'fornitori' => 'fornitore',
+            'documenti' => 'documento'
+            
         ]);
    
     Route::resource('segnalazioni', SegnalazioneController::class)

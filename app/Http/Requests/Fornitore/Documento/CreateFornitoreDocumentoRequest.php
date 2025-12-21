@@ -1,15 +1,12 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\Immobile\Documento;
+namespace App\Http\Requests\Fornitore\Documento;
 
-use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use App\Enums\Permission;
 
-/**
- * @method bool merge(string $key)
- */
-class CreateImmobileDocumentoRequest extends FormRequest
+class CreateFornitoreDocumentoRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.

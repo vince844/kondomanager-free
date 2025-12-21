@@ -81,7 +81,7 @@ const indirizzoCompleto = computed(() => {
                 <div class="flex items-center gap-2">
                   <span class="font-semibold w-24">Categoria:</span>
                   <div class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-medium text-xs">
-                    {{ fornitore.categoria.name }} 
+                    {{ fornitore.categoria?.name ?? 'Nessuna categoria' }}
                   </div>
                 </div>
 

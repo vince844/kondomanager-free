@@ -1,15 +1,12 @@
 <?php
 
-namespace App\Http\Requests\Gestionale\Immobile\Documento;
+namespace App\Http\Requests\Fornitore\Documento;
 
-use App\Enums\Permission;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use App\Enums\Permission;
 
-/**
- * @method bool merge(string $key)
- */
-class CreateImmobileDocumentoRequest extends FormRequest
+class UpdateFornitoreDocumentoRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -27,12 +24,12 @@ class CreateImmobileDocumentoRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'            => 'required|string|max:255',
-            'description'     => 'required|string',
-            'created_by'      => 'required|exists:users,id',
-            'is_published'    => 'required|boolean',
-            'is_approved'     => 'required|boolean',
-            'file'            => 'required|file|mimes:pdf|max:20480',
+            'name'            => ['sometimes', 'required', 'string'],
+            'description'     => ['sometimes', 'nullable', 'string'],
+            'created_by'      => ['sometimes', 'required', 'exists:users,id'],
+            'is_approved'     => ['sometimes', 'required', 'boolean'],
+            'is_published'    => ['sometimes', 'required', 'boolean'],
+            'file'            => ['nullable', 'file', 'mimes:pdf', 'max:20480'],
         ];
     }
 

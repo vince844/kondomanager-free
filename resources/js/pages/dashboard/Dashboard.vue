@@ -105,7 +105,7 @@ const navigateToDocumenti = () => {
                     @click="navigateToCondomini"
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle class="text-md font-medium">
+                        <CardTitle class="text-md font-semibold">
                             Condomini registrati
                         </CardTitle>
                         <House class="w-8 h-8 text-muted-foreground" />
@@ -122,7 +122,7 @@ const navigateToDocumenti = () => {
                     @click="navigateToOpenSegnalazioni"
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle class="text-md font-medium">
+                        <CardTitle class="text-md font-semibold">
                             Segnalazioni aperte
                         </CardTitle>
                         <TriangleAlert class="w-8 h-8 text-muted-foreground" />
@@ -139,7 +139,7 @@ const navigateToDocumenti = () => {
                     @click="navigateToUpcomingEventi"
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle class="text-md font-medium">
+                        <CardTitle class="text-md font-semibold">
                             Scadenze imminenti
                         </CardTitle>
                         <CalendarClock class="w-8 h-8 text-muted-foreground" />
@@ -156,7 +156,7 @@ const navigateToDocumenti = () => {
                     @click="navigateToDocumenti"
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle class="text-md font-medium">
+                        <CardTitle class="text-md font-semibold">
                             Spazio archiviazione
                         </CardTitle>
                         <HardDrive class="w-8 h-8 text-muted-foreground" />

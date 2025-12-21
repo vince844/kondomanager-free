@@ -95,4 +95,9 @@ class Fornitore extends Model
     {
         return $this->belongsTo(CategoriaFornitore::class, 'categoria_id');
     }
+
+    public function documenti()
+    {
+        return $this->morphMany(Documento::class, 'documentable');
+    }
 }
