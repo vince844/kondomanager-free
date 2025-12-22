@@ -60,6 +60,8 @@ class ImpostazioniGeneraliController extends Controller
             $userPreferences->default_condominio_id = $validated['open_condominio_on_login']
                 ? $validated['default_condominio_id']
                 : null;
+            
+            app()->setLocale($settings->language);
 
             $userPreferences->save();
 

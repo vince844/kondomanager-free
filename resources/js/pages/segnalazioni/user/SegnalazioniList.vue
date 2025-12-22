@@ -11,8 +11,9 @@ import { Button } from "@/components/ui/button";
 import { useSegnalazioni } from '@/composables/useSegnalazioni';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from "@/enums/Permission";
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { trans } from 'laravel-vue-i18n';
 import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus, ChevronLeftIcon, ChevronRightIcon } from "lucide-vue-next";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { getPriorityMeta } from "@/types/comunicazioni";
 import type { PaginationMeta } from '@/types/pagination';
@@ -222,13 +223,14 @@ async function confirmDelete() {
 
 
 <template>
-  <Head title="Elenco segnalazioni bacheca" />
+
+  <Head :title="trans('segnalazioni.header.list_tickets_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco segnalazioni bacheca"
-        description="Di seguito la tabella con l'elenco di tutte le segnalazioni in bacheca registrate"
+        :title="trans('segnalazioni.header.list_tickets_title')" 
+        :description="trans('segnalazioni.header.list_tickets_description')" 
       />
 
       <SegnalazioniStats :stats="stats" />
@@ -243,7 +245,7 @@ async function confirmDelete() {
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="Cerca per titolo..."
+              :placeholder="trans('segnalazioni.table.filter_by_title')"
               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
@@ -255,7 +257,7 @@ async function confirmDelete() {
             class="h-8 lg:flex items-center gap-2 ml-auto"
           >
             <Plus class="w-4 h-4" />
-            <span>Crea</span>
+            <span>{{trans('segnalazioni.actions.new_ticket')}}</span>
           </Button>
         </div>
 
@@ -267,7 +269,7 @@ async function confirmDelete() {
               class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-10 gap-2"
             >
               <Loader2 class="w-8 h-8 animate-spin text-gray-500" />
-              <p class="text-gray-600">Caricamento in corso...</p>
+              <p class="text-gray-600">{{trans('segnalazioni.dialogs.loading')}}</p>
             </div>
           </Transition>
 
@@ -279,7 +281,7 @@ async function confirmDelete() {
             >
               <CircleAlert class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
               <div>
-                <h3 class="font-medium text-red-800">Errore di caricamento</h3>
+                <h3 class="font-medium text-red-800">{{trans('segnalazioni.dialogs.loading_error')}}</h3>
                 <p class="text-red-700">{{ errorState }}</p>
                 <Button 
                   variant="outline" 
@@ -287,7 +289,7 @@ async function confirmDelete() {
                   class="mt-2"
                   @click="handlePageChange(meta.current_page)"
                 >
-                  Riprova
+                  {{trans('segnalazioni.dialogs.try_again')}}
                 </Button>
               </div>
             </div>
@@ -344,8 +346,12 @@ async function confirmDelete() {
                     :datetime="segnalazione.created_at"
                     class="text-gray-500"
                   >
-                    Inviata {{ segnalazione.created_at }} da
-                    {{ segnalazione.created_by.user.name }}
+                    {{ 
+                        trans('segnalazioni.visibility.sent_on_by', { 
+                            date: segnalazione.created_at, 
+                            name: segnalazione.created_by.user.name 
+                        }) 
+                    }}
                   </time>
                 </div>
 
@@ -363,10 +369,10 @@ async function confirmDelete() {
             >
               <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
               <h3 class="text-lg font-medium text-gray-900">
-                Nessuna segnalazione trovata
+               {{trans('segnalazioni.dialogs.no_tickets_found')}}
               </h3>
               <p class="mt-1 text-gray-500">
-                Prova a modificare i criteri di ricerca
+                {{trans('segnalazioni.dialogs.change_search_criteria')}}
               </p>
               <Button
                 v-if="searchQuery"
@@ -374,7 +380,7 @@ async function confirmDelete() {
                 class="mt-3"
                 @click="searchQuery = ''"
               >
-                Cancella ricerca
+                {{trans('segnalazioni.dialogs.cancel_search')}}
               </Button>
             </div>
           </TransitionGroup>
@@ -429,21 +435,13 @@ async function confirmDelete() {
       </div>
     </div>
 
-    <!-- Delete confirmation dialog -->
-    <AlertDialog v-model:open="isAlertOpen">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Sei sicuro di volere eliminare questa segnalazione?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annulla</AlertDialogCancel>
-          <AlertDialogAction @click="confirmDelete">Conferma</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      v-model:modelValue="isAlertOpen"
+      :title="trans('segnalazioni.dialogs.delete_ticket_title')"
+      :description="trans('segnalazioni.dialogs.delete_ticket_description')"
+      @confirm="confirmDelete"
+    />
+ 
   </AppLayout>
 </template>
 

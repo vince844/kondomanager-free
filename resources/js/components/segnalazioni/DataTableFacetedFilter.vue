@@ -1,26 +1,16 @@
 <script setup lang="ts">
+
 import { ref, watch, computed, PropType } from 'vue'
-import type { Component } from 'vue'
-import type { Column } from '@tanstack/vue-table'
 import { cn } from '@/lib/utils'
 import Badge from '@/components/ui/badge/Badge.vue'
 import Button from '@/components/ui/button/Button.vue'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Check, PlusCircle } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n';
+import type { Component } from 'vue'
+import type { Column } from '@tanstack/vue-table'
 
 interface Option {
   label: string
@@ -107,7 +97,7 @@ function clearFilters() {
               variant="secondary"
               class="rounded-sm px-1 font-normal"
             >
-              {{ selectedValues.size }} selezionati
+              {{ selectedValues.size }} {{ trans('segnalazioni.table.selected') }}
             </Badge>
             <template v-else>
               <Badge
@@ -116,7 +106,7 @@ function clearFilters() {
                 variant="secondary"
                 class="rounded-sm px-1 font-normal"
               >
-                {{ option.label }}
+                {{ trans(option.label) }}
               </Badge>
             </template>
           </div>
@@ -127,11 +117,11 @@ function clearFilters() {
       <Command>
         <CommandInput :placeholder="title" />
         <CommandList v-if="props.isLoading">
-          <div class="p-4 text-sm text-muted-foreground">Caricamento...</div>
+          <div class="p-4 text-sm text-muted-foreground">{{trans('segnalazioni.table.loading')}}</div>
         </CommandList>
 
         <CommandList>
-          <CommandEmpty>Nessun risultato trovato</CommandEmpty>
+          <CommandEmpty>{{trans('segnalazioni.table.no_results')}}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="option in options"
@@ -154,7 +144,7 @@ function clearFilters() {
                 v-if="option.icon"
                 class="mr-2 h-4 w-4 text-muted-foreground"
               />
-              <span>{{ option.label }}</span>
+              <span>{{ trans(option.label) }}</span>
               <span
                 v-if="facets?.get(option.value)"
                 class="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs"
@@ -168,11 +158,11 @@ function clearFilters() {
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
-                :value="{ label: 'Resetta filtri' }"
+                :value="{ label: trans('segnalazioni.table.clear_all_filters') }"
                 class="justify-center text-center"
                 @select="clearFilters"
               >
-                Resetta filtri
+                {{ trans('segnalazioni.table.clear_all_filters') }}
               </CommandItem>
             </CommandGroup>
           </template>

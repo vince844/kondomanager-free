@@ -10,6 +10,7 @@ import DataTableFacetedFilter from '@/components/segnalazioni/DataTableFacetedFi
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { Permission }  from "@/enums/Permission";
+import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 
@@ -83,7 +84,7 @@ const clearAllFilters = () => {
     <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
       <!-- Search Input (Full width on mobile, inline on desktop) -->
       <Input
-        placeholder="Filtra per titolo..."
+        :placeholder="trans('segnalazioni.table.filter_by_title')"
         v-model="subjectFilter"
         class="h-8 w-full lg:w-[250px]"
       />
@@ -93,7 +94,7 @@ const clearAllFilters = () => {
         <DataTableFacetedFilter
           v-if="priorityColumn"
           :column="priorityColumn"
-          title="Priorità"
+          :title="trans('segnalazioni.table.priority')"
           :options="priorityConstants"
           :isLoading="false"
           @update:filter="() => {}"
@@ -103,7 +104,7 @@ const clearAllFilters = () => {
         <DataTableFacetedFilter
           v-if="statoColumn"
           :column="statoColumn"
-          title="Stato"
+          :title="trans('segnalazioni.table.status')"
           :options="statoConstants"
           :isLoading="false"
           @update:filter="() => {}"
@@ -116,7 +117,7 @@ const clearAllFilters = () => {
           @click="clearAllFilters"
         >
         <X />
-          Resetta tutti i filtri
+          {{trans('segnalazioni.table.clear_all_filters')}}
         </Button>
       </div>
     </div>
@@ -129,7 +130,7 @@ const clearAllFilters = () => {
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('segnalazioni.actions.new_ticket') }}</span>
     </Link>
 
   </div>

@@ -10,6 +10,7 @@ import EventiList from '@/components/eventi/EventiList.vue';
 import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
+import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';
@@ -106,7 +107,7 @@ const navigateToDocumenti = () => {
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle class="text-md font-semibold">
-                            Condomini registrati
+                            {{ trans('dashboard.condomini_registrati') }}
                         </CardTitle>
                         <House class="w-8 h-8 text-muted-foreground" />
                     </CardHeader>
@@ -123,7 +124,7 @@ const navigateToDocumenti = () => {
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle class="text-md font-semibold">
-                            Segnalazioni aperte
+                           {{ trans('segnalazioni.stats.open_tickets') }}
                         </CardTitle>
                         <TriangleAlert class="w-8 h-8 text-muted-foreground" />
                     </CardHeader>
@@ -209,10 +210,10 @@ const navigateToDocumenti = () => {
                         <div class="flex items-center justify-between">
                             <div>
                                 <CardTitle class="text-lg">
-                                    Ultime segnalazioni
+                                    {{trans('segnalazioni.header.widget_tickets_title')}}
                                 </CardTitle>
                                 <CardDescription>
-                                    Elenco delle ultime segnalazioni guasto inviate
+                                    {{trans('segnalazioni.header.widget_tickets_description')}}
                                 </CardDescription>
                             </div>
 
@@ -221,7 +222,7 @@ const navigateToDocumenti = () => {
                                 v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
-                                Visualizza tutte
+                                {{trans('segnalazioni.actions.view_all_tickets')}}
                             </Link>
                         </div>
                     </CardHeader>
@@ -235,7 +236,7 @@ const navigateToDocumenti = () => {
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le segnalazioni!</span>
+                            <span class="font-medium">{{ trans('segnalazioni.dialogs.no_view_permission') }}</span>
                         </div>
                     </CardContent>
                 </Card>

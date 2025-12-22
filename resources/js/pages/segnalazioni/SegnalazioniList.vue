@@ -8,6 +8,7 @@ import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/segnalazioni/columns';
 import Alert from "@/components/Alert.vue";
 import SegnalazioniStats from '@/components/segnalazioni/SegnalazioniStats.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Segnalazione, Stats } from '@/types/segnalazioni';
 import type { PaginationMeta } from '@/types/pagination';
@@ -24,11 +25,15 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco segnalazioni guasto" />
+  <Head :title="trans('segnalazioni.header.list_tickets_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
-      <Heading title="Elenco segnalazioni guasto" description="Di seguito la tabella con l'elenco di tutte le segnalazioni guasto registrate" />
+      
+      <Heading 
+        :title="trans('segnalazioni.header.list_tickets_title')" 
+        :description="trans('segnalazioni.header.list_tickets_description')" 
+      />
 
       <SegnalazioniStats :stats="stats" />
           

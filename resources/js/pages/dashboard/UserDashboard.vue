@@ -10,6 +10,7 @@ import DocumentiList from '@/components/documenti/DocumentiList.vue';
 import EventiList from '@/components/eventi/EventiList.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -89,10 +90,8 @@ const props = defineProps<{
                     <CardHeader class="p-3 ml-3">
                         <div class="flex items-center justify-between">
                         <div>
-                            <CardTitle class="text-lg">Ultime segnalazioni</CardTitle>
-                            <CardDescription>
-                            Elenco delle ultime segnalazioni guasto pubblicate
-                            </CardDescription>
+                            <CardTitle class="text-lg">{{trans('segnalazioni.header.widget_tickets_title')}}</CardTitle>
+                            <CardDescription>{{trans('segnalazioni.header.widget_tickets_description')}}</CardDescription>
                         </div>
 
                         <Link
@@ -100,7 +99,7 @@ const props = defineProps<{
                             v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
                             class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                         >
-                            Visualizza tutte
+                            {{trans('segnalazioni.actions.view_all_tickets')}}
                         </Link>
                         </div>
                     </CardHeader>
@@ -114,7 +113,7 @@ const props = defineProps<{
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le segnalazioni!</span>
+                            <span class="font-medium">{{ trans('segnalazioni.dialogs.no_view_permission') }}</span>
                         </div>
                     </CardContent>
                 </Card>
