@@ -1,6 +1,6 @@
 <script setup lang="ts">
-
-import { computed, watch } from 'vue';
+  
+import { computed, watch, onMounted } from 'vue';
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Switch } from '@/components/ui/switch';
@@ -27,8 +27,16 @@ const { can_register, language, open_condominio_on_login, default_condominio_id,
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: language || 'it',
-  open_condominio_on_login: Boolean(open_condominio_on_login),
-  default_condominio_id: default_condominio_id ? String(default_condominio_id) : null,
+  open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
+  default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
+});
+
+// Debug per verificare i tipi in console se il problema persiste
+onMounted(() => {
+  console.log("Form ID:", typeof form.default_condominio_id, form.default_condominio_id);
+  if (condomini.length > 0) {
+    console.log("Primo Condominio ID:", typeof condomini[0].id, condomini[0].id);
+  }
 });
 
 watch(() => form.default_condominio_id, (newValue) => {
@@ -76,7 +84,6 @@ const submit = () => {
 
           <CardContent class="space-y-4 p-0">
 
-            <!-- Lingua applicazione -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
                 <label for="language" class="block text-sm font-medium leading-none mb-1">
@@ -93,18 +100,13 @@ const submit = () => {
                     <SelectValue placeholder="Seleziona lingua" />
                   </SelectTrigger>
                   <SelectContent position="popper" :side-offset="4" align="start" class="min-w-[var(--reka-select-trigger-width)]">
-                    <SelectItem value="it">
-                      Italiano
-                    </SelectItem>
-                    <SelectItem value="en">
-                      Inglese
-                    </SelectItem>
+                    <SelectItem value="it">Italiano</SelectItem>
+                    <SelectItem value="en">Inglese</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
-            <!-- Apri condominio al login -->
             <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
                 <label class="block text-sm font-medium leading-none mb-1">
@@ -120,7 +122,6 @@ const submit = () => {
               </div>
             </div>
 
-            <!-- Condominio predefinito (mostrato solo se open_condominio_on_login è true) -->
             <div 
               v-if="form.open_condominio_on_login" 
               class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4"
@@ -143,7 +144,7 @@ const submit = () => {
                     <SelectItem 
                       v-for="c in condomini" 
                       :key="c.id" 
-                      :value="c.id"
+                      :value="String(c.id)"
                     >
                       {{ c.nome }}
                     </SelectItem>
@@ -155,7 +156,6 @@ const submit = () => {
               </div>
             </div>
 
-            <!-- Abilita registrazione utenti -->
             <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
                 <label class="block text-sm font-medium leading-none mb-1">

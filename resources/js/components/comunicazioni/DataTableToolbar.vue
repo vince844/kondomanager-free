@@ -9,6 +9,7 @@ import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import DataTableFacetedFilter from '@/components/comunicazioni/DataTableFacetedFilter.vue';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
+import { trans } from 'laravel-vue-i18n';
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -61,7 +62,7 @@ watchDebounced(
     <div class="flex items-center space-x-2">
 
       <Input
-        placeholder="Filtra per nome..."
+        :placeholder="trans('comunicazioni.table.filter_by_title')"
         v-model="nameFilter"
         class="h-8 w-[150px] lg:w-[250px]"
       />
@@ -70,7 +71,7 @@ watchDebounced(
         <DataTableFacetedFilter
           v-if="priorityColumn"
           :column="priorityColumn"
-          title="Priorità"
+          :title="trans('comunicazioni.table.priority')"
           :options="priorityConstants"
           :isLoading="false"
           @update:filter="() => {}"
@@ -88,7 +89,7 @@ watchDebounced(
       class="hidden h-8 lg:flex ml-auto items-center gap-2"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('comunicazioni.actions.new_communication') }}</span>
     </Button>
 
   </div>

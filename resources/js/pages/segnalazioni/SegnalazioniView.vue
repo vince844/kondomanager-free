@@ -115,7 +115,7 @@ const statusItem = computed(() => {
 
                     <!-- Project -->
                     <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.form.label.building') }}:</span>
+                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.label.building') }}:</span>
                     <span class="capitalize font-medium">{{ segnalazione.condominio.full.nome }}</span>
                     </div>
                 </div>

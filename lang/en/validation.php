@@ -254,7 +254,7 @@ return [
         ],
         'comunicazioni' => [
             'subject' => 'subject',
-            'description' => 'descriprion',
+            'description' => 'description',
             'is_published' => 'published status',
             'priority' => 'priority',
             'stato' => 'status',

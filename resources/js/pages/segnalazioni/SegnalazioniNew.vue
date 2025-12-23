@@ -93,13 +93,13 @@ const submit = () => {
                         
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-3">
-                                <Label for="subject">{{ trans('segnalazioni.form.label.object') }}</Label>
+                                <Label for="subject">{{ trans('segnalazioni.label.object') }}</Label>
                                 <Input 
                                     id="subject" 
                                     class="mt-1 block w-full"
                                     v-model="form.subject" 
                                     v-on:focus="form.clearErrors('subject')"
-                                    :placeholder="trans('segnalazioni.form.placeholder.object')" 
+                                    :placeholder="trans('segnalazioni.placeholder.object')" 
                                 />
                                 
                                 <InputError :message="form.errors.subject" />
@@ -109,13 +109,13 @@ const submit = () => {
 
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="description">{{ trans('segnalazioni.form.label.description') }}</Label>
+                                <Label for="description">{{ trans('segnalazioni.label.description') }}</Label>
                                 <Textarea 
                                     id="description" 
                                     class="mt-1 block w-full min-h-[320px]"
                                     v-model="form.description" 
                                     v-on:focus="form.clearErrors('description')"
-                                    :placeholder="trans('segnalazioni.form.placeholder.description')" 
+                                    :placeholder="trans('segnalazioni.placeholder.description')" 
                                 />
                                 
                                 <InputError :message="form.errors.description" />
@@ -134,7 +134,7 @@ const submit = () => {
                             <div class="sm:col-span-6">
 
                                 <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                                    <Label for="stato">{{ trans('segnalazioni.form.label.visibility') }}</Label>
+                                    <Label for="visibility">{{ trans('segnalazioni.label.visibility') }}</Label>
 
                                     <HoverCard>
                                         <HoverCardTrigger as-child>
@@ -146,10 +146,10 @@ const submit = () => {
                                         <div class="flex justify-between space-x-4">
                                             <div class="space-y-1">
                                             <h4 class="text-sm font-semibold">
-                                                {{ trans('segnalazioni.form.label.visibility') }}
+                                                {{ trans('segnalazioni.label.visibility') }}
                                             </h4>
                                             <p class="text-sm">
-                                                {{ trans('segnalazioni.form.tooltip.visibility') }}
+                                                {{ trans('segnalazioni.tooltip.visibility') }}
                                             </p>
                                             </div>
                                         </div>
@@ -161,7 +161,7 @@ const submit = () => {
                                     :options="publishedConstants" 
                                     label="label" 
                                     v-model="form.is_published"
-                                    :placeholder="trans('segnalazioni.form.placeholder.visibility')"
+                                    :placeholder="trans('segnalazioni.placeholder.visibility')"
                                     @update:modelValue="form.clearErrors('is_published')" 
                                     :reduce="(option: PublishedType) => option.value"
                                 >
@@ -189,7 +189,7 @@ const submit = () => {
                             <div class="sm:col-span-6">
 
                                 <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                                    <Label for="stato">{{ trans('segnalazioni.form.label.priority') }}</Label>
+                                    <Label for="priority">{{ trans('segnalazioni.label.priority') }}</Label>
 
                                     <HoverCard>
                                         <HoverCardTrigger as-child>
@@ -201,10 +201,10 @@ const submit = () => {
                                         <div class="flex justify-between space-x-4">
                                             <div class="space-y-1">
                                             <h4 class="text-sm font-semibold">
-                                               {{ trans('segnalazioni.form.label.priority') }}
+                                               {{ trans('segnalazioni.label.priority') }}
                                             </h4>
                                             <p class="text-sm">
-                                                {{ trans('segnalazioni.form.tooltip.visibility') }}
+                                                {{ trans('segnalazioni.tooltip.priority') }}
                                             </p>
                                             </div>
                                         </div>
@@ -216,7 +216,7 @@ const submit = () => {
                                     :options="priorityConstants" 
                                     label="label" 
                                     v-model="form.priority"
-                                    :placeholder="trans('segnalazioni.form.placeholder.priority')"
+                                    :placeholder="trans('segnalazioni.placeholder.priority')"
                                     @update:modelValue="form.clearErrors('priority')" 
                                     :reduce="(priority: PriorityType) => priority.value"
                                 >
@@ -246,7 +246,7 @@ const submit = () => {
                             <div class="sm:col-span-6">
 
                                 <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                                    <Label for="stato">{{ trans('segnalazioni.form.label.status') }}</Label>
+                                    <Label for="stato">{{ trans('segnalazioni.label.status') }}</Label>
 
                                     <HoverCard>
                                         <HoverCardTrigger as-child>
@@ -258,10 +258,10 @@ const submit = () => {
                                         <div class="flex justify-between space-x-4">
                                             <div class="space-y-1">
                                             <h4 class="text-sm font-semibold">
-                                               {{ trans('segnalazioni.form.label.status') }}
+                                               {{ trans('segnalazioni.label.status') }}
                                             </h4>
                                             <p class="text-sm">
-                                                {{ trans('segnalazioni.form.tooltip.status') }}
+                                                {{ trans('segnalazioni.tooltip.status') }}
                                             </p>
                                             </div>
                                         </div>
@@ -273,7 +273,7 @@ const submit = () => {
                                     :options="statoConstants" 
                                     label="label" 
                                     v-model="form.stato"
-                                    :placeholder="trans('segnalazioni.form.placeholder.status')"
+                                    :placeholder="trans('segnalazioni.placeholder.status')"
                                     @update:modelValue="form.clearErrors('stato')" 
                                     :reduce="(stato: StatoType) => stato.value"
                                 >
@@ -301,13 +301,13 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="condomini">{{ trans('segnalazioni.form.label.building') }}</Label>
+                                <Label for="condomini">{{ trans('segnalazioni.label.building') }}</Label>
 
                                 <v-select 
                                     :options="condomini" 
                                     label="nome" 
                                     v-model="form.condominio_id"
-                                    :placeholder="trans('segnalazioni.form.placeholder.building')"
+                                    :placeholder="trans('segnalazioni.placeholder.building')"
                                     @update:modelValue="form.clearErrors('condominio_id')" 
                                     :reduce="(condominio: Building) => condominio.id"
                                 />
@@ -319,14 +319,14 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="anagrafiche">{{ trans('segnalazioni.form.label.resident') }}</Label>
+                                <Label for="anagrafiche">{{ trans('segnalazioni.label.resident') }}</Label>
 
                                 <v-select 
                                     multiple
                                     :options="anagrafiche" 
                                     label="nome" 
                                     v-model="form.anagrafiche"
-                                    :placeholder="trans('segnalazioni.form.placeholder.resident')"
+                                    :placeholder="trans('segnalazioni.placeholder.resident')"
                                     @update:modelValue="form.clearErrors('anagrafiche')" 
                                     :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                                 />
@@ -338,7 +338,7 @@ const submit = () => {
 
                         <Separator class="my-4" />
 
-                        <div class=" grid grid-cols-1 sm:grid-cols-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-6">
                             <div class="flex items-center space-x-2 sm:col-span-6">
                                 <Checkbox 
                                     class="size-4" 
@@ -351,7 +351,7 @@ const submit = () => {
                                     for="comments"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                     >
-                                    {{ trans('segnalazioni.form.label.comments') }}
+                                    {{ trans('segnalazioni.label.comments') }}
                                 </label>
 
                                 <HoverCard>
@@ -364,10 +364,10 @@ const submit = () => {
                                     <div class="flex justify-between space-x-4">
                                         <div class="space-y-1">
                                             <h4 class="text-sm font-semibold">
-                                                {{ trans('segnalazioni.form.label.comments') }}
+                                                {{ trans('segnalazioni.label.comments') }}
                                             </h4>
                                             <p class="text-sm">
-                                                {{ trans('segnalazioni.form.tooltip.comments') }}
+                                                {{ trans('segnalazioni.tooltip.comments') }}
                                             </p>
                                         </div>
                                     </div>
@@ -389,7 +389,7 @@ const submit = () => {
                                     for="featured"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                     >
-                                      {{ trans('segnalazioni.form.label.featured') }}
+                                      {{ trans('segnalazioni.label.featured') }}
                                 </label>
 
                                 <HoverCard>
@@ -401,9 +401,9 @@ const submit = () => {
                                     <HoverCardContent class="w-80 z-50">
                                     <div class="flex justify-between space-x-4">
                                         <div class="space-y-1">
-                                        <h4 class="text-sm font-semibold">{{ trans('segnalazioni.form.label.featured') }}</h4>
+                                        <h4 class="text-sm font-semibold">{{ trans('segnalazioni.label.featured') }}</h4>
                                         <p class="text-sm">
-                                            {{ trans('segnalazioni.form.tooltip.featured') }}
+                                            {{ trans('segnalazioni.tooltip.featured') }}
                                         </p>
                                         </div>
                                     </div>

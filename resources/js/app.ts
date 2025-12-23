@@ -1,10 +1,10 @@
 import '../css/app.css';
 import '../css/custom.css';
 
-import { createInertiaApp, usePage } from '@inertiajs/vue3'; // Importa usePage qui
+import { createInertiaApp, usePage } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
-import { createApp, h, watch } from 'vue'; // Importa watch e h da vue
+import { createApp, h, watch } from 'vue'; 
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initializeTheme } from './composables/useAppearance';
 import money from 'v-money3';
@@ -34,7 +34,6 @@ createInertiaApp({
 
             app.mount(el);
 
-            // OSSERVA LE PROPS DINAMICHE
             // Usiamo un watcher dopo il mount per intercettare i cambiamenti di Inertia
             watch(
                 () => usePage().props.locale,

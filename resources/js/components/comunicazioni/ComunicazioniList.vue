@@ -4,6 +4,7 @@ import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { Comunicazione } from '@/types/comunicazioni';
 
 const props = defineProps<{
@@ -42,7 +43,7 @@ const truncate = (text: string, length: number = 120) => {
     <div class="flow-root">
       <ul role="list" class="divide-y divide-gray-200">
         <div v-if="!comunicazioni.length" class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-          <span class="font-medium">Nessuna comunicazione in bacheca ancora creata!</span>
+          <span class="font-medium">{{ trans('comunicazioni.dialogs.no_communications_created') }}</span>
         </div>
         <li v-for="comunicazione in comunicazioni" :key="comunicazione.id" class="py-3 sm:py-4">
           <div class="flex items-center space-x-4">
@@ -66,18 +67,33 @@ const truncate = (text: string, length: number = 120) => {
               </Link>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviata {{ comunicazione.created_at }} da {{ comunicazione.created_by.user.name }}</span>
+                <span> 
+                  {{ 
+                    trans('comunicazioni.visibility.sent_on_by', { 
+                        date: comunicazione.created_at, 
+                        name: comunicazione.created_by.user.name 
+                    }) 
+                  }}
+                </span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">
                 <span class="mt-1 text-gray-600 py-1">
-                  {{ isExpanded(Number(comunicazione.id)) ? comunicazione.description : truncate(comunicazione.description, 120) }}
+                  {{ 
+                    isExpanded(Number(comunicazione.id)) 
+                    ? comunicazione.description 
+                    : truncate(comunicazione.description, 120) 
+                  }}
                 </span>
                 <button
                   class="text-xs font-semibold text-gray-500 ml-1"
                   @click="toggleExpanded(Number(comunicazione.id))"
                 >
-                  {{ isExpanded(Number(comunicazione.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+                  {{ 
+                    isExpanded(Number(comunicazione.id)) 
+                    ? trans('comunicazioni.actions.show_less')
+                    : trans('comunicazioni.actions.show_more')
+                  }}
                 </button>
               </p>
   

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+    
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,10 +176,10 @@ const navigateToDocumenti = () => {
                         <div class="flex items-center justify-between">
                             <div>
                                 <CardTitle class="text-lg">
-                                    Ultime comunicazioni
+                                    {{trans('comunicazioni.header.widget_communications_title')}}
                                 </CardTitle>
                                 <CardDescription>
-                                    Elenco delle ultime comunicazioni in bacheca
+                                     {{trans('comunicazioni.header.widget_communications_description')}}
                                 </CardDescription>
                             </div>
 
@@ -187,7 +188,7 @@ const navigateToDocumenti = () => {
                                 v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])"
                                 class="inline-block px-2 py-1 font-bold text-white bg-gray-800 rounded hover:bg-gray-700 text-xs transition-colors"
                             >
-                                Visualizza tutte
+                                {{trans('comunicazioni.actions.view_all_communications')}}
                             </Link>
                         </div>
                     </CardHeader>
@@ -200,7 +201,7 @@ const navigateToDocumenti = () => {
 
                     <CardContent v-else>
                         <div class="p-4 mt-1 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-                            <span class="font-medium">Non hai permessi sufficienti per visualizzare le comunicazioni!</span>
+                            <span class="font-medium">{{ trans('comunicazioni.dialogs.no_view_permission') }}</span>
                         </div>
                     </CardContent>
                 </Card>
