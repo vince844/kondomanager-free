@@ -4,6 +4,7 @@ import DropdownAction from './DataTableRowActions.vue';
 import DataTableColumnHeader from './DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
 import { Badge }  from '@/components/ui/badge';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Building } from '@/types/buildings';
 
@@ -12,7 +13,7 @@ const { generateRoute } = usePermission();
 export const columns: ColumnDef<Building>[] = [
   {
     accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('condomini.table.name') }), 
 
     cell: ({ row }) => {
 
@@ -30,7 +31,7 @@ export const columns: ColumnDef<Building>[] = [
   },
   {
     accessorKey: 'indirizzo',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Indirizzo' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('condomini.table.address') }), 
     cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
   },
   {

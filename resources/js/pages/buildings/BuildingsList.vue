@@ -7,6 +7,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/buildings/columns';
 import Alert from "@/components/Alert.vue";
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
@@ -21,10 +22,7 @@ defineProps<{
   }
 }>()
 
-// Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
-
-// Computed property to safely access flash messages
 const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -38,13 +36,16 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 <template>
 
-  <Head title="Elenco condomini" />
+  <Head :title="trans('condomini.header.list_buildings_head')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Elenco condomini" description="Di seguito la tabella con l'elenco di tutti i condomini registrati" />
+      <Heading 
+        :title="trans('condomini.header.list_buildings_title')" 
+        :description="trans('condomini.header.list_buildings_description')"   
+      />
 
       <div v-if="flashMessage" class="py-4">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

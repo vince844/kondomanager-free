@@ -29,6 +29,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
   <AppLayout>
     <div class="px-4 py-6">
+      
       <Heading
         :title="trans('comunicazioni.header.list_communications_title')" 
         :description="trans('comunicazioni.header.list_communications_description')" 

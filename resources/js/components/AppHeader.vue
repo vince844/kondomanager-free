@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, LayoutDashboard, ChevronRight, BriefcaseBusiness, UsersRound } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -56,7 +56,7 @@ const mainNavItems = computed<NavItem[]>(() => [
             { type: 'link', title: trans('appHeader.fornitori'), icon: BriefcaseBusiness, href: generatePath('fornitori'), permissions: [Permission.VIEW_ANAGRAFICHE] },
         ]
     },
-    { type: 'link', title: trans('appHeader.bacheca'), href: generatePath('comunicazioni'), icon: LayoutDashboard, permissions: [Permission.VIEW_COMUNICAZIONI] },
+    { type: 'link', title: trans('appHeader.bacheca'), href: generatePath('comunicazioni'), icon: Megaphone, permissions: [Permission.VIEW_COMUNICAZIONI] },
     { type: 'link', title: trans('appHeader.segnalazioni'), href: generatePath('segnalazioni'), icon: Tags, permissions: [Permission.VIEW_SEGNALAZIONI] },
     {
         type: 'link',

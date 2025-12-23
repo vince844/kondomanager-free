@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { MoreHorizontal, Trash2, FilePenLine } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { Permission } from "@/enums/Permission"
+import { trans } from 'laravel-vue-i18n';
 import type { Building } from '@/types/buildings';
 
 defineProps<{ building: Building }>()
@@ -54,19 +55,19 @@ const editBuilding = (building: Building) => {
   >
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+        <span class="sr-only">{{ trans('condomini.table.actions') }}</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('condomini.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem 
         v-if="hasPermission([Permission.EDIT_CONDOMINI])"
         @click="editBuilding(building)" 
       >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica
+         {{ trans('condomini.actions.edit_building') }}
       </DropdownMenuItem>
 
       <DropdownMenuItem 
@@ -74,7 +75,7 @@ const editBuilding = (building: Building) => {
         @click="handleDelete(building)" 
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('condomini.actions.delete_building') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>
