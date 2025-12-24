@@ -74,6 +74,9 @@ return [
     'success_update_piano_rate'         => "Il piano rate è stato aggiornato con successo.",
     'error_update_piano_rate'           => "Si è verificato un errore durante l'aggiornamento del piano rate.",     
     'success_delete_piano_rate'         => "Il piano rate è stato eliminato con successo.",
-    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate."
+    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate.",
+    // Casse
+    'success_create_cassa'              => "La nuova risorsa di cassa è stata creata con successo",
+    'error_create_cassa'                => "Si è verificato un errore durante la creazione della nuova risorsa di cassa."
 
 ];

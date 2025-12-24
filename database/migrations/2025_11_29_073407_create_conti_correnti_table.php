@@ -14,8 +14,7 @@ return new class extends Migration
         Schema::create('conti_correnti', function (Blueprint $table) {
             $table->id();
             // Morph verso: Fornitore, Condominio, Cassa, ecc.
-            $table->morphs('contable'); // crea contable_id + contable_type
-            // Dati conto
+            $table->morphs('contable'); 
             $table->string('intestatario')->nullable();
             $table->string('iban', 34)->nullable()->index();
             $table->string('swift')->nullable();
@@ -25,9 +24,7 @@ return new class extends Migration
             $table->string('provincia', 5)->nullable();
             $table->string('cap', 10)->nullable();
             $table->string('nazione', 50)->default('Italia');
-            // Attributi funzionali
             $table->boolean('predefinito')->default(false);
-            // Tipo conto
             $table->enum('tipo', ['ordinario','dedicato','estero','postale','contabilita_speciale','altro'])->default('ordinario');
             $table->text('note')->nullable();
             $table->timestamps();

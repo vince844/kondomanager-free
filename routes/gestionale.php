@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Gestionale\Casse\CassaController;
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
 use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
@@ -62,6 +63,9 @@ Route::prefix('/gestionale/{condominio}')->name('gestionale.')->middleware([Ensu
             'immobili'  => 'immobile',
             'documenti' => 'documento'
         ]);
+    
+    Route::resource('casse', CassaController::class)
+        ->parameters(['casse' => 'cassa']);
     
     Route::resource('tabelle', TabellaController::class)
         ->parameters([

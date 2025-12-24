@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Gestionale\Cassa;
+use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Condominio extends Model
 {
@@ -88,6 +91,23 @@ class Condominio extends Model
     public function pianiDeiConti()
     {
         return $this->hasMany(PianoConto::class);
+    }
+
+    /**
+     * Le risorse finanziarie del condominio (Banche, Casse contanti, Fondi).
+     */
+    public function casse(): HasMany
+    {
+        return $this->hasMany(Cassa::class);
+    }
+
+    /**
+     * Il Piano dei Conti Patrimoniale (Attività/Passività).
+     * Fondamentale per generare lo Stato Patrimoniale.
+     */
+    public function contiContabili(): HasMany
+    {
+        return $this->hasMany(ContoContabile::class);
     }
 
 }

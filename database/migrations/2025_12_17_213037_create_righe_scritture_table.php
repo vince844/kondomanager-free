@@ -30,7 +30,6 @@ return new class extends Migration
             $table->index('immobile_id');
             $table->index('anagrafica_id');
             $table->index('rata_id');
-            $table->index(['riferimento_type','riferimento_id']);
         });
     }
 

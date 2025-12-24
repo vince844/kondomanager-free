@@ -74,5 +74,8 @@ return [
     'success_update_piano_rate'         => "The rate plan has been updated successfully.",
     'error_update_piano_rate'           => "An error occurred while updating the rate plan.",
     'success_delete_piano_rate'         => "The rate plan has been deleted successfully.",
-    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan."
+    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan.",
+    // Casse
+    'success_create_cassa'              => "The new bank resource has been created successfully",
+    'error_create_cassa'                => "An error occurred while creating the new bank resource."
 ];

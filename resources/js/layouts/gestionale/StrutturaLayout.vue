@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, ArrowUpNarrowWide, TextSearch } from 'lucide-vue-next';
+import { Building2, ArrowUpNarrowWide, TextSearch, Wallet } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -34,6 +34,12 @@ const topbarNavItems: LinkItem[] = [
     icon: ArrowUpNarrowWide,
     title: 'Scale',
     href: generatePath('gestionale/:condominio/scale', { condominio: condominio.value.id }),
+  },
+  {
+    type: 'link',
+    icon: Wallet,
+    title: 'Risorse e fondi',
+    href: generatePath('gestionale/:condominio/casse', { condominio: condominio.value.id }),
   }
 ];
 
