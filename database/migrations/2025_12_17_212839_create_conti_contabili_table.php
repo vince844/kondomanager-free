@@ -19,6 +19,7 @@ return new class extends Migration
             $table->text('descrizione')->nullable();
             $table->enum('tipo', ['attivo', 'passivo']);
             $table->enum('categoria', ['liquidita','crediti','debiti','fondi']);
+            $table->string('ruolo')->nullable()->index();
             $table->foreignId('parent_id')->nullable()->constrained('conti_contabili')->cascadeOnDelete();
             $table->integer('livello')->default(1);
             $table->boolean('di_sistema')->default(false);

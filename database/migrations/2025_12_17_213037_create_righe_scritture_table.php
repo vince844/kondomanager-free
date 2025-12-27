@@ -15,7 +15,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('scrittura_id')->constrained('scritture_contabili')->cascadeOnDelete();
             $table->foreignId('conto_contabile_id')->constrained('conti_contabili')->cascadeOnDelete();
-            $table->foreignId('conto_id')->nullable()->constrained('conti')->nullOnDelete();
+            $table->foreignId('cassa_id')->nullable()->constrained('casse')->nullOnDelete();
+            $table->foreignId('voce_spesa_id')->nullable()->constrained('conti')->nullOnDelete();
             $table->enum('tipo_riga', ['dare','avere']);
             $table->bigInteger('importo'); // centesimi
             $table->foreignId('immobile_id')->nullable()->constrained('immobili')->nullOnDelete();
@@ -26,10 +27,10 @@ return new class extends Migration
             $table->timestamps();
             $table->index(['scrittura_id','tipo_riga']);
             $table->index('conto_contabile_id');
-            $table->index('conto_id');
             $table->index('immobile_id');
             $table->index('anagrafica_id');
             $table->index('rata_id');
+            $table->index('voce_spesa_id');
         });
     }
 

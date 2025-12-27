@@ -14,7 +14,22 @@ import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
-import { ListPlus, Library, Settings, GitGraph, HousePlus, Building as BuildingIcon, BookText, LayoutGrid, Menu, Table2, HandCoins, Wallet, ChevronRight } from 'lucide-vue-next';
+import { 
+    ListPlus, 
+    Library, 
+    Settings, 
+    GitGraph, 
+    HousePlus, 
+    Building as BuildingIcon, 
+    BookText,
+    LayoutGrid, 
+    Menu, 
+    Table2, 
+    HandCoins, 
+    Wallet, 
+    ChevronRight, 
+    ArrowUpDown
+} from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { BreadcrumbItem, NavItem, LinkItem, Auth} from '@/types';
@@ -98,10 +113,16 @@ const mainNavItems: NavItem[] = [
         icon: HandCoins,
     },
     {
-         type: 'link',
+        type: 'link',
         title: 'Piani rate',
         href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: Wallet,
+    },
+    {
+        type: 'link',
+        title: 'Movimenti',
+        href: generatePath('gestionale/:condominio/movimenti', { condominio: condominio.value.id }),
+        icon: ArrowUpDown,
     }
 ]; 
 

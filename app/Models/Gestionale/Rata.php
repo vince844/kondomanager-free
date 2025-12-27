@@ -88,4 +88,14 @@ class Rata extends Model
     {
         return $this->data_scadenza?->isPast();
     }
+
+    public function scritture()
+    {
+        return $this->belongsToMany(
+            ScritturaContabile::class, 
+            'rata_scrittura', 
+            'rata_id', 
+            'scrittura_contabile_id'
+        )->withPivot(['importo_pagato', 'data_pagamento'])->withTimestamps();
+    }
 }

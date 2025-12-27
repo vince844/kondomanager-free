@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('nome');
             $table->string('descrizione')->nullable();
             $table->enum('tipo', ['contanti','banca','fondo','virtuale'])->default('banca');
-            $table->foreignId('conto_contabile_id')->constrained('conti_contabili')->restrictOnDelete();
+            $table->foreignId('conto_contabile_id')->constrained('conti_contabili')->restrictOnDelete()->unique();
             $table->boolean('attiva')->default(true);
             $table->text('note')->nullable();
             $table->timestamps();
