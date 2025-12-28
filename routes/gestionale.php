@@ -17,6 +17,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
+use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use App\Http\Controllers\Gestionale\Tabelle\FetchTabelleController;
@@ -29,8 +30,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('/gestionale/{condominio}')
     ->name('gestionale.')
     ->middleware([
-        EnsureCondominioHasEsercizio::class,   // 1. Controllo Esercizio
-        EnsureCondominioHasPianoConti::class   // 2. Controllo Conti (NUOVO)
+        EnsureCondominioHasEsercizio::class,   
+        EnsureCondominioHasPianoConti::class  
     ])
     ->group(function () {
     
@@ -108,6 +109,9 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
         ]);
+    
+    Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
+    ->name('esercizi.piani-rate.regenerate');
     
     // 🔥 NUOVA ROTTA API AGGIUNTA
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)

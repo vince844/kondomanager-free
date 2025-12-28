@@ -217,9 +217,10 @@ const submit = () => {
                     <HoverCardContent class="w-80 z-50">
                       <div class="flex justify-between space-x-4">
                         <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Saldo iniziale</h4>
+                          <h4 class="text-sm font-semibold">Istruzioni Saldo</h4>
                           <p class="text-sm">
-                            In questo campo puoi impostare il saldo iniziale dell'anagrafica, per registrare un saldo negativo inserisci il segno - prima del valore numerico, se il saldo è positivo non è necessario inserire il segno +
+                            Inserisci un valore <strong>POSITIVO</strong> se l'anagrafica ha un <strong>DEBITO</strong> (deve pagare).<br>
+                            Inserisci un valore <strong>NEGATIVO (col meno -)</strong> se l'anagrafica ha un <strong>CREDITO</strong> (ha pagato troppo).
                           </p>
                         </div>
                       </div>
@@ -237,8 +238,7 @@ const submit = () => {
 
                   <InputError :message="form.errors.saldo_iniziale" />
                   <p class="text-xs text-gray-500 mt-1">
-                    Inserisci l'importo nel formato italiano (es. 1.234,56)
-                    <strong>Per saldo negativo, usa il segno -</strong>
+                    Es: <strong>100,00</strong> (Deve pagare) | <strong>-100,00</strong> (A credito/Avanza)
                   </p>
                 </div>
 

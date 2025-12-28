@@ -27,12 +27,13 @@ class UpdateImmobileAnagraficaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'quota'         => 'required|numeric', 
-            'note'          => 'sometimes|nullable|string',
-            'anagrafica_id' => ['required','integer', Rule::exists('anagrafiche', 'id')],
-            'tipologia'     => 'required|in:proprietario,inquilino,usufruttuario',
-            'data_inizio'   => 'required|date',
-            'data_fine'     => 'sometimes|nullable|date',
+            'quota'           => 'required|numeric', 
+            'note'            => 'sometimes|nullable|string',
+            'anagrafica_id'   => ['required','integer', Rule::exists('anagrafiche', 'id')],
+            'tipologia'       => 'required|in:proprietario,inquilino,usufruttuario',
+            'saldo_iniziale'  => 'nullable|string',
+            'data_inizio'     => 'required|date',
+            'data_fine'       => 'sometimes|nullable|date',
         ];
     }
 

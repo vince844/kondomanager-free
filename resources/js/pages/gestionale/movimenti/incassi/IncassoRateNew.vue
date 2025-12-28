@@ -17,7 +17,8 @@ import {
     ArrowRight,
     Euro,
     FileText,
-    Receipt
+    Receipt,
+    ArrowRightLeft
 } from 'lucide-vue-next';
 import axios from 'axios';
 import vSelect from 'vue-select';
@@ -76,6 +77,7 @@ const totalAllocato = computed(() =>
     rateList.value.reduce((sum, r) => sum + (parseFloat(r.da_pagare) || 0), 0)
 );
 
+// Somma algebrica (Debiti positivi - Crediti negativi)
 const totaleDebito = computed(() => 
     rateList.value.reduce((sum, r) => sum + (parseFloat(r.residuo) || 0), 0)
 );
@@ -95,6 +97,7 @@ const bilancioFinale = computed(() => {
 });
 
 const previewContabile = computed(() => {
+    // Consideriamo solo le rate dove stiamo effettivamente mettendo dei soldi
     const rateCoinvolte = rateList.value.filter(r => r.selezionata && r.da_pagare > 0);
 
     return {
@@ -156,12 +159,10 @@ watch(() => form.importo_totale, () => {
 
 // Watcher Filtro Gestione: Resetta selezioni se cambio filtro
 watch(() => form.gestione_id, () => {
-    // 1. Resetta tutte le selezioni precedenti (per evitare di pagare rate ora nascoste)
     rawRateList.value.forEach(r => {
         r.da_pagare = 0;
         r.selezionata = false;
     });
-    // 2. Ricalcola la distribuzione sul nuovo set visibile
     if (form.importo_totale > 0) runDistribution();
 });
 
@@ -179,8 +180,14 @@ const runDistribution = () => {
 const distributeGreedy = () => {
     let budget = parseFloat(String(form.importo_totale)) || 0;
     
-    // Iteriamo solo sulla lista VISIBILE (filtrata)
     rateList.value.forEach(r => {
+        // 🔥 MODIFICA IMPORTANTE: Ignora le rate a credito (negative)
+        if (r.residuo <= 0) {
+            r.da_pagare = 0;
+            r.selezionata = false;
+            return;
+        }
+
         const allocabile = Math.min(budget, r.residuo);
         r.da_pagare = parseFloat(allocabile.toFixed(2));
         r.selezionata = r.da_pagare > 0;
@@ -195,7 +202,10 @@ const distributeGreedy = () => {
 const onManualChange = (rata: any, val: string) => {
     if (mode.value === 'auto') return;
     let amount = parseFloat(val) || 0;
+    
+    // Non puoi pagare più del residuo
     if (amount > rata.residuo) amount = rata.residuo;
+    
     rata.da_pagare = amount;
     rata.selezionata = amount > 0;
     calculateExcessOnly();
@@ -228,9 +238,15 @@ const pagaTutto = () => {
     mode.value = 'manual';
     let somma = 0;
     rateList.value.forEach(r => {
-        r.da_pagare = r.residuo;
-        r.selezionata = true;
-        somma += r.residuo;
+        // Paga solo se è un debito positivo
+        if (r.residuo > 0) {
+            r.da_pagare = r.residuo;
+            r.selezionata = true;
+            somma += r.residuo;
+        } else {
+            r.da_pagare = 0;
+            r.selezionata = false;
+        }
     });
     form.importo_totale = parseFloat(somma.toFixed(2));
     calculateExcessOnly();
@@ -241,7 +257,8 @@ const pagaScadute = () => {
     mode.value = 'manual';
     let somma = 0;
     rateList.value.forEach(r => {
-        if (r.scaduta) {
+        // Paga solo se scaduta E se è un debito positivo
+        if (r.scaduta && r.residuo > 0) {
             r.da_pagare = r.residuo;
             r.selezionata = true;
             somma += r.residuo;
@@ -433,13 +450,15 @@ const submit = () => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50'">
+                                    <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="[r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50', r.residuo < 0 ? 'bg-blue-50/30' : '']">
+                                        
                                         <td class="p-3 pl-4 align-top">
                                             <div class="flex flex-col">
                                                 <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
-                                                <span v-if="r.scaduta" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded"><AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta</span>
+                                                <span v-if="r.scaduta && r.residuo > 0" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded"><AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta</span>
                                             </div>
                                         </td>
+
                                         <td class="p-3 align-top">
                                             <div class="text-xs font-bold text-gray-800 mb-0.5">{{ r.descrizione }}</div>
                                             <div class="text-[11px] text-blue-600 font-medium flex items-center gap-1">
@@ -451,11 +470,28 @@ const submit = () => {
                                             </div>
                                             <div class="text-[10px] text-gray-400 mt-0.5">{{ r.gestione }} • {{ r.unita }}</div>
                                         </td>
+
                                         <td class="p-3 text-right align-top">
-                                            <span class="font-mono text-xs font-medium text-gray-500">{{ formatCurrency(r.residuo) }}</span>
+                                            <span class="font-mono text-xs font-medium" :class="r.residuo < 0 ? 'text-blue-600 font-bold' : 'text-gray-500'">
+                                                {{ formatCurrency(r.residuo) }}
+                                            </span>
+                                            <span v-if="r.residuo < 0" class="block text-[9px] text-blue-400 uppercase font-bold mt-0.5">Credito</span>
                                         </td>
+
                                         <td class="p-3 pr-4 text-right align-top">
-                                            <Input type="number" v-model="r.da_pagare" @input="onManualChange(r, $event.target.value)" :disabled="mode==='auto'" class="text-right font-bold h-8 text-xs font-mono transition-all" :class="r.da_pagare > 0 ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700' : 'bg-transparent border-transparent group-hover:border-gray-200'" placeholder="0.00"/>
+                                            <Input 
+                                                v-if="r.residuo > 0"
+                                                type="number" 
+                                                v-model="r.da_pagare" 
+                                                @input="onManualChange(r, $event.target.value)" 
+                                                :disabled="mode==='auto'" 
+                                                class="text-right font-bold h-8 text-xs font-mono transition-all" 
+                                                :class="r.da_pagare > 0 ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700' : 'bg-transparent border-transparent group-hover:border-gray-200'" 
+                                                placeholder="0.00"
+                                            />
+                                            <div v-else class="text-xs text-blue-400 italic py-1 opacity-70">
+                                                Non pagabile
+                                            </div>
                                         </td>
                                     </tr>
                                 </tbody>

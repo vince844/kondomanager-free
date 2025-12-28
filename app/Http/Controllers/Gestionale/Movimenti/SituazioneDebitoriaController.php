@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
-use App\Models\Anagrafica;
 use App\Models\Gestionale\RataQuote;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,8 +17,16 @@ class SituazioneDebitoriaController extends Controller
         $query = RataQuote::query()
             ->whereHas('rata', function($q) use ($condominio) {
                 $q->whereHas('pianoRate', fn($p) => $p->where('condominio_id', $condominio->id));
-            })
-            ->whereRaw('importo > importo_pagato');
+            });
+
+        // 🔥 MODIFICA: Logica di filtro migliorata
+        // Includiamo:
+        // 1. Rate normali dove c'è ancora debito (importo > pagato)
+        // 2. Rate a credito (importo < 0) che fungono da 'bonus' per l'utente
+        $query->where(function($q) {
+            $q->whereRaw('importo > importo_pagato') // Debiti non saldati
+              ->orWhere('importo', '<', 0);          // Crediti (sempre visibili)
+        });
 
         if ($request->has('immobile_id') && $request->immobile_id) {
             $query->where('immobile_id', $request->immobile_id);
@@ -33,7 +40,7 @@ class SituazioneDebitoriaController extends Controller
 
         $quote = $query->with(['rata.pianoRate.gestione', 'immobile', 'rata', 'anagrafica'])
             ->orderBy('immobile_id')
-            ->orderBy('data_scadenza', 'asc')
+            ->orderBy('data_scadenza', 'asc') // Ordine cronologico importante per applicare i crediti
             ->get()
             ->map(function ($quota) {
                 
@@ -45,20 +52,24 @@ class SituazioneDebitoriaController extends Controller
                         ->value('tipologia');
                 }
 
+                // Calcolo residuo (può essere negativo se è un credito)
+                $residuo = ($quota->importo - $quota->importo_pagato) / 100;
+
                 return [
                     'id'              => $quota->id,
                     'rata_padre_id'   => $quota->rata_id,
                     'descrizione'     => ($quota->rata->descrizione ?? 'Rata') . ' (n.' . ($quota->rata->numero_rata ?? '-') . ')',
                     'scadenza_human'  => $quota->data_scadenza ? Carbon::parse($quota->data_scadenza)->format('d/m/Y') : 'N/D',
-                    'residuo'         => ($quota->importo - $quota->importo_pagato) / 100,
+                    'residuo'         => $residuo,
                     'gestione'        => $quota->rata->pianoRate->gestione->nome ?? 'Generica',
-                    'gestione_id'     => $quota->rata->pianoRate->gestione_id, // <--- FONDAMENTALE PER IL FILTRO
+                    'gestione_id'     => $quota->rata->pianoRate->gestione_id,
                     'unita'           => $quota->immobile ? "Int. {$quota->immobile->interno} ({$quota->immobile->nome})" : '-',
                     'intestatario'    => $quota->anagrafica ? $quota->anagrafica->nome : 'N/D',
                     'tipologia'       => $tipologia ? ucfirst($tipologia) : '',
                     'da_pagare'       => 0,
                     'selezionata'     => false,
-                    'scaduta'         => $quota->data_scadenza && Carbon::parse($quota->data_scadenza)->isPast()
+                    'scaduta'         => $quota->data_scadenza && Carbon::parse($quota->data_scadenza)->isPast(),
+                    'is_credito'      => $residuo < 0 // Flag utile per il frontend
                 ];
             });
 

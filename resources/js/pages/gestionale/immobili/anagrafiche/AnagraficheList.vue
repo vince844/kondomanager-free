@@ -43,7 +43,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
           <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
-      <div class="container mx-auto p-0">
+      <div class="container mx-auto p-0 space-y-4">
+        
         <DataTable 
           :columns="createColumns(props.condominio, props.immobile)" 
           :data="props.immobile.anagrafiche"

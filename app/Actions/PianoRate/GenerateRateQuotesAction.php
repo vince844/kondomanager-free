@@ -103,7 +103,8 @@ class GenerateRateQuotesAction
 
         if ($saldo !== 0) {
             if ($metodoDistribuzione === 'prima_rata' && $numeroRata === 1) {
-                $importo -= $saldo;
+                /* $importo -= $saldo; */
+                $importo += $saldo;
             }
 
             if ($metodoDistribuzione === 'tutte_rate') {
@@ -116,7 +117,8 @@ class GenerateRateQuotesAction
                 $quotaSaldo = $baseSaldo + ($numeroRata <= $restoSaldo ? 1 : 0);
                 $quotaSaldo *= $segnoSaldo;
 
-                $importo -= $quotaSaldo;
+          /*       $importo -= $quotaSaldo; */
+                $importo += $quotaSaldo;
             }
         }
 
