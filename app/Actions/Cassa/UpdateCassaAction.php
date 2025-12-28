@@ -4,7 +4,8 @@ namespace App\Actions\Cassa;
 
 use App\Models\Gestionale\Cassa;
 use App\Models\ContoCorrente;
-use App\Enums\TipoCassa; 
+use App\Enums\TipoCassa;
+use App\Helpers\MoneyHelper;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -36,6 +37,9 @@ class UpdateCassaAction
                 'nome'        => $data['nome'],
                 'tipo'        => $data['tipo'], 
                 'descrizione' => $data['descrizione'] ?? null,
+                'saldo_iniziale' => isset($data['saldo_iniziale']) 
+                                ? MoneyHelper::toCents($data['saldo_iniziale']) 
+                                : 0,
                 'note'        => $data['note'] ?? null,
             ]);
 

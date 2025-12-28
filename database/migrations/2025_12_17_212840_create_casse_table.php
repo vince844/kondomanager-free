@@ -18,6 +18,7 @@ return new class extends Migration
             $table->string('descrizione')->nullable();
             $table->enum('tipo', ['contanti','banca','fondo','virtuale'])->default('banca');
             $table->foreignId('conto_contabile_id')->constrained('conti_contabili')->restrictOnDelete()->unique();
+            $table->bigInteger('saldo_iniziale')->default(0)->comment('Saldo apertura in centesimi');
             $table->boolean('attiva')->default(true);
             $table->text('note')->nullable();
             $table->timestamps();

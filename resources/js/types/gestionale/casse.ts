@@ -25,6 +25,7 @@ export interface Cassa {
 
     // --- Dati Calcolati ---
     saldo_attuale?: number; 
+    saldo_formatted?: string; 
 
     created_at?: string;
     updated_at?: string;

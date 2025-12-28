@@ -8,6 +8,7 @@ use App\Http\Requests\Gestionale\Casse\CreateCassaRequest;
 use App\Http\Resources\Gestionale\Casse\CassaResource;
 use App\Actions\Cassa\CreateCassaAction;
 use App\Actions\Cassa\UpdateCassaAction;
+use App\Helpers\MoneyHelper;
 use App\Http\Requests\Gestionale\Casse\UpdateCassaRequest;
 use App\Http\Resources\Gestionale\Casse\UpdateCassaResource;
 use App\Models\Condominio;
@@ -37,31 +38,43 @@ class CassaController extends Controller
     {
         $validated = $request->validated();
 
-        // Get a list of all the esercizi create to show in the datatable
-        $casse = $condominio
+        $query = $condominio
             ->casse()
-            ->with('contoCorrente')
+            ->with(['contoCorrente'])
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+            // --- CALCOLO SALDO DINAMICO ---
+            // Sommiamo le entrate (Dare) e le uscite (Avere) direttamente via SQL
+            ->withSum(['movimenti as totale_entrate' => function ($q) {
+                $q->where('tipo_riga', 'dare');
+            }], 'importo')
+            ->withSum(['movimenti as totale_uscite' => function ($q) {
+                $q->where('tipo_riga', 'avere');
+            }], 'importo');
 
-        // Get a list of all the registered condomini 
+        // Eseguiamo la paginazione
+        $casse = $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+
         $condomini = $this->getCondomini();
-        // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
             
         return Inertia::render('gestionale/casse/CasseList', [
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
-            'casse'      => CassaResource::collection($casse)->resolve(),
-            'meta'       => [
+            
+            // 🔥 USIAMO LA RESOURCE COLLECTION
+            // Laravel passerà automaticamente i campi calcolati (totale_entrate, totale_uscite) alla resource
+            'casse' => CassaResource::collection($casse)->resolve(),
+            
+            'meta' => [
                 'current_page' => $casse->currentPage(),
                 'last_page'    => $casse->lastPage(),
                 'per_page'     => $casse->perPage(),
                 'total'        => $casse->total(),
             ],
+            
             'filters' => $request->only(['nome']), 
         ]);
     }

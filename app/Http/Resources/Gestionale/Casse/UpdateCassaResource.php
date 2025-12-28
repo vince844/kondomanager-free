@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\Casse;
 
+use App\Helpers\MoneyHelper;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,20 +14,21 @@ class UpdateCassaResource extends JsonResource
         $cc = $this->contoCorrente;
 
         return [
-            'id'            => $this->id,
-            'nome'          => $this->nome,
-            'tipo'          => $this->tipo, // 'banca', 'contanti', etc.
-            'descrizione'   => $this->descrizione,
-            'note'          => $this->note,
-            'attiva'        => (bool) $this->attiva,
-            'has_movements' => $this->contoContabile?->movimenti()->exists() ?? false,
+            'id'             => $this->id,
+            'nome'           => $this->nome,
+            'tipo'           => $this->tipo, // 'banca', 'contanti', etc.
+            'descrizione'    => $this->descrizione,
+            'note'           => $this->note,
+            'attiva'         => (bool) $this->attiva,
+            'has_movements'  => $this->contoContabile?->movimenti()->exists() ?? false,
+            'saldo_iniziale' => $this->saldo_iniziale ?? 0,
 
             // Qui restituiamo un oggetto strutturato, perfetto per il form Vue
             'conto_corrente' => $cc ? [
                 'id'           => $cc->id,
                 'istituto'     => $cc->istituto,
                 'iban'         => $cc->iban,
-                'swift'        => $cc->swift, // Vue si aspetta 'bic' nel v-model? Se sì, mappa qui: 'bic' => $cc->swift
+                'swift'        => $cc->swift, 
                 'intestatario' => $cc->intestatario,
                 'tipo'         => $cc->tipo,
                 'predefinito'  => (bool) $cc->predefinito,

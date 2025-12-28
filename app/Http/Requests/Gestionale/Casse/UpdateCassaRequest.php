@@ -28,6 +28,7 @@ class UpdateCassaRequest extends FormRequest
             ],
             'descrizione' => 'nullable|string|max:255',
             'note'        => 'nullable|string',
+            'saldo_iniziale' => 'nullable|string',
             
             // Il TIPO non dovrebbe essere modificabile, ma se lo passi, deve coincidere
             // Oppure semplicemente lo ignoriamo nel controller.

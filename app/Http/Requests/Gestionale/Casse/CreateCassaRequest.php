@@ -24,10 +24,11 @@ class CreateCassaRequest extends FormRequest
     {
         return [
              // Dati Generali Cassa
-            'nome'        => 'required|string|max:255',
-            'descrizione' => 'nullable|string|max:255',
-            'tipo'        => 'required|in:contanti,banca,fondo,virtuale',
-            'note'        => 'nullable|string',
+            'nome'           => 'required|string|max:255',
+            'descrizione'    => 'nullable|string|max:255',
+            'tipo'           => 'required|in:contanti,banca,fondo,virtuale',
+            'saldo_iniziale' => 'nullable|string',
+            'note'           => 'nullable|string',
             
             // Dati Bancari (Richiesti SOLO se tipo == banca)
             'iban'         => 'nullable|required_if:tipo,banca|size:27', // IBAN italiano standard 27 caratteri

@@ -1,19 +1,21 @@
 <script setup lang="ts">
 
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle } from 'lucide-vue-next';
+import { List, Plus, LoaderCircle, Info } from 'lucide-vue-next'; // Aggiunto Info
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; // Aggiunto HoverCard
+import MoneyInput from '@/components/MoneyInput.vue'; // Aggiunto MoneyInput
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
@@ -30,6 +32,18 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
+
+// --- CONFIGURAZIONE MONEY INPUT ---
+const moneyOptions = ref({
+  prefix: '',              
+  suffix: '',              
+  thousands: '.',          
+  decimal: ',',          
+  precision: 2, 
+  allowNegative: true,           
+  allowBlank: false,
+  masked: true 
+})
 
 // --- BREADCRUMBS ---
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -60,6 +74,7 @@ const form = useForm({
   nome: '',
   descrizione: '',
   tipo: 'contanti' as TipoCassa,
+  saldo_iniziale: '', // Aggiunto campo saldo
   note: '',
   intestatario: '',
   tipo_conto: 'ordinario', 
@@ -150,6 +165,44 @@ const submit = () => {
             </div> 
 
             <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+              
+              <div class="sm:col-span-3">
+                  <Label for="saldo_iniziale">Saldo Iniziale (Apertura)</Label>
+
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer inline-block align-middle">
+                        <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="space-y-1">
+                        <h4 class="text-sm font-semibold">Istruzioni Saldo</h4>
+                        <p class="text-sm">
+                          Inserisci l'importo presente sul conto/cassa al momento dell'apertura del gestionale.<br>
+                          <strong>Positivo:</strong> Soldi presenti.<br>
+                          <strong>Negativo:</strong> Conto in rosso (scoperto).
+                        </p>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+
+                  <MoneyInput
+                    id="saldo_iniziale"
+                    v-model="form.saldo_iniziale"
+                    :money-options="moneyOptions"
+                    :lazy="true" 
+                    placeholder="0,00"
+                    class="mt-1"
+                    @focus="form.clearErrors('saldo_iniziale')"
+                  />
+
+                  <InputError :message="form.errors.saldo_iniziale" />
+                  <p class="text-xs text-gray-500 mt-1">
+                    Es: <strong>1.000,00</strong> (Attivo) | <strong>-500,00</strong> (Passivo/Rosso)
+                  </p>
+              </div>
+
               <div class="sm:col-span-3">
                 <Label for="descrizione">Descrizione</Label>
                 <Input 

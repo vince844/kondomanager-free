@@ -1,33 +1,46 @@
 <script setup lang="ts">
-import { computed } from 'vue'; // Rimosso onMounted perché usiamo i props diretti
+import { computed, ref } from 'vue'; // Aggiungi ref
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
-import { List, Save, LoaderCircle, Trash2 } from 'lucide-vue-next'; // Icone aggiornate
+import { List, Save, LoaderCircle, Info } from 'lucide-vue-next'; // Aggiungi Info
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; // Aggiunto
+import MoneyInput from '@/components/MoneyInput.vue'; // Aggiunto
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { CassaOption, TipoCassa } from '@/types/gestionale/casse';
 
-// Definizioni interfacce locali (o importale dai tuoi types)
 interface ContoOption { label: string; value: string; }
 
 const props = defineProps<{
   condominio: Building;
   condomini: Building[];
-  cassa: any; // O usa il tipo CassaResource se lo hai definito
+  cassa: any; 
 }>();
 
 const { generatePath, generateRoute } = usePermission();
+
+// --- MONEY OPTIONS ---
+const moneyOptions = ref({
+  prefix: '',              
+  suffix: '',              
+  thousands: '.',          
+  decimal: ',',          
+  precision: 2, 
+  allowNegative: true,           
+  allowBlank: false,
+  masked: true 
+})
 
 // --- BREADCRUMBS ---
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -37,7 +50,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Modifica risorsa', href: '#' },
 ]);
 
-// --- OPZIONI (Uguali a CasseNew) ---
 const tipiCassa: CassaOption[] = [
     { label: 'Cassa contanti', value: 'contanti' },
     { label: 'Conto corrente bancario/postale', value: 'banca' },
@@ -54,25 +66,25 @@ const tipiContoCorrente: ContoOption[] = [
     { label: 'Altro', value: 'altro' },
 ];
 
-// --- FORM PRECOMPILATO ---
-// Accediamo ai dati passati dal controller (props.cassa.data se usi Resource, o props.cassa diretto)
 const cassaData = props.cassa.data || props.cassa; 
 const bancaData = cassaData.conto_corrente || {};
 
 const form = useForm({
-  _method: 'PUT', // Importante per Inertia/Laravel Update
+  _method: 'PUT',
   nome: cassaData.nome,
-  descrizione: cassaData.descrizione || '', // Se esiste nel DB ma non nel form precedente
+  descrizione: cassaData.descrizione || '',
   tipo: cassaData.tipo as TipoCassa,
-  note: cassaData.note || '',
   
-  // Dati Banca (con fallback sicuri)
+  // 🔥 SALDO INIZIALE (Riceve float dal Resource, MoneyInput lo gestisce)
+  saldo_iniziale: cassaData.saldo_iniziale, 
+  
+  note: cassaData.note || '',
   intestatario: bancaData.intestatario || props.condominio.nome,
   tipo_conto: bancaData.tipo || 'ordinario', 
   istituto: bancaData.istituto || '',
   iban: bancaData.iban || '',
-  bic: bancaData.swift || '', // Mappatura swift -> bic
-  predefinito: Boolean(bancaData.predefinito), // Cast a boolean
+  bic: bancaData.swift || '', 
+  predefinito: Boolean(bancaData.predefinito), 
   indirizzo: bancaData.indirizzo || '',
   comune: bancaData.comune || '',
   cap: bancaData.cap || '',
@@ -81,7 +93,6 @@ const form = useForm({
 });
 
 const submit = () => {
-    // Genera rotta update: admin.gestionale.casse.update
     const routeName = 'gestionale.casse.update';
     const params = { condominio: props.condominio.id, cassa: cassaData.id };
     
@@ -139,7 +150,6 @@ const submit = () => {
 
                 <div class="sm:col-span-3">
                     <Label for="tipo">Tipologia risorsa</Label>
-                    
                     <v-select 
                         :options="tipiCassa" 
                         label="label" 
@@ -148,14 +158,57 @@ const submit = () => {
                         :reduce="(option: CassaOption) => option.value"
                         :clearable="false"
                         :disabled="cassaData.has_movements"  />
-
+                    
                     <p v-if="cassaData.has_movements" class="text-xs text-amber-600 mt-1">
                         Impossibile cambiare il tipo: risorsa già utilizzata in contabilità.
                     </p>
-
                     <InputError :message="form.errors.tipo" />
                 </div>
             </div> 
+
+            <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+              
+              <div class="sm:col-span-3">
+                  <Label for="saldo_iniziale">Saldo Iniziale (Apertura)</Label>
+
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer inline-block align-middle">
+                        <Info class="ml-1 w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="space-y-1">
+                        <h4 class="text-sm font-semibold">Modifica Saldo</h4>
+                        <p class="text-sm">
+                          Puoi correggere il saldo di apertura se necessario.<br>
+                          Nota: Questo NON influenza i movimenti già registrati, ma solo il punto di partenza.
+                        </p>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+
+                  <MoneyInput
+                    id="saldo_iniziale"
+                    v-model="form.saldo_iniziale"
+                    :money-options="moneyOptions"
+                    :lazy="true" 
+                    placeholder="0,00"
+                    class="mt-1"
+                    @focus="form.clearErrors('saldo_iniziale')"
+                  />
+                  <InputError :message="form.errors.saldo_iniziale" />
+              </div>
+
+              <div class="sm:col-span-3">
+                <Label for="descrizione">Descrizione</Label>
+                <Input 
+                  id="descrizione" 
+                  class="mt-1 block w-full"
+                  v-model="form.descrizione" 
+                />
+              </div>
+            </div>
 
             <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6 pt-2">
               <div class="sm:col-span-6">

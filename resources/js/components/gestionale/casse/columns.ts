@@ -1,4 +1,3 @@
-// columns.ts
 import { h } from 'vue'
 import type { ColumnDef } from '@tanstack/vue-table'
 
@@ -27,10 +26,6 @@ const formatTipoConto = (tipo: string | null | undefined) => {
 
 export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
   return [
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA 1: TIPO RISORSA
-    // Badge outline neutro, stella interna se banca predefinita
-    // ─────────────────────────────────────────────────────────────
     {
       accessorKey: 'tipo',
       header: ({ column }) =>
@@ -50,12 +45,12 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
           {
             variant: 'outline',
             class:
-              'inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded-md',
+              'inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded-md whitespace-nowrap',
           },
           () => [
             type === 'banca' && isPredefinito
               ? h(Star, {
-                  class: 'w-3 h-3 fill-current shrink-0',
+                  class: 'w-3 h-3 fill-amber-400 text-amber-400 shrink-0', 
                   'aria-label': 'Conto Principale',
                 })
               : null,
@@ -63,12 +58,8 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
           ],
         )
       },
-      size: 120,
+      size: 140,
     },
-
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA 2: DETTAGLI RISORSA
-    // ─────────────────────────────────────────────────────────────
     {
       accessorKey: 'nome',
       header: ({ column }) =>
@@ -83,7 +74,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
             'span',
             {
               class:
-                'font-semibold text-gray-900 dark:text-gray-100 text-base',
+                'font-semibold text-gray-900 dark:text-gray-100 text-sm md:text-base',
             },
             cassa.nome,
           ),
@@ -121,35 +112,31 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
         ])
       },
     },
-
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA 3: SALDO ATTUALE
-    // ─────────────────────────────────────────────────────────────
     {
-      accessorKey: 'saldo_attuale',
+      // Usiamo 'saldo_raw' per l'ordinamento (sorting) corretto
+      accessorKey: 'saldo_raw', 
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Saldo' }),
+        h(DataTableColumnHeader, { column, title: 'Saldo Attuale' }),
       cell: ({ row }) => {
-        const amount = parseFloat(
-          (row.getValue('saldo_attuale') as string) || '0',
-        )
+        // 1. Recuperiamo il numero per decidere il COLORE
+        const amount = row.getValue('saldo_raw') as number
 
-        const formatted = new Intl.NumberFormat('it-IT', {
-          style: 'currency',
-          currency: 'EUR',
-        }).format(amount)
+        // 2. Recuperiamo la stringa già pronta per la VISUALIZZAZIONE
+        // (Nota: row.original ci dà accesso a tutto l'oggetto CassaResource)
+        const formattedLabel = row.original.saldo_formatted
 
+        // 3. Logica Colori semplicissima
         let colorClass = 'text-gray-500'
-        if (amount > 0) colorClass = 'text-emerald-600 font-semibold'
-        if (amount < 0) colorClass = 'text-red-600 font-semibold'
+        if (amount > 0.01) colorClass = 'text-emerald-600'
+        if (amount < -0.01) colorClass = 'text-red-600'
 
-        return h('div', { class: colorClass }, formatted)
+        return h(
+            'div', 
+            { class: `font-bold text-sm ${colorClass}` }, 
+            formattedLabel // Stampiamo direttamente la stringa di PHP
+        )
       },
     },
-
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA 4: STATO
-    // ─────────────────────────────────────────────────────────────
     {
       accessorKey: 'attiva',
       header: 'Stato',
@@ -160,18 +147,18 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
           h('span', {
             class: `flex h-2 w-2 rounded-full ${
               isActive
-                ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]'
+                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
                 : 'bg-gray-300'
             }`,
           }),
           h(
             'span',
-            { class: 'text-sm text-gray-600 dark:text-gray-400' },
-            isActive ? 'Attiva' : 'Non attiva',
+            { class: 'text-xs font-medium text-gray-600 dark:text-gray-400' },
+            isActive ? 'Attiva' : 'Archiviata',
           ),
         ])
       },
-      size: 120,
+      size: 100,
     },
 
     // ─────────────────────────────────────────────────────────────
