@@ -23,9 +23,16 @@ use App\Http\Controllers\Gestionale\Tabelle\FetchTabelleController;
 use App\Http\Controllers\Gestionale\Tabelle\Quote\TabellaQuotaController;
 use App\Http\Controllers\Gestionale\Tabelle\TabellaController;
 use App\Http\Middleware\EnsureCondominioHasEsercizio;
+use App\Http\Middleware\EnsureCondominioHasPianoConti;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('/gestionale/{condominio}')->name('gestionale.')->middleware([EnsureCondominioHasEsercizio::class])->group(function () {
+Route::prefix('/gestionale/{condominio}')
+    ->name('gestionale.')
+    ->middleware([
+        EnsureCondominioHasEsercizio::class,   // 1. Controllo Esercizio
+        EnsureCondominioHasPianoConti::class   // 2. Controllo Conti (NUOVO)
+    ])
+    ->group(function () {
     
     Route::get('/', DashboardController::class)->name('index');
     

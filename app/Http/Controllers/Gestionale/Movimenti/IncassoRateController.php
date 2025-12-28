@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Anagrafica;
-use App\Models\Immobile; // <--- Importante
+use App\Models\Immobile; 
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\ScritturaContabile;
@@ -16,6 +16,7 @@ use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class IncassoRateController extends Controller
 {
@@ -228,10 +229,11 @@ class IncassoRateController extends Controller
                 }
             });
 
-            return to_route('gestionale.movimenti-rate.index', $condominio)
+            return to_route('admin.gestionale.movimenti-rate.index', $condominio)
                 ->with($this->flashSuccess('Incasso registrato correttamente.'));
 
         } catch (\Throwable $e) {
+            Log::error("Errore salvataggio incasso: " . $e->getMessage());
             return back()->with($this->flashError('Errore: ' . $e->getMessage()));
         }
     }

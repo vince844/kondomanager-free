@@ -18,7 +18,6 @@ return new class extends Migration
             $table->bigInteger('importo_pagato');
             $table->date('data_pagamento');
             $table->timestamps();
-            
             $table->index(['rate_quota_id', 'created_at']);
             $table->index('scrittura_contabile_id');
         });

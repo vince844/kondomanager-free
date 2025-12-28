@@ -41,13 +41,14 @@ const mode = ref<'auto' | 'manual'>('auto');
 const searchMode = ref<'persona' | 'immobile'>('persona');
 const selectedImmobileId = ref<number | null>(null);
 
-const rateList = ref<any[]>([]);
+// STATO DEI DATI
+const rawRateList = ref<any[]>([]); // Contiene TUTTI i dati scaricati dal server
 const loadingRate = ref(false);
 
 const form = useForm({
     pagante_id: null,
     cassa_id: null,
-    gestione_id: null,
+    gestione_id: null, // Se null = Automatica (tutte), se ID = Filtra per gestione
     data_pagamento: new Date().toISOString().substring(0, 10),
     importo_totale: 0,
     descrizione: '',
@@ -55,7 +56,17 @@ const form = useForm({
     eccedenza: 0,
 });
 
-// --- HELPERS ---
+// --- SMART FILTER: Rate List Filtrata ---
+const rateList = computed(() => {
+    // Se non ho selezionato una gestione specifica, mostro tutto
+    if (!form.gestione_id) {
+        return rawRateList.value;
+    }
+    // Altrimenti filtro solo le rate di quella gestione
+    return rawRateList.value.filter(r => r.gestione_id === form.gestione_id);
+});
+
+// --- HELPERS & COMPUTED ---
 const isScaduta = (data: string | null) => {
     if (!data) return false;
     return new Date(data) < new Date(new Date().toDateString());
@@ -69,7 +80,6 @@ const totaleDebito = computed(() =>
     rateList.value.reduce((sum, r) => sum + (parseFloat(r.residuo) || 0), 0)
 );
 
-// --- BILANCIO DINAMICO ---
 const bilancioFinale = computed(() => {
     const debito = totaleDebito.value;
     const versato = form.importo_totale || 0;
@@ -84,7 +94,6 @@ const bilancioFinale = computed(() => {
     }
 });
 
-// --- PREVIEW ---
 const previewContabile = computed(() => {
     const rateCoinvolte = rateList.value.filter(r => r.selezionata && r.da_pagare > 0);
 
@@ -109,7 +118,7 @@ const previewContabile = computed(() => {
 // --- API FETCH ---
 const fetchDebiti = async (params: { anagrafica_id?: number | null, immobile_id?: number | null }) => {
     if (!params.anagrafica_id && !params.immobile_id) {
-        rateList.value = [];
+        rawRateList.value = [];
         return;
     }
     loadingRate.value = true;
@@ -119,12 +128,15 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null, immobile_id?
             ...params
         });
         const res = await axios.get(url);
-        rateList.value = res.data.rate.map((r: any) => ({
+        
+        // Salviamo i dati grezzi
+        rawRateList.value = res.data.rate.map((r: any) => ({
             ...r,
             da_pagare: 0,
             selezionata: false,
             scaduta: isScaduta(r.data_scadenza ?? null),
         }));
+
         if (form.importo_totale > 0) runDistribution();
     } finally { loadingRate.value = false; }
 };
@@ -138,24 +150,36 @@ watch(selectedImmobileId, (newVal) => {
     if (searchMode.value === 'immobile') fetchDebiti({ immobile_id: newVal });
 });
 
-watch(() => form.importo_totale, (newVal) => {
-    if (newVal === '' || newVal === null) form.importo_totale = 0;
+watch(() => form.importo_totale, () => {
     runDistribution();
+});
+
+// Watcher Filtro Gestione: Resetta selezioni se cambio filtro
+watch(() => form.gestione_id, () => {
+    // 1. Resetta tutte le selezioni precedenti (per evitare di pagare rate ora nascoste)
+    rawRateList.value.forEach(r => {
+        r.da_pagare = 0;
+        r.selezionata = false;
+    });
+    // 2. Ricalcola la distribuzione sul nuovo set visibile
+    if (form.importo_totale > 0) runDistribution();
 });
 
 const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
     searchMode.value = newMode;
-    rateList.value = [];
+    rawRateList.value = []; // Pulisci lista grezza
     selectedImmobileId.value = null;
 };
 
-// --- DISTRIBUZIONE ---
+// --- DISTRIBUZIONE (Lavora su rateList, che è già filtrata) ---
 const runDistribution = () => {
     mode.value === 'auto' ? distributeGreedy() : calculateExcessOnly();
 };
 
 const distributeGreedy = () => {
     let budget = parseFloat(String(form.importo_totale)) || 0;
+    
+    // Iteriamo solo sulla lista VISIBILE (filtrata)
     rateList.value.forEach(r => {
         const allocabile = Math.min(budget, r.residuo);
         r.da_pagare = parseFloat(allocabile.toFixed(2));
@@ -163,6 +187,7 @@ const distributeGreedy = () => {
         budget -= r.da_pagare;
         if (budget < 0.01) budget = 0;
     });
+
     form.eccedenza = parseFloat(budget.toFixed(2));
     syncForm();
 };
@@ -231,6 +256,7 @@ const pagaScadute = () => {
 };
 
 const syncForm = () => {
+    // Sincronizza solo le rate visibili e selezionate
     form.dettaglio_pagamenti = rateList.value
         .filter(r => r.selezionata && r.da_pagare > 0)
         .map(r => ({ rata_id: r.id, importo: r.da_pagare }));
@@ -240,7 +266,7 @@ const submit = () => {
     form.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
         preserveScroll: true,
         onSuccess: () => {
-            rateList.value = [];
+            rawRateList.value = [];
             form.reset();
             mode.value = 'auto';
             searchMode.value = 'persona';
@@ -333,9 +359,9 @@ const submit = () => {
                             </div>
                             
                             <div>
-                                <Label class="text-xs font-medium text-gray-400 mb-1 block">Gestione (Opzionale)</Label>
+                                <Label class="text-xs font-medium text-gray-400 mb-1 block">Gestione (Filtro)</Label>
                                 <select v-model="form.gestione_id" class="w-full border border-gray-200 rounded-md px-2 text-xs bg-gray-50 text-gray-500 h-9 focus:bg-white transition-colors">
-                                    <option :value="null">Automatica</option>
+                                    <option :value="null">Tutte (Automatica)</option>
                                     <option v-for="g in gestioni" :key="g.id" :value="g.id">{{ g.nome }}</option>
                                 </select>
                             </div>
@@ -417,7 +443,11 @@ const submit = () => {
                                         <td class="p-3 align-top">
                                             <div class="text-xs font-bold text-gray-800 mb-0.5">{{ r.descrizione }}</div>
                                             <div class="text-[11px] text-blue-600 font-medium flex items-center gap-1">
-                                                <User class="w-3 h-3 opacity-70"/> {{ r.intestatario }}
+                                                <User class="w-3 h-3 opacity-70"/> 
+                                                {{ r.intestatario }}
+                                                <span v-if="r.tipologia" class="text-gray-400 font-normal ml-1 border-l border-gray-300 pl-1">
+                                                    {{ r.tipologia }}
+                                                </span>
                                             </div>
                                             <div class="text-[10px] text-gray-400 mt-0.5">{{ r.gestione }} • {{ r.unita }}</div>
                                         </td>
@@ -441,7 +471,6 @@ const submit = () => {
                     </div>
 
                     <div class="bg-slate-900 text-white rounded-xl border border-slate-700 shadow-sm flex flex-col h-[200px] shrink-0 overflow-hidden">
-                        
                         <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 shrink-0">
                             <h3 class="font-semibold text-sm flex items-center">
                                 <Receipt class="w-4 h-4 mr-2 text-emerald-400"/> Anteprima Registrazione
@@ -479,7 +508,6 @@ const submit = () => {
                                     <div class="font-mono font-bold text-blue-400">+ {{ formatCurrency(previewContabile.anticipo) }}</div>
                                 </div>
                             </div>
-                            
                             <div v-else class="flex flex-col items-center justify-center h-full text-slate-600 text-xs">
                                 <Receipt class="w-8 h-8 opacity-20 mb-2" />
                                 <p>Inserisci un importo per vedere l'anteprima</p>
