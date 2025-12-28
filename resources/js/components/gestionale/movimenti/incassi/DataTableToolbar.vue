@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
@@ -7,19 +8,12 @@ import { Plus, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
-// 1. Importiamo il tipo Building
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{ table: Table<any> }>();
-
-// 2. Tipizziamo usePage in modo che sappia che esiste 'condominio'
 const page = usePage<{ condominio: Building }>();
-
 const { generateRoute } = usePermission();
-
-// 3. Ora TypeScript è felice
 const condominioId = computed(() => page.props.condominio.id);
-
 const globalFilter = ref('')
 
 const filterParams = computed(() => {
@@ -53,7 +47,7 @@ const resetFilter = () => { globalFilter.value = '' }
     <div class="flex items-center space-x-2 flex-1">
       <div class="relative w-full max-w-sm">
           <Input
-            placeholder="Cerca protocollo, condomino..."
+            placeholder="Cerca protocollo, anagrafica..."
             v-model="globalFilter"
             class="h-9 w-[200px] lg:w-[300px]"
           />

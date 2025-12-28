@@ -31,7 +31,7 @@ class IncassoRateController extends Controller
         $query = ScritturaContabile::query()
             ->where('condominio_id', $condominio->id)
             ->where('tipo_movimento', 'incasso_rata')
-            ->with(['righe' => fn($q) => $q->where('tipo_riga', 'dare')->with('anagrafica')]);
+            ->with(['gestione', 'righe' => fn($q) => $q->where('tipo_riga', 'dare')->with('anagrafica')]);
 
         if ($search = $request->input('search')) {
             $query->where(function($q) use ($search) {
@@ -51,6 +51,10 @@ class IncassoRateController extends Controller
             ->paginate(15)->withQueryString()
             ->through(function ($mov) {
                 $rigaPagante = $mov->righe->first();
+                // Cerchiamo la riga della cassa per prenderne il nome
+                // Nota: nel tuo schema la riga cassa ha cassa_id valorizzato
+                $rigaCassa = $mov->righe->whereNotNull('cassa_id')->first();
+                
                 return [
                     'id' => $mov->id,
                     'numero_protocollo' => $mov->numero_protocollo,
@@ -60,8 +64,11 @@ class IncassoRateController extends Controller
                     'stato' => $mov->stato,
                     'importo_totale' => $rigaPagante ? $rigaPagante->importo / 100 : 0,
                     'pagante_nome' => $rigaPagante && $rigaPagante->anagrafica ? $rigaPagante->anagrafica->nome : 'Sconosciuto',
+                    // --- NUOVI CAMPI ---
+                    'cassa_nome' => $rigaCassa && $rigaCassa->cassa ? $rigaCassa->cassa->nome : 'N/D',
+                    'gestione_nome' => $mov->gestione ? $mov->gestione->nome : 'Generica',
                 ];
-            });
+        });
 
         $condominiList = $this->getCondomini();
         $esercizio = $this->getEsercizioCorrente($condominio);

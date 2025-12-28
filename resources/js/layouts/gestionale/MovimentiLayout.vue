@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, LogIn, LogOut, TextSearch, Wallet } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2 } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -27,6 +27,12 @@ const topbarNavItems: LinkItem[] = [
     type: 'link',
     icon: LogOut,
     title: 'Pagamenti fornitori',
+    href: '#',
+  },
+  {
+    type: 'link',
+    icon: Repeat2,
+    title: 'Giroconti',
     href: '#',
   },
   {

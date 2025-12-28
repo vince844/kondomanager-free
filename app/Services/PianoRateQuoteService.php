@@ -9,13 +9,6 @@ class PianoRateQuoteService
 {
     /**
      * Returns all quotes grouped by Anagrafica (owner/tenant).
-     *
-     * Notes:
-     * - Uses already-loaded relationships: rate → rateQuote → anagrafica.
-     * - Calculates per-rate totals and payment status.
-     *
-     * @param  PianoRate  $pianoRate
-     * @return Collection
      */
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
     {
@@ -30,16 +23,39 @@ class PianoRateQuoteService
                     ->groupBy(fn($q) => $q->rata->numero_rata)
                     ->map(function ($q) {
                         $rata    = $q->first()->rata;
+                        // Sommiamo gli importi (utile se ci sono più quote aggregate, anche se raro per anagrafica)
                         $importo = $q->sum('importo');
                         $pagato  = $q->sum('importo_pagato');
+                        
+                        // Determiniamo lo stato basandoci sui valori reali
+                        // Nota: usiamo i totali calcolati per gestire eventuali aggregazioni
+                        $stato = 'da_pagare';
+                        
+                        // Controllo prioritario sullo stato del DB (es. annullata)
+                        if ($q->first()->stato === 'annullata') {
+                            $stato = 'annullata';
+                        } elseif ($importo < 0) {
+                            $stato = 'credito';
+                        } elseif ($pagato >= $importo && $importo > 0) {
+                            $stato = 'pagata';
+                        } elseif ($pagato > 0 && $pagato < $importo) {
+                            $stato = 'parzialmente_pagata'; // <--- ORA QUESTO VIENE GESTITO
+                        }
+
+                        // Prendiamo l'ultima data di pagamento disponibile
+                        $dataPagamento = $q->whereNotNull('data_pagamento')
+                                           ->sortByDesc('data_pagamento')
+                                           ->first()
+                                           ?->data_pagamento;
 
                         return [
                             'numero'   => $rata->numero_rata,
                             'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
                             'importo'  => $importo,
-                            'stato'    => ($pagato >= $importo && $importo > 0)
-                                ? 'pagata'
-                                : 'non_pagata',
+                            // 🔥 DATI AGGIUNTI PER IL FRONTEND
+                            'importo_pagato' => $pagato,
+                            'stato'          => $stato,
+                            'data_pagamento' => $dataPagamento ? $dataPagamento->format('Y-m-d') : null,
                         ];
                     })
                     ->sortBy('numero')
@@ -59,13 +75,6 @@ class PianoRateQuoteService
 
     /**
      * Returns all quotes grouped by Immobile (unit/apartment).
-     *
-     * Notes:
-     * - Only includes quotes with immobile_id != null.
-     * - Aggregates totals per rata_id.
-     *
-     * @param  PianoRate  $pianoRate
-     * @return Collection
      */
     public function quotePerImmobile(PianoRate $pianoRate): Collection
     {
@@ -84,13 +93,32 @@ class PianoRateQuoteService
                         $importo = $q->sum('importo');
                         $pagato  = $q->sum('importo_pagato');
 
+                        // Logica Stato Identica
+                        $stato = 'da_pagare';
+                        
+                        if ($q->first()->stato === 'annullata') {
+                            $stato = 'annullata';
+                        } elseif ($importo < 0) {
+                            $stato = 'credito';
+                        } elseif ($pagato >= $importo && $importo > 0) {
+                            $stato = 'pagata';
+                        } elseif ($pagato > 0 && $pagato < $importo) {
+                            $stato = 'parzialmente_pagata';
+                        }
+
+                        $dataPagamento = $q->whereNotNull('data_pagamento')
+                                           ->sortByDesc('data_pagamento')
+                                           ->first()
+                                           ?->data_pagamento;
+
                         return [
                             'numero'   => $rata->numero_rata,
                             'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
                             'importo'  => $importo,
-                            'stato'    => ($pagato >= $importo && $importo > 0)
-                                ? 'pagata'
-                                : 'non_pagata',
+                            // 🔥 DATI AGGIUNTI
+                            'importo_pagato' => $pagato,
+                            'stato'          => $stato,
+                            'data_pagamento' => $dataPagamento ? $dataPagamento->format('Y-m-d') : null,
                         ];
                     })
                     ->sortBy('numero')

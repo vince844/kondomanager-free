@@ -4,8 +4,8 @@ import { router } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { usePermission } from "@/composables/permissions"; // Importante
-import { RotateCcw, MoreHorizontal, FileText, Eye } from 'lucide-vue-next'
+import { usePermission } from "@/composables/permissions";
+import { RotateCcw, MoreHorizontal, FileText,  Eye, Printer } from 'lucide-vue-next'
 
 const props = defineProps<{
   incasso: any,
@@ -24,8 +24,7 @@ function confirmStorno() {
   if (isStorning.value) return
   isStorning.value = true
 
-  // Usa generateRoute per lo storno
-  router.post(route(generateRoute('gestionale.scritture.storno'), { 
+  router.post(route(generateRoute('gestionale.movimenti-rate.storno'), { 
       condominio: props.condominioId, 
       scrittura: props.incasso.id 
   }), {}, {
@@ -34,39 +33,50 @@ function confirmStorno() {
     onFinish: () => isStorning.value = false
   })
 }
+
+const printRicevuta = () => {
+    // Apri una nuova finestra per la stampa (da implementare rotta backend)
+    // window.open(route(generateRoute('gestionale.incassi.stampa'), { ... }), '_blank');
+    alert("Funzionalità stampa ricevuta in arrivo!");
+}
 </script>
 
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0">
-        <MoreHorizontal class="w-4 h-4" />
+      <Button variant="ghost" class="h-8 w-8 p-0 data-[state=open]:bg-muted">
+        <span class="sr-only">Apri menu</span>
+        <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+    <DropdownMenuContent align="end" class="w-[160px]">
+      <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Azioni su Prot. {{ incasso.numero_protocollo }}</DropdownMenuLabel>
       
-      <DropdownMenuItem>
-        <Eye class="w-4 h-4 mr-2" /> Dettaglio
+      <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.movimenti-rate.show'), { condominio: condominioId, scrittura: incasso.id }))">
+        <Eye class="w-4 h-4 mr-2" /> Dettagli
       </DropdownMenuItem>
       
-      <DropdownMenuItem>
-        <FileText class="w-4 h-4 mr-2" /> Ricevuta PDF
+      <DropdownMenuItem @click="printRicevuta">
+        <Printer class="w-4 h-4 mr-2" /> Stampa Ricevuta
       </DropdownMenuItem>
 
-      <DropdownMenuSeparator v-if="incasso.stato !== 'annullata'" />
+      <DropdownMenuSeparator />
       
-      <DropdownMenuItem v-if="incasso.stato !== 'annullata'" @click="handleStorno" class="text-red-600 focus:text-red-600">
-        <RotateCcw class="w-4 h-4 mr-2" /> Storna Movimento
+      <DropdownMenuItem 
+        v-if="incasso.stato !== 'annullata'" 
+        @click="handleStorno" 
+        class="text-red-600 focus:text-red-600 focus:bg-red-50"
+      >
+        <RotateCcw class="w-4 h-4 mr-2" /> Storna
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Confermi lo storno?"
-    description="Verrà creata una scrittura di rettifica e le rate collegate torneranno 'da pagare'. Operazione irreversibile."
-    confirmText="Sì, Storna"
+    title="Storno Movimento"
+    :description="`Stai per annullare l'incasso protocollo #${incasso.numero_protocollo} di € ${incasso.importo_totale}. Le rate torneranno 'da pagare'. Continuare?`"
+    confirmText="Sì, Procedi"
     variant="destructive"
     :loading="isStorning"
     @confirm="confirmStorno"

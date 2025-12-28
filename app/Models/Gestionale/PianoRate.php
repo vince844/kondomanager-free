@@ -2,6 +2,8 @@
 
 namespace App\Models\Gestionale;
 
+use App\Models\Condominio;
+use App\Models\Gestione;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -37,22 +39,22 @@ class PianoRate extends Model
 
     public function gestione()
     {
-        return $this->belongsTo(\App\Models\Gestione::class);
+        return $this->belongsTo(Gestione::class);
     }
 
     public function condominio()
     {
-        return $this->belongsTo(\App\Models\Condominio::class);
+        return $this->belongsTo(Condominio::class);
     }
 
     public function ricorrenza()
     {
-        return $this->hasOne(\App\Models\Gestionale\RicorrenzaRata::class);
+        return $this->hasOne(RicorrenzaRata::class);
     }
 
     public function rate()
     {
-        return $this->hasMany(\App\Models\Gestionale\Rata::class);
+        return $this->hasMany(Rata::class);
     }
 
     

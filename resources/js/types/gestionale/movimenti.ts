@@ -4,6 +4,8 @@ export interface Incasso {
     data_competenza: string;    // Formato YYYY-MM-DD
     data_registrazione: string; // Formato YYYY-MM-DD
     causale: string;
+    gestione_nome: string;
+    cassa_nome: string;
     stato: 'registrata' | 'annullata' | 'bozza';
     importo_totale: number;
     pagante_nome: string;
