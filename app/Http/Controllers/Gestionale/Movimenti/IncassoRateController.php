@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\RataQuote;
@@ -31,15 +32,20 @@ class IncassoRateController extends Controller
         $query = ScritturaContabile::query()
             ->where('condominio_id', $condominio->id)
             ->where('tipo_movimento', 'incasso_rata')
-            ->with(['gestione', 'righe' => fn($q) => $q->where('tipo_riga', 'dare')->with('anagrafica')]);
+            ->with([
+                'gestione', 
+                // Carichiamo TUTTE le righe per poter filtrare dopo
+                'righe.anagrafica',
+                'righe.cassa'
+            ]);
 
         if ($search = $request->input('search')) {
             $query->where(function($q) use ($search) {
                 $q->where('numero_protocollo', 'like', "%{$search}%")
                   ->orWhere('causale', 'like', "%{$search}%")
                   ->orWhereHas('righe', function($qr) use ($search) {
-                      $qr->where('tipo_riga', 'dare')
-                         ->whereHas('anagrafica', function($qa) use ($search) {
+                      // Cerchiamo il nome in QUALSIASI riga (Dare o Avere) per sicurezza
+                      $qr->whereHas('anagrafica', function($qa) use ($search) {
                              $qa->where('nome', 'like', "%{$search}%");
                          });
                   });
@@ -50,22 +56,100 @@ class IncassoRateController extends Controller
             ->orderByDesc('numero_protocollo')
             ->paginate(15)->withQueryString()
             ->through(function ($mov) {
-                $rigaPagante = $mov->righe->first();
-                // Cerchiamo la riga della cassa per prenderne il nome
-                // Nota: nel tuo schema la riga cassa ha cassa_id valorizzato
-                $rigaCassa = $mov->righe->whereNotNull('cassa_id')->first();
+                
+                $rigaCassa = $mov->righe->firstWhere('tipo_riga', 'dare');
+                
+                // Recuperiamo la riga del pagante principale per avere il suo ID per il link
+                $rigaPagantePrinc = $mov->righe->where('tipo_riga', 'avere')->whereNotNull('anagrafica_id')->first();
+
+                // 1. LOGICA RUOLO (Proprietario / Inquilino)
+                $ruoloPagante = 'Condòmino'; // Default
+                if ($rigaPagantePrinc && $rigaPagantePrinc->anagrafica_id && $rigaPagantePrinc->immobile_id) {
+                    // Cerchiamo nella tabella pivot il ruolo specifico per quell'immobile
+                    $ruoloDb = DB::table('anagrafica_immobile')
+                        ->where('anagrafica_id', $rigaPagantePrinc->anagrafica_id)
+                        ->where('immobile_id', $rigaPagantePrinc->immobile_id)
+                        ->value('tipologia'); // es: 'proprietario', 'inquilino'
+                    
+                    if ($ruoloDb) {
+                        $ruoloPagante = ucfirst($ruoloDb); // "Proprietario"
+                    }
+                }
+
+                // 2. LOGICA TIPO RISORSA (Banca, Contanti...)
+                $tipoRisorsa = 'N/D';
+                if ($rigaCassa && $rigaCassa->cassa) {
+                    // Mappa i valori del DB in etichette leggibili
+                    $labels = [
+                        'banca' => 'Conto Corrente',
+                        'contanti' => 'Cassa Contanti',
+                        'postale' => 'Conto Postale',
+                        // ... altri tipi se ne hai
+                    ];
+                    $tipoRisorsa = $labels[$rigaCassa->cassa->tipo] ?? ucfirst($rigaCassa->cassa->tipo);
+                }
+
+                // Recuperiamo i dettagli COMPLETI delle rate pagate
+                $dettagliRate = DB::table('quota_scrittura')
+                    ->join('rate_quote', 'quota_scrittura.rate_quota_id', '=', 'rate_quote.id')
+                    ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+                    ->where('quota_scrittura.scrittura_contabile_id', $mov->id)
+                    ->select(
+                        'rate.numero_rata', 
+                        'rate.data_scadenza', 
+                        'quota_scrittura.importo_pagato'
+                    )
+                    ->orderBy('rate.numero_rata')
+                    ->get()
+                    ->map(function($item) {
+                        return [
+                            'numero' => $item->numero_rata,
+                            'scadenza' => \Carbon\Carbon::parse($item->data_scadenza)->format('d/m/Y'),
+                            // FIX: Usiamo MoneyHelper qui!
+                            'importo_formatted' => MoneyHelper::format($item->importo_pagato) 
+                        ];
+                    });
+
+                // ... logica nomi paganti esistente ...
+                $nomiPaganti = $mov->righe->where('tipo_riga', 'avere')->whereNotNull('anagrafica_id')
+                    ->map(fn($r) => $r->anagrafica->nome ?? null)->filter()->unique()->values();
+
+                $paganteInfo = [
+                    'principale' => $nomiPaganti->first() ?? 'Sconosciuto',
+                    'altri_count' => $nomiPaganti->count() > 1 ? $nomiPaganti->count() - 1 : 0,
+                    'lista_completa' => $nomiPaganti->join(', '),
+                ];
+
+                // Calcolo valore grezzo in Euro (float) per il sorting/logica
+                $importoEuro = $rigaCassa ? $rigaCassa->importo / 100 : 0; 
+
+                // Calcolo valore formattato (stringa) usando il tuo MoneyHelper
+                // Nota: MoneyHelper::format vuole centesimi, quindi passiamo $rigaCassa->importo
+                $importoFormatted = $rigaCassa ? MoneyHelper::format($rigaCassa->importo) : MoneyHelper::format(0);
                 
                 return [
                     'id' => $mov->id,
                     'numero_protocollo' => $mov->numero_protocollo,
-                    'data_competenza' => $mov->data_competenza->format('Y-m-d'),
-                    'data_registrazione' => $mov->data_registrazione->format('Y-m-d'),
+                    'data_competenza' => $mov->data_competenza ? $mov->data_competenza->format('Y-m-d') : null,
+                    'data_registrazione' => $mov->data_registrazione ? $mov->data_registrazione->format('Y-m-d') : null,
                     'causale' => $mov->causale,
+                    // 🔥 NUOVO CAMPO: Dettaglio Rate
+                    'dettagli_rate' => $dettagliRate, 
+                    'importo_totale_raw' => $importoEuro,       // Float (es: 100.00)
+                    'importo_totale_formatted' => $importoFormatted, // String (es: "€ 100,00")       
+                    // 🔥 NUOVO CAMPO: ID per il link
+                    'anagrafica_id_principale' => $rigaPagantePrinc ? $rigaPagantePrinc->anagrafica_id : null,
                     'stato' => $mov->stato,
-                    'importo_totale' => $rigaPagante ? $rigaPagante->importo / 100 : 0,
-                    'pagante_nome' => $rigaPagante && $rigaPagante->anagrafica ? $rigaPagante->anagrafica->nome : 'Sconosciuto',
-                    // --- NUOVI CAMPI ---
+                    'importo_totale' => $rigaCassa ? $rigaCassa->importo / 100 : 0,
+                    'pagante' => [
+                        'principale' => $nomiPaganti->first() ?? 'Sconosciuto',
+                        'altri_count' => $nomiPaganti->count() > 1 ? $nomiPaganti->count() - 1 : 0,
+                        'lista_completa' => $nomiPaganti->join(', '),
+                        // 🔥 NUOVO CAMPO
+                        'ruolo' => $ruoloPagante 
+                    ],
                     'cassa_nome' => $rigaCassa && $rigaCassa->cassa ? $rigaCassa->cassa->nome : 'N/D',
+                    'cassa_tipo_label' => $tipoRisorsa,
                     'gestione_nome' => $mov->gestione ? $mov->gestione->nome : 'Generica',
                 ];
         });
@@ -132,7 +216,7 @@ class IncassoRateController extends Controller
             'importo_totale'      => 'required|numeric|min:0.01',
             'descrizione'         => 'nullable|string|max:255',
             'eccedenza'           => 'nullable|numeric|min:0',
-            'dettaglio_pagamenti' => 'required|array', // Tolto min:1 per permettere acconto puro (gestito sotto)
+            'dettaglio_pagamenti' => 'required|array', 
             'dettaglio_pagamenti.*.rata_id' => 'required|exists:rate_quote,id',
             'dettaglio_pagamenti.*.importo' => 'required|numeric|min:0.01',
         ]);
@@ -186,7 +270,7 @@ class IncassoRateController extends Controller
                     'cassa_id'           => $cassa->id,
                     'tipo_riga'          => 'dare',
                     'importo'            => $importoTotaleCents,
-                    'anagrafica_id'      => $validated['pagante_id'],
+                    'note'               => 'Versamento rate ' . Anagrafica::find($validated['pagante_id'])->nome
                 ]);
 
                 // RIGHE AVERE (Rate)

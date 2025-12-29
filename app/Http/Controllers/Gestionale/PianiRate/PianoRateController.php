@@ -57,6 +57,7 @@ class PianoRateController extends Controller
      * @return Response
      * 
      * @since 1.7.0
+     * 
      */
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {

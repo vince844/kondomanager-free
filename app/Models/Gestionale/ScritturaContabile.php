@@ -81,4 +81,15 @@ class ScritturaContabile extends Model
         
         return $dare === $avere;
     }
+
+    public function quotePagate()
+    {
+        // Relazione molti-a-molti verso RataQuote passando per la tabella pivot 'quota_scrittura'
+        // Ma per semplicità, possiamo definire una HasMany verso la tabella pivot stessa se esiste il model,
+        // oppure usare DB query builder nel controller per performance.
+        // Usiamo una relazione diretta verso la tabella pivot se hai creato il Model 'QuotaScrittura', 
+        // altrimenti usiamo il query builder nel controller.
+        return $this->belongsToMany(RataQuote::class, 'quota_scrittura', 'scrittura_contabile_id', 'rate_quota_id')
+                    ->withPivot('importo_pagato');
+    }
 }

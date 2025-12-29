@@ -28,6 +28,7 @@ class Rata extends Model
         'data_scadenza' => 'date',
         'data_emissione' => 'date',
         'importo_totale' => 'integer',
+        'scadenza' => 'date',
     ];
 
     // === ACCESSORS con MoneyHelper ===

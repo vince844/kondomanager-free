@@ -196,8 +196,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
               <TabsList class="grid w-full sm:w-[400px] grid-cols-2 bg-muted p-1 rounded-lg">
-                  <TabsTrigger value="anagrafica">Per Anagrafica</TabsTrigger>
-                  <TabsTrigger value="immobile">Per Immobile</TabsTrigger>
+                  <TabsTrigger value="anagrafica">Per anagrafica</TabsTrigger>
+                  <TabsTrigger value="immobile">Per immobile</TabsTrigger>
               </TabsList>
 
               <div class="flex items-center gap-2 w-full sm:w-auto">
@@ -313,7 +313,17 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       >
                         <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                           <div v-if="tab === 'anagrafica'">
-                            <div class="font-semibold text-gray-900">{{ item.anagrafica.nome }}</div>
+                            <!-- <div class="font-semibold text-gray-900">{{ item.anagrafica.nome }}</div> -->
+                            <Link 
+                              :href="route('admin.gestionale.anagrafiche.estratto-conto', { 
+                                  condominio: props.condominio.id, 
+                                  anagrafica: item.anagrafica.id 
+                              })"
+                              class="font-semibold text-primary hover:text-primary/80 hover:underline cursor-pointer transition-colors block"
+                              title="Vedi estratto conto e storico pagamenti"
+                            >
+                              {{ item.anagrafica.nome }}
+                            </Link>
                             <div class="text-xs text-muted-foreground mt-0.5">{{ item.anagrafica.indirizzo }}</div>
                           </div>
                           <div v-else>

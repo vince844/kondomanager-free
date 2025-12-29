@@ -35,15 +35,12 @@ class CassaResource extends JsonResource
             'banca_iban'        => $cc ? $cc->iban : null,
             'banca_predefinito' => $cc ? (bool) $cc->predefinito : false,
             'banca_tipo_conto'  => $cc ? $cc->tipo : null, 
-
             // 1. Valore numerico (float) -> Serve per Ordinamento tabella e Colore (Rosso/Verde)
             'saldo_raw' => MoneyHelper::fromCents($saldoCentesimi), 
-            
             // 2. Stringa formattata (string) -> Serve solo da stampare a video
             // Es: "€ 1.250,00"
             'saldo_formatted' => MoneyHelper::format($saldoCentesimi),
-
-            'note'          => $this->note,
+            'note'            => $this->note,
         ];
     }
 }

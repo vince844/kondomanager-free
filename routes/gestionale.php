@@ -16,6 +16,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
@@ -110,14 +111,16 @@ Route::prefix('/gestionale/{condominio}')
             'piani-rate' => 'pianoRate',
         ]);
     
+    // Rotta per vedere l'estratto conto (accessibile dal piano rate)
+    Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])
+        ->name('anagrafiche.estratto-conto');
+    
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');
     
-    // 🔥 NUOVA ROTTA API AGGIUNTA
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
     
-    // --- MOVIMENTI ---
     Route::resource('movimenti-rate', IncassoRateController::class)
         ->parameters(['movimenti-rate' => 'scrittura']);
     
