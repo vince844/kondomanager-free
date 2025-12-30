@@ -4,11 +4,12 @@ namespace App\Models\Gestionale;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany; // <--- AGGIUNTO
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Immobile;
 
-class RataQuote extends Model
+class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il nome
 {
     protected $table = 'rate_quote';
 
@@ -22,7 +23,7 @@ class RataQuote extends Model
         'data_scadenza',
         'data_pagamento',
         'riferimento_pagamento',
-        'scrittura_contabile_id',
+        'scrittura_contabile_id', // Usato solo in fase di emissione
         'note'
     ];
 
@@ -49,7 +50,23 @@ class RataQuote extends Model
         return $this->belongsTo(Immobile::class);
     }
 
-    // === ACCESSORS ===
+    /**
+     * NUOVA RELAZIONE FONDAMENTALE (Pivot)
+     * Collega la quota ai movimenti bancari (scritture) che l'hanno pagata.
+     */
+    public function pagamenti(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            ScritturaContabile::class, 
+            'quota_scrittura',      // Tabella pivot corretta
+            'rate_quota_id',        // FK di questo modello sulla pivot
+            'scrittura_contabile_id'// FK dell'altro modello sulla pivot
+        )
+        ->withPivot(['importo_pagato', 'data_pagamento'])
+        ->withTimestamps();
+    }
+
+    // === ACCESSORS (Mantieni pure i tuoi helper UI, sono ottimi) ===
     public function getImportoFormattatoAttribute(): string
     {
         return MoneyHelper::format($this->importo);
@@ -81,20 +98,39 @@ class RataQuote extends Model
         return $this->stato === 'parzialmente_pagata';
     }
 
-    public function registraPagamento(int $importoCentesimi, ?string $riferimento = null): void
-    {
-        $this->importo_pagato += $importoCentesimi;
+    // === LOGICA CORE (Sostituisce il vecchio registraPagamento) ===
 
+    /**
+     * Ricalcola lo stato della quota basandosi ESCLUSIVAMENTE 
+     * sulla somma dei record presenti nella tabella pivot 'quota_scrittura'.
+     * Da chiamare dopo ogni attach() o detach().
+     */
+    public function ricalcolaStato(): void
+    {
+        // 1. Somma reale dalla tabella pivot (Fonte di Verità)
+        $pagatoReale = $this->pagamenti()->sum('quota_scrittura.importo_pagato');
+        
+        // 2. Aggiornamento dato denormalizzato
+        $this->importo_pagato = $pagatoReale;
+
+        // 3. Determinazione Stato
         if ($this->importo_pagato >= $this->importo) {
             $this->stato = 'pagata';
-            $this->importo_pagato = $this->importo;
-            $this->data_pagamento = now();
-        } else {
+        } elseif ($this->importo_pagato > 0) {
             $this->stato = 'parzialmente_pagata';
+        } else {
+            $this->stato = 'da_pagare';
+            $this->data_pagamento = null;
         }
 
-        if ($riferimento) {
-            $this->riferimento_pagamento = $riferimento;
+        // 4. Data ultimo pagamento (se esiste)
+        if ($this->stato !== 'da_pagare') {
+            $ultimoMovimento = $this->pagamenti()
+                ->join('scritture_contabili', 'scritture_contabili.id', '=', 'quota_scrittura.scrittura_contabile_id')
+                ->orderByDesc('scritture_contabili.data_competenza') // Usa la data competenza contabile
+                ->first();
+                
+            $this->data_pagamento = $ultimoMovimento ? $ultimoMovimento->data_competenza : now();
         }
 
         $this->save();

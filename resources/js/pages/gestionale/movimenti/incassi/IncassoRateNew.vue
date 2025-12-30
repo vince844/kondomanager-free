@@ -475,6 +475,15 @@ const submit = () => {
                                             <span class="font-mono text-xs font-medium" :class="r.residuo < 0 ? 'text-blue-600 font-bold' : 'text-gray-500'">
                                                 {{ formatCurrency(r.residuo) }}
                                             </span>
+
+                                            <div v-if="r.residuo > 0 && r.residuo < r.importo_totale" class="flex justify-end mt-1">
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" 
+                                                    :title="'Importo originale: ' + formatCurrency(r.importo_totale)">
+                                                    <RotateCcw class="w-2.5 h-2.5 mr-1" />
+                                                    PARZIALE
+                                                </span>
+                                            </div>
+
                                             <span v-if="r.residuo < 0" class="block text-[9px] text-blue-400 uppercase font-bold mt-0.5">Credito</span>
                                         </td>
 

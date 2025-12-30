@@ -6,6 +6,7 @@ use App\Traits\HasProtocolNumber;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany; // <--- AGGIUNTO
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Condominio;
@@ -41,11 +42,8 @@ class ScritturaContabile extends Model
         'registrata_at'      => 'datetime',
     ];
 
-    // --- RELAZIONI CHE MANCAVANO ---
+    // --- RELAZIONI ---
 
-    /**
-     * Risolve l'errore: Undefined relationship [gestione]
-     */
     public function gestione(): BelongsTo
     {
         return $this->belongsTo(Gestione::class, 'gestione_id');
@@ -61,11 +59,9 @@ class ScritturaContabile extends Model
         return $this->belongsTo(Esercizio::class);
     }
 
-    // --- RELAZIONI PRINCIPALI ---
-
     public function righe(): HasMany
     {
-        // 🔥 IMPORTANTE: Qui usiamo 'scrittura_id' perché così è definito nella tua migration
+        // Usa 'scrittura_id' come definito nella migration righe_scritture
         return $this->hasMany(RigaScrittura::class, 'scrittura_id');
     }
 
@@ -82,14 +78,19 @@ class ScritturaContabile extends Model
         return $dare === $avere;
     }
 
-    public function quotePagate()
+    /**
+     * RELAZIONE INVERSA (Pivot)
+     * Restituisce tutte le quote rateali pagate (o parzialmente pagate) con questa scrittura.
+     * Fondamentale per la funzione di Storno/Annullamento.
+     */
+    public function quotePagate(): BelongsToMany
     {
-        // Relazione molti-a-molti verso RataQuote passando per la tabella pivot 'quota_scrittura'
-        // Ma per semplicità, possiamo definire una HasMany verso la tabella pivot stessa se esiste il model,
-        // oppure usare DB query builder nel controller per performance.
-        // Usiamo una relazione diretta verso la tabella pivot se hai creato il Model 'QuotaScrittura', 
-        // altrimenti usiamo il query builder nel controller.
-        return $this->belongsToMany(RataQuote::class, 'quota_scrittura', 'scrittura_contabile_id', 'rate_quota_id')
-                    ->withPivot('importo_pagato');
+        return $this->belongsToMany(
+            RataQuote::class, 
+            'quota_scrittura',      // Tabella pivot
+            'scrittura_contabile_id', // FK di questo modello
+            'rate_quota_id'           // FK dell'altro modello
+        )
+        ->withPivot(['importo_pagato', 'data_pagamento']);
     }
 }
