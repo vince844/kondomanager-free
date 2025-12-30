@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('numero_protocollo', 20);
             $table->string('causale');
             $table->text('descrizione')->nullable();
-            $table->enum('tipo_movimento', ['incasso_rata','pagamento_fornitore','giroconto','rettifica','apertura','chiusura']);
+            $table->enum('tipo_movimento', ['incasso_rata','pagamento_fornitore','giroconto','rettifica','apertura','chiusura','emissione_rata']);
             $table->enum('stato', ['bozza','registrata','riconciliata','annullata'])->default('bozza');
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('registrata_by')->nullable()->constrained('users')->nullOnDelete();

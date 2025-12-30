@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { Head, Link, router } from '@inertiajs/vue3';
+import { ref, computed, watch } from "vue";
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { useDateConverter } from '@/composables/useDateConverter';
@@ -19,12 +19,23 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Clock, 
+  AlertTriangle,
   Ban, 
   PieChart, 
   Coins,
   RotateCw,
-  Info
+  Info,
+  Wallet,
+  Lock,
+  RotateCcw
 } from "lucide-vue-next";
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
@@ -35,17 +46,127 @@ const props = defineProps<{
   pianoRate: any,
   quotePerAnagrafica: any[],
   quotePerImmobile: any[],
+  ratePure: any[],
 }>()
 
 const { generatePath, generateRoute } = usePermission();
 const { toItalian } = useDateConverter();
 const { euro } = useCurrencyFormatter();
 
+// --- STATO LOCALE SWITCH ---
+const switchState = ref(props.pianoRate.stato === 'approvato');
+const isProcessingStatus = ref(false);
+
+watch(() => props.pianoRate.stato, (newVal) => {
+    switchState.value = newVal === 'approvato';
+});
+
+const toggleStatoPiano = (newValue: boolean) => {
+    switchState.value = newValue;
+    isProcessingStatus.value = true;
+
+    router.put(
+        route('admin.gestionale.piani-rate.update-stato', {
+            condominio: props.condominio.id,
+            pianoRate: props.pianoRate.id
+        }),
+        { approvato: newValue },
+        {
+            preserveScroll: true,
+            onFinish: () => (isProcessingStatus.value = false),
+            onError: () => {
+                switchState.value = !newValue;
+                alert("Errore tecnico: Impossibile aggiornare lo stato.");
+            }
+        }
+    );
+};
+
 const tab = ref<"anagrafica" | "immobile">("anagrafica");
 const showOnlyCredits = ref(false);
-
 const today = new Date();
 today.setHours(0, 0, 0, 0);
+
+// --- LOGICA EMISSIONE ---
+const selectedRateIds = ref<number[]>([]);
+const isEmissionModalOpen = ref(false);
+
+const emettibili = computed(() => props.ratePure?.filter(r => !r.is_emessa) || []);
+const isAllSelected = computed(() => emettibili.value.length > 0 && selectedRateIds.value.length === emettibili.value.length);
+
+// Seleziona Tutto
+const toggleSelectAll = (checked: boolean) => {
+    if (checked) selectedRateIds.value = emettibili.value.map(r => r.id);
+    else selectedRateIds.value = [];
+};
+
+// ⬇️ QUESTA È LA FUNZIONE CHE MANCAVA NEL TUO CODICE ⬇️
+const toggleSelection = (id: number, checked: boolean) => {
+  if (checked) {
+      if (!selectedRateIds.value.includes(id)) {
+          selectedRateIds.value.push(id);
+      }
+  } else {
+      selectedRateIds.value = selectedRateIds.value.filter(itemId => itemId !== id);
+  }
+};
+// ⬆️ FINE FUNZIONE AGGIUNTA ⬆️
+
+const formEmissione = useForm({
+    rate_ids: [] as number[],
+    data_emissione: new Date().toISOString().split('T')[0],
+    descrizione_personalizzata: '',
+});
+
+const openEmissionModal = () => {
+    if (selectedRateIds.value.length === 0) return;
+    formEmissione.rate_ids = selectedRateIds.value;
+    isEmissionModalOpen.value = true;
+};
+
+/* const submitEmissione = () => {
+    formEmissione.post(route('admin.gestionale.piani-rate.emetti', { 
+        condominio: props.condominio.id, 
+        pianoRate: props.pianoRate.id 
+    }), {
+        onSuccess: () => {
+            isEmissionModalOpen.value = false;
+            selectedRateIds.value = [];
+        }
+    });
+}; */
+
+const submitEmissione = () => {
+    formEmissione.post(route('admin.gestionale.piani-rate.emetti', { 
+        condominio: props.condominio.id, 
+        pianoRate: props.pianoRate.id 
+    }), {
+        onSuccess: () => {
+            isEmissionModalOpen.value = false;
+            selectedRateIds.value = [];
+            alert("Emissione completata con successo!"); // Feedback immediato
+        },
+        onError: (errors) => {
+            console.error("Errore Emissione:", errors);
+            // Mostra il primo errore disponibile
+            const msg = Object.values(errors)[0] || "Errore sconosciuto";
+            alert("ERRORE: " + msg); 
+        },
+        onFinish: () => {
+            // Questo viene eseguito sempre
+            console.log("Richiesta terminata");
+        }
+    });
+};
+
+const annullaEmissione = (rataId: number) => {
+    if (!confirm('Annullare emissione? Se ci sono incassi, operazione bloccata.')) return;
+    router.delete(route('admin.gestionale.piani-rate.annulla-emissione', {
+        condominio: props.condominio.id,
+        pianoRate: props.pianoRate.id,
+        rata: rataId
+    }), { preserveScroll: true });
+};
 
 // --- RICALCOLO ---
 const handleRecalculate = () => {
@@ -97,7 +218,16 @@ const rateColumns = computed(() => {
     const numero = i + 1;
     const sample = src.find((item: any) => item.rate?.some((r: any) => r.numero === numero));
     const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
-    return { numero, scadenza: scadenza ? new Date(scadenza) : null };
+    
+    // NUOVO: Recupero stato emissione
+    const rataPura = props.ratePure?.find(r => r.numero_rata === numero);
+    
+    return { 
+        numero, 
+        scadenza: scadenza ? new Date(scadenza) : null,
+        is_emessa: rataPura?.is_emessa ?? false, // NUOVO
+        id: rataPura?.id // NUOVO
+    };
   });
 });
 
@@ -192,6 +322,20 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             description="Situazione aggiornata delle rate e dei pagamenti."
           />
 
+          <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <AlertTriangle class="h-5 w-5 text-amber-600" aria-hidden="true" />
+              </div>
+              <div class="ml-3 flex-1 md:flex md:justify-between">
+                <p class="text-sm text-amber-800">
+                  <strong>Stato Bozza:</strong> Il piano è attualmente modificabile e non ha generato movimenti contabili.
+                  <span class="block sm:inline mt-1 sm:mt-0">Controlla i dati, poi passa allo stato <strong>Approvato</strong> per rendere esecutive le rate ed emetterle.</span>
+                </p>
+              </div>
+            </div>
+          </div>
+
           <Tabs v-model="tab" class="space-y-6">
 
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
@@ -200,7 +344,27 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                   <TabsTrigger value="immobile">Per immobile</TabsTrigger>
               </TabsList>
 
-              <div class="flex items-center gap-2 w-full sm:w-auto">
+              <div class="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+                  
+                  <div class="flex items-center space-x-2 border px-3 py-1.5 rounded-lg bg-gray-50/50 mr-2">
+                      <Switch
+                        id="stato-piano"
+                        v-model="switchState"
+                        :disabled="isProcessingStatus"
+                        @update:checked="(val: boolean) => toggleStatoPiano(val)"
+                      />
+                      <Label htmlFor="stato-piano" class="cursor-pointer text-sm font-medium whitespace-nowrap">
+                          {{ switchState ? 'Approvato' : 'Bozza' }}
+                      </Label>
+                  </div>
+
+                  <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
+                    <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
+                  </Button>
+                  <Button v-else disabled variant="secondary" class="h-9 opacity-70">
+                    <Lock class="w-4 h-4 mr-2" /> Approva per emettere
+                  </Button>
+
                   <button 
                       @click="handleRecalculate"
                       class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -221,68 +385,40 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
               </div>
             </div>
 
-            <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                <Card class="bg-white shadow-sm border">
-                    <CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader>
-                    <CardContent class="p-4 pt-0 text-xl font-bold text-gray-900">{{ euro(aggregates.totaleTeorico) }}</CardContent>
-                </Card>
-                
-                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group">
-                    <CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0">
-                        <CardTitle class="text-xs uppercase text-red-400 tracking-wider">Da Incassare</CardTitle>
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger>
-                                    <Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p class="text-xs">Include rate scadute e <strong>debiti pregressi</strong>.</p>
-                                    <p class="text-xs text-muted-foreground">Non sottrae i crediti.</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    </CardHeader>
-                    <CardContent class="p-4 pt-0 text-xl font-bold text-red-600">{{ euro(aggregates.totaleRateScadute) }}</CardContent>
-                </Card>
+            <div v-if="switchState" class="flex items-center space-x-2 px-1 ml-1">
+                <input
+                  id="select-all"
+                  type="checkbox"
+                  :checked="isAllSelected"
+                  @change="(e) => toggleSelectAll((e.target as HTMLInputElement).checked)"
+                  class="h-4 w-4 cursor-pointer accent-emerald-600 rounded-sm"
+                />
+                <Label
+                  for="select-all"
+                  class="text-xs cursor-pointer text-muted-foreground uppercase font-semibold tracking-wider select-none"
+                >
+                  Seleziona tutte le rate non emesse per l'emissione
+                </Label>
+            </div>
 
-                <Card class="bg-emerald-50/40 shadow-sm border-emerald-100">
-                    <CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader>
-                    <CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600">{{ euro(aggregates.totaleVersato) }}</CardContent>
-                </Card>
-                
-                <Card class="bg-blue-50/40 shadow-sm border-blue-100">
-                    <CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader>
-                    <CardContent class="p-4 pt-0 text-xl font-bold text-blue-600">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent>
-                </Card>
-                
-                <Card class="bg-gray-50 shadow-sm border">
-                    <CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader>
-                    <CardContent class="p-4 pt-0 text-xl font-bold" 
-                        :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600' : 'text-emerald-600')">
-                        {{ euro(aggregates.totaleGenerale) }}
-                    </CardContent>
-                </Card>
+            <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <Card class="bg-white shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
+                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Da Incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Include rate scadute e <strong>debiti pregressi</strong>.</p><p class="text-xs text-muted-foreground">Non sottrae i crediti.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
+                <Card class="bg-emerald-50/40 shadow-sm border-emerald-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
+                <Card class="bg-blue-50/40 shadow-sm border-blue-100"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
+                <Card class="bg-gray-50 shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600' : 'text-emerald-600')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
             </div>
 
             <div v-if="isReady" class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
                 <span class="font-bold uppercase tracking-wider text-[10px] text-gray-400 mr-2">Legenda:</span>
-                
                 <div class="flex items-center gap-1.5"><CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span></div>
                 <div class="flex items-center gap-1.5"><PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span></div>
                 <div class="flex items-center gap-1.5"><AlertCircle class="w-3.5 h-3.5 text-red-600" /> <span class="text-red-700 font-medium">Scaduta</span></div>
                 <div class="flex items-center gap-1.5"><Clock class="w-3.5 h-3.5 text-gray-400" /> <span>In Scadenza</span></div>
                 <div class="flex items-center gap-1.5"><Coins class="w-3.5 h-3.5 text-blue-600" /> <span class="text-blue-700 font-medium">Credito</span></div>
-                
                 <div class="h-4 w-px bg-gray-300 mx-2 hidden sm:block"></div>
-                
-                <div class="flex items-center gap-1.5">
-                    <div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm ring-1 ring-black/5"></div>
-                    <span class="text-red-600 font-medium">Saldo Debito</span>
-                </div>
-                <div class="flex items-center gap-1.5">
-                    <div class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm ring-1 ring-black/5"></div>
-                    <span class="text-blue-600 font-medium">Saldo Credito</span>
-                </div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm ring-1 ring-black/5"></div><span class="text-red-600 font-medium">Saldo Debito</span></div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm ring-1 ring-black/5"></div><span class="text-blue-600 font-medium">Saldo Credito</span></div>
             </div>
 
             <TabsContent :value="tab" class="mt-0 space-y-6">
@@ -294,10 +430,40 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <th class="text-left px-6 py-3 sticky left-0 bg-gray-50 z-30 min-w-[250px] font-semibold uppercase text-xs tracking-wider shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                           {{ tab === "anagrafica" ? "Anagrafica" : "Immobile" }}
                         </th>
-                        <th v-for="col in rateColumns" :key="col.numero" class="text-center px-4 py-3 min-w-[100px]">
-                          <div class="font-semibold text-gray-700">Rata {{ col.numero }}</div>
-                          <div class="text-[10px] opacity-75 font-normal">{{ col.scadenza ? toItalian(col.scadenza) : "—" }}</div>
+                        
+                        <th v-for="col in rateColumns" :key="col.numero" class="text-center px-4 py-3 min-w-[100px] relative group/header">
+                          <div class="flex items-center justify-center gap-2">
+                              
+                              <div v-if="switchState && !col.is_emessa && col.id" class="z-50 cursor-pointer flex items-center justify-center">
+                                <input 
+                                    type="checkbox"
+                                    :checked="selectedRateIds.includes(col.id)"
+                                    @change="(e) => { 
+                                        const checked = (e.target as HTMLInputElement).checked;
+                                        toggleSelection(col.id, checked);
+                                    }"
+                                    class="h-4 w-4 cursor-pointer accent-emerald-600 z-50 relative"
+                                />
+                              </div>
+
+                              <div class="flex flex-col items-center relative z-10 pointer-events-none">
+                                  <div class="font-semibold text-gray-700 flex items-center gap-1">
+                                      Rata {{ col.numero }}
+                                      <Badge v-if="col.is_emessa" class="ml-1 h-1.5 w-1.5 p-0 bg-emerald-500 rounded-full" title="Emessa"></Badge>
+                                  </div>
+                                  <div class="text-[10px] opacity-75 font-normal">{{ col.scadenza ? toItalian(col.scadenza) : "—" }}</div>
+                              </div>
+
+                              <button v-if="switchState && col.is_emessa" 
+                                class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40"
+                                title="Annulla Emissione"
+                                @click.stop="annullaEmissione(col.id)"
+                              >
+                                <RotateCcw class="w-3 h-3" />
+                              </button>
+                          </div>
                         </th>
+
                         <th class="text-right px-4 py-3 bg-red-50/20 text-red-600 border-l border-red-100 min-w-[100px]">Scadute</th>
                         <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px]">Versato</th>
                         <th class="text-right px-4 py-3 min-w-[100px]">Crediti</th>
@@ -313,7 +479,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       >
                         <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                           <div v-if="tab === 'anagrafica'">
-                            <!-- <div class="font-semibold text-gray-900">{{ item.anagrafica.nome }}</div> -->
                             <Link 
                               :href="route('admin.gestionale.anagrafiche.estratto-conto', { 
                                   condominio: props.condominio.id, 
@@ -339,36 +504,38 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                     <TooltipTrigger as-child>
                                         <div 
                                             :class="getRataStyle(item.rateMap[col.numero]).container"
-                                            class="relative flex flex-col items-center justify-center rounded-lg border p-1.5 h-[52px] w-[80px] mx-auto transition-all cursor-help"
+                                            class="relative flex flex-col items-center justify-center rounded-lg border p-1.5 h-[56px] w-[80px] mx-auto transition-all cursor-help"
+                                            :style="!col.is_emessa ? 'opacity: 0.75; border-style: dashed;' : ''" 
                                         >
                                             <div class="flex items-center gap-1" :class="getRataStyle(item.rateMap[col.numero]).text">
                                                 <component :is="getRataStyle(item.rateMap[col.numero]).icon" v-if="getRataStyle(item.rateMap[col.numero]).icon" class="w-3 h-3 opacity-60" />
                                                 <span class="text-xs">{{ euro(item.rateMap[col.numero].importo) }}</span>
                                             </div>
-                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm">
-                                                PARZ.
+                                            
+                                            <div class="mt-0.5 w-full flex justify-center">
+                                                <div v-if="!col.is_emessa" class="text-[9px] font-bold text-gray-400 uppercase tracking-wide bg-gray-100 px-1.5 rounded-sm inline-block">
+                                                    BOZZA
+                                                </div>
+                                                <div v-else class="text-[10px] opacity-75">
+                                                    {{ toItalian(item.rateMap[col.numero].scadenza) }}
+                                                </div>
                                             </div>
                                             
+                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-10">
+                                                PARZ.
+                                            </div>
                                             <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale" 
-                                                class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white"
+                                                class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white z-10"
                                                 :class="item.saldo_iniziale > 0 ? 'bg-red-500' : 'bg-blue-500'"
                                             ></div>
-
-                                            <div v-if="tab === 'immobile' && col.numero === 1">
-                                                <div v-if="item.totale_debiti > 0 && item.totale_crediti === 0"
-                                                    class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"
-                                                ></div>
-                                                
-                                                <div v-if="item.totale_crediti < 0 && item.totale_debiti === 0"
-                                                    class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"
-                                                ></div>
-
+                                            <div v-if="tab === 'immobile' && col.numero === 1" class="z-10">
+                                                <div v-if="item.totale_debiti > 0 && item.totale_crediti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
+                                                <div v-if="item.totale_crediti < 0 && item.totale_debiti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="absolute -top-1 -right-1 flex gap-0.5">
                                                     <div class="rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                     <div class="rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
                                                 </div>
                                             </div>
-
                                         </div>
                                     </TooltipTrigger>
                                     
@@ -386,27 +553,12 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                                             <div v-if="tab === 'immobile' && col.numero === 1 && (item.totale_debiti > 0 || item.totale_crediti < 0)" class="mb-1 pb-1 border-b border-white/20 text-left">
                                                 <p class="font-semibold text-center mb-1">Saldi Pregressi:</p>
-                                                
-                                                <div v-if="item.totale_debiti > 0" class="text-red-300 whitespace-nowrap flex justify-between gap-2">
-                                                    <span>Debiti:</span>
-                                                    <span>{{ euro(item.totale_debiti) }}</span>
-                                                </div>
-                                                
-                                                <div v-if="item.totale_crediti < 0" class="text-blue-300 whitespace-nowrap flex justify-between gap-2">
-                                                    <span>Crediti:</span>
-                                                    <span>{{ euro(Math.abs(item.totale_crediti)) }}</span>
-                                                </div>
-
+                                                <div v-if="item.totale_debiti > 0" class="text-red-300 whitespace-nowrap flex justify-between gap-2"><span>Debiti:</span><span>{{ euro(item.totale_debiti) }}</span></div>
+                                                <div v-if="item.totale_crediti < 0" class="text-blue-300 whitespace-nowrap flex justify-between gap-2"><span>Crediti:</span><span>{{ euro(Math.abs(item.totale_crediti)) }}</span></div>
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium border-t border-white/10 pt-1">
-                                                    <span v-if="(item.totale_debiti + item.totale_crediti) === 0" class="text-emerald-300">
-                                                        Compensazione Totale (0€)
-                                                    </span>
-                                                    <span v-else-if="(item.totale_debiti + item.totale_crediti) > 0" class="text-red-200">
-                                                        Residuo Debito: {{ euro(item.totale_debiti + item.totale_crediti) }}
-                                                    </span>
-                                                    <span v-else class="text-blue-200">
-                                                        Residuo Credito: {{ euro(Math.abs(item.totale_debiti + item.totale_crediti)) }}
-                                                    </span>
+                                                    <span v-if="(item.totale_debiti + item.totale_crediti) === 0" class="text-emerald-300">Compensazione Totale (0€)</span>
+                                                    <span v-else-if="(item.totale_debiti + item.totale_crediti) > 0" class="text-red-200">Residuo Debito: {{ euro(item.totale_debiti + item.totale_crediti) }}</span>
+                                                    <span v-else class="text-blue-200">Residuo Credito: {{ euro(Math.abs(item.totale_debiti + item.totale_crediti)) }}</span>
                                                 </div>
                                             </div>
 
@@ -481,6 +633,28 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
         </section>
       </div>
     </div>
+
+    <Dialog :open="isEmissionModalOpen" @update:open="isEmissionModalOpen = $event">
+        <DialogContent class="sm:max-w-[425px]">
+            <DialogHeader>
+                <DialogTitle>Conferma Emissione</DialogTitle>
+                <DialogDescription>
+                    Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>. 
+                </DialogDescription>
+            </DialogHeader>
+            <div class="grid gap-4 py-4">
+                <div class="grid gap-2">
+                    <Label>Data Registrazione</Label>
+                    <Input type="date" v-model="formEmissione.data_emissione" />
+                </div>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" @click="isEmissionModalOpen = false">Annulla</Button>
+                <Button @click="submitEmissione" :disabled="formEmissione.processing" class="bg-emerald-600 hover:bg-emerald-700">Emetti Ora</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
   </GestionaleLayout>
 </template>
 

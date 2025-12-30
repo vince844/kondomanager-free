@@ -148,6 +148,23 @@ class CondominioService
             ]
         );
 
+        // E. Gestione Rate (Passività > Fondi/Ricavi) - NECESSARIO PER EMISSIONE RATE
+        // Rappresenta la contropartita dell'emissione (Crediti vs Condomini @ Gestione Rate)
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'gestione_rate'],
+            [
+                'parent_id'   => $passivoRoot->id, // Mettilo sotto la radice PASSIVO (ID 8 nel tuo caso)
+                'codice'      => '3001',
+                'nome'        => 'Gestione Rate',
+                'descrizione' => 'Contropartita per emissione rate',
+                'tipo'        => 'passivo',     // OK: Presente nell'enum
+                'categoria'   => 'fondi',       // OK: Presente nell'enum
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1
+            ]
+        );
+
         Log::info("Piano Conti creato correttamente per '{$condominio->nome}'");
     }
 }

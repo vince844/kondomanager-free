@@ -16,6 +16,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
@@ -110,6 +111,18 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
         ]);
+    
+    // Aggiornamento Stato Piano (Bozza <-> Approvato)
+    Route::put('/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
+        ->name('piani-rate.update-stato');
+
+    // Emissione Rate (Massiva)
+    Route::post('/piani-rate/{pianoRate}/emetti', [EmissioneRateController::class, 'store'])
+        ->name('piani-rate.emetti');
+
+    // Annulla Emissione Singola Rata
+    Route::delete('/piani-rate/{pianoRate}/rate/{rata}/annulla-emissione', [EmissioneRateController::class, 'destroy'])
+        ->name('piani-rate.annulla-emissione');
     
     // Rotta per vedere l'estratto conto (accessibile dal piano rate)
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])

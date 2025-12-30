@@ -22,6 +22,7 @@ class RataQuote extends Model
         'data_scadenza',
         'data_pagamento',
         'riferimento_pagamento',
+        'scrittura_contabile_id',
         'note'
     ];
 

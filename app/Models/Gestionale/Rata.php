@@ -99,4 +99,9 @@ class Rata extends Model
             'scrittura_contabile_id'
         )->withPivot(['importo_pagato', 'data_pagamento'])->withTimestamps();
     }
+
+    public function getTotaleRataAttribute(): float
+    {
+        return $this->importo_totale / 100;
+    }
 }

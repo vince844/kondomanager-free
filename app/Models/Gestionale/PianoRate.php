@@ -2,6 +2,7 @@
 
 namespace App\Models\Gestionale;
 
+use App\Enums\StatoPianoRate;
 use App\Models\Condominio;
 use App\Models\Gestione;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,9 +25,11 @@ class PianoRate extends Model
         'data_inizio',
         'attivo',
         'note',
+        'stato',
     ];
 
     protected $casts = [
+        'stato' => StatoPianoRate::class,
         'data_inizio' => 'date',
         'attivo' => 'boolean',
     ];
