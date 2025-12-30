@@ -61,14 +61,10 @@ class EmissioneRateController extends Controller
                     ->get();
 
                 foreach ($rateSelezionate as $rata) {
-                    
-                    // Controllo anti-duplicati
-                    $giaEmessa = $rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty();
-                    if ($giaEmessa) continue;
+                    if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) continue;
 
-                    $totaleRataFloat = 0.0;
+                    $totaleRataCentesimi = 0; // Cambiato da float a integer
 
-                    // 1. Crea TESTATA Scrittura
                     $scrittura = ScritturaContabile::create([
                         'condominio_id'      => $condominio->id,
                         'esercizio_id'       => $esercizio->id,
@@ -80,13 +76,12 @@ class EmissioneRateController extends Controller
                         'stato'              => 'registrata',
                     ]);
 
-                    // 2. Righe DARE (Debito Condomini)
                     foreach ($rata->rateQuote as $quota) {
                         if ($quota->importo <= 0) continue;
 
-                        $importoCentesimi = (int) round($quota->importo * 100);
+                        // 🔥 CORREZIONE: $quota->importo è già in centesimi (integer)
+                        $importoCentesimi = $quota->importo; 
 
-                        // Usa la relazione 'righe()' definita in ScritturaContabile
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCrediti->id,
                             'anagrafica_id'      => $quota->anagrafica_id,
@@ -97,21 +92,16 @@ class EmissioneRateController extends Controller
                             'note'               => "Quota " . $rata->descrizione
                         ]);
 
-                        // Collega la quota alla scrittura
                         $quota->update(['scrittura_contabile_id' => $scrittura->id]);
-                        $totaleRataFloat += $quota->importo;
+                        $totaleRataCentesimi += $importoCentesimi;
                     }
 
                     // 3. Riga AVERE (Gestione Rate)
-                    $totaleRataFloat = round($totaleRataFloat, 2);
-                    
-                    if ($totaleRataFloat > 0) {
-                        $totaleCentesimi = (int) round($totaleRataFloat * 100);
-
+                    if ($totaleRataCentesimi > 0) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoGestione->id,
                             'tipo_riga'          => 'avere',
-                            'importo'            => $totaleCentesimi,
+                            'importo'            => $totaleRataCentesimi,
                             'note'               => "Totale emissione " . $rata->descrizione
                         ]);
                     }

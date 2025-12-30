@@ -107,13 +107,12 @@ class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il n
      */
     public function ricalcolaStato(): void
     {
-        // 1. Somma reale dalla tabella pivot (Fonte di Verità)
+        // 1. Fonte di verità: pivot
         $pagatoReale = $this->pagamenti()->sum('quota_scrittura.importo_pagato');
-        
-        // 2. Aggiornamento dato denormalizzato
+
         $this->importo_pagato = $pagatoReale;
 
-        // 3. Determinazione Stato
+        // 2. Stato
         if ($this->importo_pagato >= $this->importo) {
             $this->stato = 'pagata';
         } elseif ($this->importo_pagato > 0) {
@@ -121,17 +120,16 @@ class RataQuote extends Model // Se il file si chiama RataQuota, cambia qui il n
         } else {
             $this->stato = 'da_pagare';
             $this->data_pagamento = null;
+            $this->save();
+            return;
         }
 
-        // 4. Data ultimo pagamento (se esiste)
-        if ($this->stato !== 'da_pagare') {
-            $ultimoMovimento = $this->pagamenti()
-                ->join('scritture_contabili', 'scritture_contabili.id', '=', 'quota_scrittura.scrittura_contabile_id')
-                ->orderByDesc('scritture_contabili.data_competenza') // Usa la data competenza contabile
-                ->first();
-                
-            $this->data_pagamento = $ultimoMovimento ? $ultimoMovimento->data_competenza : now();
-        }
+        // 3. Data ultimo pagamento (CORRETTA)
+        $ultimoMovimento = $this->pagamenti()
+            ->orderByDesc('data_competenza')
+            ->first();
+
+        $this->data_pagamento = $ultimoMovimento?->data_competenza;
 
         $this->save();
     }

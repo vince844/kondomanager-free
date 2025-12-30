@@ -77,7 +77,7 @@ class EstrattoContoAnagraficaController extends Controller
                     $statoRata = $quota->stato; // 'pagata', 'parzialmente_pagata', 'da_pagare'
                 }
 
-                // ✅ FIX: numero_rata invece di numero
+                // FIX: numero_rata invece di numero
                 $label = "Rata n.{$riga->rata->numero_rata}" . ($riga->rata->data_scadenza ? " (Scad. " . $riga->rata->data_scadenza->format('d/m/Y') . ")" : "");
                 
                 $dettagli[] = [
@@ -103,7 +103,7 @@ class EstrattoContoAnagraficaController extends Controller
                 'protocollo'  => $riga->scrittura->numero_protocollo,
                 'descrizione' => $riga->scrittura->causale ?: 'Movimento Contabile',
                 'gestione'    => $riga->scrittura->gestione ? $riga->scrittura->gestione->nome : null,
-                'dettagli'    => $dettagli, // Ora è un array di Oggetti, non stringhe
+                'dettagli'    => $dettagli, 
                 'note'        => $riga->note, 
                 'tipo_icona'  => $icona, 
                 'dare'        => $dare, 
