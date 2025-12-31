@@ -1,4 +1,3 @@
-# Multilanguage README
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.en.md)
 [![it](https://img.shields.io/badge/lang-it-green.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.md)
 [![pt-br](https://img.shields.io/badge/lang-pt--br-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt-br.md)
