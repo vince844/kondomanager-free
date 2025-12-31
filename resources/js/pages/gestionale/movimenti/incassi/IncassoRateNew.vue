@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, watch, computed } from 'vue';
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -6,26 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { 
-    AlertCircle, 
-    CheckCircle2, 
-    Calculator, 
-    RotateCcw, 
-    Wallet, 
-    User, 
-    Building, 
-    ArrowRight,
-    Euro,
-    FileText,
-    Receipt,
-    ArrowRightLeft
-} from 'lucide-vue-next';
-import axios from 'axios';
+import { AlertCircle,CheckCircle2,Calculator,RotateCcw,User,Building,ArrowRight,Euro,FileText,Receipt,ArrowRightLeft } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
-
 import { useFormat } from '@/composables/useFormat';
 import { usePermission } from "@/composables/permissions";
+import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
+import { useDebitiLoader } from '@/composables/useDebitiLoader';
 
 const props = defineProps<{
     condominio: any;
@@ -35,21 +23,39 @@ const props = defineProps<{
     gestioni: any[];
 }>();
 
+// Composables
 const { formatCurrency } = useFormat();
 const { generateRoute } = usePermission();
+const { 
+    rawRateList, 
+    loadingRate, 
+    mode,
+    isScaduta,
+    getRateListByGestione,
+    getTotalAllocato,
+    getTotaleDebito,
+    getBilancioFinale,
+    getPreviewContabile,
+    distributeGreedy,
+    calculateExcess,
+    onManualChange,
+    resetAllocation: resetAllocationComposable,
+    pagaTutto: pagaTuttoComposable,
+    pagaScadute: pagaScaduteComposable,
+    syncFormData
+} = usePaymentDistribution();
 
-const mode = ref<'auto' | 'manual'>('auto');
+const { fetchDebiti: fetchDebitiAPI } = useDebitiLoader();
+
+// UI State
 const searchMode = ref<'persona' | 'immobile'>('persona');
 const selectedImmobileId = ref<number | null>(null);
 
-// STATO DEI DATI
-const rawRateList = ref<any[]>([]); // Contiene TUTTI i dati scaricati dal server
-const loadingRate = ref(false);
-
+// Form
 const form = useForm({
     pagante_id: null,
     cassa_id: null,
-    gestione_id: null, // Se null = Automatica (tutte), se ID = Filtra per gestione
+    gestione_id: null,
     data_pagamento: new Date().toISOString().substring(0, 10),
     importo_totale: 0,
     descrizione: '',
@@ -57,226 +63,91 @@ const form = useForm({
     eccedenza: 0,
 });
 
-// --- SMART FILTER: Rate List Filtrata ---
-const rateList = computed(() => {
-    // Se non ho selezionato una gestione specifica, mostro tutto
-    if (!form.gestione_id) {
-        return rawRateList.value;
-    }
-    // Altrimenti filtro solo le rate di quella gestione
-    return rawRateList.value.filter(r => r.gestione_id === form.gestione_id);
-});
+// Computed
+const rateList = computed(() => getRateListByGestione(form.gestione_id));
 
-// --- HELPERS & COMPUTED ---
-const isScaduta = (data: string | null) => {
-    if (!data) return false;
-    return new Date(data) < new Date(new Date().toDateString());
-};
+const totalAllocato = computed(() => getTotalAllocato(rateList.value));
 
-const totalAllocato = computed(() =>
-    rateList.value.reduce((sum, r) => sum + (parseFloat(r.da_pagare) || 0), 0)
+const totaleDebito = computed(() => getTotaleDebito(rateList.value));
+
+const bilancioFinale = computed(() => 
+    getBilancioFinale(totaleDebito.value, form.importo_totale)
 );
 
-// Somma algebrica (Debiti positivi - Crediti negativi)
-const totaleDebito = computed(() => 
-    rateList.value.reduce((sum, r) => sum + (parseFloat(r.residuo) || 0), 0)
+const previewContabile = computed(() => 
+    getPreviewContabile(rateList.value, form.importo_totale, form.eccedenza)
 );
 
-const bilancioFinale = computed(() => {
-    const debito = totaleDebito.value;
-    const versato = form.importo_totale || 0;
-    const differenza = debito - versato;
-
-    if (differenza > 0.01) {
-        return { label: 'Residuo:', value: differenza, class: 'text-red-600 bg-red-50 border-red-200' };
-    } else if (differenza < -0.01) {
-        return { label: 'Credito:', value: Math.abs(differenza), class: 'text-emerald-600 bg-emerald-50 border-emerald-200' };
-    } else {
-        return { label: 'Saldo:', value: 0, class: 'text-gray-600 bg-gray-50 border-gray-200' };
-    }
-});
-
-const previewContabile = computed(() => {
-    // Consideriamo solo le rate dove stiamo effettivamente mettendo dei soldi
-    const rateCoinvolte = rateList.value.filter(r => r.selezionata && r.da_pagare > 0);
-
-    return {
-        hasData: form.importo_totale > 0,
-        totale_versato: form.importo_totale,
-        allocato_rate: totalAllocato.value,
-        anticipo: form.eccedenza,
-        righe: rateCoinvolte.map(r => {
-            const residuoDopoPagamento = r.residuo - r.da_pagare;
-            return {
-                id: r.id,
-                descrizione: r.descrizione,
-                pagato: r.da_pagare,
-                status: residuoDopoPagamento < 0.01 ? 'SALDATA' : 'PARZIALE',
-                residuo_futuro: Math.max(0, residuoDopoPagamento)
-            };
-        })
-    };
-});
-
-// --- API FETCH ---
-const fetchDebiti = async (params: { anagrafica_id?: number | null, immobile_id?: number | null }) => {
-    if (!params.anagrafica_id && !params.immobile_id) {
-        rawRateList.value = [];
-        return;
-    }
+// Methods
+const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?: number | null }) => {
     loadingRate.value = true;
     try {
-        const url = route(generateRoute('gestionale.situazione-debitoria'), {
-            condominio: props.condominio.id,
-            ...params
-        });
-        const res = await axios.get(url);
+        const result = await fetchDebitiAPI(
+            (name: string, params: any) => route(generateRoute(name), params),
+            props.condominio.id,
+            params,
+            isScaduta
+        );
+        rawRateList.value = result;
         
-        // Salviamo i dati grezzi
-        rawRateList.value = res.data.rate.map((r: any) => ({
-            ...r,
-            da_pagare: 0,
-            selezionata: false,
-            scaduta: isScaduta(r.data_scadenza ?? null),
-        }));
-
         if (form.importo_totale > 0) runDistribution();
-    } finally { loadingRate.value = false; }
+    } finally {
+        loadingRate.value = false;
+    }
 };
 
-// --- WATCHERS ---
-watch(() => form.pagante_id, (newVal) => {
-    if (searchMode.value === 'persona') fetchDebiti({ anagrafica_id: newVal });
-});
-
-watch(selectedImmobileId, (newVal) => {
-    if (searchMode.value === 'immobile') fetchDebiti({ immobile_id: newVal });
-});
-
-watch(() => form.importo_totale, () => {
-    runDistribution();
-});
-
-// Watcher Filtro Gestione: Resetta selezioni se cambio filtro
-watch(() => form.gestione_id, () => {
-    rawRateList.value.forEach(r => {
-        r.da_pagare = 0;
-        r.selezionata = false;
-    });
-    if (form.importo_totale > 0) runDistribution();
-});
-
-const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
-    searchMode.value = newMode;
-    rawRateList.value = []; // Pulisci lista grezza
-    selectedImmobileId.value = null;
-};
-
-// --- DISTRIBUZIONE (Lavora su rateList, che è già filtrata) ---
 const runDistribution = () => {
-    mode.value === 'auto' ? distributeGreedy() : calculateExcessOnly();
+    mode.value === 'auto' ? distributeAuto() : calculateExcessOnly();
 };
 
-const distributeGreedy = () => {
-    let budget = parseFloat(String(form.importo_totale)) || 0;
-    
-    rateList.value.forEach(r => {
-        // 🔥 MODIFICA IMPORTANTE: Ignora le rate a credito (negative)
-        if (r.residuo <= 0) {
-            r.da_pagare = 0;
-            r.selezionata = false;
-            return;
-        }
-
-        const allocabile = Math.min(budget, r.residuo);
-        r.da_pagare = parseFloat(allocabile.toFixed(2));
-        r.selezionata = r.da_pagare > 0;
-        budget -= r.da_pagare;
-        if (budget < 0.01) budget = 0;
-    });
-
-    form.eccedenza = parseFloat(budget.toFixed(2));
+const distributeAuto = () => {
+    form.eccedenza = distributeGreedy(rateList.value, form.importo_totale);
     syncForm();
 };
 
-const onManualChange = (rata: any, val: string) => {
-    if (mode.value === 'auto') return;
-    let amount = parseFloat(val) || 0;
-    
-    // Non puoi pagare più del residuo
-    if (amount > rata.residuo) amount = rata.residuo;
-    
-    rata.da_pagare = amount;
-    rata.selezionata = amount > 0;
+const handleManualChange = (rata: any, val: string) => {
+    onManualChange(rata, val);
     calculateExcessOnly();
     syncForm();
 };
 
 const calculateExcessOnly = () => {
-    const tot = parseFloat(String(form.importo_totale)) || 0;
-    const alloc = rateList.value.reduce((s, r) => s + (parseFloat(r.da_pagare) || 0), 0);
-    form.eccedenza = Math.max(0, parseFloat((tot - alloc).toFixed(2)));
+    form.eccedenza = calculateExcess(rateList.value, form.importo_totale);
 };
 
 const toggleMode = () => {
     mode.value = mode.value === 'auto' ? 'manual' : 'auto';
-    if (mode.value === 'auto') distributeGreedy();
+    if (mode.value === 'auto') distributeAuto();
 };
 
-// --- AZIONI RAPIDE ---
 const resetAllocation = () => {
-    mode.value = 'manual';
-    rateList.value.forEach(r => {
-        r.da_pagare = 0;
-        r.selezionata = false;
-    });
+    resetAllocationComposable(rateList.value);
     calculateExcessOnly();
     syncForm();
 };
 
 const pagaTutto = () => {
-    mode.value = 'manual';
-    let somma = 0;
-    rateList.value.forEach(r => {
-        // Paga solo se è un debito positivo
-        if (r.residuo > 0) {
-            r.da_pagare = r.residuo;
-            r.selezionata = true;
-            somma += r.residuo;
-        } else {
-            r.da_pagare = 0;
-            r.selezionata = false;
-        }
-    });
-    form.importo_totale = parseFloat(somma.toFixed(2));
+    const somma = pagaTuttoComposable(rateList.value);
+    form.importo_totale = somma;
     calculateExcessOnly();
     syncForm();
 };
 
 const pagaScadute = () => {
-    mode.value = 'manual';
-    let somma = 0;
-    rateList.value.forEach(r => {
-        // Paga solo se scaduta E se è un debito positivo
-        if (r.scaduta && r.residuo > 0) {
-            r.da_pagare = r.residuo;
-            r.selezionata = true;
-            somma += r.residuo;
-        } else {
-            r.da_pagare = 0;
-            r.selezionata = false;
-        }
-    });
-    form.importo_totale = parseFloat(somma.toFixed(2));
+    const somma = pagaScaduteComposable(rateList.value);
+    form.importo_totale = somma;
     calculateExcessOnly();
     syncForm();
 };
 
 const syncForm = () => {
-    // Sincronizza solo le rate visibili e selezionate
-    form.dettaglio_pagamenti = rateList.value
-        .filter(r => r.selezionata && r.da_pagare > 0)
-        .map(r => ({ rata_id: r.id, importo: r.da_pagare }));
+    form.dettaglio_pagamenti = syncFormData(rateList.value);
+};
+
+const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
+    searchMode.value = newMode;
+    rawRateList.value = [];
+    selectedImmobileId.value = null;
 };
 
 const submit = () => {
@@ -291,6 +162,27 @@ const submit = () => {
         }
     });
 };
+
+// Watchers
+watch(() => form.pagante_id, (newVal) => {
+    if (searchMode.value === 'persona') fetchDebiti({ anagrafica_id: newVal });
+});
+
+watch(selectedImmobileId, (newVal) => {
+    if (searchMode.value === 'immobile') fetchDebiti({ immobile_id: newVal });
+});
+
+watch(() => form.importo_totale, () => {
+    runDistribution();
+});
+
+watch(() => form.gestione_id, () => {
+    rawRateList.value.forEach(r => {
+        r.da_pagare = 0;
+        r.selezionata = false;
+    });
+    if (form.importo_totale > 0) runDistribution();
+});
 </script>
 
 <template>

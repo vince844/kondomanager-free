@@ -87,10 +87,11 @@ class ScritturaContabile extends Model
     {
         return $this->belongsToMany(
             RataQuote::class, 
-            'quota_scrittura',      // Tabella pivot
-            'scrittura_contabile_id', // FK di questo modello
-            'rate_quota_id'           // FK dell'altro modello
+            'quota_scrittura',       // Tabella pivot
+            'scrittura_contabile_id', // Chiave esterna in pivot per questo modello
+            'rate_quota_id'           // Chiave esterna in pivot per l'altro modello
         )
-        ->withPivot(['importo_pagato', 'data_pagamento']);
+        ->withPivot(['importo_pagato', 'data_pagamento']) 
+        ->withTimestamps();
     }
 }

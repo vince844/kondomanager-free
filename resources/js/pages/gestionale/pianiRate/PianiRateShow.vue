@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { useDateConverter } from '@/composables/useDateConverter';
@@ -32,6 +32,8 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import Alert from "@/components/Alert.vue"; // Assicurati che il path sia corretto
+import type { Flash } from '@/types/flash';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,13 +58,14 @@ const { euro } = useCurrencyFormatter();
 // --- STATO LOCALE SWITCH ---
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 watch(() => props.pianoRate.stato, (newVal) => {
     switchState.value = newVal === 'approvato';
 });
 
 const toggleStatoPiano = (newValue: boolean) => {
-    switchState.value = newValue;
     isProcessingStatus.value = true;
 
     router.put(
@@ -73,10 +76,13 @@ const toggleStatoPiano = (newValue: boolean) => {
         { approvato: newValue },
         {
             preserveScroll: true,
-            onFinish: () => (isProcessingStatus.value = false),
-            onError: () => {
-                switchState.value = !newValue;
-                alert("Errore tecnico: Impossibile aggiornare lo stato.");
+            onSuccess: () => {
+                // Il successo aggiornerà switchState tramite il watcher su props.pianoRate.stato
+            },
+            onFinish: () => {
+                isProcessingStatus.value = false;
+                // Forza il riallineamento dello switch allo stato reale del database
+                switchState.value = props.pianoRate.stato === 'approvato';
             }
         }
     );
@@ -124,17 +130,6 @@ const openEmissionModal = () => {
     isEmissionModalOpen.value = true;
 };
 
-/* const submitEmissione = () => {
-    formEmissione.post(route('admin.gestionale.piani-rate.emetti', { 
-        condominio: props.condominio.id, 
-        pianoRate: props.pianoRate.id 
-    }), {
-        onSuccess: () => {
-            isEmissionModalOpen.value = false;
-            selectedRateIds.value = [];
-        }
-    });
-}; */
 
 const submitEmissione = () => {
     formEmissione.post(route('admin.gestionale.piani-rate.emetti', { 
@@ -321,6 +316,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             :title="`Piano rate: ${props.pianoRate.nome}`" 
             description="Situazione aggiornata delle rate e dei pagamenti."
           />
+          <div v-if="flashMessage" class="animate-in fade-in slide-in-from-top-4 duration-300">
+              <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
 
           <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
             <div class="flex">
@@ -347,15 +345,40 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
               <div class="flex items-center gap-2 w-full sm:w-auto flex-wrap">
                   
                   <div class="flex items-center space-x-2 border px-3 py-1.5 rounded-lg bg-gray-50/50 mr-2">
-                      <Switch
-                        id="stato-piano"
-                        v-model="switchState"
-                        :disabled="isProcessingStatus"
-                        @update:checked="(val: boolean) => toggleStatoPiano(val)"
-                      />
-                      <Label htmlFor="stato-piano" class="cursor-pointer text-sm font-medium whitespace-nowrap">
-                          {{ switchState ? 'Approvato' : 'Bozza' }}
-                      </Label>
+                      <TooltipProvider>
+                          <Tooltip :delayDuration="0">
+                              <TooltipTrigger as-child>
+                                  <div class="flex items-center space-x-2">
+                                      <Switch
+                                          id="stato-piano"
+                                          v-model="switchState"
+                                          :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
+                                          @update:checked="(val: boolean) => toggleStatoPiano(val)"
+                                      />
+                                      <Label 
+                                          htmlFor="stato-piano" 
+                                          class="text-sm font-medium whitespace-nowrap"
+                                          :class="{'cursor-not-allowed opacity-50': switchState && props.ratePure.some(r => r.is_emessa), 'cursor-pointer': !isProcessingStatus}"
+                                      >
+                                          {{ switchState ? 'Approvato' : 'Bozza' }}
+                                      </Label>
+                                  </div>
+                              </TooltipTrigger>
+                              <TooltipContent 
+                                  v-if="switchState && props.ratePure.some(r => r.is_emessa)" 
+                                  class="bg-slate-900 text-white border-slate-800 shadow-xl"
+                              >
+                                  <div class="flex flex-col gap-1 p-1">
+                                      <p class="text-xs font-bold flex items-center text-amber-400">
+                                          <Lock class="w-3 h-3 mr-1" /> Azione bloccata
+                                      </p>
+                                      <p class="text-[10px] text-slate-300">
+                                          Annulla le emissioni delle rate prima di tornare in bozza.
+                                      </p>
+                                  </div>
+                              </TooltipContent>
+                          </Tooltip>
+                      </TooltipProvider>
                   </div>
 
                   <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">

@@ -136,42 +136,27 @@ class PianoRateController extends Controller
      */
     public function updateStato(Request $request, Condominio $condominio, PianoRate $pianoRate)
     {
-            // 1. Validazione input booleano
-            $validated = $request->validate([
-                'approvato' => 'required|boolean'
-            ]);
+        $validated = $request->validate([
+            'approvato' => 'required|boolean'
+        ]);
 
-            // 2. Determina il nuovo stato usando l'ENUM
-            // Laravel convertirà automaticamente questo Enum nella stringa corretta per il DB
-            $nuovoStato = $validated['approvato'] 
-                ? StatoPianoRate::APPROVATO 
-                : StatoPianoRate::BOZZA;
+        $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
 
-            // 3. Controllo di Sicurezza: Impedisci il ritorno a "Bozza" se ci sono rate emesse
-            // Confrontiamo usando l'Enum
-            if ($nuovoStato === StatoPianoRate::BOZZA) {
-                
-                // Verifica se esistono rate con una scrittura contabile collegata
-                $haRateEmesse = $pianoRate->rate()
-                    ->whereHas('rateQuote', function($q) {
-                        $q->whereNotNull('scrittura_contabile_id');
-                    })
-                    ->exists();
+        if ($nuovoStato === StatoPianoRate::BOZZA) {
+            $haRateEmesse = $pianoRate->rate()
+                ->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))
+                ->exists();
 
-                if ($haRateEmesse) {
-                    return back()->withErrors(['error' => 'Impossibile riportare in Bozza: esistono rate già emesse in contabilità. Annulla prima le emissioni.']);
-                    dd("BLOCCATO: Ci sono rate emesse, non posso tornare in bozza!");
-                }
+            if ($haRateEmesse) {
+                // Usiamo il flash message per l'utente e back() per Inertia
+                return back()->with($this->flashError('Impossibile riportare in Bozza: esistono rate già emesse in contabilità. Annulla prima le emissioni.'));
             }
+        }
 
-            // 4. Aggiornamento
-            // Grazie al cast nel Model, puoi passare direttamente l'oggetto Enum
-            $pianoRate->update(['stato' => $nuovoStato]);
+        $pianoRate->update(['stato' => $nuovoStato]);
 
-            // 5. Successo
-            return back()->with('success', 'Stato del piano aggiornato con successo.');
+        return back()->with($this->flashSuccess('Stato del piano aggiornato: ' . ($validated['approvato'] ? 'Approvato' : 'Bozza')));
     }
-
 
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): RedirectResponse
     {
