@@ -9,7 +9,7 @@ Thanks for considering contributing! Here's how to help:
 
 2. **Create a new branch**
 ```bash
-   git checkout -b feature/YourFeature
+git checkout -b feature/YourFeature
 ```
 
 3. **Make your changes**
@@ -19,12 +19,12 @@ Thanks for considering contributing! Here's how to help:
 
 4. **Commit your changes**
 ```bash
-   git commit -m 'Add new feature'
+git commit -m 'Add new feature'
 ```
 
 5. **Push to your branch**
 ```bash
-   git push origin feature/YourFeature
+git push origin feature/YourFeature
 ```
 
 6. **Open a Pull Request**
