@@ -4,8 +4,6 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Http\Controllers\Controller;
-use App\Models\Condominio;
-use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
@@ -20,12 +18,7 @@ class PianoRateGenerationController extends Controller
      * Rigenera le rate per un piano esistente.
      * Cancella le rate attuali (e le quote a cascata) e rilancia il calcolo.
      */
-    public function __invoke(
-        Condominio $condominio, 
-        Esercizio $esercizio, 
-        PianoRate $pianoRate,
-        GeneratePianoRateAction $generateAction
-    ): RedirectResponse
+    public function __invoke(PianoRate $pianoRate, GeneratePianoRateAction $generateAction): RedirectResponse
     {
         // 1. Controllo di sicurezza: Ci sono pagamenti registrati?
         // Se ci sono rate con importo_pagato > 0, rigenerare è pericoloso perché

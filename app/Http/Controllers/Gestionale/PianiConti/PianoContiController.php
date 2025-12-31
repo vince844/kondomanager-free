@@ -50,7 +50,6 @@ class PianoContiController extends Controller
      */
     public function index(PianoContoIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
-        /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
         // Filtriamo i piani dei conti del condominio, relativi alle gestioni collegate all'esercizio selezionato

@@ -20,7 +20,7 @@ use App\Traits\HasCondomini;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request; // Importante
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -36,10 +36,12 @@ class PianoRateController extends Controller
     public function index(PianoRateIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
         $validated = $request->validated();
+
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
+
         $esercizi = $condominio->esercizi()->orderBy('data_inizio', 'desc')->get(['id', 'nome', 'stato']);
 
         return Inertia::render('gestionale/pianiRate/PianiRateList', [
@@ -61,7 +63,9 @@ class PianoRateController extends Controller
     public function create(Condominio $condominio, Esercizio $esercizio): Response
     {
         $condomini = $this->getCondomini();
+
         $esercizi = $condominio->esercizi()->orderBy('data_inizio', 'desc')->get(['id', 'nome', 'stato']);
+
         $gestioni = Gestione::whereHas('esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
             ->with(['esercizi' => fn($q) => $q->where('esercizio_id', $esercizio->id)])
             ->get();
@@ -78,22 +82,35 @@ class PianoRateController extends Controller
     public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio)
     {
         $validated = $request->validated();
+
         try {
+
             DB::beginTransaction();
+
             $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
+
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
+
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
             }
+
             $statistiche = [];
+
             if (!empty($validated['genera_subito'])) {
                 $statistiche = app(GeneratePianoRateAction::class)->execute($pianoRate);
             }
+
             DB::commit();
+
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
+
         } catch (\Throwable $e) {
+
             DB::rollBack();
+
             Log::error("Errore creazione piano rate", ['errore' => $e->getMessage()]);
+
             return back()->withInput()->with('error', $e->getMessage());
         }
     }
