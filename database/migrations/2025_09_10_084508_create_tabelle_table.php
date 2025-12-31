@@ -10,17 +10,9 @@ return new class extends Migration
     {
         Schema::create('tabelle', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('condominio_id')
-                ->constrained('condomini')
-                ->onDelete('cascade');
-             $table->foreignId('palazzina_id')
-                ->nullable()
-                ->constrained('palazzine')
-                ->onDelete('set null');
-            $table->foreignId('scala_id')
-                ->nullable()
-                ->constrained('scale')
-                ->onDelete('set null');
+            $table->foreignId('condominio_id')->constrained('condomini')->onDelete('cascade');
+            $table->foreignId('palazzina_id')->nullable()->constrained('palazzine')->onDelete('set null');
+            $table->foreignId('scala_id')->nullable()->constrained('scale')->onDelete('set null');
             $table->string('nome');
             $table->enum('tipo', ['standard','ascensore','scale','riscaldamento','acqua','lastrico','speciale','altro'])->default('standard');
             $table->enum('quota', ['millesimi','persone','kwatt','mtcubi','quote'])->default('millesimi');

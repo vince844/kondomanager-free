@@ -32,7 +32,9 @@ class GeneratePianoRateAction
         $esercizio = $gestione->esercizi()->wherePivot('attiva', true)->first()
             ?? $gestione->esercizi()->first();
 
-        $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione);
+        /* $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione); */
+        // ORA: Passiamo anche il piano rate per attivare il filtro
+        $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
 
         $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
 

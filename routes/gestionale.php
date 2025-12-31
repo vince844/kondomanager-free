@@ -18,6 +18,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiControlle
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
+use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
@@ -37,13 +38,20 @@ Route::prefix('/gestionale/{condominio}')
     ])
     ->group(function () {
     
-    Route::get('/', DashboardController::class)->name('index');
+    Route::get('/', DashboardController::class)
+        ->name('index');
     
-    Route::get('/struttura', [StrutturaController::class, 'index'])->name('struttura.index');
+    Route::get('/struttura', [StrutturaController::class, 'index'])
+        ->name('struttura.index');
 
-    Route::get('/fetch-tabelle', FetchTabelleController::class)->name('fetch-tabelle');
+    Route::get('/fetch-tabelle', FetchTabelleController::class)
+        ->name('fetch-tabelle');
 
-    Route::get('/fetch-capitoli-conti', FetchCapitoliContiController::class)->name('fetch-capitoli-conti');
+    Route::get('/fetch-capitoli-conti', FetchCapitoliContiController::class)
+        ->name('fetch-capitoli-conti');
+
+    Route::get('fetch-capitoli-gestione', FetchCapitoliPerGestioneController::class)
+        ->name('fetch-capitoli-gestione');
     
     Route::resource('palazzine', PalazzinaController::class)
         ->parameters(['palazzine' => 'palazzina']);

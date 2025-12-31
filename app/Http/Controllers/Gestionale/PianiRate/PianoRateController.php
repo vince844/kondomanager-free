@@ -87,9 +87,18 @@ class PianoRateController extends Controller
 
             DB::beginTransaction();
 
+           /*  $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
+
+            $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio); */
+
             $this->pianoRateCreatorService->verificaGestione($validated['gestione_id']);
 
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
+
+            // SALVATAGGIO CAPITOLI
+            if (!empty($validated['capitoli_ids'])) {
+                $pianoRate->capitoli()->sync($validated['capitoli_ids']);
+            }
 
             if (!empty($validated['recurrence_enabled'])) {
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);

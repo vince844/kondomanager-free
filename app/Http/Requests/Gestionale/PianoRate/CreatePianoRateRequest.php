@@ -29,6 +29,9 @@ class CreatePianoRateRequest extends FormRequest
             'recurrence_by_day'    => ['nullable', 'array'],
             'recurrence_until'     => ['nullable', 'date'],
             'genera_subito'        => ['sometimes', 'boolean'],
+            // Assicurati che siano conti validi
+            'capitoli_ids'         => 'nullable|array',
+            'capitoli_ids.*'       => 'exists:conti,id', 
             
         ];
     }
