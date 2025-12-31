@@ -1,0 +1,116 @@
+Kondomanager - Property Management Software
+Copyright (c) 2026 Vincenzo Vecchio (Kondomanager). All rights reserved.
+
+================================================================================
+                         NOTICE OF LICENSE AND COPYRIGHT
+================================================================================
+
+This software is licensed under the GNU Affero General Public License v3.0
+(AGPL-3.0-or-later).
+
+The full license text is available in the LICENSE file distributed with
+this software.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+================================================================================
+                      AGPLv3 KEY REQUIREMENTS & COMPLIANCE
+================================================================================
+
+As required by the GNU Affero General Public License v3.0:
+
+1. SOURCE CODE AVAILABILITY
+   Complete corresponding source code is available at:
+   🔗 https://github.com/vince844/kondomanager-free
+
+2. MODIFICATIONS AND DISTRIBUTION
+   - Any modifications must be released under the same AGPLv3 license
+   - Copyright notices must be preserved in all copies
+   - License text must accompany all distributions
+
+3. NETWORK SERVICE PROVISION (Section 13)
+   If you use this software to provide a service over a computer network,
+   you MUST:
+   - Provide users with access to the corresponding source code
+   - Offer valid for at least three years
+   - Provide clear instructions on how to obtain the source
+   - No additional charge for source code access
+
+4. PATENT PROVISIONS (Section 11)
+   Each contributor grants you a non-exclusive, worldwide, royalty-free
+   patent license under their essential patent claims.
+
+================================================================================
+                        THIRD-PARTY COMPONENTS NOTICE
+================================================================================
+
+This software may include or depend on third-party components with their
+own license terms. Where applicable:
+
+- Third-party components are used in accordance with their respective licenses
+- Attribution notices for third-party components are maintained
+- License texts for third-party components are preserved
+
+For a complete list of third-party dependencies and their licenses, refer to:
+📄 package.json (for Node.js dependencies)
+📄 requirements.txt (for Python dependencies)
+📄 Other dependency manifest files in the repository
+
+================================================================================
+                         COMPLIANCE ASSISTANCE
+================================================================================
+
+If you need assistance with AGPLv3 compliance, or if you are:
+
+1. A user seeking access to source code from a network service
+2. A developer with questions about modifying or distributing this software
+3. An organization needing clarification on license terms
+
+Please contact us through the following channels:
+
+📧 Primary Contact: kondomanager@pm.me
+🐙 GitHub Issues: https://github.com/vince844/kondomanager-free/issues
+👤 GitHub Profile: https://github.com/vince844
+
+We are committed to helping users comply with the AGPLv3 requirements.
+
+================================================================================
+                       VIOLATION REPORTING PROCEDURE
+================================================================================
+
+If you believe this software is being used in violation of the AGPLv3:
+
+1. DOCUMENT the violation (screenshots, URLs, specific instances)
+2. COLLECT evidence of non-compliance
+3. CONTACT us via email with detailed information
+4. ALLOW reasonable time for investigation and resolution
+
+Common violations include:
+- Distribution without source code
+- Removal of copyright notices
+- Network services not offering source code
+- Relicensing under different terms
+
+We take license compliance seriously and will address legitimate violations
+promptly and professionally.
+
+================================================================================
+                          ADDITIONAL INFORMATION
+================================================================================
+
+SPDX-License-Identifier: AGPL-3.0-or-later
+Repository Type: Public GitHub Repository
+Maintainer: Vincenzo Vecchio
+Project Start: 2024
+Latest Release: Check GitHub repository tags
+
+For the most up-to-date information, always refer to the official repository:
+🌐 https://github.com/vince844/kondomanager-free
+
+================================================================================
+                               END OF NOTICE
+================================================================================
+
+This notice was last updated: $(date +%Y-%m-%d)
