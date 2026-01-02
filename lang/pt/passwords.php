@@ -9,6 +9,7 @@ return [
     /*
     |--------------------------------------------------------------------------
 <<<<<<< HEAD
+<<<<<<< HEAD
     | Linhas de Código para Reposição de Palavra‑passe
 =======
 <<<<<<< HEAD
@@ -36,6 +37,8 @@ return [
     'token'     => 'Este token de reposição de palavra-passe é inválido.',
     'user'      => 'Não foi possível encontrar um utilizador com esse endereço de email.',
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     | Password Reset Language Lines
     |--------------------------------------------------------------------------
     |
@@ -50,7 +53,10 @@ return [
     'throttled' => 'Please wait before retrying.',
     'token'     => 'This password reset token is invalid.',
     'user'      => "We can't find a user with that email address.",
+<<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+>>>>>>> b8438a1 (Translated residents module)
 
 ];

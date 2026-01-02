@@ -13,6 +13,7 @@ return [
     */
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     'failed'                    => 'As credenciais inseridas estão incorretas.',
     'password'                  => 'A senha inserida está incorreta.',
     'throttle'                  => 'Muitas tentativas falhadas. Por favor, tente novamente em :seconds segundos.',
@@ -209,6 +210,8 @@ return [
 
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     'failed' => 'These credentials do not match our records.',
     'password' => 'The provided password is incorrect.',
     'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
@@ -220,5 +223,8 @@ return [
     'too_many_2fa_attempts' => 'Too many two factor authentication attempts. Please try again in :seconds seconds.',
 
 ];
+<<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+>>>>>>> b8438a1 (Translated residents module)

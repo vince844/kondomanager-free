@@ -2,6 +2,7 @@
 
 return [
 <<<<<<< HEAD
+<<<<<<< HEAD
     /* ------------------------------------------------------------------
      | Backend notifications 
      | Notificações do sistema
@@ -100,6 +101,8 @@ return [
     ],
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     /* ------------------------------------------------------------------
      | Backend notifications
      | ------------------------------------------------------------------ */
@@ -189,4 +192,3 @@ return [
         'list_buildings'  => 'Lista',
     ],
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

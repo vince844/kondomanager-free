@@ -5,6 +5,7 @@ return [
     /*
     |--------------------------------------------------------------------------
 <<<<<<< HEAD
+<<<<<<< HEAD
     | Errors Language Lines
     |--------------------------------------------------------------------------
     |
@@ -19,18 +20,24 @@ return [
     | As seguintes mensagens são utilizadas durante erros HTTP para informar
     | o utilizador sobre diferentes situações.
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     | Errors Language Lines
     |--------------------------------------------------------------------------
     |
     | The following language lines are used during HTTP errors for various
     | messages that we need to display to the user. You are free to modify
     | these language lines according to your application's requirements.
+<<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+>>>>>>> b8438a1 (Translated residents module)
     |
     */
 
     '403' => [
+<<<<<<< HEAD
 <<<<<<< HEAD
         'invalid_signature' => 'A ligação que está a tentar utilizar expirou ou é inválida.',
         'account_suspended' => 'A sua conta está temporariamente suspensa. Por favor, contacte o administrador do sistema para a reativar.',
@@ -55,6 +62,8 @@ return [
     'back_to_login'     => 'Voltar ao Login',
 =======
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
         'invalid_signature' => 'The link you are trying to use is expired or invalid.',
         'account_suspended' => 'Your account is temporarily suspended. Please contact the system administrator to reactivate it.',
     ],
@@ -70,6 +79,9 @@ return [
     '500_message'       => 'An unexpected error occurred. Please try again later.',
     'back_to_dashboard' => 'Back to Dashboard',
     'back_to_login'     => 'Back to Login',
+<<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+>>>>>>> b8438a1 (Translated residents module)
 ];

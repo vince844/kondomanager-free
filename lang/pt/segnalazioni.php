@@ -2,6 +2,7 @@
 
 return [
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Backend notifications
     'success_create_ticket'                     => 'A nova sinalização de avaria foi criada com sucesso.',
     'success_create_ticket_in_moderation'       => 'A nova sinalização de avaria foi criada com sucesso, mas necessita de aprovação pelo administrador.',
@@ -146,6 +147,8 @@ return [
     ],
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     // Backend notifications
     'success_create_ticket'                     => 'A nova sinalização de avaria foi criada com sucesso.',
     'success_create_ticket_in_moderation'       => 'A nova sinalização de avaria foi criada com sucesso, mas necessita de aprovação pelo administrador.',
@@ -286,4 +289,3 @@ return [
         'private'    => 'As sinalizações privadas podem ser visualizadas apenas pelos administradores e por si.',
     ],
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

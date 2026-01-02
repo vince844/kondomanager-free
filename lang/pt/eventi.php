@@ -3,6 +3,7 @@
 return [
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     /* ------------------------------------------------------------------
     | Front‑end strings - Eventos Agenda
     | ------------------------------------------------------------------ */
@@ -26,6 +27,8 @@ return [
     'error_approve_event'                 => "Ocorreu um erro ao aprovar o evento de agenda.",
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     'success_create_event'                => "The new agenda event has been created successfully.",
     'success_create_event_in_moderation'  => "The new agenda event has been created successfully, but it requires to be approved by administator",
     'error_create_event'                  => "An error occurred while creating the new agenda event.",
@@ -34,4 +37,3 @@ return [
     'error_update_event'                  => "An error occurred while updating the agenda event.",
 
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

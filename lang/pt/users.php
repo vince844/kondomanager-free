@@ -7,6 +7,7 @@
 return [
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     'success_create_user'                => "O novo utilizador foi criado com sucesso.",
     'error_create_user'                  => "Ocorreu um erro ao criar o novo utilizador.",
     'success_update_user'                => "O utilizador foi atualizado com sucesso.",
@@ -47,6 +48,8 @@ return [
 
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     'success_create_user'                => "The new user has been created successfully.",
     'error_create_user'                  => "An error occurred while creating the new user.",
     'success_update_user'                => "The user has been updated successfully",
@@ -67,4 +70,3 @@ return [
     'error_email_not_sent'               => "The user was created successfully, but the invitation email could not be sent.",
 
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

@@ -6,6 +6,7 @@
 
 return [
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Mensagens de Edifício
     'success_create_palazzina'          => "O novo edifício foi criado com sucesso.",
     'error_create_palazzina'            => "Ocorreu um erro ao criar o novo edifício.",
@@ -130,6 +131,8 @@ return [
     'error_create_cassa'                => "Ocorreu um erro ao criar a nova caixa."
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     // Palazzina messages
     'success_create_palazzina'          => "The new palazzina has been created successfully.",
     'error_create_palazzina'            => "An error occurred while creating the new palazzina.",
@@ -209,4 +212,3 @@ return [
     'success_create_cassa'              => "The new bank resource has been created successfully",
     'error_create_cassa'                => "An error occurred while creating the new bank resource."
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

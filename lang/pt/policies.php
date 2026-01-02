@@ -6,6 +6,7 @@
 
 return [
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Definições
     'manage_general_settings'   => "Não tem permissões suficientes para gerir as definições gerais.",
     // Comunicações
@@ -76,6 +77,8 @@ return [
     'edit_events'               => "Não tem permissões suficientes para editar eventos.",
     'approve_events'            => "Não tem permissões suficientes para aprovar eventos.",
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     // Settings
     'manage_general_settings'   => "You don't have sufficient permissions to manage general settings.",
     // Communications
@@ -121,6 +124,5 @@ return [
     'delete_events'             => "You don't have sufficient permissions to delete events.",
     'edit_events'               => "You don't have sufficient permissions to edit events.",
     'approve_events'            => "ou don't have sufficient permissions to approve events.",
->>>>>>> ece9f11 (Addedd Portughese language)
 
 ];

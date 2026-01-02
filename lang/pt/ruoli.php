@@ -7,6 +7,7 @@
 return [
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     'success_create_role'          => "A nova função foi criada com sucesso.",
     'error_create_role'            => "Ocorreu um erro ao criar a nova função.",
     'success_update_role'          => "A função foi atualizada com sucesso.",
@@ -20,6 +21,8 @@ return [
     'success_delete_with_reassign' => 'A função foi eliminada e todos os utilizadores associados foram reatribuídos para a função :default_role.',
 ];
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     'success_create_role'          => "The new role has been created successfully.",
     'error_create_role'            => "An error occurred while creating the new role.",
     'success_update_role'          => "The role has been updated successfully",
@@ -32,4 +35,3 @@ return [
     'default_role_not_found'       => 'Default role not found.',
     'success_delete_with_reassign' => 'The role has been deleted and all associated users have been reassigned to the :default_role role.',
 ];
->>>>>>> ece9f11 (Addedd Portughese language)

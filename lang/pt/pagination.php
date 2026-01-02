@@ -5,6 +5,7 @@ return [
     /*
     |--------------------------------------------------------------------------
 <<<<<<< HEAD
+<<<<<<< HEAD
     | Linhas de código de Paginação
 =======
 <<<<<<< HEAD
@@ -24,6 +25,8 @@ return [
 =======
     'next'     => 'Seguinte &raquo;',
 =======
+=======
+>>>>>>> b8438a1 (Translated residents module)
     | Pagination Language Lines
     |--------------------------------------------------------------------------
     |
@@ -35,7 +38,10 @@ return [
 
     'previous' => '&laquo; Previous',
     'next' => 'Next &raquo;',
+<<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+>>>>>>> b8438a1 (Translated residents module)
 
 ];
