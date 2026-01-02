@@ -12,6 +12,7 @@ return [
     |
     */
 
+<<<<<<< HEAD
     'failed'                    => 'As credenciais inseridas estão incorretas.',
     'password'                  => 'A senha inserida está incorreta.',
     'throttle'                  => 'Muitas tentativas falhadas. Por favor, tente novamente em :seconds segundos.',
@@ -194,3 +195,30 @@ return [
         'already_verified'       => 'O seu endereço de email já foi verificado.',
     ],
 ];
+=======
+<<<<<<< HEAD
+    'failed' => 'Estas credenciais não correspondem aos nossos registos.',
+    'password' => 'A palavra-passe introduzida está incorreta.',
+    'throttle' => 'Demasiadas tentativas de login. Por favor, tente novamente dentro de :seconds segundos.',
+    'reset_link_sent' => 'Será enviado um link de reposição caso a conta exista.',
+    'not_authenticated' => 'O utilizador não está autenticado ou não tem um condomínio associado.',
+    'missing_2fa_code' => 'Por favor, introduza um código de autenticação de dois fatores válido.',
+    'invalid_2fa_code' => 'O código de autenticação de dois fatores introduzido é inválido.',
+    'invalid_2fa_recovery_code' => 'O código de recuperação da autenticação de dois fatores introduzido é inválido.',
+    'too_many_2fa_attempts' => 'Demasiadas tentativas de autenticação de dois fatores. Por favor, tente novamente dentro de :seconds segundos.',
+
+];
+=======
+    'failed' => 'These credentials do not match our records.',
+    'password' => 'The provided password is incorrect.',
+    'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
+    'reset_link_sent' => 'A reset link will be sent if the account exists.',
+    'not_authenticated' => "Ter user is not authenticated or doesn't have an anagrafica assigned",
+    'missing_2fa_code' => 'Please provide a valid two factor code.',
+    'invalid_2fa_code' => 'The provided two factor authentication code was invalid.',
+    'invalid_2fa_recovery_code' => 'The provided two factor authentication recovery code was invalid.',
+    'too_many_2fa_attempts' => 'Too many two factor authentication attempts. Please try again in :seconds seconds.',
+
+];
+>>>>>>> ece9f11 (Addedd Portughese language)
+>>>>>>> 6e16a63 (Addedd Portughese language)
