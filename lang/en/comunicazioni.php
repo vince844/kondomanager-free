@@ -1,8 +1,9 @@
 <?php
 
 return [
-
-    // Backend notifications
+    /* ------------------------------------------------------------------
+     | Backend notifications
+     | ------------------------------------------------------------------ */
     'success_create_communication'                => "The new communication has been created successfully.",
     'success_create_communication_in_moderation'  => "The new communication has been created successfully, but it requires to be approved by administator",
     'error_create_communication'                  => "An error occurred while creating the new communication.",
@@ -15,7 +16,9 @@ return [
     'error_approve_communication'                 => "An error occurred while approving the communication.",
     'error_notify_new_communication'              => "The communication was created, but there was an error sending the notification.",
     'error_notify_approved_communication'         => "The communication was approved, but there was an error sending the notification.",
-    // Frontend
+    /* ------------------------------------------------------------------
+     | Front‑end strings (headings, titles, descriptions)
+     | ------------------------------------------------------------------ */
     'header' => [
         'list_communications_head'          => "List of communications",
         'list_communications_title'         => "List of communications",
@@ -30,6 +33,9 @@ return [
         'widget_communications_title'       => "Recent communications recorded",
         'widget_communications_description' => "Overview of the most recent communications",
     ],
+    /* ------------------------------------------------------------------
+     | Empty‑state / dialog messages
+     | ------------------------------------------------------------------ */
     'dialogs' => [
         'delete_communication_title'       => "Are you sure you want to delete this communication?",
         'delete_communication_description' => "This action cannot be undone. It will permanently delete the communication from the system.",
@@ -43,6 +49,9 @@ return [
         'loading'                          => "Loading...",
         'try_again'                        => "Try again",
     ],
+    /* ------------------------------------------------------------------
+     | Table 
+     | ------------------------------------------------------------------ */
     'table' => [
         'priority'           => 'Priority',
         'status'             => 'Status',
@@ -58,6 +67,9 @@ return [
         'unapproved_tooltip' => 'Not approved - click to approve',
         'actions'            => 'Actions',
     ],
+    /* ------------------------------------------------------------------
+     | Stats
+     | ------------------------------------------------------------------ */
     'stats' => [
         'low_priority'    => "Low priority",
         'medium_priority' => "Medium priority",
@@ -65,6 +77,9 @@ return [
         'urgent_priority' => "Urgent priority",
         'open_tickets'    => "Open tickets",
     ],
+    /* ------------------------------------------------------------------
+     | Labels
+     | ------------------------------------------------------------------ */
     'label' => [
         'subject'     => 'Communication subject',
         'description' => 'Communication description',
@@ -76,6 +91,9 @@ return [
         'featured'    => 'Featured communication',
         'private'     => 'Create as private communication',
     ],
+    /* ------------------------------------------------------------------
+     | Placeholders for inputs
+     | ------------------------------------------------------------------ */
     'placeholder' => [
         'subject'      => 'Enter the communication subject',
         'description'  => 'Enter the communication description',
@@ -84,18 +102,27 @@ return [
         'buildings'    => 'Select buildings',
         'residents'    => 'Select residents',
     ],
+    /* ------------------------------------------------------------------
+     | Priority
+     | ------------------------------------------------------------------ */
     'priority' => [
         'low'    => 'Low',
         'medium' => 'Medium',
         'high'   => 'High',
         'urgent' => 'Urgent',
     ],
+    /* ------------------------------------------------------------------
+     | Visibility
+     | ------------------------------------------------------------------ */
     'visibility' => [
         'public'     => 'Public',
         'private'    => 'Private',
         'created_on' => 'Created',
         'sent_on_by' => 'Sent :date by :name',
     ],
+    /* ------------------------------------------------------------------
+     | Actions
+     | ------------------------------------------------------------------ */
     'actions' => [
         'new_communication'       => 'Create new',
         'edit_communication'      => 'Edit',
@@ -106,6 +133,9 @@ return [
         'show_less'               => 'Show less',
         'view_all_communications' => 'View all',
     ],
+    /* ------------------------------------------------------------------
+     | Tooltips
+     | ------------------------------------------------------------------ */
     'tooltip' => [
         'visibility'  => 'If set to private, only administrators will be able to view the communication.',
         'priority'    => 'The priority level may affect the visibility or urgency on the bulletin board.',
