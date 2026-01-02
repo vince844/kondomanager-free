@@ -23,7 +23,7 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
     {
         return [
             'user_frontend_registration' => 'required|boolean',
-            'language'                   => 'required|in:it,en',
+            'language'                   => 'required|in:it,en,pt',
             'open_condominio_on_login'   => 'required|boolean',
             'default_condominio_id'      => [
                 'required_if:open_condominio_on_login,true',
