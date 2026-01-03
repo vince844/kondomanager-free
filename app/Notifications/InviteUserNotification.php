@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\Invito;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -52,10 +51,11 @@ class InviteUserNotification extends Notification implements ShouldQueue
         );
 
         return (new MailMessage)
-            ->subject('Benvenuto su '.config('app.name'))
-            ->line("L'amministratore di condominio ti ha invitato a registrare il tuo account online")
-            ->action('Registrati adesso', $signedUrl)
-            ->line('Questo invito sadrà tra tre giorni.');
+
+             ->subject(__('notifications.invite_user.subject', ['appName' => config('app.name')]))
+            ->line(__('notifications.invite_user.line_1'))
+            ->action(__('notifications.invite_user.action'), $signedUrl)
+            ->line(__('notifications.invite_user.line_2'));
     }
 
     /**
