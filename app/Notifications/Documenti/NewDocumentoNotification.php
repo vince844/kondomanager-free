@@ -4,13 +4,13 @@ namespace App\Notifications\Documenti;
 
 use App\Helpers\RouteHelper;
 use App\Models\Documento;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class NewDocumentoNotification extends Notification implements ShouldQueue
+class NewDocumentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -21,6 +21,8 @@ class NewDocumentoNotification extends Notification implements ShouldQueue
      */
     public function __construct(Documento $documento)
     {
+        // Important to load translations
+        parent::__construct();
         $this->documento = $documento;
     }
 
@@ -42,12 +44,17 @@ class NewDocumentoNotification extends Notification implements ShouldQueue
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-            ->subject('Nuovo documento in archivio')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->documento->createdBy->name ." ha pubblicato un nuovo documento nell'archivio del condominio.")
-            ->line('**Titolo:** ' . $this->documento->name)
-            ->line('**Descrizione:** ' . Str::ucfirst($this->documento->description))
-            ->action('Visualizza documenti', url("/{$routePrefix}/categorie-documenti/"));
+            ->subject(__('notifications.new_document.subject'))
+            ->greeting(__('notifications.new_document.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.new_document.line_1', [
+                'user' => $this->documento->createdBy->name
+            ]))
+            ->line('**' . __('notifications.new_document.title') . ':** ' . $this->documento->name)
+            ->line('**' . __('notifications.new_document.description') . ':** ' . Str::ucfirst($this->documento->description))
+            ->action(__('notifications.new_document.action'), url("/{$routePrefix}/categorie-documenti/"));
+
     }
 
     /**

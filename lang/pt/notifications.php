@@ -35,7 +35,6 @@ return [
         'line_1'    => 'O administrador do condomínio convidou-o a registar a sua conta online.',
         'action'    => 'Registar agora',
         'line_2'    => 'Este convite expirará dentro de três dias.',
-        'app_name'  => config('app.name'),
     ],
 
     // Nuovo utente creato dall'amministratore (NewUserEmailNotification)
@@ -45,13 +44,106 @@ return [
         'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link seguinte para definir a sua palavra-passe.',
         'action'    => 'Definir palavra-passe',
         'line_2'    => 'Este link expirará em 60 minutos.',
-        'app_name'  => config('app.name'),
+    ],
+
+    // Comunicação pendente de aprovação (ApproveComunicazioneNotification)
+    'approve_communication' => [
+        'subject'   => 'Nova comunicação para aprovação',
+        'greeting'  => 'Olá :name',
+        'line_1'    => 'O utilizador :user criou uma nova comunicação no quadro de avisos do condomínio.',
+        'line_2'    => 'A comunicação encontra-se pendente de aprovação porque o utilizador que a submeteu não tem permissões suficientes para a publicar.',
+        'object'    => 'Assunto',
+        'priority'  => 'Prioridade',
+        'action'    => 'Ver comunicação',
+    ],
+
+    // Comunicação aprovada (ApprovedComunicazioneNotification)
+    'approved_communication' => [
+        'subject'   => 'Comunicação aprovada',
+        'greeting'  => 'Olá :name',
+        'line_1'    => 'O utilizador :user aprovou a comunicação no quadro de avisos do condomínio.',
+        'object'    => 'Assunto',
+        'priority'  => 'Prioridade',
+        'action'    => 'Ver comunicação',
+    ],
+
+    // Documento aprovado (ApprovedDocumentoNotification)
+    'approved_document' => [
+        'subject'     => 'Documento aprovado',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user aprovou o documento no arquivo do condomínio.',
+        'title'       => 'Título',
+        'description' => 'Descrição',
+        'action'      => 'Ver documentos',
+    ],
+
+    // Aprovação de documento (ApproveDocumentoNotification)
+    'approve_document' => [
+        'subject'     => 'Novo documento no arquivo a aprovar',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user criou um novo documento no arquivo do condomínio.',
+        'line_2'      => 'O documento está à espera de aprovação porque o utilizador que o enviou não tem permissões suficientes para o publicar.',
+        'title'       => 'Título',
+        'description' => 'Descrição',
+        'action'      => 'Ver documentos',
+    ],
+
+    // Novo documento publicado (NewDocumentoNotification)
+    'new_document' => [
+        'subject'     => 'Novo documento no arquivo',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user publicou um novo documento no arquivo do condomínio.',
+        'title'       => 'Título',
+        'description' => 'Descrição',
+        'action'      => 'Ver documentos',
+    ],
+
+    // Nova comunicação publicada (NewComunicazioneNotification)
+    'new_communication' => [
+        'subject'   => 'Nova comunicação no quadro de avisos',
+        'greeting'  => 'Olá :name',
+        'line_1'    => 'O utilizador :user criou uma nova comunicação no quadro de avisos do condomínio.',
+        'object'    => 'Assunto',
+        'priority'  => 'Prioridade',
+        'action'    => 'Ver comunicação',
+    ],
+
+    // Relatório aprovado (ApprovedSegnalazioneNotification)
+    'approved_ticket' => [
+        'subject'     => 'Nova notificação de avaria aprovada',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user aprovou a notificação de avaria.',
+        'object'      => 'Assunto',
+        'priority'    => 'Prioridade',
+        'action'      => 'Ver notificação',
+    ],
+
+    // Aprovação de ticket (ApproveSegnalazioneNotification)
+    'approve_ticket' => [
+        'subject'     => 'Novo ticket a aprovar',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user criou um novo ticket de avaria para o condomínio.',
+        'line_2'      => 'O ticket está à espera de aprovação porque o utilizador que o enviou não tem permissões suficientes para o publicar.',
+        'object'      => 'Assunto',
+        'priority'    => 'Prioridade',
+        'status'      => 'Estado',
+        'action'      => 'Ver ticket',
+    ],
+
+    // Novo ticket (NewSegnalazioneNotification)
+    'new_ticket' => [
+        'subject'     => 'Novo ticket de avaria',
+        'greeting'    => 'Olá :name',
+        'line_1'      => 'O utilizador :user criou um novo ticket de avaria.',
+        'object'      => 'Assunto',
+        'priority'    => 'Prioridade',
+        'status'      => 'Estado',
+        'action'      => 'Ver ticket',
     ],
 
     // Stringhe comuni a tutte le notifiche
     'common' => [
         'regards'             => 'Cumprimentos',
-        'app_name'            => config('app.name'),
         'copyright'           => 'Todos os direitos reservados.',
         'trouble_with_button' => 'Se tiver problemas ao clicar no botão ":actionText", copie e cole o URL seguinte no seu navegador:',
         'no_reply'            => 'Por favor, não responda a este email.',

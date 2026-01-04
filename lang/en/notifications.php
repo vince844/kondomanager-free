@@ -35,7 +35,6 @@ return [
         'line_1'    => 'The condominium administrator has invited you to register your online account.',
         'action'    => 'Register now',
         'line_2'    => 'This invitation will expire in three days.',
-        'app_name'  => config('app.name'),
     ],
     
     // New user created by administrator (NewUserEmailNotification)
@@ -45,13 +44,106 @@ return [
         'line_1'    => 'The condominium administrator has created your profile. Click the link below to set your password.',
         'action'    => 'Set Password',
         'line_2'    => 'This link will expire in 60 minutes.',
-        'app_name'  => config('app.name'),
     ],
-    
+
+    // Communication pending approval (ApproveComunicazioneNotification)
+    'approve_communication' => [
+        'subject'   => 'New communication pending approval',
+        'greeting'  => 'Hello :name',
+        'line_1'    => 'User :user has created a new communication on the condominium notice board.',
+        'line_2'    => 'The communication is pending approval because the user who submitted it does not have sufficient permissions to publish it.',
+        'object'    => 'Subject',
+        'priority'  => 'Priority',
+        'action'    => 'View communication',
+    ],
+
+    // Communication approved (ApprovedComunicazioneNotification)
+    'approved_communication' => [
+        'subject'   => 'Communication approved',
+        'greeting'  => 'Hello :name',
+        'line_1'    => 'User :user has approved the communication on the condominium notice board.',
+        'object'    => 'Subject',
+        'priority'  => 'Priority',
+        'action'    => 'View communication',
+    ],
+
+    // New communication published (NewComunicazioneNotification)
+    'new_communication' => [
+        'subject'   => 'New communication on the notice board',
+        'greeting'  => 'Hello :name',
+        'line_1'    => 'User :user has created a new communication on the condominium notice board.',
+        'object'    => 'Subject',
+        'priority'  => 'Priority',
+        'action'    => 'View communication',
+    ],
+
+    // Document approved (ApprovedDocumentoNotification)
+    'approved_document' => [
+        'subject'     => 'Document approved',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has approved the document in the condominium archive.',
+        'title'       => 'Title',
+        'description' => 'Description',
+        'action'      => 'View documents',
+    ],
+
+    // Document approval (ApproveDocumentoNotification)
+    'approve_document' => [
+        'subject'     => 'New document pending approval',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has created a new document in the condominium archive.',
+        'line_2'      => 'The document is waiting for approval because the user who submitted it does not have sufficient permissions to publish it.',
+        'title'       => 'Title',
+        'description' => 'Description',
+        'action'      => 'View documents',
+    ],
+
+    // New document published (NewDocumentoNotification)
+    'new_document' => [
+        'subject'     => 'New document in the archive',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has published a new document in the condominium archive.',
+        'title'       => 'Title',
+        'description' => 'Description',
+        'action'      => 'View documents',
+    ],
+
+    // Report approved (ApprovedSegnalazioneNotification)
+    'approved_ticket' => [
+        'subject'     => 'New fault report approved',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has approved the fault report.',
+        'object'      => 'Subject',
+        'priority'    => 'Priority',
+        'action'      => 'View report',
+    ],
+
+    // Ticket approval (ApproveSegnalazioneNotification)
+    'approve_ticket' => [
+        'subject'     => 'New ticket pending approval',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has created a new fault ticket for the condominium.',
+        'line_2'      => 'The ticket is waiting for approval because the user who submitted it does not have sufficient permissions to publish it.',
+        'object'      => 'Subject',
+        'priority'    => 'Priority',
+        'status'      => 'Status',
+        'action'      => 'View ticket',
+    ],
+
+    // New ticket (NewSegnalazioneNotification)
+    'new_ticket' => [
+        'subject'     => 'New fault ticket',
+        'greeting'    => 'Hello :name',
+        'line_1'      => 'User :user has created a new fault ticket.',
+        'object'      => 'Subject',
+        'priority'    => 'Priority',
+        'status'      => 'Status',
+        'action'      => 'View ticket',
+    ],
+
     // Common strings for all notifications
     'common' => [
         'regards'             => 'Best regards',
-        'app_name'            => config('app.name'),
         'copyright'           => 'All rights reserved.',
         'trouble_with_button' => 'If you\'re having trouble clicking the ":actionText" button, copy and paste the URL below into your browser:',
         'no_reply'            => 'Please do not reply to this email.',

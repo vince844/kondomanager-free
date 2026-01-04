@@ -5,11 +5,10 @@ namespace App\Notifications;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Carbon;
 
-class InviteUserNotification extends Notification implements ShouldQueue
+class InviteUserNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -23,6 +22,8 @@ class InviteUserNotification extends Notification implements ShouldQueue
      */
     public function __construct($invito)
     {
+        // Important to load translations
+        parent::__construct(); 
         $this->invito = $invito;
     }
 
