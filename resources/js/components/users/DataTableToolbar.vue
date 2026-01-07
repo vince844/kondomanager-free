@@ -53,7 +53,7 @@ watchDebounced(
     <!-- Right Section: Buttons -->
     <div class="flex flex-col gap-2 w-full sm:flex-row sm:justify-end">
       <Button 
-        class="h-9 w-full sm:w-auto"
+        class="h-8 w-full sm:w-auto"
         v-if="hasPermission(['Crea utenti'])"
         as="a"
         :href="route('utenti.create')"
@@ -65,7 +65,7 @@ watchDebounced(
       <Link
         as="button"
         :href="'/impostazioni'"
-        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+        class="h-8 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
       >
         <Settings class="w-4 h-4" />
         <span>Impostazioni</span>

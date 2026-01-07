@@ -45,11 +45,21 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
     header: 'Saldo Iniziale',
     cell: ({ row }) => {
       const anagrafica = row.original as AnagraficaWithPivot
-      const saldoFormattato = anagrafica.saldo.iniziale 
-      const saldoRaw = anagrafica.saldo.amounts.iniziale 
-      const colore = saldoRaw < 0 ? 'text-red-600' : 'text-green-600'
+      
+      // Recuperiamo i valori con sicurezza (fallback se null)
+      const saldoFormattato = anagrafica.saldo?.iniziale ?? '€ 0,00'
+      const saldoRaw = anagrafica.saldo?.amounts?.iniziale ?? 0
+      
+      // 🔥 LOGICA COLORI CORRETTA (Standard Contabile)
+      let colore = 'text-emerald-600' // Default: Zero/Pareggio (Verde)
 
-      return h('span', { class: `${colore}` }, saldoFormattato)
+      if (saldoRaw > 0) {
+        colore = 'text-red-600' // Positivo = Debito (Rosso)
+      } else if (saldoRaw < 0) {
+        colore = 'text-blue-600' // Negativo = Credito (Blu)
+      }
+
+      return h('span', { class: `${colore} font-medium` }, saldoFormattato)
     },
   },
   {

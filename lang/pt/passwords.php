@@ -4,11 +4,12 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Linhas de Linguagem de Reposição de Palavra-passe
+    | Password Reset Language Lines
     |--------------------------------------------------------------------------
     |
-    | As seguintes mensagens são utilizadas durante o processo de reposição
-    | de palavra-passe para informar o utilizador sobre o resultado da operação.
+    | The following language lines are the default lines which match reasons
+    | that are given by the password broker for a password update attempt
+    | outcome such as failure due to an invalid password / reset token.
     |
     */
 

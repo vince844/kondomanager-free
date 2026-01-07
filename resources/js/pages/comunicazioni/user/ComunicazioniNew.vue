@@ -11,12 +11,13 @@ import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { LoaderCircle, Plus, List, Info } from 'lucide-vue-next';
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import { Separator } from '@/components/ui/separator';
-import type { Building } from '@/types/buildings';
-import type { PriorityType } from '@/types/comunicazioni';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import type { Building } from '@/types/buildings';
+import type { PriorityType } from '@/types/comunicazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 
 const { generateRoute } = usePermission();
@@ -47,13 +48,16 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuova comunicazione" />
+    <Head :title="trans('comunicazioni.header.new_communication_head')" />
   
     <AppLayout >
   
       <div class="px-4 py-6">
         
-        <Heading title="Crea comunicazione" description="Compila il seguente modulo per la creazione di una nuova comunicazione per la bacheca del condominio" />
+        <Heading 
+            :title="trans('comunicazioni.header.new_communication_title')" 
+            :description="trans('comunicazioni.header.new_communication_description')" 
+        />
 
         <form class="space-y-2" @submit.prevent="submit">
 
@@ -63,13 +67,13 @@ const submit = () => {
                 <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                     <Plus class="w-4 h-4" v-if="!form.processing" />
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                    Salva
+                    {{trans('comunicazioni.actions.save_communication')}}
                 </Button>
 
                 <Button type="button" class="lg:flex h-8 w-full lg:w-auto">
                     <List class="w-4 h-4" />
                     <Link :href="route(generateRoute('comunicazioni.index'))" class="block lg:inline">
-                    Elenco
+                     {{ trans('comunicazioni.actions.list_communications') }}
                     </Link>
                 </Button>
 
@@ -85,13 +89,13 @@ const submit = () => {
                         <!--  subject field -->
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-3">
-                                <Label for="subject">Oggetto comunicazione</Label>
+                                <Label for="subject">{{ trans('comunicazioni.label.subject') }}</Label>
                                 <Input 
                                     id="subject" 
                                     class="mt-1 block w-full"
                                     v-model="form.subject" 
                                     v-on:focus="form.clearErrors('subject')"
-                                    placeholder="Oggetto comunicazione" 
+                                    :placeholder="trans('comunicazioni.placeholder.subject')" 
                                 />
                                 
                                 <InputError :message="form.errors.subject" />
@@ -101,13 +105,13 @@ const submit = () => {
 
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="description">Descrizione comunicazione</Label>
+                                <Label for="description">{{ trans('comunicazioni.label.description') }}</Label>
                                 <Textarea 
                                     id="description" 
                                     class="mt-1 block w-full min-h-[320px]"
                                     v-model="form.description" 
                                     v-on:focus="form.clearErrors('description')"
-                                    placeholder="Descrizione comunicazione" 
+                                    :placeholder="trans('comunicazioni.placeholder.description')" 
                                 />
                                 
                                 <InputError :message="form.errors.description" />
@@ -124,32 +128,52 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="priority">Priorità comunicazione</Label>
+                                <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                                    <Label for="priority">{{ trans('comunicazioni.label.priority') }}</Label>
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                        <button type="button" class="cursor-pointer">
+                                            <Info class="w-4 h-4 text-muted-foreground" />
+                                        </button>
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                            <h4 class="text-sm font-semibold">{{ trans('comunicazioni.label.priority') }}</h4>
+                                            <p class="text-sm">
+                                                {{ trans('comunicazioni.tooltip.priority') }}
+                                            </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+                                </div>
 
                                 <v-select 
                                     id="priority" 
                                     :options="priorityConstants" 
                                     label="label" 
                                     v-model="form.priority"
-                                    placeholder="Priorità comunicazione"
+                                    :placeholder="trans('comunicazioni.placeholder.priority')" 
                                     @update:modelValue="form.clearErrors('priority')" 
                                     :reduce="(priority: PriorityType) => priority.value"
                                 >
-                                <!-- Dropdown list items -->
-                                <template #option="{ label, icon }">
-                                    <div class="flex items-center gap-2">
-                                    <component :is="icon" class="w-4 h-4 text-muted-foreground" />
-                                    <span>{{ label }}</span>
-                                    </div>
-                                </template>
+                                    <!-- Dropdown list items -->
+                                    <template #option="{ label, icon }">
+                                        <div class="flex items-center gap-2">
+                                        <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                                        <span>{{ trans(label) }}</span>
+                                        </div>
+                                    </template>
 
-                                <!-- Selected option display -->
-                                <template #selected-option="{ label, icon }">
-                                    <div class="flex items-center gap-2">
-                                    <component :is="icon" class="w-4 h-4 text-muted-foreground" />
-                                    <span>{{ label }}</span>
-                                    </div>
-                                </template>
+                                    <!-- Selected option display -->
+                                    <template #selected-option="{ label, icon }">
+                                        <div class="flex items-center gap-2">
+                                        <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                                        <span>{{ trans(label) }}</span>
+                                        </div>
+                                    </template>
                                 </v-select>
 
                                 <InputError :message="form.errors.priority" />
@@ -159,14 +183,14 @@ const submit = () => {
 
                         <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="condomini">Condomini</Label>
+                                <Label for="condomini">{{ trans('comunicazioni.label.buildings') }}</Label>
 
                                 <v-select 
                                     multiple
                                     :options="condomini" 
                                     label="label" 
                                     v-model="form.condomini_ids"
-                                    placeholder="Condomini"
+                                    :placeholder="trans('comunicazioni.placeholder.buildings')"
                                     @update:modelValue="form.clearErrors('condomini_ids')" 
                                     :reduce="(condomini: Building) => condomini.value"
                                 />
@@ -178,20 +202,20 @@ const submit = () => {
 
                         <Separator class="my-4" />
 
-                        <div class="pt-4 grid grid-cols-1 sm:grid-cols-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-6">
                             <div class="flex items-center space-x-2 sm:col-span-6">
                                 <Checkbox 
                                     class="size-4" 
                                     :checked="form.is_private"
                                     v-model="form.is_private" 
                                     id="is_private" 
-                                    @update:checked="(val) => form.is_private = val" 
+                                    @update:checked="(val: boolean) => form.is_private = val" 
                                     />
                                 <label
                                     for="is_private"
                                     class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
                                     >
-                                    Crea comunicazione privata
+                                     {{trans('comunicazioni.label.private')}}
 
                                     <HoverCard>
                                         <HoverCardTrigger as-child>
@@ -201,10 +225,10 @@ const submit = () => {
                                         <div class="flex justify-between space-x-4">
                                             <div class="space-y-1">
                                                 <h4 class="text-sm font-semibold">
-                                                    Crea comunicazione privata
+                                                    {{trans('comunicazioni.label.private')}}
                                                 </h4>
                                                 <p class="text-sm">
-                                                    Quando viene selezionata questa opzione la comunicazione verrà resa privata e sarà solo visibile agli amministratori e non a tutti gli altri condòmini
+                                                    {{trans('comunicazioni.tooltip.private')}}
                                                 </p>
                                             </div>
                                         </div>
@@ -221,18 +245,37 @@ const submit = () => {
                                     class="size-4" 
                                     :checked="form.is_featured"
                                     v-model="form.is_featured" 
-                                    id="is_featured" 
-                                    @update:checked="(val) => form.is_featured = val" 
+                                    id="is_private" 
+                                    @update:checked="(val: boolean) => form.is_featured = val" 
                                     />
                                 <label
                                     for="is_featured"
-                                    class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                                    class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
                                     >
-                                    Metti comunicazione in evidenza
+                                     {{trans('comunicazioni.label.featured')}}
+
+                                    <HoverCard>
+                                        <HoverCardTrigger as-child>
+                                            <Info class="w-4 h-4 text-muted-foreground cursor-pointer ml-2" />
+                                        </HoverCardTrigger>
+                                        <HoverCardContent class="w-80">
+                                        <div class="flex justify-between space-x-4">
+                                            <div class="space-y-1">
+                                                <h4 class="text-sm font-semibold">
+                                                    {{trans('comunicazioni.label.featured')}}
+                                                </h4>
+                                                <p class="text-sm">
+                                                    {{trans('comunicazioni.tooltip.featured')}}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        </HoverCardContent>
+                                    </HoverCard>
+
                                 </label>
                             </div>
                         </div>
-                        
+
                     </div>
                 </div>
             

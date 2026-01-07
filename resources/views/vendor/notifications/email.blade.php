@@ -4,9 +4,9 @@
 # {{ $greeting }}
 @else
 @if ($level === 'error')
-# @lang('Whoops!')
+# @lang('mail.error_greeting')
 @else
-# @lang('Salve!')
+# @lang('mail.greeting')
 @endif
 @endif
 
@@ -39,20 +39,15 @@
 @if (! empty($salutation))
 {{ $salutation }}
 @else
-@lang('Cordiali saluti,')<br> 
-Il team di {{ config('app.name') }}
+@lang('mail.salutation')<br>
+{{ config('app.name') }}
 @endif
 
 {{-- Subcopy --}}
 @isset($actionText)
 <x-slot:subcopy>
-@lang(
-    "Se hai problemi con il pulsante \":actionText\", allora puoi copiare e incollare il seguente URL\n".
-    'nel tuo browser:',
-    [
-        'actionText' => $actionText,
-    ]
-) <span class="break-all">[{{ $displayableActionUrl }}]({{ $actionUrl }})</span>
+@lang('mail.subcopy', ['actionText' => $actionText]) 
+<span class="break-all">[{{ $displayableActionUrl }}]({{ $actionUrl }})</span>
 </x-slot:subcopy>
 @endisset
 </x-mail::message>

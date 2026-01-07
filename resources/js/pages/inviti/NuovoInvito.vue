@@ -6,15 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import InputError from '@/components/InputError.vue';
 import vSelect from "vue-select";
-import type { Building } from '@/types/buildings';
 import { LoaderCircle } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Separator } from '@/components/ui/separator';
+import type { BreadcrumbItem } from '@/types';
+import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
   buildings: Building[];
 }>();  
+
+const breadcrumbs: BreadcrumbItem[] = [
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'inviti', href: '/inviti' },
+  { title: 'invita utenti', href: '#' },
+];
 
 const form = useForm({
     emails: [] as string[],
@@ -46,7 +54,7 @@ const addCurrentInput = (event: Event) => {
 
     <Head title="Crea nuovo invito" />
   
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
 
         <UtentiLayout>
 

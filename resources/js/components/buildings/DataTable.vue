@@ -1,29 +1,15 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref } from 'vue'
-import { router } from '@inertiajs/vue3'
-import type { 
-  ColumnDef, 
-  SortingState,
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  FlexRender,
-  getCoreRowModel,
-  useVueTable,
-  getSortedRowModel,
-} from '@tanstack/vue-table'
-import type { Building } from '@/types/buildings'
-import { valueUpdater } from '@/lib/utils'
-import DataTablePagination from '@/components/DataTablePagination.vue'
-import DataTableToolbar from '@/components/buildings/DataTableToolbar.vue'
+import { ref } from 'vue';
+import { router } from '@inertiajs/vue3';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
+import { valueUpdater } from '@/lib/utils';
+import { trans } from 'laravel-vue-i18n';
+import DataTablePagination from '@/components/DataTablePagination.vue';
+import DataTableToolbar from '@/components/buildings/DataTableToolbar.vue';
+import type { ColumnDef, SortingState } from '@tanstack/vue-table';
+import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
   columns: ColumnDef<Building, any>[],
@@ -120,7 +106,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('condomini.dialogs.no_buildings_created') }}
             </TableCell>
           </TableRow>
         </template>

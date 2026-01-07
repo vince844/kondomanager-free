@@ -63,7 +63,6 @@ class ImmobileController extends Controller
      */
     public function index(ImmobileIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
-        /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
         // Get a list of all the esercizi create to show in the datatable
@@ -177,6 +176,7 @@ class ImmobileController extends Controller
         try {
             
             $data = $request->validated();
+            
             Immobile::create($data);
 
             return to_route('admin.gestionale.immobili.index', $condominio)

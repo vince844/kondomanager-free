@@ -19,12 +19,12 @@ class RoleResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id'          => $this->id,
-            'name'        => Str::of($this->name)->ucfirst(), 
-            'description' => $this->description, 
-            'users_count' => $this->users_count ?? 0,
+            'id'           => $this->id,
+            'name'         => Str::of($this->name)->ucfirst(), 
+            'description'  => $this->description, 
+            'users_count'  => $this->users_count ?? 0,
             'is_protected' => $this->isProtectedRole($this->name),
-            'permissions' => PermissionResource::collection($this->whenLoaded('permissions'))
+            'permissions'  => PermissionResource::collection($this->whenLoaded('permissions'))
         ];
     }
 }

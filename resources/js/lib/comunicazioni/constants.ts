@@ -4,25 +4,25 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
   export const priorityConstants: PriorityType[] = [
     { 
       value: 'bassa', 
-      label: 'Bassa', 
+      label: 'comunicazioni.priority.low', 
       icon: CircleArrowDown,
       colorClass: 'text-green-500 bg-transparent'
     },
     { 
       value: 'media', 
-      label: 'Media', 
+      label: 'comunicazioni.priority.medium', 
       icon: CircleArrowRight,
       colorClass: 'text-blue-500 bg-transparent'
     },
     { 
       value: 'alta', 
-      label: 'Alta', 
+      label: 'comunicazioni.priority.high', 
       icon: CircleArrowUp,
       colorClass: 'text-orange-500 bg-transparent'
     },
     { 
       value: 'urgente', 
-      label: 'Urgente', 
+      label: 'comunicazioni.priority.urgent', 
       icon: CircleAlert, 
       colorClass: 'text-red-500 bg-transparent'
     }
@@ -31,13 +31,13 @@ import type { PriorityType, PublishedType } from '@/types/comunicazioni';
   export const publishedConstants: PublishedType[] = [
     { 
       value: false, 
-      label: 'Bozza',
+      label: 'comunicazioni.visibility.private',
       icon: CircleX, 
       colorClass: 'text-red-500 bg-transparent'
     },
     { 
       value: true, 
-      label: 'Pubblicata',
+      label: 'comunicazioni.visibility.public',
       icon: CircleCheck, 
       colorClass: 'text-green-500 bg-transparent'
     }

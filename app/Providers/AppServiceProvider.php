@@ -36,23 +36,5 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
 
-        try {
-            // Test if DB connection works
-            DB::connection()->getPdo();
-
-            if (Schema::hasTable('settings')) {
-                try {
-                    $settings = app(GeneralSettings::class);
-                    app()->setLocale($settings->language ?? 'it');
-                } catch (MissingSettings $e) {
-                    app()->setLocale('it');
-                }
-            } else {
-                app()->setLocale('it');
-            }
-        } catch (\Throwable $e) {
-            // No DB connection yet → just use fallback locale
-            app()->setLocale('it');
-        }
     }
 }

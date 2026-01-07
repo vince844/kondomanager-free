@@ -5,7 +5,6 @@ namespace App\Models\Gestionale;
 use App\Models\Tabella;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Cknow\Money\Casts\MoneyCast;
 
 class Conto extends Model
 {
@@ -15,13 +14,14 @@ class Conto extends Model
 
     protected $fillable = [
         'piano_conto_id',
+        'conto_contabile_id',
         'parent_id',
         'nome',
         'descrizione',
         'tipo',
         'importo',
         'destinazione_id',
-        'destinazione_tipo',
+        'destinazione_type',
         'note',
     ];
     
@@ -39,6 +39,12 @@ class Conto extends Model
     public function sottoconti()
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    // Collega la voce di budget (es. "Cancelleria") al conto patrimoniale (es. "Debiti v/Fornitori" o cassa specifica)
+    public function contoContabile()
+    {
+        return $this->belongsTo(ContoContabile::class, 'conto_contabile_id');
     }
 
     public function destinazione()

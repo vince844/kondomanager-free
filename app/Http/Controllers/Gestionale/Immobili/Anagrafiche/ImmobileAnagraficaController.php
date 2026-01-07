@@ -18,6 +18,7 @@ use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Controller for managing the association of "Anagrafica" records
@@ -164,17 +165,23 @@ class ImmobileAnagraficaController extends Controller
      */
     public function edit(Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): Response
     {
-        $anagrafica = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
-
-        // Get the current active and open esercizio this is important to navigate gestioni menu
+        $anagraficaPivot = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        // Recupera il saldo per questo esercizio/anagrafica/immobile
+        $saldo = Saldo::where('esercizio_id', $esercizio->id)
+                    ->where('condominio_id', $condominio->id)
+                    ->where('anagrafica_id', $anagrafica->id)
+                    ->where('immobile_id', $immobile->id)
+                    ->first();
+
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheEdit', [
-            'condominio'  => $condominio,
-            'esercizio'   => $esercizio,
-            'immobile'    => new ImmobileResource($immobile),
-            'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
-            'anagrafica'  => $anagrafica,
+            'condominio'    => $condominio,
+            'esercizio'     => $esercizio,
+            'immobile'      => new ImmobileResource($immobile),
+            'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all()),
+            'anagrafica'    => $anagraficaPivot,
+            'saldoIniziale' => $saldo ? $saldo->saldo_iniziale : 0,
         ]);
     }
 
@@ -184,31 +191,37 @@ class ImmobileAnagraficaController extends Controller
      * @param UpdateImmobileAnagraficaRequest $request
      * @param Condominio $condominio
      * @param Immobile $immobile
-     * @param Anagrafica $anagrafica
+     * @param Anagrafica $anagrafica (L'anagrafica attualmente associata prima della modifica)
      * @return RedirectResponse
      */
     public function update(UpdateImmobileAnagraficaRequest $request, Condominio $condominio, Immobile $immobile, Anagrafica $anagrafica): RedirectResponse
     {
         $data = $request->validated();
-
+        
         try {
-            if ((int) $anagrafica->id !== (int) $data['anagrafica_id']) {
+            DB::beginTransaction();
 
-                // Different anagrafica selected → detach old and attach new
-                $immobile->anagrafiche()->detach($anagrafica->id);
+            $nuovoAnagraficaId = (int) $data['anagrafica_id'];
+            $vecchioAnagraficaId = (int) $anagrafica->id;
+            $anagraficaCambiata = $nuovoAnagraficaId !== $vecchioAnagraficaId;
 
-                $immobile->anagrafiche()->attach($data['anagrafica_id'], [
+            // 1. GESTIONE ASSOCIAZIONE (PIVOT)
+            if ($anagraficaCambiata) {
+                // L'utente ha selezionato una persona diversa: scollega la vecchia, collega la nuova
+                $immobile->anagrafiche()->detach($vecchioAnagraficaId);
+
+                $immobile->anagrafiche()->attach($nuovoAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
                     'tipologie_spese' => $data['tipologie_spese'] ?? null,
                     'data_inizio'     => $data['data_inizio'],
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,
+                    'attivo'          => true,
                 ]);
-
             } else {
-                // Same anagrafica → just update pivot fields
-                $immobile->anagrafiche()->updateExistingPivot($anagrafica->id, [
+                // Stessa persona: aggiorna solo i dati
+                $immobile->anagrafiche()->updateExistingPivot($vecchioAnagraficaId, [
                     'tipologia'       => $data['tipologia'],
                     'quota'           => $data['quota'],
                     'tipologie_spese' => $data['tipologie_spese'] ?? null,
@@ -218,12 +231,46 @@ class ImmobileAnagraficaController extends Controller
                 ]);
             }
 
+            // 2. GESTIONE SALDO INIZIALE
+            $esercizio = $this->getEsercizioCorrente($condominio);
+
+            if ($esercizio) {
+                
+                // Se l'anagrafica è cambiata, cancelliamo il saldo del "vecchio" proprietario per questo immobile/esercizio
+                // per evitare che rimangano debiti/crediti orfani su questo immobile.
+                if ($anagraficaCambiata) {
+                    Saldo::where('esercizio_id', $esercizio->id)
+                        ->where('condominio_id', $condominio->id)
+                        ->where('immobile_id', $immobile->id)
+                        ->where('anagrafica_id', $vecchioAnagraficaId)
+                        ->delete();
+                }
+
+                // Aggiorna o Crea il saldo per l'anagrafica corrente (quella del form)
+                // Nota: MoneyHelper::toCents gestisce la conversione (es. 100,00 -> 10000)
+                Saldo::updateOrCreate(
+                    [
+                        'esercizio_id'  => $esercizio->id,
+                        'condominio_id' => $condominio->id,
+                        'immobile_id'   => $immobile->id,
+                        'anagrafica_id' => $nuovoAnagraficaId, 
+                    ],
+                    [
+                        'saldo_iniziale' => MoneyHelper::toCents($data['saldo_iniziale'] ?? 0),
+                        // 'saldo_finale' => 0 // Non sovrascriviamo il saldo finale se esiste logica di calcolo altrove
+                    ]
+                );
+            }
+
+            DB::commit();
+
             return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
             ])->with($this->flashSuccess(__('gestionale.success_update_anagrafica')));
 
         } catch (\Throwable $e) {
+            DB::rollBack();
 
             Log::error('Error updating anagrafica for immobile', [
                 'immobile_id'       => $immobile->id,
@@ -231,7 +278,7 @@ class ImmobileAnagraficaController extends Controller
                 'new_anagrafica_id' => $data['anagrafica_id'] ?? null,
                 'message'           => $e->getMessage(),
                 'trace'             => $e->getTraceAsString(),
-            ]);  
+            ]);
 
             return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,

@@ -54,12 +54,13 @@ return [
     'success_delete_gestione'           => "Il periodo di gestione è stato eliminato con successo.",
     'error_delete_gestione'             => "Si è verificato un errore durante l'eliminazione del periodo di gestione",
     // Piani conti
-    'success_create_piano_conto'        => "Il nuovo piano dei conti è stato creato con successo",
-    'error_create_piano_conto'          => "Si è verificato un errore durante la creazione del nuovo piano dei conti",
-    'success_delete_piano_conto'        => "Il piano dei conti è stato eliminato con successo.",
-    'error_delete_piano_conto'          => "Si è verificato un errore durante l'eliminazione del piano dei conti.",
-    'success_update_piano_conto'        => "Il piano dei conti è stato aggiornato con successo.",
-    'error_update_piano_conto'          => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
+    'success_create_piano_conto'            => "Il nuovo piano dei conti è stato creato con successo",
+    'error_create_piano_conto'              => "Si è verificato un errore durante la creazione del nuovo piano dei conti",
+    'success_delete_piano_conto'            => "Il piano dei conti è stato eliminato con successo.",
+    'error_delete_piano_conto'              => "Si è verificato un errore durante l'eliminazione del piano dei conti.",
+    'success_update_piano_conto'            => "Il piano dei conti è stato aggiornato con successo.",
+    'error_update_piano_conto'              => "Si è verificato un errore durante l'aggiornamento del piano dei conti.",
+    'warning_all_gestioni_have_piano_conti' => "Tutte le gestioni di questo esercizio hanno già un Piano dei Conti associato.", // <--- NUOVA
     // Conti
     'success_create_conto'              => "La nuova voce di spesa è stata creata con successo.",
     'error_create_conto'                => "Si è verificato un errore durante la creazione della nuova voce di spesa.",
@@ -74,6 +75,9 @@ return [
     'success_update_piano_rate'         => "Il piano rate è stato aggiornato con successo.",
     'error_update_piano_rate'           => "Si è verificato un errore durante l'aggiornamento del piano rate.",     
     'success_delete_piano_rate'         => "Il piano rate è stato eliminato con successo.",
-    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate."
+    'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate.",
+    // Casse
+    'success_create_cassa'              => "La nuova risorsa di cassa è stata creata con successo",
+    'error_create_cassa'                => "Si è verificato un errore durante la creazione della nuova risorsa di cassa."
 
 ];

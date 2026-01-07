@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants'; 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import axios from 'axios';
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from "@/composables/permissions";
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
@@ -95,11 +96,15 @@ const submit = () => {
 
 
 <template>
-  <Head title="Modifica comunicazione" />
+  <Head :title="trans('comunicazione.header.edit_communication_head')" />
   
   <AppLayout>
     <div class="px-4 py-6">
-      <Heading title="Modifica comunicazione" description="Compila il seguente modulo per modificare la comunicazione per la bacheca del condominio" />
+
+      <Heading 
+            :title="trans('comunicazioni.header.edit_communication_title')" 
+            :description="trans('comunicazioni.header.edit_communication_description')" 
+      />
 
       <form class="space-y-2" @submit.prevent="submit">
         
@@ -108,7 +113,7 @@ const submit = () => {
               <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                   <Pencil class="w-4 h-4" v-if="!form.processing" />
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                  Salva
+                  {{trans('comunicazioni.actions.save_communication')}}
               </Button>
 
               <Link
@@ -117,7 +122,7 @@ const submit = () => {
                   class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                   <List class="w-4 h-4" />
-                  <span>Elenco</span>
+                  <span>{{ trans('comunicazioni.actions.list_communications') }}</span>
               </Link>
           </div>
 
@@ -129,13 +134,13 @@ const submit = () => {
                 <!-- subject field -->
                 <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-3">
-                    <Label for="subject">Oggetto comunicazione</Label>
+                    <Label for="subject">{{ trans('comunicazioni.label.subject') }}</Label>
                     <Input 
                       id="subject" 
                       class="mt-1 block w-full"
                       v-model="form.subject" 
                       v-on:focus="form.clearErrors('subject')"
-                      placeholder="Oggetto comunicazione" 
+                      :placeholder="trans('comunicazioni.placeholder.subject')" 
                     />
                     <InputError :message="form.errors.subject" />
                   </div>
@@ -143,13 +148,13 @@ const submit = () => {
 
                 <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="description">Descrizione comunicazione</Label>
+                    <Label for="description">{{ trans('comunicazioni.label.description') }}</Label>
                     <Textarea 
                       id="description" 
                       class="mt-1 block w-full min-h-[320px]"
                       v-model="form.description" 
                       v-on:focus="form.clearErrors('description')"
-                      placeholder="Descrizione comunicazione" 
+                      :placeholder="trans('comunicazioni.placeholder.description')" 
                     />
                     <InputError :message="form.errors.description" />
                   </div>
@@ -162,29 +167,90 @@ const submit = () => {
               <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
                 <div class="grid grid-cols-1 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="stato">Stato pubblicazione</Label>
+                    
+                    <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                        <Label for="stato">{{ trans('comunicazioni.label.visibility') }}</Label>
+
+                        <HoverCard>
+                            <HoverCardTrigger as-child>
+                            <button type="button" class="cursor-pointer">
+                                <Info class="w-4 h-4 text-muted-foreground" />
+                            </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent class="w-80">
+                            <div class="flex justify-between space-x-4">
+                                <div class="space-y-1">
+                                <h4 class="text-sm font-semibold">
+                                    {{ trans('comunicazioni.label.visibility') }}
+                                </h4>
+                                <p class="text-sm">
+                                    {{ trans('comunicazioni.tooltip.visibility') }}
+                                </p>
+                                </div>
+                            </div>
+                            </HoverCardContent>
+                        </HoverCard>
+                    </div>
+
                     <v-select 
                       id="stato" 
                       :options="publishedConstants" 
                       label="label" 
                       v-model="form.is_published"
-                      placeholder="Stato pubblicazione"
+                      :placeholder="trans('comunicazioni.placeholder.visibility')" 
                       @update:modelValue="form.clearErrors('is_published')" 
                       :reduce="(is_published: PublishedType) => is_published.value"
-                    />
+                    >
+                      <template #option="{ label, icon }">
+                          <div class="flex items-center gap-2">
+                              <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                              <span>{{ trans(label) }}</span> 
+                          </div>
+                      </template>
+
+                      <template #selected-option="{ label, icon }">
+                          <div class="flex items-center gap-2">
+                              <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                              <span>{{ trans(label) }}</span>
+                          </div>
+                      </template>
+                    </v-select>
+
                     <InputError :message="form.errors.is_published" />
                   </div>
                 </div>
 
                 <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="priority">Priorità comunicazione</Label>
+
+                    <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                        <Label for="priority">{{ trans('comunicazioni.label.priority') }}</Label>
+
+                        <HoverCard>
+                            <HoverCardTrigger as-child>
+                            <button type="button" class="cursor-pointer">
+                                <Info class="w-4 h-4 text-muted-foreground" />
+                            </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent class="w-80">
+                            <div class="flex justify-between space-x-4">
+                                <div class="space-y-1">
+                                <h4 class="text-sm font-semibold">{{ trans('comunicazioni.label.priority') }}</h4>
+                                <p class="text-sm">
+                                    {{ trans('comunicazioni.tooltip.priority') }}
+                                </p>
+                                </div>
+                            </div>
+                            </HoverCardContent>
+                        </HoverCard>
+                    </div>
+
                     <v-select 
                       id="priority" 
                       :options="priorityConstants" 
                       label="label" 
                       v-model="form.priority"
-                      placeholder="Priorità segnalazione"
+                      :placeholder="trans('comunicazioni.placeholder.priority')" 
                       @update:modelValue="form.clearErrors('priority')" 
                       :reduce="(priority: PriorityType) => priority.value"
                     >
@@ -192,7 +258,7 @@ const submit = () => {
                       <template #option="{ label, icon }">
                         <div class="flex items-center gap-2">
                           <component :is="icon" class="w-4 h-4 text-muted-foreground" />
-                          <span>{{ label }}</span>
+                          <span>{{ trans(label) }}</span>
                         </div>
                       </template>
 
@@ -200,23 +266,24 @@ const submit = () => {
                       <template #selected-option="{ label, icon }">
                         <div class="flex items-center gap-2">
                           <component :is="icon" class="w-4 h-4 text-muted-foreground" />
-                          <span>{{ label }}</span>
+                          <span>{{ trans(label)}}</span>
                         </div>
                       </template>
                     </v-select>
+
                     <InputError :message="form.errors.priority" />
                   </div>
                 </div>
 
                 <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                     <div class="sm:col-span-6">
-                    <Label for="condomini">Condomini</Label>
+                    <Label for="condomini">{{ trans('comunicazioni.label.buildings') }}</Label>
                     <v-select 
                       multiple
                       :options="condomini"
                       label="label"
                       v-model="form.condomini_ids"
-                      placeholder="Condomini"
+                      :placeholder="trans('comunicazioni.placeholder.buildings')"
                       @update:modelValue="form.clearErrors('condomini_ids')" 
                       :reduce="(option: Building) => option.value"
                     />
@@ -227,14 +294,14 @@ const submit = () => {
 
                 <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="anagrafiche">Anagrafiche</Label>
+                    <Label for="anagrafiche">{{ trans('comunicazioni.label.residents') }}</Label>
                     <v-select
                       multiple
                       id="anagrafiche"
                       :options="anagraficheOptions"
                       label="nome"
                       v-model="form.anagrafiche"
-                      placeholder="Anagrafiche"
+                      :placeholder="trans('comunicazioni.placeholder.residents')"
                       @update:modelValue="form.clearErrors('anagrafiche')"
                       :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                       :disabled="form.condomini_ids.length === 0"
@@ -252,13 +319,13 @@ const submit = () => {
                       :checked="form.can_comment"
                       v-model="form.can_comment" 
                       id="can_comment" 
-                      @update:checked="(val) => form.can_comment = val" 
+                      @update:checked="(val: boolean) => form.can_comment = val" 
                     />
                     <label
                       for="comments"
                       class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      Permetti commenti
+                      {{ trans('comunicazioni.label.comments') }}
                     </label>
 
                     <HoverCard>
@@ -271,10 +338,10 @@ const submit = () => {
                         <div class="flex justify-between space-x-4">
                             <div class="space-y-1">
                                 <h4 class="text-sm font-semibold">
-                                    Commenti comunicazione
+                                    {{ trans('comunicazioni.label.comments') }}
                                 </h4>
                                 <p class="text-sm">
-                                    Quando viene selezionata questa opzione verrano abilitati i commenti per questa comunicazione
+                                    {{ trans('comunicazioni.tooltip.comments') }}
                                 </p>
                             </div>
                         </div>
@@ -291,13 +358,13 @@ const submit = () => {
                       :checked="form.is_featured"
                       v-model="form.is_featured" 
                       id="is_featured" 
-                      @update:checked="(val) => form.is_featured = val" 
+                      @update:checked="(val: boolean) => form.is_featured = val" 
                     />
                     <label
                       for="comments"
                       class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      Comunicazione in evidenza
+                      {{ trans('comunicazioni.label.featured') }}
                     </label>
                      <!-- HoverCard moved OUTSIDE label -->
                     <HoverCard>
@@ -309,9 +376,9 @@ const submit = () => {
                         <HoverCardContent class="w-80 z-50">
                         <div class="flex justify-between space-x-4">
                             <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">Metti in evidenza</h4>
+                            <h4 class="text-sm font-semibold">{{ trans('comunicazioni.label.featured') }}</h4>
                             <p class="text-sm">
-                                Quando viene selezionata questa opzione, la comunicazione verrà messa in evidenza e comparirà sempre in cima all'elenco delle comunicazioni.
+                                {{ trans('comunicazioni.tooltip.featured') }}
                             </p>
                             </div>
                         </div>

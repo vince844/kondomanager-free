@@ -5,12 +5,15 @@ import DataTable from '@/components/inviti/DataTable.vue';
 import { columns } from '@/components/inviti/columns';
 import { Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
+import Alert from "@/components/Alert.vue";
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import type { Invito } from '@/types/inviti';
 import type { Flash } from '@/types/flash';
-import Alert from "@/components/Alert.vue";
+import type { BreadcrumbItem } from '@/types';
 
-defineProps<{ inviti: Invito[] }>();
+defineProps<{ 
+    inviti: Invito[] 
+}>();
 
 // Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -18,12 +21,17 @@ const page = usePage<{ flash: { message?: Flash } }>();
 // Computed property to safely access flash messages
 const flashMessage = computed(() => page.props.flash.message);
 
+const breadcrumbs: BreadcrumbItem[] = [
+  { title: 'Impostazioni', href: '/impostazioni' },
+  { title: 'utenti', href: '/utenti' },
+  { title: 'inviti', href: '#' },
+];
 
 </script>
 
 <template>
     
-    <AppLayout>
+    <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Elenco utenti registrati" />
 
         <UtentiLayout>

@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\Auth\TwoFactorAuthChallengeController;
+use App\Http\Controllers\Inviti\InvitoRegisteredUserController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['guest', 'CheckUserRegistration'])->group(function () {
@@ -18,6 +19,7 @@ Route::middleware(['guest', 'CheckUserRegistration'])->group(function () {
 
     Route::post('register', [RegisteredUserController::class, 'store'])
         ->middleware('throttle:6,1');
+    
 });
 
 Route::middleware('guest')->group(function () {
@@ -40,6 +42,10 @@ Route::middleware('guest')->group(function () {
     Route::post('reset-password', [NewPasswordController::class, 'store'])
         ->middleware('throttle:6,1')
         ->name('password.store');
+    
+    Route::post('/invito/register', [InvitoRegisteredUserController::class, 'store'])
+        ->name('invito.register.store')
+        ->middleware('throttle:6,1');
 });
 
 Route::middleware('auth')->group(function () {
@@ -67,7 +73,10 @@ Route::middleware('auth')->group(function () {
 
 // Two-factor challenge routes with the ensure-two-factor-challenge-session middleware
 Route::middleware('ensure-two-factor-challenge-session')->group(function () {
-    Route::inertia('two-factor-challenge', 'auth/TwoFactorChallenge')->name('two-factor.challenge');
+    
+    Route::inertia('two-factor-challenge', 'auth/TwoFactorChallenge')
+        ->name('two-factor.challenge');
     
     Route::post('two-factor-challenge', [TwoFactorAuthChallengeController::class, 'store']);
+    
 });

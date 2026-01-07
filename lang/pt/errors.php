@@ -4,21 +4,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Mensagens de Erro
+    | Errors Language Lines
     |--------------------------------------------------------------------------
     |
-    | As seguintes mensagens são utilizadas durante erros HTTP para informar
-    | o utilizador sobre diferentes situações.
+    | The following language lines are used during HTTP errors for various
+    | messages that we need to display to the user. You are free to modify
+    | these language lines according to your application's requirements.
     |
     */
 
     '403' => [
-        'invalid_signature' => 'O link que está a tentar utilizar expirou ou não é válido.',
-        'account_suspended' => 'A sua conta encontra-se temporariamente suspensa. Por favor, contacte o administrador do sistema para a reativar.',
+        'invalid_signature' => 'The link you are trying to use is expired or invalid.',
+        'account_suspended' => 'Your account is temporarily suspended. Please contact the system administrator to reactivate it.',
     ],
-    '403_title' => '403 - Acesso Negado',
-    '403_heading' => '403 - Acesso Negado',
-    '403_message' => 'Não tem permissões para aceder a esta página.',
-    'back_to_dashboard' => 'Voltar ao Painel de Controlo',
 
+    '403_title'         => '403 - Access Denied',
+    '403_heading'       => '403 - Access Denied',
+    '403_message'       => 'You do not have permission to access this page.',
+    '404_title'         => '404 - Page Not Found',
+    '404_heading'       => '404 - Page Not Found',
+    '404_message'       => 'The page you are looking for does not exist or has been removed.',
+    '500_title'         => '500 - Server Error',
+    '500_heading'       => '500 - Internal Server Error',
+    '500_message'       => 'An unexpected error occurred. Please try again later.',
+    'back_to_dashboard' => 'Back to Dashboard',
+    'back_to_login'     => 'Back to Login',
 ];

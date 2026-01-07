@@ -12,15 +12,30 @@ export interface BreadcrumbItem {
     href: string;
 }
 
-export interface NavItem {
+// Base properties comuni a tutti i NavItem
+interface NavItemBase {
     title: string;
-    href: string;
     icon?: LucideIcon;
     isActive?: boolean;
     external?: boolean;
     roles?: Role[];
     permissions?: Permission[];
 }
+
+// NavItem con link diretto
+export interface LinkItem extends NavItemBase {
+    type: 'link';
+    href: string;
+}
+
+// NavItem parent con children
+export interface ParentItem extends NavItemBase {
+    type: 'parent';
+    children: LinkItem[];
+}
+
+// Union type - un NavItem può essere SOLO link O parent
+export type NavItem = LinkItem | ParentItem;
 
 export interface SharedData extends PageProps {
     name: string;

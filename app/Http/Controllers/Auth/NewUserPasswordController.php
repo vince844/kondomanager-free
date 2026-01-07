@@ -24,7 +24,7 @@ class NewUserPasswordController extends Controller
     public function reset(Request $request)
     {
         $request->validate([
-            'email'    => 'required|email|exists:users,email',
+            'email'    => 'required|email|lowercase|exists:users,email',
             'password' => 'required|min:8|confirmed',
         ]);
 

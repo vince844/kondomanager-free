@@ -8,6 +8,7 @@ import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/comunicazioni/columns';
 import Alert from '@/components/Alert.vue';
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Comunicazione, Stats } from '@/types/comunicazioni';
 import type { PaginationMeta } from '@/types/pagination';
@@ -24,13 +25,14 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head :title="trans('comunicazioni.header.list_communications_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
+      
       <Heading
-        title="Elenco comunicazioni bacheca"
-        description="Di seguito la tabella con l'elenco di tutte le comunicazioni salvate nella bacheca del condominio"
+        :title="trans('comunicazioni.header.list_communications_title')" 
+        :description="trans('comunicazioni.header.list_communications_description')" 
       />
 
       <ComunicazioniStats :stats="stats" />

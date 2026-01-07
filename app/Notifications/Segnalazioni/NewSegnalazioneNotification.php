@@ -4,13 +4,13 @@ namespace App\Notifications\Segnalazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Segnalazione;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class NewSegnalazioneNotification extends Notification implements ShouldQueue
+class NewSegnalazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -21,6 +21,8 @@ class NewSegnalazioneNotification extends Notification implements ShouldQueue
      */
     public function __construct(Segnalazione $segnalazione)
     {
+        // Important to load translations
+        parent::__construct();
         $this->segnalazione = $segnalazione;
     }
 
@@ -43,13 +45,18 @@ class NewSegnalazioneNotification extends Notification implements ShouldQueue
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-        ->subject('Nuova segnalazione guasto')
-        ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-        ->line("L'utente ". $this->segnalazione->createdBy->name ." ha creato una nuova segnalazione guasto.")
-        ->line('**Oggetto:** ' . $this->segnalazione->subject)
-        ->line('**Priorità:** ' . Str::ucfirst($this->segnalazione->priority))
-        ->line('**Stato:** ' . Str::ucfirst($this->segnalazione->stato))
-        ->action('Visualizza segnalazione', url("/{$routePrefix}/segnalazioni/" . $this->segnalazione->id));
+            ->subject(__('notifications.new_ticket.subject'))
+            ->greeting(__('notifications.new_ticket.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.new_ticket.line_1', [
+                'user' => $this->segnalazione->createdBy->name
+            ]))
+            ->line('**' . __('notifications.new_ticket.object') . ':** ' . $this->segnalazione->subject)
+            ->line('**' . __('notifications.new_ticket.priority') . ':** ' . Str::ucfirst($this->segnalazione->priority))
+            ->line('**' . __('notifications.new_ticket.status') . ':** ' . Str::ucfirst($this->segnalazione->stato))
+            ->action(__('notifications.new_ticket.action'), url("/{$routePrefix}/segnalazioni/{$this->segnalazione->id}"));
+
     }
 
     /**

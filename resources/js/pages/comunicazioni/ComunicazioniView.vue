@@ -2,9 +2,10 @@
 
 import { Head, Link } from "@inertiajs/vue3";
 import AppLayout from "@/layouts/AppLayout.vue";
-import type { Comunicazione } from "@/types/comunicazioni";
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, List } from "lucide-vue-next";
+import { trans } from 'laravel-vue-i18n'
 import { usePermission } from "@/composables/permissions";
+import type { Comunicazione } from "@/types/comunicazioni";
 
 const { generateRoute } = usePermission();
 
@@ -22,7 +23,7 @@ const priorityIcons = {
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head :title="trans('comunicazioni.header.view_communication_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
@@ -35,7 +36,7 @@ const priorityIcons = {
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
             >
                 <List class="w-4 h-4" />
-                <span>Bacheca</span>
+                <span>{{ trans('comunicazioni.actions.list_communications') }}</span>
             </Link>
 
         </div>
@@ -63,7 +64,12 @@ const priorityIcons = {
 
                     <!-- Sottotitolo con data e autore -->
                     <p class="ml-6 text-sm text-muted-foreground">
-                    Inviata {{ comunicazione.created_at }} da {{ comunicazione.created_by.user.name }}
+                        {{ 
+                            trans('comunicazioni.visibility.sent_on_by', { 
+                                date: comunicazione.created_at, 
+                                name: comunicazione.created_by.user.name 
+                            }) 
+                        }}
                     </p>
                 </div>
         

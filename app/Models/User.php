@@ -93,9 +93,17 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(NotificationPreference::class);
     }
 
-    public function prefers(string $type): bool
+/*     public function prefers(string $type): bool
     {
         return $this->notificationPreferences()->where('type', $type)->value('enabled') ?? false;
+    } */
+
+    public function userPreferences()
+    {
+        return $this->hasOne(UserPreference::class)->withDefault([
+            'open_condominio_on_login' => false,
+            'default_condominio_id' => null,
+        ]);
     }
-    
+
 }

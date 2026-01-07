@@ -36,8 +36,8 @@ class RoleController extends Controller
     public function index()
     {
         Gate::authorize('view', Role::class);
-        
-        $roles = Role::all();
+
+        $roles = Role::all()->load('permissions');
         
         // Prendi tutti i conteggi in una singola query
         $userCounts = DB::table('model_has_roles')
@@ -93,7 +93,6 @@ class RoleController extends Controller
         $validated = $request->validated(); 
 
         try {
-
             DB::beginTransaction();
 
             $role = Role::create([
@@ -101,32 +100,30 @@ class RoleController extends Controller
                 'description' => $validated['description']
             ]);
             
+            // 1. Assegna i permessi regolari
             if (!empty($validated['permissions'])) {
                 $role->syncPermissions($validated['permissions']);
             }
 
+            // 2. Gestisci il permesso admin separatamente
             if ($validated['accessAdmin']) {
                 $role->givePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value); 
             }
 
             DB::commit();
 
-        }catch (\Exception $e) {
-
+        } catch (\Exception $e) {
             DB::rollback();
-
             Log::error('Error creating role: ' . $e->getMessage());
-        
+            
             return to_route('ruoli.index')->with(
                 $this->flashError(__('ruoli.error_create_role'))
             );
-
         }
 
         return to_route('ruoli.index')->with(
             $this->flashSuccess(__('ruoli.success_create_role'))
         );
-
     }
 
     /**
@@ -148,24 +145,25 @@ class RoleController extends Controller
      */
     public function edit(string $id)
     {
-        Gate::authorize('update', Role::class);
+       Gate::authorize('update', Role::class);
 
         $role = Role::findOrFail($id);
 
         if ($this->isProtectedRole($role->name)) {
-
             return to_route('ruoli.index')->with(
                 $this->flashInfo(__('ruoli.cannot_edit_default_role', ['role' => $role->name]))
             );
-  
         }
 
-       $role->load('permissions');
+        $role->load('permissions');
 
-       return Inertia::render('ruoli/ModificaRuolo', [
-        'role'        => new RoleResource($role),
-        'permissions' => PermissionResource::collection(Permission::all())
-       ]);
+        // Exclude the admin panel permission from the list
+        $permissions = Permission::whereNotIn('name', [EnumsPermission::ACCESS_ADMIN_PANEL->value])->get();
+
+        return Inertia::render('ruoli/ModificaRuolo', [
+            'role'        => new RoleResource($role),
+            'permissions' => PermissionResource::collection($permissions) 
+        ]);
     }
 
     /**
@@ -192,7 +190,6 @@ class RoleController extends Controller
         $validated = $request->validated(); 
 
         try {
-
             DB::beginTransaction();
 
             $ruoli->update([
@@ -200,30 +197,30 @@ class RoleController extends Controller
                 'description' => $validated['description']
             ]);  
 
-            $ruoli->syncPermissions($validated['permissions']);
+            // 1. Sincronizza i permessi regolari (escluso admin)
+            $ruoli->syncPermissions($validated['permissions'] ?? []);
 
+            // 2. Gestisci il permesso admin separatamente
             if ($validated['accessAdmin']) {
                 $ruoli->givePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value);
             } else {
                 $ruoli->revokePermissionTo(EnumsPermission::ACCESS_ADMIN_PANEL->value);
             }
-        
-        }catch (\Exception $e) {
+            
+            DB::commit();
 
+        } catch (\Exception $e) {
             DB::rollback();
-
             Log::error('Error updating role: ' . $e->getMessage());
-        
+            
             return to_route('ruoli.index')->with(
                 $this->flashError(__('ruoli.error_update_role'))
             );
-
         }
 
         return to_route('ruoli.index')->with(
             $this->flashSuccess(__('ruoli.success_update_role'))
         );
-
     }
 
     /**

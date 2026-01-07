@@ -9,6 +9,7 @@ use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use App\Http\Resources\User\EditUserResource;
+use App\Http\Resources\User\IndexUserResource;
 use App\Http\Resources\User\UserResource;
 use App\Models\Anagrafica;
 use App\Models\User;
@@ -65,19 +66,19 @@ class UserController extends Controller
         Gate::authorize('view', User::class);
 
         $validated = $request->validate([
-            'page' => ['sometimes', 'integer', 'min:1'],
+            'page'     => ['sometimes', 'integer', 'min:1'],
             'per_page' => ['sometimes', 'integer', 'between:1,100'],
-            'name' => ['sometimes', 'string', 'max:255'], 
+            'name'     => ['sometimes', 'string', 'max:255'], 
         ]);
     
         $users = User::query()
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
-            ->paginate($validated['per_page'] ?? 10);
+            ->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
     
         return Inertia::render('utenti/ElencoUtenti', [
-            'users' => UserResource::collection($users)->response()->getData(true)['data'],
+            'users' => IndexUserResource::collection($users)->response()->getData(true)['data'],
             'meta' => [
                 'current_page' => $users->currentPage(),
                 'last_page' => $users->lastPage(),
@@ -107,7 +108,9 @@ class UserController extends Controller
         Gate::authorize('create', User::class);
 
         return Inertia::render('utenti/NuovoUtente',[
-            'roles'       => RoleResource::collection(Role::all()),
+          /*   'roles'       => RoleResource::collection(Role::all()), */
+            'roles'       => RoleResource::collection(Role::with('permissions')->get()),
+            
             'permissions' => PermissionResource::collection(Permission::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
         ]);
@@ -191,11 +194,11 @@ class UserController extends Controller
     {
         Gate::authorize('update', User::class);
 
-        $utenti->load(['roles', 'permissions', 'anagrafica']);
+        $utenti->load(['roles.permissions', 'permissions', 'anagrafica']);
 
         return Inertia::render('utenti/ModificaUtente', [
             'user'        => new EditUserResource($utenti),
-            'roles'       => RoleResource::collection(Role::all()),
+            'roles'       => RoleResource::collection(Role::with('permissions')->get()),
             'permissions' => PermissionResource::collection(Permission::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all())
         ]);

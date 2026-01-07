@@ -5,7 +5,6 @@ namespace App\Http\Resources\User;
 use App\Http\Resources\Anagrafica\AnagraficaResource;
 use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
-use App\Models\Anagrafica;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
