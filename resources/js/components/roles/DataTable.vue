@@ -1,30 +1,13 @@
 <script setup lang="ts" generic="TData, TValue">
+
 import { ref } from 'vue'
-import type { 
-  ColumnDef, 
-  SortingState,
-  ColumnFiltersState 
-} from '@tanstack/vue-table'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import {
-  FlexRender,
-  getCoreRowModel,
-  useVueTable,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-} from '@tanstack/vue-table'
-import type { Role } from '@/types/roles';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { FlexRender, getCoreRowModel, useVueTable, getFilteredRowModel, getSortedRowModel, getPaginationRowModel } from '@tanstack/vue-table'
 import { valueUpdater } from '@/lib/utils'
 import DataTablePagination from '@/components/roles/DataTablePagination.vue';
 import DataTableToolbar from '@/components/roles/DataTableToolbar.vue';
+import type { ColumnDef, SortingState, ColumnFiltersState } from '@tanstack/vue-table'
+import type { Role } from '@/types/roles';
 
 const props = defineProps<{
     columns: ColumnDef<Role, any>[]

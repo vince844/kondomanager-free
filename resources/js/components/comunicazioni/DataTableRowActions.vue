@@ -9,6 +9,7 @@ import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { useComunicazioni } from '@/composables/useComunicazioni'
 import { Permission } from "@/enums/Permission"
+import { trans } from 'laravel-vue-i18n';
 import type { Comunicazione } from '@/types/comunicazioni'
 
 defineProps<{ comunicazione: Comunicazione }>()
@@ -73,7 +74,7 @@ function deleteComunicazione() {
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('comunicazioni.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem
         v-if="hasPermission([Permission.EDIT_COMUNICAZIONI, Permission.EDIT_OWN_COMUNICAZIONI])"
@@ -84,7 +85,7 @@ function deleteComunicazione() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+           {{ trans('comunicazioni.actions.edit_communication') }}
         </Link>
       </DropdownMenuItem>
 
@@ -93,15 +94,15 @@ function deleteComunicazione() {
         @click="handleDelete(comunicazione)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('comunicazioni.actions.delete_communication') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questa comunicazione?"
-    description="Questa azione non è reversibile. Eliminerà la comunicazione e tutti i dati ad essa associati."
+    :title="trans('comunicazioni.dialogs.delete_communication_title')"
+    :description="trans('comunicazioni.dialogs.delete_communication_description')"
     @confirm="deleteComunicazione"
   />
 

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Permission;
+use App\Enums\Role;
 use App\Models\Anagrafica;
 use App\Models\Comunicazione;
 use Illuminate\Support\Collection;
@@ -194,7 +195,7 @@ class ComunicazioneService
     private function isAdmin(): bool
     {
         $user = Auth::user();
-        return $user->hasRole(['amministratore', 'collaboratore']) ||
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) ||
                $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }

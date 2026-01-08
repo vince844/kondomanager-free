@@ -148,7 +148,7 @@ const submit = () => {
             </div>
 
             <div class="flex items-center space-x-2">
-              <Checkbox class="size-4"  id="recurrenceToggle" v-model:checked="showRecurrence" />
+              <Checkbox class="size-4"  id="recurrenceToggle" v-model="showRecurrence" />
               <Label for="recurrenceToggle">Imposta evento ricorrente</Label>
               <HoverCard>
                 <HoverCardTrigger as-child>

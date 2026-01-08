@@ -28,6 +28,7 @@ class Rata extends Model
         'data_scadenza' => 'date',
         'data_emissione' => 'date',
         'importo_totale' => 'integer',
+        'scadenza' => 'date',
     ];
 
     // === ACCESSORS con MoneyHelper ===
@@ -87,5 +88,20 @@ class Rata extends Model
     public function isScaduta(): bool
     {
         return $this->data_scadenza?->isPast();
+    }
+
+    public function scritture()
+    {
+        return $this->belongsToMany(
+            ScritturaContabile::class, 
+            'rata_scrittura', 
+            'rata_id', 
+            'scrittura_contabile_id'
+        )->withPivot(['importo_pagato', 'data_pagamento'])->withTimestamps();
+    }
+
+    public function getTotaleRataAttribute(): float
+    {
+        return $this->importo_totale / 100;
     }
 }

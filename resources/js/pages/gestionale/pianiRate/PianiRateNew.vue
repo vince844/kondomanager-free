@@ -3,7 +3,6 @@
 import { Head, useForm, Link } from '@inertiajs/vue3'
 import { ref, watch, computed } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import Heading from '@/components/Heading.vue'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
@@ -13,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator';
 import { Info, Plus, LoaderCircle, List } from 'lucide-vue-next'
 import vSelect from 'vue-select'
+import axios from 'axios';
 import { usePermission } from '@/composables/permissions'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
@@ -28,6 +28,9 @@ const { generateRoute, generatePath } = usePermission()
 
 // Toggle ricorrenza
 const showRecurrence = ref(false)
+// Stato
+const capitoliDisponibili = ref([]);
+const isLoadingCapitoli = ref(false);
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -53,16 +56,40 @@ const form = useForm({
   metodo_distribuzione: 'prima_rata',
   numero_rate: 12,
   giorno_scadenza: 5,
-
   note: '',
   genera_subito: true,
-
-  // RRULE
   recurrence_enabled: false,
   recurrence_frequency: 'MONTHLY',
   recurrence_interval: 1,
   recurrence_by_day: [],
+  capitoli_ids: [],
 })
+
+// Watcher: Quando cambia gestione_id, carica i capitoli
+watch(() => form.gestione_id, async (newGestioneId) => {
+  // 1. Reset
+  form.capitoli_ids = [];
+  capitoliDisponibili.value = [];
+  
+  if (!newGestioneId) return;
+
+  // 2. Fetch
+  isLoadingCapitoli.value = true;
+  try {
+    const response = await axios.get(route('admin.gestionale.fetch-capitoli-gestione', {
+      condominio: props.condominio.id
+    }), {
+      params: { gestione_id: newGestioneId }
+    });
+    
+    capitoliDisponibili.value = response.data;
+    
+  } catch (error) {
+    console.error("Errore caricamento capitoli:", error);
+  } finally {
+    isLoadingCapitoli.value = false;
+  }
+});
 
 // Sincronizzazione ricorrenza
 watch(showRecurrence, (enabled) => {
@@ -160,6 +187,34 @@ const submit = () => {
                 </div>
               </div>
 
+              <div class="sm:col-span-6">
+                  <Label>Filtra per Capitoli di Spesa (Opzionale)</Label>
+                  <div v-if="isLoadingCapitoli" class="text-sm text-gray-500 flex items-center gap-2">
+                      <LoaderCircle class="w-3 h-3 animate-spin" /> Caricamento voci di spesa...
+                  </div>
+                  
+                  <v-select
+                      v-else
+                      multiple
+                      v-model="form.capitoli_ids"
+                      :options="capitoliDisponibili"
+                      label="nome"
+                      :reduce="c => c.id"
+                      placeholder="Lascia vuoto per includere TUTTE le spese della gestione"
+                      class="mt-1 block w-full"
+                  >
+                      <template #no-options>
+                          Nessun capitolo di spesa trovato per questa gestione.
+                      </template>
+                  </v-select>
+                  
+                  <p class="text-[11px] text-gray-500 mt-1">
+                      Seleziona specifiche voci (es. "Scala A", "Riscaldamento") se vuoi creare un piano rate parziale.
+                      Se lasci vuoto, verrà creato un piano unico per l'intera gestione.
+                  </p>
+                  <InputError :message="form.errors.capitoli_ids" />
+              </div>
+
               <!-- Descrizione -->
               <div>
                 <Label for="descrizione">Descrizione</Label>
@@ -214,7 +269,7 @@ const submit = () => {
 
               <!-- Genera Subito -->
               <div class="flex items-center gap-2">
-                <Checkbox id="genera_subito" v-model:checked="form.genera_subito" />
+                <Checkbox id="genera_subito" v-model="form.genera_subito" />
                 <Label for="genera_subito">Genera subito il piano rate dopo il salvataggio</Label>
               </div>
 
@@ -222,7 +277,7 @@ const submit = () => {
               <div class="space-y-4">
 
                 <div class="flex items-center gap-2">
-                  <Checkbox id="recurrenceToggle" v-model:checked="showRecurrence" />
+                  <Checkbox id="recurrenceToggle" v-model="showRecurrence" />
                   <Label for="recurrenceToggle">Ricorrenza automatica avanzata</Label>
                 </div>
 

@@ -34,12 +34,15 @@ class RegisteredUserNotification extends Notification
      */
     public function toMail(object $notifiable): MailMessage
     {
+        $name = $notifiable->name ?? $notifiable->nome ?? '';
+
         return (new MailMessage)
-            ->subject('Nuovo utente registrato')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("Un nuovo utente si è registrato sul portale. Dopo che avrà confermato il suo indirizzo email potra accedere all'area privata.")
-            ->line("Assicurati di associare l'anagrafica a uno o più condomini se vuoi permette all'utente di visualizzare i dati di questi.")
-            ->action('Accedi al portale', url(config('app.url')));
+        
+            ->subject(__('notifications.new_user_registered.subject'))
+            ->greeting(__('notifications.new_user_registered.greeting', ['name' => $name]))
+            ->line(__('notifications.new_user_registered.line_1'))
+            ->line(__('notifications.new_user_registered.line_2'))
+            ->action(__('notifications.new_user_registered.action'), url(config('app.url')));
     }
 
     /**

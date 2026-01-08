@@ -97,9 +97,9 @@ const submit = () => {
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="indirizzo">Descrizione</Label>
+                    <Label for="descrizione">Descrizione</Label>
                     <Input 
-                      id="indirizzo" 
+                      id="descrizione" 
                       class="mt-1 block w-full"
                         v-model="form.description" 
                         v-on:focus="form.clearErrors('description')"

@@ -1,14 +1,9 @@
 <script setup lang="ts">
+
 import { type Table } from '@tanstack/vue-table'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface PaginationMeta {
   current_page: number
@@ -32,7 +27,7 @@ const handlePageChange = (newPage: number) => {
 
 <template>
   <div class="flex items-center justify-between">
-    <div class="flex items-center space-x-6 lg:space-x-8">
+    <div class="flex items-center space-x-2 lg:space-x-2">
       <div class="flex items-center space-x-2">
         <!-- Page Size Selector -->
         <Select
@@ -54,10 +49,10 @@ const handlePageChange = (newPage: number) => {
       </div>
 
       <!-- Pagination info -->
-      <div class="flex w-[100px] items-center justify-center text-sm font-medium">
+<!--       <div class="flex w-[100px] items-center justify-center text-sm font-medium">
         Pagina {{ meta.current_page }} di {{ meta.last_page }}
       </div>
-
+ -->
       <!-- Pagination controls -->
       <div class="flex items-center space-x-2">
         <Button

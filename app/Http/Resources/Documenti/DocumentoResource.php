@@ -27,6 +27,8 @@ class DocumentoResource extends JsonResource
             'is_published'  => $this->is_published,
             'is_approved'   => $this->is_approved,
             'mime_type'     => $this->getMimeTypeLabel($this->mime_type),
+            'patyh'          => $this->path,
+            'file_size'     => $this->file_size,
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [

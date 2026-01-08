@@ -17,21 +17,25 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     
     Route::resource('anagrafiche', AnagraficaController::class);
     
-    Route::resource('segnalazioni', SegnalazioneController::class)->parameters([
-        'segnalazioni' => 'segnalazione'
-    ]);
+    Route::resource('segnalazioni', SegnalazioneController::class)
+        ->parameters([
+            'segnalazioni' => 'segnalazione'
+        ]);
     
-    Route::resource('comunicazioni', ComunicazioneController::class)->parameters([
-        'comunicazioni' => 'comunicazione'
-    ]);
+    Route::resource('comunicazioni', ComunicazioneController::class)
+        ->parameters([
+            'comunicazioni' => 'comunicazione'
+        ]);
 
-    Route::resource('documenti', DocumentoController::class)->parameters([
-        'documenti' => 'documento'
-    ]);
+    Route::resource('documenti', DocumentoController::class)
+        ->parameters([
+            'documenti' => 'documento'
+        ]);
 
-    Route::resource('eventi', EventoController::class)->parameters([
-        'eventi' => 'evento'
-    ]);
+    Route::resource('eventi', EventoController::class)
+        ->parameters([
+            'eventi' => 'evento'
+        ]);
 
     Route::post('documenti/{documento}', [DocumentoController::class, 'update'])
         ->name('documenti.update');
@@ -39,9 +43,10 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])
         ->name('documenti.download');
 
-    Route::resource('categorie-documenti', CategoriaDocumentoController::class)->parameters([
-        'categorie-documenti' => 'categoriaDocumento'
-    ]);
+    Route::resource('categorie-documenti', CategoriaDocumentoController::class)
+        ->parameters([
+            'categorie-documenti' => 'categoriaDocumento'
+        ]);
 
     Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
         ->name('settings.notifications.index');

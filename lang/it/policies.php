@@ -27,6 +27,13 @@ return [
     'create_users'              => "Non hai permessi sufficienti per creare nuovi utenti!",
     'edit_users'                => "Non hai permessi sufficienti per modificare gli utenti!",
     'delete_users'              => "Non hai permessi sufficienti per eliminare gli utenti!",
+    // Roles
+    'view_roles'                => "Non hai permessi sufficienti per visualizzare i ruoli utente!",
+    'create_roles'              => "Non hai permessi sufficienti per creare un nuovo ruolo!",
+    'edit_roles'                => "Non hai permessi sufficienti per modificare i ruoli utente!",
+    'delete_roles'              => "Non hai permessi sufficienti per eliminare i ruoli utente!",
+    // Permissions
+    'view_permissions'          => "Non hai permessi sufficienti per visualizzare i permessi!",
     // Archive documents
     'view_archive_documents'    => "Non hai permessi sufficienti per visualizzare i documenti in archivio!",
     'create_archive_documents'  => "Non hai permessi sufficienti per creare documenti in archivio!",

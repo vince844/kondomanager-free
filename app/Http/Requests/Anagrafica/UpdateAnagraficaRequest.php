@@ -5,7 +5,8 @@ namespace App\Http\Requests\Anagrafica;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use App\Models\Anagrafica;
+use App\Rules\UniqueEmailAcrossTables;
+use Illuminate\Support\Str;
 
 /**
  * @method bool filled(string $key)
@@ -33,12 +34,12 @@ class UpdateAnagraficaRequest extends FormRequest
         return [
             'nome'                => 'required|string|max:255',
             'indirizzo'           => 'required|string|max:255',
-            'email'               => 'nullable|string|lowercase|email|max:255',
-            'email_secondaria'    => 'nullable|string|lowercase|email|max:255|different:email',
-            'pec'                 => 'nullable|string|lowercase|email|max:255',
+            'email'               => ['nullable','string','email','max:255',new UniqueEmailAcrossTables($this->anagrafica->id, 'anagrafiche')],
+            'email_secondaria'    => ['nullable','string','email','max:255','different:email', new UniqueEmailAcrossTables($this->anagrafica->id, 'anagrafiche')],
+            'pec'                 => ['nullable','string','lowercase','email','max:255',new UniqueEmailAcrossTables($this->anagrafica->id, 'anagrafiche')],
             'tipologia_documento' => 'nullable|string|max:255',
             'numero_documento'    => 'nullable|string|max:255',
-            'codice_fiscale'      => 'nullable|string|max:255',
+            'codice_fiscale'      => ['nullable','string','max:255',Rule::unique('anagrafiche')->ignore($this->anagrafica->id)],
             'telefono'            => 'nullable|string|max:255',
             'cellulare'           => 'nullable|string|max:255',
             'luogo_nascita'       => 'nullable|string|max:255',
@@ -52,32 +53,23 @@ class UpdateAnagraficaRequest extends FormRequest
     // Manipulate the date before validation
     protected function prepareForValidation()
     {
-        // Check if 'scadenza_documento' exists and is not empty
-        if ($this->filled('scadenza_documento')) {
-            $this->merge([
-                'scadenza_documento' => Carbon::parse($this->input('scadenza_documento'))->toDateString(),
-            ]);
-        } else {
-            // Convert empty strings to null
-            $this->merge([
-                'scadenza_documento' => null,
-            ]);
-        }
-
-        if ($this->filled('data_nascita')) {
-            $this->merge([
-                'data_nascita' => Carbon::parse($this->input('data_nascita'))->toDateString(),
-            ]);
-        } else {
-            // Convert empty strings to null
-            $this->merge([
-                'data_nascita' => null,
-            ]);
-        }
-
-        if ($this->has('condomini') && !is_array($this->input('condomini'))) {
-            $this->merge(['condomini' => (array)$this->input('condomini')]);
-        }
+        $this->merge([
+            'scadenza_documento' => $this->scadenza_documento 
+                ? Carbon::parse($this->input('scadenza_documento'))->toDateString() 
+                : null,
+            'data_nascita' => $this->data_nascita 
+                ? Carbon::parse($this->input('data_nascita'))->toDateString() 
+                : null,
+            'email' => $this->email
+                ? Str::lower($this->input('email')) 
+                : null,
+            'email_secondaria' => $this->email_secondaria 
+                ? Str::lower($this->input('email_secondaria')) 
+                : null,
+            'pec' => $this->pec 
+                ? Str::lower($this->input('pec')) 
+                : null,
+        ]);
     }
     
     public function messages()

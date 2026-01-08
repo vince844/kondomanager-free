@@ -4,6 +4,7 @@ import DropdownAction from '@/components/comunicazioni/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/comunicazioni/DataTableColumnHeader.vue';
 import { priorityConstants, publishedConstants } from '@/lib/comunicazioni/constants';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import { ShieldCheck } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
@@ -15,7 +16,7 @@ const { hasPermission,  generateRoute } = usePermission();
 export const columns: ColumnDef<Comunicazione>[] = [
   {
     accessorKey: 'subject',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.title') }),
 
     cell: ({ row, table }) => {
 
@@ -43,8 +44,8 @@ export const columns: ColumnDef<Comunicazione>[] = [
       };
     
       const tooltip = comunicazione.is_approved
-        ? 'Approvata - clicca per rimuovere approvazione'
-        : 'Non approvata - clicca per approvare';
+        ? trans('comunicazioni.table.approved_tooltip')
+        : trans('comunicazioni.table.unapproved_tooltip');
     
       const shieldIcon = hasPermission([Permission.APPROVE_COMUNICAZIONI])
         ? h('div', {
@@ -69,7 +70,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
   },
   {
     accessorKey: 'condomini',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.buildings') }),
   
     cell: ({ row }) => {
       const condomini = row.original.condomini;
@@ -138,7 +139,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
   },
   {
     accessorKey: 'anagrafiche',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Anagrafiche' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.residents') }),
   
     cell: ({ row }) => {
       const anagrafiche = row.original.anagrafiche;
@@ -203,7 +204,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
   },
   {
     accessorKey: 'priority',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Priorità' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.priority') }),
     cell: ({ row }) => {
       const priority = priorityConstants.find(p => p.value === row.getValue('priority'))
       
@@ -213,14 +214,14 @@ export const columns: ColumnDef<Comunicazione>[] = [
         class: `flex items-center gap-2`
       }, [
         h(priority.icon, { class: `h-4 w-4 ${priority.colorClass}` }),
-        h('span', priority.label)
+        h('span', trans(priority.label))
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     accessorKey: 'is_published',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('comunicazioni.table.status') }),
     cell: ({ row }) => {
 
       const value = Boolean(row.getValue('is_published'));
@@ -230,7 +231,7 @@ export const columns: ColumnDef<Comunicazione>[] = [
   
       return h('div', { class: 'flex items-center gap-2' }, [
         h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
-        h('span', stato.label)
+        h('span', trans(stato.label))
       ]);
     },
     filterFn: (row, id, value) =>

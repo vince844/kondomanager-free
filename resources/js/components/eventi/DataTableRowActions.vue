@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref, computed } from 'vue'
-import { router, Link } from "@inertiajs/vue3"
+import { router } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {

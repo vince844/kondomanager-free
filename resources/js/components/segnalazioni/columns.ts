@@ -5,6 +5,7 @@ import DataTableColumnHeader from '@/components/segnalazioni/DataTableColumnHead
 import { priorityConstants, statoConstants, publishedConstants } from '@/lib/segnalazioni/constants';
 import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 
@@ -13,7 +14,7 @@ const { hasPermission, generateRoute } = usePermission();
 export const columns: ColumnDef<Segnalazione>[] = [
   {
     accessorKey: 'subject',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.title') }), 
     cell: ({ row, table }) => {
 
       const segnalazione = row.original
@@ -40,8 +41,8 @@ export const columns: ColumnDef<Segnalazione>[] = [
       };
       
       const tooltip = segnalazione.is_approved
-        ? 'Approvata - clicca per rimuovere approvazione'
-        : 'Non approvata - clicca per approvare';
+        ? trans('segnalazioni.table.approved_tooltip')
+        : trans('segnalazioni.table.unapproved_tooltip');
       
         const shieldIcon = hasPermission(['Approva segnalazioni'])
         ? h('div', {
@@ -66,7 +67,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
   },
   {
     accessorKey: 'condominio',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.buildings') }),
   
     cell: ({ row }) => {
       const condomini = row.original.condominio;
@@ -116,7 +117,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
   },
   {
     accessorKey: 'anagrafiche',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Anagrafiche' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.residents') }),
   
     cell: ({ row }) => {
       const anagrafiche = row.original.anagrafiche;
@@ -181,7 +182,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
   },
   {
     accessorKey: 'stato',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.status') }),
     cell: ({ row }) => {
       const status = statoConstants.find(s => s.value === row.getValue('stato'))
       
@@ -189,14 +190,14 @@ export const columns: ColumnDef<Segnalazione>[] = [
       
       return h('div', { class: 'flex items-center gap-2' }, [
         h(status.icon, { class: `h-4 w-4 ${status.colorClass}` }),
-        h('span', status.label)
+        h('span', trans(status.label))
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     accessorKey: 'priority',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Priorità' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.priority') }),
     cell: ({ row }) => {
       
       const priority = priorityConstants.find(p => p.value === row.getValue('priority'))
@@ -207,14 +208,14 @@ export const columns: ColumnDef<Segnalazione>[] = [
         class: `flex items-center gap-2`
       }, [
         h(priority.icon, { class: `h-4 w-4 ${priority.colorClass}` }),
-        h('span', priority.label)
+        h('span', trans(priority.label))
       ])
     },
     filterFn: (row, id, value) => value.includes(row.getValue(id)),
   },
   {
     accessorKey: 'is_published',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('segnalazioni.table.visibility') }),
     cell: ({ row }) => {
       const value = Boolean(row.getValue('is_published'));
       const stato = publishedConstants.find(p => p.value === value);
@@ -223,7 +224,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
   
       return h('div', { class: 'flex items-center gap-2' }, [
         h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
-        h('span', stato.label)
+        h('span', trans(stato.label))
       ]);
     },
     filterFn: (row, id, value) =>

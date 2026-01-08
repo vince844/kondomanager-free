@@ -54,7 +54,7 @@ class EventoController extends Controller
 
         $validated = $request->validated();
         
-        $perPage = min((int) ($validated['per_page'] ?? 10), 100);
+        $perPage = min((int) ($validated['per_page'] ?? config('pagination.default_per_page')), 100);
         $page = (int) ($validated['page'] ?? 1);
 
         $events = $this->recurrenceService->getEventsInNextDays(

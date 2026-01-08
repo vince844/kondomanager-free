@@ -40,8 +40,8 @@ class Gestione extends Model
             ->withTimestamps();
     }
 
-    public function pianoConto() // singolare!
+    public function pianoConto() 
     {
-        return $this->hasOne(PianoConto::class); // o la relazione corretta
+        return $this->hasOne(PianoConto::class); 
     }
 }

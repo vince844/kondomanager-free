@@ -39,6 +39,34 @@ export function usePermission() {
 
   // Determine if access should be granted based on role or permission checks
   const canAccess = (item: AccessCheckItem): boolean => {
+
+    // Protezione: se l’item non esiste, non deve rompere nulla
+    if (!item) return true;
+
+    // Se è un array di permissions → check diretto
+    if (Array.isArray(item)) {
+      return hasPermission(item);
+    }
+
+    const roles = item.roles ?? [];
+    const permissions = item.permissions ?? [];
+
+    const hasDefinedRoles = roles.length > 0;
+    const hasDefinedPermissions = permissions.length > 0;
+
+    const roleCheck = hasDefinedRoles ? hasRole(roles) : false;
+    const permissionCheck = hasDefinedPermissions ? hasPermission(permissions) : false;
+
+    if (hasDefinedRoles && hasDefinedPermissions) {
+      return roleCheck || permissionCheck;
+    }
+
+    if (hasDefinedRoles) return roleCheck;
+    if (hasDefinedPermissions) return permissionCheck;
+
+    return true; // Nessuna restrizione → accesso sempre consentito
+  };
+/*   const canAccess = (item: AccessCheckItem): boolean => {
     if (Array.isArray(item)) {
       return hasPermission(item); // If item is an array of permissions, check against permissions
     }
@@ -60,7 +88,7 @@ export function usePermission() {
     if (hasDefinedPermissions) return permissionCheck;
   
     return true;  // If no roles or permissions specified, grant access
-  };
+  }; */
 
   const getRolePrefix = (
     roleMappings: Record<string, string> = DEFAULT_ROLE_MAPPINGS
@@ -106,7 +134,6 @@ export function usePermission() {
 
     return finalPath;
   };
-
 
   return { hasRole, hasPermission, canAccess, getRolePrefix, generateRoute, generatePath };
 }

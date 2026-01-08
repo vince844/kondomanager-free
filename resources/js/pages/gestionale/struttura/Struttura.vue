@@ -25,10 +25,6 @@ const breadcrumbs = computed(() => [
   { title: 'dettagli condominio', href: '#' },
 ]);
 
-const truncate = (text: string, length: number = 120) => {
-  return text.length > length ? `${text.slice(0, length)}...` : text;
-};
-
 </script>
 
 <template>

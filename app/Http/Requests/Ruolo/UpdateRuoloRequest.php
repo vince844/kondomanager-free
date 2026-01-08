@@ -23,7 +23,7 @@ class UpdateRuoloRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'       => ['required','string','max:255', Rule::unique('roles')->ignore($this->ruoli, 'name')],
+            'name'        => ['required','string','max:255', Rule::unique('roles')->ignore($this->ruoli, 'name')],
             'description' => 'required|string|max:255',
             'permissions' => ['sometimes', 'array'],
             'accessAdmin' => 'nullable|boolean'
@@ -38,7 +38,7 @@ class UpdateRuoloRequest extends FormRequest
     public function attributes()
     {
         return [
-            'name' => __('validation.attributes.ruoli.name'),
+            'name'        => __('validation.attributes.ruoli.name'),
             'description' => __('validation.attributes.ruoli.description'),
         ];
     }

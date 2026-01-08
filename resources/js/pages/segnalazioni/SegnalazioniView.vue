@@ -8,6 +8,7 @@ import { List, Lock, LockOpen, ListCheck, ListX } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Permission } from '@/enums/Permission';
+import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 
@@ -29,13 +30,16 @@ const statusItem = computed(() => {
 
 <template>
 
-    <Head title="Visualizza segnalazione guasto" />
+    <Head :title="trans('segnalazioni.header.view_ticket_head')" />
   
     <AppLayout >
   
       <div class="px-4 py-6">
         
-        <Heading title="Visualizza segnalazione guasto" description="Di seguito i dettagli della segnalazione guasto" />
+        <Heading 
+            :title="trans('segnalazioni.header.view_ticket_title')" 
+            :description="trans('segnalazioni.header.view_ticket_description')" 
+        />
 
             <div class="flex flex-wrap flex-col lg:flex-row lg:justify-end gap-2 items-start lg:items-center">
                 <Link 
@@ -47,7 +51,13 @@ const statusItem = computed(() => {
                 >
                     <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4" />
                     <Lock v-else class="w-4 h-4" />
-                    <span>{{ props.segnalazione.is_locked ? 'Sblocca' : 'Blocca' }}</span>
+                    <span>
+                        {{ 
+                            props.segnalazione.is_locked 
+                            ? trans('segnalazioni.actions.unlock_ticket') 
+                            : trans('segnalazioni.actions.lock_ticket') 
+                        }}
+                    </span>
                 </Link>
 
                 <Link 
@@ -57,13 +67,9 @@ const statusItem = computed(() => {
                     class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
                     <List class="w-4 h-4" />
-                    <span>Elenco</span>
+                    <span>{{ trans('segnalazioni.actions.list_tickets') }}</span>
                 </Link>
             </div>
-
-         <!--    <div class='mt-4'>
-                <SegnalazioneStats :segnalazione="segnalazione" />
-            </div> -->
 
             <div class="bg-card mb-6 grid grid-cols-1 gap-x-8 gap-y-4 rounded-lg border p-6 text-sm md:grid-cols-2 mt-4">
                 <!-- Left Column -->
@@ -71,7 +77,7 @@ const statusItem = computed(() => {
 
                     <!-- Priority (dynamic) -->
                     <div class="flex items-center gap-2">
-                        <span class="text-muted-foreground font-semibold w-24">Priorità:</span>
+                        <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.priority') }}:</span>
 
                         <div
                             class="flex items-center gap-1"
@@ -86,48 +92,14 @@ const statusItem = computed(() => {
                                     class="h-3 w-3 mr-2"
                                     :class="priorityItem.colorClass"
                                 />
-                                {{ priorityItem.label }}
+                                {{ trans(priorityItem.label) }}
                             </div>
                         </div>
                     </div>
 
-                    <!-- Assignees -->
-     <!--                <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground w-24">Assignees</span>
-                    <div>
-                        <div class="flex -space-x-2">
-                        <span class="relative flex shrink-0 overflow-hidden rounded-full border-background h-5 w-5 border-2">
-                            <img class="aspect-square h-full w-full" alt="Michael Kane" src="/avatars/avatar-1.png" />
-                        </span>
-                        <span class="relative flex shrink-0 overflow-hidden rounded-full border-background h-5 w-5 border-2">
-                            <img class="aspect-square h-full w-full" alt="Olivier Giroud" src="/avatars/avatar-2.png" />
-                        </span>
-                        <span class="relative flex shrink-0 overflow-hidden rounded-full border-background h-5 w-5 border-2">
-                            <img class="aspect-square h-full w-full" alt="Isabella Chen" src="/avatars/avatar-3.png" />
-                        </span>
-                        </div>
-                    </div>
-                    </div> -->
-
-                    <!-- Due Date -->
-             <!--        <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground w-24">Due Date</span>
-                    <div class="flex items-center gap-1">
-                        <svg class="tabler-icon tabler-icon-calendar text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z" />
-                        <path d="M16 3v4" />
-                        <path d="M8 3v4" />
-                        <path d="M4 11h16" />
-                        <path d="M11 15h1" />
-                        <path d="M12 15v3" />
-                        </svg>
-                        <span>Jul 15, 2025</span>
-                    </div>
-                    </div> -->
-
                     <!-- Created -->
                     <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">Creata:</span>
+                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.visibility.created_on') }}:</span>
                     <div class="flex items-center gap-1">
                         <svg class="tabler-icon tabler-icon-calendar text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z" />
@@ -143,7 +115,7 @@ const statusItem = computed(() => {
 
                     <!-- Project -->
                     <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">Condominio:</span>
+                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.label.building') }}:</span>
                     <span class="capitalize font-medium">{{ segnalazione.condominio.full.nome }}</span>
                     </div>
                 </div>
@@ -152,7 +124,7 @@ const statusItem = computed(() => {
                 <div class="space-y-4">
                     
                        <div class="flex items-center gap-2">
-                        <span class="text-muted-foreground font-semibold w-24">Stato:</span>
+                        <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.status') }}:</span>
 
                         <div
                             class="flex items-center gap-1"
@@ -168,22 +140,14 @@ const statusItem = computed(() => {
                                     class="h-3 w-3 mr-2"
                                     :class="statusItem.colorClass"
                                 />
-                                {{ statusItem.label }}
+                                {{ trans(statusItem.label) }}
                             </div>
                         </div>
                     </div>
 
-                    <!-- Status -->
-                  <!--   <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground w-24">Status</span>
-                    <div class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 text-xs capitalize border-blue-200 bg-blue-100 text-blue-700">
-                        In Progress
-                    </div>
-                    </div> -->
-
                     <!-- Sprint -->
                     <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">Visibilità:</span>
+                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.visibility') }}:</span>
                     <component 
                         :is="segnalazione.is_published ? ListCheck : ListX" 
                         :class="[
@@ -191,12 +155,16 @@ const statusItem = computed(() => {
                         segnalazione.is_published ? 'w-3.5 h-3.5' : 'w-3.5 h-3.5'
                         ]" 
                     />
-                    {{ segnalazione.is_published ? 'Pubblicata' : 'Bozza' }}
+                    {{ 
+                        segnalazione.is_published 
+                        ? trans('segnalazioni.visibility.public') 
+                        : trans('segnalazioni.visibility.private') 
+                    }}
                    <!--  <span>Sprint 24 (May 2024)</span> -->
                     </div>
 
                     <!-- Estimated Time -->
-                    <div class="flex items-center gap-2">
+             <!--        <div class="flex items-center gap-2">
                     <span class="text-muted-foreground w-24">Est. Time</span>
                     <div class="flex items-center gap-1">
                         <svg class="tabler-icon tabler-icon-clock-hour-4 text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -206,36 +174,8 @@ const statusItem = computed(() => {
                         </svg>
                         <span>1 week</span>
                     </div>
-                    </div>
-
-                    <!-- Linked Items -->
-                 <!--    <div class="flex gap-2">
-                    <span class="text-muted-foreground w-24">Linked Items</span>
-                    <div class="space-y-1">
-                        <div class="flex items-center gap-1">
-                        <svg class="tabler-icon tabler-icon-git-branch text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path d="M7 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M7 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M17 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M7 8l0 8" />
-                            <path d="M9 18h6a2 2 0 0 0 2 -2v-5" />
-                            <path d="M14 14l3 -3l3 3" />
-                        </svg>
-                        <span class="text-xs">PR #1234: Implement new workflow UI</span>
-                        </div>
-                        <div class="flex items-center gap-1">
-                        <svg class="tabler-icon tabler-icon-git-branch text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                            <path d="M7 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M7 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M17 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
-                            <path d="M7 8l0 8" />
-                            <path d="M9 18h6a2 2 0 0 0 2 -2v-5" />
-                            <path d="M14 14l3 -3l3 3" />
-                        </svg>
-                        <span class="text-xs">Issue #5678: Database schema updates</span>
-                        </div>
-                    </div>
                     </div> -->
+
                 </div>
 
             </div>
@@ -249,29 +189,27 @@ const statusItem = computed(() => {
                     
                     <div class="bg-white dark:bg-muted rounded shadow-sm p-6 space-y-4 border">
                         <div class="mb-1 space-y-0.5">
-                        <h2 class="text-xl font-semibold tracking-tight">{{ props.segnalazione.subject }}</h2>
-                        <p class="text-sm text-muted-foreground">
-                            Inviata {{  props.segnalazione.created_at}} da {{props.segnalazione.created_by.user.name }} 
-                        </p>
-                    </div>
-                    
-                    <div class="mt-4 text-muted-foreground text-justify">
+                            <h2 class="text-xl font-semibold tracking-tight">
+                                {{ props.segnalazione.subject }}
+                            </h2>
+                            <p class="text-sm text-muted-foreground">
+                                {{ 
+                                    trans('segnalazioni.visibility.sent_on_by', { 
+                                        date: props.segnalazione.created_at, 
+                                        name: props.segnalazione.created_by.user.name 
+                                    }) 
+                                }}
+                            </p>
+                        </div>
+                        
+                        <div class="mt-4 text-muted-foreground text-justify">
 
-                        {{props.segnalazione.description }}
+                            {{props.segnalazione.description }}
 
-                    </div>
+                        </div>
                         
                     </div>
                 </div>
-
-                <!-- Side Card (1/4 width) -->
-      <!--           <div class="col-span-1 mt-3">
-                    <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
-
-                        altri dettagli
-                        
-                    </div>
-                </div> -->
             
             </div>
       </div>

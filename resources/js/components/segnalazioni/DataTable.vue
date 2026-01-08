@@ -8,6 +8,7 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/segnalazioni/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Segnalazione } from '@/types/segnalazioni';
 
@@ -107,7 +108,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+             {{ trans('segnalazioni.dialogs.no_tickets_created') }}
             </TableCell>
           </TableRow>
         </template>
