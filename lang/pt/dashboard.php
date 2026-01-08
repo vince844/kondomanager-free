@@ -1,5 +1,5 @@
 <?php
 
 return [
-    'condomini_registrati'    => "Registered buildings",
+    'condomini_registrati'    => "Edíficios registados",
 ];

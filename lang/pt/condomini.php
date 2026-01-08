@@ -2,7 +2,8 @@
 
 return [
     /* ------------------------------------------------------------------
-     | Backend notifications
+     | Backend notifications 
+     | Notificações do sistema
      | ------------------------------------------------------------------ */
     'success_create_building' => 'O novo condomínio foi criado com sucesso.',
     'error_create_building'   => 'Ocorreu um erro durante a criação do condomínio.',
@@ -12,7 +13,7 @@ return [
     'error_delete_building'   => 'Ocorreu um erro durante a eliminação do condomínio.',
 
     /* ------------------------------------------------------------------
-     | Front‑end strings (headings, titles, descriptions)
+     | Front‑end strings (cabeçalhos, títulos, descrições)
      | ------------------------------------------------------------------ */
     'header' => [
         'list_buildings_head'           => 'Lista de condomínios',
@@ -24,14 +25,14 @@ return [
         'edit_building_head'            => 'Editar condomínio',
         'edit_building_title'           => 'Editar condomínio',
         'edit_building_description'     => 'Preencha o seguinte formulário para atualizar ou modificar os dados do condomínio',
-        'building_info_heading'         => 'Dados identificativos',
-        'building_info_description'     => 'A seguir pode especificar os dados identificativos do condomínio',
+        'building_info_heading'         => 'Dados de identificação',
+        'building_info_description'     => 'A seguir pode especificar os dados de identificação do condomínio',
         'building_registry_heading'     => 'Dados cadastrais',
         'building_registry_description' => 'A seguir pode especificar os dados cadastrais do condomínio',
     ],
 
     /* ------------------------------------------------------------------
-     | Table column headers & generic UI strings
+     | Títulos das colunas da tabela e cadeias de caracteres da UI
      | ------------------------------------------------------------------ */
     'table' => [
         'name'             => 'Denominação',
@@ -41,7 +42,8 @@ return [
     ],
 
     /* ------------------------------------------------------------------
-     | Labels for form fields
+     | Labels for form fields 
+     | Etiquetas para os campos do formulário
      | ------------------------------------------------------------------ */
     'label' => [
         'name'              => 'Denominação',
@@ -58,6 +60,7 @@ return [
 
     /* ------------------------------------------------------------------
      | Placeholders for inputs
+     | Campos de entrada formulários
      | ------------------------------------------------------------------ */
     'placeholder' => [
         'name'              => 'Inserir a denominação do condomínio',
@@ -74,6 +77,7 @@ return [
 
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
+     | Mensagens de estado vazio / diálogo
      | ------------------------------------------------------------------ */
     'dialogs' => [
         'no_buildings_created' => 'Ainda não foi criado nenhum condomínio',
@@ -81,6 +85,7 @@ return [
 
     /* ------------------------------------------------------------------
      | Action buttons (toolbar, card actions, etc.)
+     | Botões de ação (barra de ferramentas, ações de cartão, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
         'new_building'    => 'Criar',
