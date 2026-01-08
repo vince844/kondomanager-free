@@ -2,6 +2,9 @@
 
 return [
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> ad2562d (merge changes)
     /* ------------------------------------------------------------------
     | Front‑end strings - Fornecedores
     | ------------------------------------------------------------------ */
@@ -16,6 +19,7 @@ return [
     'error_attach_anagrafica'            => "Ocorreu um erro ao associar o registo ao fornecedor.",
     'success_detach_anagrafica'          => "O registo foi removido com sucesso do fornecedor.",
     'error_detach_anagrafica'            => "Ocorreu um erro ao remover o registo do fornecedor.",
+<<<<<<< HEAD
 
 =======
 
@@ -31,4 +35,7 @@ return [
     'error_detach_anagrafica'            => "An error occurred while detaching the anagrafica from the fornitore.",
     
 >>>>>>> 6e16a63 (Addedd Portughese language)
+=======
+
+>>>>>>> ad2562d (merge changes)
 ];

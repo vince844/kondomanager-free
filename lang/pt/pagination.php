@@ -6,6 +6,7 @@ return [
     |--------------------------------------------------------------------------
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     | Linhas de código de Paginação
 =======
 <<<<<<< HEAD
@@ -28,20 +29,31 @@ return [
 =======
 >>>>>>> b8438a1 (Translated residents module)
     | Pagination Language Lines
+=======
+    | Linhas de código de Paginação
+>>>>>>> ad2562d (merge changes)
     |--------------------------------------------------------------------------
     |
-    | The following language lines are used by the paginator library to build
-    | the simple pagination links. You are free to change them to anything
-    | you want to customize your views to better match your application.
+    | As linhas de código seguintes são utilizadas pela biblioteca de
+    | paginação para construir os links simples de paginação. Pode alterá-las
+    | conforme necessário para adaptar as vistas à sua aplicação.
     |
     */
 
+<<<<<<< HEAD
     'previous' => '&laquo; Previous',
     'next' => 'Next &raquo;',
+<<<<<<< HEAD
 <<<<<<< HEAD
 >>>>>>> ece9f11 (Addedd Portughese language)
 >>>>>>> 6e16a63 (Addedd Portughese language)
 =======
 >>>>>>> b8438a1 (Translated residents module)
+=======
+=======
+    'previous' => '&laquo; Anterior',
+    'next' => 'Seguinte &raquo;',
+>>>>>>> 7935b17 (merge changes)
+>>>>>>> ad2562d (merge changes)
 
 ];
