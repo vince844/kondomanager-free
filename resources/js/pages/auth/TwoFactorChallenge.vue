@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, computed, watch, nextTick } from 'vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { PinInputRoot, PinInputInput } from 'reka-ui';
+import { trans } from 'laravel-vue-i18n';
 
 const recovery = ref(false);
 const pinValue = ref<string[]>([]);
@@ -65,16 +67,28 @@ const isDisabled = computed(() => {
   return form.processing || 
     (recovery.value ? !form.recovery_code : !form.code || form.code.length !== 6);
 });
+
+// Computed properties for dynamic titles and descriptions
+const pageTitle = computed(() => {
+  return recovery.value 
+    ? trans('auth.header.two_factor_challenge.title_recovery_code')
+    : trans('auth.header.two_factor_challenge.title_authentication_code');
+});
+
+const pageDescription = computed(() => {
+  return recovery.value 
+    ? trans('auth.header.two_factor_challenge.description_recovery_code')
+    : trans('auth.header.two_factor_challenge.description_authentication_code');
+});
+
 </script>
 
 <template>
   <AuthLayout
-    :title="recovery ? 'Codice di Recupero' : 'Codice di Autenticazione'"
-    :description="recovery 
-      ? 'Conferma l\'accesso al tuo account inserendo uno dei tuoi codici di recupero di emergenza.'
-      : 'Inserisci il codice di autenticazione fornito dalla tua applicazione di autenticazione.'"
+    :title="pageTitle"
+    :description="pageDescription"
   >
-    <Head title="Autenticazione a Due Fattori" />
+    <Head :title="trans('auth.header.two_factor_challenge.head')" />
 
     <div class="relative space-y-2">
       <template v-if="!recovery">
@@ -100,7 +114,7 @@ const isDisabled = computed(() => {
             <InputError :message="form.errors.code" />
           </div>
           <Button type="submit" class="w-full" :disabled="isDisabled">
-            Continua
+            {{ trans('auth.button.two_factor_challenge') }}
           </Button>
         </form>
       </template>
@@ -113,27 +127,27 @@ const isDisabled = computed(() => {
             type="text"
             class="block w-full"
             autocomplete="one-time-code"
-            placeholder="Inserisci il codice di recupero"
+            :placeholder="trans('auth.placeholder.two_factor_challenge.recovery_code')"
             autofocus
             required
           />
           <InputError :message="form.errors.recovery_code" />
           <Button type="submit" class="w-full" :disabled="isDisabled">
-            Continua
+            {{ trans('auth.button.two_factor_challenge') }}
           </Button>
         </form>
       </template>
 
       <div class="space-x-0.5 text-center text-sm leading-5 text-muted-foreground mt-4">
-        <span class="opacity-80">oppure puoi </span>
+        <span class="opacity-80">{{ trans('auth.link.two_factor_challenge.or') }} </span>
         <button
           type="button"
           class="font-medium underline opacity-80 cursor-pointer bg-transparent border-0 p-0"
           @click="toggleRecovery"
         >
           {{ recovery
-            ? 'accedere usando un codice di autenticazione'
-            : 'accedere usando un codice di recupero' }}
+            ? trans('auth.link.two_factor_challenge.toggle_authentication_code')
+            : trans('auth.link.two_factor_challenge.toggle_recovery_code') }}
         </button>
       </div>
     </div>

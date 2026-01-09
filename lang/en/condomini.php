@@ -16,26 +16,19 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
-        // Buildings list
-        'list_buildings_head'        => "List of buildings",
-        'list_buildings_title'       => "List of buildings",
-        'list_buildings_description'=> "Below is the table with the list of all building profiles already created",
-
-        // Create new building
-        'new_building_head'          => "Create new building",
-        'new_building_title'         => "Create new building",
-        'new_building_description'   => "Fill out the form below to create a new building profile",
-
-        // Edit building
-        'edit_building_head'         => "Edit building",
-        'edit_building_title'        => "Edit building",
-        'edit_building_description'  => "Fill out the form below to edit the building profile",
-
-        // Form sections
-        'building_info_heading'      => "Building information",
-        'building_info_description'  => "Here you can enter the basic information of the building.",
-        'building_registry_heading'  => "Building registry data",
-        'building_registry_description'=> "Here you can enter the registry data of the building",
+        'list_buildings_head'           => "List of buildings",
+        'list_buildings_title'          => "List of buildings",
+        'list_buildings_description'    => "Below is the table with the list of all building profiles already created",
+        'new_building_head'             => "Create new building",
+        'new_building_title'            => "Create new building",
+        'new_building_description'      => "Fill out the form below to create a new building profile",
+        'edit_building_head'            => "Edit building",
+        'edit_building_title'           => "Edit building",
+        'edit_building_description'     => "Fill out the form below to edit the building profile",
+        'building_info_heading'         => "Building information",
+        'building_info_description'     => "Here you can enter the basic information of the building.",
+        'building_registry_heading'     => "Building registry data",
+        'building_registry_description' => "Here you can enter the registry data of the building",
     ],
 
     /* ------------------------------------------------------------------
@@ -84,7 +77,7 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
-        'no_tickets_created' => "No buildings have been created yet",
+        'no_buildings_created' => "No buildings have been created yet",
     ],
 
     /* ------------------------------------------------------------------

@@ -16,26 +16,19 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
-        // Lista condomini
-        'list_buildings_head'        => "Elenco condomini",
-        'list_buildings_title'       => "Elenco condomini",
-        'list_buildings_description'=> "Di seguito la tabella con l'elenco di tutti i profili dei condomini registrati",
-
-        // Creazione nuovo condominio
-        'new_building_head'          => "Crea condominio",
-        'new_building_title'         => "Crea condominio",
-        'new_building_description'   => "Compila il seguente modulo per la creazione di un nuovo condominio",
-
-        // Modifica condominio
-        'edit_building_head'         => "Modifica condominio",
-        'edit_building_title'        => "Modifica condominio",
-        'edit_building_description' => "Compila il seguente modulo per aggiornare o modificare i dati del condominio",
-
-        // Sezioni modulo creazione condominio
-        'building_info_heading'      => "Dati anagrafici",
-        'building_info_description'  => "Di seguito è possibile specificare i dati anagrafici del condominio",
-        'building_registry_heading'  => "Dati catastali",
-        'building_registry_description'=> "Di seguito è possibile specificare i dati catastali del condominio",
+        'list_buildings_head'           => "Elenco condomini",
+        'list_buildings_title'          => "Elenco condomini",
+        'list_buildings_description'    => "Di seguito la tabella con l'elenco di tutti i profili dei condomini registrati",
+        'new_building_head'             => "Crea condominio",
+        'new_building_title'            => "Crea condominio",
+        'new_building_description'      => "Compila il seguente modulo per la creazione di un nuovo condominio",
+        'edit_building_head'            => "Modifica condominio",
+        'edit_building_title'           => "Modifica condominio",
+        'edit_building_description'     => "Compila il seguente modulo per aggiornare o modificare i dati del condominio",
+        'building_info_heading'         => "Dati anagrafici",
+        'building_info_description'     => "Di seguito è possibile specificare i dati anagrafici del condominio",
+        'building_registry_heading'     => "Dati catastali",
+        'building_registry_description' => "Di seguito è possibile specificare i dati catastali del condominio",
     ],
 
     /* ------------------------------------------------------------------
@@ -84,7 +77,6 @@ return [
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
     'dialogs' => [
-        // Nota: la chiave originale era `no_buildingss_created`; ho rimosso la “s” in eccesso.
         'no_buildings_created' => "Nessun condominio ancora creato",
     ],
 

@@ -6,7 +6,6 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\URL;
 
 class CustomVerifyEmailNotification extends Notification
@@ -62,11 +61,12 @@ class CustomVerifyEmailNotification extends Notification
     protected function buildMailMessage($url)
     {
         return (new MailMessage)
-            ->subject(Lang::get('Verifica indirizzo email'))
-            ->greeting("Salve")
-            ->line(Lang::get('Per favore clicca sul seguente pulsante per verificare il tuo indirizzo email'))
-            ->action(Lang::get('Verifica indirizzo email'), $url)
-            ->line(Lang::get('Se non hai creato un account, per favore ignora questa email.'));
+        
+            ->subject(__('notifications.verify_email.subject'))
+            ->greeting(__('notifications.verify_email.greeting'))
+            ->line(__('notifications.verify_email.line_1'))
+            ->action(__('notifications.verify_email.action'), $url)
+            ->line(__('notifications.verify_email.line_2'));
     }
 
     /**
@@ -83,7 +83,7 @@ class CustomVerifyEmailNotification extends Notification
 
         return URL::temporarySignedRoute(
             'verification.verify',
-            Carbon::now()->addMinutes(Config::get('auth.verification.expire', 60)),
+            Carbon::now()->addMinutes(Config::get('auth.passwords.users.expire', 60)),
             [
                 'id' => $notifiable->getKey(),
                 'hash' => sha1($notifiable->getEmailForVerification()),

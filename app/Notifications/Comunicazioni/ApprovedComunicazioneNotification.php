@@ -6,11 +6,11 @@ use App\Models\Comunicazione;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 use App\Helpers\RouteHelper;
+use App\Notifications\LocalizedNotification;
 
-class ApprovedComunicazioneNotification extends Notification implements ShouldQueue
+class ApprovedComunicazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -22,6 +22,8 @@ class ApprovedComunicazioneNotification extends Notification implements ShouldQu
      */
     public function __construct(Comunicazione $comunicazione, $user)
     {
+        // Important to load translations
+        parent::__construct(); 
         $this->comunicazione = $comunicazione;
         $this->user = $user;
     }
@@ -45,12 +47,25 @@ class ApprovedComunicazioneNotification extends Notification implements ShouldQu
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-            ->subject('Nuova comunicazione approvata')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->user->name ." ha approvato la comunicazione nella bacheca del condominio")
-            ->line('**Oggetto:** ' . $this->comunicazione->subject)
-            ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
-            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));
+            ->subject(__('notifications.approved_communication.subject'))
+            ->greeting(__('notifications.approved_communication.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.approved_communication.line_1', [
+                'user' => $this->user->name
+            ]))
+            ->line(
+                '**' . __('notifications.approved_communication.object') . ':** ' .
+                $this->comunicazione->subject
+            )
+            ->line(
+                '**' . __('notifications.approved_communication.priority') . ':** ' .
+                Str::ucfirst($this->comunicazione->priority)
+            )
+            ->action(
+                __('notifications.approved_communication.action'),
+                url("/{$routePrefix}/comunicazioni/{$this->comunicazione->id}")
+            );
     }
 
     /**

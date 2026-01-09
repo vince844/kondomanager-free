@@ -4,13 +4,13 @@ namespace App\Notifications\Segnalazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Segnalazione;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class ApproveSegnalazioneNotification extends Notification implements ShouldQueue
+class ApproveSegnalazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -21,6 +21,8 @@ class ApproveSegnalazioneNotification extends Notification implements ShouldQueu
      */
     public function __construct(Segnalazione $segnalazione)
     {
+        // Important to load translations
+        parent::__construct();
         $this->segnalazione = $segnalazione;
     }
 
@@ -42,14 +44,19 @@ class ApproveSegnalazioneNotification extends Notification implements ShouldQueu
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-            ->subject('Nuova segnalazione da approvare')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->segnalazione->createdBy->name ." ha creato una nuova segnalazione guasto per il condominio")
-            ->line("La segnalazione è in attesa di essere approvata perchè l'utente che l'ha inviata non ha permessi sufficienti per pubblicarla")
-            ->line('**Oggetto:** ' . $this->segnalazione->subject)
-            ->line('**Priorità:** ' . Str::ucfirst($this->segnalazione->priority))
-            ->line('**Stato:** ' . Str::ucfirst($this->segnalazione->stato))
-            ->action('Visualizza segnalazione', url("/{$routePrefix}/segnalazioni/" . $this->segnalazione->id));
+            ->subject(__('notifications.approve_ticket.subject'))
+            ->greeting(__('notifications.approve_ticket.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.approve_ticket.line_1', [
+                'user' => $this->segnalazione->createdBy->name
+            ]))
+            ->line(__('notifications.approve_ticket.line_2'))
+            ->line('**' . __('notifications.approve_ticket.object') . ':** ' . $this->segnalazione->subject)
+            ->line('**' . __('notifications.approve_ticket.priority') . ':** ' . Str::ucfirst($this->segnalazione->priority))
+            ->line('**' . __('notifications.approve_ticket.status') . ':** ' . Str::ucfirst($this->segnalazione->stato))
+            ->action(__('notifications.approve_ticket.action'), url("/{$routePrefix}/segnalazioni/{$this->segnalazione->id}"));
+
     }
 
     /**

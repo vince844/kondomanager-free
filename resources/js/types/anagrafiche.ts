@@ -10,6 +10,11 @@ export interface AnagraficaPivot {
   note: string | null;
 }
 
+export interface DocumentType {
+  label: string;
+  id: string;
+};
+
 export interface AnagraficaFornitorePivot {
   fornitore_id: number;
   anagrafica_id: number;
@@ -52,7 +57,6 @@ export interface AnagraficaWithPivot extends Anagrafica {
   pivot: AnagraficaPivot
   saldo: Saldo
 }
-
 
 export interface AnagraficaFornitore extends Anagrafica {
   pivot: AnagraficaFornitorePivot

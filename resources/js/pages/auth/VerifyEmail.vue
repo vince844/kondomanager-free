@@ -1,9 +1,11 @@
 <script setup lang="ts">
+
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { LoaderCircle } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 
 defineProps<{
     status?: string;
@@ -17,20 +19,23 @@ const submit = () => {
 </script>
 
 <template>
-    <AuthLayout title="Verifica indirizzo email" description="Per favore verifica il tuo indirizzo email cliccando sul link che abbiamo inviato al tuo indirizzo email.">
-        <Head title="Verifica email" />
+    <AuthLayout 
+        :title="trans('auth.header.verification_notice.title')" 
+        :description="trans('auth.header.verification_notice.description')"
+    >
+        <Head :title="trans('auth.header.verification_notice.head')" />
 
         <div v-if="status === 'verification-link-sent'" class="mb-4 text-center text-sm font-medium text-green-600">
-            Un nuovo link di verifica è stato inviato all'indirizzo email usato per la registrazione sul portale.
+            {{ trans('auth.status.verification_link_sent') }}
         </div>
 
         <form @submit.prevent="submit" class="space-y-6 text-center">
             <Button :disabled="form.processing" variant="secondary">
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Reinvia email di verifica
+                {{ trans('auth.button.verification_notice') }}
             </Button>
 
-            <TextLink :href="route('logout')" method="post" as="button" class="mx-auto block text-sm"> Log out </TextLink>
+            <TextLink :href="route('logout')" method="post" as="button" class="mx-auto block text-sm"> {{ trans('auth.button.logout') }} </TextLink>
         </form>
     </AuthLayout>
 </template>

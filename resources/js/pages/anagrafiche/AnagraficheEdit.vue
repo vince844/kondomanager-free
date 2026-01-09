@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { watch, onMounted } from "vue";
+import { watch, onMounted, computed } from "vue";
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -12,12 +12,14 @@ import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import VueDatePicker from '@vuepic/vue-datepicker';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
-import type { Anagrafica } from '@/types/anagrafiche'; 
+import type { Anagrafica, DocumentType } from '@/types/anagrafiche'; 
 
 const props = defineProps<{
   anagrafica: Anagrafica;
@@ -62,21 +64,16 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-type DocumentType = {
-  label: string;
-  id: string;
-};
-
-const documents = [
+const documents = computed(() => [
   {
-      label: 'Passaporto',
-      id: 'passport',
+    label: trans('anagrafiche.label.passport'),
+    id: 'passport',
   },
   {
-      label: "Carta d'identità",
-      id: 'id_card',
+    label: trans('anagrafiche.label.id_card'),
+    id: 'id_card',
   }
-];
+]);
 
 const submit = () => {
     form.put(route(generateRoute('anagrafiche.update'), {id: props.anagrafica.id}), {
@@ -88,13 +85,16 @@ const submit = () => {
 
 <template>
 
-  <Head title="Modifica anagrafica" />
+  <Head :title="trans('anagrafiche.header.edit_resident_head')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Modifica anagrafica" description="Compila il seguente modulo per modificare l'anagrafica" />
+      <Heading 
+        :title="trans('anagrafiche.header.edit_resident_title')"
+        :description="trans('anagrafiche.header.edit_resident_description')"
+      />
 
       <div class="mt-3 flex flex-col">
         <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
@@ -106,7 +106,7 @@ const submit = () => {
                 <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                   <Plus class="w-4 h-4" v-if="!form.processing" />
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                  Salva
+                  {{trans('anagrafiche.actions.save_resident')}}
                 </Button>
 
                 <Link
@@ -115,15 +115,15 @@ const submit = () => {
                   class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
                 >
                   <List class="w-4 h-4" />
-                  <span>Elenco</span>
+                  <span>{{trans('anagrafiche.actions.list_residents')}}</span>
                 </Link>
               </div>
 
               <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
 
                 <div class="pt-3">
-                    <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
-                    <p class="mt-1 text-sm text-gray-500">Di seguito è possibile modificare i dati anagrafici</p>
+                  <h3 class="text-lg font-medium leading-6 text-gray-900">{{trans('anagrafiche.header.resident_info_heading')}}</h3>
+                  <p class="mt-1 text-sm text-gray-500">{{trans('anagrafiche.header.resident_info_description')}}</p>
                 </div>
 
                 <Separator class="my-4" />
@@ -132,13 +132,13 @@ const submit = () => {
                     
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-3">
-                          <Label for="nome">Nome e cognome</Label>
+                          <Label for="nome">{{trans('anagrafiche.label.name')}}</Label>
                           <Input 
                             id="nome" 
                             class="mt-1 block w-full"
                               v-model="form.nome" 
                               v-on:focus="form.clearErrors('nome')"
-                              placeholder="Nome e cognome" 
+                              :placeholder="trans('anagrafiche.placeholder.name')" 
                           />
                           
                           <InputError :message="form.errors.nome" />
@@ -148,13 +148,13 @@ const submit = () => {
 
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-6">
-                          <Label for="indirizzo">Indirizzo di residenza</Label>
+                          <Label for="indirizzo">{{trans('anagrafiche.label.address')}}</Label>
                           <Input 
                             id="indirizzo" 
                             class="mt-1 block w-full"
-                              v-model="form.indirizzo" 
-                              v-on:focus="form.clearErrors('indirizzo')"
-                              placeholder="Indirizzo di residenza" 
+                            v-model="form.indirizzo" 
+                            v-on:focus="form.clearErrors('indirizzo')"
+                            :placeholder="trans('anagrafiche.placeholder.address')" 
                           />
                           
                           <InputError class="mt-2" :message="form.errors.indirizzo" />
@@ -164,13 +164,13 @@ const submit = () => {
 
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
-                          <Label for="telefono">Telefono fisso</Label>
+                          <Label for="telefono">{{trans('anagrafiche.label.telephone')}}</Label>
                           <Input 
                             id="telefono" 
                             class="mt-1 block w-full"
-                              v-model="form.telefono" 
-                              v-on:focus="form.clearErrors('telefono')"
-                              placeholder="Telefono fisso" 
+                            v-model="form.telefono" 
+                            v-on:focus="form.clearErrors('telefono')"
+                            :placeholder="trans('anagrafiche.placeholder.telephone')"  
                           />
                           
                           <InputError class="mt-2" :message="form.errors.telefono" />
@@ -178,13 +178,13 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="cellulare">Telefono cellulare</Label>
+                          <Label for="cellulare">{{trans('anagrafiche.label.mobile')}}</Label>
                           <Input 
                             id="cellulare" 
                             class="mt-1 block w-full"
-                              v-model="form.cellulare" 
-                              v-on:focus="form.clearErrors('cellulare')"
-                              placeholder="Telefono cellulare" 
+                            v-model="form.cellulare" 
+                            v-on:focus="form.clearErrors('cellulare')"
+                            :placeholder="trans('anagrafiche.placeholder.mobile')"  
                           />
                           
                           <InputError class="mt-2" :message="form.errors.cellulare" />
@@ -195,13 +195,13 @@ const submit = () => {
 
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
-                          <Label for="email">Indirizzo email primario</Label>
+                          <Label for="email">{{trans('anagrafiche.label.primary_email')}}</Label>
                           <Input 
                             id="email" 
                             class="mt-1 block w-full"
-                              v-model="form.email" 
-                              v-on:focus="form.clearErrors('email')"
-                              placeholder="Indirizzo email primario" 
+                            v-model="form.email" 
+                            v-on:focus="form.clearErrors('email')"
+                            :placeholder="trans('anagrafiche.placeholder.primary_email')" 
                           />
                           
                           <InputError class="mt-2" :message="form.errors.email" />
@@ -209,13 +209,13 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="email_secondaria">Indirizzo email secondario</Label>
+                          <Label for="email_secondaria">{{trans('anagrafiche.label.secondary_email')}}</Label>
                           <Input 
                             id="email_secondaria" 
                             class="mt-1 block w-full"
-                              v-model="form.email_secondaria" 
-                              v-on:focus="form.clearErrors('email_secondaria')"
-                              placeholder="Indirizzo email secondario" 
+                            v-model="form.email_secondaria" 
+                            v-on:focus="form.clearErrors('email_secondaria')"
+                            :placeholder="trans('anagrafiche.placeholder.secondary_email')"  
                           />
                           
                           <InputError class="mt-2" :message="form.errors.email_secondaria" />
@@ -223,13 +223,13 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="pec">Indirizzo email pec</Label>
+                          <Label for="pec">{{trans('anagrafiche.label.pec')}}</Label>
                           <Input 
                             id="pec" 
                             class="mt-1 block w-full"
-                              v-model="form.pec" 
-                              v-on:focus="form.clearErrors('pec')"
-                              placeholder="Indirizzo email pec" 
+                            v-model="form.pec" 
+                            v-on:focus="form.clearErrors('pec')"
+                            :placeholder="trans('anagrafiche.placeholder.pec')" 
                           />
                           
                           <InputError class="mt-2" :message="form.errors.pec" />
@@ -239,26 +239,26 @@ const submit = () => {
 
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
-                          <Label for="tipologia_documento">Tipologia documento</Label>
+                          <Label for="tipologia_documento">{{trans('anagrafiche.label.document_type')}}</Label>
 
                           <v-select 
                             :options="documents" 
                             label="label" 
                             v-model="form.tipologia_documento"
-                            placeholder="Seleziona tipologia documento"
+                            :placeholder="trans('anagrafiche.placeholder.document_type')"
                             :reduce="(document: DocumentType) => document.id"
                           />
                 
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="numero_documento">Numero documento</Label>
+                          <Label for="numero_documento">{{trans('anagrafiche.label.document_number')}}</Label>
                           <Input 
                             id="numero_documento" 
                             class="mt-1 block w-full"
-                              v-model="form.numero_documento" 
-                              v-on:focus="form.clearErrors('numero_documento')"
-                              placeholder="Numero documento" 
+                            v-model="form.numero_documento" 
+                            v-on:focus="form.clearErrors('numero_documento')"
+                            :placeholder="trans('anagrafiche.placeholder.document_number')" 
                           />
                           
                           <InputError class="mt-2" :message="form.errors.numero_documento" />
@@ -266,7 +266,7 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="scadenza_documento">Data scadenza documento</Label>
+                          <Label for="scadenza_documento">{{trans('anagrafiche.label.document_expiry')}}</Label>
 
                           <VueDatePicker 
                             v-model="form.scadenza_documento" 
@@ -277,7 +277,7 @@ const submit = () => {
                             auto-position="bottom"
                             :action-row="{ showSelect: false, showCancel: false, }"
                             auto-apply
-                            placeholder="Data scadenza documento"
+                            :placeholder="trans('anagrafiche.placeholder.document_expiry')" 
                             class="block w-full py-1" 
                           />
 
@@ -289,14 +289,14 @@ const submit = () => {
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-2">
                           
-                          <Label for="codice_fiscale">Codice fiscale</Label>
+                          <Label for="codice_fiscale">{{trans('anagrafiche.label.fiscal_code')}}</Label>
 
                           <Input 
                             id="codice_fiscale" 
                             class="mt-1 block w-full"
                             v-model="form.codice_fiscale" 
                             v-on:focus="form.clearErrors('codice_fiscale')"
-                            placeholder="Codice fiscale" 
+                            :placeholder="trans('anagrafiche.placeholder.fiscal_code')" 
                           />
                           
                           <InputError class="mt-2" :message="form.errors.codice_fiscale" />
@@ -304,13 +304,13 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="luogo_nascita">Luogo di nascita</Label>
+                          <Label for="luogo_nascita">{{trans('anagrafiche.label.birth_place')}}</Label>
                           <Input 
                             id="luogo_nascita" 
                             class="mt-1 block w-full"
                             v-model="form.luogo_nascita" 
                             v-on:focus="form.clearErrors('luogo_nascita')"
-                            placeholder="Luogo di nascita" 
+                            :placeholder="trans('anagrafiche.placeholder.birth_place')"  
                           />
                           
                           <InputError class="mt-2" :message="form.errors.luogo_nascita" />
@@ -318,7 +318,7 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-2">
-                          <Label for="scadenza_documento">Data nascita</Label>
+                          <Label for="scadenza_documento">{{trans('anagrafiche.label.birthday')}}</Label>
 
                           <VueDatePicker 
                             v-model="form.data_nascita" 
@@ -329,9 +329,8 @@ const submit = () => {
                             auto-position="bottom"
                             :action-row="{ showSelect: false, showCancel: false, }"
                             auto-apply
-                            placeholder="Data nascita"
+                            :placeholder="trans('anagrafiche.placeholder.birthday')"
                             class="block w-full py-1" 
-
                           />
 
                           <InputError class="mt-2" :message="form.errors.data_nascita || ''" />
@@ -343,7 +342,29 @@ const submit = () => {
                         <!--  Condomini field -->
                         <div class="sm:col-span-2">
 
-                            <Label for="condomini">Condomini</Label>
+                            <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
+                              <Label for="buildings">{{trans('anagrafiche.label.buildings')}}</Label>
+
+                              <HoverCard>
+                                <HoverCardTrigger as-child>
+                                <button type="button" class="cursor-pointer">
+                                    <Info class="w-4 h-4 text-muted-foreground" />
+                                </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80">
+                                <div class="flex justify-between space-x-4">
+                                    <div class="space-y-1">
+                                    <h4 class="text-sm font-semibold">
+                                        {{ trans('anagrafiche.tooltip.buildings_header') }}
+                                    </h4>
+                                    <p class="text-sm">
+                                        {{ trans('anagrafiche.tooltip.buildings_description') }}
+                                    </p>
+                                    </div>
+                                </div>
+                                </HoverCardContent>
+                              </HoverCard>
+                            </div>
 
                             <v-select 
                               multiple
@@ -351,7 +372,7 @@ const submit = () => {
                               label="nome" 
                               v-model="form.condomini" 
                               :reduce="(option: Building) => option.id"
-                              placeholder="Seleziona condomini"
+                              :placeholder="trans('anagrafiche.placeholder.buildings')" 
                             />
 
                             <InputError class="mt-2" :message="form.errors.condomini" />
@@ -362,10 +383,10 @@ const submit = () => {
 
                     <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-6">
-                            <Label for="note">Note aggiuntive</Label>
+                            <Label for="note">{{trans('anagrafiche.label.notes')}}</Label>
                             <Textarea 
                                 id="note" 
-                                placeholder="Inserisci una nota qui" 
+                                :placeholder="trans('anagrafiche.placeholder.notes')"  
                                 v-model="form.note" 
                                 v-on:focus="form.clearErrors('note')"
                             />

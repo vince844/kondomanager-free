@@ -47,11 +47,12 @@ class NewUserEmailNotification extends Notification
         );
 
         return (new MailMessage)
-            ->subject('Benvenuto su '. config('app.name'))
-            ->greeting("Salve {$this->user->name},")
-            ->line("L'amministratore di condominio ha creato il tuo profilo. Clicca sul seguente link per impostare la tua password.")
-            ->action('Imposta password', $resetUrl)
-            ->line('Questo link scadrà in 60 minuti.');
+
+            ->subject(__('notifications.new_user_created.subject', ['appName' => config('app.name')]))
+            ->greeting(__('notifications.new_user_created.greeting', ['name' => $this->user->name]))
+            ->line(__('notifications.new_user_created.line_1'))
+            ->action(__('notifications.new_user_created.action'), $resetUrl)
+            ->line(__('notifications.new_user_created.line_2'));
     }
 
     /**

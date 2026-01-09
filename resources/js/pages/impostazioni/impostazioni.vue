@@ -3,11 +3,12 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
-import type { BreadcrumbItem } from '@/types'
 import { ref, computed } from 'vue'
 import { Users, Settings, DatabaseBackup } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { trans } from 'laravel-vue-i18n';
+import type { BreadcrumbItem } from '@/types'
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -18,42 +19,50 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const apps = [
   {
-    name: "Impostazioni generali",
+    name: 'impostazioni.dialogs.general_settings_title',
     logo: Settings,
-    desc: "Impostazioni generali di configurazione dell'applicazione",
+    desc: 'impostazioni.dialogs.general_settings_description',
     href: "/impostazioni/generali", 
   },
   {
-    name: "Gestione utenti",
+    name: 'impostazioni.dialogs.users_settings_title',
     logo: Users,
-    desc: "Impostazioni di gestione degli utenti, ruoli e permessi",
+    desc: 'impostazioni.dialogs.users_settings_description',
     href: "/utenti",
   },
   {
-    name: "Gestione backups",
+    name: 'impostazioni.dialogs.backups_settings_title',
     logo: DatabaseBackup,
-    desc: "Impostazioni di gestione dei backups",
+    desc: 'impostazioni.dialogs.backups_settings_description',
     href: "#",
   }
 ]
 
 const searchTerm = ref("")
 
+const normalize = (value: string) =>value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
 const filteredApps = computed(() => {
-  return apps.filter((app) =>
-    app.name.toLowerCase().includes(searchTerm.value.toLowerCase())
-  )
+  const term = normalize(searchTerm.value)
+
+  return apps.filter(app => {
+    const name = normalize(trans(app.name))
+    const desc = normalize(trans(app.desc))
+
+    return name.includes(term) || desc.includes(term)
+  })
 })
+
 </script>
 
 <template>
   <AppLayout :breadcrumbs="breadcrumbs">
-    <Head title="Impostazioni" />
+    <Head :title="trans('impostazioni.header.settings_head')" />
 
     <div class="px-4 py-6">
       <Heading
-        title="Impostazioni applicazione"
-        description="Di seguito un elenco di tutte le impostazioni configurabili per l'applicazione"
+        :title="trans('impostazioni.header.settings_title')" 
+        :description="trans('impostazioni.header.settings_description')" 
       />
 
       <!-- Filters -->
@@ -62,7 +71,7 @@ const filteredApps = computed(() => {
           <input
             v-model="searchTerm"
             type="text"
-            placeholder="Filtra impostazioni..."
+            :placeholder="trans('impostazioni.placeholder.search_settings')"
             class="h-9 w-40 lg:w-64 rounded border px-2"
           />
         </div>
@@ -81,16 +90,16 @@ const filteredApps = computed(() => {
           </ItemMedia>
           
           <ItemContent>
-            <ItemTitle>{{ app.name }}</ItemTitle>
+            <ItemTitle>{{ trans(app.name) }}</ItemTitle>
             <ItemDescription>
-              {{ app.desc }}
+              {{ trans(app.desc) }}
             </ItemDescription>
           </ItemContent>
           
           <ItemActions>
             <Button as-child variant="outline" size="sm">
               <Link :href="app.href">
-                Gestisci
+                {{ trans('impostazioni.label.manage') }}
               </Link>
             </Button>
           </ItemActions>

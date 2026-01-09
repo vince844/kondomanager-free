@@ -4,7 +4,6 @@ namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\Lang;
 
 class CustomResetPasswordNotification extends Notification
 {
@@ -75,12 +74,15 @@ class CustomResetPasswordNotification extends Notification
     protected function buildMailMessage($url)
     {
         return (new MailMessage)
-            ->greeting('Salve!')
-            ->subject(Lang::get('Notifica di rispristino password'))
-            ->line(Lang::get('Stai ricevendo questa email perchè abbiamo ricevuto una richiesta di ripristino della password per il tuo account'))
-            ->action(Lang::get('Ripristina password'), $url)
-            ->line(Lang::get('Questo link di ripristino scadrà in :count minuti.', ['count' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire')]))
-            ->line(Lang::get('Se non hai richiesto il rispristino della password, per favore ignora questa email.'));
+        
+            ->greeting(__('notifications.reset_password.greeting'))
+            ->subject(__('notifications.reset_password.subject'))
+            ->line(__('notifications.reset_password.line_1'))
+            ->action(__('notifications.reset_password.action'), $url)
+            ->line(__('notifications.reset_password.line_2', [
+                'count' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire')
+            ]))
+            ->line(__('notifications.reset_password.line_3'));
             
     }
 

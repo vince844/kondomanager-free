@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { Permission }  from "@/enums/Permission";
+import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Anagrafica } from '@/types/anagrafiche';
 
@@ -43,7 +44,7 @@ watchDebounced(
     <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          :placeholder="trans('anagrafiche.table.filter')"
           v-model="nomeFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
@@ -57,7 +58,7 @@ watchDebounced(
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('anagrafiche.actions.new_resident') }}</span>
     </Link>
 
   </div>

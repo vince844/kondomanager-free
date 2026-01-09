@@ -8,6 +8,7 @@ import { Head } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/anagrafiche/columns';
 import Alert from "@/components/Alert.vue";
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Anagrafica } from '@/types/anagrafiche';
@@ -56,13 +57,16 @@ watch(flashMessage, (newValue) => {
 
 <template>
 
-  <Head title="Elenco anagrafiche" />
+  <Head :title="trans('anagrafiche.header.list_residents_head')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Elenco anagrafiche" description="Di seguito la tabella con l'elenco di tutte le anagrafiche registrate" />
+      <Heading 
+        :title="trans('anagrafiche.header.list_residents_title')"
+        :description="trans('anagrafiche.header.list_residents_description')"
+      />
     
       <div v-if="flashMessage" class="py-4"> 
         <Alert :message="flashMessage.message" :type="flashMessage.type" />

@@ -6,6 +6,7 @@ import type { ColumnDef, SortingState } from '@tanstack/vue-table'
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
 import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table'
 import { valueUpdater } from '@/lib/utils'
+import { trans } from 'laravel-vue-i18n';
 import DataTablePagination from '@/components/DataTablePagination.vue'
 import DataTableToolbar from '@/components/anagrafiche/DataTableToolbar.vue'
 import type { Anagrafica } from '@/types/anagrafiche'
@@ -105,7 +106,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('anagrafiche.dialogs.no_residents_created') }}
             </TableCell>
           </TableRow>
         </template>
