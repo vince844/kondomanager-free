@@ -70,7 +70,7 @@ return [
         'fiscal_code'       => 'Número de contribuinte',
         'birth_place'       => 'Local de nascimento',
         'birthday'          => 'Data de nascimento',
-        'buildings'         => 'Condomínios',
+        'buildings'         => 'Condomínios a associar',
         'notes'             => 'Notas adicionais',
         'passport'          => 'Passaporte',
         'id_card'           => 'Cartão de cidadão',
