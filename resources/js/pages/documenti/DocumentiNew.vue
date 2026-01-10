@@ -1,5 +1,6 @@
 <script setup lang="ts">
-  
+
+import { trans } from 'laravel-vue-i18n';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import { ref, watch, type Ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -144,14 +145,14 @@ const submit = (): void => {
 </script>
 
 <template>
-  <Head title="Crea nuovo documento" />
+  <Head :title="trans('documenti.header.crea_nuovo_documento')" />
 
   <AppLayout >
     <div class="px-4 py-6">
 
       <Heading
-        title="Crea documento archivio"
-        description="Compila il seguente modulo per la creazione di un nuovo documento per l'archivo del condominio"
+        :title="trans('documenti.header.crea_documento_archivio')"
+        :description="trans('documenti.ui.compila_il_seguente_modulo')"
       />
 
       <form @submit.prevent="submit" class="space-y-2">
@@ -161,7 +162,7 @@ const submit = (): void => {
           <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
             <Plus class="w-4 h-4" v-if="!form.processing" />
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva
+            {{ trans('documenti.button.salva') }}
           </Button>
 
           <Link
@@ -170,7 +171,7 @@ const submit = (): void => {
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
-            <span>Elenco</span>
+            <span>{{ trans('documenti.ui.elenco') }}</span>
           </Link>
         </div>
 
@@ -183,13 +184,13 @@ const submit = (): void => {
                 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-3">
-                  <Label for="nome">Nome documento</Label>
+                  <Label for="nome">{{ trans('documenti.ui.nome_documento') }}</Label>
                   <Input 
                       id="name" 
                       class="mt-1 block w-full"
                       v-model="form.name" 
                       v-on:focus="form.clearErrors('name')"
-                      placeholder="Nome documento" 
+                      :placeholder="trans('documenti.placeholder.nome_documento')" 
                   />
                   
                   <InputError :message="form.errors.name" />
@@ -198,13 +199,13 @@ const submit = (): void => {
 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="nome">Descrizione documento</Label>
+                  <Label for="nome">{{ trans('documenti.ui.descrizione_documento') }}</Label>
                   <Textarea 
                       id="description" 
                       class="mt-1 block w-full min-h-[200px]"
                       v-model="form.description" 
                       v-on:focus="form.clearErrors('description')"
-                      placeholder="Descrizone documento" 
+                      :placeholder="trans('documenti.placeholder.descrizione_documento')" 
                   />
                   
                   <InputError :message="form.errors.description" />
@@ -213,7 +214,7 @@ const submit = (): void => {
                 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="file-upload">Seleziona documento</Label>
+                  <Label for="file-upload">{{ trans('documenti.ui.seleziona_documento') }}</Label>
 
                   <label
                     for="file-upload"
@@ -226,7 +227,7 @@ const submit = (): void => {
                         <EmptyMedia variant="icon">
                           <UploadCloud class="w-8 h-8 text-muted-foreground" />
                         </EmptyMedia>
-                        <EmptyTitle>Trascina qui il tuo documento</EmptyTitle>
+                        <EmptyTitle>{{ trans('documenti.ui.trascina_qui_il_tuo_documento') }}</EmptyTitle>
                         <EmptyDescription>
                           Oppure <strong>clicca</strong> per selezionarlo dal tuo dispositivo.
                         </EmptyDescription>
@@ -278,7 +279,7 @@ const submit = (): void => {
               <div class="grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
                   <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                    <Label for="stato">Stato pubblicazione</Label>
+                    <Label for="stato">{{ trans('documenti.ui.stato_pubblicazione') }}</Label>
                     <HoverCard>
                       <HoverCardTrigger as-child>
                         <button type="button" class="cursor-pointer">
@@ -292,7 +293,7 @@ const submit = (): void => {
                               Stato pubblicazione
                             </h4>
                             <p class="text-sm">
-                              Scegli se rendere visibile il documento o mantenerlo nascosto.
+                              {{ trans('documenti.ui.scegli_se_rendere_visibile_il_documento_o_mantenerlo_nascosto') }}
                             </p>
                           </div>
                         </div>
@@ -304,7 +305,7 @@ const submit = (): void => {
                     :options="publishedConstants" 
                     label="label" 
                     v-model="form.is_published"
-                    placeholder="Stato pubblicazione"
+                    :placeholder="trans('documenti.placeholder.stato_pubblicazione')"
                     @update:modelValue="form.clearErrors('is_published')" 
                     :reduce="(is_published: PublishedType) => is_published.value"
                   />
@@ -316,7 +317,7 @@ const submit = (): void => {
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6 space-y-1">
                   <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                    <Label for="stato">Categoria</Label>
+                    <Label for="stato">{{ trans('documenti.ui.categoria') }}</Label>
                     <HoverCard>
                       <HoverCardTrigger as-child>
                         <button type="button" class="cursor-pointer">
@@ -325,9 +326,9 @@ const submit = (): void => {
                       </HoverCardTrigger>
                       <HoverCardContent class="w-80">
                         <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Categoria documento</h4>
+                          <h4 class="text-sm font-semibold">{{ trans('.ui.categoria_documento') }}</h4>
                           <p class="text-sm">
-                            Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                            {{ trans('documenti.ui.seleziona_una_categoria_per_organizzare_meglio_i_documenti_oppure_creane_una_nuova') }}
                           </p>
                         </div>
                       </HoverCardContent>
@@ -340,7 +341,7 @@ const submit = (): void => {
                       label="name"
                       v-model="form.category_id"
                       :reduce="(option: Categoria) => option.id"
-                      placeholder="Seleziona categoria"
+                      :placeholder="trans('documenti.placeholder.seleziona_categoria')"
                       class="flex-1"
                       @update:modelValue="form.clearErrors('category_id')" 
                     />
@@ -352,7 +353,7 @@ const submit = (): void => {
                       </SheetTrigger>
                       <SheetContent side="right" class="p-6">
                         <SheetHeader class="mt-4 p-0">
-                          <SheetTitle>Crea nuova categoria</SheetTitle>
+                          <SheetTitle>{{ trans('documenti.ui.crea_nuova_categoria') }}</SheetTitle>
                           <SheetDescription>
                             Aggiungi una nuova categoria per i documenti.
                           </SheetDescription>
@@ -360,28 +361,28 @@ const submit = (): void => {
 
                         <form @submit.prevent="createCategory" class="mt-6 space-y-4">
                           <div>
-                            <Label for="new-category-name">Nome</Label>
+                            <Label for="new-category-name">{{ trans('documenti.ui.nome_categoria') }}</Label>
                             <Input
                               id="new-category-name"
                               v-model="newCategoryName"
-                              placeholder="Nome della categoria"
+                              :placeholder="trans('documenti.placeholder.nome_della_categoria')"
                               class="w-full mt-1"
                             />
                           </div>
 
                           <div>
-                            <Label for="new-category-description">Descrizione</Label>
+                            <Label for="new-category-description">{{ trans('documenti.ui.descrizione') }}</Label>
                             <Textarea
                               id="new-category-description"
                               v-model="newCategoryDescription"
-                              placeholder="Descrizione della categoria"
+                              :placeholder="trans('documenti.placeholder.descrizione_della_categoria')"
                               class="w-full mt-1 min-h-[200px]"
                             />
                           </div>
 
                           <div class="flex justify-end">
                             <SheetClose as-child>
-                              <Button type="submit">Salva</Button>
+                              <Button type="submit">{{ trans('documenti.ui.salva') }}</Button>
                             </SheetClose>
                           </div>
                         </form>
@@ -395,13 +396,13 @@ const submit = (): void => {
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="condomini">Condominio</Label>
+                  <Label for="condomini">{{ trans('documenti.ui.condominio') }}</Label>
                   <v-select 
                     multiple
                     :options="condomini" 
                     label="nome" 
                     v-model="form.condomini_ids"
-                    placeholder="Condomini"
+                    :placeholder="trans('documenti.placeholder.condomini')"
                     @update:modelValue="form.clearErrors('condomini_ids')" 
                     :reduce="(condominio: Building) => condominio.id"
                   />
@@ -411,14 +412,14 @@ const submit = (): void => {
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="condomini">Anagrafiche</Label>
+                  <Label for="condomini">{{ trans('documenti.ui.anagrafiche') }}</Label>
                   <v-select
                     multiple
                     id="anagrafiche"
                     :options="anagraficheOptions"
                     label="nome"
                     v-model="form.anagrafiche"
-                    placeholder="Anagrafiche"
+                    :placeholder="trans('documenti.placeholder.anagrafiche')"
                     @update:modelValue="form.clearErrors('anagrafiche')"
                     :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                     :disabled="form.condomini_ids.length === 0"

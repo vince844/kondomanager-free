@@ -7,6 +7,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/documenti/columns';
 import Alert from '@/components/Alert.vue';
+import { trans } from 'laravel-vue-i18n';
 import DocumentiStats from '@/components/documenti/DocumentiStats.vue';
 import type { Flash } from '@/types/flash';
 import type { Documento, Stats } from '@/types/documenti';
@@ -24,13 +25,13 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco archivio documenti" />
+  <Head :title="trans('documenti.header.elenco_documenti')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco archivio documenti"
-        description="Di seguito la tabella con l'elenco di tutti i documenti salvati nell'archivio del condominio"
+        :title="trans('documenti.header.elenco_documenti')"
+        :description="trans('documenti.header.description')"
       />
 
       <DocumentiStats :stats="stats" />

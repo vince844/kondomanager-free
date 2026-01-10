@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HardDrive, FileText, Calendar, Calculator } from 'lucide-vue-next';
 import { formatBytes, formatNumber } from '@/utils/formatBytes'; 
+import {trans} from 'laravel-vue-i18n';
 
 defineProps<{
   stats: {
@@ -15,22 +16,22 @@ defineProps<{
 
 const displayStats = {
   total_storage_bytes: {
-    title: 'Spazio totale utilizzato',
+    title: trans('documenti.stats.total_storage_bytes'),
     icon: HardDrive,
     format: (val: number) => formatBytes(val), 
   },
   total_documents: {
-    title: 'Documenti totali',
+    title: trans('documenti.stats.total_documents'),
     icon: FileText,
     format: (val: number) => formatNumber(val), 
   },
   uploaded_this_month: {
-    title: 'Caricati questo mese',
+    title: trans('documenti.stats.uploaded_this_month'),
     icon: Calendar,
     format: (val: number) => formatNumber(val), 
   },
   average_size_bytes: {
-    title: 'Dimensione media documento',
+    title: trans('documenti.stats.average_size_bytes'),
     icon: Calculator,
     format: (val: number) => formatBytes(val), 
   }
