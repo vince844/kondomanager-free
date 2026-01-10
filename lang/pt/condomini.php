@@ -24,10 +24,10 @@ return [
         'edit_building_head'            => 'Editar condomínio',
         'edit_building_title'           => 'Editar condomínio',
         'edit_building_description'     => 'Preencha o seguinte formulário para atualizar ou modificar os dados do condomínio',
-        'building_info_heading'         => 'Dados identificativos',
-        'building_info_description'     => 'A seguir pode especificar os dados identificativos do condomínio',
-        'building_registry_heading'     => 'Dados cadastrais',
-        'building_registry_description' => 'A seguir pode especificar os dados cadastrais do condomínio',
+        'building_info_heading'         => 'Dados de identificação',
+        'building_info_description'     => 'A seguir pode especificar os dados de identificação do condomínio',
+        'building_registry_heading'     => 'Dados registo',
+        'building_registry_description' => 'A seguir pode especificar os dados de registo do condomínio',
     ],
 
     /* ------------------------------------------------------------------
