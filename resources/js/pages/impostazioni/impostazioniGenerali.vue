@@ -1,17 +1,12 @@
 <script setup lang="ts">
+
 import { computed, watch, onMounted, ref, nextTick } from 'vue'
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Settings } from 'lucide-vue-next'
 import Heading from '@/components/Heading.vue'
 import Alert from '@/components/Alert.vue'
@@ -156,18 +151,10 @@ const submit = () => {
                 <label
                   class="block text-sm font-medium leading-none mb-1"
                 >
-                  {{
-                    trans(
-                      'impostazioni.dialogs.language_settings_title'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.language_settings_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  {{
-                    trans(
-                      'impostazioni.dialogs.language_settings_description'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.language_settings_description') }}
                 </p>
               </div>
 
@@ -209,18 +196,10 @@ const submit = () => {
                 <label
                   class="block text-sm font-medium leading-none mb-1"
                 >
-                  {{
-                    trans(
-                      'impostazioni.dialogs.default_building_title'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.default_building_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  {{
-                    trans(
-                      'impostazioni.dialogs.default_building_description'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.default_building_description') }}
                 </p>
               </div>
 
@@ -236,18 +215,10 @@ const submit = () => {
                 <label
                   class="block text-sm font-medium leading-none mb-1"
                 >
-                  {{
-                    trans(
-                      'impostazioni.dialogs.select_building_title'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.select_building_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  {{
-                    trans(
-                      'impostazioni.dialogs.select_building_description'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.select_building_description') }}
                 </p>
               </div>
 
@@ -261,11 +232,7 @@ const submit = () => {
                     }"
                   >
                     <SelectValue
-                      :placeholder="
-                        trans(
-                          'impostazioni.placeholder.select_building'
-                        )
-                      "
+                      :placeholder="trans('impostazioni.placeholder.select_building')"
                     />
                   </SelectTrigger>
 
@@ -297,18 +264,10 @@ const submit = () => {
                 <label
                   class="block text-sm font-medium leading-none mb-1"
                 >
-                  {{
-                    trans(
-                      'impostazioni.dialogs.user_registration_title'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.user_registration_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
-                  {{
-                    trans(
-                      'impostazioni.dialogs.user_registration_description'
-                    )
-                  }}
+                  {{ trans('impostazioni.dialogs.user_registration_description') }}
                 </p>
               </div>
 

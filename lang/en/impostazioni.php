@@ -8,7 +8,6 @@ return [
     'error_update_notification_preferences'   => 'An error occurred while updating your notification preferences',
     'success_save_general_settings'           => 'General settings are successfully saved.',
     'error_save_general_settings'             => 'An error occurred while saving general settings.',
-
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -19,7 +18,6 @@ return [
         'general_settings_title'       => 'General settings',
         'general_settings_description' => 'On this page you can manage the general settings of the application',
     ],
-
     /* ------------------------------------------------------------------
      | Labels
      | ------------------------------------------------------------------ */
@@ -27,7 +25,6 @@ return [
         'manage'    => 'Manage',
         'settings'  => 'Settings',
     ],
-
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
@@ -47,7 +44,6 @@ return [
         'user_registration_title'       => 'Enable user registration',
         'user_registration_description' => 'If enabled, visitors can create a new account from the home page',
     ],
-
     /* ------------------------------------------------------------------
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
@@ -61,11 +57,19 @@ return [
             'pt' => 'Portuguese',
         ],
     ],
-
     /* ------------------------------------------------------------------
      | Action buttons (toolbar, card actions, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
         'save_settings' => 'Save settings',
+    ],
+    /* ------------------------------------------------------------------
+    | Sidebar navigation
+    | ------------------------------------------------------------------ */
+    'sidebar' => [
+        'users'         => 'Users',
+        'roles'         => 'Roles',
+        'permissions'   => 'Permissions',
+        'invites'       => 'Invites',
     ],
 ];
