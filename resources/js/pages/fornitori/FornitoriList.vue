@@ -8,6 +8,7 @@ import { Head } from '@inertiajs/vue3';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/fornitori/columns';
 import Alert from "@/components/Alert.vue";
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Fornitore } from '@/types/fornitori';
@@ -30,7 +31,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Elenco fornitori',
+        title: trans('fornitori.header.elenco_fornitori'),
         href: '/fornitori',
     },
 ];
@@ -56,13 +57,13 @@ watch(flashMessage, (newValue) => {
 
 <template>
 
-  <Head title="Elenco fornitori" />
+  <Head :title="trans('fornitori.header.elenco_fornitori')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
     <div class="px-4 py-6">
       
-      <Heading title="Elenco fornitori" description="Di seguito la tabella con l'elenco di tutti i fornitori registrati" />
+      <Heading :title="trans('fornitori.header.elenco_fornitori')" :description="trans('fornitori.header.description')" />
     
       <div v-if="flashMessage" class="py-4"> 
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
