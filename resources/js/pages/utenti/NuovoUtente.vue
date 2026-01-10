@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  
 import { Head, useForm } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -12,6 +13,7 @@ import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import { Separator } from '@/components/ui/separator';
 import { Item, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { trans } from 'laravel-vue-i18n';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
@@ -93,15 +95,15 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Crea nuovo utente" />
+  <Head :title="trans('users.header.new_user_head')" />
   
   <AppLayout :breadcrumbs="breadcrumbs">
     <UtentiLayout>
       <form @submit.prevent="submit">
         <div>
-          <h3 class="text-lg font-medium leading-6 text-gray-900">Nuovo utente</h3>
+          <h3 class="text-lg font-medium leading-6 text-gray-900">{{trans('users.header.new_user_title')}}</h3>
           <p class="mt-1 text-sm text-gray-500">
-            Di seguito è possibile creare un nuovo utente, puoi assegnare un ruolo, un'anagrafica e dei permessi specifici per questo utente
+            {{trans('users.header.new_user_description')}}
           </p>
         </div>
 
@@ -110,27 +112,27 @@ const submit = () => {
         <div class="py-4">
           <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
             <div class="sm:col-span-3">
-              <Label for="name">Nome e cognome</Label>
+              <Label for="name">{{trans('users.label.name')}}</Label>
               <Input 
                 id="name" 
                 class="mt-1 block w-full"
                 v-model="form.name" 
                 @focus="form.clearErrors('name')"
                 autocomplete="name" 
-                placeholder="Nome e cognome" 
+                :placeholder="trans('users.placeholder.name')" 
               />
               <InputError :message="form.errors.name" />
             </div>
 
             <div class="sm:col-span-3">
-              <Label for="email">Indirizzo email</Label>
+              <Label for="email">{{trans('users.label.email')}}</Label>
               <Input 
                 id="email" 
                 class="mt-1 block w-full"
                 v-model="form.email" 
                 @focus="form.clearErrors('email')"
                 autocomplete="email" 
-                placeholder="Indirizzo email" 
+                :placeholder="trans('users.placeholder.email')" 
               />
               <InputError class="mt-2" :message="form.errors.email" />
             </div>
@@ -140,7 +142,7 @@ const submit = () => {
             <div class="sm:col-span-3">
 
               <div class="flex items-center text-sm font-medium pb-2 gap-x-2">
-                <Label for="stato">Ruolo utente</Label>
+                <Label for="role">{{trans('users.label.role')}}</Label>
 
                 <HoverCard>
                     <HoverCardTrigger as-child>
@@ -152,13 +154,13 @@ const submit = () => {
                     <div class="flex justify-between space-x-4">
                         <div class="space-y-1">
                         <h4 class="text-sm font-semibold">
-                            Ruolo utente
+                            {{trans('users.label.role')}}
                         </h4>
                         <p class="text-sm">
-                            Seleziona il ruolo da assegnare all'utente, scegli tra i ruoli di default oppure uno di quelli da te creati.
+                            {{trans('users.tooltip.role_line_1')}}
                         </p>
                         <p class="text-sm">
-                            I permessi associati al ruolo verranno ereditati automaticamente.
+                            {{trans('users.tooltip.role_line_2')}}
                         </p>
                         </div>
                     </div>
@@ -172,7 +174,7 @@ const submit = () => {
                 v-model="form.roles"
                 :reduce="(option: Role) => option.id"
                 @update:modelValue="form.clearErrors('roles')"
-                placeholder="Seleziona ruolo utente"
+                :placeholder="trans('users.placeholder.role')" 
               />
 
               <InputError class="mt-2" :message="form.errors.roles" />
@@ -180,7 +182,7 @@ const submit = () => {
 
             <div class="sm:col-span-3">
               <div class="flex items-center text-sm font-medium pb-2 gap-x-2">
-                <Label for="stato">Associa anagrafica</Label>
+                <Label for="anagrafica">{{trans('users.label.resident')}}</Label>
 
                 <HoverCard>
                     <HoverCardTrigger as-child>
@@ -192,10 +194,10 @@ const submit = () => {
                     <div class="flex justify-between space-x-4">
                         <div class="space-y-1">
                         <h4 class="text-sm font-semibold">
-                            Associa anagrafica
+                            {{trans('users.label.resident')}}
                         </h4>
                         <p class="text-sm">
-                            Seleziona l'anagrafica da associare all'utente. L'anagrafica associata potra accedere al sistema con le credenziali dell'utente creato e consultare i propri dati e quelli a lui collegati.
+                            {{trans('users.tooltip.resident')}}
                         </p>
                         </div>
                     </div>
@@ -208,7 +210,7 @@ const submit = () => {
                 v-model="form.anagrafica"
                 :reduce="(option: Anagrafica) => option.id"
                 @update:modelValue="form.clearErrors('anagrafica')" 
-                placeholder="Seleziona anagrafica"
+                :placeholder="trans('users.placeholder.resident')" 
               >
                 <template #option="{ nome, indirizzo }">
                   <div class="flex flex-col">
@@ -229,7 +231,7 @@ const submit = () => {
 
           <div class="mt-6">
             <div class="flex items-center text-sm font-medium pb-2 gap-x-2">
-              <Label for="stato">Permessi aggiuntivi</Label>
+              <Label for="permissions">{{trans('users.label.permissions')}}</Label>
 
               <HoverCard>
                 <HoverCardTrigger as-child>
@@ -241,10 +243,10 @@ const submit = () => {
                 <div class="flex justify-between space-x-4">
                     <div class="space-y-1">
                     <h4 class="text-sm font-semibold">
-                        Permessi aggiuntivi
+                        {{trans('users.label.permissions')}}
                     </h4>
                     <p class="text-sm">
-                        Seleziona permessi specifici da assegnare all'utente oltre a quelli ereditati dal ruolo selezionato.
+                        {{trans('users.tooltip.permissions')}}
                     </p>
                     </div>
                 </div>
@@ -257,7 +259,7 @@ const submit = () => {
               label="name"
               :close-on-select="false"
               v-model="form.permissions"
-              placeholder="Seleziona permessi aggiuntivi"
+              :placeholder="trans('users.placeholder.permissions')" 
             >
               <template #option="{ name, description }">
                 <div class="flex flex-col">
@@ -267,7 +269,7 @@ const submit = () => {
               </template>
             </v-select>
             <p class="mt-1 text-sm text-gray-500">
-              I permessi del ruolo selezionato sono ereditati automaticamente
+               {{trans('users.label.permission_notice')}}
             </p>
           </div>
         </div>
@@ -275,7 +277,7 @@ const submit = () => {
         <div class="pt-5">
           <Button :disabled="form.processing">
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Crea utente
+            {{trans('users.actions.new_user')}}
           </Button>
         </div>
       </form>
@@ -287,17 +289,21 @@ const submit = () => {
         <div>
           <div class="flex items-center gap-2 mb-4">
             <div>
-              <h2 class="text-xl font-semibold">Permessi ereditati dal ruolo</h2>
+              <h2 class="text-xl font-semibold">{{trans('users.header.permissions_title')}}</h2>
+
               <p class="text-sm text-muted-foreground">
-                Questi permessi sono assegnati tramite il ruolo 
-                <span v-if="selectedRole" class="font-semibold">{{ selectedRole.name }}</span>
-                e verranno assegnati automaticamente all'utente
+                {{ trans('users.header.permissions_description_line_1') }}
+                <span v-if="selectedRole" class="font-semibold">
+                  {{ selectedRole.name }}
+                </span>
+                {{ trans('users.header.permissions_description_line_2') }}
               </p>
+
             </div>
           </div>
 
           <div v-if="!inheritedPermissions.length" class="text-center py-12 border rounded-lg bg-muted/20">
-            Nessun permesso ereditato dal ruolo
+            {{trans('users.empty_state.inherited_permissions')}}
           </div>
 
           <div v-else class="flex flex-col gap-3">

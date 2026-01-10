@@ -1,26 +1,12 @@
 <script setup lang="ts">
+
 import { ref } from 'vue'
 import { router } from "@inertiajs/vue3";
 import { Button } from '@/components/ui/button'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent,
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuTrigger 
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal } from 'lucide-vue-next'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { trans } from 'laravel-vue-i18n'
 import { Trash2, FilePenLine, Send, MonitorCheck, MonitorX } from 'lucide-vue-next'
 import type { User } from '@/types/users';
 
@@ -92,70 +78,53 @@ const reinviteUser = () => {
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+        <span class="sr-only">{{ trans('comunicazioni.table.actions') }}</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('comunicazioni.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem @click="editUser(user)" >
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica 
+        {{ trans('users.actions.edit_user') }}
       </DropdownMenuItem>
 
       <DropdownMenuItem  v-if="!user.suspended_at" @click="suspendUser(user)">
         <MonitorX class="w-4 h-4 text-xs" />
-        Sospendi 
+        {{ trans('users.actions.suspend_user') }} 
       </DropdownMenuItem>
 
       <DropdownMenuItem v-else @click="unsuspendUser(user)" >
         <MonitorCheck class="w-4 h-4 text-xs" />
-        Riattiva 
+        {{ trans('users.actions.activate_user') }} 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleReinvite(user)" >
         <Send class="w-4 h-4 text-xs" />
-        Reinvita 
+        {{ trans('users.actions.invite_user') }} 
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(user)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina 
+        {{ trans('users.actions.delete_user') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>
   </DropdownMenu>
 
-    <!-- AlertDialog for deleting action -->
-   <AlertDialog v-model:open="isDeleteAlertOpen" >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere eliminare questo utente?</AlertDialogTitle>
-        <AlertDialogDescription>
-          Questa azione non è reversibile. Eliminerà l'utente e tutti i dati ad esso associati.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="isDeleteAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="deleteUser()">Continua</AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isDeleteAlertOpen"
+    :title="trans('users.dialogs.delete_user_title')"
+    :description="trans('users.dialogs.delete_user_description')"
+    @confirm="deleteUser"
+  />
 
-   <!-- AlertDialog for reinviting action -->
-   <AlertDialog v-model:open="isReinviteAlertOpen" >
-    <AlertDialogContent>
-      <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di volere invitare nuovamente questo utente?</AlertDialogTitle>
-        <AlertDialogDescription>
-          L'utente riceverà una email con un nuovo link per la creazione di una nuova password.
-        </AlertDialogDescription>
-      </AlertDialogHeader>
-      <AlertDialogFooter>
-        <AlertDialogCancel @click="isReinviteAlertOpen = false">Cancella</AlertDialogCancel>
-        <AlertDialogAction  @click="reinviteUser()">Continua</AlertDialogAction>
-      </AlertDialogFooter>
-    </AlertDialogContent>
-  </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isReinviteAlertOpen"
+    :title="trans('users.dialogs.invite_user_title')"
+    :description="trans('users.dialogs.invite_user_description')"
+    @confirm="reinviteUser"
+  />
+
 </template>

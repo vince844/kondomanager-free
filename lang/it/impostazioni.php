@@ -8,7 +8,6 @@ return [
     'error_update_notification_preferences'   => 'Si è verificato un errore nel tentativo di aggiornare le tue preferenze di notifica',
     'success_save_general_settings'           => 'Le impostazioni generali sono state salvate con successo',
     'error_save_general_settings'             => 'Si è verificato un errore durante il salvataggio delle impostazioni generali',
-
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -19,7 +18,6 @@ return [
         'general_settings_title'       => 'Impostazioni generali',
         'general_settings_description' => 'On this page you can manage the general settings of the application',
     ],
-
     /* ------------------------------------------------------------------
      | Labels
      | ------------------------------------------------------------------ */
@@ -27,7 +25,6 @@ return [
         'manage'    => 'Gestisci',
         'settings'  => 'Impostazioni',
     ],
-
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
@@ -47,7 +44,6 @@ return [
         'user_registration_title'       => 'Abilita registrazione utenti',
         'user_registration_description' => 'Se attivato, gli utenti possono registrarsi dalla home page',
     ],
-
     /* ------------------------------------------------------------------
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
@@ -61,11 +57,19 @@ return [
             'pt' => 'Portoghese',
         ],
     ],
-
     /* ------------------------------------------------------------------
      | Action buttons (toolbar, card actions, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
         'save_settings' => 'Salva impostazioni',
+    ],
+    /* ------------------------------------------------------------------
+    | Sidebar navigation
+    | ------------------------------------------------------------------ */
+    'sidebar' => [
+        'users'         => 'Utenti',
+        'roles'         => 'Ruoli',
+        'permissions'   => 'Permessi',
+        'invites'       => 'Inviti',
     ],
 ];

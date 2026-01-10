@@ -7,6 +7,7 @@ import { ShieldCheck } from 'lucide-vue-next'
 import { roleClasses, defaultRoleClass, statusClasses } from '@/composables/useBadges'
 import { useBadges } from '@/composables/useBadges'
 import { usePermissionsList } from '@/composables/usePermissionsList'
+import { trans } from 'laravel-vue-i18n'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
 
@@ -25,8 +26,9 @@ const UserPermissionsDialog = {
     
     return () => h(PermissionsDialog, {
       permissions,
-      title: 'Permessi utente',
-      subtitle: `Permessi assegnati a ${user.name}`,
+      title: 'users.label.permissions_assigned',
+      subtitle: 'users.label.permissions_assigned_to_user',
+      user: user.name,
       badges
     })
   }
@@ -36,7 +38,7 @@ export const columns: ColumnDef<User>[] = [
   {
     accessorKey: 'name',
     header: ({ column }) =>
-      h(DataTableColumnHeader, { column, title: 'Nome e cognome' }),
+      h(DataTableColumnHeader, { column, title: trans('users.table.name') }),
     cell: ({ row, table }) => {
       const user = row.original
 
@@ -52,8 +54,8 @@ export const columns: ColumnDef<User>[] = [
       }
 
       const tooltip = user.email_verified_at
-        ? 'Utente verificato - clicca per revocare verifica'
-        : 'Utente non verificato - clicca per verificare'
+        ? trans('users.table.verified_tooltip')
+        : trans('users.table.unverified_tooltip')
 
       return h('div', { class: 'flex items-center space-x-2' }, [
         h('div', {
@@ -71,12 +73,12 @@ export const columns: ColumnDef<User>[] = [
   },
   {
     accessorKey: 'email',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Indirizzo email' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.email') }), 
     cell: ({ row }) => h('div', { class: 'lowercase' }, row.getValue('email')),
   },
   {
     accessorKey: 'roles',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Ruolo' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.role')  }), 
     cell: ({ getValue }) => {
       const roles = getValue() as string[]
       return h(
@@ -93,7 +95,7 @@ export const columns: ColumnDef<User>[] = [
   },
   {
     accessorKey: 'permissions',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Permessi' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.permissions')  }), 
     cell: ({ getValue, row }) => {
       const permissions = getValue() as any[]
       const user = row.original
@@ -102,7 +104,7 @@ export const columns: ColumnDef<User>[] = [
       if (total === 0) {
         return h('span', { 
           class: statusClasses.none
-        }, 'Nessuno')
+        }, trans('users.table.no_permissions'))
       }
       
       return h(UserPermissionsDialog, { user })
@@ -110,15 +112,21 @@ export const columns: ColumnDef<User>[] = [
   },
   {
     accessorKey: 'suspended_at',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.status') }), 
     cell: ({ getValue }) => {
+
       const status = getValue() as string | null
-      const label = status ? 'Sospeso' : 'Attivo'
+
+      const label = status 
+        ? trans('users.table.suspended') 
+        : trans('users.table.active')
+
       const badgeClass = status ? statusClasses.suspended : statusClasses.active
 
       return h('div', { class: 'flex gap-2' }, [
         h('span', { class: badgeClass }, label)
       ]) 
+      
     }
   },
   {

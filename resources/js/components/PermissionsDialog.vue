@@ -1,15 +1,10 @@
 <script setup lang="ts">
+
 import { computed } from 'vue'
 import { KeyRound, CheckCircle2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
-} from '@/components/ui/dialog'
+import { trans } from 'laravel-vue-i18n'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 
 interface Permission {
   name: string
@@ -27,6 +22,7 @@ interface Props {
   subtitle?: string
   badges?: Badge[]
   entityName?: string
+  user: string
   entityDescription?: string
 }
 
@@ -55,7 +51,7 @@ const getPermissionDescription = (permission: Permission | string): string | nul
     <DialogContent class="max-w-2xl max-h-[80vh]">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
-          {{ title }}
+          {{ trans(title) }}
         </DialogTitle>
         
         <DialogDescription>
@@ -69,13 +65,13 @@ const getPermissionDescription = (permission: Permission | string): string | nul
           
           <!-- Per gli utenti: mostra solo il subtitle -->
           <div v-else-if="subtitle">
-            {{ subtitle }}
+            {{ trans(subtitle, { name: user }) }}
           </div>
           
           <!-- Badge comuni (permessi count + badge personalizzati) -->
           <div class="flex items-center gap-2 mt-3 flex-wrap">
             <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-600/20 ring-inset">
-              {{ permissionsCount }} permessi
+              {{ trans('users.label.permissions_count', {count: String(permissionsCount)}) }}
             </span>
             
             <span 
@@ -115,7 +111,7 @@ const getPermissionDescription = (permission: Permission | string): string | nul
         </div>
         
         <p v-else class="text-center text-muted-foreground py-8">
-          Nessun permesso assegnato
+          {{ trans('users.empty_state.no_assigned_permissions') }}
         </p>
       </div>
     </DialogContent>

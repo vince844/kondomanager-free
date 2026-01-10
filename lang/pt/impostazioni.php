@@ -8,7 +8,6 @@ return [
     'error_update_notification_preferences'   => 'Ocorreu um erro ao tentar atualizar as suas preferências de notificação.',
     'success_save_general_settings'           => 'As configurações gerais foram guardadas com sucesso.',
     'error_save_general_settings'             => 'Ocorreu um erro durante a gravação das configurações gerais.',
-
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -19,7 +18,6 @@ return [
         'general_settings_title'       => 'Configurações gerais',
         'general_settings_description' => 'Nesta página pode gerir as configurações gerais da aplicação',
     ],
-
     /* ------------------------------------------------------------------
      | Labels
      | ------------------------------------------------------------------ */
@@ -27,7 +25,6 @@ return [
         'manage'    => 'Gerir',
         'settings'  => 'Configurações',
     ],
-
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */
@@ -47,7 +44,6 @@ return [
         'user_registration_title'       => 'Ativar registo de utilizadores',
         'user_registration_description' => 'Se ativado, os utilizadores podem registar-se a partir da página inicial',
     ],
-
     /* ------------------------------------------------------------------
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
@@ -61,11 +57,19 @@ return [
             'pt' => 'Português',
         ],
     ],
-
     /* ------------------------------------------------------------------
      | Action buttons (toolbar, card actions, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
         'save_settings' => 'Guardar configurações',
+    ],
+    /* ------------------------------------------------------------------
+     | Sidebar
+     | ------------------------------------------------------------------ */
+    'sidebar' => [
+        'users'       => 'Utilizadores',
+        'roles'       => 'Papéis',
+        'permissions' => 'Permissões',
+        'invites'     => 'Convites',
     ],
 ];
