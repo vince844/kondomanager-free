@@ -22,3 +22,7 @@ yarn-error.log
 /.vscode
 /.zed
 .DS_Store
+lang_compare.sh
+.gitignore
+update_dev.sh
+scan_vue_texts.sh
