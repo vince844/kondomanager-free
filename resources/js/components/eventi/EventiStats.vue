@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 
 import { AlertTriangle, ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,7 +22,7 @@ const formatDate = (d: Date) => d.toISOString().slice(0, 10);
 
 const displayStats = {
   expired_last_seven_days: {
-    title: 'Scaduti ultimi 7 giorni',
+    title: 'eventi.js.scaduti_ultimi_7_giorni',
     icon: AlertTriangle,
     range: {
       date_from: formatDate(new Date(now.getTime() - 7 * 86400000)),
@@ -29,7 +30,7 @@ const displayStats = {
     },
   },
   next_seven_days: {
-    title: 'Scadenza prossimi 7 giorni',
+    title: 'eventi.js.scadenza_prossimi_7_giorni',
     icon: ClockAlert,
     range: {
       date_from: formatDate(now),
@@ -37,7 +38,7 @@ const displayStats = {
     },
   },
   next_fourteen_days: {
-    title: 'Scadenza prossimi 14 giorni',
+    title: 'eventi.js.scadenza_prossimi_14_giorni',
     icon: ClockArrowUp,
     range: {
       date_from: formatDate(now),
@@ -45,7 +46,7 @@ const displayStats = {
     },
   },
   next_twentyeight_days: {
-    title: 'Scadenza prossimi 30 giorni',
+    title: 'eventi.js.scadenza_prossimi_30_giorni',
     icon: Clock,
     range: {
       date_from: formatDate(now),
@@ -66,7 +67,7 @@ const displayStats = {
     >
       <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle class="text-sm font-medium">
-          {{ stat.title }}
+          {{ trans(stat.title) }}
         </CardTitle>
         <component :is="stat.icon" class="w-5 h-5 text-muted-foreground" />
       </CardHeader>

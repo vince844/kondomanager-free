@@ -1,5 +1,5 @@
 <script setup lang="ts">
-
+import { trans, getActiveLanguage } from 'laravel-vue-i18n';
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
@@ -16,12 +16,16 @@ import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internat
 import type { Table } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
-const df = new DateFormatter('it-IT', { dateStyle: 'short' })
+const df = computed(() =>
+  new DateFormatter(getActiveLanguage(), {
+    dateStyle: 'short',
+  })
+)
 const { generateRoute, hasPermission } = usePermission()
 const { categorie, isLoading, loadCategorie } = useCategorieEventi()
 const { table } = defineProps<{ table: Table<Evento> }>()
 const nameFilter = ref<string>('')
-const dateRange = ref<DateRange<DateValue>>({ start: undefined, end: undefined })
+const dateRange = ref<DateRange<DateValue>>({ start: undefined, end: undefined }) 
 const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
@@ -114,11 +118,11 @@ const formattedRange = computed(() => {
   const endDate = dateRange.value.end?.toDate(getLocalTimeZone())
 
   if (startDate && endDate) {
-    return `${df.format(startDate)} - ${df.format(endDate)}`
+    return `${df.value.format(startDate)} - ${df.value.format(endDate)}`
   } else if (startDate) {
-    return df.format(startDate)
+    return df.value.format(startDate)
   }
-  return 'Seleziona periodo'
+  return trans('eventi.js.seleziona_periodo')
 })
 
 </script>
@@ -130,7 +134,7 @@ const formattedRange = computed(() => {
       <!-- Search and Category Filters -->
       <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          :placeholder="trans('eventi.input.filtra_per_nome')"
           v-model="nameFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
@@ -154,7 +158,7 @@ const formattedRange = computed(() => {
             />
             <div class="p-2 border-t flex justify-end">
               <Button variant="outline" size="sm" @click="clearDateFilter">
-                Cancella
+                {{ trans('eventi.button.cancella') }}
               </Button>
             </div>
           </PopoverContent>
@@ -163,7 +167,7 @@ const formattedRange = computed(() => {
         <DataTableFacetedFilter
           v-if="categoriaColumn"
           :column="categoriaColumn"
-          title="Categoria"
+          :title='trans("eventi.button.categoria")'
           :options="categorie"
           :isLoading="isLoading"
           @open="handleOpenDropdown"
@@ -177,7 +181,7 @@ const formattedRange = computed(() => {
         >
 
          <X />
-          Resetta tutti i filtri
+          {{ trans('eventi.button.resetta_filtri') }}
         </Button>
       </div>
 
@@ -191,7 +195,7 @@ const formattedRange = computed(() => {
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('eventi.button.crea_nuovo_evento') }}</span>
     </Link>
   </div>
 </template>

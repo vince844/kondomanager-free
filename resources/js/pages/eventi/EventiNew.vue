@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import { trans } from 'laravel-vue-i18n';
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -35,9 +36,9 @@ const showRecurrence = ref(false);
 
 
 const frequencies = [
-  { label: 'Giornaliera', value: 'daily' },
-  { label: 'Settimanale', value: 'weekly' },
-  { label: 'Mensile', value: 'monthly' },
+  { label: trans('eventi.label.giornaliera'), value: 'daily' },
+  { label: trans('eventi.label.settimanale'), value: 'weekly' },
+  { label: trans('eventi.label.mensile'), value: 'monthly' },
   { label: 'Annuale', value: 'yearly' },
 ];
 
@@ -47,8 +48,8 @@ const weekdays = [
   { label: 'Mercoled\u00ec', value: 'WE' },
   { label: 'Gioved\u00ec', value: 'TH' },
   { label: 'Venerd\u00ec', value: 'FR' },
-  { label: 'Sabato', value: 'SA' },
-  { label: 'Domenica', value: 'SU' },
+  { label: trans('eventi.label.sabato'), value: 'SA' },
+  { label: trans('eventi.label.domenica'), value: 'SU' },
 ];
 
 const form = useForm({
@@ -78,7 +79,7 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
       nome: item.nome,
     }));
   } catch (error) {
-    console.error('Error fetching anagrafiche:', error);
+    console.error(trans('eventi.js.error_fetching_anagrafiche'), error);
   }
 };
 
@@ -104,11 +105,11 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Crea nuovo evento" />
+  <Head :title="trans('eventi.header.crea_nuovo_evento')" />
 
   <AppLayout>
     <div class="px-4 py-6">
-      <Heading title="Crea scadenza in agenda" description="Compila il seguente modulo per la creazione di una nuova scadenza per l'agenda condominiale" />
+      <Heading :title="trans('eventi.header.crea_scadenza_in_agenda')" :description="trans('eventi.header.description')" />
 
       <form class="space-y-2" @submit.prevent="submit">
 
@@ -126,7 +127,7 @@ const submit = () => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
             >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>{{ trans('eventi.ui.elenco') }}</span>
             </Link>
         </div>
 
@@ -136,20 +137,20 @@ const submit = () => {
           <div class="lg:col-span-3 space-y-4 bg-white p-4 border rounded">
 
             <div>
-              <Label for="title">Oggetto</Label>
+              <Label for="title">{{ trans('eventi.label.oggetto') }}</Label>
               <Input id="title" v-model="form.title" @focus="form.clearErrors('title')" />
               <InputError :message="form.errors.title" />
             </div>
 
             <div>
-              <Label for="description">Descrizione</Label>
+              <Label for="description">{{ trans('eventi.label.descrizione') }}</Label>
               <Textarea id="description" v-model="form.description" class="min-h-[120px]" @focus="form.clearErrors('description')" />
               <InputError :message="form.errors.description" />
             </div>
 
             <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
               <div class="sm:col-span-6">
-                <Label for="note">Note aggiuntive</Label>
+                <Label for="note">{{ trans('eventi.label.note_aggiuntive') }}</Label>
                 <Textarea 
                     id="note" 
                     placeholder="Inserisci una nota qui" 
@@ -164,12 +165,12 @@ const submit = () => {
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <Label>Inizio</Label>
+                <Label>{{ trans('eventi.label.inizio') }}</Label>
                 <Input type="datetime-local" v-model="form.start_time" />
                 <InputError :message="form.errors.start_time" />
               </div>
               <div>
-                <Label>Fine</Label>
+                <Label>{{ trans('eventi.label.fine') }}</Label>
                 <Input type="datetime-local" v-model="form.end_time" />
                 <InputError :message="form.errors.end_time" />
               </div>
@@ -177,7 +178,7 @@ const submit = () => {
 
             <div class="flex items-center space-x-2">
               <Checkbox class="size-4"  id="recurrenceToggle" v-model="showRecurrence" />
-              <Label for="recurrenceToggle">Imposta evento ricorrente</Label>
+              <Label for="recurrenceToggle">{{ trans('eventi.label.imposta_evento_ricorrente') }}</Label>
               <HoverCard>
                 <HoverCardTrigger as-child>
                   <button type="button" class="cursor-pointer">
@@ -188,10 +189,10 @@ const submit = () => {
                 <div class="flex justify-between space-x-4">
                   <div class="space-y-1">
                       <h4 class="text-sm font-semibold">
-                          Evento ricorrente
+                          {{ trans('eventi.ui.evento_ricorrente') }}
                       </h4>
                       <p class="text-sm">
-                          Quando viene selezionata questa opzione verrano abilitati i campi per la configurazione della ricorrenza dell'evento.
+                          {{ trans('eventi.ui.quando_viene_selezionata_questa_opzione') }} dell'evento.
                       </p>
                   </div>
                 </div>
@@ -201,7 +202,7 @@ const submit = () => {
             </div>
 
             <div v-if="showRecurrence">
-              <Label>Ricorrenza</Label>
+              <Label>{{ trans('eventi.label.ricorrenza') }}</Label>
               <div class="grid grid-cols-2 gap-4">
                 <v-select 
                   :options="frequencies" 
@@ -214,7 +215,7 @@ const submit = () => {
               </div>
 
               <div class="mt-4">
-                <Label>Giorni specifici</Label>
+                <Label>{{ trans('eventi.label.giorni_specifici') }}</Label>
                 <div class="grid grid-cols-3 gap-2 mt-2">
                   <div v-for="day in weekdays" :key="day.value" class="flex items-center gap-2">
                     <input
@@ -229,7 +230,7 @@ const submit = () => {
               </div>
 
               <div class="mt-4">
-                <Label>Ripeti fino al</Label>
+                <Label>{{ trans('eventi.label.ripeti_fino_al') }}</Label>
                 <Input type="datetime-local" v-model="form.recurrence_until" />
 
                  <InputError :message="form.errors.recurrence_until" />

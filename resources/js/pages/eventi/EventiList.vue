@@ -1,5 +1,6 @@
 <script setup lang="ts">
 
+import { trans } from 'laravel-vue-i18n';
 import { computed, reactive } from 'vue';
 import { usePage, Head, router } from '@inertiajs/vue3';
 import DataTable from '@/components/eventi/DataTable.vue';
@@ -40,13 +41,13 @@ function setFilter(range: { date_from: string; date_to: string }) {
 </script>
 
 <template>
-  <Head title="Elenco scadenze agenda" />
+  <Head :title="trans('eventi.header.elenco_scadenze_agenda')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco scadenze in agenda"
-        description="Di seguito la tabella con l'elenco di tutte le prossime scadenze nell'agenda del condominio"
+        :title="trans('eventi.header.elenco_scadenze_agenda')"
+        :description="trans('eventi.header.description')"
       />
 
        <EventiStats :stats="stats" @setFilter="setFilter" />
