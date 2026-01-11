@@ -36,20 +36,20 @@ const showRecurrence = ref(false);
 
 
 const frequencies = [
-  { label: trans('eventi.label.giornaliera'), value: 'daily' },
-  { label: trans('eventi.label.settimanale'), value: 'weekly' },
-  { label: trans('eventi.label.mensile'), value: 'monthly' },
-  { label: 'Annuale', value: 'yearly' },
+  { label: 'eventi.label.giornaliera', value: 'daily' },
+  { label: 'eventi.label.settimanale', value: 'weekly' },
+  { label: 'eventi.label.mensile', value: 'monthly' },
+  { label: 'eventi.label.annuale', value: 'yearly' },
 ];
 
 const weekdays = [
-  { label: 'Luned\u00ec', value: 'MO' },
-  { label: 'Marted\u00ec', value: 'TU' },
-  { label: 'Mercoled\u00ec', value: 'WE' },
-  { label: 'Gioved\u00ec', value: 'TH' },
-  { label: 'Venerd\u00ec', value: 'FR' },
-  { label: trans('eventi.label.sabato'), value: 'SA' },
-  { label: trans('eventi.label.domenica'), value: 'SU' },
+  { label: 'eventi.label.lunedi', value: 'MO' },
+  { label: 'eventi.label.martedi', value: 'TU' },
+  { label: 'eventi.label.mercoledi', value: 'WE' },
+  { label: 'eventi.label.giovedi', value: 'TH' },
+  { label: 'eventi.label.venerdi', value: 'FR' },
+  { label: 'eventi.label.sabato', value: 'SA' },
+  { label: 'eventi.label.domenica', value: 'SU' },
 ];
 
 const form = useForm({
@@ -118,7 +118,7 @@ const submit = () => {
             <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                 <Plus class="w-4 h-4" v-if="!form.processing" />
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
+                {{ trans('eventi.button.crea_evento') }}
             </Button>
 
             <Link
@@ -153,7 +153,7 @@ const submit = () => {
                 <Label for="note">{{ trans('eventi.label.note_aggiuntive') }}</Label>
                 <Textarea 
                     id="note" 
-                    placeholder="Inserisci una nota qui" 
+                    :placeholder="trans('eventi.placeholder.note_aggiuntive')" 
                     v-model="form.note" 
                     v-on:focus="form.clearErrors('note')"
                 />
@@ -206,10 +206,10 @@ const submit = () => {
               <div class="grid grid-cols-2 gap-4">
                 <v-select 
                   :options="frequencies" 
-                  label="label" 
+                  :get-option-label="opt => trans(opt.label)"
                   v-model="form.recurrence_frequency" 
                   :reduce="(opt: { label: string; value: string }) => opt.value"
-                  placeholder="Frequenza" 
+                  :placeholder="trans('eventi.placeholder.seleziona_frequenza')" 
                 />
                 <Input type="number" min="1" v-model="form.recurrence_interval" placeholder="Intervallo" />
               </div>
@@ -224,7 +224,7 @@ const submit = () => {
                       :value="day.value"
                       v-model="form.recurrence_by_day"
                     />
-                    <label :for="day.value">{{ day.label }}</label>
+                    <label :for="day.value">{{ trans(day.label) }}</label>
                   </div>
                 </div>
               </div>
@@ -247,7 +247,7 @@ const submit = () => {
               <div class="sm:col-span-6">
                   <!-- Label text and icon in a flex row -->
                   <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                      <Label for="stato">Stato pubblicazione</Label>
+                      <Label for="stato">{{ trans('eventi.label.stato_pubblicazione') }}</Label>
 
                       <HoverCard>
                           <HoverCardTrigger as-child>
@@ -259,10 +259,10 @@ const submit = () => {
                           <div class="flex justify-between space-x-4">
                               <div class="space-y-1">
                               <h4 class="text-sm font-semibold">
-                                  Stato pubblicazione
+                                  {{ trans('eventi.ui.stato_pubblicazione') }}
                               </h4>
                               <p class="text-sm">
-                                  Scegli se rendere visibile la scadenza nella bacheca o mantenerla nascosta.
+                                  {{ trans('eventi.ui.scegli_se_rendere_visibile_la_scadenza_nella_bacheca_o_mantenerla_nascosta') }}
                               </p>
                               </div>
                           </div>
@@ -276,7 +276,7 @@ const submit = () => {
                       :options="visibilityConstants" 
                       label="label" 
                       v-model="form.visibility"
-                      placeholder="Stato pubblicazione"
+                      :placeholder="trans('eventi.placeholder.stato_pubblicazione')"
                       @update:modelValue="form.clearErrors('visibility')" 
                       :reduce="(visibility: VisibilityType) => visibility.value"
                   />
@@ -286,14 +286,14 @@ const submit = () => {
             </div>
 
             <div>
-              <Label>Categorie</Label>
+              <Label>{{ trans('eventi.label.categorie') }}</Label>
 
                   <v-select
                     :options="categorie"
                     label="name"
                     v-model="form.category_id"
                     :reduce="(option: CategoriaEvento) => option.id"
-                    placeholder="Seleziona categoria"
+                    :placeholder="trans('eventi.placeholder.seleziona_categoria')"
                     class="flex-1"
                     @update:modelValue="form.clearErrors('category_id')" 
                   />
@@ -302,7 +302,7 @@ const submit = () => {
             </div>
 
             <div>
-              <Label>Condomini</Label>
+              <Label>{{ trans('eventi.label.condomini') }}</Label>
               <v-select 
                 multiple 
                 :options="condomini" 
@@ -310,13 +310,13 @@ const submit = () => {
                 v-model="form.condomini_ids" 
                 :reduce="(option: Building) => option.id"
                 @update:modelValue="form.clearErrors('condomini_ids')" 
-                placeholder="Seleziona condomini" 
+                :placeholder="trans('eventi.placeholder.seleziona_condomini')" 
               />
               <InputError :message="form.errors.condomini_ids" />
             </div>
 
             <div>
-              <Label>Anagrafiche</Label>
+              <Label>{{ trans('eventi.label.anagrafiche') }}</Label>
               <v-select 
                 multiple 
                 :options="anagraficheOptions" 
@@ -324,7 +324,7 @@ const submit = () => {
                 v-model="form.anagrafiche" 
                 :reduce="(option: Anagrafica) => option.id"
                 :disabled="form.condomini_ids.length === 0" 
-                placeholder="Seleziona anagrafiche" 
+                :placeholder="trans('eventi.placeholder.anagrafiche')" 
               />
               <InputError :message="form.errors.anagrafiche" />
             </div>

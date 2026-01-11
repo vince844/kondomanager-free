@@ -153,7 +153,7 @@ const submit = () => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
             >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>{{ trans('eventi.button.elenco') }}</span>
             </Link>
         </div>
 
@@ -179,7 +179,7 @@ const submit = () => {
                 <Label for="note">{{ trans('eventi.label.note_aggiuntive') }}</Label>
                 <Textarea 
                     id="note" 
-                    placeholder="Inserisci una nota qui" 
+                    :placeholder="trans('eventi.placeholder.note_aggiuntive')" 
                     v-model="form.note" 
                     v-on:focus="form.clearErrors('note')"
                 />
@@ -215,7 +215,7 @@ const submit = () => {
                 <div class="flex justify-between space-x-4">
                   <div class="space-y-1">
                       <h4 class="text-sm font-semibold">
-                          Evento ricorrente
+                          {{ trans('eventi.ui.evento_ricorrente') }}
                       </h4>
                       <p class="text-sm">
                           {{ trans('eventi.p.quando_viene_selezionata_questa_opzione_verrano_abilitati_i_campi_per_la_configurazione_della_ricorrenza') }} dell'evento.
@@ -235,7 +235,7 @@ const submit = () => {
                   label="label" 
                   v-model="form.recurrence_frequency" 
                   :reduce="(opt: { label: string; value: string }) => opt.value"
-                  placeholder="Frequenza" 
+                  :placeholder="trans('eventi.placeholder.seleziona_frequenza')" 
                 />
                 <Input type="number" min="1" v-model="form.recurrence_interval" placeholder="Intervallo" />
               </div>
@@ -258,7 +258,6 @@ const submit = () => {
               <div class="mt-4">
                 <Label>{{ trans('eventi.label.ripeti_fino_al') }}</Label>
                 <Input type="datetime-local" v-model="form.recurrence_until" />
-
                  <InputError :message="form.errors.recurrence_until" />
               </div>
 
@@ -277,7 +276,7 @@ const submit = () => {
                       :options="visibilityConstants" 
                       label="label" 
                       v-model="form.visibility"
-                      placeholder="Stato pubblicazione"
+                      :placeholder="trans('eventi.placeholder.stato_pubblicazione')"
                       @update:modelValue="form.clearErrors('visibility')" 
                       :reduce="(visibility: VisibilityType) => visibility.value"
                     />
@@ -311,7 +310,7 @@ const submit = () => {
                 v-model="form.condomini_ids" 
                 :reduce="(opt: { label: string; value: string }) => opt.value"
                 @update:modelValue="form.clearErrors('condomini_ids')" 
-                placeholder="Seleziona condomini" 
+                :placeholder="trans('eventi.placeholder.seleziona_condomini')" 
               />
 
               <InputError :message="form.errors.condomini_ids" />
@@ -327,7 +326,7 @@ const submit = () => {
                     :options="anagraficheOptions"
                     label="nome"
                     v-model="form.anagrafiche"
-                    placeholder="Anagrafiche"
+                    :placeholder="trans('eventi.placeholder.anagrafiche')"
                     @update:modelValue="form.clearErrors('anagrafiche')"
                     :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                     :disabled="form.condomini_ids.length === 0"

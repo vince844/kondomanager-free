@@ -71,7 +71,7 @@ return [
         'ricorrenza'                        => 'Recorrência ',
         'giorni_specifici'                  => 'Dias específicos ',
         'ripeti_fino_al'                    => 'Repetir até ',
-        'stato_pubblicazione'               => 'Estado de publicação ',
+        'stato_pubblicazione'               => 'Estado da publicação ',
         'categorie'                         => 'Categorias ',
         'condomini'                         => 'Condomínio ',
         'anagrafiche'                       => 'Registo ',
@@ -108,10 +108,35 @@ return [
      | buttons
      | ------------------------------------------------------------------ */
     'button' => [
-        'crea_nuovo_evento'        => "Criar",
-        'cancella'                 => "Cancelar",
-        'resetta_filtri'          => "Redefinir filtros",
-        'categoria'               => "Categoria",
+        'crea_nuovo_evento'         => "Criar",
+        'cancella'                  => "Cancelar",
+        'resetta_filtri'            => "Redefinir filtros",
+        'categoria'                 => "Categoria",
+        '40'                        => "Lista ",
+        'crea_evento'               => "Criar evento ",
+    ],
+
+    /* ------------------------------------------------------------------
+     | table
+     | ------------------------------------------------------------------ */
+    'table' => [
+        'nessum_risultato_trovato'           => "Nenhum resultado encontrado",
+        'modifica'                           => "Editar",
+        'elimina'                            => "Eliminar",
+    ],
+
+    /* ------------------------------------------------------------------
+     | placeholder
+     | ------------------------------------------------------------------ */
+    'placeholder' => [
+        'stato_pubblicazione'               => 'Estado de publicação ',
+        'seleziona_condomini'               => 'Selecione o condomínio ',
+        'anagrafiche'                       => 'Registo',
+        'seleziona_frequenza'               => 'Selecione a frequência ',
+        'seleziona_giorni_specifici'        => 'Selecione dias específicos ',
+        'seleziona_data'                    => 'Selecione a data ',
+        'seleziona_categoria'               => 'Selecione a categoria ',
+        'note_aggiuntive'                   => 'Insira uma nota aqui ',
     ],
 
 ];
