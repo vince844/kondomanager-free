@@ -1,6 +1,5 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { trans } from 'laravel-vue-i18n';
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -118,7 +117,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              {{ trans('eventi.table.nessum_risultato_trovato') }}
+              Nessun risultato trovato
             </TableCell>
           </TableRow>
         </template>

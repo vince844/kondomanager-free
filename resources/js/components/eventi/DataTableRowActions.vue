@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { trans } from "laravel-vue-i18n"
+
 import { ref, computed } from 'vue'
 import { router } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
@@ -174,7 +174,7 @@ function goToEdit(evento: Evento, e?: Event) {
       >
 
         <FilePenLine class="w-4 h-4 text-xs" />
-        {{ trans('eventi.table.modifica') }}
+        Modifica
         
       </DropdownMenuItem>
 
@@ -183,7 +183,7 @@ function goToEdit(evento: Evento, e?: Event) {
        @click="handleDelete(evento)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-          
+        Elimina
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
