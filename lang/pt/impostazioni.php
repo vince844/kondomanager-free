@@ -54,7 +54,7 @@ return [
     'placeholder' => [
         'select_building' => 'Selecionar condomínio',
         'select_language' => 'Selecionar idioma',
-        'search_settings' => 'Filter settings...',
+        'search_settings' => 'Filtrar configurações...',
         'language' => [
             'it' => 'Italiano',
             'en' => 'Inglês',
