@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 
 import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
@@ -96,18 +97,18 @@ const goToCreateCondominio = () => {
             showError ? 'border-red-500 ring-1 ring-red-500' : ''
           )"
         >
-          {{ selectedCondominio?.nome || 'Seleziona condominio' }}
+          {{ selectedCondominio?.nome || trans('dashboard.search.cerca_condominio') }}
           <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent class="w-full sm:w-[300px] p-0">
         <div v-if="loading" class="flex items-center justify-center py-6">
           <Loader2 class="h-5 w-5 animate-spin text-gray-500" />
-          <span class="ml-2 text-sm text-gray-500">Caricamento...</span>
+          <span class="ml-2 text-sm text-gray-500">{{ trans('dashboard.search.caricamento') }}</span>
         </div>
         <Command v-else>
-          <CommandInput placeholder="Cerca condominio..." />
-          <CommandEmpty>Nessun condominio trovato.</CommandEmpty>
+          <CommandInput :placeholder="trans('dashboard.search.cerca_condominio')" />
+          <CommandEmpty>{{ trans('dashboard.search.nessun_condominio_trovato') }}</CommandEmpty>
 
           <CommandList>
             <CommandGroup>
@@ -134,7 +135,7 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CirclePlus class="mr-2 h-5 w-5" />
-                Crea condominio
+                {{ trans('dashboard.buttons.crea_condominio') }}
               </CommandItem>
 
               <CommandItem
@@ -145,7 +146,7 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CircleX class="mr-2 h-5 w-5 text-red-600" />
-                Reset selezione
+                {{ trans('dashboard.buttons.reset_selezione') }}
               </CommandItem>
             </CommandGroup>
           </CommandList>
@@ -153,7 +154,7 @@ const goToCreateCondominio = () => {
       </PopoverContent>
     </Popover>
     <Button class="w-full sm:w-auto text-sm py-2 px-4" @click="goToGestionale">
-      Gestione
+      {{ trans('dashboard.buttons.vai_al_gestionale_condominio') }}
     </Button>
   </div>
 </template>
