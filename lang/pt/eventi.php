@@ -112,7 +112,6 @@ return [
         'cancella'                  => "Cancelar",
         'resetta_filtri'            => "Redefinir filtros",
         'categoria'                 => "Categoria",
-        '40'                        => "Lista ",
         'crea_evento'               => "Criar evento ",
     ],
 

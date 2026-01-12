@@ -52,10 +52,10 @@ const form = useForm({
 });
 
 const frequencies = [
-  { label: 'Giornaliera', value: 'daily' },
-  { label: 'Settimanale', value: 'weekly' },
-  { label: 'Mensile', value: 'monthly' },
-  { label: 'Annuale', value: 'yearly' },
+  { label: 'eventi.label.giornaliera', value: 'daily' },
+  { label: 'eventi.label.settimanale', value: 'weekly' },
+  { label: 'eventi.label.mensile', value: 'monthly' },
+  { label: 'eventi.label.annuale', value: 'yearly' },
 ];
 
 const weekdays = [
@@ -205,7 +205,7 @@ const submit = () => {
               <Label>Ricorrenza</Label>
               <div class="grid grid-cols-2 gap-4">
                 <v-select 
-                  :options="frequencies" 
+                  :options="frequencies"
                   label="label" 
                   v-model="form.recurrence_frequency" 
                   :reduce="(opt: { label: string; value: string }) => opt.value"
