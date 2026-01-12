@@ -12,8 +12,9 @@ return [
     'header' => [
         'elenco_documenti' => 'Lista de Documentos',
         'description' => 'Abaixo está a tabela com a lista de todos os documentos registados',
-        'crea_documento_archivio' => 'Crea documento archivio',
-        'compila_il_seguente_modulo' => 'Compila il seguente modulo per la creazione di un nuovo documento per l\'archivo del condominio',
+        'crea_documento_archivio' => 'Cria documento para o arquivo',
+        'compila_il_seguente_modulo' => 'Preencha o seguinte formulário para criar um novo documento para o arquivo do condomínio.',
+        'elenco_categorie_archivio_documenti' => "Lista de categorias do arquivo de documentos ",
     ],
 
     /* ------------------------------------------------------------------
