@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { trans } from 'laravel-vue-i18n';
 
 import { computed } from 'vue';
 import { usePage, Head } from '@inertiajs/vue3';
@@ -22,12 +23,12 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco categorie archivio documenti" />
+  <Head :title="trans('documenti.header.elenco_categorie_archivio_documenti')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco categorie archivio documenti"
+        :title="trans('documenti.header.elenco_categorie_archivio_documenti')"
         description="Di seguito la tabella con l'elenco di tutte le categorie documenti dell'archivio del condominio"
       />
 
