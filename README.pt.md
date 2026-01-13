@@ -172,7 +172,7 @@ Para contribuir, recomenda-se seguir as indicações descritas na [documentaçã
 Se você deseja contribuir ativamente com melhorias simples ou correções, pode [pesquisar entre as issues](https://github.com/vince844/kondomanager-free/issues).
 
 ## Ambiente de desenvolvimento em ambiente docker para contribuir
-Se pretender contribuir, pode configurar um ambiente de desenvolvimento docker seguindo estas [instruções](https://github.com/vince844/kondomanager-free/blob/main/README-docker_develop.md).
+Se pretender contribuir, pode configurar um ambiente de desenvolvimento docker seguindo estas [instruções](https://github.com/vince844/kondomanager-free/blob/main/README-docker_develop.pt.md).
 
 ## Apoie o projeto
 Desenvolver um software open source requer muito esforço e dedicação. Ficarei grato se você decidir apoiar o projeto. [Apoie o KondoManager no Patreon](https://www.patreon.com/KondoManager)

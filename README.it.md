@@ -1,13 +1,13 @@
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.en.md)
 [![it](https://img.shields.io/badge/lang-it-green.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.md)
-[![pt-br](https://img.shields.io/badge/lang-pt--br-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt-br.md)
+[![pt](https://img.shields.io/badge/lang-pt-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt.md)
 
 # KondoManager - Gestione condominiale
 
 KondoManager è un innovativo software open source per la gestione condominiale, realizzato in Laravel e database MySQL, pensato per gli amministratori di condominio ma anche per gli utenti del condominio.
 
 ## Screenshots
-
+ 
 <table>
   <tr>
     <td><img src="https://dev.karibusana.org/github/Screenshot-3.png" alt="Dashboard" width="100%"></td>
@@ -167,6 +167,10 @@ Chi volesse contribuire a far crescre il progetto è sempre il benvenuto!
 Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING).
 
 Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issue](https://github.com/vince844/kondomanager-free/issues).
+
+## Ambiente di sviluppo Docker per contribuire
+
+Se desideri contribuire, puoi configurare un ambiente di sviluppo Docker seguendo queste [istruzioni](https://github.com/vince844/kondomanager-free/blob/main/README-docker_develop.it.md).
 
 ## Sostieni il progetto
 

@@ -14,7 +14,7 @@ Antes de começares, garante que tens instalado:
     -   Windows / macOS: [https://www.docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop)
     -   Linux: docker + docker-compose-plugin
         
-
+ 
 Verificação rápida:
 ```bash
 git --version
