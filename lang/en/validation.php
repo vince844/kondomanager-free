@@ -2,39 +2,50 @@
 
 return [
 
+    /*
+    |--------------------------------------------------------------------------
+    | Validation Language Lines
+    |--------------------------------------------------------------------------
+    |
+    | The following language lines contain the default error messages used by
+    | the validator class. Some of these rules have multiple versions such
+    | as the size rules. Feel free to tweak each of these messages here.
+    |
+    */
+
     'accepted' => ':attribute must be accepted.',
     'accepted_if' => ':attribute must be accepted when :other is :value.',
-    'active_url' => ':attribute does not contain a valid email address.',
-    'after' => ':attribute must be after :date.',
-    'after_or_equal' => ':attribute must be after or equal to :date.',
-    'alpha' => ':attribute may contain letters only.',
-    'alpha_dash' => ':attribute may contain only letters, numbers, dashes, and underscores.',
-    'alpha_num' => ':attribute may contain only letters and numbers.',
+    'active_url' => ':attribute does not contain a valid URL.',
+    'after' => ':attribute must be a date after :date.',
+    'after_or_equal' => ':attribute must be a date after or equal to :date.',
+    'alpha' => ':attribute may only contain letters.',
+    'alpha_dash' => ':attribute may only contain letters, numbers, dashes and underscores.',
+    'alpha_num' => ':attribute may only contain letters and numbers.',
     'array' => ':attribute must be an array.',
-    'ascii' => ':attribute must contain only alphanumeric characters and single-byte symbols.',
+    'ascii' => ':attribute must only contain single-byte alphanumeric characters and symbols.',
     'before' => ':attribute must be a date before :date.',
     'before_or_equal' => ':attribute must be a date before or equal to :date.',
     'between' => [
-        'array' => ':attribute must be between :min and :max items.',
+        'array' => ':attribute must contain between :min and :max items.',
         'file' => ':attribute must be between :min and :max kilobytes.',
         'numeric' => ':attribute must be between :min and :max.',
         'string' => ':attribute must be between :min and :max characters.',
     ],
     'boolean' => ':attribute must be true or false.',
     'can' => 'The :attribute field contains an unauthorized value.',
-    'confirmed' => ':attribute does not match.',
-    'current_password' => 'The password entered is incorrect.',
+    'confirmed' => ':attribute confirmation does not match.',
+    'current_password' => 'The provided password is incorrect.',
     'date' => ':attribute is not a valid date.',
-    'date_equals' => ':attribute must be equal to :date.',
+    'date_equals' => ':attribute must be a date equal to :date.',
     'date_format' => ':attribute does not match the format :format.',
     'decimal' => ':attribute must have :decimal decimal places.',
     'declined' => ':attribute must be declined.',
     'declined_if' => ':attribute must be declined when :other is :value.',
     'different' => ':attribute and :other must be different.',
-    'digits' => ':attribute must be :digits digits long.',
+    'digits' => ':attribute must be :digits digits.',
     'digits_between' => ':attribute must be between :min and :max digits.',
     'dimensions' => ':attribute has invalid image dimensions.',
-    'distinct' => ':attribute contains duplicate values.',
+    'distinct' => ':attribute has duplicate values.',
     'doesnt_end_with' => ':attribute must not end with one of the following: :values.',
     'doesnt_start_with' => ':attribute must not start with one of the following: :values.',
     'email' => ':attribute must be a valid email address.',
@@ -43,7 +54,7 @@ return [
     'exists' => 'The selected :attribute is invalid.',
     'extensions' => 'The :attribute field must have one of the following extensions: :values.',
     'file' => ':attribute must be a file.',
-    'filled' => ':attribute must be filled.',
+    'filled' => ':attribute must have a value.',
     'gt' => [
         'array' => ':attribute must contain more than :value items.',
         'file' => ':attribute must be greater than :value kilobytes.',
@@ -69,9 +80,9 @@ return [
     'lowercase' => ':attribute must be lowercase.',
     'lt' => [
         'array' => ':attribute must contain less than :value items.',
-        'file' => ':attribute must be smaller than :value kilobytes.',
+        'file' => ':attribute must be less than :value kilobytes.',
         'numeric' => ':attribute must be less than :value.',
-        'string' => ':attribute must contain fewer than :value characters.',
+        'string' => ':attribute must contain less than :value characters.',
     ],
     'lte' => [
         'array' => ':attribute must not contain more than :value items.',
@@ -86,7 +97,7 @@ return [
         'numeric' => ':attribute may not be greater than :max.',
         'string' => ':attribute may not be greater than :max characters.',
     ],
-    'max_digits' => ':attribute must not contain more than :max digits.',
+    'max_digits' => ':attribute may not contain more than :max digits.',
     'mimes' => ':attribute must be a file of type: :values.',
     'mimetypes' => ':attribute must be a file of type: :values.',
     'min' => [
@@ -113,17 +124,17 @@ return [
         'uncompromised' => ':attribute appears in a data breach. Please choose a different :attribute.',
     ],
     'present' => ':attribute must be present.',
-    'present_if' => 'The :attribute field must be present when :other is :value.',
-    'present_unless' => 'The :attribute field must be present unless :other is :value.',
-    'present_with' => 'The :attribute field must be present when :values is present.',
-    'present_with_all' => 'The :attribute field must be present when :values are present.',
+    'present_if' => ':attribute must be present when :other is :value.',
+    'present_unless' => ':attribute must be present unless :other is :value.',
+    'present_with' => ':attribute must be present when :values is present.',
+    'present_with_all' => ':attribute must be present when :values are present.',
     'prohibited' => ':attribute is prohibited.',
     'prohibited_if' => ':attribute is prohibited when :other is :value.',
-    'prohibited_unless' => ':attribute is prohibited unless :other is :values.',
+    'prohibited_unless' => ':attribute is prohibited unless :other is in :values.',
     'prohibits' => ':attribute prohibits :other from being present.',
     'regex' => 'The :attribute format is invalid.',
     'required' => 'The :attribute field is required.',
-    'required_array_keys' => ':attribute must contain one of the following values: :values.',
+    'required_array_keys' => ':attribute must contain entries for: :values.',
     'required_if' => ':attribute is required when :other is :value.',
     'required_if_accepted' => ':attribute is required when :other is accepted.',
     'required_unless' => ':attribute is required unless :other is in :values.',
@@ -142,72 +153,84 @@ return [
     'string' => ':attribute must be a string.',
     'timezone' => ':attribute must be a valid timezone.',
     'unique' => 'The :attribute field is already in use.',
-    'uploaded' => 'The upload of :attribute failed.',
+    'uploaded' => ':attribute failed to upload.',
     'uppercase' => ':attribute must be uppercase.',
     'url' => ':attribute must be a valid URL.',
     'ulid' => ':attribute must be a valid ULID.',
     'uuid' => ':attribute must be a valid UUID.',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Custom Validation Language Lines
+    |--------------------------------------------------------------------------
+    */
+
     'custom' => [
         'email' => [
-            'required' => 'The :attribute field is required',
-            'unique' => 'The :attribute field is already in use',
-            'lowercase' => 'The :attribute field must be lowercase',
-            'email' => 'The :attribute field must be a valid email address',
-            'unique_email_across_tables' => 'This email address is already in use.',
+            'required' => 'The :attribute field is required.',
+            'unique' => 'The :attribute field is already in use.',
+            'lowercase' => 'The :attribute field must be lowercase.',
+            'email' => 'The :attribute field must be a valid email address.',
+            'unique_email_across_tables' => 'This email address is already in use.'
         ],
         'email_secondaria' => [
-            'required' => 'The :attribute field is required',
-            'unique' => 'The :attribute field is already in use',
-            'lowercase' => 'The :attribute field must be lowercase',
-            'email' => 'The :attribute field must be a valid email address',
+            'required' => 'The :attribute field is required.',
+            'unique' => 'The :attribute field is already in use.',
+            'lowercase' => 'The :attribute field must be lowercase.',
+            'email' => 'The :attribute field must be a valid email address.'
         ],
         'pec' => [
-            'required' => 'The :attribute field is required',
-            'unique' => 'The :attribute field is already in use',
-            'lowercase' => 'The :attribute field must be lowercase',
-            'email' => 'The :attribute field must be a valid email address',
+            'required' => 'The :attribute field is required.',
+            'unique' => 'The :attribute field is already in use.',
+            'lowercase' => 'The :attribute field must be lowercase.',
+            'email' => 'The :attribute field must be a valid email address.'
         ],
         'name' => [
-            'required' => 'The :attribute field is required',
+            'required' => 'The :attribute field is required.'
         ],
         'password' => [
-            'required' => 'The :attribute field is required',
-            'confirmed' => 'The :attribute field does not match the confirmation',
+            'required' => 'The :attribute field is required.',
+            'confirmed' => 'The :attribute does not match the confirmation.'
         ],
         'building' => [
-            'required' => 'The :attribute field is required',
-            'unique' => 'A building already exists registered with this :attribute',
+            'required' => 'The :attribute field is required.',
+            'unique' => 'A building is already registered with this :attribute.',
             'codice_fiscale' => [
-                'required' => 'The :attribute field is required',
-                'unique' => 'A building already exists registered with this :attribute',
-            ],
+                'required' => 'The :attribute field is required.',
+                'unique' => 'A building is already registered with this :attribute.'
+            ]
         ],
         'anagrafica' => [
-            'after:today' => ':attribute must be after today',
-            'before:today' => ':attribute must be before today',
+            'after:today' => ':attribute must be after today.',
+            'before:today' => ':attribute must be before today.',
         ],
         'evento' => [
-            'after_or_equal:today' => ':attribute must be after or equal to today',
+            'after_or_equal:today' => ':attribute must be after or equal to today.',
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Custom Validation Attributes
+    |--------------------------------------------------------------------------
+    */
+
     'attributes' => [
         'email' => 'email address',
-        'email_secondaria' => 'email address',
-        'pec' => 'email address',
-        'name' => 'first and last name',
+        'email_secondaria' => 'secondary email address',
+        'pec' => 'certified email address',
+        'name' => 'full name',
         'building' => [
             'nome' => 'name',
-            'roles' => 'roles field',
+            'roles' => 'roles field'
         ],
         'user' => [
-            'roles' => 'role',
+            'roles' => 'role'
         ],
         'anagrafica' => [
-            'nome' => 'registry name and surname field',
+            'nome' => 'registry full name field',
             'indirizzo' => 'registry address field',
-            'scadenza_documento' => 'document expiry field',
+            'scadenza_documento' => 'document expiration date field',
             'data_nascita' => 'date of birth field',
         ],
         'ruoli' => [
@@ -252,12 +275,12 @@ return [
             'visibility' => 'publication status',
         ],
         'palazzine' => [
-            'name' => 'building name',
-            'description' => 'building description',
+            'name' => 'building block name',
+            'description' => 'building block description',
         ],
         'scale' => [
-            'name' => 'stairwell name',
-            'description' => 'stairwell description',
+            'name' => 'staircase name',
+            'description' => 'staircase description',
         ],
         'immobili' => [
             'tipologia_id' => 'property type',
