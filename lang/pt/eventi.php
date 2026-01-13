@@ -5,6 +5,7 @@ return [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     /* ------------------------------------------------------------------
     | Front‑end strings - Eventos Agenda
     | ------------------------------------------------------------------ */
@@ -39,10 +40,11 @@ return [
     'success_update_event'                => "The agenda event has been updated successfully",
     'error_update_event'                  => "An error occurred while updating the agenda event.",
 =======
+=======
+>>>>>>> 44814f2 (update)
     /* ------------------------------------------------------------------
     | Front‑end strings - Eventos Agenda
     | ------------------------------------------------------------------ */
->>>>>>> 7935b17 (merge changes)
 
     'success_create_event'                => "O novo evento de agenda foi criado com sucesso.",
     'success_create_event_in_moderation'  => "O novo evento de agenda foi criado com sucesso, mas necessita ser aprovado pelo administrador.",

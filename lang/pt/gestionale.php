@@ -8,6 +8,7 @@ return [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Mensagens de Edifício
     'success_create_palazzina'          => "O novo edifício foi criado com sucesso.",
     'error_create_palazzina'            => "Ocorreu um erro ao criar o novo edifício.",
@@ -215,6 +216,8 @@ return [
     'success_create_cassa'              => "The new bank resource has been created successfully",
     'error_create_cassa'                => "An error occurred while creating the new bank resource."
 =======
+=======
+>>>>>>> 44814f2 (update)
     // Mensagens de Edifício
     'success_create_palazzina'          => "O novo edifício foi criado com sucesso.",
     'error_create_palazzina'            => "Ocorreu um erro ao criar o novo edifício.",
@@ -293,5 +296,4 @@ return [
     // Caixas (Casse)
     'success_create_cassa'              => "A nova caixa foi criada com sucesso.",
     'error_create_cassa'                => "Ocorreu um erro ao criar a nova caixa."
->>>>>>> 7935b17 (merge changes)
 ];

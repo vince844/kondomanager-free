@@ -9,6 +9,7 @@ return [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     'success_create_user'                => "O novo utilizador foi criado com sucesso.",
     'error_create_user'                  => "Ocorreu um erro ao criar o novo utilizador.",
     'success_update_user'                => "O utilizador foi atualizado com sucesso.",
@@ -72,6 +73,8 @@ return [
     'error_verify_user'                  => "An error occurred while verifying the user.",
     'error_email_not_sent'               => "The user was created successfully, but the invitation email could not be sent.",
 =======
+=======
+>>>>>>> 44814f2 (update)
     'success_create_user'                => "O novo utilizador foi criado com sucesso.",
     'error_create_user'                  => "Ocorreu um erro ao criar o novo utilizador.",
     'success_update_user'                => "O utilizador foi atualizado com sucesso.",
@@ -90,6 +93,5 @@ return [
     'success_revoke_verify_user'         => "A verificação do utilizador foi revogada.",
     'error_verify_user'                  => "Ocorreu um erro ao verificar o utilizador.",
     'error_email_not_sent'               => "O utilizador foi criado com sucesso, mas o email de convite não pôde ser enviado.",
->>>>>>> 7935b17 (merge changes)
 
 ];

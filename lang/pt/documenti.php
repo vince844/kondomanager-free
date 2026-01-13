@@ -5,6 +5,7 @@ return [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     /* ------------------------------------------------------------------
     | Documents | Documentos
     | ------------------------------------------------------------------ */
@@ -86,6 +87,8 @@ return [
     'success_update_category'              => "The document category has been updated successfully",
     'error_update_category'                => "An error occurred while updating the document category."
 =======
+=======
+>>>>>>> 44814f2 (update)
     /* ------------------------------------------------------------------
     | Documents | Documentos
     | ------------------------------------------------------------------ */
@@ -111,6 +114,5 @@ return [
     'error_create_category'                => "Ocorreu um erro ao criar a nova categoria de documentos.",
     'success_update_category'              => "A categoria de documentos foi atualizada com sucesso.",
     'error_update_category'                => "Ocorreu um erro ao atualizar a categoria de documentos."
->>>>>>> 7935b17 (merge changes)
     
 ];

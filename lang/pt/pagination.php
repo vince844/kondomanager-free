@@ -41,6 +41,7 @@ return [
     */
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     'previous' => '&laquo; Previous',
     'next' => 'Next &raquo;',
 <<<<<<< HEAD
@@ -55,5 +56,9 @@ return [
     'next' => 'Seguinte &raquo;',
 >>>>>>> 7935b17 (merge changes)
 >>>>>>> ad2562d (merge changes)
+=======
+    'previous' => '&laquo; Anterior',
+    'next' => 'Seguinte &raquo;',
+>>>>>>> 44814f2 (update)
 
 ];

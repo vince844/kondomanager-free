@@ -54,6 +54,7 @@ return [
     */
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     'reset'     => 'Your password has been reset.',
     'sent'      => 'We have emailed your password reset link.',
     'throttled' => 'Please wait before retrying.',
@@ -67,12 +68,17 @@ return [
 >>>>>>> b8438a1 (Translated residents module)
 =======
 =======
+=======
+>>>>>>> 44814f2 (update)
     'reset'     => 'A sua palavra‑passe foi reposta.',
     'sent'      => 'Enviámos por email o link para repor a sua palavra‑passe.',
     'throttled' => 'Por favor aguarde antes de tentar novamente.',
     'token'     => 'Este token de reposição de palavra‑passe é inválido.',
     'user'      => 'Não conseguimos encontrar um utilizador com esse endereço de email.',
+<<<<<<< HEAD
 >>>>>>> 7935b17 (merge changes)
 >>>>>>> ad2562d (merge changes)
+=======
+>>>>>>> 44814f2 (update)
 
 ];
