@@ -1,5 +1,5 @@
 # Kondomanager – Complete Docker Environment Guide (Dev & Deploy)
-
+ 
 This document describes **step by step**, in a **simple and reproducible** way, how any user (even with basic knowledge) can install, configure, and work with **Kondomanager** in a Docker environment, as well as prepare continuous integration and deployment.
 
 ----------

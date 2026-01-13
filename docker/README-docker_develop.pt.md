@@ -1,5 +1,9 @@
 # Kondomanager – Guia Completo de Ambiente Docker (Dev & Deploy)
+<<<<<<< HEAD
 
+=======
+ 
+>>>>>>> cb6eac7 (chore(docker): add docker develop environment files v2)
 Este documento descreve **passo a passo**, de forma **simples e reproduzível**, como qualquer utilizador (mesmo com conhecimentos básicos) pode instalar, configurar e trabalhar com o **Kondomanager** num ambiente Docker, bem como preparar integração contínua e deploy.
 
 ----------
