@@ -7,6 +7,7 @@ import { usePermission } from "@/composables/permissions";
 import { ShieldCheck } from 'lucide-vue-next';
 import { Permission }  from "@/enums/Permission";
 import { Badge } from '@/components/ui/badge';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
@@ -16,7 +17,7 @@ const { hasPermission,  generateRoute } = usePermission();
 export const columns: ColumnDef<Documento>[] = [
   {
     accessorKey: 'name',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.name') }),
 
     cell: ({ row, table }) => {
 
@@ -44,8 +45,8 @@ export const columns: ColumnDef<Documento>[] = [
       };
 
       const tooltip = documento.is_approved
-        ? 'Approvato - clicca per rimuovere approvazione'
-        : 'Non approvato - clicca per approvare';
+        ? trans('documenti.table.approved_tooltip')
+        : trans('documenti.table.unapproved_tooltip');
     
       const shieldIcon = hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS])
         ? h('div', {
@@ -70,7 +71,7 @@ export const columns: ColumnDef<Documento>[] = [
   },
   {
     accessorKey: 'categoria',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Categoria' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.category') }),
 
     cell: ({ row }) => {
       const categoria = row.original.categoria;
@@ -88,7 +89,7 @@ export const columns: ColumnDef<Documento>[] = [
   },
   {
     accessorKey: 'condomini',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.buildings') }),
   
     cell: ({ row }) => {
       const condomini = row.original.condomini;
@@ -157,7 +158,7 @@ export const columns: ColumnDef<Documento>[] = [
   },
   {
     accessorKey: 'anagrafiche',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Anagrafiche' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.residents') }),
   
     cell: ({ row }) => {
       const anagrafiche = row.original.anagrafiche;
@@ -222,7 +223,7 @@ export const columns: ColumnDef<Documento>[] = [
   },
   {
     accessorKey: 'is_published',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.status') }),
     cell: ({ row }) => {
 
       const value = Boolean(row.getValue('is_published'));
@@ -232,7 +233,7 @@ export const columns: ColumnDef<Documento>[] = [
   
       return h('div', { class: 'flex items-center gap-2' }, [
         h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
-        h('span', stato.label)
+        h('span', trans(stato.label))
       ]);
     },
     filterFn: (row, id, value) =>

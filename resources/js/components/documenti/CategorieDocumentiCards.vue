@@ -3,8 +3,8 @@
 import { Link } from '@inertiajs/vue3';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { Categoria } from '@/types/categorie';
 import { usePermission } from "@/composables/permissions";
+import type { Categoria } from '@/types/categorie';
 
 const { generateRoute } = usePermission();
 
@@ -12,18 +12,22 @@ defineProps<{
   categoria: Categoria;
 }>();
 
+const truncatedName = (name: string, length: number = 80) => {
+  return name.length > length ? `${name.slice(0, length)}...` : name;
+};
+
 </script>
 
 <template>
   <Card>
     <CardHeader class="flex flex-row items-center justify-between p-2">
-      <CardTitle class="text-xl font-bold capitalize">
+      <CardTitle class="text-xl font-bold">
 
         <Link
           :href="route(generateRoute('categorie-documenti.show'), {id: categoria.id})"
           class="text-xl font-bold text-primary"
         >
-          {{ categoria.name }}
+         {{ truncatedName(categoria.name, 15) }}
         </Link>
 
       </CardTitle>

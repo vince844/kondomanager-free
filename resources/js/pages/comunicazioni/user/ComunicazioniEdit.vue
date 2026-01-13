@@ -16,7 +16,6 @@ import { Separator } from '@/components/ui/separator';
 import { priorityConstants } from '@/lib/comunicazioni/constants';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { usePermission } from "@/composables/permissions";
-import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
 import type { Building } from '@/types/buildings';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -27,7 +26,7 @@ const props = defineProps<{
   condomini: Building[];
 }>();  
 
-const { hasPermission, generateRoute } = usePermission();
+const { generateRoute } = usePermission();
 
 const form = useForm({
   subject: props.comunicazione?.subject ?? '',
@@ -57,8 +56,8 @@ const submit = () => {
     <div class="px-4 py-6">
 
       <Heading 
-            :title="trans('comunicazioni.header.edit_communication_title')" 
-            :description="trans('comunicazioni.header.edit_communication_description')" 
+        :title="trans('comunicazioni.header.edit_communication_title')" 
+        :description="trans('comunicazioni.header.edit_communication_description')" 
       />
 
       <form class="space-y-2" @submit.prevent="submit">

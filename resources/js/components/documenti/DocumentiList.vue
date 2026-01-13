@@ -3,6 +3,7 @@
 import { ref } from "vue";
 import { CloudDownload } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
@@ -37,7 +38,7 @@ const truncatedName = (name: string, length: number = 80) => {
     <div class="flow-root">
       <ul role="list" class="divide-y divide-gray-200">
         <div v-if="!documenti.length" class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-          <span class="font-medium">Nessun documento in archivio ancora creato!</span>
+          <span class="font-medium">{{ trans('documenti.dialogs.no_documents_created') }}</span>
         </div>
         <li v-for="documento in documenti" :key="documento.id" class="py-3 sm:py-4">
           <div class="flex items-center space-x-4">
@@ -54,7 +55,17 @@ const truncatedName = (name: string, length: number = 80) => {
               </a>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }} in {{ documento.categoria.name.toLowerCase() }}</span>
+                <span>
+
+                  {{ 
+                    trans('documenti.visibility.sent_on_by_category', { 
+                        date: documento.created_at, 
+                        name: documento.created_by.user.name,
+                        category: documento.categoria.name.toLowerCase()
+                    }) 
+                  }}
+                  
+                </span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">
@@ -66,7 +77,11 @@ const truncatedName = (name: string, length: number = 80) => {
                   class="text-xs font-semibold text-gray-500 ml-1"
                   @click="toggleExpanded(Number(documento.id))"
                 >
-                  {{ isExpanded(Number(documento.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+                  {{ 
+                    isExpanded(Number(documento.id))
+                    ? trans('documenti.actions.show_less')
+                    : trans('documenti.actions.show_more')
+                  }}
                 </button>
               </p>
   

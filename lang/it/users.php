@@ -22,7 +22,6 @@ return [
     'success_revoke_verify_user' => 'La verifica dell\'utente è stata revocata.',
     'error_verify_user'          => 'Si è verificato un errore durante la verifica dell\'utente.',
     'error_email_not_sent'       => 'L\'utente è stato creato correttamente, ma non è stato possibile inviare l\'email di invito.',
-
     /* ------------------------------------------------------------------
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
@@ -38,7 +37,6 @@ return [
         'additional_permissions_title'       => 'Permessi aggiuntivi',
         'additional_permissions_description' => 'Permessi assegnati direttamente all\'utente, oltre a quelli del ruolo',
     ],
-
     /* ------------------------------------------------------------------
      | Table 
      | ------------------------------------------------------------------ */
@@ -56,7 +54,6 @@ return [
         'verified_tooltip'   => 'Utente verificato - clicca per revocare verifica',
         'unverified_tooltip' => 'Utente non verificato - clicca per verificare',
     ],
-
     /* ------------------------------------------------------------------
      | Labels for fields
      | ------------------------------------------------------------------ */
@@ -71,7 +68,6 @@ return [
         'permissions_assigned_to_user' => 'Permessi assegnati a :name',
         'permissions_count'            => ':count permessi',
     ],
-
     /* ------------------------------------------------------------------
      | Placeholders
      | ------------------------------------------------------------------ */
@@ -82,7 +78,6 @@ return [
         'resident'    => 'Seleziona anagrafica',
         'permissions' => 'Seleziona permessi aggiuntivi',
     ],
-
     /* ------------------------------------------------------------------
      | Actions
      | ------------------------------------------------------------------ */
@@ -94,7 +89,6 @@ return [
         'activate_user' => 'Attiva',
         'invite_user'   => 'Reinvita',
     ],
-
     /* ------------------------------------------------------------------
      | Tooltips / Hover cards
      | ------------------------------------------------------------------ */
@@ -104,7 +98,6 @@ return [
         'resident'    => 'Seleziona l\'anagrafica da associare all\'utente. L\'anagrafica associata potrà accedere al sistema con le credenziali dell\'utente creato e consultare i propri dati e quelli a lui collegati.',
         'permissions' => 'Seleziona permessi specifici da assegnare all\'utente oltre a quelli ereditati dal ruolo selezionato.',
     ],
-
     /* ------------------------------------------------------------------
      | Dialogs
      | ------------------------------------------------------------------ */
@@ -115,7 +108,6 @@ return [
         'invite_user_title'        => 'Sei sicuro di volere invitare nuovamente questo utente?',
         'invite_user_description'  => 'L\'utente riceverà una email con un nuovo link per la creazione di una nuova password.',
     ],
-
     /* ------------------------------------------------------------------
      | Empty states
      | ------------------------------------------------------------------ */
@@ -124,14 +116,12 @@ return [
         'additional_permissions'  => 'Nessun permesso aggiuntivo assegnato',
         'no_assigned_permissions' => 'Nessun permesso assegnato',
     ],
-
     /* ------------------------------------------------------------------
      | Badges (etichette/stati)
      | ------------------------------------------------------------------ */
     'badge' => [
         'previously_direct' => 'in precedenza assegnato',
     ],
-
     /* ------------------------------------------------------------------
      | Layout 
      | ------------------------------------------------------------------ */

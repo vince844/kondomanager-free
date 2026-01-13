@@ -18,6 +18,8 @@ import axios from 'axios';
 import vSelect from "vue-select";
 import { usePermission } from '@/composables/permissions';
 import { publishedConstants } from '@/lib/documenti/constants';
+import { formatBytes } from '@/utils/formatBytes'; 
+import { trans } from 'laravel-vue-i18n';
 import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
@@ -67,12 +69,12 @@ const validateFile = (selectedFile: File): boolean => {
   const maxSize = 20 * 1024 * 1024; // 20MB
   
   if (!allowedTypes.includes(selectedFile.type)) {
-    form.setError('file', 'Sono ammessi solo file PDF, JPEG, PNG');
+    form.setError('file', trans('documenti.dialogs.document_supported_types'));
     return false;
   }
   
   if (selectedFile.size > maxSize) {
-    form.setError('file', 'Il file non può superare i 20MB');
+    form.setError('file', trans('documenti.dialogs.max_document_size'));
     return false;
   }
   
@@ -139,15 +141,6 @@ const cancelFileUpload = (): void => {
   form.clearErrors('file')
 }
 
-// Utility functions
-const formatFileSize = (bytes?: number): string => {
-  if (!bytes || bytes === 0) return '0 Bytes';
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
 const getFileName = (): string => {
   if (props.documento.path) {
     const pathParts = props.documento.path.split('/');
@@ -194,7 +187,7 @@ const fetchAnagrafiche = async (condomini_ids: number[]): Promise<void> => {
       params: { condomini_ids },
     });
 
-    form.anagrafiche = []; // clear selected items
+    form.anagrafiche = []; 
     anagraficheOptions.value = response.data.map((item: { id: number, nome: string }) => ({
       id: item.id,
       nome: item.nome,
@@ -228,13 +221,13 @@ const submit = (): void => {
 
 
 <template>
-  <Head title="Modifica documento" />
+  <Head :title="trans('documenti.header.edit_document_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Modifica documento archivio"
-        description="Compila il seguente modulo per modificare documento per l'archivio del condominio"
+        :title="trans('documenti.header.edit_document_title')"
+        :description="trans('documenti.header.edit_document_description')"
       />
 
       <form @submit.prevent="submit" class="space-y-2">
@@ -243,7 +236,7 @@ const submit = (): void => {
           <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
             <Plus class="w-4 h-4" v-if="!form.processing" />
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva modifiche
+            {{ trans('documenti.actions.save_document') }}
           </Button>
 
           <Link
@@ -252,7 +245,7 @@ const submit = (): void => {
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
-            <span>Elenco</span>
+            <span>{{ trans('documenti.actions.list_documents') }}</span>
           </Link>
         </div>
 
@@ -263,13 +256,13 @@ const submit = (): void => {
             <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-3">
-                  <Label for="nome" class="font-medium">Nome documento</Label>
+                  <Label for="name" class="font-medium">{{ trans('documenti.label.name') }}</Label>
                   <Input 
                     id="name" 
                     class="mt-1 block w-full"
                     v-model="form.name" 
                     v-on:focus="form.clearErrors('name')"
-                    placeholder="Nome documento" 
+                    :placeholder="trans('documenti.placeholder.name')" 
                   />
                   <InputError :message="form.errors.name" />
                 </div>
@@ -277,13 +270,13 @@ const submit = (): void => {
 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="nome" class="font-medium">Descrizione documento</Label>
+                  <Label for="description" class="font-medium">{{ trans('documenti.label.description') }}</Label>
                   <Textarea 
                     id="description" 
                     class="mt-1 block w-full min-h-[200px]"
                     v-model="form.description" 
                     v-on:focus="form.clearErrors('description')"
-                    placeholder="Descrizione documento" 
+                    :placeholder="trans('documenti.placeholder.description')" 
                   />
                   <InputError :message="form.errors.description" />
                 </div>     
@@ -291,7 +284,7 @@ const submit = (): void => {
 
               <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="file-upload" class="font-medium">Documento</Label>
+                  <Label for="file-upload" class="font-medium">{{ trans('documenti.label.document') }}</Label>
 
                   <!-- File esistente -->
                   <div v-if="showExistingFile" class="mt-4">
@@ -306,7 +299,7 @@ const submit = (): void => {
                             <div class="text-xs text-muted-foreground">
                               {{ props.documento.mime_type_label || 'PDF' }}
                               <template v-if="props.documento.file_size">
-                                • {{ formatFileSize(props.documento.file_size) }}
+                                • {{ formatBytes(props.documento.file_size, undefined, true) }}
                               </template>
                             </div>
                           </div>
@@ -315,7 +308,7 @@ const submit = (): void => {
                           variant="ghost" 
                           size="icon" 
                           @click="showFileUpload"
-                          title="Sostituisci file"
+                          :title="trans('documenti.label.replace_document')"
                         >
                           <UploadCloud class="w-4 h-4" />
                         </Button>
@@ -336,11 +329,11 @@ const submit = (): void => {
                           <EmptyMedia variant="icon">
                             <UploadCloud class="w-8 h-8 text-muted-foreground" />
                           </EmptyMedia>
-                          <EmptyTitle>Trascina qui il tuo documento</EmptyTitle>
+                          <EmptyTitle>{{ trans('documenti.dialogs.select_document_title') }}</EmptyTitle>
                           <EmptyDescription>
-                            Oppure <strong>clicca</strong> per selezionarlo.
+                            {{ trans('documenti.dialogs.select_document_description') }}
                             <div class="text-xs text-muted-foreground mt-1">
-                              Formati supportati: PDF, JPEG, PNG (max 20MB)
+                              {{ trans('documenti.dialogs.document_supported_types') }}
                             </div>
                           </EmptyDescription>
                         </EmptyHeader>
@@ -365,7 +358,7 @@ const submit = (): void => {
                         class="gap-2"
                       >
                         <X class="w-3 h-3" />
-                        Annulla
+                        {{ trans('documenti.actions.cancel') }}
                       </Button>
                     </div>
                   </div>
@@ -381,7 +374,7 @@ const submit = (): void => {
                           <div>
                             <div class="text-sm font-medium">{{ file.name }}</div>
                             <div class="text-xs text-muted-foreground">
-                              {{ formatFileSize(file.size) }}
+                              {{ formatBytes(file.size, undefined, true) }}
                             </div>
                           </div>
                         </div>
@@ -389,13 +382,13 @@ const submit = (): void => {
                           variant="ghost" 
                           size="icon" 
                           @click="removeFile"
-                          title="Rimuovi"
+                          :title="trans('documenti.label.remove_document')"
                         >
                           <X class="w-4 h-4" />
                         </Button>
                       </div>
                       <div v-if="hasExistingFile" class="text-xs text-muted-foreground mt-2">
-                        Questo file sostituirà quello esistente.
+                        {{trans('documenti.label.replace_existing_document')}}
                       </div>
                     </div>
                   </div>
@@ -412,7 +405,7 @@ const submit = (): void => {
               <div class="grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
                   <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                    <Label for="stato">Stato pubblicazione</Label>
+                    <Label for="stato">{{ trans('documenti.label.visibility') }}</Label>
                     <HoverCard>
                       <HoverCardTrigger as-child>
                         <button type="button" class="cursor-pointer">
@@ -423,10 +416,10 @@ const submit = (): void => {
                         <div class="flex justify-between space-x-4">
                           <div class="space-y-1">
                             <h4 class="text-sm font-semibold">
-                              Stato pubblicazione
+                               {{ trans('documenti.label.visibility') }}
                             </h4>
                             <p class="text-sm">
-                              Scegli se rendere visibile il documento o mantenerlo nascosto.
+                              {{ trans('documenti.tooltip.visibility') }}
                             </p>
                           </div>
                         </div>
@@ -438,11 +431,25 @@ const submit = (): void => {
                     :options="publishedConstants" 
                     label="label" 
                     v-model="form.is_published"
-                    placeholder="Stato pubblicazione"
+                    :placeholder="trans('documenti.placeholder.visibility')"
                     @update:modelValue="form.clearErrors('is_published')" 
                     :reduce="(is_published: PublishedType) => is_published.value"
                     class="mt-1"
-                  />
+                  >
+                    <template #option="{ label, icon }">
+                      <div class="flex items-center gap-2">
+                          <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                          <span>{{ trans(label) }}</span> 
+                      </div>
+                    </template>
+
+                    <template #selected-option="{ label, icon }">
+                      <div class="flex items-center gap-2">
+                          <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                          <span>{{ trans(label) }}</span>
+                      </div>
+                    </template>
+                  </v-select>
                   <InputError :message="form.errors.is_published" />
                 </div>
               </div>
@@ -450,7 +457,7 @@ const submit = (): void => {
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6 space-y-1">
                   <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                    <Label for="stato">Categoria</Label>
+                    <Label for="stato">{{ trans('documenti.label.category') }}</Label>
                     <HoverCard>
                       <HoverCardTrigger as-child>
                         <button type="button" class="cursor-pointer">
@@ -459,9 +466,9 @@ const submit = (): void => {
                       </HoverCardTrigger>
                       <HoverCardContent class="w-80">
                         <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Categoria documento</h4>
+                          <h4 class="text-sm font-semibold">{{ trans('documenti.label.category') }}</h4>
                           <p class="text-sm">
-                            Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                            {{ trans('documenti.tooltip.category') }}
                           </p>
                         </div>
                       </HoverCardContent>
@@ -474,7 +481,7 @@ const submit = (): void => {
                       label="name"
                       v-model="form.category_id"
                       :reduce="(option: Categoria) => option.id"
-                      placeholder="Seleziona categoria"
+                      :placeholder="trans('documenti.placeholder.category')"
                       class="flex-1"
                       @update:modelValue="form.clearErrors('category_id')" 
                     />
@@ -486,36 +493,36 @@ const submit = (): void => {
                       </SheetTrigger>
                       <SheetContent side="right" class="p-6">
                         <SheetHeader class="mt-4 p-0">
-                          <SheetTitle>Crea nuova categoria</SheetTitle>
+                          <SheetTitle>{{ trans('documenti.header.new_category_title') }}</SheetTitle>
                           <SheetDescription>
-                            Aggiungi una nuova categoria per i documenti.
+                            {{ trans('documenti.header.new_category_description') }}
                           </SheetDescription>
                         </SheetHeader>
 
                         <form @submit.prevent="createCategory" class="mt-6 space-y-4">
                           <div>
-                            <Label for="new-category-name">Nome</Label>
+                            <Label for="new-category-name">{{ trans('documenti.label.category_name') }}</Label>
                             <Input
                               id="new-category-name"
                               v-model="newCategoryName"
-                              placeholder="Nome della categoria"
+                              :placeholder="trans('documenti.placeholder.category_name')"
                               class="w-full mt-1"
                             />
                           </div>
 
                           <div>
-                            <Label for="new-category-description">Descrizione</Label>
+                            <Label for="new-category-description">{{ trans('documenti.label.category_description') }}</Label>
                             <Textarea
                               id="new-category-description"
                               v-model="newCategoryDescription"
-                              placeholder="Descrizione della categoria"
+                              :placeholder="trans('documenti.placeholder.category_description')"
                               class="w-full mt-1 min-h-[200px]"
                             />
                           </div>
 
                           <div class="flex justify-end">
                             <SheetClose as-child>
-                              <Button type="submit">Salva</Button>
+                              <Button type="submit">{{ trans('documenti.actions.save_category') }}</Button>
                             </SheetClose>
                           </div>
                         </form>
@@ -529,13 +536,13 @@ const submit = (): void => {
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="condomini">Condominio</Label>
+                  <Label for="condomini">{{ trans('documenti.label.buildings') }}</Label>
                   <v-select 
                     multiple
                     :options="condomini"
                     label="label"
                     v-model="form.condomini_ids"
-                    placeholder="Condomini"
+                    :placeholder="trans('documenti.placeholder.buildings')"
                     @update:modelValue="form.clearErrors('condomini_ids')" 
                     :reduce="(option: Building) => option.value"
                   />
@@ -545,14 +552,14 @@ const submit = (): void => {
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="condomini">Anagrafiche</Label>
+                  <Label for="anagrafiche">{{ trans('documenti.label.residents') }}</Label>
                   <v-select
                     multiple
                     id="anagrafiche"
                     :options="anagraficheOptions"
                     label="nome"
                     v-model="form.anagrafiche"
-                    placeholder="Anagrafiche"
+                    :placeholder="trans('documenti.placeholder.residents')"
                     @update:modelValue="form.clearErrors('anagrafiche')"
                     :reduce="(anagrafica: Anagrafica) => anagrafica.id"
                     :disabled="form.condomini_ids.length === 0"
@@ -562,16 +569,20 @@ const submit = (): void => {
               </div>
 
               <div class="pt-3 border-t">
-                <h4 class="text-sm font-medium mb-2">Informazioni</h4>
+                <h4 class="text-sm font-medium mb-2">{{ trans('documenti.label.document_info') }}</h4>
                 <div class="space-y-2 text-sm">
                   <div v-if="props.documento.created_at" class="flex justify-between">
-                    <span class="text-muted-foreground">Creato:</span>
+                    <span class="text-muted-foreground">{{ trans('documenti.label.created') }}</span>
                     <span>{{ props.documento.created_at }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-muted-foreground">Stato file:</span>
+                    <span class="text-muted-foreground">{{ trans('documenti.label.status') }}</span>
                     <span :class="hasExistingFile ? 'text-green-600' : 'text-amber-600'">
-                      {{ hasExistingFile ? 'Presente' : 'Assente' }}
+                      {{ 
+                        hasExistingFile 
+                        ? trans('documenti.label.existing')
+                        : trans('documenti.label.missing')
+                      }}
                     </span>
                   </div>
                 </div>
