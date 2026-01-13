@@ -2,6 +2,7 @@ import { h } from 'vue';
 import DropdownAction from '@/components/documenti/categories/DataTableRowActions.vue';
 import DataTableColumnHeader from '@/components/documenti/categories/DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Categoria } from '@/types/categorie';
 
@@ -10,7 +11,7 @@ const { generateRoute } = usePermission();
 export const columns: ColumnDef<Categoria>[] = [
   {
     accessorKey: 'name',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.categories.name') }),
 
     cell: ({ row, table }) => {
 
@@ -26,7 +27,7 @@ export const columns: ColumnDef<Categoria>[] = [
   },
   {
     accessorKey: 'description',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Descrizione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('documenti.table.categories.description') }),
 
     cell: ({ row, table }) => {
 

@@ -8,6 +8,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { Check, PlusCircle } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { Component } from 'vue';
 import type { Column } from '@tanstack/vue-table';
 
@@ -78,7 +79,6 @@ function clearFilters() {
 }
 </script>
 
-
 <template>
   <Popover v-model:open="isOpen">
     <PopoverTrigger as-child>
@@ -96,7 +96,7 @@ function clearFilters() {
               variant="secondary"
               class="rounded-sm px-1 font-normal"
             >
-              {{ selectedValues.size }} selezionati
+              {{ selectedValues.size }} {{ trans('documenti.table.selected') }}
             </Badge>
             <template v-else>
               <Badge
@@ -116,11 +116,11 @@ function clearFilters() {
       <Command>
         <CommandInput :placeholder="title" />
         <CommandList v-if="props.isLoading">
-          <div class="p-4 text-sm text-muted-foreground">Caricamento...</div>
+          <div class="p-4 text-sm text-muted-foreground">{{trans('documenti.table.loading')}}</div>
         </CommandList>
 
         <CommandList>
-          <CommandEmpty>Nessun risultato trovato</CommandEmpty>
+          <CommandEmpty>{{trans('documenti.table.no_results')}}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="option in options"
@@ -161,7 +161,7 @@ function clearFilters() {
                 class="justify-center text-center"
                 @select="clearFilters"
               >
-                Resetta filtri
+                {{ trans('documenti.table.clear_all_filters') }}
               </CommandItem>
             </CommandGroup>
           </template>

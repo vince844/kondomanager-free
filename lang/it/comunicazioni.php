@@ -1,7 +1,9 @@
 <?php
 
 return [
-
+    /* ------------------------------------------------------------------
+     | Backend notifications
+     | ------------------------------------------------------------------ */
     'success_create_communication'                => "La nuova comunicazione è stata creata con successo.",
     'success_create_communication_in_moderation'  => "La nuova comunicazione è stata creata con successo, ma deve essere approvata dall'amministratore",
     'error_create_communication'                  => "Si è verificato un errore durante la creazione della comunicazione.",
@@ -14,7 +16,9 @@ return [
     'error_approve_communication'                 => "Si è verificato un errore durante l'approvazione della comunicazione.",
     'error_notify_new_communication'              => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica.",
     'error_notify_approved_communication'         => "La comunicazione è stata approvata, ma si è verificato un errore nell'invio della notifica.",
-    // Frontend
+    /* ------------------------------------------------------------------
+     | Front‑end strings (headings, titles, descriptions)
+     | ------------------------------------------------------------------ */
     'header' => [
         'list_communications_head'          => "Elenco comunicazioni bacheca",
         'list_communications_title'         => "Elenco comunicazioni bacheca",
@@ -29,6 +33,9 @@ return [
         'widget_communications_title'       => "Comunicazioni recenti registrate",
         'widget_communications_description' => "Elenco delle ultime comunicazioni pubblicate in bacheca",                   
     ],
+    /* ------------------------------------------------------------------
+     | Dialogs
+     | ------------------------------------------------------------------ */
     'dialogs' => [
         'delete_communication_title'       => "Sei sicuro di volere eliminare questa comunicazione?",
         'delete_communication_description' => "Questa azione non è reversibile. Eliminerà la comunicazione e tutti i dati ad essa associati.",
@@ -42,6 +49,9 @@ return [
         'loading'                          => "Caricamento in corso...",
         'try_again'                        => "Riprova",
     ],
+    /* ------------------------------------------------------------------
+     | Table
+     | ------------------------------------------------------------------ */
     'table' => [
         'priority'           => 'Priorità',
         'status'             => 'Stato',
@@ -57,6 +67,9 @@ return [
         'unapproved_tooltip' => 'Non approvata - clicca per approvare',
         'actions'            => 'Azioni',
     ],
+    /* ------------------------------------------------------------------
+     | Stats
+     | ------------------------------------------------------------------ */
     'stats' => [
         'low_priority'    => "Priorità bassa",
         'medium_priority' => "Priorità media",
@@ -64,6 +77,9 @@ return [
         'urgent_priority' => "Priorità urgente",
         'open_tickets'    => "Segnalazioni aperte",
     ],
+    /* ------------------------------------------------------------------
+     | Labels
+     | ------------------------------------------------------------------ */
     'label' => [
         'subject'      => 'Oggetto comunicazione',
         'description'  => 'Descrizione comunicazione',
@@ -75,6 +91,9 @@ return [
         'featured'     => 'Comunicazione in evidenza',
         'private'      => 'Crea comunicazione come privata',
     ],
+    /* ------------------------------------------------------------------
+     | Placeholders
+     | ------------------------------------------------------------------ */
     'placeholder' => [
         'subject'      => 'Inserisci oggetto comunicazione',
         'description'  => 'Inserisci descrizione comunicazione',
@@ -83,18 +102,27 @@ return [
         'buildings'    => 'Seleziona condomini',
         'residents'    => 'Seleziona anagrafiche',
     ],
+    /* ------------------------------------------------------------------
+     | Priority
+     | ------------------------------------------------------------------ */
     'priority' => [
         'low'    => 'Bassa',
         'medium' => 'Media',
         'high'   => 'Alta',
         'urgent' => 'Urgente',
     ],
+    /* ------------------------------------------------------------------
+     | Visibility
+     | ------------------------------------------------------------------ */
     'visibility' => [
         'public'     => 'Pubblica',
         'private'    => 'Privata',
         'created_on' => 'Creata il',
         'sent_on_by' => 'Inviata :date da :name',
     ],
+    /* ------------------------------------------------------------------
+     | Actions
+     | ------------------------------------------------------------------ */
     'actions' => [
         'new_communication'       => 'Crea',
         'edit_communication'      => 'Modifica',
@@ -105,6 +133,9 @@ return [
         'show_less'               => 'Mostra meno',
         'view_all_communications' => 'Visualizza tutte',
     ],
+    /* ------------------------------------------------------------------
+     | Tooltips
+     | ------------------------------------------------------------------ */
     'tooltip' => [
         'visibility'  => 'Se impostata su privata, solo gli amministratori potranno visualizzare la comunicazione.',
         'priority'    => 'Seleziona il livello di priorità con cui questa comunicazione deve essere trattata. Le priorità possono influenzare la visibilità o l\'urgenza nella bacheca.',

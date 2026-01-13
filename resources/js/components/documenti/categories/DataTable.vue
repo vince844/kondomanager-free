@@ -7,6 +7,7 @@ import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@ta
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/documenti/categories/DataTableToolbar.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Categoria } from '@/types/categorie';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 
@@ -105,7 +106,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('documenti.table.categories.no_results') }}
             </TableCell>
           </TableRow>
         </template>

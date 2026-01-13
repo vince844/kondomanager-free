@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { Head, useForm, Link } from '@inertiajs/vue3';
 import { watch, onMounted, computed, ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -11,6 +12,7 @@ import { LoaderCircle, Trash2 } from 'lucide-vue-next';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import { Separator } from '@/components/ui/separator';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
+import { trans } from 'laravel-vue-i18n';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
@@ -136,33 +138,32 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Modifica utente" />
+  <Head :title="trans('users.header.edit_user_head')" />
   <AppLayout :breadcrumbs="breadcrumbs">
     <UtentiLayout>
       <form @submit.prevent="submit">
-        <!-- ... (parte form invariata: nome, email, ruolo, anagrafica, permessi aggiuntivi) ... -->
         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
           <div class="sm:col-span-3">
-            <Label for="name">Nome e cognome</Label>
+            <Label for="name">{{ trans('users.label.name') }}</Label>
             <Input
               id="name"
               class="mt-1 block w-full"
               v-model="form.name"
               @focus="form.clearErrors('name')"
               autocomplete="name"
-              placeholder="Nome e cognome"
+              :placeholder="trans('users.placeholder.name')"
             />
             <InputError :message="form.errors.name" />
           </div>
           <div class="sm:col-span-3">
-            <Label for="email">Indirizzo email</Label>
+            <Label for="email">{{ trans('users.label.email') }}</Label>
             <Input
               id="email"
               class="mt-1 block w-full"
               v-model="form.email"
               @focus="form.clearErrors('email')"
               autocomplete="email"
-              placeholder="Indirizzo email"
+              :placeholder="trans('users.placeholder.email')"
             />
             <InputError :message="form.errors.email" />
           </div>
@@ -170,25 +171,25 @@ const submit = () => {
 
         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
           <div class="sm:col-span-3">
-            <Label for="ruolo">Ruolo utente</Label>
+            <Label for="ruolo">{{ trans('users.label.role') }}</Label>
             <v-select
               :options="roles"
               label="name"
               v-model="form.roles"
               :reduce="(option: Role) => option.id"
               @update:modelValue="form.clearErrors('roles')"
-              placeholder="Seleziona ruolo utente"
+              :placeholder="trans('users.placeholder.role')"
             />
             <InputError class="mt-2" :message="form.errors.roles" />
           </div>
           <div class="sm:col-span-3">
-            <Label for="anagrafica">Associa anagrafica</Label>
+            <Label for="anagrafica">{{ trans('users.label.resident') }}</Label>
             <v-select
               :options="anagrafiche"
               label="nome"
               v-model="form.anagrafica"
               :reduce="(option: Anagrafica) => option.id"
-              placeholder="Seleziona anagrafica"
+              :placeholder="trans('users.placeholder.resident')"
             >
               <template #option="{ nome, indirizzo }">
                 <div class="flex flex-col">
@@ -202,14 +203,14 @@ const submit = () => {
         </div>
 
         <div class="mt-6">
-          <Label>Permessi aggiuntivi</Label>
+          <Label>{{ trans('users.label.permissions') }}</Label>
           <v-select
             multiple
             :options="selectablePermissions"
             label="name"
             :close-on-select="false"
             v-model="form.permissions"
-            placeholder="Seleziona permessi aggiuntivi"
+            :placeholder="trans('users.placeholder.permissions')"
           >
             <template #option="{ name, description }">
               <div class="flex flex-col">
@@ -219,14 +220,14 @@ const submit = () => {
             </template>
           </v-select>
           <p class="mt-1 text-sm text-gray-500">
-            I permessi del ruolo selezionato sono ereditati automaticamente
+            {{ trans('users.label.permission_notice') }}
           </p>
         </div>
 
         <div class="pt-5">
           <Button :disabled="form.processing">
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Modifica utente
+            {{trans('users.actions.edit_user')}}
           </Button>
         </div>
       </form>
@@ -237,14 +238,14 @@ const submit = () => {
       <div class="mb-8">
         <div class="flex items-center gap-2 mb-4">
           <div>
-            <h2 class="text-xl font-semibold">Permessi aggiuntivi</h2>
+            <h2 class="text-xl font-semibold">{{ trans('users.header.additional_permissions_title') }}</h2>
             <p class="text-sm text-muted-foreground">
-              Permessi assegnati direttamente all'utente, oltre a quelli del ruolo
+              {{ trans('users.header.additional_permissions_description') }}
             </p>
           </div>
         </div>
         <div v-if="!additionalPermissions.length" class="text-center py-12 border rounded-lg bg-muted/20">
-          Nessun permesso aggiuntivo assegnato
+          {{ trans('users.empty_state.additional_permissions') }}
         </div>
         <div v-else class="flex flex-col gap-3">
           <Item
@@ -278,16 +279,18 @@ const submit = () => {
       <div>
         <div class="flex items-center gap-2 mb-4">
           <div>
-            <h2 class="text-xl font-semibold">Permessi ereditati dal ruolo</h2>
+            <h2 class="text-xl font-semibold">{{trans('users.header.permissions_title')}}</h2>
             <p class="text-sm text-muted-foreground">
-              Questi permessi sono assegnati tramite il ruolo
-              <span v-if="selectedRole" class="font-semibold">{{ selectedRole.name }}</span>
-              e verranno assegnati automaticamente all'utente
+              {{ trans('users.header.permissions_description_line_1') }}
+              <span v-if="selectedRole" class="font-semibold">
+                {{ selectedRole.name }}
+              </span>
+              {{ trans('users.header.permissions_description_line_2') }}
             </p>
           </div>
         </div>
         <div v-if="!inheritedPermissions.length" class="text-center py-12 border rounded-lg bg-muted/20">
-          Nessun permesso ereditato dal ruolo
+          {{trans('users.empty_state.inherited_permissions')}}
         </div>
         <div v-else class="flex flex-col gap-3">
           <Item
@@ -303,7 +306,7 @@ const submit = () => {
                     v-if="previouslyAdditional.has(permission.id)"
                     class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
                   >
-                    precedentemente diretto
+                    {{ trans('users.badge.previously_direct') }}
                   </span>
                 </div>
               </div>

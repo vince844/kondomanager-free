@@ -5,13 +5,16 @@ import { usePage, router, Link } from "@inertiajs/vue3";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Trash2, Pencil } from "lucide-vue-next";
 import { Badge } from '@/components/ui/badge';
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } from '@/components/ui/alert-dialog';
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
+import { useDocumenti } from '@/composables/useDocumenti'
 import { Permission }  from "@/enums/Permission";
+import { trans } from 'laravel-vue-i18n';
 import type { Auth } from '@/types';
 import type { Documento } from '@/types/documenti';
 
 const { generateRoute, hasPermission } = usePermission();
+const { removeDocumento } = useDocumenti()
 
 defineProps<{
   documento: Documento;
@@ -22,7 +25,8 @@ const auth = computed(() => page.props.auth);
 const expandedIds = ref<Set<number>>(new Set());
 const documentoID = ref<number | null>(null);
 const isAlertOpen = ref(false);
-const errorState = ref<string | null>(null);
+const isDropdownOpen = ref(false)
+const isDeleting = ref(false)
 
 const isExpanded = (id: number) => expandedIds.value.has(id);
 
@@ -43,37 +47,40 @@ const truncatedName = (name: string, length: number = 80) => {
 };
 
 function handleDelete(documento: Documento) {
-  documentoID.value = documento.id;
-  isAlertOpen.value = true;
+  documentoID.value = documento.id
+  isDropdownOpen.value = false
+  setTimeout(() => {
+    isAlertOpen.value = true
+  }, 200)
 }
 
-async function confirmDelete() {
-  const id = documentoID.value;
+function closeModal() {
+  documentoID.value = null
+  isAlertOpen.value = false
+  isDropdownOpen.value = false
+}
 
-  if (!id) {
-    isAlertOpen.value = false;
-    return;
-  }
+function deleteDocumento() {
+  if (documentoID.value === null || isDeleting.value) return
 
-  try {
+  const id = documentoID.value
+  isDeleting.value = true
 
-    router.delete(route(generateRoute('documenti.destroy'), { id }), {
-      preserveScroll: true,
-      preserveState: true,
-      only: ['stats', 'documenti', 'flash'],
-      onSuccess: () => {
-        isAlertOpen.value = false;
-      },
-      onError: () => {
-        errorState.value = "Errore durante l'eliminazione. Riprova.";
-      }
-    });
-
-  } catch {
-    errorState.value = "Errore durante l'eliminazione. Riprova.";
-  } finally {
-    isAlertOpen.value = false;
-  }
+  router.delete(route(generateRoute('documenti.destroy'), { id: String(id) }), {
+    preserveScroll: true,
+    preserveState: true,
+    only: ['flash', 'stats', 'documenti'],
+    onSuccess: () => {
+      removeDocumento(id)
+      closeModal()
+    },
+    onError: () => {
+      console.error('Errore durante la cancellazione.')
+    },
+    onFinish: () => {
+      isDeleting.value = false
+    }
+  })
 }
 
 </script>
@@ -105,7 +112,7 @@ async function confirmDelete() {
               documento.created_by.user.id === auth.user.id)"
         :href="route(generateRoute('documenti.edit'), { id: documento.id })"
         class="text-gray-700 hover:text-blue-600 transition-colors"
-        title="Modifica"
+        :title="trans('documenti.actions.edit_document')"
       >
         <Pencil class="w-3 h-3" />
       </Link>
@@ -116,7 +123,7 @@ async function confirmDelete() {
               documento.created_by.user.id === auth.user.id)"
         @click="handleDelete(documento)"
         class="text-gray-700 hover:text-red-600 transition-colors"
-        title="Elimina"
+        :title="trans('documenti.actions.delete_document')"
       >
         <Trash2 class="w-3 h-3" />
       </button>
@@ -124,7 +131,14 @@ async function confirmDelete() {
   </div>
 
     <div class="text-xs text-gray-600 font-light">
-      <span>Inviato {{ documento.created_at }} da {{ documento.created_by.user.name }}</span>
+      <span>
+        {{ 
+          trans('documenti.visibility.sent_on_by', { 
+              date: documento.created_at, 
+              name: documento.created_by.user.name,
+          }) 
+        }}
+      </span>
     </div>
   </CardHeader>
 
@@ -132,34 +146,34 @@ async function confirmDelete() {
       <div class="text-sm text-muted-foreground">
  
         <span class="mt-1 text-gray-600 py-1">
-          {{ isExpanded(Number(documento.id)) ? documento.description : truncate(documento.description, 50) }}
+          {{ 
+            isExpanded(Number(documento.id)) 
+            ? documento.description 
+            : truncate(documento.description, 50) 
+          }}
         </span>
         <button
           v-if="documento.description.length > 50"
           class="text-xs font-semibold text-gray-500 ml-1"
           @click="toggleExpanded(Number(documento.id))"
         >
-          {{ isExpanded(Number(documento.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+          {{ 
+            isExpanded(Number(documento.id))
+            ? trans('documenti.actions.show_less')
+            : trans('documenti.actions.show_more')
+          }}
         </button>
        
       </div>
     </CardContent>
   </Card>
 
-     <!-- Delete confirmation dialog -->
-    <AlertDialog v-model:open="isAlertOpen">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Sei sicuro di volere eliminare questo documento?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Questa azione non è reversibile. Eliminerà il documento e tutti i dati ad esso associati.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annulla</AlertDialogCancel>
-          <AlertDialogAction @click="confirmDelete">Conferma</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+  <ConfirmDialog
+    v-model:modelValue="isAlertOpen"
+    :title="trans('documenti.dialogs.delete_document_title')"
+    :description="trans('documenti.dialogs.delete_document_description')"
+    :loading="isDeleting"
+    @confirm="deleteDocumento"
+  />
 
 </template>

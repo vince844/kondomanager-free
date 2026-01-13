@@ -9,6 +9,7 @@ import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { useDocumenti } from '@/composables/useDocumenti'
 import { Permission } from '@/enums/Permission'
+import { trans } from 'laravel-vue-i18n'
 import type { Documento } from '@/types/documenti'
 
 defineProps<{ documento: Documento }>()
@@ -73,7 +74,7 @@ function deleteDocumento() {
     </DropdownMenuTrigger>
 
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('documenti.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem
         v-if="hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS])"
@@ -84,7 +85,7 @@ function deleteDocumento() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('documenti.actions.edit_document') }}
         </Link>
       </DropdownMenuItem>
 
@@ -93,15 +94,15 @@ function deleteDocumento() {
         @click="handleDelete(documento)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('documenti.actions.delete_document') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo documento?"
-    description="Questa azione non è reversibile. Eliminerà il documento e tutti i dati associati."
+    :title="trans('documenti.dialogs.delete_document_title')"
+    :description="trans('documenti.dialogs.delete_document_description')"
     :loading="isDeleting"
     @confirm="deleteDocumento"
   />

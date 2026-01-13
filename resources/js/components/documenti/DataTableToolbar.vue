@@ -9,6 +9,7 @@ import DataTableFacetedFilter from '@/components/documenti/DataTableFacetedFilte
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { useCategorieDocumenti } from '@/composables/useCategorieDocumenti';
+import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 
@@ -66,7 +67,7 @@ watchDebounced(
   <div class="flex items-center space-x-2">
     <!-- Subject Filter -->
     <Input
-      placeholder="Filtra per titolo..."
+      :placeholder="trans('documenti.table.filter_by')"
       v-model="nameFilter"
       class="h-8 w-[150px] lg:w-[250px]"
     />
@@ -74,7 +75,7 @@ watchDebounced(
     <DataTableFacetedFilter
       v-if="categoriaColumn"
       :column="categoriaColumn"
-      title="Categoria"
+      :title="trans('documenti.table.category')"
       :options="categorie"
       :isLoading="isLoading"
       @open="handleOpenDropdown"
@@ -91,7 +92,7 @@ watchDebounced(
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('documenti.actions.new_document') }}</span>
     </Link>
 
     <Link 
@@ -100,7 +101,7 @@ watchDebounced(
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
     >
       <List class="w-4 h-4" />
-      <span>Categorie</span>
+      <span>{{ trans('documenti.actions.list_categories') }}</span>
     </Link>
   </div>
 </div>

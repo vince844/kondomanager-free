@@ -7,6 +7,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Heading from '@/components/Heading.vue';
 import { columns } from '@/components/documenti/categories/columns';
 import Alert from '@/components/Alert.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Categoria } from '@/types/categorie';
 import type { PaginationMeta } from '@/types/pagination';
@@ -22,13 +23,13 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco categorie archivio documenti" />
+  <Head :title="trans('documenti.header.list_categories_head')"/>
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco categorie archivio documenti"
-        description="Di seguito la tabella con l'elenco di tutte le categorie documenti dell'archivio del condominio"
+        :title="trans('documenti.header.list_categories_title')"
+        :description="trans('documenti.header.list_categories_description')"
       />
 
       <div v-if="flashMessage" class="py-4">
