@@ -11,6 +11,7 @@ use App\Http\Controllers\Permissions\RevokePermissionFromUserController;
 use App\Http\Controllers\Roles\RevokePermissionFromRoleController;
 use App\Http\Controllers\Roles\RoleController;
 use App\Http\Controllers\Segnalazioni\SegnalazioniStatsController;
+use App\Http\Controllers\System\SystemUpgradeController;
 use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
@@ -111,6 +112,27 @@ Route::resource('/inviti', InvitoController::class)
 Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
     ->middleware('signed', 'throttle:6,1');
+
+/*
+|--------------------------------------------------------------------------
+| System Upgrade Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified', 'role:amministratore'])->group(function () {
+    
+    // 1. Punto di ingresso (dall'installer o dal login) -> Mostra la CARD di conferma
+    Route::get('/system/upgrade/finalize', [SystemUpgradeController::class, 'confirm'])
+        ->name('system.upgrade.confirm');
+
+    // 2. Azione -> Esegue i comandi Artisan
+    Route::post('/system/upgrade/run', [SystemUpgradeController::class, 'run'])
+        ->name('system.upgrade.run');
+
+    // 3. Risultato -> Mostra il Changelog
+    Route::get('/system/upgrade/whats-new', [SystemUpgradeController::class, 'showChangelog'])
+        ->name('system.upgrade.changelog');
+
+});
 
 /*
 |--------------------------------------------------------------------------

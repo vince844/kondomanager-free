@@ -43,20 +43,37 @@ class RedirectHelper
     public static function userHomeRoute(): string
     {
         $user = Auth::user();
-        $prefs = $user->userPreferences; 
+        
+        $preferences = null;
 
+        try {
+            // Tentiamo di accedere alla relazione.
+            // Se la tabella 'user_preferences' non esiste ancora (siamo pre-migrazione),
+            // Laravel lancerà una QueryException.
+            $preferences = $user->userPreferences;
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Se siamo qui, significa che c'è un errore DB (es. tabella mancante).
+            // Ignoriamo l'errore e lasciamo $prefs a null.
+            // Questo permette al login di funzionare anche durante l'aggiornamento.
+            $preferences = null;
+        }
+
+        // Il resto del codice rimane identico, gestendo il caso in cui $prefs è null
         if (
             $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])
-            && $prefs
-            && $prefs->open_condominio_on_login
-            && $prefs->default_condominio_id
+            && $preferences // Qui controlliamo se $prefs esiste, quindi non darà errore
+            && $preferences->open_condominio_on_login
+            && $preferences->default_condominio_id
         ) {
             return route('admin.gestionale.index', [
-                'condominio' => $prefs->default_condominio_id,
+                'condominio' => $preferences->default_condominio_id,
             ]);
         }
 
-        if ($user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
+        if (
+            $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) 
+            || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)
+        ) {
             return route('admin.dashboard');
         }
 
@@ -65,6 +82,7 @@ class RedirectHelper
         }
 
         return route('user.dashboard');
+
     }
 
     /**
