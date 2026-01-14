@@ -209,6 +209,9 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute deve ser posterior a hoje',
             'before:today' => ':attribute deve ser anterior a hoje',
+            'codice_fiscale' => [
+                'unique' => 'Já existe um anagrafia registrado com este :attribute'
+            ]
         ],
         'evento' => [
             'after_or_equal:today' => 'O :attribute deve ser posterior ou igual a hoje'
@@ -243,6 +246,7 @@ return [
             'indirizzo' => 'o campo endereço da anagrafia',
             'scadenza_documento' => 'o campo validade do documento',
             'data_nascita' => 'o campo data de nascimento',
+            'codice_fiscale' => 'número de contribuinte' 
         ],
         'ruoli' => [
             'name' => 'nome do papel',

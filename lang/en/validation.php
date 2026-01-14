@@ -203,6 +203,9 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute must be after today.',
             'before:today' => ':attribute must be before today.',
+            'codice_fiscale' => [
+                'unique' => 'A resident is already registered with this :attribute'
+            ]
         ],
         'evento' => [
             'after_or_equal:today' => ':attribute must be after or equal to today.',
@@ -232,6 +235,7 @@ return [
             'indirizzo' => 'registry address field',
             'scadenza_documento' => 'document expiration date field',
             'data_nascita' => 'date of birth field',
+            'codice_fiscale' => 'tax code'
         ],
         'ruoli' => [
             'name' => 'role name',

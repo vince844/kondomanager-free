@@ -208,6 +208,9 @@ return [
         'anagrafica' => [
             'after:today' => ':attribute deve essere successivo a oggi',
             'before:today' => ':attribute deve essere precedente a oggi',
+            'codice_fiscale' => [
+                'unique' => 'Esiste già una anagrafica registrata con questo :attribute'
+            ]
         ],
         'evento' => [
             'after_or_equal:today' => 'La :attribute deve essere successivo o uguale a oggi'
@@ -242,6 +245,7 @@ return [
             'indirizzo' => 'Il campo indirizzo anagrafica',
             'scadenza_documento' => 'Il campo scadenza documento',
             'data_nascita' => 'Il campo data nascita',
+            'codice_fiscale' => 'codice fiscale'
         ],
         'ruoli' => [
             'name' => 'nome ruolo',

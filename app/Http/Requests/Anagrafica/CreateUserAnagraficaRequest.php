@@ -5,6 +5,7 @@ namespace App\Http\Requests\Anagrafica;
 use App\Models\Anagrafica;
 use Illuminate\Foundation\Http\FormRequest;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * @method bool filled(string $key)
@@ -49,28 +50,25 @@ class CreateUserAnagraficaRequest extends FormRequest
     // Manipulate the date before validation
     protected function prepareForValidation()
     {
-        // Check if 'scadenza_documento' exists and is not empty
-        if ($this->filled('scadenza_documento')) {
-            $this->merge([
-                'scadenza_documento' => Carbon::parse($this->input('scadenza_documento'))->toDateString(),
-            ]);
-        } else {
-            // Convert empty strings to null
-            $this->merge([
-                'scadenza_documento' => null,
-            ]);
-        }
 
-        if ($this->filled('data_nascita')) {
-            $this->merge([
-                'data_nascita' => Carbon::parse($this->input('data_nascita'))->toDateString(),
-            ]);
-        } else {
-            // Convert empty strings to null
-            $this->merge([
-                'data_nascita' => null,
-            ]);
-        }
+        $this->merge([
+            'scadenza_documento' => $this->scadenza_documento 
+                ? Carbon::parse($this->input('scadenza_documento'))->toDateString() 
+                : null,
+            'data_nascita' => $this->data_nascita 
+                ? Carbon::parse($this->input('data_nascita'))->toDateString() 
+                : null,
+            'email' => $this->email
+                ? Str::lower($this->input('email')) 
+                : null,
+            'email_secondaria' => $this->email_secondaria 
+                ? Str::lower($this->input('email_secondaria')) 
+                : null,
+            'pec' => $this->pec 
+                ? Str::lower($this->input('pec')) 
+                : null,
+        ]);
+
     }
     
     public function messages()
@@ -78,6 +76,7 @@ class CreateUserAnagraficaRequest extends FormRequest
         return [
             'scadenza_documento.after' => __('validation.custom.anagrafica.after:today'),
             'data_nascita.before'      => __('validation.custom.anagrafica.before:today'),
+            'codice_fiscale.unique'    => __('validation.custom.anagrafica.codice_fiscale.unique')
         ];
     }
 
@@ -93,6 +92,7 @@ class CreateUserAnagraficaRequest extends FormRequest
             'indirizzo'          => __('validation.attributes.anagrafica.indirizzo'),
             'scadenza_documento' => __('validation.attributes.anagrafica.scadenza_documento'),
             'data_nascita'       => __('validation.attributes.anagrafica.data_nascita'),
+            'codice_fiscale'     => __('validation.attributes.anagrafica.codice_fiscale')
         ];
     }
 }

@@ -77,6 +77,7 @@ class UpdateAnagraficaRequest extends FormRequest
         return [
             'scadenza_documento.after' => __('validation.custom.anagrafica.after:today'),
             'data_nascita.before'      => __('validation.custom.anagrafica.before:today'),
+            'codice_fiscale.unique'    => __('validation.custom.anagrafica.codice_fiscale.unique')
         ];
     }
 
@@ -92,6 +93,7 @@ class UpdateAnagraficaRequest extends FormRequest
             'indirizzo'          => __('validation.attributes.anagrafica.indirizzo'),
             'scadenza_documento' => __('validation.attributes.anagrafica.scadenza_documento'),
             'data_nascita'       => __('validation.attributes.anagrafica.data_nascita'),
+            'codice_fiscale'     => __('validation.attributes.anagrafica.codice_fiscale')
         ];
     }
 }
