@@ -22,9 +22,9 @@ class StrutturaController extends Controller
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         return Inertia::render('gestionale/struttura/Struttura', [
-            'condominio' => $condominio,
+            'condominio' => new CondominioResource($condominio),
             'condomini'  => $condomini,
-            'esercizio' => $esercizio
+            'esercizio'  => $esercizio
         ]);
     }
 

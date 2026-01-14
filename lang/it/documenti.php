@@ -141,7 +141,7 @@ return [
         'total_storage_bytes'  => 'Spazio totale utilizzato',
         'total_documents'      => 'Documenti totali',
         'uploaded_this_month'  => 'Caricati questo mese',
-        'average_size_bytes'   => 'Dimensione media documento',
+        'average_size_bytes'   => 'Dimensione media',
     ],
 
     /* ------------------------------------------------------------------

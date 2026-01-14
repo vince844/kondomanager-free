@@ -160,8 +160,9 @@ class PianoRateController extends Controller
     /**
      * [NUOVO METODO]
      */
-    public function updateStato(Request $request, Condominio $condominio, PianoRate $pianoRate)
+    public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
+       
         $validated = $request->validate([
             'approvato' => 'required|boolean'
         ]);

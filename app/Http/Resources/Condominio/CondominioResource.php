@@ -19,15 +19,15 @@ class CondominioResource extends JsonResource
         return [
             'id'                    => $this->id,
             'nome'                  => Str::ucfirst($this->nome),
-            'indirizzo'             => $this->indirizzo,
+            'indirizzo'             => Str::ucfirst($this->indirizzo),
             'email'                 => $this->email,
             'note'                  => $this->note,
-            'codice_fiscale'        => $this->codice_fiscale,
+            'codice_fiscale'        => Str::upper($this->codice_fiscale),
             'comune_catasto'        => $this->comune_catasto,
-            'codice_catasto'        => $this->codice_catasto,
-            'sezione_catasto'       => $this->sezione_catasto,
-            'foglio_catasto'        => $this->foglio_catasto,
-            'particella_catasto'    => $this->particella_catasto,
+            'codice_catasto'        => Str::upper($this->codice_catasto),
+            'sezione_catasto'       => Str::upper($this->sezione_catasto),
+            'foglio_catasto'        => Str::upper($this->foglio_catasto),
+            'particella_catasto'    => Str::upper($this->particella_catasto),
             'codice_identificativo' => $this->codice_identificativo,
             // Aggiungi l’esercizio aperto
             'esercizio_aperto' => new EsercizioResource(

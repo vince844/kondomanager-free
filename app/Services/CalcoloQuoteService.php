@@ -2,19 +2,14 @@
 
 namespace App\Services;
 
-use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
+use App\Models\Gestionale\PianoRate;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
  * Servizio per il calcolo delle quote di spesa/entrata per ogni gestione.
- *
- * Logica aggiornata:
- * - Somma finale delle quote = importo totale della gestione (centesimi) SENZA differenze
- * - Distribuzione tramite pesi (coefficiente, millesimi, ripartizioni, quote anagrafiche)
- * - Un SOLO passaggio di arrotondamento per conto (no round stratificati)
- * - Output finale: [anagrafica_id][immobile_id] => importo_centesimi (int)
+ * VERSION: 1.8.1 (FIXED)
  */
 class CalcoloQuoteService
 {
@@ -22,9 +17,8 @@ class CalcoloQuoteService
 
     /**
      * @param Gestione $gestione
-     * @param PianoRate|null $pianoRate (Opzionale) Se passato, filtra per i capitoli del piano
-     * @return array<int, array<int, int>
-     * @since v1.8.0
+     * @param PianoRate|null $pianoRate
+     * @return array<int, array<int, int>>
      */
     public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
     {
@@ -40,6 +34,7 @@ class CalcoloQuoteService
         // 1. RECUPERO ID CAPITOLI FILTRATI (SE ESISTONO)
         $capitoliIds = [];
         if ($pianoRate) {
+            // Assicurati che la relazione sia caricata o la carichiamo ora
             $capitoliIds = $pianoRate->capitoli()->pluck('conto_id')->toArray();
         }
 
@@ -48,30 +43,37 @@ class CalcoloQuoteService
             ->with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
                 'tabelleMillesimali.ripartizioni',
-                'sottoconti.sottoconti', // Carichiamo la gerarchia per sommare i figli
-            ])
-            ->whereNull('parent_id'); // Partiamo sempre dai ROOT (Capitoli)
+                'sottoconti.sottoconti', 
+            ]);
 
-        // IL FILTRO MAGICO
-        // Se il piano rate ha dei capitoli specifici, prendiamo solo quelli.
-        // Altrimenti (array vuoto), la query prende TUTTI i capitoli (comportamento standard).
+        // 🔥 FIX LOGICO QUI SOTTO 🔥
         if (!empty($capitoliIds)) {
+            // CASO A: Filtro Attivo (Piano Rate parziale)
+            // Cerchiamo ESATTAMENTE i conti selezionati, che siano radici o figli.
+            // NON mettiamo whereNull('parent_id') altrimenti i figli vengono esclusi.
             $query->whereIn('id', $capitoliIds);
+        } else {
+            // CASO B: Nessun Filtro (Piano Rate completo)
+            // Comportamento standard: prendiamo le Radici e scendiamo ricorsivamente.
+            $query->whereNull('parent_id');
         }
 
         $conti = $query->get();
 
-        Log::info("=== INIZIO CALCOLO QUOTE ===", [
+        Log::info("=== INIZIO CALCOLO QUOTE (FIXED) ===", [
             'gestione_id' => $gestione->id,
             'piano_rate_id' => $pianoRate?->id,
             'capitoli_filtrati' => count($capitoliIds),
-            'conti_processati' => $conti->count()
+            'conti_trovati' => $conti->count() // Se questo è > 0, il fix funziona
         ]);
 
         $this->processaConti($conti, $totali);
 
-        // ... resto del metodo identico (somme e log) ...
+        $totaleCentesimi = array_sum(array_map('array_sum', $totali));
         
+        // Log di verifica finale
+        Log::info("Quote generate", ['totale_centesimi' => $totaleCentesimi]);
+
         return $totali;
     }
 
@@ -81,122 +83,25 @@ class CalcoloQuoteService
      */
     private function processaConti(Collection $conti, array &$totali): void
     {
-        /** @var object{importo:int,tipo:string,nome?:string,tabelleMillesimali:Collection,sottoconti?:Collection} $conto */
         foreach ($conti as $conto) {
             $importoLordo = (int) $conto->importo;
-            if ($importoLordo === 0) {
-                continue;
+            
+            // --- INIZIO LOGICA DI CALCOLO ---
+            // Se l'importo è 0, controlliamo comunque i sottoconti se ci sono,
+            // perché potrebbero avere importi loro.
+            if ($importoLordo !== 0) {
+                $tipo = $conto->tipo ?? 'spesa';
+                $importoConto = in_array($tipo, ['spesa', 'uscita'])
+                    ? abs($importoLordo)
+                    : -abs($importoLordo);
+
+                $this->distribuisciSuTabelle($conto, $importoConto, $totali);
             }
 
-            $tipo = $conto->tipo ?? 'spesa';
-            $importoConto = in_array($tipo, ['spesa', 'uscita'])
-                ? abs($importoLordo)
-                : -abs($importoLordo);
-
-            if ($importoConto === 0) {
-                continue;
-            }
-
-            $weights = [];
-            /** @var object{tabella?:object,coefficiente:string,ripartizioni:Collection} $ctm */
-            foreach ($conto->tabelleMillesimali as $ctm) {
-                $tabella = $ctm->tabella ?? null;
-                if (!$tabella) continue;
-
-                $coeff = (float) $ctm->coefficiente;
-                if ($coeff <= 0) continue;
-
-                $weightCoeff = $coeff / 100.0;
-
-                /** @var Collection<int, object{valore:float,immobile?:object}> $quote */
-                $quote = $tabella->quote;
-                if ($quote->isEmpty()) continue;
-
-                $sommaValori = (float) $quote->sum('valore');
-                if ($sommaValori <= 0.0) continue;
-
-                /** @var object{valore:float,immobile?:object} $quota */
-                foreach ($quote as $quota) {
-                    $immobile = $quota->immobile ?? null;
-                    if (!$immobile) continue;
-
-                    $valore = (float) $quota->valore;
-                    if ($valore <= 0.0) continue;
-
-                    $weightImmobile = $weightCoeff * ($valore / $sommaValori);
-
-                    // === RIPARTIZIONI CON TIPO ESPLICITO ===
-                    /** @var Collection<int, object{soggetto:string,percentuale:float}> $ripartizioni */
-                    $ripartizioni = $ctm->ripartizioni->isNotEmpty()
-                        ? $ctm->ripartizioni
-                        : collect([ (object) [
-                            'soggetto' => 'proprietario',
-                            'percentuale' => 100.0
-                        ]]);
-
-                    /** @var object{soggetto:string,percentuale:float} $rip */
-                    foreach ($ripartizioni as $rip) {
-                        $percent = (float) $rip->percentuale;
-                        if ($percent <= 0.0) continue;
-
-                        $weightRip = $weightImmobile * ($percent / 100.0);
-
-                        /** @var Collection<int, object{pivot:object{attivo:bool,tipologia:string,quota:float}}> $anagrafiche */
-                        $anagrafiche = $immobile->anagrafiche
-                            ->where('pivot.attivo', true)
-                            ->where('pivot.tipologia', $rip->soggetto);
-
-                        if ($anagrafiche->isEmpty() && in_array($rip->soggetto, ['inquilino', 'usufruttuario'])) {
-                            $anagrafiche = $immobile->anagrafiche
-                                ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', 'proprietario');
-                        }
-
-                        if ($anagrafiche->isEmpty()) continue;
-
-                        $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
-                        if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
-
-                        /** @var object{id:int,pivot:object{quota:float}} $anag */
-                        foreach ($anagrafiche as $anag) {
-                            $quotaAnag = (float) $anag->pivot->quota;
-                            if ($quotaAnag <= 0.0) continue;
-
-                            $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
-                            $aid = $anag->id;
-                            $iid = $immobile->id;
-                            $key = $aid . '|' . $iid;
-                            $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
-                        }
-                    }
-                }
-            }
-
-            if (empty($weights)) continue;
-
-            $pesoTotale = array_sum($weights);
-            if ($pesoTotale <= 0.0) continue;
-
-            foreach ($weights as $key => $w) {
-                $weights[$key] = $w / $pesoTotale;
-            }
-
-            $importiDistributi = $this->distribuisciImporto($weights, $importoConto);
-
-            foreach ($importiDistributi as $key => $importoCentesimi) {
-                [$aid, $iid] = array_map('intval', explode('|', $key));
-                $totali[$aid][$iid] = ($totali[$aid][$iid] ?? 0) + $importoCentesimi;
-
-                Log::debug('Quota aggiunta', [
-                    'conto_id' => $conto->id,
-                    'conto_nome' => $conto->nome ?? null,
-                    'anagrafica_id' => $aid,
-                    'immobile_id' => $iid,
-                    'importo_centesimi' => $importoCentesimi,
-                    'tipo_conto' => $tipo,
-                ]);
-            }
-
+            // Ricorsione sui figli
+            // Nota: Se abbiamo selezionato un figlio direttamente nel filtro iniziale,
+            // $conto->sottoconti sarà vuoto (o non caricato) e la ricorsione si ferma giustamente qui.
+            // Se abbiamo selezionato una radice, scenderà nei figli.
             if ($conto->sottoconti && $conto->sottoconti->count() > 0) {
                 $this->processaConti($conto->sottoconti, $totali);
             }
@@ -204,17 +109,98 @@ class CalcoloQuoteService
     }
 
     /**
-     * @param array<string, float> $weights
-     * @param int $importoTotale
-     * @return array<string, int>
+     * Logica estratta per pulizia, identica alla tua v1.8
      */
+    private function distribuisciSuTabelle($conto, $importoConto, array &$totali)
+    {
+        $tipo = $conto->tipo ?? 'spesa';
+        $weights = [];
+
+        foreach ($conto->tabelleMillesimali as $ctm) {
+            $tabella = $ctm->tabella ?? null;
+            if (!$tabella) continue;
+
+            $coeff = (float) $ctm->coefficiente;
+            if ($coeff <= 0) continue;
+
+            $weightCoeff = $coeff / 100.0;
+            $quote = $tabella->quote;
+            if ($quote->isEmpty()) continue;
+
+            $sommaValori = (float) $quote->sum('valore');
+            if ($sommaValori <= 0.0) continue;
+
+            foreach ($quote as $quota) {
+                $immobile = $quota->immobile ?? null;
+                if (!$immobile) continue;
+
+                $valore = (float) $quota->valore;
+                if ($valore <= 0.0) continue;
+
+                $weightImmobile = $weightCoeff * ($valore / $sommaValori);
+
+                $ripartizioni = $ctm->ripartizioni->isNotEmpty()
+                    ? $ctm->ripartizioni
+                    : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
+
+                foreach ($ripartizioni as $rip) {
+                    $percent = (float) $rip->percentuale;
+                    if ($percent <= 0.0) continue;
+
+                    $weightRip = $weightImmobile * ($percent / 100.0);
+
+                    $anagrafiche = $immobile->anagrafiche
+                        ->where('pivot.attivo', true)
+                        ->where('pivot.tipologia', $rip->soggetto);
+
+                    if ($anagrafiche->isEmpty() && in_array($rip->soggetto, ['inquilino', 'usufruttuario'])) {
+                        $anagrafiche = $immobile->anagrafiche
+                            ->where('pivot.attivo', true)
+                            ->where('pivot.tipologia', 'proprietario');
+                    }
+
+                    if ($anagrafiche->isEmpty()) continue;
+
+                    $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
+                    if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
+
+                    foreach ($anagrafiche as $anag) {
+                        $quotaAnag = (float) $anag->pivot->quota;
+                        if ($quotaAnag <= 0.0) continue;
+
+                        $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
+                        $key = $anag->id . '|' . $immobile->id;
+                        $weights[$key] = ($weights[$key] ?? 0.0) + $weightAnagrafica;
+                    }
+                }
+            }
+        }
+
+        if (empty($weights)) return;
+
+        $pesoTotale = array_sum($weights);
+        if ($pesoTotale <= 0.0) return;
+
+        // Normalizzazione pesi
+        foreach ($weights as $key => $w) {
+            $weights[$key] = $w / $pesoTotale;
+        }
+
+        $importiDistributi = $this->distribuisciImporto($weights, $importoConto);
+
+        foreach ($importiDistributi as $key => $importoCentesimi) {
+            [$aid, $iid] = array_map('intval', explode('|', $key));
+            $totali[$aid][$iid] = ($totali[$aid][$iid] ?? 0) + $importoCentesimi;
+        }
+    }
+
     private function distribuisciImporto(array $weights, int $importoTotale): array
     {
+        // ... (Il tuo codice di distribuzione esistente è corretto) ...
+        // Lo copio per completezza
         $result = [];
         if ($importoTotale === 0) {
-            foreach ($weights as $key => $_) {
-                $result[$key] = 0;
-            }
+            foreach ($weights as $key => $_) { $result[$key] = 0; }
             return $result;
         }
 
@@ -227,9 +213,8 @@ class CalcoloQuoteService
         foreach ($weights as $key => $w) {
             $raw = $totAbs * $w;
             $base = (int) floor($raw);
-            $rem = $raw - $base;
             $bases[$key] = $base;
-            $remainders[$key] = $rem;
+            $remainders[$key] = $raw - $base;
             $sumBase += $base;
         }
 

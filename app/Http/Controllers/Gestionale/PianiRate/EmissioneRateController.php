@@ -8,7 +8,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\ContoContabile;
-use App\Models\Gestionale\RigaScrittura; // <--- Ora lo usiamo ovunque
+use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -22,7 +22,7 @@ class EmissioneRateController extends Controller
 
     public function store(Request $request, Condominio $condominio, PianoRate $pianoRate)
     {
-        Log::info("--- START EMISSIONE RATE (Modello RigaScrittura) ---", [
+        Log::info("--- START EMISSIONE RATE ---", [
             'condominio_id' => $condominio->id,
             'rate_ids' => $request->rate_ids
         ]);
@@ -40,7 +40,6 @@ class EmissioneRateController extends Controller
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         
-        // Recupero conti fondamentali
         $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)
             ->where('ruolo', 'crediti_condomini')
             ->first();
@@ -61,9 +60,10 @@ class EmissioneRateController extends Controller
                     ->get();
 
                 foreach ($rateSelezionate as $rata) {
+                    // Salta se già emessa (ulteriore controllo di sicurezza)
                     if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) continue;
 
-                    $totaleRataCentesimi = 0; // Cambiato da float a integer
+                    $totaleRataCentesimi = 0; 
 
                     $scrittura = ScritturaContabile::create([
                         'condominio_id'      => $condominio->id,
@@ -74,12 +74,12 @@ class EmissioneRateController extends Controller
                         'causale'            => $request->descrizione_personalizzata ?: "Emissione " . $rata->descrizione,
                         'tipo_movimento'     => 'emissione_rata',
                         'stato'              => 'registrata',
+                        // Il numero di protocollo viene generato dal Trait qui
                     ]);
 
                     foreach ($rata->rateQuote as $quota) {
                         if ($quota->importo <= 0) continue;
 
-                        // 🔥 CORREZIONE: $quota->importo è già in centesimi (integer)
                         $importoCentesimi = $quota->importo; 
 
                         $scrittura->righe()->create([
@@ -96,7 +96,6 @@ class EmissioneRateController extends Controller
                         $totaleRataCentesimi += $importoCentesimi;
                     }
 
-                    // 3. Riga AVERE (Gestione Rate)
                     if ($totaleRataCentesimi > 0) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoGestione->id,
@@ -111,14 +110,24 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashSuccess('Rate emesse correttamente.'));
 
         } catch (\Throwable $e) {
-            Log::error("Errore emissione: " . $e->getMessage());
-            return back()->with($this->flashError('Errore tecnico: ' . $e->getMessage()));
+            
+            // LOGGHIAMO L'ERRORE TECNICO PER NOI
+            Log::error("Errore emissione rate: " . $e->getMessage());
+
+            // GESTIONE ERRORE DUPLICATO PROTOCOLLO
+            if (str_contains($e->getMessage(), 'Duplicate entry') && str_contains($e->getMessage(), 'numero_protocollo_unique')) {
+                return back()->with($this->flashError(
+                    'Errore di numerazione: Il sistema ha tentato di usare un numero di protocollo già esistente (forse cancellato in precedenza). Contatta l\'assistenza o prova a rigenerare i protocolli.'
+                ));
+            }
+
+            // ERRORE GENERICO PER L'UTENTE
+            return back()->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione. L\'operazione è stata annullata.'));
         }
     }
 
     public function destroy(Request $request, Condominio $condominio, PianoRate $pianoRate, Rata $rata)
     {
-        // Check preventivo su incassi
         $haPagamenti = DB::table('rate_quote')
             ->where('rata_id', $rata->id)
             ->where('importo_pagato', '>', 0)
@@ -130,29 +139,26 @@ class EmissioneRateController extends Controller
 
         try {
             DB::transaction(function () use ($rata) {
-                // Trova gli ID delle scritture da eliminare
                 $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();
 
-                // 1. Scollega le quote (set null)
+                // 1. Scollega
                 $rata->rateQuote()->update(['scrittura_contabile_id' => null]);
 
                 if ($scrittureIds->isNotEmpty()) {
                     
-                    // 2. Cancella le RIGHE usando il Modello (Molto meglio!)
-                    // Eloquent capisce da solo che la tabella è 'righe_scritture'
-                    
+                    // 2. Cancella Righe (Fisico)
                     RigaScrittura::whereIn('scrittura_id', $scrittureIds)->delete();
 
-                    // 3. Cancella le TESTATE
-                    ScritturaContabile::whereIn('id', $scrittureIds)->delete();
+                    // 3. Cancella Testate (FISICO - IMPORTANTE PER LIBERARE IL NUMERO)
+                    ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
             });
 
-            return back()->with($this->flashSuccess('Emissione annullata.'));
+            return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza.'));
 
         } catch (\Throwable $e) {
             Log::error("Errore annullamento: " . $e->getMessage());
-            return back()->with($this->flashError('Errore: ' . $e->getMessage()));
+            return back()->with($this->flashError('Si è verificato un errore durante l\'annullamento.'));
         }
     }
 }

@@ -44,7 +44,7 @@ const breadcrumbs = computed(() => [
           <!-- Left block -->
           <div class="space-y-6 pr-6 border-r">
             <div class="border-b pb-2 mb-8">
-              <h3 class="text-lg font-bold capitalize">{{condominio.nome}}</h3>
+              <h3 class="text-lg font-bold">{{condominio.nome}}</h3>
               <p class="text-muted-foreground text-sm ">
                 Di seguito i dettagli registrati per il condominio {{ condominio.nome }}
               </p> 

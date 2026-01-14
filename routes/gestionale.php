@@ -119,10 +119,9 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
         ]);
-    
-    // Aggiornamento Stato Piano (Bozza <-> Approvato)
-    Route::put('/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
-        ->name('piani-rate.update-stato');
+
+    Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
+    ->name('piani-rate.update-stato');
 
     // Emissione Rate (Massiva)
     Route::post('/piani-rate/{pianoRate}/emetti', [EmissioneRateController::class, 'store'])

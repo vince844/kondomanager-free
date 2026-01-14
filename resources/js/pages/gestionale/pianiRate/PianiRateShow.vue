@@ -1,4 +1,5 @@
 <script setup lang="ts">
+    
 import { ref, computed, watch } from "vue";
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -27,20 +28,29 @@ import {
   Info,
   Wallet,
   Lock,
-  RotateCcw
+  RotateCcw,
+  XCircle
 } from "lucide-vue-next";
-import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import Alert from "@/components/Alert.vue"; // Assicurati che il path sia corretto
-import type { Flash } from '@/types/flash';
+import Alert from "@/components/Alert.vue"; 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
+import type { Flash } from '@/types/flash';
 
 const props = defineProps<{
   condominio: Building;
@@ -65,24 +75,52 @@ watch(() => props.pianoRate.stato, (newVal) => {
     switchState.value = newVal === 'approvato';
 });
 
+// --- GESTIONE FEEDBACK (Sostituisce Alert/Confirm) ---
+const feedbackDialog = ref({
+    open: false,
+    title: '',
+    message: '',
+    isError: false
+});
+
+const showFeedback = (title: string, message: string, isError: boolean = false) => {
+    feedbackDialog.value = {
+        open: true,
+        title,
+        message,
+        isError
+    };
+};
+
+const isAlertOpen = ref(false);
+const rataToAnnullareId = ref<number | null>(null);
+
+const isRecalculateAlertOpen = ref(false);
+
+// --- LOGICA CAMBIO STATO ---
 const toggleStatoPiano = (newValue: boolean) => {
+    if (isProcessingStatus.value) return;
     isProcessingStatus.value = true;
 
     router.put(
         route('admin.gestionale.piani-rate.update-stato', {
             condominio: props.condominio.id,
-            pianoRate: props.pianoRate.id
+            esercizio: props.esercizio.id, 
+            pianoRate: props.pianoRate.id,
         }),
         { approvato: newValue },
         {
             preserveScroll: true,
             onSuccess: () => {
-                // Il successo aggiornerà switchState tramite il watcher su props.pianoRate.stato
+                // Successo gestito dal watcher o flash message
+            },
+            onError: (err) => {
+                console.error("Errore cambio stato:", err);
+                switchState.value = !newValue;
+                showFeedback('Errore', 'Impossibile cambiare lo stato del piano. Controlla che non ci siano rate emesse.', true);
             },
             onFinish: () => {
                 isProcessingStatus.value = false;
-                // Forza il riallineamento dello switch allo stato reale del database
-                switchState.value = props.pianoRate.stato === 'approvato';
             }
         }
     );
@@ -100,13 +138,11 @@ const isEmissionModalOpen = ref(false);
 const emettibili = computed(() => props.ratePure?.filter(r => !r.is_emessa) || []);
 const isAllSelected = computed(() => emettibili.value.length > 0 && selectedRateIds.value.length === emettibili.value.length);
 
-// Seleziona Tutto
 const toggleSelectAll = (checked: boolean) => {
     if (checked) selectedRateIds.value = emettibili.value.map(r => r.id);
     else selectedRateIds.value = [];
 };
 
-// ⬇️ QUESTA È LA FUNZIONE CHE MANCAVA NEL TUO CODICE ⬇️
 const toggleSelection = (id: number, checked: boolean) => {
   if (checked) {
       if (!selectedRateIds.value.includes(id)) {
@@ -116,7 +152,6 @@ const toggleSelection = (id: number, checked: boolean) => {
       selectedRateIds.value = selectedRateIds.value.filter(itemId => itemId !== id);
   }
 };
-// ⬆️ FINE FUNZIONE AGGIUNTA ⬆️
 
 const formEmissione = useForm({
     rate_ids: [] as number[],
@@ -130,7 +165,6 @@ const openEmissionModal = () => {
     isEmissionModalOpen.value = true;
 };
 
-
 const submitEmissione = () => {
     formEmissione.post(route('admin.gestionale.piani-rate.emetti', { 
         condominio: props.condominio.id, 
@@ -139,40 +173,76 @@ const submitEmissione = () => {
         onSuccess: () => {
             isEmissionModalOpen.value = false;
             selectedRateIds.value = [];
-            alert("Emissione completata con successo!"); // Feedback immediato
+            showFeedback('Emissione Completata', `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`, false);
         },
         onError: (errors) => {
             console.error("Errore Emissione:", errors);
-            // Mostra il primo errore disponibile
-            const msg = Object.values(errors)[0] || "Errore sconosciuto";
-            alert("ERRORE: " + msg); 
+            // Cerchiamo di estrarre il messaggio pulito dal flash error se presente
+            const flashError = page.props.flash.message?.type === 'error' ? page.props.flash.message.message : null;
+            const msg = flashError || Object.values(errors)[0] || "Si è verificato un errore imprevisto.";
+            
+            showFeedback('Errore Emissione', msg, true); 
         },
-        onFinish: () => {
-            // Questo viene eseguito sempre
-            console.log("Richiesta terminata");
+    });
+};
+
+const confirmAnnullamento = (rataId: number) => {
+    rataToAnnullareId.value = rataId;
+    isAlertOpen.value = true;
+};
+
+const executeAnnullamento = () => {
+    if (!rataToAnnullareId.value) return;
+    
+    router.delete(route('admin.gestionale.piani-rate.annulla-emissione', {
+        condominio: props.condominio.id,
+        pianoRate: props.pianoRate.id,
+        rata: rataToAnnullareId.value
+    }), { 
+        preserveScroll: true,
+        onSuccess: () => {
+            isAlertOpen.value = false;
+            rataToAnnullareId.value = null;
+            showFeedback('Emissione Annullata', 'La rata è tornata in stato di bozza.', false);
+        },
+        onError: () => {
+            isAlertOpen.value = false;
+            const flashError = page.props.flash.message?.type === 'error' ? page.props.flash.message.message : 'Errore sconosciuto';
+            showFeedback('Impossibile Annullare', flashError, true);
         }
     });
 };
 
-const annullaEmissione = (rataId: number) => {
-    if (!confirm('Annullare emissione? Se ci sono incassi, operazione bloccata.')) return;
-    router.delete(route('admin.gestionale.piani-rate.annulla-emissione', {
-        condominio: props.condominio.id,
-        pianoRate: props.pianoRate.id,
-        rata: rataId
-    }), { preserveScroll: true });
+// --- RICALCOLO ---
+const confirmRecalculate = () => {
+    // 1. Controllo Preventivo Lato Client
+    const haRateEmesse = props.ratePure?.some(r => r.is_emessa);
+
+    if (haRateEmesse) {
+        showFeedback(
+            'Impossibile ricalcolare', 
+            'Ci sono rate già emesse in contabilità (anche se non pagate). Per sicurezza, devi prima annullare le emissioni usando il tasto "Annulla" nella tabella.', 
+            true 
+        );
+        return; 
+    }
+
+    // 2. Se tutto ok, apriamo la conferma
+    isRecalculateAlertOpen.value = true;
 };
 
-// --- RICALCOLO ---
-const handleRecalculate = () => {
-    if (!confirm('Sei sicuro di voler ricalcolare il piano rate? Le rate attuali verranno cancellate e ricreate.')) {
-        return;
-    }
+const executeRecalculate = () => {
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
         pianoRate: props.pianoRate.id 
-    }), {}, { preserveScroll: true });
+    }), {}, { 
+        preserveScroll: true,
+        onSuccess: () => {
+            isRecalculateAlertOpen.value = false;
+            showFeedback('Ricalcolo Completato', 'Il piano rate è stato rigenerato con successo.', false);
+        }
+    });
 };
 
 // --- HELPER DI STILE ---
@@ -213,15 +283,12 @@ const rateColumns = computed(() => {
     const numero = i + 1;
     const sample = src.find((item: any) => item.rate?.some((r: any) => r.numero === numero));
     const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
-    
-    // NUOVO: Recupero stato emissione
     const rataPura = props.ratePure?.find(r => r.numero_rata === numero);
-    
     return { 
         numero, 
         scadenza: scadenza ? new Date(scadenza) : null,
-        is_emessa: rataPura?.is_emessa ?? false, // NUOVO
-        id: rataPura?.id // NUOVO
+        is_emessa: rataPura?.is_emessa ?? false, 
+        id: rataPura?.id 
     };
   });
 });
@@ -349,19 +416,53 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                           <Tooltip :delayDuration="0">
                               <TooltipTrigger as-child>
                                   <div class="flex items-center space-x-2">
-                                      <Switch
-                                          id="stato-piano"
-                                          v-model="switchState"
-                                          :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
-                                          @update:checked="(val: boolean) => toggleStatoPiano(val)"
-                                      />
-                                      <Label 
-                                          htmlFor="stato-piano" 
-                                          class="text-sm font-medium whitespace-nowrap"
-                                          :class="{'cursor-not-allowed opacity-50': switchState && props.ratePure.some(r => r.is_emessa), 'cursor-pointer': !isProcessingStatus}"
-                                      >
-                                          {{ switchState ? 'Approvato' : 'Bozza' }}
-                                      </Label>
+                                      <div class="flex items-center space-x-3">
+                                          <button 
+                                              type="button" 
+                                              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                                              :class="[
+                                                  switchState ? 'bg-emerald-600' : 'bg-gray-200',
+                                                  (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
+                                              ]"
+                                              :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
+                                              @click="toggleStatoPiano(!switchState)"
+                                              role="switch"
+                                              :aria-checked="switchState"
+                                          >
+                                              <span class="sr-only">Cambia stato piano</span>
+                                              
+                                              <span 
+                                                  aria-hidden="true" 
+                                                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                                  :class="switchState ? 'translate-x-5' : 'translate-x-0'"
+                                              >
+                                                  <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                                      :class="switchState ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in'"
+                                                      aria-hidden="true"
+                                                  >
+                                                      <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 12 12">
+                                                          <path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                                      </svg>
+                                                  </span>
+                                                  <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                                      :class="switchState ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out'"
+                                                      aria-hidden="true"
+                                                  >
+                                                      <svg class="h-3 w-3 text-emerald-600" fill="currentColor" viewBox="0 0 12 12">
+                                                          <path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" />
+                                                      </svg>
+                                                  </span>
+                                              </span>
+                                          </button>
+
+                                          <Label 
+                                              class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
+                                              :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
+                                              @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
+                                          >
+                                              {{ switchState ? 'Approvato' : 'Bozza' }}
+                                          </Label>
+                                      </div>
                                   </div>
                               </TooltipTrigger>
                               <TooltipContent 
@@ -389,7 +490,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                   </Button>
 
                   <button 
-                      @click="handleRecalculate"
+                      @click="confirmRecalculate"
                       class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-primary transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                       title="Ricalcola importi e quote"
                   >
@@ -432,18 +533,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                 <Card class="bg-gray-50 shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600' : 'text-emerald-600')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
             </div>
 
-            <div v-if="isReady" class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200">
-                <span class="font-bold uppercase tracking-wider text-[10px] text-gray-400 mr-2">Legenda:</span>
-                <div class="flex items-center gap-1.5"><CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span></div>
-                <div class="flex items-center gap-1.5"><PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span></div>
-                <div class="flex items-center gap-1.5"><AlertCircle class="w-3.5 h-3.5 text-red-600" /> <span class="text-red-700 font-medium">Scaduta</span></div>
-                <div class="flex items-center gap-1.5"><Clock class="w-3.5 h-3.5 text-gray-400" /> <span>In Scadenza</span></div>
-                <div class="flex items-center gap-1.5"><Coins class="w-3.5 h-3.5 text-blue-600" /> <span class="text-blue-700 font-medium">Credito</span></div>
-                <div class="h-4 w-px bg-gray-300 mx-2 hidden sm:block"></div>
-                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-red-500 shadow-sm ring-1 ring-black/5"></div><span class="text-red-600 font-medium">Saldo Debito</span></div>
-                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm ring-1 ring-black/5"></div><span class="text-blue-600 font-medium">Saldo Credito</span></div>
-            </div>
-
             <TabsContent :value="tab" class="mt-0 space-y-6">
               <template v-if="isReady">
                 <div class="overflow-x-auto border rounded-lg shadow-sm">
@@ -480,7 +569,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                               <button v-if="switchState && col.is_emessa" 
                                 class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40"
                                 title="Annulla Emissione"
-                                @click.stop="annullaEmissione(col.id)"
+                                @click.stop="confirmAnnullamento(col.id)"
                               >
                                 <RotateCcw class="w-3 h-3" />
                               </button>
@@ -674,6 +763,79 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             <DialogFooter>
                 <Button variant="outline" @click="isEmissionModalOpen = false">Annulla</Button>
                 <Button @click="submitEmissione" :disabled="formEmissione.processing" class="bg-emerald-600 hover:bg-emerald-700">Emetti Ora</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
+    <AlertDialog :open="isAlertOpen" @update:open="isAlertOpen = $event">
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Sei assolutamente sicuro?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Stai per annullare l'emissione contabile di questa rata. 
+                    Questa azione cancellerà la scrittura contabile associata.
+                    <br><br>
+                    <strong>Nota:</strong> Se sono già presenti incassi, l'operazione verrà bloccata.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel @click="isAlertOpen = false">Indietro</AlertDialogCancel>
+                <AlertDialogAction @click="executeAnnullamento" class="bg-red-600 hover:bg-red-700">
+                    Sì, Annulla Emissione
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
+
+    <AlertDialog :open="isRecalculateAlertOpen" @update:open="isRecalculateAlertOpen = $event">
+        <AlertDialogContent>
+            <AlertDialogHeader>
+                <AlertDialogTitle>Confermi il ricalcolo?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Stai per rigenerare l'intero piano rate. Tutte le rate non emesse verranno cancellate e ricreate.
+                    <br><br>
+                    Questa operazione è irreversibile.
+                </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+                <AlertDialogCancel @click="isRecalculateAlertOpen = false">Annulla</AlertDialogCancel>
+                <AlertDialogAction @click="executeRecalculate" class="bg-amber-600 hover:bg-amber-700">
+                    Procedi al Ricalcolo
+                </AlertDialogAction>
+            </AlertDialogFooter>
+        </AlertDialogContent>
+    </AlertDialog>
+
+    <Dialog :open="feedbackDialog.open" @update:open="feedbackDialog.open = $event">
+        <DialogContent class="sm:max-w-[400px]">
+            <div class="flex flex-col items-center justify-center text-center pt-4">
+                
+                <div v-if="!feedbackDialog.isError" class="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                    <CheckCircle2 class="h-8 w-8 text-emerald-600" />
+                </div>
+                <div v-else class="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mb-4">
+                    <XCircle class="h-8 w-8 text-red-600" />
+                </div>
+
+                <DialogHeader>
+                    <DialogTitle class="text-center w-full block" :class="feedbackDialog.isError ? 'text-red-700' : 'text-emerald-700'">
+                        {{ feedbackDialog.title }}
+                    </DialogTitle>
+                    <DialogDescription class="pt-2 text-center w-full block">
+                        {{ feedbackDialog.message }}
+                    </DialogDescription>
+                </DialogHeader>
+            </div>
+
+            <DialogFooter class="sm:justify-center mt-4">
+                <Button 
+                    type="button" 
+                    class="w-full sm:w-auto min-w-[120px]" 
+                    :class="feedbackDialog.isError ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+                    @click="feedbackDialog.open = false"
+                >
+                    {{ feedbackDialog.isError ? 'Chiudi' : 'Ottimo, prosegui' }}
+                </Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>

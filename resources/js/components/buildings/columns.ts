@@ -32,7 +32,7 @@ export const columns: ColumnDef<Building>[] = [
   {
     accessorKey: 'indirizzo',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('condomini.table.address') }), 
-    cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
+    cell: ({ row }) => h('div', row.getValue('indirizzo')),
   },
   {
     id: 'actions',
