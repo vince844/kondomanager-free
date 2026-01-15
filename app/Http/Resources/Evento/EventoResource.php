@@ -20,7 +20,6 @@ class EventoResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        
         $occursAt = $this->occurs_at ?? $this->start_time;
 
         return [
@@ -28,15 +27,26 @@ class EventoResource extends JsonResource
             'title'           => Str::ucfirst($this->title),
             'description'     => $this->description,
             'recurrence_id'   => $this->recurrence_id,
+            
+            // Date
+            'start_time'      => $this->start_time, // <--- FONDAMENTALE per il Dialog
+            'end_time'        => $this->end_time,
             'occurs_at_human' => Carbon::parse($occursAt)->diffForHumans(),
             'occurs'          => $this->occurs_at,
             'occurs_at'       => Carbon::parse($occursAt)->format('d/m/Y \a\l\l\e H:i'),
+            
+            // Relazioni
             'categoria'       => new CategoriaEventoResource($this->whenLoaded('categoria')),
             'condomini'       => CondominioResource::collection($this->whenLoaded('condomini')),
             'anagrafiche'     => AnagraficaResource::collection($this->whenLoaded('anagrafiche')),
+            
+            // Configurazione
             'timezone'        => $this->timezone,
             'visibility'      => $this->visibility,
             'is_approved'     => $this->is_approved,
+            
+            'meta'            => $this->meta, 
+
             'created_by'      => $this->whenLoaded('createdBy', function () {
                                     return [
                                         'user'       => new UserResource($this->createdBy),

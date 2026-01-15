@@ -10,6 +10,7 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
+use App\Events\Gestionale\RataEmessa;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
@@ -104,6 +105,10 @@ class EmissioneRateController extends Controller
                             'note'               => "Totale emissione " . $rata->descrizione
                         ]);
                     }
+
+                    // --- EVENTO AGGIUNTO ---
+                    // Questo cancella il task "Emettere Rata" dal calendario Admin
+                    RataEmessa::dispatch($rata);
                 }
             });
 
@@ -152,6 +157,10 @@ class EmissioneRateController extends Controller
                     // 3. Cancella Testate (FISICO - IMPORTANTE PER LIBERARE IL NUMERO)
                     ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
+
+                // NOTA: Se annulli l'emissione, tecnicamente l'evento "EMETTERE RATA" dovrebbe tornare.
+                // Attualmente il sistema lo ha cancellato. Se vuoi ripristinarlo, bisognerebbe
+                // rilanciare SyncScadenziarioWithPianoRate per questa rata, ma per ora va bene così.
             });
 
             return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza.'));

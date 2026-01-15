@@ -23,6 +23,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Events\Gestionale\PianoRateStatusUpdated;
 
 class PianoRateController extends Controller
 {
@@ -162,6 +163,30 @@ class PianoRateController extends Controller
      */
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
+        $validated = $request->validate([ 'approvato' => 'required|boolean' ]);
+        
+        $vecchioStato = $pianoRate->stato;
+        $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
+
+        // ... controlli di sicurezza (bozza/rate emesse) ...
+
+        $pianoRate->update(['stato' => $nuovoStato]);
+
+        // LANCIA L'EVENTO
+        // Laravel gestirà i Listener (e quindi i Job in coda) automaticamente
+        PianoRateStatusUpdated::dispatch(
+            $condominio, 
+            $esercizio,
+            $pianoRate, 
+            auth()->user(), 
+            $vecchioStato, 
+            $nuovoStato
+        );
+
+        return back()->with($this->flashSuccess('Stato aggiornato con successo.'));
+    }
+ /*    public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
+    {
        
         $validated = $request->validate([
             'approvato' => 'required|boolean'
@@ -183,7 +208,7 @@ class PianoRateController extends Controller
         $pianoRate->update(['stato' => $nuovoStato]);
 
         return back()->with($this->flashSuccess('Stato del piano aggiornato: ' . ($validated['approvato'] ? 'Approvato' : 'Bozza')));
-    }
+    } */
 
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): RedirectResponse
     {

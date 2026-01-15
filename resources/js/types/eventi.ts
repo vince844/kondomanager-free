@@ -24,15 +24,29 @@ export interface VisibilityType {
   colorClass: string;
 }
 
+// NUOVO: Definiamo la struttura del campo JSON 'meta'
+export interface EventoMeta {
+  type?: string;              // es. 'emissione_rata', 'scadenza_rata_condomino'
+  status?: string;            // es. 'pending', 'paid', 'partial', 'reported'
+  requires_action?: boolean;  // Il flag per l'Inbox
+  action_url?: string;        // Link per l'admin
+  importo_originale?: number;
+  importo_pagato?: number;
+  importo_restante?: number;
+  reported_at?: string;
+  context?: Record<string, any>; // IDs vari (rata_id, piano_rate_id)
+  [key: string]: any;         // Permette qualsiasi altro campo futuro
+}
+
 export interface Evento {
   id: number;
   title: string;
   description: string;
   created_at: string;
-  occurs: string | Date;
-  occurs_at: string;
-  start_time?: string;
-  end_time?: string;
+  occurs: string | Date; // Per retrocompatibilità con eventi manuali
+  occurs_at: string;     // Stringa formattata
+  start_time?: string;   // Nuovo standard datetime
+  end_time?: string;     // Nuovo standard datetime
   categoria: CategoriaEvento;
   category_id?: number;
   recurrence_id: number | null;
@@ -48,4 +62,7 @@ export interface Evento {
   note?: string;
   visibility?: string;
   is_approved: boolean;
+  
+  // --- CAMPO AGGIUNTO ---
+  meta?: EventoMeta | null; 
 }

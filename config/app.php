@@ -135,4 +135,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Impostazioni Specifiche Gestionale
+    |--------------------------------------------------------------------------
+    |
+    | scheduler_queue_worker:
+    | - TRUE: Per Shared Hosting (cPanel/SiteGround). Lancia un worker "usa e getta" ogni minuto.
+    | - FALSE: Per VPS (con Supervisor). Non fa nulla (ci pensa Supervisor).
+    |
+    */
+    'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', true),
+
 ];
