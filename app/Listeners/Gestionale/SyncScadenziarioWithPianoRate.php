@@ -4,6 +4,7 @@ namespace App\Listeners\Gestionale;
 
 use App\Enums\CategoriaEventoEnum;
 use App\Enums\StatoPianoRate;
+use App\Enums\VisibilityStatus; // Assicurati di importare l'Enum
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
@@ -11,7 +12,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Number;
 
 class SyncScadenziarioWithPianoRate implements ShouldQueue
 {
@@ -55,8 +55,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     $numAnagrafiche = $rata->rateQuote->unique('anagrafica_id')->count();
 
                     $titoloAdmin = "Emettere rata {$rata->numero_rata} - {$condominio->nome}";
-
-                    // DESCRIZIONE PULITA: Solo il messaggio d'azione
                     $descAdmin = "Ricordati di emettere le ricevute per questa rata entro la scadenza. " .
                                  "Tutte le anagrafiche coinvolte riceveranno notifica dell'avvenuta emissione.";
 
@@ -76,23 +74,24 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'description' => $descAdmin,
                             'end_time'    => $dataPromemoria->copy()->addHour(),
                             'category_id' => $catAdmin->id,
-                            'visibility'  => 'private', 
+                            // MODIFICA QUI: HIDDEN per l'admin (sicurezza massima)
+                            'visibility'  => VisibilityStatus::HIDDEN->value, 
                             'is_approved' => true,
-                            'meta'        => [
-                                'type' => 'emissione_rata',
+                            'meta' => [
+                                'type'            => 'emissione_rata',
                                 'requires_action' => true, 
                                 'context' => [
                                     'piano_rate_id' => $pianoRate->id,
                                     'rata_id'       => $rata->id
                                 ],
-                                'gestione' => $nomeGestione,
-                                'condominio_nome' => $condominio->nome,
-                                'totale_rata' => $totaleRata,
+                                'gestione'          => $nomeGestione,
+                                'condominio_nome'   => $condominio->nome,
+                                'totale_rata'       => $totaleRata,
                                 'anagrafiche_count' => $numAnagrafiche,
-                                'scadenza_reale' => $rata->data_scadenza->toDateString(),
-                                'numero_rata' => $rata->numero_rata,
-                                'piano_nome' => $pianoRate->nome,
-                                'action_url' => $urlEmissione
+                                'scadenza_reale'    => $rata->data_scadenza->toDateString(),
+                                'numero_rata'       => $rata->numero_rata,
+                                'piano_nome'        => $pianoRate->nome,
+                                'action_url'        => $urlEmissione
                             ],
                         ]
                     );
@@ -120,11 +119,9 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                         $titoloUser = "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}";
                         $dataScadenza = $rata->data_scadenza->copy()->setTime(0, 0);
 
-                        // DESCRIZIONE PULITA: Saluto + messaggio (le note vanno dopo se ci sono)
                         $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale. " .
                                     "Effettua il pagamento entro la data indicata per evitare solleciti.";
                         
-                        // Note separate (solo se presenti)
                         if (!empty($rata->note)) {
                             $descUser .= "\n\nNote aggiuntive: {$rata->note}";
                         }
@@ -136,17 +133,18 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'description' => $descUser,
                             'end_time'    => $dataScadenza->copy()->setTime(23, 59),
                             'category_id' => $catPublic->id,
-                            'visibility'  => 'private',
+                            // MODIFICA QUI: PRIVATE per il condomino (lo vede solo se collegato)
+                            'visibility'  => VisibilityStatus::PRIVATE->value,
                             'is_approved' => true,
                             'timezone'    => config('app.timezone'),
                             'meta'        => [
                                 'type' => 'scadenza_rata_condomino',
                                 'requires_action' => false, 
+                                'status' => 'pending',
                                 'context' => [
                                     'piano_rate_id' => $pianoRate->id,
                                     'rata_id'       => $rata->id
                                 ],
-                                'status' => 'pending',
                                 'importo_originale' => $importoVal,
                                 'importo_pagato' => 0,
                                 'importo_restante' => $importoVal,

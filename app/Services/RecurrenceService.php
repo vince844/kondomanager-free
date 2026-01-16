@@ -72,9 +72,6 @@ class RecurrenceService
             return $copy;
         });
     }
-
-    // ... (getUserScopedRecurringEvents, getUserScopedOneTimeEvents, getRecurringEvents 
-    // restano identici al tuo codice precedente, non li ricopio per brevità) ...
     
     private function getUserScopedRecurringEvents(Carbon $s, Carbon $e, array $f, ?Anagrafica $a, ?Collection $c): Collection {
         $q = Evento::query()->whereNotNull('recurrence_id')->with(['ricorrenza','categoria','condomini','anagrafiche'])->where('is_approved',true)->where('visibility','public');
@@ -83,18 +80,61 @@ class RecurrenceService
         return $q->get()->flatMap(fn($ev)=>$this->expandRecurringEvent($ev,$s,$e,$f));
     }
 
-    private function getUserScopedOneTimeEvents(Carbon $start, Carbon $end, array $filters, ?Anagrafica $anagrafica, ?Collection $condominioIds): Collection {
-        $query = Evento::query()->whereNull('recurrence_id')->with('categoria', 'condomini', 'anagrafiche')->where('visibility', 'public')->where('is_approved', true);
+    private function getUserScopedOneTimeEvents(
+        Carbon $start,
+        Carbon $end,
+        array $filters,
+        ?Anagrafica $anagrafica,
+        ?Collection $condominioIds
+    ): Collection {
+        $query = Evento::query()
+            ->whereNull('recurrence_id')
+            ->with('categoria', 'condomini', 'anagrafiche')
+            ->where('is_approved', true)
+            // SICUREZZA GLOBALE: Il condòmino non deve mai vedere roba HIDDEN (dell'admin)
+            ->where('visibility', '!=', 'hidden');
+
+        // LOGICA TEMPORALE
         $query->where(function ($q) use ($start, $end) {
-            $q->whereBetween('start_time', [$start, $end])->orWhere(function ($sub) { $sub->where('meta->requires_action', true)->whereNotNull('meta->type'); });
-        });
-        $this->applyFilters($query, $filters);
-        $query->where(function ($q) use ($anagrafica, $condominioIds) {
-            $q->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagrafica?->id))->orWhere(function ($q) use ($condominioIds) {
-                $q->whereDoesntHave('anagrafiche')->whereHas('condomini', fn($q) => $q->whereIn('condominio_id', $condominioIds));
+            
+            // 1. CALENDARIO: Mostra tutto ciò che è nel range (futuro)
+            $q->whereBetween('start_time', [$start, $end])
+            
+            // 2. INBOX DEBITI: Mostra le rate passate SE non sono pagate
+            ->orWhere(function ($sub) {
+                $sub->where('meta->type', 'scadenza_rata_condomino')
+                    ->where('meta->status', '!=', 'paid');
             });
         });
-        return $query->get()->map(function ($event) { $copy = clone $event; $copy->occurs_at = $copy->start_time; return $copy; });
+
+        $this->applyFilters($query, $filters);
+
+        // LOGICA DI APPARTENENZA (Scope)
+        $query->where(function ($q) use ($anagrafica, $condominioIds) {
+            
+            // A. I MIEI EVENTI (PRIVATE o PUBLIC che sia)
+            // Se sono nella tabella pivot anagrafica_evento, sono miei.
+            $q->whereHas('anagrafiche', fn($k) =>
+                $k->where('anagrafica_id', $anagrafica?->id)
+            )
+            
+            // B. EVENTI CONDOMINIALI (Solo PUBLIC)
+            // Es. Assemblea, Disinfestazione. Li vedo se sono del mio condominio.
+            ->orWhere(function ($sub) use ($condominioIds) {
+                $sub->where('visibility', 'public')
+                    ->whereHas('condomini', fn($k) =>
+                        $k->whereIn('condominio_id', $condominioIds)
+                    )
+                    // Opzionale: escludo quelli assegnati specificamente ad altri
+                    ->whereDoesntHave('anagrafiche'); 
+            });
+        });
+
+        return $query->get()->map(function ($event) {
+            $copy = clone $event;
+            $copy->occurs_at = $copy->start_time;
+            return $copy;
+        });
     }
 
     private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection {

@@ -7,6 +7,7 @@ use App\Http\Controllers\Documenti\Utenti\DocumentoController;
 use App\Http\Controllers\Segnalazioni\Utenti\SegnalazioneController;
 use App\Http\Controllers\Dashboard\UserDashboardController;
 use App\Http\Controllers\Eventi\Utenti\EventoController;
+use App\Http\Controllers\Eventi\Utenti\PaymentReportingController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,10 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
         ->parameters([
             'documenti' => 'documento'
         ]);
+    
+    // Rotta per segnalare il pagamento (Single Action Controller)
+    Route::post('eventi/{evento}/segnala-pagamento', PaymentReportingController::class)
+        ->name('eventi.report_payment');
 
     Route::resource('eventi', EventoController::class)
         ->parameters([

@@ -37,9 +37,9 @@ class DashboardController extends Controller
             'segnalazioni_aperte' => Segnalazione::whereIn('stato', ['aperta', 'in lavorazione'])->count(),
             'scadenze_imminenti'  => $this->recurrenceService->getEventsInNextDays(days: 7)->count(),
             'storage' => [
-                'used_bytes' => Documento::sum('file_size') ?? 0,
+                'used_bytes'     => Documento::sum('file_size') ?? 0,
                 'used_formatted' => FileHelper::formatBytes(Documento::sum('file_size') ?? 0),
-                'total_files' => Documento::count(),
+                'total_files'    => Documento::count(),
             ],
         ];
 
