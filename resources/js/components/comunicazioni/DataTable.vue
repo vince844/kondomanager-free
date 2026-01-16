@@ -1,6 +1,6 @@
 <script setup lang="ts" generic="TData, TValue">
 
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
@@ -8,6 +8,7 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/comunicazioni/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Comunicazione } from '@/types/comunicazioni';
 
@@ -108,7 +109,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('comunicazioni.dialogs.no_communications_created') }}
             </TableCell>
           </TableRow>
         </template>

@@ -5,7 +5,6 @@ namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 use App\Traits\ValidatesImmobileAnagraficaPivot;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Cknow\Money\Money;
 
 /**
  * @method bool merge(string $key)

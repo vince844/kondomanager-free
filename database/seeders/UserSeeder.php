@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Role;
 use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -19,7 +19,7 @@ class UserSeeder extends Seeder
             'email'             => 'admin@km.com',
             'password'          => Hash::make('password'),
             'email_verified_at' => now(),
-        ])->assignRole('amministratore'); 
+        ])->assignRole(Role::AMMINISTRATORE->value); 
 
     /*     User::factory()
             ->count(50)

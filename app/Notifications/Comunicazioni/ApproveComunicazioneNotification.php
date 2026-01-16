@@ -4,13 +4,13 @@ namespace App\Notifications\Comunicazioni;
 
 use App\Helpers\RouteHelper;
 use App\Models\Comunicazione;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class ApproveComunicazioneNotification extends Notification implements ShouldQueue
+class ApproveComunicazioneNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -21,6 +21,8 @@ class ApproveComunicazioneNotification extends Notification implements ShouldQue
      */
     public function __construct(Comunicazione $comunicazione)
     {
+        // Important to load translations
+        parent::__construct(); 
         $this->comunicazione = $comunicazione;
     }
 
@@ -41,14 +43,28 @@ class ApproveComunicazioneNotification extends Notification implements ShouldQue
     {
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
+
         return (new MailMessage)
-            ->subject('Nuova comunicazione da approvare')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->comunicazione->createdBy->name ." ha creato una nuova comunicazione nella bacheca del condominio")
-            ->line("La comunicazione è in attesa di essere approvata perchè l'utente che l'ha inviata non ha permessi sufficienti per pubblicarla")
-            ->line('**Oggetto:** ' . $this->comunicazione->subject)
-            ->line('**Priorità:** ' . Str::ucfirst($this->comunicazione->priority))
-            ->action('Visualizza comunicazione', url("/{$routePrefix}/comunicazioni/" . $this->comunicazione->id));
+            ->subject(__('notifications.approve_communication.subject'))
+            ->greeting(__('notifications.approve_communication.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.approve_communication.line_1', [
+                'user' => $this->comunicazione->createdBy->name
+            ]))
+            ->line(__('notifications.approve_communication.line_2'))
+            ->line(
+                '**' . __('notifications.approve_communication.object') . ':** ' .
+                $this->comunicazione->subject
+            )
+            ->line(
+                '**' . __('notifications.approve_communication.priority') . ':** ' .
+                Str::ucfirst($this->comunicazione->priority)
+            )
+            ->action(
+                __('notifications.approve_communication.action'),
+                url("/{$routePrefix}/comunicazioni/{$this->comunicazione->id}")
+            );
     }
 
     /**

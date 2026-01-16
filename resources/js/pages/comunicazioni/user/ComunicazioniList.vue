@@ -1,240 +1,231 @@
 <script setup lang="ts">
 
-import { ref, onMounted, computed, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { watchDebounced, useTimeoutFn } from '@vueuse/core';
-import { Head, router, Link, usePage } from "@inertiajs/vue3";
-import AppLayout from "@/layouts/AppLayout.vue";
-import Heading from "@/components/Heading.vue";
+import { Head, router, Link, usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
+import AppLayout from '@/layouts/AppLayout.vue';
+import Heading from '@/components/Heading.vue';
 import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vue';
-import Alert from "@/components/Alert.vue";
-import { Button } from "@/components/ui/button";
+import Alert from '@/components/Alert.vue';
+import { Button } from '@/components/ui/button';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { useComunicazioni } from '@/composables/useComunicazioni';
-import { usePermission } from "@/composables/permissions";
-import { Permission }  from "@/enums/Permission";
-import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus } from "lucide-vue-next";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import {
-  Pagination, PaginationEllipsis, PaginationFirst, PaginationLast,
-  PaginationList, PaginationListItem, PaginationNext, PaginationPrev,
-} from "@/components/ui/pagination";
-import { getPriorityMeta } from "@/types/comunicazioni";
+import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { Pencil, Trash2, Loader2, SearchX, Plus, Megaphone } from 'lucide-vue-next';
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationFirst, PaginationLast, PaginationItem, PaginationNext, PaginationPrevious } from '@/components/ui/pagination';
+import { getPriorityMeta } from '@/types/comunicazioni';
 import type { PaginationMeta } from '@/types/pagination';
-import type { Comunicazione } from "@/types/comunicazioni";
+import type { Comunicazione } from '@/types/comunicazioni';
 import type { Flash } from '@/types/flash';
 import type { Auth } from '@/types';
 
-// Constants
-const LOADING_DELAY = 300;
-const SEARCH_DEBOUNCE = 400;
-const SEARCH_MAX_WAIT = 1000;
-const NO_RESULTS_DELAY = 400;
-
-// Props and page data
+/* -------------------------------------------------
+   Props
+------------------------------------------------- */
 interface Props {
   comunicazioni: { data: Comunicazione[] } & PaginationMeta;
   stats: { bassa: number; media: number; alta: number; urgente: number };
   search?: string;
 }
 const props = defineProps<Props>();
-const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
 
-// Permissions and data setup
+/* -------------------------------------------------
+   Page & Permission helpers
+------------------------------------------------- */
+const page = usePage<{ flash: { message?: Flash }; auth: Auth }>();
 const { hasPermission, generateRoute } = usePermission();
 
-const { comunicazioni, meta, setComunicazioni, removeComunicazione } = useComunicazioni(
-  props.comunicazioni.data,
-  {
-    current_page: props.comunicazioni.current_page,
-    per_page: props.comunicazioni.per_page,
-    last_page: props.comunicazioni.last_page,
-    total: props.comunicazioni.total,
-  }
-);
+/* -------------------------------------------------
+   Constants
+------------------------------------------------- */
+const LOADING_DELAY_MS = 300;
+const NO_RESULTS_DELAY_MS = 400;
 
-// Reactive state
-const searchQuery = ref(props.search ?? '');
-const loadingCount = ref(0);
-const isInitialLoad = ref(true);
-const errorState = ref<string | null>(null);
-const hasSearched = ref(false);
-const showDelayedLoading = ref(false);
-const showNoResultsDelayed = ref(false);
-const isAlertOpen = ref(false);
-const comunicazioneID = ref<number | null>(null);
+/* -------------------------------------------------
+   Reactive UI state (grouped)
+------------------------------------------------- */
+const ui = reactive({
+  searchQuery: props.search ?? '',
+  loadingCount: 0,
+  errorState: null as string | null,
+  hasSearched: false,
+  showDelayedLoading: false,
+  showNoResultsDelayed: false,
+  isAlertOpen: false,
+  comunicazioneID: null as number | null,
+});
 
-// Computed values
+/* -------------------------------------------------
+   Computed helpers
+------------------------------------------------- */
 const auth = computed(() => page.props.auth);
 const flashMessage = computed(() => page.props.flash.message);
-const isLoading = computed(() => loadingCount.value > 0);
-const shouldShowLoading = computed(() => isLoading.value);
+const isLoading = computed(() => ui.loadingCount > 0);
 
-const filteredResults = computed(() => comunicazioni.value);
+/* -------------------------------------------------
+   Composable for the list
+------------------------------------------------- */
+const {
+  comunicazioni,
+  meta,
+  setComunicazioni,
+  removeComunicazione,
+} = useComunicazioni(props.comunicazioni.data, props.comunicazioni);
 
-const showNoResults = computed(() =>
-  !isLoading.value &&
-  hasSearched.value &&
-  searchQuery.value &&
-  filteredResults.value.length === 0 &&
-  showNoResultsDelayed.value
+/* -------------------------------------------------
+   Empty‑state derived values
+------------------------------------------------- */
+const showNoResults = computed(
+  () =>
+    !isLoading.value &&
+    ui.hasSearched &&
+    ui.searchQuery.trim() !== '' &&
+    comunicazioni.value.length === 0 &&
+    ui.showNoResultsDelayed,
 );
 
-// Timeout handlers
-const { start: startLoadingTimer, stop: stopLoadingTimer } = useTimeoutFn(
-  () => (showDelayedLoading.value = true),
-  LOADING_DELAY
-);
-const { start: startNoResultsTimer, stop: stopNoResultsTimer } = useTimeoutFn(
-  () => (showNoResultsDelayed.value = true),
-  NO_RESULTS_DELAY
+const showNoCommunications = computed(
+  () =>
+    !isLoading.value &&
+    (!ui.searchQuery || ui.searchQuery.trim() === '') &&
+    comunicazioni.value.length === 0,
 );
 
-// Init
-onMounted(() => {
-  updatePaginationData(props.comunicazioni);
-  isInitialLoad.value = false;
-});
+/* -------------------------------------------------
+   Timers (VueUse)
+------------------------------------------------- */
+const { start: startLoadingTimer } = useTimeoutFn(
+  () => (ui.showDelayedLoading = true),
+  LOADING_DELAY_MS,
+);
+const { start: startNoResultsTimer } = useTimeoutFn(
+  () => (ui.showNoResultsDelayed = true),
+  NO_RESULTS_DELAY_MS,
+);
 
-// Watchers
-watch(() => props.comunicazioni, updatePaginationData);
+/* -------------------------------------------------
+   Watchers
+------------------------------------------------- */
+// Sync composable when parent sends fresh data
+watch(
+  () => props.comunicazioni,
+  (newData) => setComunicazioni(newData.data, newData),
+  { deep: true },
+);
 
-watch(searchQuery, (val) => {
-  if (!val) {
-    hasSearched.value = false;
-    showNoResultsDelayed.value = false;
-    errorState.value = null;
-    stopNoResultsTimer();
-    updatePaginationData(props.comunicazioni);
-  }
-});
-
-watchDebounced(
-  searchQuery,
-  async (newQuery) => {
-    showNoResultsDelayed.value = false;
-    hasSearched.value = true;
-    incrementLoading();
-
-    try {
-      await router.get(
-        route(generateRoute('comunicazioni.index')),
-        { page: 1, search: newQuery || undefined },
-        {
-          preserveState: true,
-          preserveScroll: true,
-          replace: true,
-          only: ['comunicazioni'],
-          onFinish: () => {
-            stopLoading();
-            if (newQuery && filteredResults.value.length === 0) {
-              startNoResultsTimer();
-            } else {
-              showNoResultsDelayed.value = false;
-            }
-          }
-        }
-      );
-    } catch (error) {
-      errorState.value = "Errore durante la ricerca.";
-      stopLoading();
-      console.error('Search error:', error);
+// Reset UI flags when the search box is cleared
+watch(
+  () => ui.searchQuery,
+  (val) => {
+    if (!val?.trim()) {
+      ui.hasSearched = false;
+      ui.showNoResultsDelayed = false;
+      ui.errorState = null;
     }
   },
-  { debounce: SEARCH_DEBOUNCE, maxWait: SEARCH_MAX_WAIT }
 );
 
-// Methods
-function incrementLoading() {
-  loadingCount.value++;
-  errorState.value = null;
-  startLoadingTimer();
-}
+// Debounced search → server request
+watchDebounced(
+  () => ui.searchQuery,
+  async (newQuery) => {
+    const isEmpty = !newQuery?.trim();
+    ui.showNoResultsDelayed = false;
+    ui.hasSearched = !isEmpty;
+    ui.loadingCount++;
+    startLoadingTimer();
 
-function stopLoading() {
-  stopLoadingTimer();
-  showDelayedLoading.value = false;
-  loadingCount.value = Math.max(0, loadingCount.value - 1);
-}
-
-function updatePaginationData(newData: Props['comunicazioni']) {
-  setComunicazioni(newData.data, {
-    current_page: newData.current_page,
-    per_page: newData.per_page,
-    last_page: newData.last_page,
-    total: newData.total,
-  });
-}
-
-async function handlePageChange(page: number) {
-  try {
-    incrementLoading();
-    await router.get(
+    router.get(
       route(generateRoute('comunicazioni.index')),
-      { page, search: searchQuery.value || undefined },
+      { page: 1, search: isEmpty ? undefined : newQuery },
       {
         preserveState: true,
-        preserveScroll: true,
-        onFinish: stopLoading,
-        onError: () => {
-          errorState.value = "Errore di caricamento. Riprova.";
-          stopLoading();
+        replace: true,
+        only: ['comunicazioni'],
+        onFinish: () => {
+          ui.loadingCount = Math.max(0, ui.loadingCount - 1);
+          ui.showDelayedLoading = false;
+          if (!isEmpty && comunicazioni.value.length === 0) startNoResultsTimer();
         },
-      }
+      },
     );
-  } catch {
-    errorState.value = "Errore di caricamento. Riprova.";
-    stopLoading();
-  }
-}
+  },
+  { debounce: 400 },
+);
 
-function handleDelete(comunicazione: Comunicazione) {
-  comunicazioneID.value = comunicazione.id;
-  isAlertOpen.value = true;
-}
-
-async function confirmDelete() {
-  const id = comunicazioneID.value;
-  if (!id) return;
-
-  const comunicazione = comunicazioni.value.find(s => s.id === id);
-  if (!comunicazione) {
-    isAlertOpen.value = false;
-    return;
-  }
-
-  try {
-    await router.delete(route(generateRoute('comunicazioni.destroy'), { id }), {
+/* -------------------------------------------------
+   Helper methods
+------------------------------------------------- */
+function handlePageChange(p: number): void {
+  ui.loadingCount++;
+  router.get(
+    route(generateRoute('comunicazioni.index')),
+    { page: p, search: ui.searchQuery?.trim() || undefined },
+    {
       preserveScroll: true,
       preserveState: true,
-      only: ['stats'],
-      onSuccess: () => {
-        removeComunicazione(id);
-        isAlertOpen.value = false;
+      onFinish: () => {
+        ui.loadingCount = Math.max(0, ui.loadingCount - 1);
+        ui.showDelayedLoading = false;
       },
-      onError: () => {
-        errorState.value = "Errore durante l'eliminazione. Riprova.";
-      }
-    });
-  } catch {
-    errorState.value = "Errore durante l'eliminazione. Riprova.";
-  } finally {
-    isAlertOpen.value = false;
-  }
+    },
+  );
+}
+
+/* Permission shortcuts – cached once */
+const canCreate = hasPermission([Permission.CREATE_COMUNICAZIONI]);
+const canEditAny = hasPermission([Permission.EDIT_COMUNICAZIONI]);
+const canEditOwn = hasPermission([Permission.EDIT_OWN_COMUNICAZIONI]);
+const canDeleteAny = hasPermission([Permission.DELETE_COMUNICAZIONI]);
+const canDeleteOwn = hasPermission([Permission.DELETE_OWN_COMUNICAZIONI]);
+
+function canEdit(c: Comunicazione): boolean {
+  return (
+    canEditAny ||
+    (canEditOwn && c.created_by.user.id === auth.value.user.id)
+  );
+}
+function canDelete(c: Comunicazione): boolean {
+  return (
+    canDeleteAny ||
+    (canDeleteOwn && c.created_by.user.id === auth.value.user.id)
+  );
+}
+
+/* Dialog handling */
+function openDeleteDialog(id: number): void {
+  ui.comunicazioneID = id;
+  ui.isAlertOpen = true;
+}
+async function confirmDelete(): Promise<void> {
+  if (!ui.comunicazioneID) return;
+
+  router.delete(
+    route(generateRoute('comunicazioni.destroy'), {
+      id: ui.comunicazioneID,
+    }),
+    {
+      onSuccess: () => {
+        removeComunicazione(ui.comunicazioneID!);
+        ui.isAlertOpen = false;
+      },
+    },
+  );
 }
 </script>
 
 <template>
-  <Head title="Elenco comunicazioni bacheca" />
+  <Head :title="trans('comunicazioni.header.list_communications_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco comunicazioni bacheca"
-        description="Di seguito la tabella con l'elenco di tutte le comunicazioni in bacheca registrate"
+        :title="trans('comunicazioni.header.list_communications_title')"
+        :description="trans('comunicazioni.header.list_communications_description')"
       />
-
       <ComunicazioniStats :stats="stats" />
 
       <div v-if="flashMessage" class="py-4">
@@ -242,151 +233,159 @@ async function confirmDelete() {
       </div>
 
       <div class="container mx-auto mt-4">
+        <!-- Search bar & New‑communication button -->
         <div class="mb-4 flex items-center gap-4">
-          <div class="flex-1 relative max-w-md">
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Cerca per titolo..."
-              class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
-            />
-          </div>
+          <input
+            v-model="ui.searchQuery"
+            type="text"
+            :placeholder="trans('comunicazioni.table.filter_by_title')"
+            class="max-w-md w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none transition-all"
+          />
 
           <Button
-            v-if="hasPermission([Permission.CREATE_COMUNICAZIONI])"
+            v-if="canCreate"
             as="a"
             :href="route(generateRoute('comunicazioni.create'))"
-            class="h-8 lg:flex items-center gap-2 ml-auto"
+            class="ml-auto gap-2"
           >
             <Plus class="w-4 h-4" />
-            <span>Crea</span>
+            <span>{{ trans('comunicazioni.actions.new_communication') }}</span>
           </Button>
         </div>
 
-        <div class="relative min-h-[300px]">
-          <!-- Loading state -->
+        <!-- List + loading overlay -->
+        <div class="relative min-h-[400px]">
           <Transition name="fade">
-            <div 
-              v-if="shouldShowLoading"
-              class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-10 gap-2"
+            <div
+              v-if="ui.showDelayedLoading && isLoading"
+              class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2 text-center"
             >
-              <Loader2 class="w-8 h-8 animate-spin text-gray-500" />
-              <p class="text-gray-600">Caricamento in corso...</p>
+              <Loader2 class="w-8 h-8 animate-spin text-primary" />
+              <span class="text-sm font-medium text-gray-500">{{
+                trans('comunicazioni.dialogs.loading')
+              }}</span>
             </div>
           </Transition>
 
-          <!-- Error state -->
-          <Transition name="fade">
-            <div 
-              v-if="errorState && !shouldShowLoading"
-              class="bg-red-50 border border-red-200 rounded-md p-4 mb-4 flex items-start gap-3"
-            >
-              <CircleAlert class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <h3 class="font-medium text-red-800">Errore di caricamento</h3>
-                <p class="text-red-700">{{ errorState }}</p>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  class="mt-2"
-                  @click="handlePageChange(meta.current_page)"
-                >
-                  Riprova
-                </Button>
-              </div>
-            </div>
-          </Transition>
-
-          <!-- Results -->
-          <TransitionGroup name="fade-list" tag="div">
+          <TransitionGroup
+            tag="div"
+            enter-active-class="transition duration-300 ease-out"
+            enter-from-class="opacity-0 translate-y-4"
+            enter-to-class="opacity-100 translate-y-0"
+            leave-active-class="transition duration-200 ease-in absolute w-full"
+            leave-from-class="opacity-100 translate-y-0"
+            leave-to-class="opacity-0 -translate-y-4"
+            move-class="transition duration-300 ease-in-out"
+          >
+            <!-- Communication cards -->
             <article
-              v-for="comunicazione in filteredResults"
+              v-for="comunicazione in comunicazioni"
               :key="comunicazione.id"
-              class="mb-4 fade-list-item"
+              class="mb-4 border p-4 rounded-lg bg-white hover:shadow-md transition-shadow"
             >
-              <div class="border p-4 rounded-md hover:shadow-sm transition-shadow">
-                <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between">
+                <Link
+                  :href="route(generateRoute('comunicazioni.show'), { id: comunicazione.id })"
+                  class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-primary transition-colors"
+                >
+                  <component
+                    :is="getPriorityMeta(comunicazione.priority).icon"
+                    class="w-4 h-4"
+                    :class="getPriorityMeta(comunicazione.priority).colorClass"
+                  />
+                  {{ comunicazione.subject }}
+                </Link>
+
+                <div class="flex items-center gap-1">
                   <Link
-                    :href="route(generateRoute('comunicazioni.show'), { id: comunicazione.id })"
-                    class="inline-flex items-center gap-2 text-lg/7 font-semibold text-gray-900 hover:text-blue-600 transition-colors"
+                    v-if="canEdit(comunicazione)"
+                    :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
+                    class="p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                    :title="trans('comunicazioni.actions.edit')"
+                    aria-label="Edit communication"
                   >
-                    <component
-                      :is="getPriorityMeta(comunicazione.priority).icon"
-                      class="w-4 h-4"
-                      :class="getPriorityMeta(comunicazione.priority).colorClass"
-                    />
-                    {{ comunicazione.subject }}
+                    <Pencil class="w-4 h-4" />
                   </Link>
 
-                  <div class="flex items-center gap-2">
-                    <Link
-                      v-if="hasPermission([Permission.EDIT_COMUNICAZIONI]) || 
-                           (hasPermission([Permission.EDIT_OWN_COMUNICAZIONI]) && 
-                            comunicazione.created_by.user.id === auth.user.id)"
-                      :href="route(generateRoute('comunicazioni.edit'), { id: comunicazione.id })"
-                      class="text-gray-700 hover:text-blue-600 transition-colors"
-                      title="Modifica"
-                    >
-                      <Pencil class="w-3 h-3" />
-                    </Link>
-
-                    <button
-                      v-if="hasPermission([Permission.DELETE_COMUNICAZIONI]) || 
-                           (hasPermission([Permission.DELETE_OWN_COMUNICAZIONI]) && 
-                            comunicazione.created_by.user.id === auth.user.id)"
-                      @click="handleDelete(comunicazione)"
-                      class="text-gray-700 hover:text-red-600 transition-colors"
-                      title="Elimina"
-                    >
-                      <Trash2 class="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-
-                <div class="flex items-center gap-x-4 text-xs pt-1">
-                  <time
-                    :datetime="comunicazione.created_at"
-                    class="text-gray-500"
+                  <button
+                    v-if="canDelete(comunicazione)"
+                    @click="openDeleteDialog(comunicazione.id)"
+                    class="p-2 text-gray-400 hover:text-red-600 transition-colors"
+                    :title="trans('comunicazioni.actions.delete')"
+                    aria-label="Delete communication"
                   >
-                    Inviata {{ comunicazione.created_at }} da
-                    {{ comunicazione.created_by.user.name }}
-                  </time>
+                    <Trash2 class="w-4 h-4" />
+                  </button>
                 </div>
-
-                <p class="mt-5 line-clamp-3 text-sm/6 text-gray-600">
-                  {{ comunicazione.description }}
-                </p>
               </div>
+
+              <div class="flex items-center gap-x-4 text-xs pt-1">
+                <time :datetime="comunicazione.created_at" class="text-gray-500">
+                  {{
+                    trans('comunicazioni.visibility.sent_on_by', {
+                      date: comunicazione.created_at,
+                      name: comunicazione.created_by.user.name,
+                    })
+                  }}
+                </time>
+              </div>
+
+              <p class="mt-4 line-clamp-3 text-sm/6 text-gray-600">
+                {{ comunicazione.description }}
+              </p>
             </article>
 
-            <!-- Empty state -->
-            <div 
-              v-if="showNoResults"
-              key="no-results"
-              class="text-center py-10 fade-list-item"
+            <!-- Empty / No‑result states -->
+            <Empty
+              v-if="showNoResults || showNoCommunications"
+              key="empty"
+              class="border border-dashed bg-gray-50/50"
             >
-              <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
-              <h3 class="text-lg font-medium text-gray-900">
-                Nessuna comunicazione trovata
-              </h3>
-              <p class="mt-1 text-gray-500">
-                Prova a modificare i criteri di ricerca
-              </p>
-              <Button
-                v-if="searchQuery"
-                size="sm"
-                class="mt-3"
-                @click="searchQuery = ''"
-              >
-                Cancella ricerca
-              </Button>
-            </div>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <SearchX v-if="showNoResults" class="text-muted-foreground" />
+                  <Megaphone v-else class="text-muted-foreground" />
+                </EmptyMedia>
+
+                <EmptyTitle>
+                  {{ showNoResults
+                    ? trans('comunicazioni.dialogs.no_communications_found')
+                    : trans('comunicazioni.dialogs.no_communications') }}
+                </EmptyTitle>
+
+                <EmptyDescription>
+                  {{ showNoResults
+                    ? trans('comunicazioni.dialogs.change_search_criteria')
+                    : trans('comunicazioni.dialogs.no_communications_created') }}
+                </EmptyDescription>
+              </EmptyHeader>
+
+              <EmptyContent>
+                <Button
+                  v-if="showNoResults"
+                  variant="outline"
+                  size="sm"
+                  @click="ui.searchQuery = ''"
+                >
+                  {{ trans('comunicazioni.dialogs.cancel_search') }}
+                </Button>
+
+                <Button
+                  v-else-if="canCreate"
+                  size="sm"
+                  as="a"
+                  :href="route(generateRoute('comunicazioni.create'))"
+                >
+                  {{ trans('comunicazioni.actions.new_communication') }}
+                </Button>
+              </EmptyContent>
+            </Empty>
           </TransitionGroup>
         </div>
 
-        <!-- Pagination -->
+        <!-- Pagination (only when there is data) -->
         <Pagination
-          v-slot="{ page }"
+          v-if="meta.total > 0"
           :items-per-page="meta.per_page"
           :total="meta.total"
           :default-page="meta.current_page"
@@ -394,86 +393,34 @@ async function confirmDelete() {
           show-edges
           @update:page="handlePageChange"
         >
-          <PaginationList
-            v-slot="{ items }"
-            class="flex items-center justify-center gap-1 mt-4"
-          >
-            <PaginationFirst :disabled="shouldShowLoading" />
-            <PaginationPrev :disabled="shouldShowLoading" />
+          <PaginationContent v-slot="{ items }" class="mt-4">
+            <PaginationFirst :disabled="isLoading" />
+            <PaginationPrevious :disabled="isLoading" />
 
-            <template v-for="(item, index) in items" :key="index">
-              <PaginationListItem
+            <template v-for="(item, idx) in items" :key="idx">
+              <PaginationItem
                 v-if="item.type === 'page'"
                 :value="item.value"
-                as-child
-                :disabled="shouldShowLoading"
+                :is-active="item.value === meta.current_page"
               >
-                <Button
-                  class="w-10 h-10 p-0"
-                  :variant="item.value === page ? 'default' : 'outline'"
-                  :disabled="shouldShowLoading"
-                >
-                  {{ item.value }}
-                </Button>
-              </PaginationListItem>
-
-              <PaginationEllipsis v-else :index="index" />
+                {{ item.value }}
+              </PaginationItem>
+              <PaginationEllipsis v-else :index="idx" />
             </template>
 
-            <PaginationNext :disabled="shouldShowLoading" />
-            <PaginationLast :disabled="shouldShowLoading" />
-          </PaginationList>
+            <PaginationNext :disabled="isLoading" />
+            <PaginationLast :disabled="isLoading" />
+          </PaginationContent>
         </Pagination>
       </div>
     </div>
 
     <!-- Delete confirmation dialog -->
-    <AlertDialog v-model:open="isAlertOpen">
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>Sei sicuro di volere eliminare questa comunicazione?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Questa azione non è reversibile. Eliminerà la comunicazione e tutti i dati ad essa associati.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Annulla</AlertDialogCancel>
-          <AlertDialogAction @click="confirmDelete">Conferma</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <ConfirmDialog
+      v-model:modelValue="ui.isAlertOpen"
+      :title="trans('comunicazioni.dialogs.delete_communication_title')"
+      :description="trans('comunicazioni.dialogs.delete_communication_description')"
+      @confirm="confirmDelete"
+    />
   </AppLayout>
 </template>
-
-<style>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.fade-list-move,
-.fade-list-enter-active {
-  transition: all 0.3s ease;
-}
-
-.fade-list-leave-active {
-  transition: all 0.2s ease;
-  position: absolute;
-  width: calc(100% - 2rem);
-}
-
-.fade-list-enter-from,
-.fade-list-leave-to {
-  opacity: 0;
-  transform: translateY(10px);
-}
-
-.fade-list-leave-to {
-  transform: translateY(-10px);
-}
-</style>

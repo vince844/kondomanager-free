@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Permission;
+use App\Enums\Role;
 use App\Models\Anagrafica;
 use App\Models\Segnalazione;
 use Illuminate\Support\Collection;
@@ -112,8 +113,8 @@ class SegnalazioneService
     {
         $user = Auth::user();
 
-        $isAdmin = $user->hasRole(['amministratore', 'collaboratore']) ||
-                   $user->hasPermissionTo('Accesso pannello amministratore');
+        $isAdmin = $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) ||
+                   $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
 
         $query = $isAdmin
             ? $this->buildAdminBaseQuery()
@@ -146,7 +147,7 @@ class SegnalazioneService
     private function isAdmin(): bool
     {
         $user = Auth::user();
-        return $user->hasRole(['amministratore', 'collaboratore']) ||
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) ||
                $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }

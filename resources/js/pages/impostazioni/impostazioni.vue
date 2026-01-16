@@ -3,10 +3,12 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
-import type { BreadcrumbItem } from '@/types'
 import { ref, computed } from 'vue'
 import { Users, Settings, DatabaseBackup } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
+import { trans } from 'laravel-vue-i18n';
+import type { BreadcrumbItem } from '@/types'
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -17,82 +19,92 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const apps = [
   {
-    name: "Impostazioni generali",
+    name: 'impostazioni.dialogs.general_settings_title',
     logo: Settings,
-    desc: "Impostazioni generali di Kondomanager",
+    desc: 'impostazioni.dialogs.general_settings_description',
     href: "/impostazioni/generali", 
   },
   {
-    name: "Gestione utenti",
+    name: 'impostazioni.dialogs.users_settings_title',
     logo: Users,
-    desc: "Impostazioni di gestione degli utenti, ruoli e permessi",
+    desc: 'impostazioni.dialogs.users_settings_description',
     href: "/utenti",
   },
   {
-    name: "Gestione backups",
+    name: 'impostazioni.dialogs.backups_settings_title',
     logo: DatabaseBackup,
-    desc: "Impostazioni di gestione dei backups",
+    desc: 'impostazioni.dialogs.backups_settings_description',
     href: "#",
   }
 ]
 
 const searchTerm = ref("")
 
+const normalize = (value: string) =>value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
 const filteredApps = computed(() => {
-  return apps.filter((app) =>
-    app.name.toLowerCase().includes(searchTerm.value.toLowerCase())
-  )
+  const term = normalize(searchTerm.value)
+
+  return apps.filter(app => {
+    const name = normalize(trans(app.name))
+    const desc = normalize(trans(app.desc))
+
+    return name.includes(term) || desc.includes(term)
+  })
 })
+
 </script>
 
 <template>
   <AppLayout :breadcrumbs="breadcrumbs">
-    
-    <Head title="Impostazioni" />
+    <Head :title="trans('impostazioni.header.settings_head')" />
 
     <div class="px-4 py-6">
       <Heading
-        title="Impostazioni applicazione"
-        description="Di seguito un elenco di tutte le impostazioni configurabili per l'applicazione"
+        :title="trans('impostazioni.header.settings_title')" 
+        :description="trans('impostazioni.header.settings_description')" 
       />
 
       <!-- Filters -->
-      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div class="flex gap-4">
           <input
             v-model="searchTerm"
             type="text"
-            placeholder="Filtra impostazioni..."
+            :placeholder="trans('impostazioni.placeholder.search_settings')"
             class="h-9 w-40 lg:w-64 rounded border px-2"
           />
         </div>
       </div>
 
-      <!-- App Grid -->
-      <ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 pt-4">
-        <li
+      <div class="grid gap-4 sm:grid-cols-3">
+        <Item
           v-for="app in filteredApps"
           :key="app.name"
-          class="rounded-lg border p-4 hover:shadow-md"
+          variant="outline"
         >
-          <div class="mb-6 flex items-center justify-between">
-            <div class="bg-gray-100 flex size-10 items-center justify-center rounded-lg p-2">
-              <component :is="app.logo" class="text-black w-5 h-5" />
+          <ItemMedia variant="icon">
+            <div class="flex h-8 w-13 items-center justify-center rounded-lg bg-gray-100">
+              <component :is="app.logo" class="h-5 w-5 text-gray-700" />
             </div>
-
+          </ItemMedia>
+          
+          <ItemContent>
+            <ItemTitle>{{ trans(app.name) }}</ItemTitle>
+            <ItemDescription>
+              {{ trans(app.desc) }}
+            </ItemDescription>
+          </ItemContent>
+          
+          <ItemActions>
             <Button as-child variant="outline" size="sm">
               <Link :href="app.href">
-                Gestisci
+                {{ trans('impostazioni.label.manage') }}
               </Link>
             </Button>
-          </div>
-
-          <div>
-            <h2 class="font-semibold mb-1">{{ app.name }}</h2>
-            <p class="text-gray-500 text-sm">{{ app.desc }}</p>
-          </div>
-        </li>
-      </ul>
+          </ItemActions>
+        </Item>
+      </div>
     </div>
   </AppLayout>
 </template>

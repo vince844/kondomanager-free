@@ -4,13 +4,13 @@ namespace App\Notifications\Documenti;
 
 use App\Helpers\RouteHelper;
 use App\Models\Documento;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
 
-class ApproveDocumentoNotification extends Notification implements ShouldQueue
+class ApproveDocumentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
@@ -21,6 +21,8 @@ class ApproveDocumentoNotification extends Notification implements ShouldQueue
      */
     public function __construct(Documento $documento)
     {
+        // Important to load translations
+        parent::__construct();
         $this->documento = $documento;
     }
 
@@ -42,13 +44,18 @@ class ApproveDocumentoNotification extends Notification implements ShouldQueue
         $routePrefix = RouteHelper::getRoutePrefixForUser($notifiable);
 
         return (new MailMessage)
-            ->subject('Nuovo documento archivio da approvare')
-            ->greeting('Salve ' . ($notifiable->name ?? $notifiable->nome))
-            ->line("L'utente ". $this->documento->createdBy->name ." ha creato un nuovo documento in archivio del condominio")
-            ->line("Il documento è in attesa di essere approvato perchè l'utente che l'ho inviato non ha permessi sufficienti per pubblicarlo")
-            ->line('**Titolo:** ' . $this->documento->name)
-            ->line('**Descrizione:** ' . Str::ucfirst($this->documento->description))
-            ->action('Visualizza documenti', url("/{$routePrefix}/documenti/"));
+            ->subject(__('notifications.approve_document.subject'))
+            ->greeting(__('notifications.approve_document.greeting', [
+                'name' => $notifiable->name ?? $notifiable->nome
+            ]))
+            ->line(__('notifications.approve_document.line_1', [
+                'user' => $this->documento->createdBy->name
+            ]))
+            ->line(__('notifications.approve_document.line_2'))
+            ->line('**' . __('notifications.approve_document.title') . ':** ' . $this->documento->name)
+            ->line('**' . __('notifications.approve_document.description') . ':** ' . Str::ucfirst($this->documento->description))
+            ->action(__('notifications.approve_document.action'), url("/{$routePrefix}/documenti/"));
+
     }
 
     /**

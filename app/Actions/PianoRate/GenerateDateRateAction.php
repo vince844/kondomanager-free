@@ -32,20 +32,24 @@ class GenerateDateRateAction
         $occurrences = $transformer->transform($rule);
 
         return collect($occurrences)
-            ->take($pianoRate->numero_rate)
-            ->map(function ($occ) use ($pianoRate, $ric) {
+        ->take($pianoRate->numero_rate)
+        ->map(function ($occ) use ($pianoRate, $ric) {
+            $date = Carbon::instance($occ->getStart());
+            
+            // Se non c'è ricorrenza salvata o vogliamo forzare il giorno
+            $giornoTarget = $pianoRate->giorno_scadenza ?? 5;
 
-                $date = Carbon::instance($occ->getStart());
-                $giorno = $pianoRate->giorno_scadenza ?? 5;
+            // Se la regola era "ultimo del mese" (-1) o se stiamo correggendo la data
+            // controlliamo che il giorno target non superi i giorni del mese
+            if ($giornoTarget > $date->daysInMonth) {
+                $date->day = $date->daysInMonth; // Imposta all'ultimo giorno utile (es. 28 Feb)
+            } else {
+                $date->day = $giornoTarget;
+            }
 
-                // ✅ Post-processing applicato SOLO se BYMONTHDAY=-1
-                if ($ric->by_month_day === -1 && $giorno <= $date->daysInMonth) {
-                    return $date->setDay($giorno);
-                }
-
-                return $date;
-            })
-            ->toArray();
+            return $date;
+        })
+        ->toArray();
     }
 
     private function defaultMonthly(PianoRate $pianoRate, $gestione): array

@@ -1,15 +1,13 @@
 <script setup lang="ts">
-import { cn } from '@/lib/utils'
-import { TabsTrigger, type TabsTriggerProps, useForwardProps } from 'reka-ui'
-import { computed, type HTMLAttributes } from 'vue'
+import type { TabsTriggerProps } from "reka-ui"
+import type { HTMLAttributes } from "vue"
+import { reactiveOmit } from "@vueuse/core"
+import { TabsTrigger, useForwardProps } from "reka-ui"
+import { cn } from "@/lib/utils"
 
-const props = defineProps<TabsTriggerProps & { class?: HTMLAttributes['class'] }>()
+const props = defineProps<TabsTriggerProps & { class?: HTMLAttributes["class"] }>()
 
-const delegatedProps = computed(() => {
-  const { class: _, ...delegated } = props
-
-  return delegated
-})
+const delegatedProps = reactiveOmit(props, "class")
 
 const forwardedProps = useForwardProps(delegatedProps)
 </script>

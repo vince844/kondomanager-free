@@ -54,12 +54,13 @@ return [
     'success_delete_gestione'           => "The management period has been deleted successfully.",
     'error_delete_gestione'             => "An error occurred while deleting the management period",
     // Piani conti
-    'success_create_piano_conto'        => "A new piano dei conti has been created successfully",
-    'error_create_piano_conto'          => "An error occurred while creating the new piano dei conti.",
-    'success_delete_piano_conto'        => "The piano dei conti has been deleted successfully.",
-    'error_delete_piano_conto'          => "An error occurred while deleting the piano dei conti.",
-    'success_update_piano_conto'        => "The piano dei conti has been updated successfully.",
-    'error_update_piano_conto'          => "An error occurred while updating the piano dei conti.",
+    'success_create_piano_conto'            => "A new piano dei conti has been created successfully",
+    'error_create_piano_conto'              => "An error occurred while creating the new piano dei conti.",
+    'success_delete_piano_conto'            => "The piano dei conti has been deleted successfully.",
+    'error_delete_piano_conto'              => "An error occurred while deleting the piano dei conti.",
+    'success_update_piano_conto'            => "The piano dei conti has been updated successfully.",
+    'error_update_piano_conto'              => "An error occurred while updating the piano dei conti.",
+    'warning_all_gestioni_have_piano_conti' => "All management periods for this fiscal year already have an associated piano dei conti.", 
     // Conti
     'success_create_conto'              => "A new expense has been created successfully.",
     'error_create_conto'                => "An error occurred while creating the new expense.",
@@ -74,5 +75,8 @@ return [
     'success_update_piano_rate'         => "The rate plan has been updated successfully.",
     'error_update_piano_rate'           => "An error occurred while updating the rate plan.",
     'success_delete_piano_rate'         => "The rate plan has been deleted successfully.",
-    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan."
+    'error_delete_piano_rate'           => "An error occurred while deleting the rate plan.",
+    // Casse
+    'success_create_cassa'              => "The new bank resource has been created successfully",
+    'error_create_cassa'                => "An error occurred while creating the new bank resource."
 ];

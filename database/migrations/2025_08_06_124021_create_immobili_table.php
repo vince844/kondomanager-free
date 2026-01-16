@@ -13,21 +13,10 @@ return new class extends Migration
     {
         Schema::create('immobili', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('condominio_id')
-                ->constrained('condomini')
-                ->onDelete('cascade');
-            $table->foreignId('palazzina_id')
-                ->nullable()
-                ->constrained('palazzine')
-                ->onDelete('set null');
-            $table->foreignId('scala_id')
-                ->nullable()
-                ->constrained('scale')
-                ->onDelete('set null');
-            $table->foreignId('tipologia_id')
-                ->nullable()
-                ->constrained('tipologie_immobili')
-                ->onDelete('set null');
+            $table->foreignId('condominio_id')->constrained('condomini')->onDelete('cascade');
+            $table->foreignId('palazzina_id')->nullable()->constrained('palazzine')->onDelete('set null');
+            $table->foreignId('scala_id')->nullable()->constrained('scale')->onDelete('set null');
+            $table->foreignId('tipologia_id')->nullable()->constrained('tipologie_immobili')->onDelete('set null');
             $table->string('nome');
             $table->string('descrizione');
             $table->string('interno');

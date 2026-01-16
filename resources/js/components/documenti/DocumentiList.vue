@@ -45,9 +45,9 @@ const truncatedName = (name: string, length: number = 80) => {
   
               <a
                 :href="route(generateRoute('documenti.download'), { id: documento.id })"
-                class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold hover:text-primary transition-colors"
+                class="inline-flex items-center gap-2 text-sm font-bold hover:text-muted-foreground transition-colors"
               >
-                <CloudDownload class="w-4 h-4 text-green-400" />
+                <CloudDownload class="w-4 h-4 text-green-500" />
 
                 {{ truncatedName(documento.name, 40) }}
                 

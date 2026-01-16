@@ -3,8 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
+use App\Models\Gestionale\RigaScrittura;
 
 class Anagrafica extends Model
 {
@@ -89,6 +91,29 @@ class Anagrafica extends Model
     public function saldi()
     {
         return $this->hasMany(Saldo::class, 'anagrafica_id');
+    }
+
+    public function fornitori()
+    {
+        return $this->belongsToMany(
+                Fornitore::class,
+                'anagrafica_fornitore',
+                'anagrafica_id',
+                'fornitore_id'
+            )
+            ->using(AnagraficaFornitore::class)
+            ->withPivot(['ruolo', 'referente_principale'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Relazione con le righe contabili (Estratto Conto).
+     * Recupera tutti i movimenti (rate emesse, incassi, ecc.) associati a questa anagrafica.
+     */
+    public function movimenti(): HasMany
+    {
+        // Punta alla tabella 'righe_scritture' dove anagrafica_id è uguale all'ID di questa anagrafica
+        return $this->hasMany(RigaScrittura::class, 'anagrafica_id');
     }
 
 

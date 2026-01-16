@@ -41,7 +41,7 @@ const getIconAndColor = (daysRemaining: number) => {
   } else if (daysRemaining <= 14) {
     return { icon: ClockArrowUp, color: 'text-yellow-500' };
   } else {
-    return { icon: Clock, color: 'text-green-400' };
+    return { icon: Clock, color: 'text-green-500' };
   }
 };
 
@@ -62,7 +62,7 @@ const getIconAndColor = (daysRemaining: number) => {
         <div class="flex items-center space-x-4">
           <div class="flex-1 min-w-0">
             <a
-              class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold hover:text-primary transition-colors"
+              class="inline-flex items-center gap-2 text-sm font-bold hover:text-muted-foreground transition-colors"
             >
               <component
                 :is="getIconAndColor(getDaysRemaining(evento.occurs)).icon"

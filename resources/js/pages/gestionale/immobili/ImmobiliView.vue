@@ -45,7 +45,7 @@ const truncate = (text: string, length: number = 120) => {
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
-       <!-- Action buttons -->
+      <!-- Action buttons -->
       <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
         <Link
           as="button"
@@ -83,7 +83,7 @@ const truncate = (text: string, length: number = 120) => {
               <div class="space-y-3">
                 <div class="flex items-center gap-2">
                   <span class="text-muted-foreground font-semibold w-24">Tipologia:</span>
-                  <div class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold shadow-sm text-xs">
+                  <div class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-medium shadow-sm text-xs">
                     {{ immobile.tipologia.nome }}
                   </div>
                 </div>
@@ -177,15 +177,14 @@ const truncate = (text: string, length: number = 120) => {
       </div>
 
       <div class="bg-card mb-2 rounded-lg border p-6 text-sm">
+        <!-- Notes Section -->
+        <div class="border-b pb-2 mb-4">
+          <span class="text-lg font-bold">Note registrate</span>
+        </div>
 
-          <!-- Notes Section -->
-          <div class="border-b pb-2 mb-4">
-              <span class="text-lg font-bold">Note registrate</span>
-            </div>
-
-            <div class="text-sm text-gray-700"> 
-              {{ immobile.note ? immobile.note : 'Nessuna nota inserita per questo immobile.' }}
-            </div>
+        <div class="text-sm text-gray-700"> 
+          {{ immobile.note ? immobile.note : 'Nessuna nota inserita per questo immobile.' }}
+        </div>
       </div>
 
     </ImmobileLayout>

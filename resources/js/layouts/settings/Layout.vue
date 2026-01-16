@@ -1,34 +1,46 @@
 <script setup lang="ts">
+
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
+import { ScanFace, KeyRound, BellRing, UserRound, MonitorSmartphone } from 'lucide-vue-next';
+import type { LinkItem } from '@/types';
 
 const props = defineProps<{ contentClass?: string }>();
 const contentClass = props.contentClass || 'max-w-xl';
 
 const { generatePath } = usePermission();
 
-const sidebarNavItems: NavItem[] = [
+const sidebarNavItems: LinkItem[] = [
     {
+        type: 'link',
+        icon: UserRound,
         title: 'Profilo',
         href: '/settings/profile',
     },
     {
+        type: 'link',
+        icon: KeyRound,
         title: 'Password',
         href: '/settings/password',
     },
     {
+        type: 'link',
+        icon: ScanFace,
         title: 'Protezione 2FA',
         href: '/settings/two-factor',
     },
     {
+        type: 'link',
+        icon: BellRing,
         title: 'Notifiche',
         href: generatePath('settings/notifications'),
     },
     {
+        type: 'link',
+        icon: MonitorSmartphone,
         title: 'Aspetto',
         href: '/settings/appearance',
     }
@@ -36,8 +48,6 @@ const sidebarNavItems: NavItem[] = [
 ];
 
 const currentPath = window.location.pathname;
-
-
 
 </script>
 
@@ -57,6 +67,7 @@ const currentPath = window.location.pathname;
                         as-child
                     >
                         <Link :href="item.href">
+                            <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
                             {{ item.title }}
                         </Link>
                     </Button>

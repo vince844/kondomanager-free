@@ -1,44 +1,53 @@
 import '../css/app.css';
 import '../css/custom.css';
 
-import { createInertiaApp } from '@inertiajs/vue3';
+import { createInertiaApp, usePage } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
-import { createApp, h } from 'vue';
+import { createApp, h, watch } from 'vue'; 
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 import { initializeTheme } from './composables/useAppearance';
-import money from 'v-money3'
-
-// Extend ImportMeta interface for Vite...
-declare module 'vite/client' {
-    interface ImportMetaEnv {
-        readonly VITE_APP_NAME: string;
-        [key: string]: string | boolean | undefined;
-    }
-
-    interface ImportMeta {
-        readonly env: ImportMetaEnv;
-        readonly glob: <T>(pattern: string) => Record<string, () => Promise<T>>;
-    }
-}
+import money from 'v-money3';
+import { i18nVue, loadLanguageAsync } from 'laravel-vue-i18n';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({
-    title: (title) => `${appName} - ${title} `,
-    resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
-    setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
-            .use(plugin)
-            .use(ZiggyVue)
-            .use(money)
-            .mount(el);
-         
-    },
+    title: (title) => (title ? `${title} - ${appName}` : appName),
+    resolve: (name) =>
+        resolvePageComponent(
+            `./pages/${name}.vue`,
+            import.meta.glob<DefineComponent>('./pages/**/*.vue'),
+        ),
+        setup({ el, App, props, plugin }) {
+            const app = createApp({ render: () => h(App, props) })
+                .use(plugin)
+                .use(ZiggyVue)
+                .use(money)
+                .use(i18nVue, {
+                    lang: props.initialPage.props.locale as string,
+                    resolve: async (lang: string) => {
+                        const langs = import.meta.glob('../../lang/*.json');
+                        return await langs[`../../lang/${lang}.json`]();
+                    },
+                });
+
+            app.mount(el);
+
+            // Usiamo un watcher dopo il mount per intercettare i cambiamenti di Inertia
+            watch(
+                () => usePage().props.locale,
+                (newLocale) => {
+                    if (newLocale) {
+                        loadLanguageAsync(newLocale as string);
+                    }
+                }
+            );
+        },
     progress: {
         color: '#4B5563',
     },
 });
 
-// This will set light / dark mode on page load...
+// Imposta il tema al caricamento
 initializeTheme();

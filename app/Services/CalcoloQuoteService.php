@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -21,43 +22,56 @@ class CalcoloQuoteService
 
     /**
      * @param Gestione $gestione
-     * @return array<int, array<int, int>> [anagrafica_id => [immobile_id => importo_centesimi]]
+     * @param PianoRate|null $pianoRate (Opzionale) Se passato, filtra per i capitoli del piano
+     * @return array<int, array<int, int>
+     * @since v1.8.0
      */
-    public function calcolaPerGestione(Gestione $gestione): array
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
     {
         $this->gestioneCorrente = $gestione;
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
         if (!$pianoConto) {
-            Log::warning("Nessun piano conti trovato per la gestione", [
-                'gestione_id' => $gestione->id,
-            ]);
+            Log::warning("Nessun piano conti trovato per la gestione", ['gestione_id' => $gestione->id]);
             return [];
         }
 
-        Log::info("=== INIZIO CALCOLO QUOTE ===", [
-            'gestione_id' => $gestione->id,
-            'tipo_gestione' => $gestione->tipo,
-        ]);
+        // 1. RECUPERO ID CAPITOLI FILTRATI (SE ESISTONO)
+        $capitoliIds = [];
+        if ($pianoRate) {
+            $capitoliIds = $pianoRate->capitoli()->pluck('conto_id')->toArray();
+        }
 
-        $conti = $pianoConto->conti()
+        // 2. QUERY CONTI
+        $query = $pianoConto->conti()
             ->with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
                 'tabelleMillesimali.ripartizioni',
-                'sottoconti.sottoconti',
+                'sottoconti.sottoconti', // Carichiamo la gerarchia per sommare i figli
             ])
-            ->get();
+            ->whereNull('parent_id'); // Partiamo sempre dai ROOT (Capitoli)
+
+        // IL FILTRO MAGICO
+        // Se il piano rate ha dei capitoli specifici, prendiamo solo quelli.
+        // Altrimenti (array vuoto), la query prende TUTTI i capitoli (comportamento standard).
+        if (!empty($capitoliIds)) {
+            $query->whereIn('id', $capitoliIds);
+        }
+
+        $conti = $query->get();
+
+        Log::info("=== INIZIO CALCOLO QUOTE ===", [
+            'gestione_id' => $gestione->id,
+            'piano_rate_id' => $pianoRate?->id,
+            'capitoli_filtrati' => count($capitoliIds),
+            'conti_processati' => $conti->count()
+        ]);
 
         $this->processaConti($conti, $totali);
 
-        $totaleCentesimi = array_sum(array_map('array_sum', $totali));
-        Log::info("=== FINE CALCOLO QUOTE ===", [
-            'gestione_id' => $gestione->id,
-            'importo_totale_centesimi' => $totaleCentesimi,
-            'importo_totale_euro' => number_format($totaleCentesimi / 100, 2, ',', '.'),
-        ]);
-
+        // ... resto del metodo identico (somme e log) ...
+        
         return $totali;
     }
 

@@ -1,24 +1,25 @@
 import { h } from 'vue'
+import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue';
+import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Building } from '@/types/buildings';
-import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue';
-import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue';
 
 export const columns: ColumnDef<Anagrafica>[] = [
   {
     accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Nome e cognome' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.name') }), 
     cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
   },
   {
     accessorKey: 'indirizzo',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Indirizzo' }), 
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.address') }), 
     cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
   },
   {
     accessorKey: 'condomini',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Condomini' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.buildings') }),
     
     cell: ({ row }) => {
       const condomini = row.original.condomini ?? [];

@@ -1,10 +1,12 @@
 <script setup lang="ts">
+    
 import InputError from '@/components/InputError.vue';
 import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthBase from '@/layouts/AuthLayout.vue';
+import { trans } from 'laravel-vue-i18n';
 import { Head, useForm } from '@inertiajs/vue3';
 import { LoaderCircle } from 'lucide-vue-next';
 
@@ -23,25 +25,45 @@ const submit = () => {
 </script>
 
 <template>
-    <AuthBase title="Crea un account" description="Inserisci i tuoi dettagli per creare un nuovo account">
-        <Head title="Registrati" />
+     <AuthBase 
+        :title="trans('auth.header.register.title')" 
+        :description="trans('auth.header.register.description')"
+    >
+        <Head :title="trans('auth.header.register.head')" />
 
         <form @submit.prevent="submit" class="flex flex-col gap-6">
             <div class="grid gap-6">
                 <div class="grid gap-2">
-                    <Label for="name">Nome e cognome</Label>
-                    <Input id="name" type="text" required autofocus :tabindex="1" autocomplete="name" v-model="form.name" placeholder="Nome e cognome" />
+                    <Label for="name">{{ trans('auth.label.register.name') }}</Label>
+                    <Input 
+                        id="name" 
+                        type="text" 
+                        required 
+                        autofocus 
+                        :tabindex="1" 
+                        autocomplete="name" 
+                        v-model="form.name" 
+                        :placeholder="trans('auth.placeholder.register.name')" 
+                    />
                     <InputError :message="form.errors.name" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="email">Indirizzo email</Label>
-                    <Input id="email" type="email" required :tabindex="2" autocomplete="email" v-model="form.email" placeholder="email@example.com" />
+                    <Label for="email">{{ trans('auth.label.register.email') }}</Label>
+                    <Input 
+                        id="email" 
+                        type="email" 
+                        required 
+                        :tabindex="2" 
+                        autocomplete="email" 
+                        v-model="form.email" 
+                        :placeholder="trans('auth.placeholder.register.email')"
+                    />
                     <InputError :message="form.errors.email" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="password">Password</Label>
+                    <Label for="password">{{ trans('auth.label.register.password') }}</Label>
                     <Input
                         id="password"
                         type="password"
@@ -49,13 +71,13 @@ const submit = () => {
                         :tabindex="3"
                         autocomplete="new-password"
                         v-model="form.password"
-                        placeholder="Password"
+                        :placeholder="trans('auth.placeholder.register.password')"
                     />
                     <InputError :message="form.errors.password" />
                 </div>
 
                 <div class="grid gap-2">
-                    <Label for="password_confirmation">Conferma password</Label>
+                    <Label for="password_confirmation">{{ trans('auth.label.register.password_confirmation') }}</Label>
                     <Input
                         id="password_confirmation"
                         type="password"
@@ -63,20 +85,26 @@ const submit = () => {
                         :tabindex="4"
                         autocomplete="new-password"
                         v-model="form.password_confirmation"
-                        placeholder="Conferma password"
+                        :placeholder="trans('auth.placeholder.register.password_confirmation')"
                     />
                     <InputError :message="form.errors.password_confirmation" />
                 </div>
 
                 <Button type="submit" class="mt-2 w-full" tabindex="5" :disabled="form.processing">
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                    Crea account
+                    {{ trans('auth.button.register') }}
                 </Button>
             </div>
 
             <div class="text-center text-sm text-muted-foreground">
-                Hai già creato un account?
-                <TextLink :href="route('login')" class="underline underline-offset-4" :tabindex="6">Accedi</TextLink>
+                {{ trans('auth.link.have_account') }}
+                <TextLink 
+                    :href="route('login')" 
+                    class="underline underline-offset-4" 
+                    :tabindex="6"
+                >
+                {{ trans('auth.link.login') }}
+                </TextLink>
             </div>
         </form>
     </AuthBase>

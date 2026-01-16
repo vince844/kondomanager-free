@@ -1,6 +1,6 @@
 [![en](https://img.shields.io/badge/lang-en-red.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.en.md)
 [![it](https://img.shields.io/badge/lang-it-green.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.md)
-[![pt-br](https://img.shields.io/badge/lang-pt--br-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt-br.md)
+[![pt](https://img.shields.io/badge/lang-pt-yellow.svg)](https://github.com/vince844/kondomanager-free/blob/main/README.pt.md)
 
 # KondoManager - Condominium Management
 
@@ -157,6 +157,11 @@ Anyone who wants to contribute to the growth of the project is always welcome!
 To contribute, it is recommended to follow the instructions described in the [official documentation](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING).
 
 If you want to actively contribute with simple improvements or corrections you can [search through the issues](https://github.com/vince844/kondomanager-free/issues).
+
+## Docker-based Development Environment for Contributing
+
+If you want to contribute, you can set up a Docker-based development environment by following these [instructions](https://github.com/vince844/kondomanager-free/blob/main/README-docker_develop.en.md).
+
 
 ## Support the project
 

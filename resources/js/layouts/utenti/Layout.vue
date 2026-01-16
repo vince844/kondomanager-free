@@ -1,23 +1,33 @@
 <script setup lang="ts">
+
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
-import type { NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
+import { UsersRound, Drama, KeyRound, Mails } from 'lucide-vue-next';
+import type { LinkItem } from '@/types';
 
-const sidebarNavItems: NavItem[] = [
+const sidebarNavItems: LinkItem[] = [
     {
+        type: 'link',
+        icon: UsersRound,
         title: 'Utenti',
         href: '/utenti',
     },
     {
+        type: 'link',
+        icon: Drama,
         title: 'Ruoli',
         href: '/ruoli',
     },
     {
+        type: 'link',
+        icon: KeyRound,
         title: 'Permessi',
         href: '/permessi',
     },
     {
+        type: 'link',
+        icon: Mails,
         title: 'Inviti',
         href: '/inviti',
     }
@@ -42,6 +52,7 @@ const currentPath = window.location.pathname;
                         as-child
                     >
                         <Link :href="item.href">
+                            <component v-if="item.icon" :is="item.icon" class="mr-1 h-4 w-4" />
                             {{ item.title }}
                         </Link>
                     </Button>

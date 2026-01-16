@@ -13,7 +13,6 @@ use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HandlesUserCondominioData;
 use App\Traits\HasAnagrafica;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Gate;
@@ -50,6 +49,7 @@ class SegnalazioneController extends Controller
      */
     public function index(SegnalazioneIndexRequest $request, Segnalazione $segnalazione): Response
     {
+
         Gate::authorize('view', $segnalazione);  
 
         $validated = $request->validated();

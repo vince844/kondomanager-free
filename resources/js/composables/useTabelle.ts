@@ -1,12 +1,10 @@
 // composables/useTabelle.ts
 import { ref } from 'vue'
 import axios from 'axios'
-import { useToast } from '@/components/ui/toast/use-toast'
 import { usePermission } from '@/composables/permissions'
 import type { TabellaDropdown } from '@/types/gestionale/tabelle'
 
 export function useTabelle() {
-  const { toast } = useToast()
   const tabelle = ref<TabellaDropdown[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)

@@ -2,8 +2,12 @@
 
 namespace App\Models\Gestionale;
 
+use App\Enums\StatoPianoRate;
+use App\Models\Condominio;
+use App\Models\Gestione;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class PianoRate extends Model
 {
@@ -22,11 +26,13 @@ class PianoRate extends Model
         'data_inizio',
         'attivo',
         'note',
+        'stato',
     ];
 
     protected $casts = [
+        'stato'       => StatoPianoRate::class,
         'data_inizio' => 'date',
-        'attivo' => 'boolean',
+        'attivo'      => 'boolean',
     ];
 
     /*
@@ -37,22 +43,32 @@ class PianoRate extends Model
 
     public function gestione()
     {
-        return $this->belongsTo(\App\Models\Gestione::class);
+        return $this->belongsTo(Gestione::class);
     }
 
     public function condominio()
     {
-        return $this->belongsTo(\App\Models\Condominio::class);
+        return $this->belongsTo(Condominio::class);
     }
 
     public function ricorrenza()
     {
-        return $this->hasOne(\App\Models\Gestionale\RicorrenzaRata::class);
+        return $this->hasOne(RicorrenzaRata::class);
     }
 
     public function rate()
     {
-        return $this->hasMany(\App\Models\Gestionale\Rata::class);
+        return $this->hasMany(Rata::class);
+    }
+
+    /**
+     * I capitoli di spesa inclusi in questo piano rate.
+     * Se la collezione è vuota, si intende che include TUTTI i capitoli della gestione.
+     */
+    public function capitoli(): BelongsToMany
+    {
+        return $this->belongsToMany(Conto::class, 'piano_rate_capitoli', 'piano_rate_id', 'conto_id')
+                    ->withTimestamps();
     }
 
     

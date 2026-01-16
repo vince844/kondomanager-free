@@ -4,6 +4,7 @@ import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni';
 
 const props = defineProps<{
@@ -42,7 +43,7 @@ const truncate = (text: string, length: number = 120) => {
     <div class="flow-root">
       <ul role="list" class="divide-y divide-gray-200">
         <div v-if="!segnalazioni.length" class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300" role="alert">
-          <span class="font-medium">Nessuna segnalazione guasto ancora creata!</span>
+          <span class="font-medium">{{ trans('segnalazioni.dialogs.no_tickets_created') }}</span>
         </div>
         <li v-for="segnalazione in segnalazioni" :key="segnalazione.id" class="py-3 sm:py-4">
           <div class="flex items-center space-x-4">
@@ -50,14 +51,14 @@ const truncate = (text: string, length: number = 120) => {
   
               <Link
                 :href="route(generateRoute(routeName), { id: segnalazione.id })"
-                class="inline-flex items-center gap-2 text-sm text-muted-foreground font-bold"
+                class="inline-flex items-center gap-2 text-sm font-bold hover:text-muted-foreground transition-colors"
               >
                 <component
                   :is="priorityIcons[segnalazione.priority]"
                   class="w-4 h-4"
                   :class="{
                     'text-blue-400': segnalazione.priority === 'bassa',
-                    'text-yellow-300': segnalazione.priority === 'media',
+                    'text-yellow-400': segnalazione.priority === 'media',
                     'text-orange-400': segnalazione.priority === 'alta',
                     'text-red-500': segnalazione.priority === 'urgente',
                   }"
@@ -66,18 +67,33 @@ const truncate = (text: string, length: number = 120) => {
               </Link>
   
               <div class="text-xs py-1 text-gray-600 font-light">
-                <span>Inviata {{ segnalazione.created_at }} da {{ segnalazione.created_by.user.name }}</span>
+                <span> 
+                  {{ 
+                    trans('segnalazioni.visibility.sent_on_by', { 
+                        date: segnalazione.created_at, 
+                        name: segnalazione.created_by.user.name 
+                    }) 
+                  }}
+                </span>
               </div>
   
               <p class="text-sm text-gray-500 mt-3">
                 <span class="mt-1 text-gray-600 py-1">
-                  {{ isExpanded(Number(segnalazione.id)) ? segnalazione.description : truncate(segnalazione.description, 120) }}
+                  {{ 
+                    isExpanded(Number(segnalazione.id)) 
+                    ? segnalazione.description 
+                    : truncate(segnalazione.description, 120) 
+                  }}
                 </span>
                 <button
                   class="text-xs font-semibold text-gray-500 ml-1"
                   @click="toggleExpanded(Number(segnalazione.id))"
                 >
-                  {{ isExpanded(Number(segnalazione.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+                  {{ 
+                    isExpanded(Number(segnalazione.id)) 
+                    ? trans('segnalazioni.actions.show_less')
+                    : trans('segnalazioni.actions.show_more')
+                  }}
                 </button>
               </p>
   

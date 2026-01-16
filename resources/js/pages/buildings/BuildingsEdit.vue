@@ -10,6 +10,7 @@ import InputError from '@/components/InputError.vue';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -47,13 +48,16 @@ const submit = () => {
 
 <template>
 
-    <Head title="Modifica condominio" />
+    <Head :title="trans('condomini.header.edit_building_head')" />
   
     <AppLayout :breadcrumbs="breadcrumbs">
   
       <div class="px-4 py-6">
         
-        <Heading title="Modifica condominio" description="Compila il seguente modulo per aggiornare o modificarte i dati del condominio" />
+        <Heading 
+          :title="trans('condomini.header.edit_building_title')" 
+          :description="trans('condomini.header.edit_building_description')" 
+        />
 
             <div class="mt-3 flex flex-col">
                 <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
@@ -66,7 +70,7 @@ const submit = () => {
                               <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
                                 <Plus class="w-4 h-4" v-if="!form.processing" />
                                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                Salva
+                                {{trans('condomini.actions.save_building')}}
                               </Button>
 
                               <Link 
@@ -75,7 +79,9 @@ const submit = () => {
                                 class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
                               >
                                 <List class="w-4 h-4" />
-                                <span>Elenco</span>
+                                <span>
+                                  {{ trans('condomini.actions.list_buildings') }}
+                                </span>
                               </Link>
 
                             </div>
@@ -83,8 +89,8 @@ const submit = () => {
                             <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
 
                               <div class="pt-3">
-                                  <h3 class="text-lg font-medium leading-6 text-gray-900">Dati anagrafici</h3>
-                                  <p class="mt-1 text-sm text-gray-500">Di seguito è possibile modificare o aggiornare i dati anagrafici del condominio</p>
+                                <h3 class="text-lg font-medium leading-6 text-gray-900">{{ trans('condomini.header.building_info_heading') }}</h3>
+                                <p class="mt-1 text-sm text-gray-500">{{ trans('condomini.header.building_info_description') }}</p>
                               </div>
 
                               <Separator class="my-4" />
@@ -94,13 +100,13 @@ const submit = () => {
                                   <!--  Name field -->
                                   <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                       <div class="sm:col-span-3">
-                                        <Label for="nome">Denominazione</Label>
+                                        <Label for="nome">{{ trans('condomini.label.name') }}</Label>
                                         <Input 
                                           id="nome" 
                                           class="mt-1 block w-full"
                                           v-model="form.nome" 
                                           v-on:focus="form.clearErrors('nome')"
-                                          placeholder="Denominazione" 
+                                          :placeholder="trans('condomini.placeholder.name')" 
                                         />
                                         
                                         <InputError :message="form.errors.nome" />
@@ -111,13 +117,13 @@ const submit = () => {
                                   <!--  Indirizzo field -->
                                   <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                       <div class="sm:col-span-6">
-                                        <Label for="indirizzo">Indirizzo</Label>
+                                        <Label for="indirizzo">{{ trans('condomini.label.address') }}</Label>
                                         <Input 
                                           id="indirizzo" 
                                           class="mt-1 block w-full"
                                           v-model="form.indirizzo" 
                                           v-on:focus="form.clearErrors('indirizzo')"
-                                          placeholder="Indirizzo del condominio" 
+                                          :placeholder="trans('condomini.placeholder.address')" 
                                         />
                                         
                                         <InputError class="mt-2" :message="form.errors.indirizzo" />
@@ -128,13 +134,13 @@ const submit = () => {
                                   <!--  Codice fiscale field -->
                                   <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                       <div class="sm:col-span-3">
-                                        <Label for="codice_fiscale">Codice fiscale</Label>
+                                        <Label for="codice_fiscale">{{ trans('condomini.label.tax_code') }}</Label>
                                         <Input 
                                           id="codice_fiscale" 
                                           class="mt-1 block w-full"
                                           v-model="form.codice_fiscale" 
                                           v-on:focus="form.clearErrors('codice_fiscale')"
-                                          placeholder="Codice fiscale" 
+                                          :placeholder="trans('condomini.placeholder.tax_code')" 
                                         />
                                         
                                         <InputError class="mt-2" :message="form.errors.codice_fiscale" />
@@ -142,13 +148,13 @@ const submit = () => {
                                       </div>
 
                                       <div class="sm:col-span-3">
-                                        <Label for="email">Indirizzo email</Label>
+                                        <Label for="email">{{ trans('condomini.label.email') }}</Label>
                                         <Input 
                                           id="email" 
                                           class="mt-1 block w-full"
                                           v-model="form.email" 
                                           v-on:focus="form.clearErrors('email')"
-                                          placeholder="Indirizzo email" 
+                                          :placeholder="trans('condomini.placeholder.email')" 
                                         />
                                         
                                         <InputError class="mt-2" :message="form.errors.email" />
@@ -159,10 +165,10 @@ const submit = () => {
                                   <!--  Note -->
                                   <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                       <div class="sm:col-span-6">
-                                          <Label for="note">Note</Label>
+                                          <Label for="note">{{ trans('condomini.label.notes') }}</Label>
                                           <Textarea 
                                               id="note" 
-                                              placeholder="Inserisci una nota qui" 
+                                              :placeholder="trans('condomini.placeholder.notes')" 
                                               v-model="form.note" 
                                               v-on:focus="form.clearErrors('note')"
                                           />
@@ -175,8 +181,8 @@ const submit = () => {
                               </div>
 
                               <div class="pt-3">
-                                  <h3 class="text-lg font-medium leading-6 text-gray-900">Dati catastali</h3>
-                                  <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati catastali del condominio</p>
+                                <h3 class="text-lg font-medium leading-6 text-gray-900">{{ trans('condomini.header.building_registry_heading') }}</h3>
+                                <p class="mt-1 text-sm text-gray-500">{{ trans('condomini.header.building_registry_description') }}</p>
                               </div>
 
                               <Separator class="my-4" />
@@ -184,13 +190,13 @@ const submit = () => {
                               <div class="pt-3 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                 <!-- Comune catasto -->
                                 <div class="sm:col-span-4">
-                                  <Label for="name">Comune</Label>
+                                  <Label for="comune_catasto">{{ trans('condomini.label.municipality') }}</Label>
                                   <Input 
                                     id="comune_catasto" 
                                     class="mt-1 block w-full"
                                       v-model="form.comune_catasto" 
                                       v-on:focus="form.clearErrors('comune_catasto')"
-                                      placeholder="Comune catasto" 
+                                      :placeholder="trans('condomini.placeholder.municipality')" 
                                   />
                                   
                                   <InputError :message="form.errors.comune_catasto" />
@@ -198,13 +204,13 @@ const submit = () => {
                                 </div>
                                 <!-- Codice catasto -->
                                 <div class="sm:col-span-2">
-                                  <Label for="name">Codice</Label>
+                                  <Label for="codice_catasto">{{ trans('condomini.label.municipality_code') }}</Label>
                                   <Input 
                                     id="codice_catasto" 
                                     class="mt-1 block w-full"
                                       v-model="form.codice_catasto" 
                                       v-on:focus="form.clearErrors('codice_catasto')"
-                                      placeholder="Codice catasto" 
+                                      :placeholder="trans('condomini.placeholder.municipality_code')" 
                                   />
                                   
                                   <InputError :message="form.errors.codice_catasto" />
@@ -214,39 +220,39 @@ const submit = () => {
                               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                                 <!-- Sezione catasto -->
                                 <div class="sm:col-span-2">
-                                  <Label for="name">Sezione</Label>
+                                  <Label for="sezione_catasto">{{ trans('condomini.label.section') }}</Label>
                                   <Input 
                                     id="sezione_catasto" 
                                     class="mt-1 block w-full"
                                       v-model="form.sezione_catasto" 
                                       v-on:focus="form.clearErrors('sezione_catasto')"
-                                      placeholder="Sezione catasto" 
+                                      :placeholder="trans('condomini.placeholder.section')" 
                                   />
                                   
                                   <InputError :message="form.errors.sezione_catasto" />
                                 </div>
                                 <!-- Foglio catasto -->
                                 <div class="sm:col-span-2">
-                                  <Label for="name">Foglio</Label>
+                                  <Label for="foglio_catasto">{{ trans('condomini.label.sheet') }}</Label>
                                   <Input 
                                     id="foglio_catasto" 
                                     class="mt-1 block w-full"
                                       v-model="form.foglio_catasto" 
                                       v-on:focus="form.clearErrors('foglio_catasto')"
-                                      placeholder="Foglio catasto" 
+                                      :placeholder="trans('condomini.placeholder.sheet')"  
                                   />
                                   
                                   <InputError :message="form.errors.foglio_catasto" />
                                 </div>
                                 <!-- Particella catasto -->
                                 <div class="sm:col-span-2">
-                                  <Label for="name">Particella</Label>
+                                  <Label for="name">{{ trans('condomini.label.parcel') }}</Label>
                                   <Input 
                                     id="particella_catasto" 
                                     class="mt-1 block w-full"
                                     v-model="form.particella_catasto" 
                                     v-on:focus="form.clearErrors('particella_catasto')"
-                                    placeholder="Particella catasto" 
+                                    :placeholder="trans('condomini.placeholder.parcel')" 
                                   />
                                   
                                   <InputError :message="form.errors.particella_catasto" />
@@ -255,13 +261,6 @@ const submit = () => {
 
                             </div>
                                 
-                      <!--        <div class="pt-5">
-                                <div class="flex">
-
-                                  <Button :class="{ 'opacity-25': form.processing }" :disabled="form.processing">Modifica condomino</Button>
-
-                                </div>
-                            </div> -->
                         </form>
                       
                     </div>

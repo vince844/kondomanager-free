@@ -9,8 +9,8 @@ import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { Permission } from "@/enums/Permission"
 import { useSegnalazioni } from '@/composables/useSegnalazioni'
+import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni'
-
 
 defineProps<{ segnalazione: Segnalazione }>()
 
@@ -74,7 +74,7 @@ function deleteSegnalazione() {
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('segnalazioni.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem
         v-if="hasPermission([Permission.EDIT_SEGNALAZIONI, Permission.EDIT_OWN_SEGNALAZIONI])"
@@ -85,7 +85,7 @@ function deleteSegnalazione() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('segnalazioni.actions.edit_ticket') }}
         </Link>
       </DropdownMenuItem>
 
@@ -94,15 +94,15 @@ function deleteSegnalazione() {
         @click="handleDelete(segnalazione)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+          {{ trans('segnalazioni.actions.delete_ticket') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere eliminare questa segnalazione?"
-    description="Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati."
+    :title="trans('segnalazioni.dialogs.delete_ticket_title')"
+    :description="trans('segnalazioni.dialogs.delete_ticket_description')"
     :loading="isDeleting"
     @confirm="deleteSegnalazione"
   />

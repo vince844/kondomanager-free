@@ -1,7 +1,7 @@
 <script setup lang="ts">
-
+  
 import { Link, Head, useForm } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { ref, watch, type Ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle, UploadCloud, Info, FileText, X } from 'lucide-vue-next';
@@ -23,53 +23,59 @@ import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
+import type { AdminDocumentForm } from '@/types/documenti';
 
 const props = defineProps<{
   condomini: Building[];
   categories: Categoria[];
   anagrafiche: Anagrafica[];
-  
 }>()
 
 const { generatePath } = usePermission()
 const { toast } = useToast()
 
-const file = ref<File | null>(null)
+const file: Ref<File | null> = ref(null)
 const newCategoryName = ref('')
 const newCategoryDescription = ref('')
-const localCategories = ref([...props.categories])
+const localCategories = ref<Categoria[]>([...props.categories])
 const anagraficheOptions = ref<Anagrafica[]>([]);
 
-const handleFileChange = (e: Event) => {
+const form = useForm<AdminDocumentForm>({
+  name: '',
+  description: '',
+  is_published: true,
+  condomini_ids: [],
+  category_id: null,
+  file: null,
+  anagrafiche: []
+})
+
+const handleFileChange = (e: Event): void => {
   const input = e.target as HTMLInputElement
   const selected = input.files?.[0] || null
   if (!selected) return
   file.value = selected
   form.file = selected
+  form.clearErrors('file')
 }
 
-const removeFile = () => {
+const removeFile = (): void => {
   file.value = null
+  form.file = null
+  form.clearErrors('file')
 }
 
-const onDrop = (e: DragEvent) => {
+const onDrop = (e: DragEvent): void => {
   e.preventDefault()
   const droppedFile = e.dataTransfer?.files?.[0] || null
-  file.value = droppedFile
+  if (droppedFile) {
+    file.value = droppedFile
+    form.file = droppedFile
+    form.clearErrors('file')
+  }
 }
 
-const form = useForm({
-  name: '',
-  description: '',
-  is_published: true,
-  condomini_ids: [],
-  category_id: '',
-  file: null as File | null,
-  anagrafiche: []
-})
-
-const createCategory = async () => {
-
+const createCategory = async (): Promise<void> => {
   if (!newCategoryName.value) return
 
   try {
@@ -84,9 +90,13 @@ const createCategory = async () => {
 
     newCategoryName.value = ''
     newCategoryDescription.value = ''
+    
+    toast({
+      title: 'Successo',
+      description: 'Categoria creata con successo',
+      variant: 'default',
+    })
   } catch (error: any) {
-    console.error('Errore creazione categoria', error)
-
     const backendMessage = error.response?.data?.error || 'Impossibile creare la categoria. Riprova più tardi.'
 
     toast({
@@ -95,10 +105,9 @@ const createCategory = async () => {
       variant: 'destructive',
     })
   }
-
 }
 
-const fetchAnagrafiche = async (condomini_ids: number[]) => {
+const fetchAnagrafiche = async (condomini_ids: number[]): Promise<void> => {
   try {
     const response = await axios.get(generatePath('fetch-anagrafiche'), {
       params: { condomini_ids },
@@ -114,9 +123,16 @@ const fetchAnagrafiche = async (condomini_ids: number[]) => {
   }
 };
 
-watch(() => form.condomini_ids, fetchAnagrafiche);
+watch(() => form.condomini_ids, (newIds: number[]) => {
+  if (newIds.length > 0) {
+    fetchAnagrafiche(newIds);
+  } else {
+    anagraficheOptions.value = [];
+    form.anagrafiche = [];
+  }
+});
 
-const submit = () => {
+const submit = (): void => {
   form.post(route("admin.documenti.store"), {
     preserveScroll: true,
     onSuccess: () => {
@@ -247,13 +263,11 @@ const submit = () => {
                         <X class="w-4 h-4" />
                       </Button>
                     </Item>
-
                   </div>
 
-                  <InputError :message="form?.errors?.file" />
+                  <InputError :message="form.errors.file" />
                 </div>
               </div>
-
             </div>
           </div>
 
@@ -263,27 +277,25 @@ const submit = () => {
 
               <div class="grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-
                   <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
                     <Label for="stato">Stato pubblicazione</Label>
-
                     <HoverCard>
                       <HoverCardTrigger as-child>
-                      <button type="button" class="cursor-pointer">
+                        <button type="button" class="cursor-pointer">
                           <Info class="w-4 h-4 text-muted-foreground" />
-                      </button>
+                        </button>
                       </HoverCardTrigger>
                       <HoverCardContent class="w-80">
-                      <div class="flex justify-between space-x-4">
+                        <div class="flex justify-between space-x-4">
                           <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">
+                            <h4 class="text-sm font-semibold">
                               Stato pubblicazione
-                          </h4>
-                          <p class="text-sm">
+                            </h4>
+                            <p class="text-sm">
                               Scegli se rendere visibile il documento o mantenerlo nascosto.
-                          </p>
+                            </p>
                           </div>
-                      </div>
+                        </div>
                       </HoverCardContent>
                     </HoverCard>
                   </div>
@@ -298,14 +310,11 @@ const submit = () => {
                   />
 
                   <InputError :message="form.errors.is_published" />
-        
                 </div>
               </div>
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                 <div class="sm:col-span-6 space-y-1">
-
-                  <!-- Label + info icon -->
                   <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
                     <Label for="stato">Categoria</Label>
                     <HoverCard>
@@ -325,7 +334,6 @@ const submit = () => {
                     </HoverCard>
                   </div>
 
-                  <!-- v-select and plus button in one row -->
                   <div class="flex items-center gap-2">
                     <v-select
                       :options="localCategories"
@@ -386,50 +394,41 @@ const submit = () => {
               </div>
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                  <div class="sm:col-span-6">
-                      <Label for="condomini">Condominio</Label>
-
-                      <v-select 
-                        multiple
-                        :options="condomini" 
-                        label="nome" 
-                        v-model="form.condomini_ids"
-                        placeholder="Condomini"
-                        @update:modelValue="form.clearErrors('condomini_ids')" 
-                        :reduce="(condomini: Building) => condomini.id"
-                      />
-
-                      <InputError :message="form.errors.condomini_ids" />
-          
-                  </div>
+                <div class="sm:col-span-6">
+                  <Label for="condomini">Condominio</Label>
+                  <v-select 
+                    multiple
+                    :options="condomini" 
+                    label="nome" 
+                    v-model="form.condomini_ids"
+                    placeholder="Condomini"
+                    @update:modelValue="form.clearErrors('condomini_ids')" 
+                    :reduce="(condominio: Building) => condominio.id"
+                  />
+                  <InputError :message="form.errors.condomini_ids" />
+                </div>
               </div>
 
               <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
-                  <div class="sm:col-span-6">
-                      <Label for="condomini">Anagrafiche</Label>
-
-                      <v-select
-                          multiple
-                          id="anagrafiche"
-                          :options="anagraficheOptions"
-                          label="nome"
-                          v-model="form.anagrafiche"
-                          placeholder="Anagrafiche"
-                          @update:modelValue="form.clearErrors('anagrafiche')"
-                          :reduce="(anagrafica: Anagrafica) => anagrafica.id"
-                          :disabled="form.condomini_ids.length === 0"
-                      />
-
-                      <InputError :message="form.errors.anagrafiche" />
-          
-                  </div>
+                <div class="sm:col-span-6">
+                  <Label for="condomini">Anagrafiche</Label>
+                  <v-select
+                    multiple
+                    id="anagrafiche"
+                    :options="anagraficheOptions"
+                    label="nome"
+                    v-model="form.anagrafiche"
+                    placeholder="Anagrafiche"
+                    @update:modelValue="form.clearErrors('anagrafiche')"
+                    :reduce="(anagrafica: Anagrafica) => anagrafica.id"
+                    :disabled="form.condomini_ids.length === 0"
+                  />
+                  <InputError :message="form.errors.anagrafiche" />
+                </div>
               </div>
-                
             </div>
           </div>
-        
         </div>
-
       </form>
     </div>
   </AppLayout>

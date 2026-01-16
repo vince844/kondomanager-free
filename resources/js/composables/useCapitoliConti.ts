@@ -1,7 +1,6 @@
 // composables/useCapitoli.ts
 import { ref } from 'vue'
 import axios from 'axios'
-import { useToast } from '@/components/ui/toast/use-toast'
 
 export interface CapitoloDropdown {
   id: number;
@@ -9,7 +8,6 @@ export interface CapitoloDropdown {
 }
 
 export function useCapitoliConti() {
-  const { toast } = useToast()
   const capitoli = ref<CapitoloDropdown[]>([])
   const isLoading = ref(false)
   const error = ref<string | null>(null)

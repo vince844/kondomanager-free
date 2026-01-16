@@ -1,0 +1,60 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: kondomanager_dev_app
+    working_dir: /var/www
+    volumes:
+      # Hot reload backend (SEM destruir o build)
+      - ../app:/var/www/app
+      - ../routes:/var/www/routes
+      - ../resources/views:/var/www/resources/views
+      - ../config:/var/www/config
+      - ../database:/var/www/database
+    env_file:
+      - ../.env
+    depends_on:
+      - db
+
+  nginx:
+    image: nginx:alpine
+    container_name: kondomanager_dev_nginx
+    ports:
+      - "8889:80"
+    volumes:
+      # Apenas o public (index.php, uploads, assets buildados)
+      - ../public:/var/www/public
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.0
+    container_name: kondomanager_dev_db
+    environment:
+      MYSQL_DATABASE: kondomanager_dev
+      MYSQL_USER: kondomanager
+      MYSQL_PASSWORD: kondomanager
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: kondomanager_dev_phpmyadmin
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: kondomanager
+      PMA_PASSWORD: kondomanager
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "8990:80"
+
+volumes:
+  dbdata:

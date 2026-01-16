@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             CategoriaDocumentoSeeder::class,
             CategoriaEventoSeeder::class,
             TipologieImmobiliSeeder::class,
+            CategoriaFornitoreSeeder::class,
         ]);
     }
 }

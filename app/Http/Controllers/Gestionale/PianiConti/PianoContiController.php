@@ -50,7 +50,6 @@ class PianoContiController extends Controller
      */
     public function index(PianoContoIndexRequest $request, Condominio $condominio, Esercizio $esercizio): Response
     {
-        /** @var \Illuminate\Http\Request $request */
         $validated = $request->validated();
 
         // Filtriamo i piani dei conti del condominio, relativi alle gestioni collegate all'esercizio selezionato
@@ -90,42 +89,41 @@ class PianoContiController extends Controller
     /**
      * Show the form for creating a new chart of accounts entry (Piano dei Conti).
      *
-     * This method displays the chart of accounts creation form for a specific condominio.
-     * It prepares the necessary context data for the frontend form including:
-     * - List of all condomini for navigation
-     * - Current active esercizio for financial context
-     * - Available gestioni with open esercizi for the current condominio
-     *
-     * The gestioni are filtered to only include those that have open esercizi
-     * associated with the current condominio, ensuring proper financial period context.
-     *
-     * @param Condominio $condominio The condominio instance (from route binding) that will own the new chart of accounts entry
-     * 
-     * @return Response Returns an Inertia.js response rendering the chart of accounts creation form
-     * 
-     * @uses Condominio To establish the current condominio context
-     * @uses Gestione To retrieve available management periods with open exercises
-     * @uses HasCondomini Trait to access the list of condomini
-     * 
-     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If condominio not found
-     * 
+     * @param Condominio $condominio The condominio instance
+     * @param Esercizio $esercizio The active exercise
+     * @return Response|RedirectResponse Returns an Inertia.js response or redirects if no available gestioni
+     * @since v1.8.0
      */
-    public function create(Condominio $condominio, Esercizio $esercizio): Response
+    public function create(Condominio $condominio, Esercizio $esercizio)
     {
-        
         $condomini = $this->getCondomini();
 
         $esercizi = $condominio->esercizi()
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
 
+        // LOGICA DI FILTRO AVANZATO:
+        // 1. Prendi le gestioni collegate a questo esercizio
+        // 2. ESCLUDI quelle che hanno già un piano dei conti associato (relazione pianoConto)
+        //    (La relazione pianoConto() l'ho vista nel tuo Model Gestione, è corretta)
         $gestioni = Gestione::whereHas('esercizi', function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
             })
+            ->whereDoesntHave('pianoConto') // <--- IL FILTRO MAGICO
             ->with(['esercizi' => function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
             }])
             ->get();
+
+        // 3. BLOCCO PREVENTIVO:
+        // Se tutte le gestioni dell'esercizio hanno già un piano dei conti,
+        // non ha senso mostrare il form vuoto. Rimandiamo indietro l'utente.
+        if ($gestioni->isEmpty()) {
+            return to_route('admin.gestionale.esercizi.piani-conti.index', [
+                'condominio' => $condominio->id,
+                'esercizio' => $esercizio->id
+            ])->with($this->flashWarning(__('gestionale.warning_all_gestioni_have_piano_conti'))); 
+        }
 
         return Inertia::render('gestionale/pianiDeiConti/PianiDeiContiNew', [
             'condominio' => $condominio,
@@ -134,7 +132,6 @@ class PianoContiController extends Controller
             'condomini'  => $condomini,
             'gestioni'   => $gestioni,
         ]);
-
     }
 
     /**

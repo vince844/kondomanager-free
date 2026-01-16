@@ -23,12 +23,7 @@ class CreateRuoloRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => [
-                'required', 
-                'string', 
-                'max:255', 
-                Rule::unique('roles', 'name')->ignore($this->roles) 
-            ],
+            'name'        => ['required', 'string', 'max:255', Rule::unique('roles', 'name')->ignore($this->roles)],
             'description' => 'required|string|max:255',
             'permissions' => ['sometimes', 'array'],
             'accessAdmin' => 'nullable|boolean',
@@ -43,7 +38,7 @@ class CreateRuoloRequest extends FormRequest
     public function attributes()
     {
         return [
-            'name' => __('validation.attributes.ruoli.name'),
+            'name'        => __('validation.attributes.ruoli.name'),
             'description' => __('validation.attributes.ruoli.description'),
         ];
     }

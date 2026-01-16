@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
+use App\Enums\Role;
 
 class CheckHasAnagrafica
 {
@@ -21,7 +22,7 @@ class CheckHasAnagrafica
 
         $user = Auth::user();
 
-        if (Auth::check() && !$user->anagrafica && !$user->hasRole('amministratore')) {
+        if (Auth::check() && !$user->anagrafica && !$user->hasRole(Role::AMMINISTRATORE->value)) {
             return redirect()->route('user.anagrafiche.create');
         }
 
