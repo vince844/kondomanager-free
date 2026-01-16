@@ -1,24 +1,18 @@
-# Kondomanager – Guia Completo de Ambiente Docker (Dev & Deploy)
-<<<<<<< HEAD
+# Kondomanager – Guia Completo do Ambiente Docker (Dev & Deploy)
 
-=======
- 
->>>>>>> cb6eac7 (chore(docker): add docker develop environment files v2)
-Este documento descreve **passo a passo**, de forma **simples e reproduzível**, como qualquer utilizador (mesmo com conhecimentos básicos) pode instalar, configurar e trabalhar com o **Kondomanager** num ambiente Docker, bem como preparar integração contínua e deploy.
+Este documento descreve **passo a passo**, de forma **simples e reprodutível**, como qualquer utilizador (mesmo com conhecimentos básicos) pode instalar, configurar e trabalhar com o **Kondomanager** num ambiente Docker, bem como preparar integração contínua e deployment.
 
 ----------
 
-## 1. Pré‑requisitos
+## 1. Pré-requisitos
 
-Antes de começares, garante que tens instalado:
+Antes de começares, certifica-te de que tens instalado:
 
--   **Git** (>= 2.30)
--   **Docker Desktop** (inclui Docker + Docker Compose)
-    
-    -   Windows / macOS: [https://www.docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop)
-    -   Linux: docker + docker-compose-plugin
-        
- 
+- **Git** (>= 2.30)
+- **Docker Desktop** (inclui Docker + Docker Compose)
+  - Windows / macOS: https://www.docker.com/products/docker-desktop
+  - Linux: docker + docker-compose-plugin
+
 Verificação rápida:
 ```bash
 git --version
@@ -30,226 +24,227 @@ docker compose version
 
 ## 2. Fork do repositório
 
-1.  Inicia sessão no GitHub
-    
-2.  Acede a:  
-    [https://github.com/vince844/kondomanager-free](https://github.com/vince844/kondomanager-free)
-    
-3.  Clica em **Fork** (canto superior direito)
-    
-4.  Escolhe a tua conta pessoal
-    
-5.  (Opcional) Renomeia o repositório
-    
+1. Inicia sessão no GitHub
+2. Acede a:
+   https://github.com/vince844/kondomanager-free
+3. Clica em **Fork** (canto superior direito)
+4. Escolhe a tua conta pessoal
+5. (Opcional) Renomeia o repositório
 
-Resultado: terás o projeto sob o teu controlo.
+Resultado: o projeto ficará sob o teu controlo.
 
 ----------
 
-## 3. Clonar o fork localmente
+## 2.1 Clonar o fork localmente
 
 ```bash
 git clone https://github.com/TEU_UTILIZADOR/kondomanager-free.git
 cd kondomanager-free
-
 ```
 
 ----------
 
-## 4. Estrutura Docker 
+## 2.2 Estrutura Docker
 
 ```
 kondomanager/
-└── docker/
-    └── Dockerfile
-    └── nginx/
-        └── default.conf
-
+├── docker/
+│   ├── Dockerfile
+│   ├── docker-compose_develop.yml
+│   ├── entrypoint.sh
+│   └── nginx/
+│       └── default.conf
 ```
-
-### Serviços incluídos
-- Serviço
-- Função
-- app
-- PHP 8.2 + Composer + Node.js
-- nginx
-- Servidor web
-- db
-- MySQL 8.0
-- phpmyadmin
-- Gestão da base de dados
 
 ----------
 
-## 5. Variáveis de ambiente (.env)
+## 2.3 Serviços incluídos
 
-1.  Copia o ficheiro exemplo (se ainda não existir):
-    
+| Serviço | Finalidade |
+|-------|------------|
+| app | PHP 8.2 (runtime) + Composer (build-time) |
+| nginx | Servidor web |
+| db | MySQL 8.0 |
+| phpmyadmin | Gestão da base de dados |
+
+----------
+
+## 3. Variáveis de ambiente (.env)
+
+1. Copia o ficheiro de exemplo (se ainda não existir):
 
 ```bash
 cp .env.example .env
-
 ```
 
-2.  Confirma os valores principais:
-    
+2. Confirma as variáveis principais para desenvolvimento:
+
 ```env
 APP_ENV=local
 APP_DEBUG=true
-APP_URL=http://localhost:8889
+
+AUTO_KEYGEN=true
+AUTO_MIGRATE=true
 
 DB_HOST=db
 DB_DATABASE=kondomanager_dev
 DB_USERNAME=kondomanager
 DB_PASSWORD=kondomanager
-
 ```
 
-⚠️ **Nunca fazer commit do `.env` em produção com passwords reais**.
+⚠️ **Nunca versionar ficheiros `.env` com credenciais reais.**
 
 ----------
 
-## 6. Construir e arrancar o ambiente Docker
+## 4. Iniciar o ambiente de desenvolvimento
 
-Na raiz do projeto:
+A partir da raiz do projeto, executa:
 
 ```bash
-docker compose build
-docker compose up -d
-
+docker compose -f docker/docker-compose_develop.yml up -d --build
 ```
+
+E está feito.  
+Não é necessário executar mais nenhum comando.
 
 Verificar containers:
 
 ```bash
 docker compose ps
-
 ```
 
 ----------
 
-## 7. Instalação da aplicação
+## 5. Pontos de acesso
 
-### Entrar no container da aplicação
+**Aplicação**  
+http://localhost:8889
 
-```bash
-docker compose exec app bash
+**phpMyAdmin**  
+http://localhost:8990
 
-```
-
-### Instalar dependências PHP
-
-```bash
-composer install
-
-```
-
-### Instalar dependências frontend
-
-```bash
-npm install
-npm run dev
-
-```
-
-### Gerar chave da aplicação
-
-```bash
-php artisan key:generate
-
-```
-
-### Migrar base de dados
-
-```bash
-php artisan migrate --seed
-
-```
-
-----------
-
-## 8. Acessos
-
-**Aplicação**
-[http://localhost:8889](http://localhost:8889/)
-
-**phpMyAdmin**
-[http://localhost:8990](http://localhost:8990/)
-
-**MySQL**
-localhost:3307
+**MySQL**  
+Host: localhost  
+Porta: 3307  
 
 Credenciais MySQL:
--   Utilizador: `kondomanager`   
--   Password: `kondomanager`
-    
+- Utilizador: `kondomanager`
+- Palavra-passe: `kondomanager`
 
 ----------
 
-## 9. Comandos Docker úteis
+### Comandos Docker úteis
+
+Parar o ambiente:
 
 ```bash
-# Parar containers
-docker compose down
+docker compose -f docker/docker-compose_develop.yml down
+```
 
-# Rebuild completo
-docker compose down -v
-docker compose build --no-cache
-docker compose up -d
+Reset completo (incluindo volumes):
 
-# Logs
-docker compose logs -f app
+```bash
+docker compose -f docker/docker-compose_develop.yml down -v
+docker compose -f docker/docker-compose_develop.yml up -d --build
+```
 
+Ver logs:
+
+```bash
+docker compose -f docker/docker-compose_develop.yml logs -f
 ```
 
 ----------
 
-## 10. Fluxo Git recomendado (desenvolvimento)
+## 6. O que acontece automaticamente
+
+Quando os containers arrancam:
+
+- As extensões PHP são instaladas em build-time
+- As dependências Composer são instaladas em build-time
+- Os assets frontend são compilados em build-time
+- A `APP_KEY` do Laravel é gerada automaticamente (se não existir)
+- O link simbólico para `storage` é criado
+- As migrations da base de dados são executadas automaticamente quando `AUTO_MIGRATE=true`
+
+Isto garante um ambiente consistente para todos os developers e para pipelines de CI.
+
+----------
+
+## 7. Workflow de desenvolvimento
+
+### Backend (Laravel)
+
+- Controllers, rotas, configuração e templates Blade têm hot reload
+- Não é necessário reiniciar containers para alterações de backend
+
+### Frontend
+
+- Os assets frontend são compilados durante o build da imagem Docker
+- Para refletir alterações de frontend, é necessário reconstruir a imagem:
+
+```bash
+docker compose -f docker/docker-compose_develop.yml up -d --build
+```
+
+Este comportamento é intencional para manter o ambiente previsível e reprodutível.
+
+----------
+
+## 8. Nota sobre CI/CD
+
+O Kondomanager é **Docker-first**.
+
+Os pipelines de CI apenas precisam de executar:
+
+```bash
+docker build .
+```
+
+Em ambientes de CI semelhantes a desenvolvimento, o `docker compose` também pode ser utilizado.  
+Não é necessário qualquer setup em runtime.
+
+----------
+
+## 9. Workflow Git recomendado (desenvolvimento)
 
 ### Branches
 
 ```text
 main        → produção
-staging     → pré‑produção
+staging     → pré-produção
 develop     → desenvolvimento
 feature/*   → novas funcionalidades
 fix/*       → correções
-
 ```
 
-### Criar nova funcionalidade
+----------
 
-```bash
-git checkout develop
-git pull
-git checkout -b feature/minha-feature
+## 10. Notas finais
 
-```
+- Não executar `composer install` ou `npm install` manualmente
+- Não montar a pasta inteira do projeto como volume
+- Todos os ambientes (dev, CI, produção) devem usar a imagem Docker como fonte da verdade
+- Um ficheiro `.dockerignore` é utilizado para tornar os builds rápidos e determinísticos
 
-Commit:
-
-```bash
-git add .
-git commit -m "feat: descrição clara"
-git push origin feature/minha-feature
-
-```
-
-Abrir Pull Request para `develop`.
+Esta abordagem garante:
+- Onboarding rápido
+- Menos erros humanos
+- Pipelines CI/CD simples e sustentáveis
 
 ----------
 
 ## 11. Boas práticas
 
--   ❌ Nunca usar `root` em produção    
--   ❌ Nunca versionar `.env`
--   ✅ Backups automáticos da base de dados
--   ✅ Logs centralizados
--   ✅ Atualizações de segurança regulares
-    
+- ❌ Nunca usar `root` em produção
+- ❌ Nunca versionar ficheiros `.env`
+- ✅ Backups automáticos da base de dados
+- ✅ Logging centralizado
+- ✅ Atualizações de segurança regulares
+
 ----------
 
 ## 12. Suporte
 
-Este guia permite a **qualquer utilizador** levantar um ambiente funcional em minutos.
-Para produção, valida sempre com um **administrador de sistemas**.
+Este guia permite a **qualquer utilizador** levantar um ambiente totalmente funcional em minutos.
+Para deploys em produção, valida sempre com um **administrador de sistemas**.

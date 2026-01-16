@@ -7,8 +7,7 @@
 /storage/pail
 /vendor
 .env
-.env.backup
-.env.production
+.env.*
 .phpactor.json
 .phpunit.result.cache
 Homestead.json
@@ -23,3 +22,7 @@ yarn-error.log
 /.zed
 .DS_Store
 /z_myscripts
+.gitignore
+.idea
+.vscode
+
