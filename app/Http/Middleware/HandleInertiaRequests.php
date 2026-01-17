@@ -6,7 +6,8 @@ use App\Http\Resources\User\UserResource;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
-use Illuminate\Support\Facades\File;
+use App\Models\Evento;
+use Illuminate\Support\Facades\Cache;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -47,6 +48,15 @@ class HandleInertiaRequests extends Middleware
             'back_url' => fn () => $request->method() === 'GET'
                 ? url()->previous()
                 : null,
+
+            // Aggiungiamo il contatore globale
+            'inbox_count' => $request->user() ? Cache::remember('inbox_count_' . $request->user()->id, 60, function () {
+                // Cache di 60 secondi per non appesantire ogni clic
+                return Evento::query()
+                    ->whereJsonContains('meta->requires_action', true)
+                    ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
+                    ->count();
+            }) : 0,
 
             'quote' => ['message' => trim($message), 'author' => trim($author)],
         ];

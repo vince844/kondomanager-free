@@ -4,6 +4,7 @@ use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
+use App\Http\Controllers\Dashboard\ActionInboxController;
 use App\Http\Controllers\Dashboard\DashboardController;
 use App\Http\Controllers\Documenti\CategoriaDocumentoController;
 use App\Http\Controllers\Documenti\DocumentoApprovalController;
@@ -24,6 +25,8 @@ Route::prefix('admin')->as('admin.')->middleware(['auth', 'verified', 'role_or_p
 
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
+    
+    Route::get('/inbox', ActionInboxController::class)->name('inbox');
 
     Route::get('/fetch-anagrafiche', [FetchAnagraficheController::class, 'fetchAnagrafiche']);
 

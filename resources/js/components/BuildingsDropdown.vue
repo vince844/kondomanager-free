@@ -1,9 +1,9 @@
 <script setup lang="ts">
 
-import { ref, watch } from 'vue'
+import { ref, onMounted } from 'vue' // Usa onMounted per caricare subito
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
-import { ChevronDown, CirclePlus, CircleX, Loader2 } from 'lucide-vue-next'
+import { ChevronDown, CirclePlus, CircleX, Loader2, Settings2, ArrowRight } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { usePermission } from "@/composables/permissions";
@@ -15,20 +15,19 @@ import type { Building } from '@/types/buildings'
 const condomini = ref<Building[]>([])
 const selectedCondominio = ref<Building | null>(null)
 const open = ref(false)
-const condominiLoaded = ref(false)
 const showError = ref(false) 
 const loading = ref(false)
 
 const { generateRoute } = usePermission()
 
-// Fetch condomini
+// Fetch condomini (Eseguito subito al montaggio)
 const fetchCondomini = async () => {
   loading.value = true
   try {
     const response = await axios.get('/fetch-condomini')
     condomini.value = response.data
-    condominiLoaded.value = true
 
+    // Ripristina selezione precedente SOLO all'avvio
     const storedId = localStorage.getItem('selectedCondominioId')
     if (storedId) {
       const found = response.data.find((c: Building) => c.id == storedId)
@@ -41,14 +40,9 @@ const fetchCondomini = async () => {
   }
 }
 
-// Watch dropdown open to trigger fetch and clear error
-watch(open, async (isOpen) => {
-  if (isOpen && !condominiLoaded.value) {
-    await fetchCondomini()
-  }
-  if (isOpen) {
-    showError.value = false  // clear error when dropdown opens
-  }
+// Carica dati appena il componente è pronto
+onMounted(() => {
+    fetchCondomini();
 })
 
 // Select condominio
@@ -56,7 +50,7 @@ const selectCondominio = (condominio: Building) => {
   selectedCondominio.value = condominio
   localStorage.setItem('selectedCondominioId', condominio.id)
   open.value = false
-  showError.value = false  // clear error on valid selection
+  showError.value = false // Rimuovi errore se seleziona
 }
 
 // Reset
@@ -64,14 +58,21 @@ const resetCondominio = () => {
   selectedCondominio.value = null
   localStorage.removeItem('selectedCondominioId')
   showError.value = false
+  open.value = false
 }
 
 // Navigate
-const goToGestionale = () => {
+const goToGestionale = (e: Event) => {
+  // Evita comportamenti strani del browser
+  e.preventDefault();
+  e.stopPropagation();
+
   if (!selectedCondominio.value) {
-    showError.value = true  // highlight error if nothing selected
+    showError.value = true // Attiva bordo rosso
+    open.value = true      // Apre la tendina per aiutare l'utente
     return
   }
+  
   const url = route(generateRoute('gestionale.index'), { condominio: selectedCondominio.value.id });
   router.visit(url);
 }
@@ -82,8 +83,9 @@ const goToCreateCondominio = () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-    <Popover v-model:open="open" class="flex-1">
+  <div class="flex w-full sm:w-auto items-center shadow-sm rounded-md group">
+    
+    <Popover v-model:open="open">
       <PopoverTrigger as-child>
         <Button
           variant="outline"
@@ -91,17 +93,21 @@ const goToCreateCondominio = () => {
           aria-expanded="open"
           aria-label="Select Condominio"
           :class="cn(
-            // full width on mobile, fixed on md+
-            'w-full sm:w-[300px] justify-between text-sm py-2 px-3',
-            showError ? 'border-red-500 ring-1 ring-red-500' : ''
+            // VISUAL MERGE: rounded-r-none e border-r-0 per attaccarlo al bottone destro
+            'flex-1 sm:w-[300px] justify-between text-sm py-2 px-3 rounded-r-none border-r-0 focus:z-10 relative transition-colors', 
+            // Gestione Errore Visivo
+            showError ? 'border-red-500 ring-1 ring-red-500 z-20 hover:bg-red-50' : 'hover:bg-slate-50'
           )"
         >
-          {{ selectedCondominio?.nome || 'Seleziona condominio' }}
-          <ChevronDown class="ml-auto h-4 w-4 shrink-0 opacity-50" />
+          <span class="truncate" :class="showError ? 'text-red-500' : ''">
+            {{ selectedCondominio?.nome || 'Seleziona condominio...' }}
+          </span>
+          <ChevronDown class="ml-2 h-4 w-4 shrink-0 opacity-50" :class="showError ? 'text-red-500' : ''" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent class="w-full sm:w-[300px] p-0">
-        <div v-if="loading" class="flex items-center justify-center py-6">
+      
+      <PopoverContent class="w-[300px] p-0" align="start">
+        <div v-if="loading && condomini.length === 0" class="flex items-center justify-center py-6">
           <Loader2 class="h-5 w-5 animate-spin text-gray-500" />
           <span class="ml-2 text-sm text-gray-500">Caricamento...</span>
         </div>
@@ -141,7 +147,6 @@ const goToCreateCondominio = () => {
                 value="reset-condominio"
                 @select="() => {
                   resetCondominio()
-                  open = false
                 }"
               >
                 <CircleX class="mr-2 h-5 w-5 text-red-600" />
@@ -152,8 +157,24 @@ const goToCreateCondominio = () => {
         </Command>
       </PopoverContent>
     </Popover>
-    <Button class="w-full sm:w-auto text-sm py-2 px-4" @click="goToGestionale">
+
+    <Button 
+      class="rounded-l-none px-5 font-medium transition-all duration-200" 
+      variant="default"
+      @click="goToGestionale"
+      title="Vai al pannello di gestione"
+    >
       Gestione
+      
+      <Settings2 
+        v-if="!selectedCondominio" 
+        class="ml-2 h-4 w-4 opacity-70" 
+      />
+      <ArrowRight 
+        v-else 
+        class="ml-2 h-4 w-4 animate-in slide-in-from-left-1" 
+      />
     </Button>
+
   </div>
 </template>

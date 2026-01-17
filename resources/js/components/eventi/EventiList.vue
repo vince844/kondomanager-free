@@ -65,7 +65,7 @@ const truncatedName = (name: string, length: number = 40) => {
                 :is="getEventStyle(evento).icon"
                 :class="['w-4 h-4', getEventStyle(evento).color]"
               />
-              <span :class="[getEventStyle(evento).color, 'group-hover:underline']">
+              <span :class="[getEventStyle(evento).color]">
                   {{ truncatedName(evento.title) }}
               </span>
             </a>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
     
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { House, TriangleAlert, CalendarClock, HardDrive } from 'lucide-vue-next';
+import { Button } from '@/components/ui/button'; // Import Button
+import { Badge } from '@/components/ui/badge';   // Import Badge
+import { House, TriangleAlert, CalendarClock, HardDrive, Bell } from 'lucide-vue-next'; // Import Bell
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
@@ -12,6 +14,7 @@ import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue'; // Import Computed
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';
@@ -19,6 +22,10 @@ import type { Evento } from '@/types/eventi';
 import type { BreadcrumbItem } from '@/types';
 
 const { generateRoute, hasPermission } = usePermission();
+const page = usePage();
+
+// Recuperiamo il conteggio inbox globale
+const inboxCount = computed(() => (page.props as any).inbox_count || 0);
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -46,41 +53,27 @@ const props = defineProps<{
     eventi: Evento[]; 
 }>();
 
-// Navigate to segnalazioni with "aperta" and "in lavorazione" filter
+// ... (Le tue funzioni di navigazione rimangono uguali) ...
 const navigateToOpenSegnalazioni = () => {
     if (hasPermission([Permission.VIEW_SEGNALAZIONI])) {
-        router.visit(route(generateRoute('segnalazioni.index'), {
-            stato: ['aperta', 'in lavorazione']
-        }));
+        router.visit(route(generateRoute('segnalazioni.index'), { stato: ['aperta', 'in lavorazione'] }));
     }
 };
 
-// Navigate to eventi with date filter for next 7 days
 const navigateToUpcomingEventi = () => {
     if (hasPermission([Permission.VIEW_EVENTS])) {
-
         const today = new Date();
         const sevenDaysLater = new Date();
-
         sevenDaysLater.setDate(today.getDate() + 7);
-        
-        const dateFrom = today.toISOString().split('T')[0];
-        const dateTo = sevenDaysLater.toISOString().split('T')[0];
-        
         router.visit(route(generateRoute('eventi.index'), {
-            date_from: dateFrom,
-            date_to: dateTo
+            date_from: today.toISOString().split('T')[0],
+            date_to: sevenDaysLater.toISOString().split('T')[0]
         }));
-
     }
 };
 
-// Navigate to condomini list
-const navigateToCondomini = () => {
-    router.visit(route(('condomini.index')));
-};
+const navigateToCondomini = () => router.visit(route(('condomini.index')));
 
-// Navigate to documenti list
 const navigateToDocumenti = () => {
     if (hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])) {
         router.visit(route(generateRoute('documenti.index')));
@@ -93,15 +86,41 @@ const navigateToDocumenti = () => {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
-            <div class="flex justify-end mb-2 md:justify-end">
+            
+            <div class="flex flex-col-reverse md:flex-row justify-end items-stretch md:items-center gap-3 mb-2">
+                
+                <Link :href="route('admin.inbox')" class="w-full md:w-auto">
+                    <Button 
+                        variant="outline" 
+                        class="w-full md:w-auto flex items-center gap-2 justify-center transition-all"
+                        :class="{
+                            'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400': inboxCount > 0,
+                            'hover:bg-slate-100': inboxCount === 0
+                        }"
+                    >
+                        <div class="relative">
+                            <Bell class="w-4 h-4" :class="{'animate-pulse': inboxCount > 0}" />
+                            <span v-if="inboxCount > 0" class="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-red-600"></span>
+                        </div>
+                        
+                        <span class="font-medium">Action inbox</span>
+                        
+                        <Badge 
+                            v-if="inboxCount > 0" 
+                            variant="destructive" 
+                            class="ml-1 h-5 px-1.5 min-w-[1.25rem]"
+                        >
+                            {{ inboxCount }}
+                        </Badge>
+                    </Button>
+                </Link>
+
                 <div class="w-full md:w-auto">
                     <BuildingsDropdown class="w-full md:w-auto" />
                 </div>
             </div>
 
-            <!-- Statistics Cards - 4 cards (clickable) -->
             <div class="grid auto-rows-min gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <!-- Condomini Card (clickable) -->
                 <Card 
                     class="cursor-pointer hover:bg-accent transition-colors"
                     @click="navigateToCondomini"
@@ -117,7 +136,6 @@ const navigateToDocumenti = () => {
                     </CardContent>
                 </Card>
 
-                <!-- Segnalazioni Aperte Card (clickable with filter) -->
                 <Card 
                     class="cursor-pointer hover:bg-accent transition-colors"
                     :class="{ 'opacity-50 cursor-not-allowed': !hasPermission([Permission.VIEW_SEGNALAZIONI]) }"
@@ -134,7 +152,6 @@ const navigateToDocumenti = () => {
                     </CardContent>
                 </Card>
 
-                <!-- Scadenze Imminenti Card (clickable with date filter) -->
                 <Card 
                     class="cursor-pointer hover:bg-accent transition-colors"
                     :class="{ 'opacity-50 cursor-not-allowed': !hasPermission([Permission.VIEW_EVENTS]) }"
@@ -151,7 +168,6 @@ const navigateToDocumenti = () => {
                     </CardContent>
                 </Card>
 
-                <!-- Storage Card (clickable) -->
                 <Card 
                     class="cursor-pointer hover:bg-accent transition-colors"
                     :class="{ 'opacity-50 cursor-not-allowed': !hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS]) }"
@@ -169,7 +185,6 @@ const navigateToDocumenti = () => {
                 </Card>
             </div>
 
-            <!-- Rest of the dashboard content -->
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
                     <CardHeader class="p-3 ml-3">

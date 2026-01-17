@@ -1,6 +1,5 @@
 <script setup lang="ts">
-
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted } from 'vue'; // <--- Aggiunto onMounted
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -53,7 +52,7 @@ const selectedImmobileId = ref<number | null>(null);
 
 // Form
 const form = useForm({
-    pagante_id: null,
+    pagante_id: null as number | null,
     cassa_id: null,
     gestione_id: null,
     data_pagamento: new Date().toISOString().substring(0, 10),
@@ -90,6 +89,7 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?
         );
         rawRateList.value = result;
         
+        // Se c'è già un importo (es. dal prefill), eseguiamo subito la distribuzione
         if (form.importo_totale > 0) runDistribution();
     } finally {
         loadingRate.value = false;
@@ -165,11 +165,11 @@ const submit = () => {
 
 // Watchers
 watch(() => form.pagante_id, (newVal) => {
-    if (searchMode.value === 'persona') fetchDebiti({ anagrafica_id: newVal });
+    if (searchMode.value === 'persona' && newVal) fetchDebiti({ anagrafica_id: newVal });
 });
 
 watch(selectedImmobileId, (newVal) => {
-    if (searchMode.value === 'immobile') fetchDebiti({ immobile_id: newVal });
+    if (searchMode.value === 'immobile' && newVal) fetchDebiti({ immobile_id: newVal });
 });
 
 watch(() => form.importo_totale, () => {
@@ -182,6 +182,32 @@ watch(() => form.gestione_id, () => {
         r.selezionata = false;
     });
     if (form.importo_totale > 0) runDistribution();
+});
+
+// --- HOOKS: PREFILL DA URL ---
+onMounted(() => {
+    // Leggiamo i parametri dalla Query String (inviati dall'Action Inbox)
+    const params = new URLSearchParams(window.location.search);
+    
+    const prefillAnagrafica = params.get('prefill_anagrafica_id');
+    const prefillImporto = params.get('prefill_importo');
+    const prefillDesc = params.get('prefill_descrizione');
+    // Nota: prefill_rata_id c'è, ma lasciamo che l'algoritmo 'Auto' distribuisca sul debito più vecchio per correttezza contabile
+
+    if (prefillDesc) {
+        form.descrizione = prefillDesc;
+    }
+
+    if (prefillImporto) {
+        form.importo_totale = parseFloat(prefillImporto);
+    }
+
+    if (prefillAnagrafica) {
+        // Impostando questo ID, scatta il watcher qui sopra ⬆️
+        // Il watcher chiama fetchDebiti -> che scarica le rate -> che vede l'importo -> che lancia distributeAuto()
+        // Tutto automatico!
+        form.pagante_id = parseInt(prefillAnagrafica);
+    }
 });
 </script>
 
