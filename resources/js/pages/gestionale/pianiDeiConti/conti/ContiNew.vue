@@ -25,6 +25,7 @@ const props = defineProps<{
   esercizio: Esercizio
   pianoConti: PianoDeiConti
   conti: Conto[]
+  fornitori: Array<{ id: number, ragione_sociale: string }>
 }>()
 
 const { generatePath } = usePermission()
@@ -262,7 +263,7 @@ const rimuoviTabella = () => {
       :condominio-id="props.condominio.id"
       :esercizio-id="props.esercizio.id"
       :piano-conto-id="props.pianoConti.id"
-      @update:show="showModalNew = $event"
+      :fornitori="props.fornitori"  @update:show="showModalNew = $event"
     />
 
     <!-- Modal per associare nuove tabelle -->
@@ -281,7 +282,7 @@ const rimuoviTabella = () => {
       :condominio-id="props.condominio.id"
       :esercizio-id="props.esercizio.id"
       :piano-conto-id="props.pianoConti.id"
-      @update:show="showModalEdit = $event"
+      :fornitori="props.fornitori"  @update:show="showModalEdit = $event"
       @success="onModificaSuccess"
     />
 

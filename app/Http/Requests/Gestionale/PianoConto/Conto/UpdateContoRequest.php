@@ -40,6 +40,9 @@ class UpdateContoRequest extends FormRequest
             'isSottoConto'           => 'required|boolean', 
             'importo'                => 'sometimes|required|string',
             'parent_id'              => 'nullable|exists:conti,id',
+            'codice'                 => ['nullable', 'string', 'max:20'],
+            'default_fornitore_id'   => ['nullable', 'exists:fornitori,id'],
+            'tipo_spesa'             => ['nullable', 'string', 'in:standard,professionista,lavori,utenza'],
         ];
 
         // Importo obbligatorio solo se non è un capitolo

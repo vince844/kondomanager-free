@@ -25,6 +25,8 @@ interface Props {
   condominioId: number
   esercizioId: number
   pianoContoId: number
+  // <--- NUOVA PROP
+  fornitori?: Array<{ id: number, ragione_sociale: string }> 
 }
 
 const props = defineProps<Props>()
@@ -46,6 +48,9 @@ const moneyOptions = ref({
 
 const form = useForm({
   nome: '',
+  codice: '', // <--- NUOVO
+  default_fornitore_id: null as number | null, // <--- NUOVO
+  tipo_spesa: 'standard', // <--- NUOVO
   tipo: 'spesa' as 'spesa' | 'entrata',
   importo: '',
   descrizione: '',
@@ -92,7 +97,6 @@ const onDropdownCapitoliOpen = () => {
 }
 
 const submit = () => {
-
   form.post(route('admin.gestionale.esercizi.piani-conti.conti.store', {
     condominio: props.condominioId,
     esercizio: props.esercizioId,
@@ -117,34 +121,34 @@ const submit = () => {
 
 <template>
   <Dialog v-model:open="props.show" @update:open="closeModal">
-    <DialogContent class="sm:max-w-[650px]">
-      <DialogHeader>
+    <DialogContent class="sm:max-w-[700px]"> <DialogHeader>
         <DialogTitle>Nuova voce di spesa o capitolo</DialogTitle>
       </DialogHeader>
 
-      <div class="grid gap-4 py-4 overflow-y-auto px-6">
-        <div class="flex flex-col justify-between h-[60dvh]">
-
-          <form @submit.prevent="submit" class="space-y-4 mt-4">
-            <!-- Campi hidden per isCapitolo e isSottoConto -->
+      <div class="grid gap-4 py-4 overflow-y-auto px-6 max-h-[70vh]">
+          <form @submit.prevent="submit" class="space-y-4 mt-2">
             <input type="hidden" v-model="form.isCapitolo" />
             <input type="hidden" v-model="form.isSottoConto" />
 
-            <!-- Nome -->
-            <div>
-              <Label for="nome">Nome</Label>
-              <Input id="nome" v-model="form.nome" placeholder="Es. Spese ascensore" />
-              <InputError :message="form.errors.nome" />
+            <div class="grid grid-cols-4 gap-4">
+               <div class="col-span-1">
+                  <Label for="codice">Codice</Label>
+                  <Input id="codice" v-model="form.codice" placeholder="A.1" class="mt-1" />
+               </div>
+               <div class="col-span-3">
+                  <Label for="nome">Nome Voce</Label>
+                  <Input id="nome" v-model="form.nome" placeholder="Es. Pulizia Scale" class="mt-1" required />
+                  <InputError :message="form.errors.nome" />
+               </div>
             </div>
 
-            <!-- Descrizione e note -->
             <div>
               <Label for="descrizione">Descrizione</Label>
-              <Textarea id="descrizione" v-model="form.descrizione" placeholder="Descrizione..." />
+              <Textarea id="descrizione" v-model="form.descrizione" placeholder="Descrizione..." class="mt-1" />
             </div>
 
             <div class="flex items-center gap-6 pb-2">
-              <Label class="font-medium">Tipo di spesa</Label>
+              <Label class="font-medium">Tipo di movimento</Label>
               <div class="flex items-center gap-2">
                 <input type="radio" id="spesa" value="spesa" v-model="form.tipo" />
                 <Label for="spesa">Spesa (uscita)</Label>
@@ -155,19 +159,17 @@ const submit = () => {
               </div>
             </div>
 
-            <!-- È un capitolo -->
-            <div class="flex items-center justify-between">
-              <Label for="isCapitolo">È un capitolo di spesa?</Label>
-              <Switch id="isCapitolo" v-model="isCapitolo" :disabled="isSottoConto" />
+            <div class="flex flex-col gap-3 border-y border-gray-100 py-3">
+               <div class="flex items-center justify-between">
+                 <Label for="isCapitolo" class="cursor-pointer">È un capitolo di spesa?</Label>
+                 <Switch id="isCapitolo" v-model="isCapitolo" :disabled="isSottoConto" />
+               </div>
+               <div class="flex items-center justify-between">
+                 <Label for="isSottoConto" class="cursor-pointer">È un sotto-conto di spesa?</Label>
+                 <Switch id="isSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
+               </div>
             </div>
 
-            <!-- È un sotto-conto -->
-            <div class="flex items-center justify-between">
-              <Label for="isSottoConto">È un sotto-conto di spesa?</Label>
-              <Switch id="isSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
-            </div>
-
-            <!-- Se è sotto-conto -->
             <div v-if="isSottoConto">
               <Label>Capitolo padre</Label>
               <v-select
@@ -179,36 +181,55 @@ const submit = () => {
                 @open="onDropdownCapitoliOpen"
                 :loading="isLoadingCapitoli"
                 :clearable="true"
+                class="mt-1"
               >
-                <template #no-options>
-                  <div class="text-sm text-gray-500 p-2">
-                    {{ isLoadingCapitoli ? 'Caricamento capitoli...' : 'Nessun capitolo disponibile' }}
-                  </div>
-                </template>
-                <template #option="option">
-                  <div class="flex items-center">
-                    <span>{{ option.nome }}</span>
-                  </div>
-                </template>
               </v-select>
               <InputError :message="form.errors.parent_id" />
             </div>
 
-            <!-- Campi specifici solo se NON è capitolo -->
+            <div v-if="!isCapitolo" class="bg-slate-50 p-4 rounded-md border border-slate-200 grid grid-cols-2 gap-4">
+                <div>
+                   <Label for="fornitore" class="text-xs font-semibold uppercase text-slate-500">Fornitore Suggerito</Label>
+                   <select 
+                      id="fornitore"
+                      v-model="form.default_fornitore_id"
+                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
+                   >
+                      <option :value="null">-- Nessuno --</option>
+                      <option v-for="f in props.fornitori" :key="f.id" :value="f.id">
+                        {{ f.ragione_sociale }}
+                      </option>
+                   </select>
+                   <p class="text-[10px] text-slate-500 mt-1">Verrà precompilato nelle fatture.</p>
+                </div>
+
+                <div>
+                   <Label for="tipo_spesa" class="text-xs font-semibold uppercase text-slate-500">Natura Spesa (Fiscale)</Label>
+                   <select 
+                      id="tipo_spesa"
+                      v-model="form.tipo_spesa"
+                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
+                   >
+                      <option value="standard">Standard (Beni/Servizi)</option>
+                      <option value="professionista">Professionista (Rit. Acconto)</option>
+                      <option value="lavori">Lavori Edili (Bonus/Ristr.)</option>
+                      <option value="utenza">Utenza (Luce/Gas/Acqua)</option>
+                   </select>
+                </div>
+            </div>
+
             <div v-if="!isCapitolo">
-              <Label for="importo">Importo</Label>
+              <Label for="importo">Importo Preventivato</Label>
               <MoneyInput
                 id="importo"
                 v-model="form.importo"
                 :money-options="moneyOptions"
                 :lazy="true" 
                 placeholder="0,00"
+                class="mt-1"
                 @focus="form.clearErrors('importo')"
               />
               <InputError :message="form.errors.importo" />
-              <p class="text-xs text-gray-500 mt-1">
-                Inserisci l'importo nel formato italiano (es. 1.234,56)
-              </p>
             </div>
 
             <div v-if="!isCapitolo">
@@ -222,40 +243,30 @@ const submit = () => {
                 @open="onDropdownTabelleOpen"
                 :loading="isLoadingTabelle"
                 :clearable="true"
+                class="mt-1"
               >
-                <template #no-options>
-                  <div class="text-sm text-gray-500 p-2">
-                    {{ isLoadingTabelle ? 'Caricamento tabelle...' : 'Nessuna tabella disponibile' }}
-                  </div>
-                </template>
-                <template #option="option">
-                  <div class="flex items-center">
-                    <span>{{ option.nome }}</span>
-                  </div>
-                </template>
               </v-select>
               <InputError :message="form.errors.tabella_millesimale_id" />
             </div>
 
-            <!-- Percentuali -->
-            <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 mt-4">
+            <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
               <div>
-                <Label>Proprietario %</Label>
-                <Input type="number" v-model="form.percentuale_proprietario" placeholder="100" />
+                <Label class="text-xs">Proprietario %</Label>
+                <Input type="number" v-model="form.percentuale_proprietario" placeholder="100" class="h-8 mt-1" />
               </div>
               <div>
-                <Label>Inquilino %</Label>
-                <Input type="number" v-model="form.percentuale_inquilino" placeholder="0" />
+                <Label class="text-xs">Inquilino %</Label>
+                <Input type="number" v-model="form.percentuale_inquilino" placeholder="0" class="h-8 mt-1" />
               </div>
               <div>
-                <Label>Usufruttuario %</Label>
-                <Input type="number" v-model="form.percentuale_usufruttuario" placeholder="0" />
+                <Label class="text-xs">Usufruttuario %</Label>
+                <Input type="number" v-model="form.percentuale_usufruttuario" placeholder="0" class="h-8 mt-1" />
               </div>
             </div>
 
             <div>
               <Label for="note">Note</Label>
-              <Textarea id="note" v-model="form.note" placeholder="Note opzionali..." />
+              <Textarea id="note" v-model="form.note" placeholder="Note opzionali..." class="mt-1" />
             </div>
 
             <DialogFooter class="flex justify-end space-x-2 mt-6">
@@ -265,8 +276,6 @@ const submit = () => {
               </Button>
             </DialogFooter>
           </form>
-
-        </div>
       </div>
     </DialogContent>
   </Dialog>

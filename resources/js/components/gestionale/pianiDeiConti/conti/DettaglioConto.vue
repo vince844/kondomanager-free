@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { Edit, Trash2, FileText, Link, Plus } from 'lucide-vue-next'
-import type { Conto } from '@/types/gestionale/conti'
+
+import { computed } from 'vue'
+import { Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge } from 'lucide-vue-next'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import type { Conto } from '@/types/gestionale/conti'
 
 interface Props {
   conto: Conto | null
@@ -22,88 +25,66 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const { euro } = useCurrencyFormatter()
 
-// Aggiungi tabella
-const aggiungiTabella = () => {
-  if (props.conto) {
-    emit('aggiungi-tabella', props.conto)
-  }
-}
+const aggiungiTabella = () => { if (props.conto) emit('aggiungi-tabella', props.conto) }
+const rimuoviTabella = (tabella: any) => { if (props.conto) emit('rimuovi-tabella', { conto: props.conto, tabellaId: tabella.id }) }
+const eliminaConto = () => { if (props.conto) emit('elimina', props.conto) }
+const modificaConto = () => { if (props.conto) emit('modifica', props.conto) }
+const selectSottoconto = (sottoconto: Conto) => { emit('select', sottoconto) }
 
-// Rimuovi tabella - CORRETTO: passa solo l'ID
-const rimuoviTabella = (tabella: any) => {
-  if (props.conto) {
-    console.log('Rimozione tabella - ID:', tabella.id); // Debug
-    emit('rimuovi-tabella', { 
-      conto: props.conto, 
-      tabellaId: tabella.id // Passa solo l'ID
-    })
-  }
-}
-
-// Delete account
-const eliminaConto = () => {
-  if (props.conto) {
-    emit('elimina', props.conto)
-  }
-}
-
-// Modifica conto
-const modificaConto = () => {
-  if (props.conto) {
-    emit('modifica', props.conto) 
-  }
-}
-
+// Helpers
 const isCapitolo = (conto: Conto) => {
-  const importoZero = 
-    conto.importo === '€ 0,00' || 
-    conto.importo === '0,00' || 
-    conto.importo === '€0,00' || 
-    conto.importo === '0,00€' ||
-    conto.importo.includes('0,00')
-
+  const importoZero = ['€ 0,00', '0,00', '€0,00', '0,00€'].some(v => conto.importo.includes(v))
   const haSottoconti = conto.sottoconti && conto.sottoconti.length > 0
-
   return importoZero && haSottoconti
 }
 
-// Get associated tables
-const getTabelleAssociate = () => {
-  return props.conto?.tabelle_millesimali?.map(tm => ({
+const getTabelleAssociate = () => props.conto?.tabelle_millesimali?.map(tm => ({
     id: tm.tabella_id,
     nome: tm.tabella?.nome ?? 'Tabella non trovata',
     coefficiente: tm.coefficiente,
     ripartizioni: tm.ripartizioni || []
-  })) || []
-}
+})) || []
 
-// Get distributions for a table
-const getRipartizioniPerTabella = (tabellaId: number) => {
-  return getTabelleAssociate().find(t => t.id === tabellaId)?.ripartizioni || []
-}
+const getRipartizioniPerTabella = (tabellaId: number) => getTabelleAssociate().find(t => t.id === tabellaId)?.ripartizioni || []
 
-// Get percentage for a subject
 const getPercentualeSoggetto = (tabellaId: number, soggetto: string) => {
   const ripartizione = getRipartizioniPerTabella(tabellaId).find(r => r.soggetto === soggetto)
   return ripartizione ? ripartizione.percentuale : 0
 }
 
-// Select sub-account
-const selectSottoconto = (sottoconto: Conto) => {
-  emit('select', sottoconto)
-}
+// NUOVA LOGICA COLORE BARRA
+const statusColorClass = computed(() => {
+  const stato = props.conto?.stato_copertura
+  const dettagli = props.conto?.dettaglio_copertura || []
+  
+  // Se è OVER, controlliamo se è colpa di uno spostamento
+  if (stato === 'over') {
+    const hasShift = dettagli.some(d => d.is_shifted)
+    if (hasShift) return 'bg-purple-600' // Viola: Overbudget "Gestito" (Spostamento)
+    return 'bg-red-600' // Rosso: Overbudget "Allarme" (Errore?)
+  }
+
+  switch (stato) {
+    case 'full': return 'bg-emerald-500'
+    case 'partial': return 'bg-blue-500'
+    default: return 'bg-gray-300'
+  }
+})
+
 </script>
 
 <template>
-  <div class="dettaglio-conto">
-    <div v-if="!props.conto" class="py-8 text-muted-foreground">  
+  <div class="dettaglio-conto pb-12 px-1">
+
+    <div v-if="!props.conto" class="flex flex-col items-center justify-center min-h-[360px] text-muted-foreground">
       <Empty class="border border-dashed">
         <EmptyHeader class="max-w-lg">
           <EmptyMedia variant="icon">
-            <FileText/>
+            <FileText class="w-10 h-10 text-muted-foreground" />
           </EmptyMedia>
-          <EmptyTitle>Nessuna voce di spesa selezionata</EmptyTitle>
+          <EmptyTitle>Nessuna voce selezionata</EmptyTitle>
           <EmptyDescription>
             Seleziona una voce di spesa dall'elenco per visualizzarne i dettagli
           </EmptyDescription>
@@ -112,160 +93,276 @@ const selectSottoconto = (sottoconto: Conto) => {
     </div>
 
     <div v-else class="space-y-6">
-      <!-- Header with actions -->
+
       <Card>
-        <CardHeader class="flex flex-row items-start justify-between space-y-0 pb-4">
+        <CardHeader class="flex flex-row items-start justify-between space-y-0 pb-2">
           <div class="space-y-1 flex-1 min-w-0">
-            <CardTitle class="text-lg truncate" :title="props.conto.nome">
-              {{ props.conto.nome }}
-            </CardTitle>
-            <div class="flex items-center gap-2 flex-wrap">
-              <Badge v-if="!isCapitolo(props.conto)" 
-                    :class="(props.conto.tipo) === 'spesa' 
-                        ? 'bg-red-500 text-white border-red-500 rounded' 
-                        : 'bg-green-600 text-white border-green-600 rounded'">
-                  {{ (props.conto.tipo) === 'spesa' ? 'Spesa' : 'Entrata' }}
+            <div class="flex items-center gap-2">
+               <Badge variant="outline" v-if="props.conto.codice" class="text-xs text-muted-foreground">
+                 {{ props.conto.codice }}
+               </Badge>
+               <CardTitle class="text-xl truncate" :title="props.conto.nome">
+                 {{ props.conto.nome }}
+               </CardTitle>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 pt-1">
+              <Badge v-if="!isCapitolo(props.conto)" variant="outline" 
+                class="gap-1.5 rounded-md px-2.5"
+                :class="props.conto.tipo === 'spesa' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'">
+                <ArrowDownCircle v-if="props.conto.tipo === 'spesa'" class="w-3.5 h-3.5" />
+                <ArrowUpCircle v-else class="w-3.5 h-3.5" />
+                {{ props.conto.tipo === 'spesa' ? 'Spesa' : 'Entrata' }}
               </Badge>
-              <Badge v-if="isCapitolo(props.conto)" variant="secondary" class="rounded">Capitolo di spesa</Badge>
+
+              <Badge v-if="isCapitolo(props.conto)" variant="secondary" class="gap-1.5 rounded-md px-2.5">
+                <Folder class="w-3.5 h-3.5" /> Capitolo
+              </Badge>
+
+              <Badge v-if="!isCapitolo(props.conto) && props.conto.stato_copertura" variant="outline" 
+                class="gap-1.5 rounded-md px-2.5"
+                :class="{
+                  'bg-emerald-50 text-emerald-700 border-emerald-200': props.conto.stato_copertura === 'full',
+                  'bg-blue-50 text-blue-700 border-blue-200': props.conto.stato_copertura === 'partial',
+                  'bg-red-50 text-red-700 border-red-200': props.conto.stato_copertura === 'over',
+                }">
+                <CheckCircle v-if="props.conto.stato_copertura === 'full'" class="w-3.5 h-3.5" />
+                <AlertCircle v-else-if="props.conto.stato_copertura === 'over'" class="w-3.5 h-3.5" />
+                <CircleDashed v-else class="w-3.5 h-3.5" />
+                Copertura {{ props.conto.percentuale_copertura }}%
+              </Badge>
             </div>
           </div>
-          <div class="flex gap-2 flex-shrink-0 ml-4">
+
+          <div class="flex gap-2 ml-4">
             <Button variant="outline" size="sm" @click="modificaConto">
-              <Edit class="w-4 h-4 mr-1" /> Modifica
+              <Edit class="w-4 h-4 mr-2" /> Modifica
             </Button>
-            <Button variant="outline" size="sm" @click="eliminaConto">
-              <Trash2 class="w-4 h-4 mr-1" /> Elimina
+            <Button variant="ghost" size="icon" class="text-destructive hover:text-destructive hover:bg-destructive/10" @click="eliminaConto">
+              <Trash2 class="w-4 h-4" />
             </Button>
           </div>
         </CardHeader>
       </Card>
 
-      <!-- Main information (non-chapters only) -->
-      <Card >
-        <CardHeader>
-          <CardTitle class="text-lg">Informazioni</CardTitle>
+      <Card>
+        <CardHeader class="pb-3">
+          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground">Informazioni</CardTitle>
         </CardHeader>
-        <CardContent class="space-y-4">
+        <CardContent class="grid gap-4">
           <div v-if="!isCapitolo(props.conto)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label class="text-sm font-medium text-muted-foreground">Importo</label>
-              <p class="text-lg font-semibold mt-1 flex items-center gap-1">
-                {{ props.conto.importo }}
-              </p>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground uppercase">Importo</label>
+              <p class="text-lg font-bold text-foreground">{{ props.conto.importo }}</p>
+            </div>
+            <div v-if="props.conto.fornitore_nome" class="space-y-1">
+              <label class="text-xs font-medium text-muted-foreground uppercase">Fornitore Suggerito</label>
+              <p class="text-sm font-medium">{{ props.conto.fornitore_nome }}</p>
             </div>
           </div>
-          <div>
-            <label class="text-sm font-medium text-muted-foreground">Descrizione</label>
-            <p class="mt-1 whitespace-pre-wrap text-sm">{{ props.conto.descrizione || 'Nessuna descrizione disponibile' }}</p>
+          
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-muted-foreground uppercase">Descrizione</label>
+            <p class="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+              {{ props.conto.descrizione || 'Nessuna descrizione disponibile' }}
+            </p>
           </div>
-          <div>
-            <label class="text-sm font-medium text-muted-foreground">Note</label>
-            <p class="mt-1 whitespace-pre-wrap text-sm">{{ props.conto.note || 'Nessuna nota disponibile' }}</p>
+          
+          <div class="space-y-1">
+            <label class="text-xs font-medium text-muted-foreground uppercase">Note</label>
+            <p class="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              {{ props.conto.note || 'Nessuna nota disponibile' }}
+            </p>
           </div>
         </CardContent>
       </Card>
 
-      <!-- Associated tables (non-chapters only) -->
+      <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw">
+        <CardHeader class="pb-3">
+          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <PieChart class="w-4 h-4" /> Analisi Copertura
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          
+          <div class="space-y-2 mb-4">
+            <div class="flex justify-between text-sm">
+              <span class="font-medium text-muted-foreground">Impegnato / Preventivato</span>
+              <span class="font-bold">
+                {{ euro(props.conto.impegnato || 0) }} 
+                <span class="text-muted-foreground font-normal">/ {{ props.conto.importo }}</span>
+              </span>
+            </div>
+            <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
+              <div 
+                class="h-full transition-all duration-500 rounded-full"
+                :class="statusColorClass"
+                :style="{ width: `${Math.min(props.conto.percentuale_copertura || 0, 100)}%` }"
+              ></div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3 mb-6 px-1">
+            <div class="flex items-center gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Parziale</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Coperto</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-purple-600"></div>
+              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Extra Budget (Spostamento)</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="w-2.5 h-2.5 rounded-full bg-red-600"></div>
+              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Eccedenza</span>
+            </div>
+          </div>
+
+          <div v-if="props.conto.dettaglio_copertura && props.conto.dettaglio_copertura.length > 0" class="rounded-md border">
+             <Table>
+              <TableHeader>
+                <TableRow class="hover:bg-transparent">
+                  <TableHead class="h-9">Piano Rate</TableHead>
+                  <TableHead class="h-9">Fonte</TableHead>
+                  <TableHead class="h-9 text-right">Quota</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="(item, idx) in props.conto.dettaglio_copertura" :key="idx">
+                  <TableCell class="font-medium py-3">
+                    {{ item.piano }}
+                    <p v-if="item.is_shifted" class="text-[10px] text-muted-foreground font-normal mt-0.5 max-w-[200px] truncate" :title="item.note || ''">
+                      {{ item.note }}
+                    </p>
+                  </TableCell>
+                  <TableCell class="py-3">
+                    <Badge v-if="item.is_shifted" variant="outline" class="bg-purple-50 text-purple-700 border-purple-200 rounded-md gap-1">
+                      <TrendingUp class="w-3 h-3" /> Spostamento
+                    </Badge>
+                    <Badge v-else-if="item.fonte === 'indiretta'" variant="outline" class="bg-amber-50 text-amber-700 border-amber-200 rounded-md gap-1">
+                      <CornerDownRight class="w-3 h-3" /> Da Capitolo
+                    </Badge>
+                    <Badge v-else-if="item.fonte === 'mista'" variant="outline" class="bg-blue-50 text-blue-700 border-blue-200 rounded-md gap-1">
+                      <GitMerge class="w-3 h-3" /> Mista
+                    </Badge>
+                    <Badge v-else variant="secondary" class="rounded-md gap-1 text-gray-700">
+                      <Target class="w-3 h-3" /> Diretta
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-right py-3">
+                    {{ euro(item.importo) }}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+          
+          <div v-else class="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
+            <Info class="w-4 h-4" />
+            Nessun piano rate sta finanziando questa spesa al momento.
+          </div>
+        </CardContent>
+      </Card>
       <Card v-if="!isCapitolo(props.conto)">
-        <CardHeader>
-          <CardTitle class="text-lg flex items-center justify-between">
-            <div class="flex items-center">
-              Tabelle millesimali associate
-              <Badge variant="default" class="ml-2 text-xs py-0 px-1.5">{{ getTabelleAssociate().length }}</Badge>
-            </div>
-            <Button variant="outline" size="sm" @click="aggiungiTabella">
-              <Plus class="w-4 h-4 mr-1" /> Aggiungi
-            </Button>
+        <CardHeader class="pb-3 flex flex-row items-center justify-between space-y-0">
+          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            Ripartizione
+            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">{{ getTabelleAssociate().length }}</Badge>
           </CardTitle>
+          <Button variant="outline" size="sm" class="h-7 text-xs" @click="aggiungiTabella">
+            <Plus class="w-3.5 h-3.5 mr-1" /> Aggiungi
+          </Button>
         </CardHeader>
         <CardContent>
-          <div v-if="getTabelleAssociate().length === 0" class="text-muted-foreground">  
-            <Empty class="border border-dashed">
-              <EmptyHeader class="max-w-lg">
-                <EmptyMedia variant="icon">
-                  <Link/>
-                </EmptyMedia>
-                <EmptyTitle>Nessuna tabella associata</EmptyTitle>
-                <EmptyDescription>
-                  Questo conto non ha tabelle millesimali associate
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+          <div v-if="getTabelleAssociate().length === 0" class="text-center py-6 text-muted-foreground border border-dashed rounded-md">
+            <Link class="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p class="text-sm">Nessuna tabella associata</p>
           </div>
 
-          <Table v-else>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead class="text-center">Coeff.</TableHead>
-                <TableHead class="text-center">Prop.</TableHead>
-                <TableHead class="text-center">Inq.</TableHead>
-                <TableHead class="text-center">Usuf.</TableHead>
-                <TableHead class="text-center">Azioni</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-for="tabella in getTabelleAssociate()" :key="tabella.id">
-                <TableCell class="font-medium">{{ tabella.nome }}</TableCell>
-                <TableCell class="text-center">
-                  <Badge variant="outline">{{ tabella.coefficiente }}%</Badge>
-                </TableCell>
-                <TableCell class="text-center">
-                  <Badge :variant="getPercentualeSoggetto(tabella.id, 'proprietario') > 0 ? 'default' : 'outline'">
-                    {{ getPercentualeSoggetto(tabella.id, 'proprietario') }}%
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-center">
-                  <Badge :variant="getPercentualeSoggetto(tabella.id, 'inquilino') > 0 ? 'default' : 'outline'">
-                    {{ getPercentualeSoggetto(tabella.id, 'inquilino') }}%
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-center">
-                  <Badge :variant="getPercentualeSoggetto(tabella.id, 'usufruttuario') > 0 ? 'default' : 'outline'">
-                    {{ getPercentualeSoggetto(tabella.id, 'usufruttuario') }}%
-                  </Badge>
-                </TableCell>
-                <TableCell class="text-center">
-                  <Button variant="ghost" size="sm" @click="rimuoviTabella(tabella)">
-                    <Trash2 class="w-4 h-4 text-red-500" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+          <div v-else class="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow class="hover:bg-transparent">
+                  <TableHead class="h-9">Nome</TableHead>
+                  <TableHead class="h-9 text-center">Coeff.</TableHead>
+                  <TableHead class="h-9 text-center">Prop.</TableHead>
+                  <TableHead class="h-9 text-center">Inq.</TableHead>
+                  <TableHead class="h-9 text-center">Usuf.</TableHead>
+                  <TableHead class="h-9 w-[50px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="tabella in getTabelleAssociate()" :key="tabella.id">
+                  <TableCell class="font-medium py-2">{{ tabella.nome }}</TableCell>
+                  <TableCell class="text-center py-2">
+                    <Badge variant="outline" class="rounded-md">{{ tabella.coefficiente }}%</Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-2">
+                    <Badge :variant="getPercentualeSoggetto(tabella.id, 'proprietario') > 0 ? 'default' : 'outline'" class="rounded-md w-12 justify-center">
+                      {{ getPercentualeSoggetto(tabella.id, 'proprietario') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-2">
+                    <Badge :variant="getPercentualeSoggetto(tabella.id, 'inquilino') > 0 ? 'default' : 'outline'" class="rounded-md w-12 justify-center">
+                      {{ getPercentualeSoggetto(tabella.id, 'inquilino') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-2">
+                    <Badge :variant="getPercentualeSoggetto(tabella.id, 'usufruttuario') > 0 ? 'default' : 'outline'" class="rounded-md w-12 justify-center">
+                      {{ getPercentualeSoggetto(tabella.id, 'usufruttuario') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-right py-2">
+                    <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive hover:bg-destructive/10" @click="rimuoviTabella(tabella)">
+                      <Trash2 class="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 
-      <!-- Sub-accounts -->
       <Card v-if="props.conto.sottoconti && props.conto.sottoconti.length > 0">
-        <CardHeader>
-          <CardTitle class="text-lg flex items-center">
-              Sottoconti
-              <Badge variant="default" class="ml-2 text-xs py-0 px-1.5">{{ props.conto.sottoconti.length }}</Badge>
+        <CardHeader class="pb-3">
+          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            Sottoconti
+            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">{{ props.conto.sottoconti.length }}</Badge>
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div class="space-y-2">
-            <div
-              v-for="sottoconto in props.conto.sottoconti"
-              :key="sottoconto.id"
-              @click="selectSottoconto(sottoconto)"
-            >
-                <Item variant="muted">
-                  <ItemContent>
-                    <ItemTitle>{{ sottoconto.nome }}</ItemTitle>
-                    <ItemDescription>
-                      {{ sottoconto.descrizione }}
-                    </ItemDescription>
-                  </ItemContent>
-                  <ItemActions :class="sottoconto.tipo === 'spesa' ? 'text-red-600' : 'text-green-600'">
-                    {{ sottoconto.importo }}
-                  </ItemActions>
-                </Item>
-            </div>
+        <CardContent class="grid gap-2">
+          <div
+            v-for="sottoconto in props.conto.sottoconti"
+            :key="sottoconto.id"
+            class="group cursor-pointer"
+            @click="selectSottoconto(sottoconto)"
+          >
+            <Item class="hover:bg-muted/50 transition-colors border rounded-md">
+              <ItemContent>
+                <ItemTitle class="text-sm font-semibold group-hover:text-primary transition-colors">
+                  {{ sottoconto.nome }}
+                </ItemTitle>
+                <ItemDescription v-if="sottoconto.descrizione" class="line-clamp-1 text-xs">
+                  {{ sottoconto.descrizione }}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <span :class="sottoconto.tipo === 'spesa' ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'">
+                  {{ sottoconto.importo }}
+                </span>
+              </ItemActions>
+            </Item>
           </div>
         </CardContent>
       </Card>
+
     </div>
   </div>
 </template>
+
+<style scoped>
+</style>

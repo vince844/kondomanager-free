@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Gestionale\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -22,45 +22,85 @@ class DashboardController extends Controller
 
         if ($esercizio) {
             $esercizio->load('gestioni');
-            $totPrev = 0; $totPian = 0; $vociScoperte = [];
+            $totPrev = 0; 
+            $totPian = 0; 
+            $vociScoperte = [];
 
             foreach ($esercizio->gestioni as $gestione) {
                 $report = $coverageService->analyze($gestione);
                 $totPrev += $report['totali']['budget'];
                 $totPian += $report['totali']['pianificato'];
 
+                $idsCoinvolti = array_column($report['items'], 'id');
+                
+                // Mappa sicura delle parentela da DB
+                $mappaGenitori = Conto::whereIn('id', $idsCoinvolti)
+                    ->whereNotNull('parent_id')
+                    ->pluck('parent_id', 'id')
+                    ->toArray();
+
+                // 1. RIEMPIMENTO PORTAFOGLI (SURPLUS)
+                $walletPadri = [];
+                foreach ($report['items'] as $item) {
+                    // Surplus = Soldi Pianificati - Costo Preventivato
+                    $surplus = $item['pianificato'] - $item['budget'];
+                    if ($surplus > 0) {
+                        $walletPadri[$item['id']] = $surplus;
+                    }
+                }
+
+                // 2. ANALISI DEFICIT E COPERTURA (PUSH-DOWN)
                 foreach ($report['items'] as $item) {
                     if (!($item['is_leaf'] ?? false)) continue;
 
-                    $mancanteVoce = $item['budget'] - $item['pianificato'];
+                    $deficit = $item['budget'] - $item['pianificato'];
                     
-                    if ($mancanteVoce > 100) {
-                        // LOGICA: Mostriamo nella modale se mancano soldi.
-                        // Grazie alla logica a cascata nel Service, il deficit apparirà 
-                        // solo sulle voci che non hanno ricevuto copertura.
-                        $vociScoperte[] = [
-                            'id'       => $item['id'],
-                            'nome'     => $item['nome'],
-                            'importo'  => $mancanteVoce, 
-                            'gestione' => $gestione->nome
-                        ];
+                    if ($deficit > 100) { 
+                        // Cerchiamo il padre
+                        $parentId = $mappaGenitori[$item['id']] ?? null;
+                        
+                        // Se il padre ha soldi nel portafoglio
+                        if ($parentId && isset($walletPadri[$parentId]) && $walletPadri[$parentId] > 0) {
+                            $disponibile = $walletPadri[$parentId];
+                            $coperto = min($deficit, $disponibile);
+                            
+                            $deficit -= $coperto;
+                            $walletPadri[$parentId] -= $coperto;
+                        }
+
+                        // Se è ancora scoperto, allora è un vero orfano
+                        if ($deficit > 100) {
+                            $vociScoperte[] = [
+                                'id'       => $item['id'],
+                                'nome'     => $item['nome'],
+                                'importo'  => $deficit, 
+                                'gestione' => $gestione->nome
+                            ];
+                        }
                     }
                 }
             }
 
             $delta = $totPrev - $totPian;
+            $isBilanciato = abs($delta) <= 500; 
+
             $copertura = [
-                'preventivo' => $totPrev, 'pianificato' => $totPian, 'delta' => $delta,
-                'scoperto' => ($delta > 0 ? $delta : 0),
-                'percentuale' => $totPrev > 0 ? round(($totPian / $totPrev) * 100) : 0,
-                'is_completo' => abs($delta) <= 100,
-                'orfani' => $vociScoperte, 'scoperto_count' => count($vociScoperte)
+                'preventivo'     => $totPrev, 
+                'pianificato'    => $totPian, 
+                'delta'          => $delta,
+                'scoperto'       => ($delta > 0 ? $delta : 0),
+                'percentuale'    => $totPrev > 0 ? round(($totPian / $totPrev) * 100) : 0,
+                'is_completo'    => $isBilanciato,
+                'orfani'         => $vociScoperte, 
+                'scoperto_count' => count($vociScoperte)
             ];
         }
 
         return Inertia::render('gestionale/dashboard/Dashboard', [
-            'condominio' => $condominio, 'condomini' => $this->getCondomini(),
-            'esercizio' => $esercizio, 'copertura' => $copertura
+            'condominio' => $condominio, 
+            'condomini' => $this->getCondomini(),
+            'esercizio' => $esercizio, 
+            'copertura' => $copertura
         ]);
     }
 }

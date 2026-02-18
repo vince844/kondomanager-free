@@ -40,10 +40,12 @@ class CreateContoRequest extends FormRequest
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
             'isSottoConto'           => 'required|boolean', 
-            // DEFAULT: nullable (perché se è capitolo non serve)
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
             'importo'                => 'required|string',
             'parent_id'              => 'nullable|exists:conti,id',
+            'codice'                 => ['nullable', 'string', 'max:20'],
+            'default_fornitore_id'   => ['nullable', 'exists:fornitori,id'],
+            'tipo_spesa'             => ['nullable', 'string', 'in:standard,professionista,lavori,utenza'],
         ];
 
         // Importo obbligatorio solo se non è un capitolo
@@ -66,15 +68,15 @@ class CreateContoRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'nome.required' => 'Il nome è obbligatorio',
-            'tipo.required' => 'Il tipo è obbligatorio',
-            'importo.required' => 'L\'importo è obbligatorio per le voci di spesa',
-            'parent_id.required' => 'Il conto padre è obbligatorio per i sottoconti',
-            'percentuale_proprietario.required' => 'La percentuale proprietario è obbligatoria',
-            'percentuale_inquilino.required' => 'La percentuale inquilino è obbligatoria',
-            'percentuale_usufruttuario.required' => 'La percentuale usufruttuario è obbligatoria',
-            'tabella_millesimale_id.exists' => 'La tabella millesimale selezionata non è valida',
-            'tabella_millesimale_id.required' => 'La tabella millesimale è obbligatoria per le voci di spesa.',
+            'nome.required'                         => 'Il nome è obbligatorio',
+            'tipo.required'                         => 'Il tipo è obbligatorio',
+            'importo.required'                      => 'L\'importo è obbligatorio per le voci di spesa',
+            'parent_id.required'                    => 'Il conto padre è obbligatorio per i sottoconti',
+            'percentuale_proprietario.required'     => 'La percentuale proprietario è obbligatoria',
+            'percentuale_inquilino.required'        => 'La percentuale inquilino è obbligatoria',
+            'percentuale_usufruttuario.required'    => 'La percentuale usufruttuario è obbligatoria',
+            'tabella_millesimale_id.exists'         => 'La tabella millesimale selezionata non è valida',
+            'tabella_millesimale_id.required'       => 'La tabella millesimale è obbligatoria per le voci di spesa.',
         ];
     }
 

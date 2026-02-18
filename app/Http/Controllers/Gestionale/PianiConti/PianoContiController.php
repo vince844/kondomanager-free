@@ -220,6 +220,13 @@ class PianoContiController extends Controller
         ->orderBy('nome')
         ->get();
 
+        // MODIFICA QUI:
+        // Prendiamo tutti i fornitori ATTIVI nel sistema, ordinati per nome.
+        // Usiamo lo scopeAttivi() che hai già nel modello Fornitore.
+        $fornitori = \App\Models\Fornitore::attivi() 
+            ->orderBy('ragione_sociale')
+            ->get(['id', 'ragione_sociale']);
+
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [
             'condominio'   => [
                 'id'   => $condominio->id,
@@ -231,6 +238,7 @@ class PianoContiController extends Controller
             ],
             'pianoConti' => new PianoDeiContiResource($pianoConto),
             'conti'      => ContoResource::collection($conti),
+            'fornitori'  => $fornitori, // <--- PASSA I FORNITORI QUI
         ]);
     }
 

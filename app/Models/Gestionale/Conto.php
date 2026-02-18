@@ -2,6 +2,7 @@
 
 namespace App\Models\Gestionale;
 
+use App\Models\Fornitore;
 use App\Models\Tabella;
 use Database\Factories\Gestionale\ContoFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -19,9 +20,12 @@ class Conto extends Model
     protected $fillable = [
         'piano_conto_id',
         'conto_contabile_id',
+        'default_fornitore_id',
         'parent_id',
         'nome',
         'descrizione',
+        'tipo',                 // 'spesa', 'incasso'
+        'tipo_spesa',           // NUOVO ('standard', 'professionista', etc.)
         'tipo',
         'importo',
         'destinazione_id',
@@ -141,5 +145,13 @@ class Conto extends Model
         }
 
         return false;
+    }
+
+    /**
+     * Relazione con il fornitore predefinito (Suggerito).
+     */
+    public function fornitore()
+    {
+        return $this->belongsTo(Fornitore::class, 'default_fornitore_id');
     }
 }

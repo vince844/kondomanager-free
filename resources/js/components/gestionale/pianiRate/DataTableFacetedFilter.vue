@@ -158,7 +158,7 @@ function clearFilters() {
               <span>{{ option.label }}</span>
               <span
                 v-if="facets?.get(option.value)"
-                class="ml-auto flex h-4 w-4 items-center justify-center font-mono text-xs"
+                class="ml-auto flex h-4 w-4 items-center justify-center text-xs"
               >
                 {{ facets.get(option.value) }}
               </span>

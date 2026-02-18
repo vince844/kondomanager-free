@@ -14,7 +14,6 @@ use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class ContoController extends Controller
 {
@@ -29,14 +28,17 @@ class ContoController extends Controller
             $isSottoConto = $data['isSottoConto'];
                 
             $nuovoConto = Conto::create([
-                'piano_conto_id' => $pianoConto->id,
-                'parent_id'      => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                'nome'           => $data['nome'],
-                'descrizione'    => $data['descrizione'] ?? null,
-                'tipo'           => $data['tipo'],
-                'importo'        => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']), 
-                'note'           => $data['note'] ?? null,
-                'attivo'         => true,
+                'piano_conto_id'        => $pianoConto->id,
+                'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'codice'                => $data['codice'] ?? null, // NUOVO
+                'nome'                  => $data['nome'],
+                'descrizione'           => $data['descrizione'] ?? null,
+                'tipo'                  => $data['tipo'],
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', // NUOVO
+                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']), 
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, // NUOVO
+                'note'                  => $data['note'] ?? null,
+                'attivo'                => true,
             ]);
 
             if (!$isCapitolo) {
@@ -100,12 +102,15 @@ class ContoController extends Controller
             }
 
             $conto->update([
-                'parent_id'   => $data['isSottoConto'] ? ($data['parent_id'] ?? null) : null,
-                'nome'        => $data['nome'],
-                'descrizione' => $data['descrizione'] ?? null,
-                'tipo'        => $data['tipo'],
-                'importo'     => $nuovoImporto, 
-                'note'        => $data['note'] ?? null,
+                'parent_id'             => $data['isSottoConto'] ? ($data['parent_id'] ?? null) : null,
+                'codice'                => $data['codice'] ?? null, // NUOVO
+                'nome'                  => $data['nome'],
+                'descrizione'           => $data['descrizione'] ?? null,
+                'tipo'                  => $data['tipo'],
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', // NUOVO
+                'importo'               => $nuovoImporto, 
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, // NUOVO
+                'note'                  => $data['note'] ?? null,
             ]);
 
             DB::commit();

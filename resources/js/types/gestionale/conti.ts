@@ -1,16 +1,42 @@
 // types/gestionale/conti.ts
 
+export interface DettaglioCopertura {
+  piano: string;
+  importo: number; // in centesimi
+  fonte: 'diretta' | 'indiretta' | 'mista';
+  is_shifted?: boolean; // Per identificare gli spostamenti
+  is_auto?: boolean;    // Per identificare i Jolly/NULL
+  is_bozza?: boolean;
+  note?: string | null;
+}
+
 export interface Conto {
   id: number
   piano_conto_id: number
   parent_id: number | null
+  codice?: string | null
   nome: string
   descrizione: string | null
   tipo: 'spesa' | 'entrata'
-  importo: string // 👈 ORA È STRINGA FORMATTATA ("€ 1.234,56")
+  importo: string // Stringa formattata ("1.234,56 €")
   note: string | null
-  sottoconti?: Conto[] // Relazione ricorsiva per i sottoconti
-  tabelle_millesimali?: ContoTabellaMillesimale[] // 👈 AGGIUNGI QUESTO
+  
+  // Smart Fields (Nuovi)
+  importo_raw?: number; // Importo in centesimi (necessario per calcoli JS)
+  default_fornitore_id?: number | null
+  fornitore_nome?: string | null
+  tipo_spesa?: 'standard' | 'professionista' | 'lavori' | 'utenza'
+
+  // Radar Copertura & Lucchetto
+  impegnato?: number
+  percentuale_copertura?: number
+  stato_copertura?: 'empty' | 'partial' | 'full' | 'over'
+  piani_collegati?: string[]
+  dettaglio_copertura?: DettaglioCopertura[] // Array per la tabella dettaglio
+  has_rate_emesse?: boolean
+
+  sottoconti?: Conto[]
+  tabelle_millesimali?: ContoTabellaMillesimale[]
 }
 
 export interface ContoTabellaMillesimale {
@@ -18,7 +44,7 @@ export interface ContoTabellaMillesimale {
   conto_id: number
   tabella_id: number
   coefficiente: number
-  tabella?: { // 👈 AGGIUNGI QUESTO PER I DATI DELLA TABELLA
+  tabella?: { 
     id: number
     nome: string
   }
@@ -45,7 +71,7 @@ export interface CreateContoData {
   nome: string
   descrizione?: string | null
   tipo: 'spesa' | 'entrata'
-  importo: string // 👈 Stringa formattata dal frontend ("1.234,56")
+  importo: string 
   parent_id?: number | null
   note?: string | null
 }
@@ -62,9 +88,13 @@ export type ContoSoggetto = 'proprietario' | 'inquilino' | 'usufruttuario'
 export const ContoHelpers = {
   // Verifica se un conto è un capitolo (importo 0 e ha sottoconti)
   isCapitolo(conto: Conto): boolean {
-    return (conto.importo === '€ 0,00' || conto.importo === '0,00') && 
-           !!conto.sottoconti && 
-           conto.sottoconti.length > 0
+    const importoZero = 
+      conto.importo === '€ 0,00' || 
+      conto.importo === '0,00' || 
+      conto.importo === '€0,00' ||
+      conto.importo.includes('0,00');
+      
+    return importoZero && !!conto.sottoconti && conto.sottoconti.length > 0
   },
 
   // Verifica se un conto ha sottoconti

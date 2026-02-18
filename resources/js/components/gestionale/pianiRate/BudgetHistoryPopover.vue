@@ -58,7 +58,7 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
         
         <div class="bg-slate-50 p-3 border-b border-slate-100 flex justify-between items-center">
             <span class="text-xs font-bold text-slate-700 uppercase tracking-wider">Storia Budget</span>
-            <Badge variant="outline" class="text-[10px] bg-white text-slate-500 font-mono">
+            <Badge variant="outline" class="text-[10px] bg-white text-slate-500">
                 Orig: {{ euro(originalAmount) }}
             </Badge>
         </div>
@@ -68,7 +68,7 @@ const hasHistory = computed(() => relevantMovements.value.length > 0);
                 
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5">
                     <span>{{ new Date(move.created_at).toLocaleDateString('it-IT') }}</span>
-                    <span class="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded text-slate-500">
+                    <span class="flex items-center gap-1 bg-slate-50 px-1.5 py-0.5 rounded text-slate-600">
                         <User class="w-2.5 h-2.5" /> {{ move.user?.name ?? 'Sistema' }}
                     </span>
                 </div>

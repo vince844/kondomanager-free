@@ -4,6 +4,37 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 
 ---
 
+## [1.9.4] - Visual Intelligence & Dashboard Audit
+
+Questa release completa il ciclo "Accounting Core" introducendo un livello di **Intelligenza Visiva** senza precedenti. Il sistema non si limita a calcolare i numeri, ma ora "spiega" all'amministratore la provenienza dei fondi tramite badge semantici, icone intuitive e colori contestuali. Inoltre, la Dashboard è stata calibrata per eliminare falsi positivi contabili.
+
+### 🎨 Visual Intelligence (Smart Radar)
+
+* **Semantic Fund Tracking:** Il dettaglio della voce di spesa (`ContoResource`) ora riconosce e classifica visivamente la fonte del budget:
+    * 🎯 **Diretta (Target):** Fondi assegnati specificamente alla voce.
+    * ↳ **Da Capitolo (Downstream):** Fondi ereditati dal capitolo padre tramite logica *Smart Push-Down*.
+    * 📈 **Spostamento (Trending Up):** Fondi provenienti da una riallocazione manuale (badge Viola).
+    * 🔀 **Mista (Merge):** Combinazione di più fonti.
+* **Gestione "Overbudget Sano":**
+    * Introdotta la distinzione tra **Eccedenza Critica** (Rosso) ed **Extra Budget Gestito** (Viola).
+    * Se una voce supera il preventivo a causa di uno spostamento volontario (es. "Rottura Cancello"), la barra diventa viola e non genera allarme, segnalando un'operazione contabile consapevole.
+* **Badge "Squircle" Moderni:** Refactoring completo della UI dei badge (`AlberoDeiConti` e `DettaglioConto`). Abbandonato lo stile "pillola" per un design squadrato (`rounded-md`) coerente con il design system Shadcn/Linear, arricchito da icone `Lucide` parlanti.
+
+### 🧠 Core Logic & Dashboard
+
+* **Smart Dashboard Reconciliation:**
+    * Risolto il "Paradosso del Bilancio": il Controller della dashboard ora applica una validazione gerarchica.
+    * Se il **Delta Globale** del bilancio è a pareggio (tolleranza < 5€), il sistema ignora i micro-deficit delle singole voci (spesso coperti dai fondi padre), sopprimendo la modale "Audit spese scoperte" e mostrando il widget verde "Bilancio Allineato".
+* **Logic "Equal Deficit Distribution":**
+    * Perfezionato l'algoritmo di *Push-Down* nella Resource. I fondi del padre vengono distribuiti equamente tra i figli che presentano un *deficit matematico* (Preventivo > Fissi), ignorando correttamente i flag "Jolly" (`NULL`) che avrebbero altrimenti escluso voci legittime dalla ripartizione.
+
+### 🛠️ Refactoring Tecnico
+
+* **Currency Composable:** Introdotto `useCurrencyFormatter.ts` per centralizzare la logica di formattazione monetaria (spazi non divisibili, gestione centesimi), eliminando codice duplicato nei componenti Vue.
+* **CSS Cleanup:** Rimossa interamente la sezione `<style>` legacy (300+ righe) dai componenti di dettaglio conto, migrando tutto a classi utility Tailwind native per una manutenibilità superiore.
+
+---
+
 ## [1.9.3] - Penny Perfect & Smart Push-Down
 
 Questa release rifinisce il motore "Accounting Intelligence Core" (v1.9) introducendo la precisione assoluta nei calcoli e una gestione intelligente dei capitoli raggruppati.
