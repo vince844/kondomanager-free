@@ -8,12 +8,12 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
-use App\Models\Saldo; // <--- Importante: Usiamo il modello Saldo
+use App\Models\Saldo; 
+use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 class SyncScadenziarioWithPianoRate implements ShouldQueue
 {
@@ -244,7 +244,8 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
             }
         }); 
 
-        if ($user) Cache::forget('inbox_count_' . $user->id);
+        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+        InboxService::clearAdminCache();
         
         Log::info("Listener: Eventi creati con successo.");
     }
@@ -253,6 +254,8 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
     {
         Log::info("Cancellazione eventi...");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();
-        if ($user) Cache::forget('inbox_count_' . $user->id);
+
+        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+        InboxService::clearAdminCache();
     }
 }

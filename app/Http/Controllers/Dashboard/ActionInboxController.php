@@ -4,18 +4,19 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\Evento;
-use App\Models\Anagrafica; 
+use App\Models\Anagrafica;
+use App\Services\Gestionale\InboxService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Cache;
 
 class ActionInboxController extends Controller
 {
     public function __invoke(Request $request): Response
     {
         $filter = $request->input('filter', 'all');
-        $counts = $this->getCounts();
+        // Usiamo il Service per i conteggi
+        $counts = InboxService::getCounts();
         $tasks = $this->getTasks($filter);
 
         return Inertia::render('dashboard/ActionInbox', [ 
@@ -23,30 +24,6 @@ class ActionInboxController extends Controller
             'counts'       => $counts,
             'activeFilter' => $filter,
         ]);
-    }
-
-    private function getCounts(): array
-    {
-        $deadline = now()->endOfDay()->toDateTimeString();
-        
-        $stats = Evento::query()
-            ->whereJsonContains('meta->requires_action', true)
-            ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
-            ->where('is_completed', false)
-            ->selectRaw("
-                COUNT(*) as all_tasks,
-                SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
-                SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type')) = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
-                SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type')) = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
-            ", [$deadline])
-            ->first();
-
-        return [
-            'all'         => (int) ($stats->all_tasks ?? 0),
-            'urgent'      => (int) ($stats->urgent ?? 0),
-            'payments'    => (int) ($stats->payments ?? 0),
-            'maintenance' => (int) ($stats->maintenance ?? 0),
-        ];
     }
 
     private function getTasks(string $filter)
@@ -157,9 +134,8 @@ class ActionInboxController extends Controller
             'completed_at' => now(),
         ]);
 
-        // 3. PURGE CACHE: Aggiorniamo subito il contatore della Inbox
-        // Usiamo l'ID dell'utente corrente (Admin) che ha appena completato l'azione
-        Cache::forget('inbox_count_' . $request->user()->id);
+        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+        InboxService::clearAdminCache();
 
         return back()->with('success', 'Segnalazione rifiutata e condòmino notificato.');
     }

@@ -12,13 +12,13 @@ use App\Models\Evento;
 use App\Models\Immobile;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ScritturaContabile;
-use App\Models\Gestionale\RataQuote; // <--- Importante
+use App\Models\Gestionale\RataQuote; 
+use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Cache;
 
 class IncassoRateController extends Controller
 {
@@ -159,7 +159,7 @@ class IncassoRateController extends Controller
                     'completed_at' => now(),
                 ]);
                 
-                Cache::forget('inbox_count_' . $request->user()->id);
+                InboxService::clearAdminCache();
             }
         }
 

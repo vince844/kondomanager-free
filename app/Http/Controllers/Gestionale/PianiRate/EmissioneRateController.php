@@ -15,12 +15,12 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\RataEmessa;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
+use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
 
 class EmissioneRateController extends Controller
 {
@@ -81,7 +81,6 @@ class EmissioneRateController extends Controller
                         'stato'              => 'registrata',
                     ]);
 
-                    // 🔥 INIZIO MODIFICA SPACEX 🔥
                     foreach ($rata->rateQuote as $quota) {
                         
                         // Default: usa l'importo standard (fallback per vecchie rate)
@@ -117,7 +116,6 @@ class EmissioneRateController extends Controller
                         // Sommiamo al totale scrittura l'importo EFFETTIVAMENTE registrato
                         $totaleRataCentesimi += $importoDaRegistrare;
                     }
-                    // 🔥 FINE MODIFICA SPACEX 🔥
 
                     if ($totaleRataCentesimi > 0) {
                         $scrittura->righe()->create([
@@ -147,7 +145,8 @@ class EmissioneRateController extends Controller
                 }
             });
 
-            Cache::forget('inbox_count_' . $request->user()->id);
+            // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+            InboxService::clearAdminCache();
 
             return back()->with($this->flashSuccess('Rate emesse correttamente.'));
 
@@ -256,7 +255,9 @@ class EmissioneRateController extends Controller
                 }
             });
 
-            Cache::forget('inbox_count_' . $request->user()->id);
+
+            // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
+            InboxService::clearAdminCache();
 
             return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza e il promemoria è stato ripristinato.'));
 

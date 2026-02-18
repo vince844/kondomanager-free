@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Eventi\Utenti;
 
+use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Evento;
 use App\Models\User; 
@@ -106,7 +107,7 @@ class PaymentReportingController extends Controller
             
             // Opzione A: Se usi Spatie Laravel-Permission (consigliato)
             // Recupera tutti gli utenti che hanno ruoli amministrativi
-            $admins = User::role(['amministratore', 'collaboratore'])->get();
+            $admins = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->get();
             
             foreach ($admins as $admin) {
                 // Rimuove la cache del conteggio per ogni amministratore trovato
