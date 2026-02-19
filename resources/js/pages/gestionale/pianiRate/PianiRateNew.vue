@@ -446,7 +446,11 @@ const submit = () => {
               <Label class="text-blue-600 font-semibold">Distribuzione saldo iniziale</Label>
               <v-select
                 class="mt-1 w-full v-select-custom"
-                :options="[{label: 'Sulla prima rata', value: 'prima_rata'}, {label: 'Su tutte le rate', value: 'tutte_rate'}]"
+                :options="[
+                  {label: 'Aggiungi alla prima rata', value: 'prima_rata'}, 
+                  {label: 'Spalma su tutte le rate', value: 'tutte_rate'},
+                  {label: 'Crea una rata separata (Consigliato)', value: 'rata_zero'}
+                ]"
                 v-model="form.metodo_distribuzione"
                 :reduce="opt => opt.value"
                 :clearable="false"

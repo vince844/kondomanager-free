@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
 use App\Models\Immobile;
+use Database\Factories\Gestionale\RataQuoteFactory;
 
 class RataQuote extends Model 
 {
@@ -139,6 +140,6 @@ class RataQuote extends Model
 
     protected static function newFactory()
     {
-        return \Database\Factories\Gestionale\RataQuoteFactory::new();
+        return RataQuoteFactory::new();
     }
 }

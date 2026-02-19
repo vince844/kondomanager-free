@@ -18,7 +18,7 @@ class CreatePianoRateRequest extends FormRequest
             'gestione_id'          => ['required', 'exists:gestioni,id'],
             'nome'                 => ['required', 'string', 'max:255'],
             'descrizione'          => ['nullable', 'string'],
-            'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate'],
+            'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate,rata_zero'],
             'numero_rate'          => ['required', 'integer'],
             'giorno_scadenza'      => ['nullable', 'integer'],
             'note'                 => ['nullable', 'string'],

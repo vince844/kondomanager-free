@@ -8,180 +8,182 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ContoResource extends JsonResource
 {
+    /**
+     * Mappa precalcolata dal BudgetCoverageService.
+     * Popolata dal PianoContiController::show() prima di chiamare la collection.
+     * Formato: [conto_id => importo_pianificato_centesimi]
+     */
+    public static array $coverageMap = [];
+
     public function toArray(Request $request): array
     {
         // ---------------------------------------------------------
-        // 1. CALCOLO FONDI DIRETTI (Standard + Spostamenti + Jolly)
+        // 1. IMPEGNATO — letto dalla mappa precalcolata dal Service
+        //
+        // Il BudgetCoverageService ha già gestito:
+        //   - Fondi diretti fissi
+        //   - NULL = "A Saldo" (copre l'intero preventivo residuo)
+        //   - Push-down dal padre distribuito equamente tra i figli con deficit
+        //   - Spostamenti in entrata (generano over oltre il preventivo)
         // ---------------------------------------------------------
-        $fondiDiretti = $this->pianiRate()
-            ->withPivot(['importo', 'note'])
-            ->get();
+        $impegnato = (int) (self::$coverageMap[$this->id] ?? 0);
 
-        $totaleDiretto    = 0;
-        $dettaglioPiani   = [];
-        $hasCoperturaNULL = false;
-        
-        // Calcolo i fondi "fissi" per determinare il valore dei Jolly
-        $totaleImpegnatoFisso = 0;
+        // ---------------------------------------------------------
+        // 2. DETTAGLIO VISIVO per la tabella nel pannello dettaglio
+        //
+        // Il Service non produce il formato riga-per-riga atteso dal
+        // frontend, quindi lo costruiamo qui — ma NON ricalcoliamo
+        // l'impegnato totale: usiamo solo quello della mappa.
+        // ---------------------------------------------------------
+        $fondiDiretti      = $this->pianiRate()->withPivot(['importo', 'note'])->get();
+        $dettaglioPiani    = [];
+        $hasCoperturaNULL  = false;
+        $totaleNonSpostati = 0;
+
+        // Passo 1: identifica NULL e somma fissi non-spostamento
         foreach ($fondiDiretti as $piano) {
-            $nota = strtolower($piano->pivot->note ?? '');
-            $isSpostamento = str_contains($nota, 'sposta spesa') || str_contains($nota, 'spostamento');
+            $nota          = $piano->pivot->note ?? '';
+            $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') ||
+                             str_contains(strtolower($nota), 'spostamento');
 
             if (is_null($piano->pivot->importo)) {
                 $hasCoperturaNULL = true;
             } elseif (!$isSpostamento) {
-                // Sommiamo solo se è un importo fisso "originale" (non derivante da spostamento)
-                $totaleImpegnatoFisso += (int) $piano->pivot->importo;
+                $totaleNonSpostati += (int) $piano->pivot->importo;
             }
         }
 
-        // Costruzione Dettaglio
+        // Passo 2: costruisci le righe visive
         foreach ($fondiDiretti as $piano) {
             $nota          = $piano->pivot->note ?? '';
-            $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') || 
+            $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') ||
                              str_contains(strtolower($nota), 'spostamento');
-            $valore        = 0;
 
             if (is_null($piano->pivot->importo)) {
-                // LOGICA JOLLY (NULL): Copre il preventivo meno i fissi.
-                // Se ho spostamenti (es. +100), questi si sommano sopra, creando l'OVER corretto.
-                $valore = max(0, $this->importo - $totaleImpegnatoFisso);
-                $isAuto = true;
+                // NULL = "A Saldo": mostra quanto copre visivamente
+                $valore = max(0, $this->importo - $totaleNonSpostati);
+
+                if ($valore > 0) {
+                    $dettaglioPiani[] = [
+                        'piano'      => $piano->nome,
+                        'importo'    => $valore,
+                        'fonte'      => 'diretta',
+                        'is_shifted' => false,
+                        'is_auto'    => true,   // badge "A Saldo"
+                        'note'       => $nota,
+                    ];
+                }
             } else {
                 $valore = (int) $piano->pivot->importo;
-                $isAuto = false;
-            }
 
-            if ($valore > 0) {
-                $totaleDiretto += $valore;
-                
-                $dettaglioPiani[] = [
-                    'piano'      => $piano->nome,
-                    'importo'    => $valore,
-                    'fonte'      => 'diretta',
-                    'is_shifted' => $isSpostamento,
-                    'is_auto'    => $isAuto,
-                    'note'       => $nota
-                ];
-            }
-        }
-
-        // ---------------------------------------------------------
-        // 2. SMART PUSH-DOWN (Divisione Equa Senza Discriminazione)
-        // ---------------------------------------------------------
-        
-        // Calcolo deficit residuo
-        $mioResiduo = max(0, $this->importo - $totaleDiretto);
-        $totaleIndiretto = 0;
-
-        // Procedo solo se non ho già un Jolly (NULL) che mi copre tutto
-        if (!$hasCoperturaNULL && $this->parent_id && $this->parent && $mioResiduo > 0) {
-
-            $fondiPadre = $this->parent->pianiRate()->withPivot('importo')->get();
-
-            foreach ($fondiPadre as $pianoPadre) {
-                
-                $valorePadreDisponibile = (int) ($pianoPadre->pivot->importo ?? 0);
-
-                if ($valorePadreDisponibile > 0) {
-
-                    // A. CONTEGGIO FRATELLI CON DEFICIT
-                    // Qui sta la correzione: Contiamo TUTTI i fratelli che hanno un preventivo > fondi fissi.
-                    // RIMOSSO il check "hasNull". Se ti mancano soldi fissi, hai diritto a una quota.
-                    
-                    $fratelli = $this->parent->sottoconti()->with('pianiRate')->get();
-                    $numeroFigliConDeficit = 0;
-
-                    foreach ($fratelli as $fratello) {
-                        $impegnatoFissoFratello = 0;
-                        foreach ($fratello->pianiRate as $pr) {
-                            $impegnatoFissoFratello += (int) ($pr->pivot->importo ?? 0);
-                        }
-                        
-                        // CORREZIONE APPLICATA: Nessun check su NULL. Solo matematica.
-                        if ($fratello->importo > $impegnatoFissoFratello) {
-                            $numeroFigliConDeficit++;
-                        }
-                    }
-
-                    // B. CALCOLO QUOTA EQUA
-                    // Esempio: 200€ diviso 2 figli = 100€ a testa
-                    $quotaEqua = ($numeroFigliConDeficit > 0)
-                        ? (int) floor($valorePadreDisponibile / $numeroFigliConDeficit)
-                        : 0;
-
-                    // C. PRELIEVO
-                    // Prendo il minimo tra (Quello che mi serve) e (La mia fetta equa)
-                    $quotaMia = min($mioResiduo, $quotaEqua);
-
-                    if ($quotaMia > 0) {
-                        $totaleIndiretto += $quotaMia;
-                        $mioResiduo -= $quotaMia;
-
-                        // Unisco al dettaglio se il piano esiste già (casi rari) o aggiungo nuova riga
-                        $key = array_search($pianoPadre->nome, array_column($dettaglioPiani, 'piano'));
-                        if ($key !== false) {
-                            $dettaglioPiani[$key]['importo'] += $quotaMia;
-                            $dettaglioPiani[$key]['fonte'] = 'mista'; 
-                        } else {
-                            $dettaglioPiani[] = [
-                                'piano'   => $pianoPadre->nome,
-                                'importo' => $quotaMia,
-                                'fonte'   => 'indiretta'
-                            ];
-                        }
-                    }
+                if ($valore > 0) {
+                    $dettaglioPiani[] = [
+                        'piano'      => $piano->nome,
+                        'importo'    => $valore,
+                        'fonte'      => 'diretta',
+                        'is_shifted' => $isSpostamento,
+                        'is_auto'    => false,
+                        'note'       => $nota,
+                    ];
                 }
             }
         }
 
-        $impegnato = $totaleDiretto + $totaleIndiretto;
+        // Passo 3: aggiunge riga push-down visiva se necessario
+        // La quota push-down = impegnato (dal Service) - totale righe dirette visive
+        $totaleDirettoVisivo  = array_sum(array_column($dettaglioPiani, 'importo'));
+        $quotaIndirettaVisiva = $impegnato - $totaleDirettoVisivo;
+
+        if (!$hasCoperturaNULL && $quotaIndirettaVisiva > 0 && $this->parent_id && $this->parent) {
+            $fondiPadre = $this->parent->pianiRate()->withPivot('importo')->get();
+
+            foreach ($fondiPadre as $pianoPadre) {
+                if (!is_null($pianoPadre->pivot->importo) && (int) $pianoPadre->pivot->importo > 0) {
+                    $dettaglioPiani[] = [
+                        'piano'      => $pianoPadre->nome,
+                        'importo'    => $quotaIndirettaVisiva,
+                        'fonte'      => 'indiretta',
+                        'is_shifted' => false,
+                        'is_auto'    => false,
+                        'note'       => '',
+                    ];
+                    break;
+                }
+            }
+        }
 
         // ---------------------------------------------------------
         // 3. STATO COPERTURA
         // ---------------------------------------------------------
         $percentualeCopertura = 0;
-        $statoCopertura = 'empty';
+        $statoCopertura       = 'empty';
 
         if ($this->importo > 0) {
             $percentualeCopertura = round(($impegnato / $this->importo) * 100, 1);
-            if ($impegnato == 0) $statoCopertura = 'empty';
-            elseif ($impegnato < $this->importo) $statoCopertura = 'partial';
-            elseif ($impegnato == $this->importo) $statoCopertura = 'full';
-            else {
-                 $diff = abs($impegnato - $this->importo);
-                 $statoCopertura = ($diff <= 100) ? 'full' : 'over';
+
+            if ($impegnato === 0) {
+                $statoCopertura = 'empty';
+            } elseif ($impegnato < $this->importo) {
+                $statoCopertura = 'partial';
+            } elseif ($impegnato === $this->importo) {
+                $statoCopertura = 'full';
+            } else {
+                $diff           = abs($impegnato - $this->importo);
+                $statoCopertura = ($diff <= 100) ? 'full' : 'over';
             }
         }
 
+        // ---------------------------------------------------------
+        // 4. RETURN
+        // ---------------------------------------------------------
         return [
-            'id' => $this->id,
+            'id'             => $this->id,
             'piano_conto_id' => $this->piano_conto_id,
-            'parent_id' => $this->parent_id,
-            'importo' => MoneyHelper::format($this->importo),
-            'importo_raw' => $this->importo,
-            'nome' => $this->nome,
-            'descrizione' => $this->descrizione,
-            'tipo' => $this->tipo,
-            'note' => $this->note,
-            'codice' => $this->codice,
+            'parent_id'      => $this->parent_id,
+            'importo'        => MoneyHelper::format($this->importo),
+            'importo_raw'    => $this->importo,
+            'nome'           => $this->nome,
+            'descrizione'    => $this->descrizione,
+            'tipo'           => $this->tipo,
+            'note'           => $this->note,
+            'codice'         => $this->codice,
+
             'default_fornitore_id' => $this->default_fornitore_id,
-            'fornitore_nome' => $this->fornitore ? $this->fornitore->ragione_sociale : null,
-            'tipo_spesa' => $this->tipo_spesa,
-            'impegnato' => $impegnato,
+            'fornitore_nome'       => $this->fornitore ? $this->fornitore->ragione_sociale : null,
+            'tipo_spesa'           => $this->tipo_spesa,
+
+            'impegnato'             => $impegnato,
             'percentuale_copertura' => $percentualeCopertura,
-            'stato_copertura' => $statoCopertura,
-            'piani_collegati' => $this->pianiRate->pluck('nome'),
-            'dettaglio_copertura' => $dettaglioPiani,
+            'stato_copertura'       => $statoCopertura,
+            'piani_collegati'       => $this->pianiRate->pluck('nome'),
+            'dettaglio_copertura'   => $dettaglioPiani,
+
             'has_rate_emesse' => $this->has_rate_emesse,
-            'sottoconti' => $this->whenLoaded('sottoconti', fn() => ContoResource::collection($this->sottoconti)),
-            'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', fn() => $this->tabelleMillesimali->map(fn($t) => [
-                'id' => $t->id,
-                'tabella_id' => $t->tabella_id,
-                'coefficiente' => (float) $t->coefficiente,
-                'tabella' => $t->tabella ? ['id' => $t->tabella->id, 'nome' => $t->tabella->nome] : null,
-                'ripartizioni' => $t->ripartizioni->map(fn($r) => ['id' => $r->id, 'soggetto' => $r->soggetto, 'percentuale' => (float) $r->percentuale]),
-            ])),
+
+            'sottoconti' => $this->whenLoaded('sottoconti', function () {
+                return ContoResource::collection($this->sottoconti);
+            }),
+
+            'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
+                return $this->tabelleMillesimali->map(function ($tm) {
+                    return [
+                        'id'           => $tm->id,
+                        'tabella_id'   => $tm->tabella_id,
+                        'coefficiente' => (float) $tm->coefficiente,
+                        'tabella'      => $tm->tabella ? [
+                            'id'   => $tm->tabella->id,
+                            'nome' => $tm->tabella->nome,
+                        ] : null,
+                        'ripartizioni' => $tm->ripartizioni->map(function ($r) {
+                            return [
+                                'id'          => $r->id,
+                                'soggetto'    => $r->soggetto,
+                                'percentuale' => (float) $r->percentuale,
+                            ];
+                        }),
+                    ];
+                });
+            }),
         ];
-    }   
+    }
 }

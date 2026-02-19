@@ -104,71 +104,71 @@ class PianoRateController extends Controller
 
             // 2. Analisi Saldi
             $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($condominio, $esercizio, null);
-            
             $haMovimenti = $saldoInfo['has_movimenti'] ?? false;
             
-            // Fallback per saldi manuali se non ci sono movimenti automatici
             if (!$haMovimenti && $saldoInfo['saldo'] == 0) {
                 $esisteManuale = DB::table('saldi')
                     ->where('condominio_id', $condominio->id)
                     ->where('esercizio_id', $esercizio->id)
                     ->where('saldo_iniziale', '!=', 0)
                     ->exists();
-                
-                if ($esisteManuale) {
-                    $haMovimenti = true;
-                }
+                if ($esisteManuale) $haMovimenti = true;
             }
-
-            Log::info("PianoRate Store Debug:", [
-                'gestione_id' => $gestione->id,
-                'applicabile' => $saldoInfo['applicabile'],
-                'has_movimenti' => $haMovimenti
-            ]);
 
             $applicareSaldi = ($saldoInfo['applicabile'] && $haMovimenti);
 
             // 3. Creazione Core del Piano
             $pianoRate = $this->pianoRateCreatorService->creaPianoRate($validated, $condominio);
 
+            // --- HELPER: Calcola il vero totale sommando i sottoconti ---
+            $calcolaVeroTotale = function ($conto) use (&$calcolaVeroTotale) {
+                if ($conto->relationLoaded('sottoconti') && $conto->sottoconti->isNotEmpty()) {
+                    return $conto->sottoconti->sum(fn($sub) => $calcolaVeroTotale($sub));
+                }
+                return $conto->importo ?? 0;
+            };
+
             // 4. Gestione Capitoli e Sync
             $capitoliConfig = $validated['capitoli_config'] ?? [];
             $syncData = [];
 
             if (!empty($capitoliConfig)) {
+                // CASO A: Wizard manuale
                 foreach ($capitoliConfig as $conf) {
                     $importoCents = (isset($conf['importo']) && $conf['importo'] !== '') 
                         ? MoneyHelper::toCents($conf['importo']) 
                         : null;
                     
-                    $syncData[$conf['id']] = [
-                        'importo' => $importoCents, 
-                        'note' => $conf['note'] ?? null
-                    ];
+                    $syncData[$conf['id']] = ['importo' => $importoCents, 'note' => $conf['note'] ?? null];
                 }
             } elseif (!empty($validated['capitoli_ids'])) {
-                $conti = Conto::findMany($validated['capitoli_ids']);
+                // CASO B: Selezione rapida
+                // FIX: Aggiungiamo 'with' per caricare i sottoconti e calcolare il totale
+                $conti = Conto::with('sottoconti')->findMany($validated['capitoli_ids']);
                 foreach ($conti as $c) {
                     $syncData[$c->id] = [
-                        'importo' => $c->importo, 
+                        'importo' => $calcolaVeroTotale($c), // <--- Mettiamo il totale reale!
                         'note' => 'Selezione rapida (Intero)'
                     ];
                 }
             } else {
-                $capitoliIds = $gestione->pianoConto->conti()
+                // CASO C: Inclusione automatica di tutto il bilancio
+                $capitoliOrfani = $gestione->pianoConto->conti()
                     ->whereNull('parent_id')
                     ->whereDoesntHave('pianiRate', fn($q) => $q->where('attivo', true))
+                    ->with('sottoconti') // <--- IMPORTANTE: per calcolare la somma
                     ->get();
                 
-                foreach ($capitoliIds as $c) {
+                foreach ($capitoliOrfani as $c) {
                     $syncData[$c->id] = [
-                        'importo' => $c->importo, 
-                        'note' => 'Inclusione automatica'
+                        'importo' => $calcolaVeroTotale($c), // <--- Mettiamo il totale reale!
+                        'note' => 'Inclusione automatica (Tutto il bilancio)'
                     ];
                 }
             }
             
             $pianoRate->capitoli()->sync($syncData);
+            $pianoRate->load('capitoli');
 
             // 5. Ricorrenza
             if (!empty($validated['recurrence_enabled'])) {
@@ -177,7 +177,6 @@ class PianoRateController extends Controller
 
             // 6. Applicazione Saldi
             if ($applicareSaldi) {
-                Log::info("PianoRateController: Applicazione saldi in corso per gestione {$gestione->id}");
                 $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
                 $gestione->refresh();
                 $pianoRate->setRelation('gestione', $gestione);
@@ -190,19 +189,15 @@ class PianoRateController extends Controller
             }
 
             DB::commit();
-            
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error("Errore store piano rate", [
-                'msg' => $e->getMessage(), 
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return back()->withInput()->with($this->flashError($e->getMessage()));
         }
     }
-
+    
     public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
     {
         $pianoRate->load([

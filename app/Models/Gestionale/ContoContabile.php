@@ -4,7 +4,7 @@ namespace App\Models\Gestionale;
 
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto; 
-use App\Models\Gestionale\RigaScrittura; // <--- IMPORTANTE: Importa questo modello
+use App\Models\Gestionale\RigaScrittura; 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -80,7 +80,7 @@ class ContoContabile extends Model
     }
 
     /**
-     * 🔥 RELAZIONE MANCANTE AGGIUNTA
+     * RELAZIONE MANCANTE AGGIUNTA
      * Collega il conto contabile alle righe delle scritture (Movimenti).
      * Questo risolve l'errore nell'UpdateCassaAction.
      */
