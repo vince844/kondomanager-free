@@ -24,13 +24,12 @@ class GenerateRateQuotesAction
         
         $now = now(); 
         
-        // Copia locale dei saldi per gestirli (consumarli) man mano che li applichiamo
-        $saldiResidui = $saldi;
+        $saldiInizialiFissi = $saldi;
+        $saldiDaConsumare = $saldi;
 
         foreach ($dateRate as $index => $dataScadenza) {
             $numeroRata = $index + 1;
 
-            // 1. Creazione Rata
             $rata = Rata::create([
                 'piano_rate_id'  => $pianoRate->id,
                 'numero_rata'    => $numeroRata,
@@ -46,44 +45,109 @@ class GenerateRateQuotesAction
 
             // 2. Calcolo Quote
             foreach ($totaliPerImmobile as $aid => $immobili) {
-                foreach ($immobili as $iid => $totaleImmobile) {
+                
+                $saldoDisponibilePerQuestaRata = 0;
+
+                if (isset($saldiInizialiFissi[$aid]) && $saldiInizialiFissi[$aid] !== 0) {
+                    if ($pianoRate->metodo_distribuzione === 'prima_rata') {
+                        if ($numeroRata === 1) {
+                            $saldoDisponibilePerQuestaRata = $saldiDaConsumare[$aid] ?? 0;
+                        }
+                    } elseif ($pianoRate->metodo_distribuzione === 'tutte_rate') {
+                        $segnoFettina = $saldiInizialiFissi[$aid] < 0 ? -1 : 1;
+                        $absSaldoFisso = abs($saldiInizialiFissi[$aid]);
+                        $baseSaldo = intdiv($absSaldoFisso, $numeroRate);
+                        $restoSaldo = $absSaldoFisso % $numeroRate;
+                        $fettina = $baseSaldo + ($numeroRata <= $restoSaldo ? 1 : 0);
+                        $saldoDisponibilePerQuestaRata = $fettina * $segnoFettina;
+                    }
+                }
+
+                // === LA TUA SOLUZIONE CON LE COLLECTION ===
+                // Trasformiamo in Collection, ordiniamo in modo decrescente (dal costo più alto al più basso) 
+                // e manteniamo le chiavi (immobile_id) intatte.
+                $immobiliOrdinati = collect($immobili)->sortDesc()->toArray();
+                
+                $keys = array_keys($immobiliOrdinati);
+                $lastIid = end($keys); // Prendiamo l'ultimo ID in modo sicuro
+
+                foreach ($immobiliOrdinati as $iid => $totaleImmobile) {
                     if ($totaleImmobile == 0) continue;
 
-                    // FIX CRITICO: Accesso corretto all'array dei saldi
-                    // GenerateSaldiAction restituisce [anagrafica_id => totale]
-                    // NON [anagrafica_id][immobile_id]
-                    
-                    $saldoDaApplicare = 0;
-                    
-                    // Applichiamo il saldo solo se esiste per questa anagrafica
-                    if (isset($saldiResidui[$aid])) {
-                        // Per evitare di applicare lo stesso saldo più volte (se ha più immobili),
-                        // lo applichiamo tutto sul primo immobile che processiamo per questa anagrafica e poi lo azzeriamo.
-                        // (Logica semplificata V1.9, si può raffinare per spalmarlo sugli immobili)
-                        $saldoDaApplicare = $saldiResidui[$aid];
-                        $saldiResidui[$aid] = 0; // Consumato
+                    // 1. Calcolo Quota Pura
+                    $segno = $totaleImmobile < 0 ? -1 : 1;
+                    $absTot = abs($totaleImmobile);
+                    $base = intdiv($absTot, $numeroRate);
+                    $resto = $absTot % $numeroRate;
+                    $quotaPuraRata = $base + ($numeroRata <= $resto ? 1 : 0);
+                    $quotaPuraRata *= $segno;
+
+                    $saldoApplicatoQui = 0;
+
+                    // 2. Waterfall Intelligente Limitato
+                    if ($saldoDisponibilePerQuestaRata !== 0) {
+                        if ($saldoDisponibilePerQuestaRata < 0) {
+                            $creditoAssoluto = abs($saldoDisponibilePerQuestaRata);
+                            $costoAssoluto = abs($quotaPuraRata);
+
+                            // Controllo rigoroso usando il cast a stringa per evitare falsi positivi del PHP
+                            if ((string)$iid === (string)$lastIid) {
+                                $saldoApplicatoQui = $saldoDisponibilePerQuestaRata;
+                            } else {
+                                if ($creditoAssoluto >= $costoAssoluto) {
+                                    $saldoApplicatoQui = -$costoAssoluto;
+                                } else {
+                                    $saldoApplicatoQui = -$creditoAssoluto;
+                                }
+                            }
+                        } else {
+                            $saldoApplicatoQui = $saldoDisponibilePerQuestaRata;
+                        }
+
+                        $saldoDisponibilePerQuestaRata -= $saldoApplicatoQui;
+
+                        if ($pianoRate->metodo_distribuzione === 'prima_rata') {
+                            $saldiDaConsumare[$aid] -= $saldoApplicatoQui;
+                        }
                     }
 
-                    // Calcolo Avanzato
-                    $risultatoCalcolo = $this->calcolaImportoRataAvanzato(
-                        $totaleImmobile, 
-                        $numeroRate,
-                        $numeroRata,
-                        $pianoRate->metodo_distribuzione,
-                        $saldoDaApplicare // Passiamo il valore corretto
-                    );
+                    // 3. Modifica dell'importo e costruzione Snapshot
+                    $importoFinale = $quotaPuraRata + $saldoApplicatoQui;
 
-                    $amount = $risultatoCalcolo['importo_finale'];
-                    $snapshot = $risultatoCalcolo['snapshot'];
+                    if ($importoFinale <= 0) {
+                        $statoQuota = 'credito';
+                    } elseif ($saldoApplicatoQui < 0) {
+                        // C'era credito ma non sufficiente a coprire tutto
+                        $statoQuota = 'parzialmente_pagata';
+                    } else {
+                        $statoQuota = 'da_pagare';
+                    }
 
-                    $statoQuota = $amount < 0 ? 'credito' : 'da_pagare';
+                    $snapshot = [
+                        'origine' => OrigineQuota::CALCOLO_AUTOMATICO->value,
+                        'importi' => [
+                            'quota_pura_gestione' => $quotaPuraRata,
+                            'saldo_usato'         => $saldoApplicatoQui, 
+                            'totale_calcolato'    => $importoFinale
+                        ],
+                        'parametri' => [
+                            'metodo_distribuzione'  => $pianoRate->metodo_distribuzione,
+                            'numero_rata'           => $numeroRata,
+                            'totale_rate_piano'     => $numeroRate
+                        ],
+                        'audit' => [
+                            'versione_calcolo'  => config('app.version', '1.9.0'), 
+                            'generato_il'       => now()->toIso8601String(),
+                            'generato_da'       => Auth::check() ? 'user_'.Auth::id() : 'sistema',
+                        ]
+                    ];
 
                     $quotesToInsert[] = [
                         'rata_id'        => $rata->id,
                         'anagrafica_id'  => $aid,
                         'immobile_id'    => $iid,
-                        'importo'        => $amount,
-                        'importo_pagato' => 0,
+                        'importo'        => $importoFinale,
+                        'importo_pagato' => 0, 
                         'stato'          => $statoQuota,
                         'regole_calcolo' => json_encode($snapshot),
                         'data_scadenza'  => $dataScadenza instanceof Carbon ? $dataScadenza->format('Y-m-d') : $dataScadenza,
@@ -91,16 +155,11 @@ class GenerateRateQuotesAction
                         'updated_at'     => $now, 
                     ];
 
-                    $importoTotaleRata += $amount;
+                    $importoTotaleRata += $importoFinale;
                     $quoteCreate++;
                 }
             }
 
-            // Se ci sono saldi "orfani" (cioè debiti pregressi di persone che NON hanno spese quest'anno),
-            // dovremmo idealmente creare rate solo per il saldo. 
-            // Per ora in V1.9 saltiamo questo caso edge (richiederebbe loop separato sui saldiResidui).
-
-            // 3. Inserimento Massivo
             if (!empty($quotesToInsert)) {
                 foreach (array_chunk($quotesToInsert, 500) as $chunk) {
                     RataQuote::insert($chunk);
@@ -110,83 +169,12 @@ class GenerateRateQuotesAction
             $rata->update(['importo_totale' => $importoTotaleRata]);
             $importoTotaleGenerato += $importoTotaleRata;
             $rateCreate++;
-            
-            // Reset saldi residui per le prossime rate? 
-            // NO. I saldi si applicano una volta sola (Gestiti da 'metodo_distribuzione' dentro calcolaImportoRataAvanzato)
-            // MA attenzione: la logica 'tutte_rate' in calcolaImportoRataAvanzato presume di ricevere il saldo TOTALE ad ogni chiamata
-            // e calcola la quota parte.
-            // QUINDI: Dobbiamo ripristinare $saldiResidui per la prossima rata del ciclo principale
-            $saldiResidui = $saldi; 
         }
 
         return [
             'rate_create' => $rateCreate,
             'quote_create' => $quoteCreate,
             'importo_totale_rate' => $importoTotaleGenerato,
-        ];
-    }
-
-    protected function calcolaImportoRataAvanzato(
-        int $totaleImmobile,
-        int $numeroRate,
-        int $numeroRata,
-        string $metodoDistribuzione,
-        int $saldo
-    ): array {
-        // --- 1. Calcolo Quota Pura ---
-        $segno = $totaleImmobile < 0 ? -1 : 1;
-        $absTot = abs($totaleImmobile);
-        $base = intdiv($absTot, $numeroRate);
-        $resto = $absTot % $numeroRate;
-        
-        $quotaPuraRata = $base + ($numeroRata <= $resto ? 1 : 0);
-        $quotaPuraRata *= $segno;
-
-        // --- 2. Calcolo Componente Saldo ---
-        $quotaSaldoApplicata = 0;
-        if ($saldo !== 0) {
-            if ($metodoDistribuzione === 'prima_rata') {
-                // Il saldo va tutto sulla prima rata
-                if ($numeroRata === 1) {
-                    $quotaSaldoApplicata = $saldo;
-                }
-            } elseif ($metodoDistribuzione === 'tutte_rate') {
-                // Il saldo viene spalmato
-                $segnoSaldo = $saldo < 0 ? -1 : 1;
-                $absSaldo   = abs($saldo);
-                $baseSaldo = intdiv($absSaldo, $numeroRate);
-                $restoSaldo = $absSaldo % $numeroRate;
-
-                $quotaSaldoApplicata = $baseSaldo + ($numeroRata <= $restoSaldo ? 1 : 0);
-                $quotaSaldoApplicata *= $segnoSaldo;
-            }
-        }
-
-        $importoFinale = $quotaPuraRata + $quotaSaldoApplicata;
-
-        // --- 3. Costruzione Snapshot ---
-        $snapshot = [
-            'origine' => OrigineQuota::CALCOLO_AUTOMATICO->value,
-            'importi' => [
-                'quota_pura_gestione' => $quotaPuraRata,
-                'saldo_usato'         => $quotaSaldoApplicata,
-                'totale_calcolato'    => $importoFinale
-            ],
-            'parametri' => [
-                'metodo_distribuzione'  => $metodoDistribuzione,
-                'numero_rata'           => $numeroRata,
-                'totale_rate_piano'     => $numeroRate
-            ],
-            'audit' => [
-                'versione_calcolo'  => config('app.version', '1.9.0'), 
-                'generato_il'       => now()->toIso8601String(),
-                'generato_da'       => Auth::check() ? 'user_'.Auth::id() : 'sistema',
-            ]
-        ];
-
-        return [
-            'importo_finale' => $importoFinale,
-            'snapshot'       => $snapshot
         ];
     }
 }

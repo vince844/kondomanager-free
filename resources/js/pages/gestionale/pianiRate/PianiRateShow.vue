@@ -64,11 +64,26 @@ const isCapitoliExpanded = ref(false);
 const isReloadingCapitoli = ref(false);
 const isSpostaSpesaOpen = ref(false); // Stato modale sposta spesa
 
-// La logica diventa semplicissima: Intero vs Intero
 const isDisallineato = computed(() => {
-    // Tolleranza zero (o minima di 1 centesimo se proprio vogliamo essere permissivi)
-    // Ma matematicamente dovrebbero essere identici.
-    return Math.abs(props.pianoRate.totale_capitoli - aggregates.value.totaleTeorico) > 1; 
+    if (!props.pianoRate.capitoli || !aggregates.value) return false;
+
+    // 1. Come hai suggerito: sommiamo dinamicamente gli importi reali delle righe visibili
+    const totaleVoci = props.pianoRate.capitoli.reduce((acc, cap) => acc + (cap.importo || 0), 0);
+
+    // Se non ci sono rate generate (es. piano appena svuotato), non mostriamo l'allarme
+    if (aggregates.value.totaleTeorico === 0) return false;
+
+    // 2. IL TRUCCO: Calcoliamo la somma dei Saldi Iniziali (debiti pregressi) inclusi nelle rate.
+    // Usiamo sempre quotePerAnagrafica per avere il dato completo.
+    const saldiPregressi = (props.quotePerAnagrafica || []).reduce((sum, item) => {
+        return sum + (item.saldo_iniziale || 0);
+    }, 0);
+
+    // 3. Il VERO totale delle rate di quest'anno (depurato dai saldi vecchi)
+    const totaleRatePuro = aggregates.value.totaleTeorico - saldiPregressi;
+
+    // 4. Confronto con tolleranza di 2 euro (200 centesimi) per compensare i normali arrotondamenti
+    return Math.abs(totaleVoci - totaleRatePuro) > 200;
 });
 
 const confirmDetachItem = (capitolo: any) => {
@@ -700,7 +715,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                 <Badge 
                                     v-if="isDisallineato" 
                                     variant="destructive" 
-                                    class="text-[10px] py-0 px-1.5 animate-pulse"
+                                    class="text-[10px] py-0 px-1.5"
                                 >
                                     <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
                                 </Badge>
@@ -813,14 +828,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                   <table class="w-full text-sm border-collapse bg-white whitespace-nowrap min-w-[1000px]">
                     <thead class="sticky top-0 bg-white z-20 shadow-sm">
                       <tr class="border-b bg-gray-50/80 text-gray-500">
-                        <th class="text-left px-6 py-3 sticky left-0 bg-gray-50 z-30 min-w-[250px] font-semibold uppercase text-xs tracking-wider shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                        <th class="text-left px-6 py-3 sticky left-0 bg-gray-50 z-50 min-w-[250px] font-semibold uppercase text-xs tracking-wider shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                           {{ tab === "anagrafica" ? "Anagrafica" : "Immobile" }}
                         </th>
                         
                         <th v-for="col in rateColumns" :key="col.numero" class="text-center px-4 py-3 min-w-[100px] relative group/header">
                           <div class="flex items-center justify-center gap-2">
                               
-                              <div v-if="switchState && !col.is_emessa && col.id" class="z-50 cursor-pointer flex items-center justify-center">
+                              <div v-if="switchState && !col.is_emessa && col.id" class="z-10 cursor-pointer flex items-center justify-center">
                                 <input 
                                     type="checkbox"
                                     :checked="selectedRateIds.includes(col.id)"
@@ -832,7 +847,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                 />
                               </div>
 
-                              <div class="flex flex-col items-center relative z-10 pointer-events-none">
+                              <div class="flex flex-col items-center relative z-20 pointer-events-none">
                                   <div class="font-semibold text-gray-700 flex items-center gap-1">
                                       Rata {{ col.numero }}
                                       <Badge v-if="col.is_emessa" class="ml-1 h-1.5 w-1.5 p-0 bg-emerald-500 rounded-full" title="Emessa"></Badge>
@@ -854,7 +869,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px]">Versato</th>
                         <th class="text-right px-4 py-3 min-w-[100px]">Crediti</th>
                         <th class="text-right px-4 py-3 min-w-[100px] text-xs">Tot. Rate</th>
-                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-30 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Saldo</th>
+                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-40 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Saldo</th>
                       </tr>
                     </thead>
 
@@ -863,7 +878,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                           :key="tab === 'anagrafica' ? item.anagrafica.id : item.immobile.id"
                           class="hover:bg-gray-50 transition-colors group"
                       >
-                        <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-10 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                        <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-30 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                           <div v-if="tab === 'anagrafica'">
                             <Link 
                               :href="route('admin.gestionale.anagrafiche.estratto-conto', { 
@@ -907,14 +922,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                                 </div>
                                             </div>
                                             
-                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-10">
+                                            <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20">
                                                 PARZ.
                                             </div>
                                             <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale" 
-                                                class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white z-10"
+                                                class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white z-20"
                                                 :class="item.saldo_iniziale > 0 ? 'bg-red-500' : 'bg-blue-500'"
                                             ></div>
-                                            <div v-if="tab === 'immobile' && col.numero === 1" class="z-10">
+                                            <div v-if="tab === 'immobile' && col.numero === 1" class="z-20">
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
                                                 <div v-if="item.totale_crediti < 0 && item.totale_debiti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="absolute -top-1 -right-1 flex gap-0.5">
@@ -925,7 +940,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                         </div>
                                     </TooltipTrigger>
                                     
-                                    <TooltipContent side="top">
+                                    <TooltipContent side="top" class="bg-slate-900 text-white border-slate-800 shadow-xl">
                                         <div class="text-xs text-center">
                                             <p class="font-bold mb-1">{{ getRataStyle(item.rateMap[col.numero]).label }}</p>
                                             
@@ -963,7 +978,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                         <td class="px-4 py-2 text-right text-blue-600 font-medium text-xs">{{ item.creditiRiga > 0 ? euro(item.creditiRiga) : "—" }}</td>
                         <td class="px-4 py-2 text-right font-medium text-xs text-gray-700">{{ euro(item.totaleRate) }}</td>
                         
-                        <td class="px-6 py-4 text-right font-bold sticky right-0 bg-white group-hover:bg-gray-50 z-10 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
+                        <td class="px-6 py-4 text-right font-bold sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
                             :class="{
                                 'text-red-600': item.totale > 0.01,
                                 'text-blue-600': item.totale < -0.01,
@@ -980,7 +995,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       </tr>
                     </tbody>
 
-                    <tfoot class="sticky bottom-0 bg-white z-30 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
+                    <tfoot class="sticky bottom-0 bg-white z-40 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
                       <tr class="border-t-2 border-muted bg-gray-50 font-bold text-gray-700">
                         <td class="px-6 py-3 sticky left-0 bg-gray-50 z-40 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">TOTALE</td>
                         <td v-for="col in rateColumns" :key="col.numero" class="text-center px-3 py-3">
@@ -1212,4 +1227,10 @@ table {
   border-collapse: separate; 
   border-spacing: 0;
 }
+
+/* Assicura che le colonne sticky siano totalmente coprenti */
+.sticky {
+  background-clip: padding-box; /* Evita che i bordi creino micro-fessure visibili */
+}
+
 </style>

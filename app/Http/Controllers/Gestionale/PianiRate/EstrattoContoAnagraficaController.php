@@ -23,13 +23,11 @@ class EstrattoContoAnagraficaController extends Controller
             $q->where('condominio_id', $condominio->id);
         }]);
 
-        // 1. Saldo Iniziale
         $saldoInizialeCents = $anagrafica->saldi()
             ->where('condominio_id', $condominio->id)
             ->where('esercizio_id', $esercizio->id)
             ->sum('saldo_iniziale'); 
 
-        // 2. Recupero tutti i movimenti ordinati cronologicamente
         $movimenti = $anagrafica->movimenti()
             ->whereHas('scrittura', function($q) use ($condominio) {
                 $q->where('condominio_id', $condominio->id);
@@ -40,109 +38,192 @@ class EstrattoContoAnagraficaController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        // 3. LOGICA WATERFALL GLOBALE
-        // Inizializziamo il contatore con il saldo iniziale
+        // --- STEP 1: PRE-CARICAMENTO QUOTE (singola query) ---
+        $rataIds = $movimenti
+            ->filter(fn($r) => $r->rata && $r->tipo_riga === 'dare')
+            ->pluck('rata.id')
+            ->unique()
+            ->values();
+
+        $quoteMap = RataQuote::whereIn('rata_id', $rataIds)
+            ->where('anagrafica_id', $anagrafica->id)
+            ->get()
+            ->keyBy(fn($q) => $q->rata_id . '_' . $q->immobile_id);
+
+        // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE ---
+        $movimenti->each(function ($riga) use ($quoteMap) {
+            $riga->quotaPura       = $riga->importo;
+            $riga->saldoUsato      = 0;
+            $riga->totaleRichiesto = $riga->importo;
+            $riga->quotaRecord     = null;
+
+            if ($riga->rata && $riga->tipo_riga === 'dare') {
+                $key   = $riga->rata->id . '_' . $riga->immobile_id;
+                $quota = $quoteMap->get($key);
+
+                if ($quota) {
+                    $riga->quotaRecord = $quota;
+                    if (!empty($quota->regole_calcolo)) {
+                        $json = is_string($quota->regole_calcolo)
+                            ? json_decode($quota->regole_calcolo)
+                            : (object) $quota->regole_calcolo;
+                        $riga->saldoUsato      = $json->importi->saldo_usato ?? 0;
+                        $riga->quotaPura       = $json->importi->quota_pura_gestione ?? ($riga->importo - $riga->saldoUsato);
+                        $riga->totaleRichiesto = $json->importi->totale_calcolato ?? $riga->importo;
+                    }
+                }
+            }
+        });
+
+        // --- STEP 3: ORDINAMENTO VISIVO INTELLIGENTE ---
+        // Per la stessa scrittura, ordina per quota pura decrescente.
+        // Così 1C (56€) sarà sempre prima di 1A (33€), indipendentemente dal credito rimasto.
+        $movimenti = $movimenti->sortBy(function($riga) {
+            return [$riga->scrittura_id, -abs($riga->quotaPura)];
+        })->values();
+
+        // --- STEP 4: CREAZIONE TIMELINE & SALDI PROGRESSIVI ---
         $runningBalance = $saldoInizialeCents;
         
-        $timeline = $movimenti->map(function ($riga) use (&$runningBalance, $anagrafica) {
-            $importo = $riga->importo;
+        $timeline = $movimenti->map(function ($riga) use (&$runningBalance) {
             
-            // Calcolo Start/End per questa specifica riga
+            $importoContabile = $riga->importo; 
+            $quotaPura        = $riga->quotaPura;
+            $saldoUsato       = $riga->saldoUsato;
+            $totaleRichiesto  = $riga->totaleRichiesto;
+            $quota            = $riga->quotaRecord;
+            
             $waterfallStart = $runningBalance;
             
             if ($riga->tipo_riga === 'dare') {
-                // Addebito: Aumenta il debito (o riduce il credito negativo)
-                // Es: Start -100, Costo 33 -> End -67
-                // Es: Start 0, Costo 33 -> End 33
-                $runningBalance += $importo;
-                $dare = $importo; $avere = 0;
+                $runningBalance += $quotaPura;
+                $dare  = $quotaPura; 
+                $avere = 0;
             } else {
-                // Pagamento: Riduce il debito (o aumenta il credito negativo)
-                $runningBalance -= $importo;
-                $dare = 0; $avere = $importo;
+                $runningBalance -= $importoContabile;
+                $dare  = 0; 
+                $avere = $importoContabile;
             }
             
             $waterfallEnd = $runningBalance;
 
-            // Icone
             $tipoMovimento = $riga->scrittura->tipo_movimento ?? 'generico';
             $icona = 'file'; 
             if ($tipoMovimento === 'emissione_rata') $icona = 'bill';
-            if ($tipoMovimento === 'incasso_rata') $icona = 'payment';
+            if ($tipoMovimento === 'incasso_rata')   $icona = 'payment';
             if ($tipoMovimento === 'saldo_iniziale') $icona = 'landmark';
 
-            $dettagli = [];
+            $dettagli  = [];
             $breakdown = null;
 
             if ($riga->rata) {
-                
-                // Determiniamo lo stato basandoci SUL SALDO PROGRESSIVO FINALE ($waterfallEnd)
-                // Se dopo questa rata il saldo è ancora negativo (o zero), allora è coperta.
-                if ($waterfallEnd <= 0) {
-                    $statoRata = 'credito'; 
-                } else {
-                    // Se siamo a debito, controlliamo se parziale o totale
-                    // Qui semplifichiamo: se è > 0 è "da pagare" (rosso), a meno che non ci siano pagamenti parziali registrati
-                    // Ma per ora fidiamoci del saldo progressivo.
-                    $statoRata = 'da_pagare'; 
-                }
-
-                // Costruzione Breakdown Tooltip
-                // Qui uniamo la logica progressiva con i dati descrittivi
-                $breakdown = [
-                    'start' => MoneyHelper::fromCents($waterfallStart),
-                    'cost'  => MoneyHelper::fromCents($importo),
-                    'end'   => MoneyHelper::fromCents($waterfallEnd),
-                    'immobile' => $riga->immobile ? $riga->immobile->interno : 'Generico'
-                ];
-
-                $label = "Rata" . ($riga->rata->numero_rata ? " n.{$riga->rata->numero_rata}" : "");
+    
+                $labelBase = "Rata" . ($riga->rata->numero_rata ? " n.{$riga->rata->numero_rata}" : "");
                 if ($riga->rata->data_scadenza) {
-                    $label .= " (Scad. " . $riga->rata->data_scadenza->format('d/m/Y') . ")";
+                    $labelBase .= " (Scad. " . $riga->rata->data_scadenza->format('d/m/Y') . ")";
                 }
-                
-                $dettagli[] = [
-                    'type'   => 'rata',
-                    'text'   => $label,
-                    'status' => $statoRata 
-                ];
+
+                if ($riga->tipo_riga === 'dare') {
+                    
+                    $statoRata = $quota ? $quota->stato : ($waterfallEnd <= 0 ? 'credito' : 'da_pagare');
+                    
+                    if ($saldoUsato > 0) {
+                        $labelBase .= " + Recupero Debito";
+                    } elseif ($saldoUsato < 0) {
+                        $labelBase .= " (Sconto da Credito)";
+                    }
+
+                    $dettagli[] = [
+                        'type'   => 'rata',
+                        'text'   => $labelBase,
+                        'status' => $statoRata 
+                    ];
+
+                    if ($saldoUsato != 0) {
+                        if ($saldoUsato > 0) {
+                            $dettagli[] = [
+                                'type'   => 'info',
+                                'text'   => "👉 Include recupero debito pregresso: " . MoneyHelper::format($saldoUsato),
+                                'status' => null
+                            ];
+                            $dettagli[] = [
+                                'type'   => 'info',
+                                'text'   => "💰 Totale richiesto per questa rata: " . MoneyHelper::format($totaleRichiesto),
+                                'status' => null
+                            ];
+                        } else {
+                            $dettagli[] = [
+                                'type'   => 'info',
+                                'text'   => "👉 Scontata da credito pregresso: " . MoneyHelper::format(abs($saldoUsato)),
+                                'status' => null
+                            ];
+                            $dettagli[] = [
+                                'type'   => 'info',
+                                'text'   => "💰 Valore originale della spesa: " . MoneyHelper::format($quotaPura),
+                                'status' => null
+                            ];
+                        }
+                    }
+
+                    $breakdown = [
+                        'type'             => 'emissione',
+                        'start'            => MoneyHelper::fromCents($waterfallStart),
+                        'cost'             => MoneyHelper::fromCents($quotaPura),
+                        'totale_richiesto' => MoneyHelper::fromCents($totaleRichiesto),
+                        'saldo_usato'      => $saldoUsato != 0 ? MoneyHelper::fromCents($saldoUsato) : null,
+                        'end'              => MoneyHelper::fromCents($waterfallEnd),
+                        'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
+                    ];
+
+                } else {
+
+                    $dettagli[] = [
+                        'type'   => 'rata',
+                        'text'   => "A copertura " . $labelBase,
+                        'status' => null 
+                    ];
+
+                    $breakdown = [
+                        'type'     => 'incasso',
+                        'start'    => MoneyHelper::fromCents($waterfallStart),
+                        'cost'     => MoneyHelper::fromCents($importoContabile),
+                        'end'      => MoneyHelper::fromCents($waterfallEnd),
+                        'immobile' => $riga->immobile ? $riga->immobile->interno : 'Generico'
+                    ];
+                }
             }
 
             if ($riga->immobile) {
-                $label = $riga->immobile->nome . ($riga->immobile->interno ? " (Int. {$riga->immobile->interno})" : "");
                 $dettagli[] = [
-                    'type' => 'immobile',
-                    'text' => $label,
+                    'type'   => 'immobile',
+                    'text'   => $riga->immobile->nome . ($riga->immobile->interno ? " (Int. {$riga->immobile->interno})" : ""),
                     'status' => null
                 ];
             }
-
-            $descrizione = $riga->scrittura->causale ?: 'Movimento Contabile';
 
             return [
                 'id'          => $riga->id,
                 'data'        => $riga->scrittura->data_registrazione ? $riga->scrittura->data_registrazione->format('d/m/Y') : '-',
                 'protocollo'  => $riga->scrittura->numero_protocollo,
-                'descrizione' => $descrizione,
+                'descrizione' => $riga->scrittura->causale ?: 'Movimento Contabile',
                 'gestione'    => $riga->scrittura->gestione ? $riga->scrittura->gestione->nome : null,
                 'dettagli'    => $dettagli, 
                 'note'        => $riga->note, 
                 'tipo_icona'  => $icona, 
                 'dare'        => $dare, 
                 'avere'       => $avere,
-                // Passiamo il saldo calcolato progressivamente per questa riga
                 'saldo'       => $waterfallEnd, 
                 'breakdown'   => $breakdown 
             ];
         });
 
         $stats = [
-            'totale_addebiti'   => MoneyHelper::format($timeline->sum('dare')),
-            'totale_versamenti' => MoneyHelper::format($timeline->sum('avere')),
-            'saldo_finale'      => MoneyHelper::format($runningBalance),
-            'saldo_raw'         => $runningBalance,
-            'saldo_iniziale'    => MoneyHelper::format($saldoInizialeCents),
-            'saldo_iniziale_raw'=> $saldoInizialeCents
+            'totale_addebiti'    => MoneyHelper::format($timeline->sum('dare')),
+            'totale_versamenti'  => MoneyHelper::format($timeline->sum('avere')),
+            'saldo_finale'       => MoneyHelper::format($runningBalance),
+            'saldo_raw'          => $runningBalance,
+            'saldo_iniziale'     => MoneyHelper::format($saldoInizialeCents),
+            'saldo_iniziale_raw' => $saldoInizialeCents
         ];
 
         return Inertia::render('gestionale/pianiRate/EstrattoContoAnagrafica', [

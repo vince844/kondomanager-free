@@ -4,6 +4,22 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 
 ---
 
+## [1.9.5] - Smart Waterfall & Transparent Ledger
+
+Questa release perfeziona il cuore dell'Accounting Core introducendo il calcolo a cascata per i saldi pregressi e una riconciliazione automatica per gli incassi cumulativi. L'interfaccia dell'Estratto Conto è stata riprogettata per garantire il 100% del rigore matematico senza sacrificare la chiarezza per l'utente finale.
+
+### 🧠 Smart Waterfall Logic (Distribuzione a Cascata)
+* **Pianificazione Intelligente Saldi:** Quando un'anagrafica possiede più immobili (es. Appartamento + Box) e vanta un credito o un debito dall'esercizio precedente, il motore di generazione Piani Rate ora lo distribuisce a cascata. Il credito viene usato per azzerare la quota del primo immobile, e il residuo scivola automaticamente a copertura del secondo, evitando la generazione di "rate negative" o anomalie contabili.
+* **Incassi Cumulativi Automatici:** Il motore di registrazione incassi (`StoreIncassoRateAction`) è stato riscritto. Ora l'amministratore può inserire un singolo bonifico globale: sarà il sistema a scomporlo automaticamente, saldando le quote dei vari immobili in ordine progressivo fino all'esaurimento dei fondi.
+
+### 📊 Estratto Conto: Transparent Ledger
+* **Matematica Inviolabile:** La tabella dei movimenti contabili ora mostra esclusivamente gli importi puri in Dare/Avere (escludendo figurativamente i debiti pregressi dall'importo visivo). Questo garantisce che la colonna "Saldo Progressivo" sia matematicamente ineccepibile in ogni istante.
+* **UI/UX Esplicativa:** Per giustificare le discrepanze tra la spesa nominale e l'incasso reale (dovute a crediti/debiti degli anni precedenti), l'Estratto Conto utilizza lo snapshot salvato nel database per generare scritte esplicative dinamiche (es. *"👉 Include recupero debito pregresso: € 100"*).
+* **Tooltip Contabili:** Il dettaglio a comparsa nell'estratto conto scompone visivamente la quota pura dal saldo usato, mostrando il calcolo esatto che ha generato il totale da saldare per la specifica rata.
+
+### 🛡️ Retrocompatibilità (Legacy Support)
+* **Graceful Fallback:** Le logiche di estrazione visiva riconoscono automaticamente le rate generate con la versione 1.8 (prive di snapshot JSON) elaborandole in modalità standard, garantendo totale retrocompatibilità senza errori a schermo.
+
 ## [1.9.4] - Visual Intelligence & Dashboard Audit
 
 Questa release completa il ciclo "Accounting Core" introducendo un livello di **Intelligenza Visiva** senza precedenti. Il sistema non si limita a calcolare i numeri, ma ora "spiega" all'amministratore la provenienza dei fondi tramite badge semantici, icone intuitive e colori contestuali. Inoltre, la Dashboard è stata calibrata per eliminare falsi positivi contabili.

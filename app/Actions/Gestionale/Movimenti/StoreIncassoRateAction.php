@@ -76,6 +76,69 @@ class StoreIncassoRateAction
 
             foreach ($validated['dettaglio_pagamenti'] as $pagamento) {
 
+                // Questo è il tesoretto in centesimi da spalmare
+                $importoDaDistribuireCents = (int) round($pagamento['importo'] * 100);
+
+                // 1. Troviamo la quota "faro" che ci ha mandato il frontend per risalire alla Rata Padre
+                $quotaFaro = RataQuote::findOrFail($pagamento['rata_id']);
+
+                // 2. Recuperiamo TUTTE le quote di QUESTA anagrafica per la STESSA Rata Padre
+                $quoteDaSaldare = RataQuote::where('rata_id', $quotaFaro->rata_id)
+                    ->where('anagrafica_id', $validated['pagante_id'])
+                    ->lockForUpdate()
+                    ->orderBy('id') // Assicura che riempia prima 1A, poi 1B, poi 1C
+                    ->get();
+
+                // 3. Distribuzione Intelligente a Cascata (Waterfall)
+                foreach ($quoteDaSaldare as $quota) {
+                    
+                    // Se i soldi sono finiti, interrompiamo il ciclo
+                    if ($importoDaDistribuireCents <= 0) {
+                        break; 
+                    }
+
+                    // Calcoliamo quanto manca da pagare su QUESTA specifica quota
+                    $debitoResiduoQuota = $quota->importo - $quota->importo_pagato;
+
+                    if ($debitoResiduoQuota > 0) {
+                        
+                        // Versiamo il minimo tra "quello che ci è rimasto" e "quello che serve alla quota"
+                        $importoDaVersareQui = min($importoDaDistribuireCents, $debitoResiduoQuota);
+
+                        // Salviamo la relazione PIVOT per questa quota
+                        $quota->pagamenti()->attach($scrittura->id, [
+                            'importo_pagato' => $importoDaVersareQui,
+                            'data_pagamento' => $validated['data_pagamento'],
+                        ]);
+
+                        // Creiamo la riga della scrittura in AVERE per questo specifico immobile
+                        $scrittura->righe()->create([
+                            'conto_contabile_id' => $contoCrediti->id,
+                            'anagrafica_id'      => $quota->anagrafica_id,
+                            'rata_id'            => $quota->rata_id,
+                            'immobile_id'        => $quota->immobile_id,
+                            'tipo_riga'          => 'avere',
+                            'importo'            => $importoDaVersareQui,
+                            'note'               => 'Incasso rata n.' . ($quota->rata->numero_rata ?? ''),
+                        ]);
+
+                        // Aggiorniamo lo stato nativo ('pagata', 'parzialmente_pagata', etc.)
+                        $quota->ricalcolaStato();
+
+                        // Scaliamo i soldi appena versati dal nostro "tesoretto"
+                        $importoDaDistribuireCents -= $importoDaVersareQui;
+                    }
+                }
+                
+                // Sicurezza: se per caso l'utente ha mandato più soldi del dovuto per questa rata,
+                // l'eccedenza residua la dirottiamo sul conto anticipi.
+                if ($importoDaDistribuireCents > 0) {
+                    $validated['eccedenza'] = ($validated['eccedenza'] ?? 0) + ($importoDaDistribuireCents / 100);
+                }
+            }
+
+          /*   foreach ($validated['dettaglio_pagamenti'] as $pagamento) {
+
                 $importoCents = (int) round($pagamento['importo'] * 100);
 
                 $quota = RataQuote::lockForUpdate()->findOrFail($pagamento['rata_id']);
@@ -97,7 +160,7 @@ class StoreIncassoRateAction
 
                 $quota->ricalcolaStato();
             }
-
+ */
             if (!empty($validated['eccedenza']) && $validated['eccedenza'] > 0) {
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoAnticipi->id,

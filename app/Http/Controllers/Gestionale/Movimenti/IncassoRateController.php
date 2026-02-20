@@ -11,6 +11,7 @@ use App\Models\Anagrafica;
 use App\Models\Evento;
 use App\Models\Immobile;
 use App\Models\Gestionale\Cassa;
+use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\RataQuote; 
 use App\Services\Gestionale\InboxService;
@@ -118,7 +119,7 @@ class IncassoRateController extends Controller
                 $rataId = $evento->meta['context']['rata_id'] ?? null;
                 
                 // Ricarichiamo la rata dal DB per avere i dati aggiornati
-                $rataFresca = \App\Models\Gestionale\Rata::with('rateQuote')->find($rataId);
+                $rataFresca = Rata::with('rateQuote')->find($rataId);
                 
                 if ($rataFresca) {
                     // Filtriamo le quote di questo specifico condomino

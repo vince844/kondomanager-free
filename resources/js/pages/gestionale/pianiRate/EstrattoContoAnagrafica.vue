@@ -78,20 +78,41 @@ const saldoInizialeColorClass = computed(() => {
     return 'text-gray-600';
 });
 
-const getStatoConfig = (stato: string) => {
+const getStatoConfig = (stato: string | null) => {
+    // Se lo stato è null (es. righe di incasso), non ritorniamo nulla
+    if (!stato) return { label: '', class: '', icon: null };
+
     switch(stato) {
-        case 'pagata': return { label: 'SALDATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
-        case 'parzialmente_pagata': return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
-        case 'da_pagare': return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
-        case 'credito': return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: Coins };
-        default: return { label: '', class: '', icon: null };
+        case 'pagata': 
+            return { label: 'PAGATA', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 };
+        case 'credito': 
+            return { label: 'COMPENSATA', class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins };
+        case 'parzialmente_pagata': 
+            return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
+        case 'da_pagare': 
+            return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
+        case 'credito_puro': 
+            return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle };
+        default: 
+            return { label: '', class: '', icon: null };
     }
 };
 
 const getImportoStyle = (riga: any) => {
+    // Rendiamo lo stile dinamico anche in base al tipo di riga, per sicurezza
+    if (riga.tipo_riga === 'dare') {
+         // Se è un'emissione a debito
+         return 'text-red-600 font-medium';
+    } else if (riga.tipo_riga === 'avere') {
+         // Se è un pagamento reale
+         return 'text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100';
+    }
+    
+    // Fallback per righe compensate o altro
     const isCredito = riga.dettagli?.some((d: any) => d.type === 'rata' && d.status === 'credito');
     if (isCredito) return 'text-blue-600 font-bold';
-    return 'text-red-600 font-medium';
+    
+    return 'text-gray-900 font-medium';
 };
 </script>
 
@@ -260,13 +281,14 @@ const getImportoStyle = (riga: any) => {
                                     <p v-if="riga.note" class="text-xs text-blue-600 italic mb-1">Note: {{ riga.note }}</p>
                                     <div v-if="riga.dettagli && riga.dettagli.length > 0" class="flex flex-col gap-1 mt-1">
                                         <div v-for="(item, index) in riga.dettagli" :key="index" class="flex items-center flex-wrap gap-2">
+                                            
                                             <span class="text-[11px] text-gray-500 flex items-center gap-1.5">
                                                 <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span> {{ item.text }}
                                             </span>
+                                            
                                             <span v-if="item.status" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status).class">
                                                 <component :is="getStatoConfig(item.status).icon" class="w-3 h-3" />
-                                                <span v-if="item.status === 'credito'">COPERTA DA CREDITO</span>
-                                                <span v-else>{{ getStatoConfig(item.status).label }}</span>
+                                                <span>{{ getStatoConfig(item.status).label }}</span>
                                             </span>
                                         </div>
                                     </div>
@@ -274,6 +296,7 @@ const getImportoStyle = (riga: any) => {
                                 
                                 <td class="px-4 py-3 text-right align-top">
                                     <div v-if="riga.dare > 0" class="flex items-center justify-end gap-1.5">
+                                        
                                         <span :class="getImportoStyle(riga)">{{ euro(riga.dare / 100) }}</span>
                                         
                                        <TooltipProvider v-if="riga.breakdown" :delayDuration="0">
@@ -284,10 +307,9 @@ const getImportoStyle = (riga: any) => {
                                                     </div>
                                                 </TooltipTrigger>
                                                 <TooltipContent side="right" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-xl rounded-lg z-50">
-                                                    
                                                     <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 flex justify-between">
                                                         <span>
-                                                            {{ riga.breakdown.start < 0 ? 'Utilizzo Credito' : 'Aumento Debito' }}
+                                                            {{ riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 'Dettaglio Addebito' }}
                                                             (Int. {{ riga.breakdown.immobile }})
                                                         </span>
                                                     </div>
@@ -296,35 +318,40 @@ const getImportoStyle = (riga: any) => {
                                                         <div class="flex justify-between items-center text-slate-400">
                                                             <span class="flex items-center gap-1">
                                                                 <div class="w-1.5 h-1.5 rounded-full" :class="riga.breakdown.start < 0 ? 'bg-emerald-500' : (riga.breakdown.start > 0 ? 'bg-red-500' : 'bg-gray-500')"></div>
-                                                                
-                                                                <span v-if="riga.breakdown.start < 0">Credito Disponibile:</span>
-                                                                <span v-else-if="riga.breakdown.start > 0">Debito Pregresso:</span>
-                                                                <span v-else>Saldo Zero:</span>
+                                                                <span>Saldo Precedente:</span>
                                                             </span>
                                                             <span class="font-mono">{{ euro(riga.breakdown.start) }}</span>
                                                         </div>
 
                                                         <div class="flex justify-between items-center text-white">
-                                                            <span class="pl-2.5">Quota Rata:</span>
-                                                            <span class="font-mono font-bold">+ {{ euro(riga.breakdown.cost) }}</span>
+                                                            <span class="pl-2.5">Movimento in {{ riga.breakdown.type === 'incasso' ? 'Avere' : 'Dare' }}:</span>
+                                                            <span class="font-mono font-bold">{{ riga.breakdown.type === 'incasso' ? '-' : '+' }} {{ euro(riga.breakdown.cost) }}</span>
                                                         </div>
 
+                                                        <template v-if="riga.breakdown.type === 'emissione' && riga.breakdown.saldo_usato && riga.breakdown.saldo_usato !== 0">
+                                                            <div class="my-1.5 pl-2.5 border-l-2 border-slate-600 ml-1 py-0.5 space-y-1 text-[11px]">
+                                                                <div class="flex justify-between items-center text-slate-300">
+                                                                    <span class="italic text-slate-400">Quota Pura:</span>
+                                                                    <span class="font-mono">{{ euro(riga.breakdown.cost) }}</span>
+                                                                </div>
+                                                                <div class="flex justify-between items-center text-slate-300">
+                                                                    <span class="italic text-slate-400">
+                                                                        {{ riga.breakdown.saldo_usato > 0 ? '+ Recupero Debito:' : '- Sconto Credito:' }}
+                                                                    </span>
+                                                                    <span class="font-mono">{{ euro(riga.breakdown.saldo_usato) }}</span>
+                                                                </div>
+                                                                <div class="flex justify-between items-center font-bold text-white pt-1">
+                                                                    <span>Da pagare per questa quota:</span>
+                                                                    <span class="font-mono text-amber-400">{{ euro(riga.breakdown.totale_richiesto) }}</span>
+                                                                </div>
+                                                            </div>
+                                                        </template>
                                                         <div class="border-t border-slate-700 my-2 pt-2">
                                                             <div class="flex justify-between items-center font-bold text-sm">
                                                                 <span class="text-white">Nuovo Saldo Progressivo:</span>
                                                                 <span class="font-mono" :class="riga.breakdown.end < 0 ? 'text-emerald-400' : (riga.breakdown.end > 0 ? 'text-red-400' : 'text-white')">
                                                                     {{ euro(riga.breakdown.end) }}
                                                                 </span>
-                                                            </div>
-                                                            
-                                                            <div v-if="riga.breakdown.end < 0" class="text-[10px] text-emerald-500 text-right mt-1 font-normal italic">
-                                                                (Sei ancora a credito)
-                                                            </div>
-                                                            <div v-else-if="riga.breakdown.start < 0 && riga.breakdown.end >= 0" class="text-[10px] text-amber-400 text-right mt-1 font-normal italic">
-                                                                (Il credito è stato esaurito)
-                                                            </div>
-                                                            <div v-else-if="riga.breakdown.end > 0" class="text-[10px] text-red-400 text-right mt-1 font-normal italic">
-                                                                (Totale da saldare)
                                                             </div>
                                                         </div>
                                                     </div>
