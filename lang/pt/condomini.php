@@ -89,4 +89,16 @@ return [
         'save_building'   => 'Guardar',
         'list_buildings'  => 'Lista',
     ],
+    
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'portfolio_title'        => 'Portefólio de Edifícios',
+        'portfolio_desc'         => 'Visão geral de todos os condomínios geridos. A partir daqui tem controlo total sobre os seus mandatos.',
+        'quick_access_title'     => 'Acesso Rápido',
+        'quick_access_desc'      => 'Clique num condomínio para entrar na sua área de gestão dedicada (faturas, quotas, orçamentos).',
+        'new_acquisitions_title' => 'Novas Aquisições',
+        'new_acquisitions_desc'  => 'Adicione novos edifícios ao sistema e comece a configurar o seu registo e contas bancárias.',
+    ],
 ];

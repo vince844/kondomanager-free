@@ -90,4 +90,16 @@ return [
         'save_building'  => 'Save',
         'list_buildings' => 'List',
     ],
+
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'portfolio_title'        => 'Building Portfolio',
+        'portfolio_desc'         => 'Overview of all managed buildings. From here you have total control over your mandates.',
+        'quick_access_title'     => 'Quick Access',
+        'quick_access_desc'      => 'Click on a building to enter its dedicated management area (invoices, installments, budgets).',
+        'new_acquisitions_title' => 'New Acquisitions',
+        'new_acquisitions_desc'  => 'Add new buildings to the system and start configuring their registry and bank accounts.',
+    ],
 ];

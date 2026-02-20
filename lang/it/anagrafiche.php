@@ -110,4 +110,16 @@ return [
         'delete_resident_description' => 'Questa azione non è reversibile. Eliminerà l\'anagrafica e tutti i dati ad essa associati.',
         'no_residents_created'        => 'Nessuna anagrafica ancora creata',
     ],
+
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'centralized_book_title' => 'Rubrica Centralizzata',
+        'centralized_book_desc'  => 'Gestisci tutti i contatti (proprietari, inquilini, fornitori) del tuo studio in un unico archivio condiviso.',
+        'building_link_title'    => 'Associazione Stabili',
+        'building_link_desc'     => 'Collega le anagrafiche ai rispettivi condomini per semplificare i subentri e le assegnazioni delle unità.',
+        'fiscal_data_title'      => 'Dati Fiscali e Documenti',
+        'fiscal_data_desc'       => 'Mantieni aggiornati codici fiscali e documenti d\'identità per garantire la conformità delle pratiche e delle fatture.',
+    ],
 ];

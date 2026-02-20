@@ -40,12 +40,21 @@ class AnagraficaController extends Controller
      */
     public function index(AnagraficaIndexRequest $request): Response
     {   
-
         $validated = $request->validated();
 
         $anagrafiche = Anagrafica::with(['condomini:id,nome'])
+            // Filtro per Nome (Esistente)
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
+            })
+            // NUOVO: Filtro per Condomini (Array di ID)
+            ->when(request('condominio_id'), function ($query, $condominiIds) {
+                // Assicuriamoci che sia un array
+                $condominiIds = (array) $condominiIds;
+                
+                $query->whereHas('condomini', function ($q) use ($condominiIds) {
+                    $q->whereIn('condomini.id', $condominiIds);
+                });
             })
             ->paginate($validated['per_page'] ?? config('pagination.default_per_page'))
             ->withQueryString();
@@ -58,7 +67,8 @@ class AnagraficaController extends Controller
                 'per_page'     => $anagrafiche->perPage(),
                 'total'        => $anagrafiche->total(),
             ],
-            'filters' => $request->only(['nome']) 
+            // Aggiungiamo condominio_id ai filtri passati al frontend
+            'filters' => request()->only(['nome', 'condominio_id']) 
         ]);
     }
 

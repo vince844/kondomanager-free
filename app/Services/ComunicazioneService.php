@@ -154,7 +154,14 @@ class ComunicazioneService
             ) 
             ->when($validated['priority'] ?? false, fn($q, $priorities) =>
                 $q->whereIn('priority', $priorities)
-            );
+            )
+            // NUOVO FILTRO: Array di Condomini
+            ->when($validated['condominio_id'] ?? false, function ($q, $condominioIds) {
+                $q->whereHas('condomini', function ($subQ) use ($condominioIds) {
+                    // Usiamo 'condomini.id' per evitare ambiguità di colonne SQL
+                    $subQ->whereIn('condomini.id', (array) $condominioIds);
+                });
+            });
     }
 
     /**

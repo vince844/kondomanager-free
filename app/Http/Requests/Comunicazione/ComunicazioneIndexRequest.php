@@ -23,12 +23,14 @@ class ComunicazioneIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'page'       => ['sometimes', 'integer', 'min:1'],
-            'per_page'   => ['sometimes', 'integer'],
-            'subject'    => ['sometimes', 'string', 'max:255'],
-            'priority'   => ['sometimes', 'array'],
-            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-            'search'     => ['nullable', 'string'],
+            'page'              => ['sometimes', 'integer', 'min:1'],
+            'per_page'          => ['sometimes', 'integer'],
+            'subject'           => ['sometimes', 'string', 'max:255'],
+            'priority'          => ['sometimes', 'array'],
+            'priority.*'        => ['string', 'in:bassa,media,alta,urgente'],
+            'condominio_id'     => ['nullable', 'array'],
+            'condominio_id.*'   => ['integer'],
+            'search'            => ['nullable', 'string'],
         ];
     }
 }

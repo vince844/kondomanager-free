@@ -1,15 +1,16 @@
 <script setup lang="ts">
-
 import { computed, onMounted, watch } from "vue";
-import { usePage } from "@inertiajs/vue3";
-import DataTable from '@/components/anagrafiche/DataTable.vue';
+import { usePage, Head, Link } from "@inertiajs/vue3";
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
-import Heading from '@/components/Heading.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import DataTable from '@/components/anagrafiche/DataTable.vue';
 import { columns } from '@/components/anagrafiche/columns';
 import Alert from "@/components/Alert.vue";
 import { trans } from 'laravel-vue-i18n';
-import type { BreadcrumbItem } from '@/types';
+
+// Icone mirate per la rubrica anagrafiche
+import { Users, Link as LinkIcon, ShieldCheck } from 'lucide-vue-next';
+
 import type { Flash } from '@/types/flash';
 import type { Anagrafica } from '@/types/anagrafiche';
 
@@ -29,54 +30,70 @@ const page = usePage<{ flash: { message?: Flash } }>();
 // Computed property to safely access flash messages
 const flashMessage = computed(() => page.props.flash.message);
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Elenco anagrafiche',
-        href: '/anagrafiche',
-    },
-];
+// Array vuoto per forzare l'header in modalità "Dashboard/Root" compatta
+const breadcrumbs: never[] = [];
+
+// Guide reattive per le traduzioni
+const pageGuides = computed(() => [
+  {
+    title: trans('anagrafiche.guides.centralized_book_title'),
+    description: trans('anagrafiche.guides.centralized_book_desc'),
+    icon: Users,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('anagrafiche.guides.building_link_title'),
+    description: trans('anagrafiche.guides.building_link_desc'),
+    icon: LinkIcon,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: trans('anagrafiche.guides.fiscal_data_title'),
+    description: trans('anagrafiche.guides.fiscal_data_desc'),
+    icon: ShieldCheck,
+    colorVariant: 'amber' as const
+  }
+]);
 
 // Scroll to top when flashMessage exists
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
-// Scroll on mount and watch for flash message changes
 onMounted(() => {
-  if (flashMessage.value) {
-    scrollToTop();
-  }
+  if (flashMessage.value) scrollToTop();
 });
 
-// Optional: Watch for flashMessage changes (e.g., after Inertia navigation)
 watch(flashMessage, (newValue) => {
-  if (newValue) {
-    scrollToTop();
-  }
+  if (newValue) scrollToTop();
 });
-
 </script>
 
 <template>
-
   <Head :title="trans('anagrafiche.header.list_residents_head')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
 
-    <div class="px-4 py-6">
+    <div class="px-6 py-8 space-y-4">
       
-      <Heading 
-        :title="trans('anagrafiche.header.list_residents_title')"
-        :description="trans('anagrafiche.header.list_residents_description')"
+      <PageHeaderGuide
+        :page-title="trans('anagrafiche.header.list_residents_title')"
+        :page-subtitle="trans('anagrafiche.header.list_residents_description')"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :video-url="null"
       />
     
-      <div v-if="flashMessage" class="py-4"> 
-        <Alert :message="flashMessage.message" :type="flashMessage.type" />
-      </div>
+      <div class="w-full">
+        <section class="w-full">
+          <div v-if="flashMessage" class="py-3"> 
+            <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
 
-      <div class="container mx-auto">
-        <DataTable :columns="columns" :data="anagrafiche" :meta="meta" />
+          <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4 mt-2">
+            <DataTable :columns="columns" :data="anagrafiche" :meta="meta" />
+          </div>
+        </section>
       </div>
 
     </div>
   </AppLayout> 
-
 </template>

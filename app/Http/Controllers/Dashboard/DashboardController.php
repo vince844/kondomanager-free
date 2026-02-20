@@ -30,7 +30,7 @@ class DashboardController extends Controller
             filters: [
                 'exclude_type' => 'scadenza_rata_condomino'
             ]
-        )->take(30);
+        )->take(3);
         
         $stats = [
             'total_condomini'     => Condominio::count(),

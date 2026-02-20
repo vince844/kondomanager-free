@@ -54,11 +54,14 @@ export const columns: ColumnDef<Anagrafica>[] = [
   
       return h('div', { class: 'relative flex items-center h-10' }, avatars);
     },
-  
+
+    // Manteniamo questa filterFn per sicurezza, anche se il grosso del lavoro lo fa il backend
     filterFn: (row, id, value) => {
       const condomini = row.original.condomini ?? [];
-      return condomini.some((condominio: Building) => value.includes(condominio.id));
+      // Value è l'array di ID selezionati nel dropdown
+      return condomini.some((condominio: Building) => value.includes(String(condominio.id)));
     }
+
   },
   {
     id: 'actions',

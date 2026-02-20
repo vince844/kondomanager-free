@@ -113,4 +113,16 @@ return [
         'delete_resident_description' => 'Esta ação é irreversível. Eliminará o registo e todos os dados associados.',
         'no_residents_created'        => 'Ainda não foi criado nenhum registo',
     ],
+
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'centralized_book_title' => 'Lista de Contactos Centralizada',
+        'centralized_book_desc'  => 'Faça a gestão de todos os contactos (proprietários, inquilinos, fornecedores) do seu estúdio num único arquivo partilhado.',
+        'building_link_title'    => 'Associação de Edifícios',
+        'building_link_desc'     => 'Ligue os contactos aos respetivos edifícios para simplificar as sucessões e as atribuições de frações.',
+        'fiscal_data_title'      => 'Dados Fiscais e Documentos',
+        'fiscal_data_desc'       => 'Mantenha os números de contribuinte e os documentos de identificação atualizados para garantir a conformidade das faturas.',
+    ],
 ];

@@ -30,7 +30,7 @@ const props = withDefaults(defineProps<Props>(), {
 const page = usePage();
 const auth = computed<Auth>(() => page.props.auth as Auth);
 
-// ✅ AGGIUNTO: Recupera stato update
+// AGGIUNTO: Recupera stato update
 const updateAvailable = computed(() => page.props.system_update?.available || false)
 
 // Active route helper

@@ -60,11 +60,10 @@ class ComunicazioneController extends Controller
 
         $comunicazioni = $this->comunicazioneService->getComunicazioni(  
             anagrafica: null,
-            condominioIds: null,
-            validated: $validated
+            condominioIds: null, // Questo era il parametro fisso per la visualizzazione dell'utente, lo lasciamo a null
+            validated: $validated  // Passiamo tutto l'array validato al service
         ); 
 
-        // Get stats using the same service
         $stats = $this->comunicazioneService->getComunicazioniStats();
     
         return Inertia::render('comunicazioni/ComunicazioniList', [
@@ -76,9 +75,10 @@ class ComunicazioneController extends Controller
                 'per_page'     => $comunicazioni->perPage(),
                 'total'        => $comunicazioni->total(),
             ],
-            'filters' => Arr::only($validated, ['subject', 'priority'])
+            // AGGIUNTA: Passiamo anche condominio_id al frontend per ripristinare lo stato
+            'filters' => Arr::only($validated, ['subject', 'priority', 'condominio_id'])
         ]);
-    } 
+    }
 
     /**
      * Show the form to create a new comunicazione.

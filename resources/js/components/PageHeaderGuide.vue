@@ -30,8 +30,11 @@ const props = defineProps<{
   videoUrl?: string | null;
   guides: GuideItem[];
   breadcrumbs?: Breadcrumb[];
-  condominio: Building;
-  condomini: (Building & { esercizio_aperto?: { id: number } | null })[];
+  
+  // MODIFICA CHIRURGICA: Resi opzionali (?)
+  condominio?: Building; 
+  condomini?: (Building & { esercizio_aperto?: { id: number } | null })[];
+  
   esercizio?: Esercizio | null;
   esercizi?: Esercizio[];
 }>();
@@ -43,7 +46,8 @@ const colorStyles = {
   slate: 'bg-slate-100/50 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400 border-slate-200/50 dark:border-slate-800/50',
 };
 
-const showCondominioDropdown = computed(() => props.condomini.length > 1);
+// MODIFICA CHIRURGICA: Protezione per undefined
+const showCondominioDropdown = computed(() => (props.condomini?.length ?? 0) > 1);
 const showEsercizioDropdown = computed(() => (props.esercizi?.length ?? 0) > 1);
 const hasBreadcrumbs = computed(() => props.breadcrumbs && props.breadcrumbs.length > 0);
 
@@ -51,10 +55,11 @@ const hasBreadcrumbs = computed(() => props.breadcrumbs && props.breadcrumbs.len
 const page = usePage<{ condominio: Building; condomini: (Building & { esercizio_aperto?: { id: number } | null })[] }>();
 
 function selectCondominio(id: string | number) {
+  if (!props.condomini || !props.condominio) return; // Protezione
   const currentUrl = page.url;
   const segments = currentUrl.split('/');
   const selected = props.condomini.find((c) => String(c.id) === String(id));
-  const condIndex = segments.findIndex((s) => s === props.condominio.id.toString());
+  const condIndex = segments.findIndex((s) => s === props.condominio!.id.toString());
   if (condIndex !== -1) segments[condIndex] = id.toString();
 
   const isGestionePage = segments.includes('gestioni');
@@ -71,8 +76,8 @@ function selectCondominio(id: string | number) {
 // --- Logica Esercizio ---
 const selectedEsercizio = ref<Esercizio | null>(props.esercizio ?? null);
 
-watch(() => props.condominio.id, () => {
-  if (!props.esercizi?.find(e => e.id === selectedEsercizio.value?.id)) {
+watch(() => props.condominio?.id, () => {
+  if (props.condominio && !props.esercizi?.find(e => e.id === selectedEsercizio.value?.id)) {
     selectedEsercizio.value = props.esercizi?.[0] ?? null;
   }
 });
@@ -117,51 +122,51 @@ function selectEsercizio(esercizioId: number | string) {
 
       <div class="flex flex-wrap items-center gap-2 shrink-0">
         
-        <DropdownMenu v-if="showCondominioDropdown">
-          <DropdownMenuTrigger
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <Building2 class="w-3.5 h-3.5 text-slate-400" />
-            {{ condominio.nome }}
-            <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
-          </DropdownMenuTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuContent align="end" class="min-w-[180px]">
-              <DropdownMenuItem v-for="c in condomini" :key="c.id" class="cursor-pointer" :class="{ 'font-semibold text-primary': c.id === condominio.id }" @click="selectCondominio(c.id)">
-                {{ c.nome }}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenuPortal>
-        </DropdownMenu>
-        <div v-else class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
-          <Building2 class="w-3.5 h-3.5 text-slate-400" />
-          <span class="text-slate-700 dark:text-slate-300">{{ condominio.nome }}</span>
-        </div>
-
-        <template v-if="esercizio">
-          <DropdownMenu v-if="showEsercizioDropdown">
+        <template v-if="condominio">
+          <DropdownMenu v-if="showCondominioDropdown">
             <DropdownMenuTrigger
               class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
-              <Calendar class="w-3.5 h-3.5 text-slate-400" />
-              {{ selectedEsercizio?.nome.toLowerCase() ?? 'Seleziona esercizio' }}
+              <Building2 class="w-3.5 h-3.5 text-slate-400" />
+              {{ condominio.nome }}
               <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
             </DropdownMenuTrigger>
             <DropdownMenuPortal>
               <DropdownMenuContent align="end" class="min-w-[180px]">
-                <DropdownMenuItem v-for="e in esercizi" :key="e.id" class="cursor-pointer" :class="{ 'font-semibold text-primary': e.id === esercizio?.id }" @click="selectEsercizio(e.id)">
-                  {{ e.nome }}
+                <DropdownMenuItem v-for="c in condomini" :key="c.id" class="cursor-pointer" :class="{ 'font-semibold text-primary': c.id === condominio.id }" @click="selectCondominio(c.id)">
+                  {{ c.nome }}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenuPortal>
           </DropdownMenu>
           <div v-else class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
-            <Calendar class="w-3.5 h-3.5 text-slate-400" />
-            <span class="text-slate-700 dark:text-slate-300">{{ esercizio.nome }}</span>
+            <Building2 class="w-3.5 h-3.5 text-slate-400" />
+            <span class="text-slate-700 dark:text-slate-300">{{ condominio.nome }}</span>
           </div>
-        </template>
 
-        <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
+          <template v-if="esercizio">
+            <DropdownMenu v-if="showEsercizioDropdown">
+              <DropdownMenuTrigger
+                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                <Calendar class="w-3.5 h-3.5 text-slate-400" />
+                {{ selectedEsercizio?.nome.toLowerCase() ?? 'Seleziona esercizio' }}
+                <ChevronDown class="w-3.5 h-3.5 text-slate-400" />
+              </DropdownMenuTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuContent align="end" class="min-w-[180px]">
+                  <DropdownMenuItem v-for="e in esercizi" :key="e.id" class="cursor-pointer" :class="{ 'font-semibold text-primary': e.id === esercizio?.id }" @click="selectEsercizio(e.id)">
+                    {{ e.nome }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenuPortal>
+            </DropdownMenu>
+            <div v-else class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
+              <Calendar class="w-3.5 h-3.5 text-slate-400" />
+              <span class="text-slate-700 dark:text-slate-300">{{ esercizio.nome }}</span>
+            </div>
+          </template>
+        </template> <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
           <PlayCircle class="w-3.5 h-3.5" />
           VIDEO GUIDA
         </a>

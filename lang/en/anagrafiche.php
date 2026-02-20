@@ -113,4 +113,16 @@ return [
         'delete_resident_description' => 'This action is irreversible. It will delete the resident record and all associated data.',
         'no_residents_created'        => 'No resident records created yet',
     ],
+
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'centralized_book_title' => 'Centralized Address Book',
+        'centralized_book_desc'  => 'Manage all contacts (owners, tenants, suppliers) of your studio in a single shared archive.',
+        'building_link_title'    => 'Building Association',
+        'building_link_desc'     => 'Link contacts to their respective buildings to simplify successions and unit assignments.',
+        'fiscal_data_title'      => 'Fiscal Data & Documents',
+        'fiscal_data_desc'       => 'Keep tax codes and ID documents up to date to ensure compliance for all procedures and invoices.',
+    ],
 ];

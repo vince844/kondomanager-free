@@ -90,4 +90,16 @@ return [
         'save_building'  => 'Salva',
         'list_buildings' => 'Elenco',
     ],
+
+    /* ------------------------------------------------------------------
+     | Page Guides (Cards)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'portfolio_title'        => 'Portafoglio Fabbricati',
+        'portfolio_desc'         => 'Panoramica di tutti i condomini gestiti. Da qui hai il controllo totale sui tuoi mandati.',
+        'quick_access_title'     => 'Accesso Rapido',
+        'quick_access_desc'      => 'Clicca su un condominio per entrare nel suo gestionale dedicato (fatture, rate, bilanci).',
+        'new_acquisitions_title' => 'Nuove Acquisizioni',
+        'new_acquisitions_desc'  => 'Aggiungi nuovi stabili al gestionale e inizia a configurarne anagrafica e conti correnti.',
+    ],
 ];
