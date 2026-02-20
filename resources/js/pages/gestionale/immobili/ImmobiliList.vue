@@ -71,7 +71,7 @@ const pageGuides = [
       
       <PageHeaderGuide
         page-title="Unità Immobiliari"
-        page-subtitle="Gestisci l'anagrafica fisica del condominio. Aggiungi le unità immobiliari e preparati ad assegnare i soggetti (proprietari e inquilini)."
+        page-subtitle="Gestisci l'anagrafica fisica del condominio. Aggiungi le unità immobiliari e preparati ad assegnare i soggetti."
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"
