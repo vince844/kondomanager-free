@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Gestionale\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Evento;       // <-- Aggiunto
+use App\Models\Anagrafica;   // <-- Aggiunto
 use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Traits\HasCondomini;
@@ -42,7 +44,6 @@ class DashboardController extends Controller
                 // 1. RIEMPIMENTO PORTAFOGLI (SURPLUS)
                 $walletPadri = [];
                 foreach ($report['items'] as $item) {
-                    // Surplus = Soldi Pianificati - Costo Preventivato
                     $surplus = $item['pianificato'] - $item['budget'];
                     if ($surplus > 0) {
                         $walletPadri[$item['id']] = $surplus;
@@ -56,10 +57,8 @@ class DashboardController extends Controller
                     $deficit = $item['budget'] - $item['pianificato'];
                     
                     if ($deficit > 100) { 
-                        // Cerchiamo il padre
                         $parentId = $mappaGenitori[$item['id']] ?? null;
                         
-                        // Se il padre ha soldi nel portafoglio
                         if ($parentId && isset($walletPadri[$parentId]) && $walletPadri[$parentId] > 0) {
                             $disponibile = $walletPadri[$parentId];
                             $coperto = min($deficit, $disponibile);
@@ -68,7 +67,6 @@ class DashboardController extends Controller
                             $walletPadri[$parentId] -= $coperto;
                         }
 
-                        // Se è ancora scoperto, allora è un vero orfano
                         if ($deficit > 100) {
                             $vociScoperte[] = [
                                 'id'       => $item['id'],
@@ -96,11 +94,47 @@ class DashboardController extends Controller
             ];
         }
 
+        // --- INIZIO AGGIUNTA CHIRURGICA ---
+        // --- NUOVA LOGICA: INBOX OPERATIVA CON INFINITE SCROLL ---
+        $inboxTasks = Evento::query()
+            ->with(['anagrafiche:id,nome'])
+            ->whereJsonContains('meta->requires_action', true)
+            ->where('is_completed', false)
+            ->whereHas('condomini', function ($query) use ($condominio) {
+                $query->where('condomini.id', $condominio->id);
+            })
+            ->orderBy('start_time', 'asc')
+            ->paginate(10) // Paginazione a blocchi di 10
+            ->through(function ($task) { // usiamo through invece di map per mantenere il Paginator
+                $nomeAnagrafica = $task->anagrafiche->first()?->nome;
+
+                if (!$nomeAnagrafica && !empty($task->meta['context']['anagrafica_id'])) {
+                    $anagraficaModel = Anagrafica::find($task->meta['context']['anagrafica_id']);
+                    $nomeAnagrafica = $anagraficaModel?->nome;
+                }
+
+                return [
+                    'id'           => $task->id,
+                    'title'        => $task->title,
+                    'description'  => $task->description, 
+                    'date'         => $task->start_time->toISOString(),
+                    'type'         => $task->meta['type'] ?? 'generic',
+                    'action_url'   => $task->meta['action_url'] ?? null,
+                    'status'       => $task->start_time->isPast() ? 'expired' : 'scheduled',
+                    'context'      => [
+                        'anagrafica_nome' => $nomeAnagrafica, 
+                    ],
+                ];
+            });
+        // --- FINE AGGIUNTA CHIRURGICA ---
+
         return Inertia::render('gestionale/dashboard/Dashboard', [
             'condominio' => $condominio, 
-            'condomini' => $this->getCondomini(),
-            'esercizio' => $esercizio, 
-            'copertura' => $copertura
+            'condomini'  => $this->getCondomini(),
+            'esercizio'  => $esercizio, 
+            'esercizi'   => $condominio->esercizi, // <-- Risolve il warning "Missing required prop: esercizi"
+            'copertura'  => $copertura,
+            'inboxTasks' => Inertia::scroll($inboxTasks)
         ]);
     }
 }

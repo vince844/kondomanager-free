@@ -14,7 +14,7 @@ import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
-import { computed } from 'vue'; // Import Computed
+import { computed } from 'vue'; 
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';

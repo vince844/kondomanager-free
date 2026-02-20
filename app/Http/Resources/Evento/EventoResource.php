@@ -29,7 +29,7 @@ class EventoResource extends JsonResource
             'recurrence_id'   => $this->recurrence_id,
             
             // Date
-            'start_time'      => $this->start_time, // <--- FONDAMENTALE per il Dialog
+            'start_time'      => $this->start_time,
             'end_time'        => $this->end_time,
             'occurs_at_human' => Carbon::parse($occursAt)->diffForHumans(),
             'occurs'          => $this->occurs_at,
