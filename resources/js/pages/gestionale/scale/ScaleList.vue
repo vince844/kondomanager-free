@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { computed } from "vue";
 import { Head, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -8,8 +7,11 @@ import DataTable from '@/components/gestionale/scale/DataTable.vue';
 import { getColumns } from '@/components/gestionale/scale/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
-import CondominioDropdown from "@/components/CondominioDropdown.vue";
-import type { BreadcrumbItem } from '@/types';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+
+// Icone mirate per la gestione delle scale e ripartizioni
+import { ListTree, ArrowUpDown, PieChart } from 'lucide-vue-next';
+
 import type { Flash } from '@/types/flash';
 import type { Scala } from '@/types/gestionale/scale';
 import type { Building } from '@/types/buildings';
@@ -29,34 +31,78 @@ const columns = computed(() => getColumns(props.condominio));
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+// Breadcrumbs testuali per il nuovo componente Header
+const headerBreadcrumbs = computed(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'elenco scale', href: '#' },
+  { title: 'Struttura', href: '#' },
+  { title: 'Elenco Scale' }
 ]);
 
+// Configurazione della guida per le Scale
+const pageGuides = [
+  {
+    title: 'Suddivisione Interna',
+    description: 'Raggruppa le unità immobiliari in base alla rampa di scale o all\'ingresso, creando un albero strutturale chiaro e ordinato.',
+    icon: ListTree,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Ripartizioni Ascensore',
+    description: 'La divisione in scale è un pre-requisito vitale per poter applicare correttamente le tabelle millesimali per pulizia e manutenzione ascensore.',
+    icon: ArrowUpDown,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Isolamento Spese',
+    description: 'Permette di addebitare spese di riparazione specifiche (es. sostituzione plafoniere o citofoni) esclusivamente ai condòmini della singola scala.',
+    icon: PieChart,
+    colorVariant: 'amber' as const
+  }
+];
 </script>
 
 <template>
-
   <Head title="Elenco scale" />
 
-  <GestionaleLayout :breadcrumbs="breadcrumbs">
-    
-    <template #breadcrumb-condominio>
-      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
-    </template>
+  <GestionaleLayout>
 
-    <StrutturaLayout>
+    <div class="px-6 py-8 space-y-4">
+      
+      <PageHeaderGuide
+        page-title="Gestione scale"
+        page-subtitle="Definisci gli ingressi e le rampe di scale. Questa organizzazione è essenziale per le ripartizioni millesimali parziali."
+        :guides="pageGuides"
+        :breadcrumbs="headerBreadcrumbs"
+        :video-url="null /* 'https://youtube.com/...' */"
+        :condominio="props.condominio"
+        :condomini="props.condomini"
+      >
+      </PageHeaderGuide>
 
-      <div v-if="flashMessage" class="py-3">
-          <Alert :message="flashMessage.message" :type="flashMessage.type" />
+      <div class="w-full">
+        <StrutturaLayout>
+
+          <div class="container mx-auto p-0 mt-4">
+            
+            <div v-if="flashMessage">
+                <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
+
+            <div>
+              <DataTable 
+                :columns="columns" 
+                :data="props.scale" 
+                :meta="props.meta" 
+                :condominio="props.condominio"
+              />
+            </div>
+
+          </div>
+
+        </StrutturaLayout>
       </div>
 
-      <div class="container mx-auto p-0">
-        <DataTable :columns="columns" :data="props.scale" :meta="props.meta" :condominio="props.condominio"/>
-      </div>
+    </div>
 
-    </StrutturaLayout>
   </GestionaleLayout>
 </template>

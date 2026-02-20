@@ -35,6 +35,13 @@ export interface Conto {
   dettaglio_copertura?: DettaglioCopertura[] // Array per la tabella dettaglio
   has_rate_emesse?: boolean
 
+  is_parent?: boolean
+  is_frazionato?: boolean
+  figli_names?: string[]
+  importo_originale?: number
+  importo_residuo: number; 
+  formatted_residuo: string
+
   sottoconti?: Conto[]
   tabelle_millesimali?: ContoTabellaMillesimale[]
 }

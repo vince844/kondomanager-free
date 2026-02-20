@@ -219,7 +219,7 @@ const submit = () => {
                                 :checked="form.is_private"
                                 v-model="form.is_private" 
                                 id="is_private" 
-                                @update:checked="(val) => form.is_private = val" 
+                                @update:checked="(val:boolean) => form.is_private = val" 
                                 />
                             <label
                                 for="is_private"

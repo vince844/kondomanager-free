@@ -6,6 +6,7 @@ use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Actions\Gestionale\Movimenti\StornoIncassoRateAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StoreIncassoRateRequest;
+use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Anagrafica;
 use App\Models\Evento;
@@ -17,13 +18,14 @@ use App\Models\Gestionale\RataQuote;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
+use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class IncassoRateController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio;
+    use HandleFlashMessages, HasEsercizio, HasCondomini;
 
     public function __construct(
         private IncassoRateService $incassoService
@@ -40,7 +42,11 @@ class IncassoRateController extends Controller
             ->withQueryString()
             ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
 
-        $condominiList = Anagrafica::whereHas('immobili', fn($q) => 
+        // 1. Recuperiamo i PALAZZI veri per il menu a tendina
+        $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
+        
+        // 2. Recuperiamo le PERSONE (se ti servono per la vista o i filtri) e li chiamiamo 'soggetti'
+        $soggettiList = Anagrafica::whereHas('immobili', fn($q) => 
             $q->where('condominio_id', $condominio->id)
         )->orderBy('nome')->get();
         
@@ -49,7 +55,8 @@ class IncassoRateController extends Controller
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateList', [
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
-            'condomini'  => $condominiList,
+            'condomini'  => $listaPalazzi, 
+            'soggetti'   => $soggettiList, 
             'esercizio'  => $esercizio,
             'filters'    => $request->all(['search']),
         ]);

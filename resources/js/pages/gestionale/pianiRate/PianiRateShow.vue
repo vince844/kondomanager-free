@@ -68,7 +68,7 @@ const isDisallineato = computed(() => {
     if (!props.pianoRate.capitoli || !aggregates.value) return false;
 
     // 1. Come hai suggerito: sommiamo dinamicamente gli importi reali delle righe visibili
-    const totaleVoci = props.pianoRate.capitoli.reduce((acc, cap) => acc + (cap.importo || 0), 0);
+    const totaleVoci = props.pianoRate.capitoli.reduce((acc: number, cap: any) => acc + (cap.importo || 0), 0);
 
     // Se non ci sono rate generate (es. piano appena svuotato), non mostriamo l'allarme
     if (aggregates.value.totaleTeorico === 0) return false;
@@ -426,6 +426,26 @@ const isVoceRicevente = (capitoloId: number) => {
 const isReady = computed(() => props.pianoRate?.numero_rate > 0 && (Array.isArray(props.quotePerAnagrafica) || Array.isArray(props.quotePerImmobile)));
 
 const rateColumns = computed(() => {
+  if (!isReady.value || !props.ratePure) return [];
+  const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
+  
+  // Usiamo direttamente le rate che arrivano dal backend, così si adatta da solo se c'è la Rata 0
+  return props.ratePure.map(rataPura => {
+    const numero = rataPura.numero_rata;
+    // Cerchiamo una quota qualsiasi per estrarre la data formattata (o usiamo il fallback)
+    const sample = Array.isArray(src) ? src.find((item: any) => item.rate?.some((r: any) => r.numero === numero)) : null;
+    const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
+    
+    return { 
+        numero, 
+        scadenza: scadenza ? new Date(scadenza) : null,
+        is_emessa: rataPura.is_emessa ?? false, 
+        id: rataPura.id 
+    };
+  });
+});
+
+/* const rateColumns = computed(() => {
   if (!isReady.value) return [];
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
   if (!Array.isArray(src)) return [];
@@ -441,7 +461,7 @@ const rateColumns = computed(() => {
         id: rataPura?.id 
     };
   });
-});
+}); */
 
 const dataWithMap = computed(() => {
   if (!isReady.value) return [];
@@ -488,6 +508,38 @@ const currentData = computed(() => {
 });
 
 const aggregates = computed(() => {
+  if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: {}, totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
+  const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
+  
+  // FIX: Usiamo un Oggetto (Dizionario) invece di un array, così la rata "0" non va in indice -1
+  const perRata: Record<number, number> = {};
+  
+  let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
+  
+  (src || []).forEach((item: any) => {
+    (item.rate || []).forEach((r: any) => {
+      const importo = r.importo ?? 0;
+      const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
+      const isScaduta = scadenzaTime <= today.getTime();
+      
+      // Somma sicura per qualsiasi numero di rata (0, 1, 2...)
+      perRata[r.numero] = (perRata[r.numero] || 0) + importo;
+      
+      totaleTeorico += importo;
+      if (r.stato === "pagata") versato += importo;
+      else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
+      if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
+         if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
+         else scadute += importo;
+      }
+      if (importo < 0) crediti += Math.abs(importo);
+    });
+  });
+  const daIncassareTotale = totaleTeorico - versato;
+  return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
+});
+
+/* const aggregates = computed(() => {
   if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: [], totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
   const perRata = Array(props.pianoRate.numero_rate).fill(0);
@@ -511,7 +563,7 @@ const aggregates = computed(() => {
   });
   const daIncassareTotale = totaleTeorico - versato;
   return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
-});
+}); */
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -849,7 +901,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                               <div class="flex flex-col items-center relative z-20 pointer-events-none">
                                   <div class="font-semibold text-gray-700 flex items-center gap-1">
-                                      Rata {{ col.numero }}
+                                    <!--   Rata {{ col.numero }} -->
+                                       {{ col.numero === 0 ? 'Saldi Iniziali' : 'Rata ' + col.numero }}
                                       <Badge v-if="col.is_emessa" class="ml-1 h-1.5 w-1.5 p-0 bg-emerald-500 rounded-full" title="Emessa"></Badge>
                                   </div>
                                   <div class="text-[10px] opacity-75 font-normal">{{ col.scadenza ? toItalian(col.scadenza) : "—" }}</div>
@@ -925,11 +978,13 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                             <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20">
                                                 PARZ.
                                             </div>
-                                            <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale" 
+                                          <!--   <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale"  -->
+                                            <div v-if="tab === 'anagrafica' && rateColumns[0]?.numero === col.numero && item.saldo_iniziale"
                                                 class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white z-20"
                                                 :class="item.saldo_iniziale > 0 ? 'bg-red-500' : 'bg-blue-500'"
                                             ></div>
-                                            <div v-if="tab === 'immobile' && col.numero === 1" class="z-20">
+                                            <!-- <div v-if="tab === 'immobile' && col.numero === 1" class="z-20"> -->
+                                                <div v-if="tab === 'immobile' && rateColumns[0]?.numero === col.numero" class="z-20">
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
                                                 <div v-if="item.totale_crediti < 0 && item.totale_debiti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                 <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="absolute -top-1 -right-1 flex gap-0.5">
@@ -944,7 +999,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                         <div class="text-xs text-center">
                                             <p class="font-bold mb-1">{{ getRataStyle(item.rateMap[col.numero]).label }}</p>
                                             
-                                            <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20">
+                                            <!-- <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20"> -->
+                                            <div v-if="tab === 'anagrafica' && rateColumns[0]?.numero === col.numero && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20">
                                                 <p>Incluso saldo iniziale:</p>
                                                 <p :class="item.saldo_iniziale > 0 ? 'text-red-300' : 'text-blue-300'">
                                                     {{ item.saldo_iniziale > 0 ? 'Debito: ' : 'Credito: ' }} 
@@ -999,7 +1055,8 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       <tr class="border-t-2 border-muted bg-gray-50 font-bold text-gray-700">
                         <td class="px-6 py-3 sticky left-0 bg-gray-50 z-40 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">TOTALE</td>
                         <td v-for="col in rateColumns" :key="col.numero" class="text-center px-3 py-3">
-                          {{ euro(aggregates.totaliPerRata[col.numero - 1] ?? 0) }}
+                          <!-- {{ euro(aggregates.totaliPerRata[col.numero - 1] ?? 0) }} -->
+                            {{ euro(aggregates.totaliPerRata[col.numero] ?? 0) }}
                         </td>
                         <td class="px-4 py-3 text-right text-amber-600 bg-red-50/20 border-l border-red-100">{{ euro(aggregates.totaleRateScadute) }}</td>
                         <td class="px-4 py-3 text-right text-emerald-600 bg-emerald-50/20 border-l border-emerald-100">{{ euro(aggregates.totaleVersato) }}</td>
@@ -1174,7 +1231,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
             Stai per eliminare la voce di spesa:
             <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center">
                 <span>{{ itemToDelete?.nome }}</span>
-                <span class="font-bold text-slate-900">{{ euro(itemToDelete?.importo) }}</span>
+                <span class="font-bold text-slate-900">{{ itemToDelete?.importo ? euro(itemToDelete.importo) : '' }}</span>
             </div>
         </div>
 

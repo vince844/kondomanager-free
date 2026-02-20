@@ -232,7 +232,7 @@ const submit = () => {
                     class="size-4"
                     v-model="form.all_flats"
                     id="all_flats"
-                    @update:checked="(val) => form.all_flats = val"
+                    @update:checked="(val:boolean) => form.all_flats = val"
                   />
                   <label
                     for="all_flats"

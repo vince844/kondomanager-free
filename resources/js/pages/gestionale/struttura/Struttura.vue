@@ -1,11 +1,11 @@
 <script setup lang="ts">
-
-import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
+import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
-import CondominioDropdown from "@/components/CondominioDropdown.vue";
+import { FileText, MapPin, ClipboardList } from 'lucide-vue-next';
 import type { Building } from "@/types/buildings";
 
 const props = defineProps<{
@@ -18,119 +18,136 @@ const { generatePath } = usePermission();
 // Condominio data
 const condominio = computed<Building>(() => props.condominio);
 
-// Breadcrumbs
-const breadcrumbs = computed(() => [
-  { title: 'Gestionale', href:generatePath('gestionale/:condominio', { condominio: condominio.value.id }) },
-  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'dettagli condominio', href: '#' },
+// Breadcrumbs testuali per il nuovo componente Header
+const headerBreadcrumbs = computed(() => [
+  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: 'Struttura', href: '#' },
+  { title: 'Dettagli Fabbricato' }
 ]);
 
+// Configurazione della guida per l'Anagrafica
+const pageGuides = [
+  {
+    title: 'Dati Fiscali',
+    description: 'Mantieni sempre aggiornato il Codice Fiscale. È il dato fondamentale per la generazione delle Certificazioni Uniche (CU) e dei modelli F24.',
+    icon: FileText,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Dati Catastali',
+    description: 'I dati catastali (Foglio, Particella, Sezione) sono necessari per le pratiche di detrazione fiscale sui lavori straordinari.',
+    icon: MapPin,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Note Operative',
+    description: 'Usa le note per appuntare informazioni cruciali per i fornitori: codici di accesso, posizione dei contatori o orari della portineria.',
+    icon: ClipboardList,
+    colorVariant: 'amber' as const
+  }
+];
 </script>
 
 <template>
-  <Head title="Dashboard gestionale" />
+  <Head title="Dettagli condominio" />
 
-  <GestionaleLayout :breadcrumbs="breadcrumbs">
+  <GestionaleLayout>
 
-    <template #breadcrumb-condominio>
-      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
-    </template>
+    <div class="px-6 py-8 space-y-4">
 
-    <StrutturaLayout>
-          
-      <div class="container mx-auto p-0">
-        <div class="bg-card mb-6 grid grid-cols-1 md:grid-cols-2 gap-6 rounded-lg border p-6 text-sm mt-4">
+      <PageHeaderGuide
+        page-title="Dettagli fabbricato"
+        page-subtitle="Consulta le informazioni generali, i dati catastali e le note operative. Assicurati che i dati fiscali siano sempre aggiornati."
+        :guides="pageGuides"
+        :breadcrumbs="headerBreadcrumbs"
+        :video-url="null /* 'https://youtube.com/...' */"
+        :condominio="props.condominio"
+        :condomini="props.condomini"
+      >
+      </PageHeaderGuide>
 
-          <!-- Left block -->
-          <div class="space-y-6 pr-6 border-r">
-            <div class="border-b pb-2 mb-8">
-              <h3 class="text-lg font-bold">{{condominio.nome}}</h3>
-              <p class="text-muted-foreground text-sm ">
-                Di seguito i dettagli registrati per il condominio {{ condominio.nome }}
-              </p> 
-            </div>
-    
-            <div class="grid grid-cols-1 md:grid-cols-1 gap-12">
-              <!-- Column 1 -->
-              <div class="space-y-3">
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-36">Indirizzo:</span>
-                  <div class="capitalize">{{ condominio.indirizzo }}</div>
+      <div class="w-full">
+        <StrutturaLayout>
+            
+          <div class="container mx-auto p-0 mt-4">
+            
+            <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm overflow-hidden mb-6">
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800/60">
+                
+                <div class="p-6 lg:p-8">
+                  <div class="mb-5">
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ condominio.nome }}</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Dettagli anagrafici e fiscali del fabbricato.</p> 
+                  </div>
+
+                  <div class="flex flex-col gap-2">
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Indirizzo:</span>
+                      <span class="text-slate-700 dark:text-slate-300 capitalize ml-1">{{ condominio.indirizzo || '-' }}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5 flex items-center flex-wrap">
+                      <span class="font-bold text-slate-900 dark:text-white mr-2">Codice Fiscale:</span>
+                      <span class="font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{{ condominio.codice_fiscale ?? '-' }}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Cod. Identificativo:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.codice_identificativo ?? '-' }}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-36">Codice fiscale:</span>
-                  <div>{{ condominio.codice_fiscale ?? '-' }}</div>
+                <div class="p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-900/20">
+                  <div class="mb-5">
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Riferimenti Catastali</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Dati necessari per pratiche e detrazioni.</p>
+                  </div>
+                  
+                  <div class="flex flex-col gap-2">
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Comune Catasto:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.comune_catasto ?? '-' }}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Codice Catasto:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.codice_catasto ?? '-'}}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Sezione:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.sezione_catasto ?? '-' }}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Foglio:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.foglio_catasto ?? '-' }}</span>
+                    </div>
+
+                    <div class="text-[13px] py-0.5">
+                      <span class="font-bold text-slate-900 dark:text-white">Particella:</span>
+                      <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.particella_catasto ?? '-' }}</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-36">Codice identificativo:</span>
-                  <div>{{ condominio.codice_identificativo ?? '-' }}</div>
-                </div>
               </div>
-
             </div>
-          </div>
 
-          <!-- Right block -->
-          <div class="space-y-6 ">
-
-            <div class="border-b pb-2 mb-8">
-              <h3 class="text-lg font-bold">Dati catastali</h3>
-              <p class="text-muted-foreground text-sm ">
-                Di seguito i dati catastali registrati per il condominio {{ condominio.nome }}
+            <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8">
+              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-4">Note Operative</h3>
+              <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap" :class="{'italic text-slate-400 dark:text-slate-500': !condominio.note}">
+                {{ condominio.note || 'Nessuna nota inserita per questo condominio.' }}
               </p>
             </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <!-- Column 3 -->
-              <div class="space-y-3">
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-30">Comune catasto:</span>
-                  <div>{{ condominio.comune_catasto ?? '-' }}</div>
-                </div>
 
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-30">Codice catasto:</span>
-                  <div>{{ condominio.codice_catasto ?? '-'}}</div>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-30">Sezione catasto:</span>
-                  <div>{{ condominio.sezione_catasto ?? '-' }}</div>
-                </div>
-              </div>
-
-              <!-- Column 4 -->
-              <div class="space-y-3">
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-24">Foglio:</span>
-                  <div>{{ condominio.foglio_catasto ?? '-' }}</div>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground font-semibold w-24">Particella:</span>
-                  <div>{{ condominio.particella_catasto ?? '-' }}</div>
-                </div>
-                
-              </div>
-            </div>
           </div>
 
-        </div>
+        </StrutturaLayout>
       </div>
-
-      <div class="bg-card mb-2 rounded-lg border p-6 text-sm">
-        <div class="border-b pb-2 mb-4">
-          <h3 class="text-lg font-bold">Note registrate</h3>
-        </div>
-
-        <p class="text-sm text-gray-700">
-          {{ condominio.note || 'Nessuna nota inserita per questo condominio.' }}
-        </p>
-      </div>
-
-    </StrutturaLayout>
+    </div>
    
   </GestionaleLayout>
 </template>

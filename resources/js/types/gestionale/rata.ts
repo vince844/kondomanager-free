@@ -120,3 +120,9 @@ export interface Incasso {
     dettagli_rate: DettaglioRataIncasso[];
     anagrafica_id_principale: number | null;
 }
+
+export interface RataPura {
+  id: number
+  numero_rata: number
+  is_emessa: boolean
+}

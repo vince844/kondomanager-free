@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import InputError from '@/components/InputError.vue'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban } from 'lucide-vue-next'
+import { Separator } from '@/components/ui/separator';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info} from 'lucide-vue-next'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import vSelect from 'vue-select'
 import axios from 'axios';
 import { usePermission } from '@/composables/permissions'
@@ -76,7 +78,7 @@ const form = useForm({
   gestione_id: '',
   nome: '',
   descrizione: '',
-  metodo_distribuzione: 'prima_rata',
+  metodo_distribuzione: null,
   numero_rate: 12,
   giorno_scadenza: 5,
   note: '',
@@ -431,34 +433,79 @@ const submit = () => {
             </div>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-            <div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end mb-4">
+            
+            <div class="relative">
               <Label>Numero rate</Label>
               <Input v-model.number="form.numero_rate" class="mt-1 w-full" />
-              <InputError :message="form.errors.numero_rate" />
+              <InputError :message="form.errors.numero_rate" class="absolute -bottom-6 left-0 text-[11px]" />
             </div>
-            <div v-if="!usingByDay">
+            
+            <div v-if="!usingByDay" class="relative">
               <Label>Giorno scadenza</Label>
               <Input v-model.number="form.giorno_scadenza" class="mt-1 w-full" />
             </div>
-            
-            <div v-if="mostraDistribuzioneSaldo">
-              <Label class="text-blue-600 font-semibold">Distribuzione saldo iniziale</Label>
+   
+            <div v-if="mostraDistribuzioneSaldo" class="relative">
+              <div class="flex items-center gap-2">
+                <Label>
+                  Distribuzione saldo iniziale
+                </Label>
+
+                <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="w-4 h-4 text-muted-foreground" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-96 z-50 p-4 shadow-xl border-blue-100">
+                      <div class="space-y-3 text-sm">
+                        <h4 class="font-bold text-slate-800 flex items-center gap-2 border-b pb-2">
+                          <Wallet class="w-4 h-4 text-blue-600"/> Gestione saldi pregressi
+                        </h4>
+                        
+                        <div class="space-y-2">
+                          <p class="text-xs text-slate-600">
+                            <strong class="text-emerald-700">Crea rata separata (Saldi iniziali):</strong> <br>
+                            <span class="opacity-90">Opzione consigliata. Crea una rata iniziale dedicata solo ai debiti/crediti dell'anno precedente. Fondamentale per la massima trasparenza e per gestire correttamente i subentri.</span>
+                          </p>
+                          
+                          <p class="text-xs text-slate-600">
+                            <strong class="text-slate-700">Aggiungi alla prima rata:</strong> <br>
+                            <span class="opacity-90">Somma i vecchi debiti alla Rata 1 del nuovo preventivo. Metodo tradizionale, ma rende difficile per il condomino distinguere la competenza.</span>
+                          </p>
+                          
+                          <p class="text-xs text-slate-600">
+                            <strong class="text-slate-700">Spalma su tutte le rate:</strong> <br>
+                            <span class="opacity-90">Divide il debito/credito in parti uguali su tutte le rate dell'anno. Sconsigliato perché maschera l'importo reale della gestione corrente.</span>
+                          </p>
+                        </div>
+                      </div>
+                    </HoverCardContent>
+                </HoverCard>
+              </div>
+
               <v-select
-                class="mt-1 w-full v-select-custom"
                 :options="[
-                  {label: 'Aggiungi alla prima rata', value: 'prima_rata'}, 
-                  {label: 'Spalma su tutte le rate', value: 'tutte_rate'},
-                  {label: 'Crea una rata separata (Consigliato)', value: 'rata_zero'}
+                  {label: 'Crea una rata separata (Consigliato)', value: 'rata_zero'},
+                  {label: 'Aggiungi alla prima rata (Classico)', value: 'prima_rata'}, 
+                  {label: 'Spalma su tutte le rate', value: 'tutte_rate'}
                 ]"
+                class="mt-1 w-full v-select-custom"
                 v-model="form.metodo_distribuzione"
                 :reduce="opt => opt.value"
                 :clearable="false"
+                @update:modelValue="form.clearErrors('metodo_distribuzione')" 
+                placeholder="Seleziona modalità di distribuzione"
               />
+              <InputError :message="form.errors.metodo_distribuzione" class="absolute -bottom-6 left-0 text-[11px]" />
             </div>
+   
           </div>
 
-          <div class="flex flex-col sm:flex-row gap-6 pt-4 border-t">
+          <Separator class="my-2 mt-10" />
+
+          <div class="flex flex-col sm:flex-row gap-6 pt-4">
             <div class="flex items-center gap-2">
               <Checkbox id="genera_subito" v-model="form.genera_subito" />
               <Label for="genera_subito" class="cursor-pointer font-medium">Genera subito le rate</Label>
