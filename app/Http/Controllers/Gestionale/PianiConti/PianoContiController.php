@@ -11,6 +11,7 @@ use App\Http\Resources\Gestionale\PianiDeiConti\Conti\ContoResource;
 use App\Http\Resources\Gestionale\PianiDeiConti\PianoDeiContiResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestione;
@@ -175,9 +176,12 @@ class PianoContiController extends Controller
         //    La Resource leggerà da qui invece di ricalcolare in autonomia
         ContoResource::$coverageMap = $coverageMap;
 
-        $fornitori = \App\Models\Fornitore::attivi()
+        $fornitori = Fornitore::attivi()
             ->orderBy('ragione_sociale')
             ->get(['id', 'ragione_sociale']);
+        
+        // AGGIUNGI QUESTA RIGA: Calcolo super-veloce del totale preventivo
+        $totalePreventivo = Conto::where('piano_conto_id', $pianoConto->id)->sum('importo');
 
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [
             'condominio' => [
@@ -191,6 +195,7 @@ class PianoContiController extends Controller
             'pianoConti' => new PianoDeiContiResource($pianoConto),
             'conti'      => ContoResource::collection($conti),
             'fornitori'  => $fornitori,
+            'totalePreventivo' => $totalePreventivo,  // ← AGGIUNTO
         ]);
     }
 

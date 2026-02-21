@@ -9,9 +9,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import InputError from '@/components/InputError.vue'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import vSelect from 'vue-select'
 import MoneyInput from '@/components/MoneyInput.vue'
-import { Lock, AlertTriangle } from 'lucide-vue-next' // Aggiunta icona Lock
+import { Lock, AlertTriangle, Info } from 'lucide-vue-next'
 import type { Conto } from '@/types/gestionale/conti'
 
 interface Emits {
@@ -25,6 +26,9 @@ interface Props {
   condominioId: number
   esercizioId: number
   pianoContoId: number
+  // Aggiunto per il menu a tendina
+  fornitori?: Array<{ id: number, ragione_sociale: string }> 
+  
 }
 
 const props = defineProps<Props>()
@@ -33,6 +37,7 @@ const emit = defineEmits<Emits>()
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti } = useCapitoliConti()
+const { euro } = useCurrencyFormatter()
 
 const moneyOptions = ref({
   prefix: '',              
@@ -46,6 +51,9 @@ const moneyOptions = ref({
 
 const form = useForm({
   nome: '',
+  codice: '', // Aggiunto
+  default_fornitore_id: null as number | null, // Aggiunto
+  tipo_spesa: 'standard', // Aggiunto
   tipo: 'spesa' as 'spesa' | 'entrata',
   importo: '',
   descrizione: '',
@@ -95,14 +103,16 @@ const isContoCapitolo = computed(() => {
 
 // *** NUOVA COMPUTED PROPERTY PER IL BLOCCO ***
 const isImportoLocked = computed(() => {
-  // È bloccato se il backend dice che ha rate emesse (aggiungi questa prop al tipo TypeScript se manca)
-  // @ts-ignore (ignora errore TS finché non aggiorni l'interfaccia Conto)
+  // @ts-ignore
   return props.conto?.has_rate_emesse === true;
 })
 
 watch(() => props.conto, (newConto) => {
   if (newConto) {
     form.nome = newConto.nome
+    form.codice = newConto.codice || '' // Assegna il codice esistente
+    form.default_fornitore_id = newConto.default_fornitore_id || null // Assegna il fornitore esistente
+    form.tipo_spesa = newConto.tipo_spesa || 'standard' // Assegna il tipo spesa esistente
     form.tipo = newConto.tipo
     form.descrizione = newConto.descrizione || ''
     form.note = newConto.note || ''
@@ -166,7 +176,6 @@ const submit = () => {
 
   form.transform((data) => ({
     ...data,
-    // Se è bloccato, non inviamo l'importo modificato (o inviamo quello vecchio per sicurezza)
     importo: isCapitolo.value ? 0 : data.importo,
     parent_id: isSottoConto.value ? data.parent_id : null,
   })).put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
@@ -184,25 +193,55 @@ const submit = () => {
 </script>
 
 <template>
-
-
-  <Dialog v-model:open="props.show" @update:open="closeModal">
-    <DialogContent class="sm:max-w-[650px]">
+  <Dialog :open="props.show" @update:open="(val) => !val && closeModal()">
+    <DialogContent class="sm:max-w-[750px]" @openAutoFocus="(e: Event) => e.preventDefault()">
       <DialogHeader>
         <DialogTitle>Modifica voce di spesa</DialogTitle>
       </DialogHeader>
 
-      <div class="grid gap-4 py-4 overflow-y-auto px-6">
-        <div class="flex flex-col justify-between h-[60dvh]">
+      <div class="grid gap-4 py-4 overflow-y-auto px-6 max-h-[70vh]">
+        <div class="flex flex-col justify-between">
 
           <form v-if="props.conto" @submit.prevent="submit" class="space-y-4 mt-4">
             <input type="hidden" v-model="form.isCapitolo" />
             <input type="hidden" v-model="form.isSottoConto" />
 
-            <div>
-              <Label for="nome">Nome</Label>
-              <Input id="nome" v-model="form.nome" placeholder="Es. Spese ascensore" />
-              <InputError :message="form.errors.nome" />
+            <div v-if="!isCapitolo && (isImportoLocked || (props.conto?.impegnato ?? 0) > 0)" 
+                 class="bg-blue-50/80 border border-blue-200 rounded-lg p-4 space-y-3 mb-6">
+                 
+                <div class="flex items-start gap-3">
+                    <div class="bg-blue-100 p-1.5 rounded-full shrink-0 mt-0.5">
+                        <Info class="w-4 h-4 text-blue-700" />
+                    </div>
+                    
+                    <div class="text-sm text-blue-900">
+                        <strong>Vincoli sull'importo:</strong>
+                        
+                        <span v-if="isImportoLocked" class="block mt-1 text-blue-800/80">
+                            L'importo di questa voce è attualmente bloccato perché è collegato a un piano rate già approvato o con rate emesse. 
+                            <br><br>
+                            <strong>Come risolvere:</strong> Per modificare questa cifra, devi prima annullare le rate emesse o gestire l'eccedenza tramite il modulo <em>"Sposta Budget"</em>.
+                        </span>
+                        
+                        <span v-else-if="(props.conto?.impegnato ?? 0) > 0" class="block mt-1 text-blue-800/80">
+                            Hai già inserito questa spesa in un piano rate per un totale di <strong>{{ euro(props.conto?.impegnato ?? 0) }}</strong>. 
+                            Per garantire la coerenza contabile, non puoi ridurre l'importo totale al di sotto di questa soglia.
+                            <br><br>
+                            <strong>Come risolvere:</strong> Se desideri inserire una cifra inferiore, vai nel modulo <em>"Piani Rate"</em> dove hai impegnato l'importo e rimuovi la quota assegnata a questa voce. Dopodiché, potrai abbassare l'importo qui.
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-4 gap-4">
+               <div class="col-span-1">
+                  <Label for="codice">Codice</Label>
+                  <Input id="codice" v-model="form.codice" placeholder="A.1" class="mt-1" />
+               </div>
+               <div class="col-span-3">
+                  <Label for="nome">Nome Voce</Label>
+                  <Input id="nome" v-model="form.nome" placeholder="Es. Pulizia Scale" class="mt-1" required />
+                  <InputError :message="form.errors.nome" />
+               </div>
             </div>
 
             <div>
@@ -211,7 +250,7 @@ const submit = () => {
             </div>
 
             <div v-if="!isCapitolo" class="flex items-center gap-6 pb-2">
-              <Label class="font-medium">Tipo di spesa</Label>
+              <Label class="font-medium">Tipo di movimento</Label>
               <div class="flex items-center gap-2">
                 <input type="radio" id="spesa" value="spesa" v-model="form.tipo" />
                 <Label for="spesa">Spesa (uscita)</Label>
@@ -238,12 +277,43 @@ const submit = () => {
               <InputError :message="form.errors.parent_id" />
             </div>
 
+            <div v-if="!isCapitolo" class="bg-slate-50 p-4 rounded-md border border-slate-200 grid grid-cols-2 gap-4">
+                <div>
+                   <Label for="fornitore" class="text-xs font-semibold uppercase text-slate-500">Fornitore Suggerito</Label>
+                   <select 
+                      id="fornitore"
+                      v-model="form.default_fornitore_id"
+                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
+                   >
+                      <option :value="null">-- Nessuno --</option>
+                      <option v-for="f in (props.fornitori || [])" :key="f.id" :value="f.id">
+                        {{ f.ragione_sociale }}
+                      </option>
+                   </select>
+                   <p class="text-[10px] text-slate-500 mt-1">Verrà precompilato nelle fatture.</p>
+                </div>
+
+                <div>
+                   <Label for="tipo_spesa" class="text-xs font-semibold uppercase text-slate-500">Natura Spesa (Fiscale)</Label>
+                   <select 
+                      id="tipo_spesa"
+                      v-model="form.tipo_spesa"
+                      class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1 focus:ring-2 focus:ring-ring"
+                   >
+                      <option value="standard">Standard (Beni/Servizi)</option>
+                      <option value="professionista">Professionista (Rit. Acconto)</option>
+                      <option value="lavori">Lavori Edili (Bonus/Ristr.)</option>
+                      <option value="utenza">Utenza (Luce/Gas/Acqua)</option>
+                   </select>
+                </div>
+            </div>
+
             <div v-if="!isCapitolo">
               <div class="flex justify-between items-center mb-1">
-                <Label for="importo">Importo</Label>
+                <Label for="importo">Importo Preventivato</Label>
                 <div v-if="isImportoLocked" class="flex items-center text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
                   <Lock class="w-3 h-3 mr-1" />
-                  Bloccato da rate emesse
+                  Bloccato da rate emesse o piano rate approvato
                 </div>
               </div>
               
@@ -258,10 +328,6 @@ const submit = () => {
                   :disabled="isImportoLocked" 
                   :class="{'opacity-60 bg-gray-100 cursor-not-allowed': isImportoLocked}"
                 />
-                
-                <div v-if="isImportoLocked" class="text-[11px] text-gray-500 mt-1">
-                  Per modificare l'importo devi creare un conguaglio o annullare le rate.
-                </div>
               </div>
               
               <InputError :message="form.errors.importo" />

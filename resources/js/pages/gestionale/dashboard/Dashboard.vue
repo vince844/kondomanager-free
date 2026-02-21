@@ -258,7 +258,7 @@ const suggerimentoOperativo = computed(() => {
                                 <Inbox class="w-4 h-4 text-slate-400" />
                                 <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500">Inbox Operativa</h3>
                             </div>
-                            <Badge v-if="inboxTasks.total > 0" variant="destructive" class="font-bold rounded-md text-[10px]">{{ inboxTasks.total }} ATTIVITA'</Badge>
+                            <Badge v-if="inboxTasks.total > 0" variant="destructive" class="font-bold rounded-md text-[10px]">{{ inboxTasks.total }} ATTIVITÀ</Badge>
                         </div>
 
                         <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
@@ -289,10 +289,13 @@ const suggerimentoOperativo = computed(() => {
                                                     </div>
                                                 </div>
                                                 <div class="shrink-0">
-                                                    <a v-if="task.action_url" :href="task.action_url" class="inline-flex items-center justify-center h-8 px-4 text-xs font-bold text-white transition-colors bg-slate-900 dark:bg-white dark:text-slate-900 rounded-lg hover:bg-slate-700 dark:hover:bg-slate-200 shadow-sm">
-                                                        Risolvi <ArrowRight class="w-3 h-3 ml-2" />
+                                                    <a v-if="task.action_url" :href="task.action_url" 
+                                                        class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-colors rounded-lg border"
+                                                        :class="task.status === 'expired' 
+                                                            ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20' 
+                                                            : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'">
+                                                        Risolvi <ArrowRight class="w-3 h-3 ml-1.5" />
                                                     </a>
-                                                    
                                                 </div>
                                             </div>
                                         </li>

@@ -14,129 +14,205 @@ use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException; // Aggiunto per gli errori di validazione personalizzati
 
+/**
+ * Controller per la gestione delle voci di spesa/entrata (Conti) all'interno del Piano dei Conti.
+ * Gestisce la creazione, l'aggiornamento e l'eliminazione dei conti, inclusa la logica
+ * complessa per capitoli, sottoconti e blocchi contabili.
+ */
 class ContoController extends Controller
 {
-     use HandleFlashMessages;
+    use HandleFlashMessages;
 
+    /**
+     * Crea una nuova voce di spesa o capitolo nel piano dei conti.
+     */
     public function store(CreateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
         try {
             DB::beginTransaction();
             $data = $request->validated();
-            $isCapitolo = $data['isCapitolo'];
-            $isSottoConto = $data['isSottoConto'];
+            
+            // Estrazione sicura dei flag booleani (previene errori se la chiave non esiste nel payload)
+            $isCapitolo = $data['isCapitolo'] ?? false;
+            $isSottoConto = $data['isSottoConto'] ?? false;
                 
+            // Creazione del record principale del Conto
             $nuovoConto = Conto::create([
                 'piano_conto_id'        => $pianoConto->id,
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                'codice'                => $data['codice'] ?? null, // NUOVO
+                'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
-                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', // NUOVO
-                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']), 
-                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, // NUOVO
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
+                // Se è un capitolo, forziamo l'importo a 0. Altrimenti convertiamo in centesimi.
+                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0), 
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
                 'attivo'                => true,
             ]);
 
+            // Se NON è un capitolo (quindi è una voce di spesa effettiva), gestiamo le tabelle millesimali
             if (!$isCapitolo) {
+                // 1. Validazione e recupero della tabella millesimale associata
                 if (!empty($data['tabella_millesimale_id'])) {
-                    $tabella = Tabella::where('id', $data['tabella_millesimale_id'])->where('condominio_id', $condominio->id)->first();
+                    $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
+                                      ->where('condominio_id', $condominio->id)
+                                      ->first();
                     if (!$tabella) throw new \Exception('Tabella millesimale non trovata');
                 } 
 
+                // 2. Associazione della tabella al conto (pivot)
                 $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                    'conto_id' => $nuovoConto->id, 'tabella_id' => $tabella->id, 'coefficiente' => 100.00, 'created_at' => now(), 'updated_at' => now(),
+                    'conto_id' => $nuovoConto->id, 
+                    'tabella_id' => $tabella->id, 
+                    'coefficiente' => 100.00, 
+                    'created_at' => now(), 
+                    'updated_at' => now(),
                 ]);
 
+                // 3. Preparazione delle ripartizioni (proprietario, inquilino, usufruttuario)
                 $ripartizioni = [
-                    ['soggetto' => 'proprietario', 'percentuale' => $data['percentuale_proprietario']],
-                    ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino']],
-                    ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario']]
+                    ['soggetto' => 'proprietario', 'percentuale' => $data['percentuale_proprietario'] ?? 0],
+                    ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino'] ?? 0],
+                    ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario'] ?? 0]
                 ];
 
-                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) throw new \Exception("La somma delle percentuali deve essere 100%");
+                // Controllo integrità: la somma deve essere 100%
+                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
+                    throw new \Exception("La somma delle percentuali deve essere 100%");
+                }
 
+                // 4. Inserimento delle singole quote di ripartizione
                 foreach ($ripartizioni as $rip) {
                     if ($rip['percentuale'] > 0) {
                         DB::table('conto_tabella_ripartizioni')->insert([
-                            'conto_tabella_millesimale_id' => $contoTabellaId, 'soggetto' => $rip['soggetto'], 'percentuale' => $rip['percentuale'], 'created_at' => now(), 'updated_at' => now(),
+                            'conto_tabella_millesimale_id' => $contoTabellaId, 
+                            'soggetto' => $rip['soggetto'], 
+                            'percentuale' => $rip['percentuale'], 
+                            'created_at' => now(), 
+                            'updated_at' => now(),
                         ]);
                     }
                 }
             }
+            
             DB::commit();
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])->with($this->flashSuccess(__('gestionale.success_create_conto')));
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
+                ->with($this->flashSuccess(__('gestionale.success_create_conto')));
+                
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->withInput()->with($this->flashError($e->getMessage()));
         }
     }
 
+    /**
+     * Aggiorna una voce di spesa esistente, applicando i controlli di sicurezza contabile (Accounting Core).
+     */
     public function update(UpdateContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
         try {
             DB::beginTransaction();
             $data = $request->validated();
-            $isCapitolo = $data['isCapitolo'];
-            $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo']);
+            
+            // Estrazione sicura
+            $isCapitolo = $data['isCapitolo'] ?? false;
+            $isSottoConto = $data['isSottoConto'] ?? false;
+            $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
 
+            // CONTROLLI DI SICUREZZA: Scattano solo se l'utente tenta di modificare l'importo di una spesa
             if (!$isCapitolo && $nuovoImporto != $conto->importo) {
-                // 1. Blocco per rate approvate/emesse
+                
+                // 1. HARD LOCK: Blocco totale se esistono rate già approvate, emesse o chiuse.
                 $hasHardLock = $conto->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists() ||
                                ($conto->parent && $conto->parent->pianiRate()->whereIn('stato', ['approvato', 'emesso', 'chiuso'])->exists());
 
                 if ($hasHardLock) {
-                    return back()->with($this->flashError("Modifica inibita: esistono rate già approvate o emesse."));
+                    // Lanciamo un'eccezione di validazione così Inertia la mostra in rosso sotto il campo "importo"
+                    throw ValidationException::withMessages([
+                        'importo' => "Modifica inibita: l'importo è bloccato da rate già approvate o emesse."
+                    ]);
                 }
 
-                // 2. Blocco Elastico: non puoi scendere sotto l'impegnato
-                $impegnato = (int) DB::table('piano_rate_capitoli')->where('conto_id', $conto->id)->sum('importo');
+                // 2. SOFT LOCK (Blocco Elastico): Impedisce di scendere sotto la soglia già impegnata.
+                // Usiamo il pattern di Fallback: se l'importo in pivot è NULL, usiamo l'intero importo del conto.
+                $impegnato = DB::table('piano_rate_capitoli')
+                    ->where('conto_id', $conto->id)
+                    ->get()
+                    ->sum(function ($row) use ($conto) {
+                        return $row->importo !== null ? (int) $row->importo : $conto->importo;
+                    });
 
                 if ($nuovoImporto < $impegnato) {
                     $giaPianificato = number_format($impegnato / 100, 2, ',', '.');
-                    return back()->with($this->flashError("L'importo minimo consentito è € $giaPianificato (già impegnato nei piani rate)."));
+                    throw ValidationException::withMessages([
+                        'importo' => "L'importo minimo consentito è € $giaPianificato (già impegnato nei piani rate)."
+                    ]);
                 }
+
             }
 
+            // Procediamo con l'aggiornamento dei dati
             $conto->update([
-                'parent_id'             => $data['isSottoConto'] ? ($data['parent_id'] ?? null) : null,
-                'codice'                => $data['codice'] ?? null, // NUOVO
+                'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'codice'                => $data['codice'] ?? null, 
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
-                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', // NUOVO
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', 
                 'importo'               => $nuovoImporto, 
-                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, // NUOVO
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, 
                 'note'                  => $data['note'] ?? null,
             ]);
 
             DB::commit();
             return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
                 ->with($this->flashSuccess(__('gestionale.success_update_conto')));
+                
+        } catch (ValidationException $e) {
+            // Se è un errore di validazione (i nostri blocchi), facciamo il rollback e lo rilanciamo 
+            // affinché Laravel/Inertia lo gestisca normalmente verso il frontend.
+            DB::rollBack();
+            throw $e;
+            
         } catch (\Exception $e) {
+            // Per errori generici o di database
             DB::rollBack();
             return back()->with($this->flashError($e->getMessage()));
         }
     }
 
+    /**
+     * Elimina un conto, previo controllo dei vincoli strutturali.
+     */
     public function destroy(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
     {
-        if ($conto->sottoconti()->exists()) return back()->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
+        // Prevenzione 1: Non puoi eliminare un capitolo che ha dei sottoconti agganciati
+        if ($conto->sottoconti()->exists()) {
+            return back()->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
+        }
         
+        // Prevenzione 2: Non puoi eliminare un conto se è già stato inserito in un piano rate attivo
         $lock = $conto->pianiRate()->where('piani_rate.attivo', true)->exists() || 
                 ($conto->parent && $conto->parent->pianiRate()->where('piani_rate.attivo', true)->exists());
 
-        if ($lock) return back()->with($this->flashError("Impossibile eliminare: la voce è ancorata a un piano rate attivo."));
+        if ($lock) {
+            return back()->with($this->flashError("Impossibile eliminare: la voce è ancorata a un piano rate attivo."));
+        }
 
         try {
             DB::beginTransaction();
+            // Pulizia delle relazioni (tabella pivot) prima di eliminare il conto
             $conto->tabelle()->detach(); 
             $conto->delete();
+            
             DB::commit();
-            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])->with($this->flashSuccess(__('gestionale.success_delete_conto')));
+            return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])
+                ->with($this->flashSuccess(__('gestionale.success_delete_conto')));
+                
         } catch (\Exception $e) {
             DB::rollBack();
             return back()->with($this->flashError($e->getMessage()));

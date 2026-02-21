@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Gestionale\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
-use App\Models\Evento;       // <-- Aggiunto
-use App\Models\Anagrafica;   // <-- Aggiunto
+use App\Models\Evento;      
+use App\Models\Anagrafica;   
 use App\Models\Gestionale\Conto;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Traits\HasCondomini;
@@ -132,7 +132,7 @@ class DashboardController extends Controller
             'condominio' => $condominio, 
             'condomini'  => $this->getCondomini(),
             'esercizio'  => $esercizio, 
-            'esercizi'   => $condominio->esercizi, // <-- Risolve il warning "Missing required prop: esercizi"
+            'esercizi'   => $condominio->esercizi, 
             'copertura'  => $copertura,
             'inboxTasks' => Inertia::scroll($inboxTasks)
         ]);

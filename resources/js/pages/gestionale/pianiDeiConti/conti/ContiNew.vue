@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { List, Plus } from 'lucide-vue-next'
+import { List, Plus, Wallet } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
@@ -13,6 +13,7 @@ import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDe
 import DettaglioConto from '@/components/gestionale/pianiDeiConti/conti/DettaglioConto.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalAssociaTabella from '@/components/gestionale/pianiDeiConti/conti/ModalAssociaTabella.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { BreadcrumbItem } from '@/types'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
@@ -26,6 +27,7 @@ const props = defineProps<{
   pianoConti: PianoDeiConti
   conti: Conto[]
   fornitori: Array<{ id: number, ragione_sociale: string }>
+  totalePreventivo: number // <-- Aggiungi questa nuova prop
 }>()
 
 const { generatePath } = usePermission()
@@ -39,6 +41,8 @@ const showModalAssociaTabella = ref(false)
 const showModalRimuoviTabella = ref(false)
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
+// Inizializza il formatore subito sotto
+const { euro } = useCurrencyFormatter()
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -200,7 +204,9 @@ const rimuoviTabella = () => {
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-2xl font-bold text-gray-900">Gestione spese</h2>
-          <p class="text-gray-600 mt-1">{{ props.pianoConti.nome }}</p>
+          <div class="flex items-center gap-3 mt-1">
+             <p class="text-gray-600">{{ props.pianoConti.nome }}</p>
+          </div>
         </div>
    
         <div class="flex gap-2">
@@ -228,9 +234,16 @@ const rimuoviTabella = () => {
         
           <!-- Colonna sinistra: Albero dei conti -->
           <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div class="p-4 border-b border-gray-200">
+            
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-slate-50/50 rounded-t-lg">
               <h3 class="text-lg font-semibold text-gray-900">Elenco conti e sottoconti</h3>
+              
+              <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                 <Wallet class="w-4 h-4" />
+                 Totale: {{ euro(props.totalePreventivo) }}
+              </span>
             </div>
+            
             <div class="p-4 max-h-[600px] overflow-y-auto"> 
               <AlberoDeiConti
                 :conti="props.conti" 

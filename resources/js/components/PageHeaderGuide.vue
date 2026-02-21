@@ -1,14 +1,9 @@
 <script setup lang="ts">
+
 import { computed, ref, watch } from 'vue';
 import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuPortal,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -111,7 +106,7 @@ function selectEsercizio(esercizioId: number | string) {
         </nav>
 
         <div v-else class="pl-5 border-l-2 border-primary py-1">
-          <h1 class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
+          <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
               {{ pageTitle }}
           </h1>
           <p v-if="pageSubtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-2xl">
@@ -174,7 +169,7 @@ function selectEsercizio(esercizioId: number | string) {
     </div>
 
     <div v-if="hasBreadcrumbs" class="pl-5 border-l-2 border-primary py-1">
-        <h1 class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
+        <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
             {{ pageTitle }}
         </h1>
         <p v-if="pageSubtitle" class="text-sm text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-4xl">
