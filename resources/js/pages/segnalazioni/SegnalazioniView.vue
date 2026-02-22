@@ -47,7 +47,7 @@ const statusItem = computed(() => {
                     method="post"
                     v-if="hasPermission([Permission.EDIT_SEGNALAZIONI])"
                     :href="route(generateRoute('segnalazioni.toggleResolve'), { id: props.segnalazione.id })" 
-                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
                     <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4" />
                     <Lock v-else class="w-4 h-4" />
@@ -64,7 +64,7 @@ const statusItem = computed(() => {
                     as="button"
                     v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
                     :href="route(generateRoute('segnalazioni.index'))" 
-                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
                 >
                     <List class="w-4 h-4" />
                     <span>{{ trans('segnalazioni.actions.list_tickets') }}</span>

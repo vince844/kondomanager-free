@@ -662,7 +662,7 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
 
                     <Link 
                         :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
-                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
+                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
                     >
                         <List class="w-4 h-4" />
                         <span>Lista</span>

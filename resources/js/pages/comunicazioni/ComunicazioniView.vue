@@ -33,7 +33,7 @@ const priorityIcons = {
             <Link 
                 as="button"
                 :href="route(generateRoute('comunicazioni.index'))" 
-                class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+                class="inline-flex items-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground px-3 py-1.5 h-8 w-full lg:w-auto lg:h-8 hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
             >
                 <List class="w-4 h-4" />
                 <span>{{ trans('comunicazioni.actions.list_communications') }}</span>
