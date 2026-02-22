@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { type BreadcrumbItem } from '@/types';
+import { trans } from 'laravel-vue-i18n';
 
 interface Props {
     className?: string;
@@ -20,7 +21,7 @@ defineProps<Props>();
 
 const breadcrumbItems: BreadcrumbItem[] = [
     {
-        title: 'Password settings',
+        title: trans('settings.password.title'),
         href: '/settings/password',
     },
 ];
@@ -59,15 +60,15 @@ const updatePassword = () => {
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbItems">
-        <Head title="Impostazioni profilo" />
+        <Head :title="trans('settings.password.title')" />
 
         <SettingsLayout contentClass="max-w-xl">
             <div class="space-y-6">
-                <HeadingSmall title="Aggiorna password" description="Assicurati di utilizzare una password lunga e casuale per rimanere sicuro" />
+                <HeadingSmall :title="trans('settings.password.heading')" :description="trans('settings.password.description')" />
 
                 <form @submit.prevent="updatePassword" class="space-y-6">
                     <div class="grid gap-2">
-                        <Label for="current_password">Password corrente</Label>
+                        <Label for="current_password">{{ trans('settings.password.current_password') }}</Label>
                         <Input
                             id="current_password"
                             ref="currentPasswordInput"
@@ -75,13 +76,13 @@ const updatePassword = () => {
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="current-password"
-                            placeholder="Password corrente"
+                            :placeholder="trans('settings.password.current_password_placeholder')"
                         />
                         <InputError :message="form.errors.current_password" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password">Nuova password</Label>
+                        <Label for="password">{{ trans('settings.password.new_password') }}</Label>
                         <Input
                             id="password"
                             ref="passwordInput"
@@ -89,26 +90,26 @@ const updatePassword = () => {
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="new-password"
-                            placeholder="Nuova password"
+                            :placeholder="trans('settings.password.new_password_placeholder')"
                         />
                         <InputError :message="form.errors.password" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password_confirmation">Conferma password</Label>
+                        <Label for="password_confirmation">{{ trans('settings.password.confirm_password') }}</Label>
                         <Input
                             id="password_confirmation"
                             v-model="form.password_confirmation"
                             type="password"
                             class="mt-1 block w-full"
                             autocomplete="new-password"
-                            placeholder="Conferma password"
+                            :placeholder="trans('settings.password.confirm_password_placeholder')"
                         />
                         <InputError :message="form.errors.password_confirmation" />
                     </div>
 
                     <div class="flex items-center gap-4">
-                        <Button :disabled="form.processing">Salva password</Button>
+                        <Button :disabled="form.processing">{{ trans('settings.password.save') }}</Button>
 
                         <TransitionRoot
                             :show="form.recentlySuccessful"
@@ -117,7 +118,7 @@ const updatePassword = () => {
                             leave="transition ease-in-out"
                             leave-to="opacity-0"
                         >
-                            <p class="text-sm text-neutral-600">Salvata</p>
+                            <p class="text-sm text-neutral-600">{{ trans('settings.password.saved') }}</p>
                         </TransitionRoot>
                     </div>
                 </form>

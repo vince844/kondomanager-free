@@ -6,10 +6,11 @@ import HeadingSmall from '@/components/HeadingSmall.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { type BreadcrumbItem } from '@/types';
+import { trans } from 'laravel-vue-i18n';
 
 const breadcrumbItems: BreadcrumbItem[] = [
     {
-        title: 'Impostazioni aspetto',
+        title: trans('settings.appearance.title'),
         href: '/settings/appearance',
     },
 ];
@@ -17,11 +18,11 @@ const breadcrumbItems: BreadcrumbItem[] = [
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbItems">
-        <Head title="Impostazioni aspetto" />
+        <Head :title="trans('settings.appearance.title')" />
 
         <SettingsLayout>
             <div class="space-y-6">
-                <HeadingSmall title="Impostazioni aspetto" description="Aggiorna le impostazioni di aspetto dell'applicazione" />
+                <HeadingSmall :title="trans('settings.appearance.title')" :description="trans('settings.appearance.description')" />
                 <AppearanceTabs />
             </div>
         </SettingsLayout>
