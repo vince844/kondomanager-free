@@ -10,6 +10,7 @@ import { PinInputInput, PinInputRoot } from 'reka-ui'
 import { Dialog, DialogContent, DialogHeader, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Check, Copy, Eye, EyeOff, Loader2, ScanLine, LockKeyhole } from 'lucide-vue-next';
 import { useTwoFactorAuth } from '@/composables/useTwoFactorAuth';
+import { trans } from 'laravel-vue-i18n';
 
 const props = withDefaults(defineProps<{
   confirmed?: boolean;
@@ -21,7 +22,7 @@ const props = withDefaults(defineProps<{
 
 const breadcrumbs = [
   {
-    title: 'Two-Factor Authentication',
+    title: trans('settings.two_factor.title'),
     href: '/settings/two-factor'
   }
 ];
@@ -41,7 +42,7 @@ const {
   regenerateRecoveryCodes,
   disable,
   copyToClipboard
-} = useTwoFactorAuth(props.confirmed, props.recoveryCodes);
+  } = useTwoFactorAuth(props.confirmed, props.recoveryCodes);
 
 const pinValue = ref<string[]>([]);
 const pinInputContainerRef = ref<HTMLElement | null>(null);
@@ -67,45 +68,44 @@ const toggleRecoveryCodes = () => {
 
 <template>
   <AppLayout :breadcrumbs="breadcrumbs">
-    <Head title="Two-Factor Authentication" />
+    <Head :title="trans('settings.two_factor.title')" />
     <SettingsLayout contentClass="w-full">
       <div class="space-y-6">
-        <HeadingSmall title="Autenticazione a due fattori" description="Gestione delle impostazioni per l'autenticazione a due fattori" />
+        <HeadingSmall :title="trans('settings.two_factor.heading')" :description="trans('settings.two_factor.description')" />
         
         <div v-if="!confirmed" class="flex flex-col items-start justify-start space-y-5">
           <Badge
             variant="outline"
             class="bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-50"
           >
-            Disabilitato
+            {{ trans('settings.two_factor.disabled') }}
           </Badge>
           
           <p class="-translate-y-1 text-stone-500 dark:text-stone-400">
-            Quando abiliti l'autenticazione a due fattori (2FA), dovrai inserire un codice di sicurezza
-            durante il login. Questo codice può essere recuperato dall'app 
+            {{ trans('settings.two_factor.intro') }}
             <strong>Google Authenticator</strong>
-            sul tuo telefono. Puoi scaricare l'app qui:
+            {{ trans('settings.two_factor.download_app') }}
             <br>
             <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2"
               target="_blank"
               rel="noopener noreferrer"
               class="text-blue-600 underline dark:text-blue-400 block mt-2">
-              Google Play Store (Android)
+              {{ trans('settings.two_factor.store_android') }}
             </a>
 
             <a href="https://apps.apple.com/app/google-authenticator/id388497605"
               target="_blank"
               rel="noopener noreferrer"
               class="text-blue-600 underline dark:text-blue-400 block mt-2">
-              Apple App Store (iOS)
+              {{ trans('settings.two_factor.store_ios') }}
             </a>
             <br>
-            Per abilitare 2FA, segui le istruzioni qui sotto.
+            {{ trans('settings.two_factor.follow_steps') }}
           </p>
 
           <Dialog :open="showModal" @update:open="showModal = $event">
             <DialogTrigger as-child>
-              <Button @click="showModal = true">Abilita</Button>
+              <Button @click="showModal = true">{{ trans('settings.two_factor.enable') }}</Button>
             </DialogTrigger>
             <DialogContent class="sm:max-w-md">
               <DialogHeader class="flex items-center justify-center">
@@ -121,12 +121,12 @@ const toggleRecoveryCodes = () => {
                   </div>
                 </div>
                 <DialogTitle>
-                  {{ !verifyStep ? 'Attiva la verifica in due passaggi' : 'Verifica il codice di autenticazione' }}
+                  {{ !verifyStep ? trans('settings.two_factor.dialog_title_enable') : trans('settings.two_factor.dialog_title_verify') }}
                 </DialogTitle>
                 <DialogDescription class="text-center">
                   {{ !verifyStep
-                    ? 'Apri la tua app di autenticazione e scegli Scansiona codice QR'
-                    : 'Inserisci il codice a 6 cifre dalla tua app di autenticazione' }}
+                    ? trans('settings.two_factor.dialog_desc_enable')
+                    : trans('settings.two_factor.dialog_desc_verify') }}
                 </DialogDescription>
               </DialogHeader>
 
@@ -138,7 +138,7 @@ const toggleRecoveryCodes = () => {
                         <Loader2 class="size-6 animate-spin" />
                       </div>
                       <div v-else class="relative z-10">
-                        <img :src="'data:image/svg+xml;base64,' + qrCodeSvg" alt="QR Code" class="w-full h-full aspect-square" />
+                        <img :src="'data:image/svg+xml;base64,' + qrCodeSvg" :alt="trans('settings.two_factor.heading')" class="w-full h-full aspect-square" />
                       </div>
                     </div>
                     <div v-if="qrCodeSvg" class="h-1/2 z-20 w-full border-t border-blue-500 absolute bottom-0 left-0 -translate-y-4">
@@ -157,14 +157,14 @@ const toggleRecoveryCodes = () => {
                         }
                       });
                     }">
-                      Continua
+                      {{ trans('settings.two_factor.continue') }}
                     </Button>
                   </div>
 
                   <div class="flex items-center relative w-full justify-center">
                     <div class="w-full absolute inset-0 top-1/2 bg-stone-200 dark:bg-stone-600 h-px"></div>
                     <span class="px-2 py-1 bg-white dark:bg-stone-800 relative">
-                      oppure, inserisci il codice manualmente
+                      {{ trans('settings.two_factor.manual_code') }}
                     </span>
                   </div>
 
@@ -219,14 +219,14 @@ const toggleRecoveryCodes = () => {
                         class="w-auto flex-1"
                         @click="verifyStep = false"
                       >
-                        Indietro
+                        {{ trans('settings.two_factor.back') }}
                       </Button>
                       <Button
                         class="w-auto flex-1"
                         @click="confirm"
                         :disabled="!pinValue || pinValue.length < 6"
                       >
-                        Conferma
+                        {{ trans('settings.two_factor.confirm') }}
                       </Button>
                     </div>
                   </div>
@@ -241,19 +241,19 @@ const toggleRecoveryCodes = () => {
             variant="outline"
             class="bg-green-50 text-green-700 border-green-200 hover:bg-green-50"
           >
-            Abilitato
+            {{ trans('settings.two_factor.enabled') }}
           </Badge>
           <p class="text-stone-500 dark:text-stone-400">
-            Con l'autenticazione a due fattori abilitata, ti verrà richiesto un token sicuro e casuale durante l'accesso, che potrai recuperare dall'app Google Authenticator.
+            {{ trans('settings.two_factor.enabled_description') }}
           </p>
 
           <div>
             <div class="flex items-start p-4 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-t-xl">
               <LockKeyhole class="size-5 mr-2 text-stone-500" />
               <div class="space-y-1">
-                <h3 class="font-medium">2FA codici di recupero</h3>
+                <h3 class="font-medium">{{ trans('settings.two_factor.recovery_codes_title') }}</h3>
                 <p class="text-sm text-stone-500 dark:text-stone-400">
-                  I codici di recupero ti permettono di riottenere l'accesso nel caso in cui tu perda il dispositivo utilizzato per la 2FA. Conservali in un gestore di password sicuro o stampali e conservali in un luogo sicuro.
+                  {{ trans('settings.two_factor.recovery_codes_desc') }}
                 </p>
               </div>
             </div>
@@ -267,10 +267,10 @@ const toggleRecoveryCodes = () => {
                   :class="`relative ${!showingRecoveryCodes ? 'opacity-40 hover:opacity-60' : 'opacity-60'}`"
                 >
                   <span v-if="!showingRecoveryCodes" class="flex items-center space-x-1">
-                    <Eye class="size-4" /> <span>Visualizza codici ripristino</span>
+                    <Eye class="size-4" /> <span>{{ trans('settings.two_factor.show_recovery_codes') }}</span>
                   </span>
                   <span v-else class="flex items-center space-x-1">
-                    <EyeOff class="size-4" /> <span>Nascondi codici ripristino</span>
+                    <EyeOff class="size-4" /> <span>{{ trans('settings.two_factor.hide_recovery_codes') }}</span>
                   </span>
                 </div>
 
@@ -281,7 +281,7 @@ const toggleRecoveryCodes = () => {
                   class="text-stone-600"
                   @click.stop="regenerateRecoveryCodes"
                 >
-                  Rigenera codici
+                  {{ trans('settings.two_factor.regenerate_codes') }}
                 </Button>
               </div>
 
@@ -296,9 +296,7 @@ const toggleRecoveryCodes = () => {
                   <div v-for="(code, index) in recoveryCodesList" :key="index">{{ code }}</div>
                 </div>
                 <p class="px-4 py-3 text-xs select-none text-stone-500 dark:text-stone-400">
-                  Ti restano {{ recoveryCodesList.length }} codici di recupero. Ogni codice può essere utilizzato
-                  una sola volta per accedere al tuo account e verrà rimosso dopo l'uso. Se hai bisogno di altri codici,
-                  clicca su <span class="font-bold">Rigenera Codici</span> qui sopra.
+                  {{ trans('settings.two_factor.remaining_codes', { count: recoveryCodesList.length }) }}
                 </p>
               </div>
             </div>
@@ -306,7 +304,7 @@ const toggleRecoveryCodes = () => {
 
           <div class="inline relative">
             <Button variant="destructive" @click="disable">
-              Disabilita 2FA
+              {{ trans('settings.two_factor.disable') }}
             </Button>
           </div>
         </div>
