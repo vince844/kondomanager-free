@@ -1,22 +1,96 @@
+.vs__dropdown-toggle {
+  min-height: 2.25rem;
+  border-radius: 0.375rem;
+  border: 1px solid #e4e4e7;
+  background-color: #ffffff;
+  color: #09090b;
+  padding: 0.125rem 0.5rem;
+  box-shadow: none;
+}
 
-.vs__search {
-    font-size: 0.875rem !important;
-    padding-top: 0.2rem !important;
-    color: #71717A !important; 
+.vs__search,
+.vs__selected {
+  font-size: 0.875rem;
+  color: #09090b;
+}
+
+.vs__search::placeholder {
+  color: #71717a;
+  opacity: 1;
+}
+
+.vs__dropdown-menu {
+  background-color: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.5rem;
+  color: #09090b;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  margin-top: 0.25rem;
+}
+
+.vs__dropdown-option {
+  color: #09090b;
+}
+
+.vs__dropdown-option--highlight,
+.vs__dropdown-option--selected {
+  background-color: #f4f4f5;
+  color: #09090b;
+}
+
+.vs__open-indicator,
+.vs__clear {
+  fill: #71717a;
+}
+
+.vs--open .vs__dropdown-toggle,
+.vs__dropdown-toggle:focus-within {
+  border-color: #71717a;
+  box-shadow: 0 0 0 2px rgba(113, 113, 122, 0.25);
+}
+
+.dark .vs__dropdown-toggle {
+  border-color: #27272a;
+  background-color: #18181b;
+  color: #fafafa;
+}
+
+.dark .vs__search,
+.dark .vs__selected {
+  color: #fafafa;
+}
+
+.dark .vs__search::placeholder {
+  color: #a1a1aa;
+}
+
+.dark .vs__dropdown-menu {
+  background-color: #18181b;
+  border-color: #27272a;
+  color: #fafafa;
+}
+
+.dark .vs__dropdown-option {
+  color: #fafafa;
+}
+
+.dark .vs__dropdown-option--highlight,
+.dark .vs__dropdown-option--selected {
+  background-color: #27272a;
+  color: #fafafa;
+}
+
+.dark .vs__open-indicator,
+.dark .vs__clear {
+  fill: #a1a1aa;
 }
 
 .dp__input {
-    font-size: 0.875rem !important;
-    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji' !important;
+  font-size: 0.875rem !important;
+  font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji' !important;
 }
 
 .dp__input::placeholder {
-    color: #71717A; 
-    opacity: 1;
-  }
-
-  .vs__dropdown-option--highlight {
-    background: #f5f5f5 !important; /* Lighter gray for background */
-    color: black !important; /* Keep the text color dark for contrast */
-  }
-
+  color: hsl(var(--muted-foreground));
+  opacity: 1;
+}
