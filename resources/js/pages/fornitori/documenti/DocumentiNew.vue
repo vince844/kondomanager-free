@@ -20,6 +20,7 @@ import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { Fornitore } from '@/types/fornitori';
 import type { BaseDocumentForm } from '@/types/documenti';
+import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
   fornitore: Fornitore;
@@ -95,7 +96,7 @@ const submit = (): void => {
 
 <template>
 
-    <Head title="Crea documento immobile" />
+    <Head :title="trans('fornitori.header.documents_new_title')" />
 
     <AppLayout>
       <FornitoreLayout>
@@ -105,7 +106,7 @@ const submit = (): void => {
               <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                 <Plus class="w-4 h-4" v-if="!form.processing" />
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
+                {{ trans('fornitori.actions.save') }}
               </Button>
 
               <Link
@@ -114,7 +115,7 @@ const submit = (): void => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
               >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>{{ trans('fornitori.actions.list') }}</span>
               </Link>
             </div>
 
@@ -128,13 +129,13 @@ const submit = (): void => {
                       
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-3">
-                          <Label for="nome">Nome documento</Label>
+                          <Label for="nome">{{ trans('fornitori.label.document_name') }}</Label>
                           <Input 
                               id="name" 
                               class="mt-1 block w-full"
                               v-model="form.name" 
                               v-on:focus="form.clearErrors('name')"
-                              placeholder="Nome documento" 
+                              :placeholder="trans('fornitori.placeholder.document_name')"
                           />
                           
                           <InputError :message="form.errors.name" />
@@ -143,13 +144,13 @@ const submit = (): void => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                          <Label for="nome">Descrizione documento</Label>
+                          <Label for="nome">{{ trans('fornitori.label.document_description') }}</Label>
                           <Textarea 
                               id="description" 
                               class="mt-1 block w-full min-h-[200px]"
                               v-model="form.description" 
                               v-on:focus="form.clearErrors('description')"
-                              placeholder="Descrizone documento" 
+                              :placeholder="trans('fornitori.placeholder.document_description')"
                           />
                           
                           <InputError :message="form.errors.description" />
@@ -158,7 +159,7 @@ const submit = (): void => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                        <Label for="file-upload">Seleziona documento</Label>
+                        <Label for="file-upload">{{ trans('fornitori.label.select_document') }}</Label>
 
                         <label
                           for="file-upload"
@@ -171,9 +172,9 @@ const submit = (): void => {
                               <EmptyMedia variant="icon">
                                 <UploadCloud class="w-8 h-8 text-muted-foreground" />
                               </EmptyMedia>
-                              <EmptyTitle>Trascina qui il tuo documento</EmptyTitle>
+                              <EmptyTitle>{{ trans('fornitori.dialogs.drop_document_title') }}</EmptyTitle>
                               <EmptyDescription>
-                                Oppure <strong>clicca</strong> per selezionarlo dal tuo dispositivo.
+                                <span v-html="trans('fornitori.dialogs.drop_document_description')" />
                               </EmptyDescription>
                             </EmptyHeader>
                           </Empty>
@@ -223,7 +224,7 @@ const submit = (): void => {
                     <div class="grid grid-cols-1 sm:grid-cols-6">
                       <div class="sm:col-span-6">
                         <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                          <Label for="stato">Stato pubblicazione</Label>
+                          <Label for="stato">{{ trans('fornitori.sections.publish_status') }}</Label>
                           <HoverCard>
                             <HoverCardTrigger as-child>
                               <button type="button" class="cursor-pointer">
@@ -234,10 +235,10 @@ const submit = (): void => {
                               <div class="flex justify-between space-x-4">
                                 <div class="space-y-1">
                                   <h4 class="text-sm font-semibold">
-                                    Stato pubblicazione
+                                    {{ trans('fornitori.sections.publish_status') }}
                                   </h4>
                                   <p class="text-sm">
-                                    Scegli se rendere visibile il documento o mantenerlo nascosto.
+                                    {{ trans('fornitori.sections.publish_status_desc') }}
                                   </p>
                                 </div>
                               </div>
@@ -249,7 +250,7 @@ const submit = (): void => {
                           :options="publishedConstants" 
                           label="label" 
                           v-model="form.is_published"
-                          placeholder="Stato pubblicazione"
+                          :placeholder="trans('fornitori.placeholder.publish_status')"
                           @update:modelValue="form.clearErrors('is_published')" 
                           :reduce="(is_published: PublishedType) => is_published.value"
                         />

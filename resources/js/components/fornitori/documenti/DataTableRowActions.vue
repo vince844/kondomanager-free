@@ -10,6 +10,7 @@ import { usePermission } from "@/composables/permissions"
 import { useDocumenti } from '@/composables/useDocumenti'
 import type { Documento } from '@/types/documenti'
 import type { Fornitore } from '@/types/fornitori'
+import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
   documento: Documento 
@@ -57,7 +58,7 @@ function deleteDocumento() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('fornitori.messages.delete_document_error'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -69,13 +70,13 @@ function deleteDocumento() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('fornitori.table.actions')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
 
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('fornitori.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem>
         <Link
@@ -88,7 +89,7 @@ function deleteDocumento() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('fornitori.actions.edit') }}
         </Link>
       </DropdownMenuItem>
 
@@ -96,15 +97,15 @@ function deleteDocumento() {
         @click="handleDelete(documento)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('fornitori.actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo documento?"
-    description="Questa azione non è reversibile. Eliminerà il documento e tutti i dati associati."
+    :title="trans('fornitori.dialogs.delete_document_title')"
+    :description="trans('fornitori.dialogs.delete_document_description')"
     :loading="isDeleting"
     @confirm="deleteDocumento"
   />

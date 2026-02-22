@@ -5,11 +5,12 @@ import { CheckCircle2, XCircle } from 'lucide-vue-next';
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { AnagraficaFornitore } from '@/types/anagrafiche'
 import type { Fornitore } from '@/types/fornitori'
+import { trans } from 'laravel-vue-i18n';
 
 export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornitore>[] => [
   {
     accessorKey: 'nome',
-    header: 'Nome',
+    header: trans('fornitori.table.name'),
     cell: ({ row }) => {
       const anagrafica = row.original 
       return h('span', { class: 'capitalize font-bold' }, anagrafica.nome)
@@ -17,7 +18,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornito
   },
   {
     accessorKey: 'indirizzo',
-    header: 'Indirizzo',
+    header: trans('fornitori.table.address'),
     cell: ({ row }) => {
       const anagrafica = row.original 
       return h('span', { class: 'capitalize' }, anagrafica.indirizzo)
@@ -25,7 +26,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornito
   },
   {
     accessorKey: 'pivot.ruolo',
-    header: 'Ruolo',
+    header: trans('fornitori.table.role'),
     cell: ({ row }) => {
       const anagrafica = row.original 
       return h('div', { class: 'capitalize flex space-x-2 items-center' }, [
@@ -41,7 +42,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornito
   },
   {
     accessorKey: 'user_id',
-    header: 'Accesso login',
+    header: trans('fornitori.table.login_access'),
     cell: ({ row }) => {
       const anagrafica = row.original 
       const hasAccess = anagrafica.user_id !== null
@@ -50,7 +51,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<AnagraficaFornito
         h(hasAccess ? CheckCircle2 : XCircle, { 
           class: hasAccess ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-red-600' 
         }),
-        h('span', hasAccess ? 'Attivo' : 'Non attivo')
+        h('span', hasAccess ? trans('fornitori.states.active') : trans('fornitori.states.inactive'))
       ]);
     },
   },

@@ -6,6 +6,7 @@ import {FlexRender,getCoreRowModel,useVueTable } from '@tanstack/vue-table'
 import DataTableToolbar from '@/components/fornitori/anagrafiche/DataTableToolbar.vue'
 import { trans } from 'laravel-vue-i18n';
 import type { Anagrafica } from '@/types/anagrafiche'
+import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
   columns: ColumnDef<Anagrafica, any>[],

@@ -9,13 +9,14 @@ import { Permission }  from "@/enums/Permission";
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Fornitore } from '@/types/fornitori';
+import { trans } from 'laravel-vue-i18n';
 
 const { hasPermission,  generateRoute } = usePermission();
 
 export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
   {
     accessorKey: 'name',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('fornitori.table.title') }),
 
     cell: ({ row, table }) => {
 
@@ -43,8 +44,8 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
       };
 
       const tooltip = documento.is_approved
-        ? 'Approvato - clicca per rimuovere approvazione'
-        : 'Non approvato - clicca per approvare';
+        ? trans('fornitori.states.approved_tooltip')
+        : trans('fornitori.states.unapproved_tooltip');
     
       const shieldIcon = hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS])
         ? h('div', {
@@ -69,7 +70,7 @@ export const createColumns = (fornitore: Fornitore): ColumnDef<Documento>[] => [
   },
   {
     accessorKey: 'is_published',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('fornitori.table.status') }),
     cell: ({ row }) => {
 
       const value = Boolean(row.getValue('is_published'));

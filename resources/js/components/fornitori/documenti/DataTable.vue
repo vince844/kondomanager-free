@@ -12,6 +12,7 @@ import { trans } from 'laravel-vue-i18n';
 import type { Documento } from '@/types/documenti';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Fornitore } from '@/types/fornitori';
+import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
   columns: ColumnDef<Documento, any>[],

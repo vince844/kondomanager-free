@@ -7,6 +7,7 @@ import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Fornitore } from '@/types/fornitori';
+import { trans } from 'laravel-vue-i18n';
 
 interface DataTableToolbarProps {
   table: Table<Anagrafica>
@@ -27,7 +28,7 @@ const page = usePage<{ fornitore: Fornitore}>()
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
-      <span>Associa</span>
+      <span>{{ trans('fornitori.actions.associate') }}</span>
     </Link>
 
     <Link
@@ -36,7 +37,7 @@ const page = usePage<{ fornitore: Fornitore}>()
       class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
     >
       <List class="w-4 h-4" />
-      <span>Fornitori</span>
+      <span>{{ trans('fornitori.actions.suppliers') }}</span>
     </Link>
 
   </div>
