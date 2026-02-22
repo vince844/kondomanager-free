@@ -37,6 +37,14 @@ return [
         'widget_tickets_title'       => "Ultime segnalazioni guasto",
         'widget_tickets_description' => "Elenco delle ultime segnalazioni guasto inviate",
     ],
+    'guides' => [
+        'reports_title'  => 'Registro centralizzato',
+        'reports_desc'   => 'Visualizza tutte le segnalazioni in un unico punto con stato e priorità sempre aggiornati.',
+        'workflow_title' => 'Flusso operativo',
+        'workflow_desc'  => 'Segui il ciclo completo della segnalazione, dall’apertura alla risoluzione.',
+        'control_title'  => 'Controllo e priorità',
+        'control_desc'   => 'Dai priorità ai casi critici e mantieni una gestione tecnica coerente e tracciabile.',
+    ],
     'dialogs' => [
         'delete_ticket_title'         => "Sei sicuro di volere eliminare questa segnalazione?",
         'delete_ticket_description'   => "Questa azione non è reversibile. Eliminerà la segnalazione e tutti i dati ad essa associati.",

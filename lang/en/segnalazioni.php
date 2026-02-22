@@ -37,6 +37,14 @@ return [
         'widget_tickets_title'       => "Recent maintenance reports",
         'widget_tickets_description' => "Overview of the most recent maintenance requests and fault reports",
     ],
+    'guides' => [
+        'reports_title'  => 'Centralized registry',
+        'reports_desc'   => 'View all maintenance reports in one place with up-to-date status and priority.',
+        'workflow_title' => 'Operational workflow',
+        'workflow_desc'  => 'Track each issue from opening to resolution with a clear operational flow.',
+        'control_title'  => 'Control and priority',
+        'control_desc'   => 'Prioritize critical issues and keep technical management consistent and traceable.',
+    ],
     'dialogs' => [
         'delete_ticket_title'       => "Are you sure you want to delete this ticket?",
         'delete_ticket_description' => "This action cannot be undone. It will permanently delete the ticket from the system.",
