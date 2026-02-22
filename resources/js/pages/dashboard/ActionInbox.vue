@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
 import { 
     Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, 
     ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User,
@@ -26,6 +27,7 @@ const props = defineProps<{
 const isLoading = ref(false);
 const isRejectModalOpen = ref(false);
 const taskToReject = ref<any>(null);
+const page = usePage();
 
 const rejectForm = useForm({ reason: '' });
 
@@ -109,7 +111,13 @@ const setFilter = (filter: string) => {
     });
 };
 
-const formatMoney = (val: any) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(val/100);
+const getLocale = () => {
+    const locale = (page.props as any)?.locale;
+    if (typeof locale === 'string' && locale.trim().length > 0) return locale;
+    return 'pt-PT';
+};
+
+const formatMoney = (val: any) => new Intl.NumberFormat(getLocale(), { style: 'currency', currency: 'EUR' }).format(val/100);
 
 // --- LOGICA COLORI IBRIDA ---
 
@@ -143,19 +151,21 @@ const getTaskTextColor = (task: any) => {
 };
 
 const getDateLabel = (dateStr: string | null, status: string) => {
-    if (!dateStr) return '—';
+    if (!dateStr) return trans('dashboard.inbox.not_available');
     const date = new Date(dateStr);
     if (status === 'expired') {
         const diffTime = Math.abs(new Date().getTime() - date.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        return diffDays === 1 ? 'Ieri' : `${diffDays} giorni ritardo`;
+        return diffDays === 1
+            ? trans('dashboard.inbox.yesterday')
+            : trans('dashboard.inbox.days_late', { count: diffDays });
     }
-    return date.toLocaleDateString('it-IT', { day: '2-digit', month: 'short' });
+    return date.toLocaleDateString(getLocale(), { day: '2-digit', month: 'short' });
 };
 </script>
 
 <template>
-    <Head title="Action inbox" />
+    <Head :title="trans('dashboard.inbox.page_title')" />
 
     <AppLayout>
         <div class="w-full p-6 max-w-7xl mx-auto flex flex-col gap-8 min-h-screen">
@@ -165,20 +175,20 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                     <div class="flex-1">
                         <Link :href="route('admin.dashboard')" class="inline-flex items-center text-sm text-slate-400 hover:text-white transition-colors mb-4 font-medium group">
                             <ChevronLeft class="w-4 h-4 mr-1 group-hover:-translate-x-1 transition-transform" />
-                            Torna alla dashboard
+                            {{ trans('dashboard.inbox.back_to_dashboard') }}
                         </Link>
 
                         <h1 class="text-3xl md:text-4xl font-bold tracking-tight text-white">
-                            Action inbox
+                            {{ trans('dashboard.inbox.page_title') }}
                         </h1>
                         <p class="text-slate-400 mt-2 text-lg leading-relaxed">
-                            Il tuo centro di comando. Gestisci scadenze e incassi da un unico punto.
+                            {{ trans('dashboard.inbox.subtitle') }}
                         </p>
                     </div>
 
                     <div class="flex flex-col gap-1.5 pl-6 border-l border-slate-700">
                         <span class="text-[10px] uppercase tracking-widest text-slate-500">
-                            Attività in scadenza
+                            {{ trans('dashboard.inbox.expiring_activities') }}
                         </span>
                         <div class="flex items-center justify-between">
                             <span class="text-3xl font-semibold text-white tabular-nums">
@@ -200,7 +210,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         </div>
                         <span class="text-3xl font-bold text-slate-900 dark:text-white">{{ counts.urgent }}</span>
                     </div>
-                    <span class="text-sm font-semibold text-slate-500 group-hover:text-red-600 transition-colors">Scaduti / Urgenti</span>
+                    <span class="text-sm font-semibold text-slate-500 group-hover:text-red-600 transition-colors">{{ trans('dashboard.inbox.filters.urgent') }}</span>
                 </button>
 
                 <button @click="setFilter('payments')" 
@@ -212,7 +222,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         </div>
                         <span class="text-3xl font-bold text-slate-900 dark:text-white">{{ counts.payments }}</span>
                     </div>
-                    <span class="text-sm font-semibold text-slate-500 group-hover:text-purple-600 transition-colors">Verifiche incassi</span>
+                    <span class="text-sm font-semibold text-slate-500 group-hover:text-purple-600 transition-colors">{{ trans('dashboard.inbox.filters.payments') }}</span>
                 </button>
 
                 <button @click="setFilter('maintenance')" 
@@ -224,30 +234,30 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         </div>
                         <span class="text-3xl font-bold text-slate-900 dark:text-white">{{ counts.maintenance }}</span>
                     </div>
-                    <span class="text-sm font-semibold text-slate-500 group-hover:text-blue-600 transition-colors">Ticket & Manut.</span>
+                    <span class="text-sm font-semibold text-slate-500 group-hover:text-blue-600 transition-colors">{{ trans('dashboard.inbox.filters.maintenance') }}</span>
                 </button>
 
                 <button @click="setFilter('all')" 
                      class="group flex flex-col justify-center items-center gap-2 p-5 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all text-center h-full">
-                    <span class="text-sm font-bold text-slate-900 dark:text-white">Vedi tutto</span>
-                    <span class="text-xs text-slate-500">Reset filtri</span>
+                    <span class="text-sm font-bold text-slate-900 dark:text-white">{{ trans('dashboard.inbox.filters.all') }}</span>
+                    <span class="text-xs text-slate-500">{{ trans('dashboard.inbox.filters.reset') }}</span>
                 </button>
             </div>
 
             <div class="w-full bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden relative min-h-[600px] flex flex-col">
                 
                 <div class="hidden md:grid grid-cols-12 gap-4 px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 text-xs font-bold text-slate-500 uppercase tracking-wider w-full">
-                    <div class="col-span-2">Scadenza</div>
-                    <div class="col-span-3">Condominio</div>
-                    <div class="col-span-4">Attività</div>
-                    <div class="col-span-3 text-right">Azioni</div>
+                    <div class="col-span-2">{{ trans('dashboard.inbox.table.deadline') }}</div>
+                    <div class="col-span-3">{{ trans('dashboard.inbox.table.building') }}</div>
+                    <div class="col-span-4">{{ trans('dashboard.inbox.table.activity') }}</div>
+                    <div class="col-span-3 text-right">{{ trans('dashboard.inbox.table.actions') }}</div>
                 </div>
 
                 <div v-if="isLoading" 
                      class="absolute inset-0 z-20 bg-white dark:bg-slate-900 flex items-center justify-center transition-opacity duration-200">
                     <div class="flex flex-col items-center gap-3 animate-pulse">
                         <Loader2 class="w-8 h-8 text-indigo-600 animate-spin" />
-                        <span class="text-xs text-slate-400 font-bold tracking-widest uppercase">Caricamento...</span>
+                        <span class="text-xs text-slate-400 font-bold tracking-widest uppercase">{{ trans('segnalazioni.dialogs.loading') }}</span>
                     </div>
                 </div>
 
@@ -276,7 +286,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                         {{ getDateLabel(task.date, task.status) }}
                                     </span>
                                     <span v-if="task.status !== 'expired'" class="text-[11px] text-slate-400 mt-1 capitalize">
-                                        {{ new Date(task.date).toLocaleDateString('it-IT', { weekday: 'short' }) }}
+                                        {{ new Date(task.date).toLocaleDateString(getLocale(), { weekday: 'short' }) }}
                                     </span>
                                 </div>
                             </div>
@@ -317,7 +327,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                         size="sm" 
                                         variant="ghost" 
                                         class="text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors" 
-                                        title="Rifiuta segnalazione"
+                                        :title="trans('dashboard.inbox.actions.reject_report')"
                                         @click="openRejectModal(task)"
                                     >
                                         <XCircle class="w-4 h-4" />
@@ -334,7 +344,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                             :class="{ 'pointer-events-none opacity-50': !task.context.action_url }"
                                         >
                                             <CheckCircle class="w-3.5 h-3.5 mr-2" />
-                                            Registra
+                                            {{ trans('dashboard.inbox.actions.register') }}
                                         </Link>
                                     </Button>
                                 </template>
@@ -342,13 +352,13 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                 <template v-else-if="task.context.action_url">
                                     <Button as-child size="sm" variant="outline" class="border-slate-300 text-slate-600 hover:text-indigo-600 hover:border-indigo-600 hover:bg-indigo-50">
                                         <a :href="task.context.action_url" class="flex items-center">
-                                            Gestisci <ArrowRight class="w-3 h-3 ml-2" />
+                                            {{ trans('dashboard.inbox.actions.manage') }} <ArrowRight class="w-3 h-3 ml-2" />
                                         </a>
                                     </Button>
                                 </template>
 
                                 <template v-else>
-                                    <Button size="sm" variant="ghost" class="text-slate-500">Dettagli</Button>
+                                    <Button size="sm" variant="ghost" class="text-slate-500">{{ trans('dashboard.inbox.actions.details') }}</Button>
                                 </template>
                             </div>
                         </div>
@@ -358,9 +368,9 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         <div class="w-20 h-20 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
                             <Inbox class="w-10 h-10 text-slate-300" />
                         </div>
-                        <h3 class="text-xl font-bold text-slate-900 dark:text-white">Tutto pulito! 🚀</h3>
+                        <h3 class="text-xl font-bold text-slate-900 dark:text-white">{{ trans('dashboard.inbox.empty.title') }}</h3>
                         <p class="text-slate-500 mt-2 max-w-xs mx-auto text-sm leading-relaxed">
-                            Nessuna attività urgente richiede attenzione.
+                            {{ trans('dashboard.inbox.empty.description') }}
                         </p>
                     </div>
 
@@ -369,7 +379,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
             
             <div class="flex justify-center mt-4 pb-12 w-full">
                 <span class="text-xs font-medium text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full" v-if="tasks.data.length > 0">
-                    Mostrati {{ tasks.data.length }} risultati
+                    {{ trans('dashboard.inbox.results_shown', { count: tasks.data.length }) }}
                 </span>
             </div>
 
@@ -380,24 +390,24 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                 <DialogHeader>
                     <DialogTitle class="flex items-center gap-2 text-red-600">
                         <AlertTriangle class="w-5 h-5" />
-                        Rifiuta segnalazione
+                        {{ trans('dashboard.inbox.reject_modal.title') }}
                     </DialogTitle>
                     <DialogDescription>
-                        Stai per rifiutare il pagamento segnalato da 
-                        <span class="font-bold text-slate-900">{{ taskToReject?.context?.anagrafica_nome || 'Condòmino' }}</span>.
-                        <strong> Attenzione: questa azione sarà irreversibile.</strong>
+                        {{ trans('dashboard.inbox.reject_modal.description_prefix') }}
+                        <span class="font-bold text-slate-900">{{ taskToReject?.context?.anagrafica_nome || trans('dashboard.inbox.reject_modal.tenant_fallback') }}</span>.
+                        <strong> {{ trans('dashboard.inbox.reject_modal.description_warning') }}</strong>
                     </DialogDescription>
                 </DialogHeader>
 
                 <div class="grid gap-4 py-4">
                     <div class="grid gap-2">
                         <Label htmlFor="reason" class="text-slate-900">
-                            Motivazione (visibile all'utente)
+                            {{ trans('dashboard.inbox.reject_modal.reason_label') }}
                         </Label>
                         <Textarea 
                             id="reason" 
                             v-model="rejectForm.reason" 
-                            placeholder="Es: Bonifico non trovato nell'estratto conto..." 
+                            :placeholder="trans('dashboard.inbox.reject_modal.reason_placeholder')" 
                             class="resize-none min-h-[100px]"
                             :class="{'border-red-500 focus-visible:ring-red-500': rejectForm.errors.reason}"
                         />
@@ -409,7 +419,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
 
                 <DialogFooter>
                     <Button variant="outline" @click="isRejectModalOpen = false" :disabled="rejectForm.processing">
-                        Annulla
+                        {{ trans('documenti.actions.cancel') }}
                     </Button>
                     <Button 
                         variant="destructive" 
@@ -417,7 +427,7 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                         :disabled="rejectForm.processing || !rejectForm.reason"
                     >
                         <Loader2 v-if="rejectForm.processing" class="w-4 h-4 mr-2 animate-spin" />
-                        Conferma rifiuto
+                        {{ trans('dashboard.inbox.reject_modal.confirm') }}
                     </Button>
                 </DialogFooter>
             </DialogContent>
