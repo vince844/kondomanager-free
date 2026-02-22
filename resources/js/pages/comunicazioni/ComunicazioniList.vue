@@ -8,10 +8,7 @@ import ComunicazioniStats from '@/components/comunicazioni/ComunicazioniStats.vu
 import Alert from '@/components/Alert.vue';
 import { columns } from '@/components/comunicazioni/columns';
 import { trans } from 'laravel-vue-i18n';
-
-// Icone mirate per la sezione comunicazioni
 import { Mail, BellRing, History } from 'lucide-vue-next';
-
 import type { Flash } from '@/types/flash';
 import type { Comunicazione, Stats } from '@/types/comunicazioni';
 import type { PaginationMeta } from '@/types/pagination';
@@ -25,10 +22,8 @@ defineProps<{
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-// Array vuoto per forzare l'header in modalità compatta
 const breadcrumbs: never[] = [];
 
-// Guide reattive per le comunicazioni
 const pageGuides = computed(() => [
   {
     title: trans('comunicazioni.guides.tracking_title'),
@@ -50,7 +45,6 @@ const pageGuides = computed(() => [
   }
 ]);
 
-// Scroll in alto automatico quando compare un messaggio flash
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
 onMounted(() => {
@@ -67,7 +61,6 @@ watch(flashMessage, (newValue) => {
 
   <AppLayout :breadcrumbs="breadcrumbs">
     <div class="px-6 py-8 space-y-6">
-      
       <PageHeaderGuide
         :page-title="trans('comunicazioni.header.list_communications_title')"
         :page-subtitle="trans('comunicazioni.header.list_communications_description')"
@@ -77,10 +70,10 @@ watch(flashMessage, (newValue) => {
       />
 
       <ComunicazioniStats :stats="stats" />
-    
+
       <div class="w-full">
         <section class="w-full">
-          <div v-if="flashMessage" class="py-3"> 
+          <div v-if="flashMessage" class="py-3">
             <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
@@ -89,7 +82,6 @@ watch(flashMessage, (newValue) => {
           </div>
         </section>
       </div>
-
     </div>
   </AppLayout>
 </template>

@@ -33,6 +33,15 @@ return [
         'widget_communications_title'       => "Recent communications recorded",
         'widget_communications_description' => "Overview of the most recent communications",
     ],
+
+    'guides' => [
+        'board_title'    => 'Centralized board',
+        'board_desc'     => 'Track all posted communications with a clear history by priority and status.',
+        'target_title'   => 'Targeting',
+        'target_desc'    => 'Select buildings and residents to ensure each communication reaches the right audience.',
+        'delivery_title' => 'Delivery and approval',
+        'delivery_desc'  => 'Control approval and publication flow to keep communications consistent and secure.',
+    ],
     /* ------------------------------------------------------------------
      | Empty‑state / dialog messages
      | ------------------------------------------------------------------ */

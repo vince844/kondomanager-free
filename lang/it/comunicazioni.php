@@ -33,6 +33,15 @@ return [
         'widget_communications_title'       => "Comunicazioni recenti registrate",
         'widget_communications_description' => "Elenco delle ultime comunicazioni pubblicate in bacheca",                   
     ],
+
+    'guides' => [
+        'board_title'    => 'Bacheca centralizzata',
+        'board_desc'     => 'Monitora tutte le comunicazioni pubblicate con storico ordinato per priorità e stato.',
+        'target_title'   => 'Destinatari',
+        'target_desc'    => 'Seleziona condomini e anagrafiche per inviare ogni comunicazione al pubblico corretto.',
+        'delivery_title' => 'Invio e approvazione',
+        'delivery_desc'  => 'Gestisci il flusso di approvazione e pubblicazione per mantenere coerenza e sicurezza.',
+    ],
     /* ------------------------------------------------------------------
      | Dialogs
      | ------------------------------------------------------------------ */

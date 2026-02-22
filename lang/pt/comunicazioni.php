@@ -30,6 +30,15 @@ return [
         'widget_communications_description' => "Lista das últimas comunicações publicadas no quadro",
     ],
 
+    'guides' => [
+        'board_title'    => 'Quadro centralizado',
+        'board_desc'     => 'Acompanhe todas as comunicações publicadas e mantenha o histórico organizado por prioridade e estado.',
+        'target_title'   => 'Segmentação',
+        'target_desc'    => 'Defina condomínios e registos alvo para garantir que cada comunicação chega ao público certo.',
+        'delivery_title' => 'Entrega e aprovação',
+        'delivery_desc'  => 'Controle o fluxo de aprovação e publicação para manter a comunicação consistente e segura.',
+    ],
+
     'dialogs' => [
         'delete_communication_title'        => "Tem a certeza de que pretende eliminar esta comunicação?",
         'delete_communication_description'  => "Esta ação é irreversível. Eliminará a comunicação e todos os dados a ela associados.",
