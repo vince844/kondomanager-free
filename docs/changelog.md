@@ -4,6 +4,25 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 
 ---
 
+## [1.9.6] - Active Budget Guardian & UI Refinements
+
+Questa release potenzia ulteriormente la "torre di controllo" dell'amministratore, introducendo un guardiano attivo sulla coerenza dei dati e migliorando la User Experience durante la compilazione dei preventivi.
+
+### 🛡️ Active Budget Guardian (Validatore Disallineamenti)
+* **Prevenzione Errori Strutturali:** La Dashboard ora monitora attivamente le modifiche retroattive al piano dei conti. Se l'amministratore modifica l'importo di una spesa (o di un suo sottoconto) *dopo* aver già generato il piano rate, il sistema intercetta immediatamente l'incoerenza.
+* **Allarmi Gerarchici:** Introdotta una "cascata di priorità" negli avvisi della Dashboard:
+    1. 🔴 **Priorità Massima (Disallineamento):** Segnala i piani rate che necessitano di un ricalcolo urgente per evitare di richiedere quote errate ai condòmini.
+    2. 🟠 **Priorità Secondaria (Voci Orfane):** Segnala la presenza di nuove spese a preventivo non ancora assegnate a nessun piano di ripartizione.
+* **Azione Diretta:** I banner di allarme includono pulsanti operativi (es. "Apri", "Analizza Voci") che portano l'utente esattamente dove serve per risolvere l'anomalia.
+
+### 🎨 UI/UX Refinements (Piano dei Conti)
+* **Total Budget Badge:** Aggiunto un badge dinamico nell'intestazione della pagina "Gestione Spese" che mostra in tempo reale la somma totale matematica del preventivo, offrendo un colpo d'occhio immediato sul "peso" del bilancio.
+* **Smart Edit Modal:** La modale di modifica delle singole voci di spesa è stata riprogettata:
+    * Integra ora i selettori per "Fornitore Suggerito" e "Natura Spesa (Fiscale)" per allinearla alla creazione.
+    * Disabilita in automatico gli alert di sistema focus-stealing che causavano fastidiosi highlight neri sui testi all'apertura.
+    * Include box informativi contestuali che spiegano esattamente *perché* un importo è bloccato (Hard Lock vs Soft Lock) e *come* l'utente può sbloccarlo.
+* **Protezione Soft Lock Avanzata:** L'algoritmo che impedisce di abbassare l'importo di una voce al di sotto di quanto già impegnato ora utilizza un pattern di fallback sicuro, risolvendo i conflitti con i valori di "inclusione totale" (NULL) nella tabella pivot.
+
 ## [1.9.5] - Smart Waterfall & Transparent Ledger
 
 Questa release perfeziona il cuore dell'Accounting Core introducendo il calcolo a cascata per i saldi pregressi e una riconciliazione automatica per gli incassi cumulativi. L'interfaccia dell'Estratto Conto è stata riprogettata per garantire il 100% del rigore matematico senza sacrificare la chiarezza per l'utente finale.

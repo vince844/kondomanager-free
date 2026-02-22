@@ -33,6 +33,8 @@ const props = defineProps<{
     orfani: Array<{ id: number; nome: string; importo: number; gestione: string }>;
     scoperto_count: number;
   } | null;
+  // --- NUOVA PROP PER I PIANI DISALLINEATI ---
+  pianiDisallineati?: Array<{ id: number; nome: string; gestione: string; delta: number }>;
   inboxTasks?: {
     total: number;
     data: Array<{
@@ -58,6 +60,12 @@ const pageGuides = [
 
 const statoCopertura = computed(() => {
     if (!props.copertura) return 'loading';
+    
+    // 🚨 PRIORITÀ ASSOLUTA: Se c'è un piano disallineato
+    if (props.pianiDisallineati && props.pianiDisallineati.length > 0) {
+        return 'misaligned';
+    }
+
     const delta = props.copertura.delta;
     if (delta > 5) return 'deficit';
     if (delta < -5) return 'surplus';
@@ -66,6 +74,7 @@ const statoCopertura = computed(() => {
 
 const tooltipStato = computed(() => {
     switch (statoCopertura.value) {
+        case 'misaligned': return "URGENTE: Uno o più piani rate non sono più allineati con il preventivo.";
         case 'deficit': return "Attenzione: Le rate emesse non coprono tutte le spese previste. Rischio buco di bilancio.";
         case 'surplus': return "Nota: L'importo richiesto ai condomini supera il preventivo spese.";
         case 'aligned': return "Ottimo! Le rate coprono perfettamente il preventivo di spesa.";
@@ -109,7 +118,6 @@ const suggerimentoOperativo = computed(() => {
                 
                 <div class="md:col-span-1 lg:col-span-4 flex flex-col gap-6">
                     
-                    <!-- Card Copertura Bilancio -->
                     <div v-if="copertura" class="relative flex flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
                         <div class="absolute -right-6 -top-6 text-slate-50 dark:text-slate-800/50 pointer-events-none transition-colors group-hover:text-slate-100 dark:group-hover:text-slate-800">
                             <Wallet class="h-32 w-32 opacity-50" />
@@ -131,12 +139,15 @@ const suggerimentoOperativo = computed(() => {
                                         <TooltipTrigger>
                                             <div class="flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold border cursor-help transition-colors"
                                                 :class="{
+                                                    'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',
                                                     'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100': statoCopertura === 'surplus',
                                                     'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100': statoCopertura === 'aligned'
                                                 }">
-                                                <span class="flex h-1.5 w-1.5 rounded-full" :class="{'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
-                                                <span v-if="statoCopertura === 'deficit'">INCOMPLETO</span>
+                                                <span class="flex h-1.5 w-1.5 rounded-full" 
+                                                    :class="{'bg-red-500 animate-pulse': statoCopertura === 'misaligned', 'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
+                                                <span v-if="statoCopertura === 'misaligned'">DISALLINEATO</span>
+                                                <span v-else-if="statoCopertura === 'deficit'">INCOMPLETO</span>
                                                 <span v-else-if="statoCopertura === 'surplus'">ECCEDENZA</span>
                                                 <span v-else>ALLINEATO</span>
                                             </div>
@@ -153,29 +164,55 @@ const suggerimentoOperativo = computed(() => {
                                 </div>
                                 <div class="text-right">
                                     <p class="text-[10px] text-slate-400 uppercase font-semibold">Pianificato (Rate)</p>
-                                    <p class="text-lg font-black text-slate-900 dark:text-white" :class="{'text-blue-600': statoCopertura === 'surplus'}">{{ euro(copertura.pianificato) }}</p>
+                                    <p class="text-lg font-black text-slate-900 dark:text-white" :class="{'text-blue-600': statoCopertura === 'surplus', 'text-red-600': statoCopertura === 'misaligned'}">{{ euro(copertura.pianificato) }}</p>
                                 </div>
                             </div>
 
-                            <!-- Progress bar: h-2 → h-2.5, aggiunta percentuale [TWEAK] -->
                             <div class="mb-4">
                                 <div class="flex justify-between items-center mb-1">
                                     <span class="text-[9px] font-semibold uppercase text-slate-400">Copertura</span>
                                     <span class="text-[10px] font-bold tabular-nums"
-                                        :class="{'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-emerald-600': statoCopertura === 'aligned'}">
+                                        :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-emerald-600': statoCopertura === 'aligned'}">
                                         {{ Math.min(copertura.percentuale, 100).toFixed(1) }}%
                                     </span>
                                 </div>
                                 <div class="relative h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                     <div class="h-full transition-all duration-1000 ease-in-out"
-                                        :class="{'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"
+                                        :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"
                                         :style="{ width: Math.min(copertura.percentuale, 100) + '%' }">
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Box deficit -->
-                            <div v-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3">
+                            <div v-if="statoCopertura === 'misaligned'" class="bg-red-50/80 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg p-3">
+                                <div class="flex items-center gap-2 mb-2 pb-2 border-b border-red-200/50">
+                                    <ShieldAlert class="w-4 h-4 text-red-600" />
+                                    <span class="text-[10px] font-black text-red-700 uppercase tracking-widest">
+                                        Ricalcolo Necessario
+                                    </span>
+                                </div>
+                                
+                                <p class="text-[10px] text-red-800/80 dark:text-red-400 leading-tight mb-3">
+                                    Hai modificato il preventivo spese, ma le rate generate non sono più aggiornate. Ricalcola i seguenti piani:
+                                </p>
+
+                                <div class="space-y-1.5">
+                                    <div v-for="piano in props.pianiDisallineati" :key="piano.id" 
+                                         class="flex items-center justify-between bg-white dark:bg-slate-800 p-2 rounded border border-red-100 dark:border-red-800">
+                                        <div class="flex flex-col">
+                                            <span class="text-[10px] font-bold text-slate-700 dark:text-slate-200 truncate max-w-[120px]" :title="piano.nome">{{ piano.nome }}</span>
+                                            <span class="text-[9px] font-medium text-red-600">Delta: {{ piano.delta > 0 ? '+' : '' }}{{ euro(piano.delta) }}</span>
+                                        </div>
+                                        <Link :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/:pianoRate', { condominio: condominio.id, esercizio: esercizio.id, pianoRate: piano.id })">
+                                            <Button size="sm" class="h-6 text-[9px] px-2 bg-red-600 hover:bg-red-700 text-white font-bold">
+                                                Apri
+                                            </Button>
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-else-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">
                                         <AlertTriangle class="w-3 h-3" /> Mancano {{ euro(copertura.delta) }}
@@ -185,7 +222,6 @@ const suggerimentoOperativo = computed(() => {
                                 <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight mb-2 border-l-2 border-amber-300 pl-2">
                                     {{ suggerimentoOperativo }}
                                 </div>
-                                <!-- Anteprima prime 2 voci orfane [ORIGINALE] -->
                                 <div v-if="copertura.orfani.length > 0" class="space-y-1 mt-2 pt-2 border-t border-amber-200/50">
                                     <div v-for="item in copertura.orfani.slice(0, 2)" :key="item.id" class="flex justify-between items-center text-[10px] text-slate-600 dark:text-slate-400">
                                         <span class="truncate max-w-[120px]">{{ item.nome }}</span>
@@ -194,25 +230,23 @@ const suggerimentoOperativo = computed(() => {
                                 </div>
                             </div>
 
-                            <!-- Box surplus -->
                             <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700">
                                 <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Suggerimento</span></div>
                                 <p class="text-[10px] opacity-90 leading-tight">{{ suggerimentoOperativo }}</p>
                             </div>
 
-                            <!-- Box allineato -->
                             <div v-else class="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg p-3 flex items-center justify-center gap-2 text-emerald-700 font-bold text-xs">
                                 <CheckCircle2 class="w-4 h-4" /> Bilancio perfettamente bilanciato
                             </div>
                         </div>
 
-                        <!-- Footer con testo bottone dinamico [ORIGINALE] -->
-                     <div class="mt-auto border-t border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                        <div class="mt-auto border-t border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
                         <span class="text-[10px] text-slate-400 font-medium">
-                            {{ statoCopertura === 'deficit' ? 'Azione richiesta' : statoCopertura === 'surplus' ? 'Verifica consigliata' : 'Tutto in ordine' }}
+                            {{ statoCopertura === 'misaligned' ? 'Azione critica' : statoCopertura === 'deficit' ? 'Azione richiesta' : statoCopertura === 'surplus' ? 'Verifica consigliata' : 'Tutto in ordine' }}
                         </span>
+                        
                         <Button
-                            v-if="copertura.orfani.length > 0"
+                            v-if="copertura.orfani.length > 0 && statoCopertura !== 'misaligned'"
                             @click="showOrphansModal = true"
                             variant="outline"
                             size="sm"
@@ -225,16 +259,15 @@ const suggerimentoOperativo = computed(() => {
                                 size="sm"
                                 class="h-7 text-[10px] font-bold uppercase gap-1.5"
                                 :variant="statoCopertura === 'surplus' ? 'outline' : 'default'"
-                                :class="statoCopertura === 'surplus' ? 'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300' : ''"
+                                :class="{'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300': statoCopertura === 'surplus', 'bg-red-600 hover:bg-red-700 text-white': statoCopertura === 'misaligned'}"
                             >
-                                {{ statoCopertura === 'deficit' ? 'Gestisci piani rate' : 'Vai ai piani rate' }}
+                                {{ statoCopertura === 'deficit' || statoCopertura === 'misaligned' ? 'Gestisci piani rate' : 'Vai ai piani rate' }}
                                 <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
                     </div>
                     </div>
 
-                    <!-- Placeholder cards -->
                     <div class="grid grid-cols-2 gap-4">
                         <div class="aspect-[4/3] flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 p-4 text-center">
                             <ShieldAlert class="w-5 h-5 text-slate-400 mb-2" />
@@ -249,7 +282,6 @@ const suggerimentoOperativo = computed(() => {
                     </div>
                 </div>
 
-                <!-- Inbox -->
                 <div class="md:col-span-2 lg:col-span-8">
                     <div v-if="inboxTasks" class="bg-white dark:bg-slate-900 border border-sidebar-border/70 rounded-xl overflow-hidden shadow-sm flex flex-col h-[430px]">
                         
@@ -265,7 +297,6 @@ const suggerimentoOperativo = computed(() => {
                             <template v-if="inboxTasks.data && inboxTasks.data.length > 0">
                                 <InfiniteScroll data="inboxTasks" preserve-url>
                                     <ul role="list" class="space-y-2">
-                                        <!-- Bordo sinistro rosso sui task scaduti [TWEAK] -->
                                         <li v-for="task in inboxTasks.data" :key="task.id"
                                             class="p-4 rounded-lg border transition-all group"
                                             :class="task.status === 'expired'
@@ -317,7 +348,6 @@ const suggerimentoOperativo = computed(() => {
             </div>
         </div>
 
-        <!-- Modal orfani -->
         <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
             <div v-if="showOrphansModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm p-4" @click.self="showOrphansModal = false">
                 <div class="w-full max-w-lg overflow-hidden rounded-2xl bg-white dark:bg-slate-900 shadow-2xl">
@@ -331,7 +361,6 @@ const suggerimentoOperativo = computed(() => {
                         </button>
                     </div>
                     <div class="p-6">
-                        <!-- Box "Cosa fare?" con testo completo [ORIGINALE] -->
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
                             <strong class="font-bold block mb-1">Cosa fare?</strong>
                             Queste voci esistono nel piano dei conti ma non sono state assegnate a nessun piano rate.

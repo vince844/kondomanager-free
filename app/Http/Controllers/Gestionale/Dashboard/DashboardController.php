@@ -7,6 +7,7 @@ use App\Models\Condominio;
 use App\Models\Evento;      
 use App\Models\Anagrafica;   
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -21,6 +22,7 @@ class DashboardController extends Controller
     {
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;
+        $pianiDisallineati = [];
 
         if ($esercizio) {
             $esercizio->load('gestioni');
@@ -77,6 +79,41 @@ class DashboardController extends Controller
                         }
                     }
                 }
+
+                // --- AGGIUNTA CHIRURGICA: CONTROLLO DISALLINEAMENTO PIANI RATE ---
+                // Preleviamo i piani rate della gestione con le relative rate generate e capitoli
+                $pianiRate = PianoRate::where('gestione_id', $gestione->id)
+                    ->with(['capitoli' => function($q) {
+                        $q->select('conti.id', 'conti.importo');
+                    }, 'rate' => function($q) {
+                        $q->select('id', 'piano_rate_id', 'importo_totale');
+                    }])
+                    ->get();
+                
+                foreach ($pianiRate as $piano) {
+                    // 1. Quanto ho già generato in rate?
+                    $totaleRateGenerate = $piano->rate->sum('importo_totale');
+                    
+                    // Se il piano ha già delle rate generate, facciamo il controllo
+                    if ($totaleRateGenerate > 0) {
+                        // 2. Quanto mi richiedono i conti ADESSO?
+                        $totaleAtteso = 0;
+                        foreach ($piano->capitoli as $capitolo) {
+                            $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
+                        }
+
+                        // 3. Se c'è differenza, scatta l'allarme
+                        if ($totaleAtteso !== $totaleRateGenerate) {
+                            $pianiDisallineati[] = [
+                                'id' => $piano->id,
+                                'nome' => $piano->nome,
+                                'gestione' => $gestione->nome,
+                                'delta' => $totaleAtteso - $totaleRateGenerate // Positivo se mancano soldi, negativo se c'è surplus
+                            ];
+                        }
+                    }
+                }
+                // --- FINE AGGIUNTA CHIRURGICA ---
             }
 
             $delta = $totPrev - $totPian;
@@ -134,6 +171,7 @@ class DashboardController extends Controller
             'esercizio'  => $esercizio, 
             'esercizi'   => $condominio->esercizi, 
             'copertura'  => $copertura,
+            'pianiDisallineati' => $pianiDisallineati,
             'inboxTasks' => Inertia::scroll($inboxTasks)
         ]);
     }
