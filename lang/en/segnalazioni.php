@@ -130,6 +130,17 @@ return [
         'comments'    => 'Allow residents to comment on this ticket.',
         'featured'    => 'Featured tickets are highlighted for quick access and visibility.',
         'private'     => 'Private tickets can only be viewed by administrators and you.',
+    ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'management_title' => 'Fault Management',
+        'management_desc'  => 'Collect and centralize reports for a smooth transition to future maintenance interventions.',
+        'priority_title'   => 'Urgency Filter',
+        'priority_desc'    => 'Instantly identify critical emergencies (burst pipes, hazards) and separate them from routine maintenance.',
+        'resolution_title' => 'Intervention Status',
+        'resolution_desc'  => 'Track resolution progress to keep residents constantly updated on the work being done.',
     ]
 
 ];

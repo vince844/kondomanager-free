@@ -88,7 +88,7 @@ const navigateToDocumenti = () => {
             <div class="flex flex-col-reverse md:flex-row justify-between items-stretch md:items-center gap-3">
                 <div>
                     <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pannello di controllo</p>
-                    <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Dashboard</h1>
+                    <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Dashboard comunicazioni</h1>
                 </div>
                 <div class="flex items-center gap-3">
                     <Link :href="route('admin.inbox')">

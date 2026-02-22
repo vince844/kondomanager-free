@@ -131,6 +131,17 @@ return [
         'comments'    => 'Consenti agli utenti di aggiungere commenti a questa segnalazione.',
         'featured'    => 'La segnalazione verrà messa in evidenza e comparirà sempre in cima all\'elenco delle segnalazioni',
         'private'     => 'Le segnalazioni private possono essere visualizzate solo dagli amministratori e da te.',
+    ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'management_title' => 'Gestione Guasti',
+        'management_desc'  => 'Raccogli e centralizza le segnalazioni per una transizione fluida verso i futuri interventi manutentivi.',
+        'priority_title'   => 'Filtro Urgenze',
+        'priority_desc'    => 'Identifica a colpo d\'occhio le emergenze critiche (tubi rotti, pericoli) e separale dalla manutenzione ordinaria.',
+        'resolution_title' => 'Stato Interventi',
+        'resolution_desc'  => 'Traccia l\'avanzamento della risoluzione per mantenere i condòmini sempre aggiornati sui progressi.',
     ]
 
 ];

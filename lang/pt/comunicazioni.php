@@ -120,5 +120,16 @@ return [
         'comments'      => 'Quando esta opção é selecionada, os comentários serão ativados para esta comunicação.',
         'featured'      => 'As comunicações em destaque são realçadas no quadro para atrair maior atenção.',
         'private'       => 'As comunicações privadas podem ser visualizadas apenas pelos administradores e por si.',
+    ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'tracking_title' => 'Rastreio de Envios',
+        'tracking_desc'  => 'Monitorize o estado de entrega e leitura de cada comunicação enviada aos residentes.',
+        'priority_title' => 'Gestão de Prioridades',
+        'priority_desc'  => 'Atribua níveis de urgência para destacar as mensagens mais importantes no quadro.',
+        'history_title'  => 'Histórico Completo',
+        'history_desc'   => 'Consulte o arquivo de todas as comunicações anteriores com os respetivos anexos e comentários.',
     ]
 ];

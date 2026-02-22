@@ -140,4 +140,15 @@ return [
         'featured'   => 'A sinalização em destaque será sempre mostrada no topo da lista.',
         'private'    => 'As sinalizações privadas podem ser visualizadas apenas pelos administradores e por si.',
     ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'management_title' => 'Gestão de Avarias',
+        'management_desc'  => 'Recolha e centralize as sinalizações para uma transição suave para futuras intervenções de manutenção.',
+        'priority_title'   => 'Filtro de Urgências',
+        'priority_desc'    => 'Identifique rapidamente emergências críticas (canos rotos, perigos) e separe-as da manutenção rotineira.',
+        'resolution_title' => 'Estado das Intervenções',
+        'resolution_desc'  => 'Acompanhe o progresso da resolução para manter os residentes sempre informados sobre os trabalhos.',
+    ]
 ];

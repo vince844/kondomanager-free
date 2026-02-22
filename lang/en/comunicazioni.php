@@ -142,6 +142,17 @@ return [
         'comments'    => 'When this option is selected, comments will be enabled for this communication',
         'featured'    => 'Featured communications are highlighted on the bulletin board to draw more attention.',
         'private'     => 'Private communications can only be viewed by administrators and you.',
+    ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'tracking_title' => 'Delivery Tracking',
+        'tracking_desc'  => 'Monitor the delivery and read status of every communication sent to residents.',
+        'priority_title' => 'Priority Management',
+        'priority_desc'  => 'Assign urgency levels to highlight the most important messages on the bulletin board.',
+        'history_title'  => 'Complete History',
+        'history_desc'   => 'Browse the archive of all past communications along with their attachments and comments.',
     ]
 
 ];

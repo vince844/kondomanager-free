@@ -142,6 +142,17 @@ return [
         'comments'    => 'Quando viene selezionata questa opzione verranno abilitati i commenti per questa comunicazione',
         'featured'    => 'Le comunicazioni in evidenza sono evidenziate nella bacheca per attirare maggiore attenzione.',
         'private'     => 'Le comunicazioni private possono essere visualizzate solo dagli amministratori e da te.',
+    ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'tracking_title' => 'Tracciamento Invii',
+        'tracking_desc'  => 'Monitora lo stato di consegna e lettura di ogni comunicazione inviata ai condomini.',
+        'priority_title' => 'Gestione Priorità',
+        'priority_desc'  => 'Assegna livelli di urgenza per evidenziare i messaggi più importanti nella bacheca.',
+        'history_title'  => 'Storico Completo',
+        'history_desc'   => 'Consulta l\'archivio di tutte le comunicazioni passate con i relativi allegati e commenti.',
     ]
 
 ];
