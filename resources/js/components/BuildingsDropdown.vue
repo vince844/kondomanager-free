@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { usePermission } from "@/composables/permissions";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { trans } from 'laravel-vue-i18n';
 import type { Building } from '@/types/buildings'
 
 // State
@@ -91,7 +92,7 @@ const goToCreateCondominio = () => {
           variant="outline"
           role="combobox"
           aria-expanded="open"
-          aria-label="Select Condominio"
+          :aria-label="trans('dashboard.buildings_dropdown.select_aria')"
           :class="cn(
             // VISUAL MERGE: rounded-r-none e border-r-0 per attaccarlo al bottone destro
             'flex-1 sm:w-[300px] justify-between text-sm py-2 px-3 rounded-r-none border-r-0 focus:z-10 relative transition-colors', 
@@ -100,7 +101,7 @@ const goToCreateCondominio = () => {
           )"
         >
           <span class="truncate" :class="showError ? 'text-red-500' : ''">
-            {{ selectedCondominio?.nome || 'Seleziona condominio...' }}
+            {{ selectedCondominio?.nome || trans('dashboard.buildings_dropdown.select_placeholder') }}
           </span>
           <ChevronDown class="ml-2 h-4 w-4 shrink-0 opacity-50" :class="showError ? 'text-red-500' : ''" />
         </Button>
@@ -109,11 +110,11 @@ const goToCreateCondominio = () => {
       <PopoverContent class="w-[300px] p-0" align="start">
         <div v-if="loading && condomini.length === 0" class="flex items-center justify-center py-6">
           <Loader2 class="h-5 w-5 animate-spin text-gray-500" />
-          <span class="ml-2 text-sm text-gray-500">Caricamento...</span>
+          <span class="ml-2 text-sm text-gray-500">{{ trans('segnalazioni.dialogs.loading') }}</span>
         </div>
         <Command v-else>
-          <CommandInput placeholder="Cerca condominio..." />
-          <CommandEmpty>Nessun condominio trovato.</CommandEmpty>
+          <CommandInput :placeholder="trans('dashboard.buildings_dropdown.search_placeholder')" />
+          <CommandEmpty>{{ trans('dashboard.buildings_dropdown.empty_state') }}</CommandEmpty>
 
           <CommandList>
             <CommandGroup>
@@ -140,7 +141,7 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CirclePlus class="mr-2 h-5 w-5" />
-                Crea condominio
+                {{ trans('condomini.header.new_building_title') }}
               </CommandItem>
 
               <CommandItem
@@ -150,7 +151,7 @@ const goToCreateCondominio = () => {
                 }"
               >
                 <CircleX class="mr-2 h-5 w-5 text-red-600" />
-                Reset selezione
+                {{ trans('dashboard.buildings_dropdown.reset_selection') }}
               </CommandItem>
             </CommandGroup>
           </CommandList>
@@ -162,9 +163,9 @@ const goToCreateCondominio = () => {
       class="rounded-l-none px-5  bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors" 
       variant="default"
       @click="goToGestionale"
-      title="Vai al pannello di gestione"
+      :title="trans('dashboard.buildings_dropdown.go_to_management_title')"
     >
-      Gestione
+      {{ trans('dashboard.buildings_dropdown.management') }}
       
       <Settings2 
         v-if="!selectedCondominio" 
