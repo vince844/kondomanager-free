@@ -68,7 +68,7 @@ watchDebounced(
 
     <Link
       :href="route(generateRoute('gestionale.esercizi.piani-conti.create'), { condominio: page.props.condominio.id, esercizio: page.props.esercizio.id })"
-      class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-white hover:bg-primary/90 transition"
+      class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-primary-foreground hover:bg-primary/90 transition"
       prefetch
     >
       <Plus class="w-4 h-4" />

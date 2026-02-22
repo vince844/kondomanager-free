@@ -24,7 +24,7 @@ const page = usePage<{ fornitore: Fornitore}>()
       as="button"
       v-if="hasPermission([Permission.CREATE_USERS])"
       :href="route(generateRoute('fornitori.anagrafiche.create'), { fornitore: page.props.fornitore.id })" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
       <span>Associa</span>
@@ -33,7 +33,7 @@ const page = usePage<{ fornitore: Fornitore}>()
     <Link
       as="button"
       :href="generatePath('fornitori')"
-      class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
+      class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
     >
       <List class="w-4 h-4" />
       <span>Fornitori</span>

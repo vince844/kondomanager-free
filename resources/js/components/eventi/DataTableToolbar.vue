@@ -189,7 +189,7 @@ const formattedRange = computed(() => {
       v-if="hasPermission([Permission.CREATE_EVENTS])"
       as="button"
       :href="route(generateRoute('eventi.create'))"
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
       <span>{{ trans('eventi.actions.new_event') }}</span>

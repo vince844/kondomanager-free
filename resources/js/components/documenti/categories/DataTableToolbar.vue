@@ -88,7 +88,7 @@ watchDebounced(
       <button
         type="button"
         @click="handleNewCategory"
-        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
       >
         <Plus class="w-4 h-4" />
         <span>{{ trans('documenti.actions.categories.new_category') }}</span>
@@ -97,7 +97,7 @@ watchDebounced(
       <Link 
         as="button"
         :href="route(generateRoute('documenti.index'))" 
-        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
       >
         <List class="w-4 h-4" />
         <span>{{ trans('documenti.actions.categories.list_documents') }}</span>
