@@ -71,7 +71,8 @@ class SegnalazioneController extends Controller
                 'per_page'     => $segnalazioni->perPage(),
                 'total'        => $segnalazioni->total(),
             ],
-            'filters' => Arr::only($validated, ['subject', 'priority', 'stato'])
+            // AGGIUNTO: condominio_id per ripristinare lo stato del filtro nel frontend
+            'filters' => Arr::only($validated, ['subject', 'priority', 'stato', 'condominio_id'])
         ]);
     }
   

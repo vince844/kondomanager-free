@@ -67,7 +67,7 @@ class DocumentoController extends Controller
                 'per_page'     => $documenti->perPage(),
                 'total'        => $documenti->total(),
             ],
-            'filters' => Arr::only($validated, ['name', 'category_id'])
+            'filters' => Arr::only($validated, ['name', 'category_id', 'condominio_id'])
         ]);
     }
 

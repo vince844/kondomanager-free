@@ -90,7 +90,13 @@ class DocumentoService
         return $query
             ->when($validated['search'] ?? false, fn($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->when($validated['name'] ?? false, fn($q, $n) => $q->where('name', 'like', "%{$n}%"))
-            ->when($validated['category_id'] ?? false, fn($q, $c) => $q->whereIn('category_id', $c));
+            ->when($validated['category_id'] ?? false, fn($q, $c) => $q->whereIn('category_id', $c))
+            // AGGIUNTO: Filtro Many-to-Many per Condomini
+            ->when($validated['condominio_id'] ?? false, function ($q, $condominioIds) {
+                $q->whereHas('condomini', function ($subQ) use ($condominioIds) {
+                    $subQ->whereIn('condomini.id', (array) $condominioIds);
+                });
+            });
     }
 
     /**

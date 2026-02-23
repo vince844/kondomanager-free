@@ -184,4 +184,15 @@ return [
             'delete_category' => 'Elimina',
         ],
     ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'storage_title'      => 'Archivio Centralizzato',
+        'storage_desc'       => 'Conserva fatture, contratti e verbali in un unico spazio cloud sempre accessibile.',
+        'organization_title' => 'Organizzazione Veloce',
+        'organization_desc'  => 'Usa cartelle e tag per ritrovare immediatamente i documenti importanti durante le assemblee.',
+        'privacy_title'      => 'Privacy e Permessi',
+        'privacy_desc'       => 'Gestisci chi può visualizzare i documenti impostando livelli di visibilità pubblici o privati.',
+    ]
 ];

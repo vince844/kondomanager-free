@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
 import { computed, ref, watch } from 'vue';
-import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown } from 'lucide-vue-next';
+import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
+import { usePermission } from "@/composables/permissions";
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -45,6 +46,7 @@ const colorStyles = {
 const showCondominioDropdown = computed(() => (props.condomini?.length ?? 0) > 1);
 const showEsercizioDropdown = computed(() => (props.esercizi?.length ?? 0) > 1);
 const hasBreadcrumbs = computed(() => props.breadcrumbs && props.breadcrumbs.length > 0);
+const { generatePath } = usePermission();
 
 // --- Logica Navigazione ---
 const page = usePage<{ condominio: Building; condomini: (Building & { esercizio_aperto?: { id: number } | null })[] }>();
@@ -161,6 +163,15 @@ function selectEsercizio(esercizioId: number | string) {
               <span class="text-slate-700 dark:text-slate-300">{{ esercizio.nome }}</span>
             </div>
           </template>
+
+        <Link 
+          :href="generatePath('dashboard')"
+          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+        >
+          <CornerLeftUp class="w-3.5 h-3.5 text-white" />
+          Social
+        </Link>
+
         </template> <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
           <PlayCircle class="w-3.5 h-3.5" />
           VIDEO GUIDA

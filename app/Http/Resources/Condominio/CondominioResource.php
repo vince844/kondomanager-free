@@ -36,6 +36,7 @@ class CondominioResource extends JsonResource
                     ->latest('data_inizio')
                     ->first()
             ),
+            'anagrafiche' => $this->whenLoaded('anagrafiche'),
         ];
     }
 }

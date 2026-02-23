@@ -17,7 +17,7 @@ return [
     'header' => [
         'list_buildings_head'           => 'Lista de condomínios',
         'list_buildings_title'          => 'Lista de condomínios',
-        'list_buildings_description'    => 'A seguir a tabela com a lista de todos os perfis dos condomínios registados',
+        'list_buildings_description'    => 'A seguir a tabella com a lista de todos os perfis dos condomínios registados',
         'new_building_head'             => 'Criar condomínio',
         'new_building_title'            => 'Criar condomínio',
         'new_building_description'      => 'Preencha o seguinte formulário para criar um novo condomínio',
@@ -38,6 +38,10 @@ return [
         'address'          => 'Morada',
         'filter_by_name'   => 'Filtrar por nome...',
         'actions'          => 'Ações',
+        'residents'        => 'Registos',
+        'residents_desc'   => 'Consulte rapidamente a lista completa de moradores associados a este condomínio.',
+        'total'            => 'Totais',
+        'click_to_manage'  => 'Clique para gerir',
     ],
 
     /* ------------------------------------------------------------------
@@ -64,12 +68,13 @@ return [
         'address'           => 'Inserir a morada do condomínio',
         'tax_code'          => 'Número de contribuinte do condomínio',
         'email'             => 'Endereço de correio eletrónico do condomínio',
-        'notes'             => 'Inserir uma nota adicional aqui',
+        'notes'             => 'Inserir una nota adicional aqui',
         'municipality'      => 'Município (cadastro)',
         'municipality_code' => 'Código do município',
         'section'           => 'Secção cadastral',
         'sheet'             => 'Folha cadastral',
         'parcel'            => 'Partícula cadastral',
+        'no_address'        => 'Morada não disponível',
     ],
 
     /* ------------------------------------------------------------------
@@ -77,6 +82,7 @@ return [
      | ------------------------------------------------------------------ */
     'dialogs' => [
         'no_buildings_created' => 'Ainda não foi criado nenhum condomínio',
+        'close_list'           => 'Fechar Lista',
     ],
 
     /* ------------------------------------------------------------------
@@ -98,7 +104,7 @@ return [
         'portfolio_desc'         => 'Visão geral de todos os condomínios geridos. A partir daqui tem controlo total sobre os seus mandatos.',
         'quick_access_title'     => 'Acesso Rápido',
         'quick_access_desc'      => 'Clique num condomínio para entrar na sua área de gestão dedicada (faturas, quotas, orçamentos).',
-        'new_acquisitions_title' => 'Novas Aquisições',
+        'new_acquisitions_title' => 'Nuovas Aquisições',
         'new_acquisitions_desc'  => 'Adicione novos edifícios ao sistema e comece a configurar o seu registo e contas bancárias.',
     ],
 ];

@@ -110,9 +110,13 @@ export const columns: ColumnDef<Segnalazione>[] = [
       }, avatars);
     },
   
+    // MODIFICA QUI: Semplifichiamo la filterFn per evitare che nasconda le righe
+    // già filtrate dal backend in caso di type mismatch
     filterFn: (row, id, value) => {
-      const condomini = row.original.condominio?.option ?? {};
-      return value.includes(condomini.value);
+      if (!value || value.length === 0) return true;
+      const condominioId = row.original.condominio?.option?.value;
+      // Convertiamo in stringa per sicurezza in caso di mismatch tra Int e String
+      return value.map(String).includes(String(condominioId));
     },
   },
   {

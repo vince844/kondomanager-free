@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { ref, onMounted } from 'vue' // Usa onMounted per caricare subito
+import { ref, onMounted } from 'vue' 
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 import { ChevronDown, CirclePlus, CircleX, Loader2, Settings2, ArrowRight } from 'lucide-vue-next'
@@ -30,7 +30,7 @@ const fetchCondomini = async () => {
     // Ripristina selezione precedente SOLO all'avvio
     const storedId = localStorage.getItem('selectedCondominioId')
     if (storedId) {
-      const found = response.data.find((c: Building) => c.id == storedId)
+      const found = response.data.find((c: Building) => c.id === Number(storedId))
       if (found) selectedCondominio.value = found
     }
   } catch (error) {
@@ -48,7 +48,7 @@ onMounted(() => {
 // Select condominio
 const selectCondominio = (condominio: Building) => {
   selectedCondominio.value = condominio
-  localStorage.setItem('selectedCondominioId', condominio.id)
+  localStorage.setItem('selectedCondominioId', String(condominio.id))
   open.value = false
   showError.value = false // Rimuovi errore se seleziona
 }
@@ -159,7 +159,7 @@ const goToCreateCondominio = () => {
     </Popover>
 
     <Button 
-      class="rounded-l-none px-5 font-medium transition-all duration-200" 
+      class="rounded-l-none px-5  bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors" 
       variant="default"
       @click="goToGestionale"
       title="Vai al pannello di gestione"

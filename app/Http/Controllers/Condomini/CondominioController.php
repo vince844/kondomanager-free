@@ -54,6 +54,7 @@ class CondominioController extends Controller
         ]);
     
         $condomini = Condominio::query()
+            ->with('anagrafiche') 
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");
             })
@@ -67,10 +68,8 @@ class CondominioController extends Controller
                 'per_page'     => $condomini->perPage(),
                 'total'        => $condomini->total(),
             ],
-            // Optional: Return current filters to maintain UI state
             'filters' => $request->only(['nome']) 
         ]);
-        
     }
 
     /**

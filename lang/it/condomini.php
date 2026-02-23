@@ -39,6 +39,10 @@ return [
         'address'        => 'Indirizzo',
         'filter_by_name' => 'Filtra per nome...',
         'actions'        => 'Azioni',
+        'residents'      => 'Anagrafiche',
+        'residents_desc' => 'Consulta rapidamente l\'elenco completo delle persone associate a questo condominio.',
+        'total'          => 'Totali',
+        'click_to_manage' => 'Clicca per gestire',
     ],
 
     /* ------------------------------------------------------------------
@@ -71,6 +75,7 @@ return [
         'section'            => 'Sezione catasto',
         'sheet'              => 'Foglio catasto',
         'parcel'             => 'Particella catasto',
+        'no_address'         => 'Indirizzo non presente',
     ],
 
     /* ------------------------------------------------------------------
@@ -78,6 +83,7 @@ return [
      | ------------------------------------------------------------------ */
     'dialogs' => [
         'no_buildings_created' => "Nessun condominio ancora creato",
+        'close_list'           => "Chiudi Elenco",
     ],
 
     /* ------------------------------------------------------------------

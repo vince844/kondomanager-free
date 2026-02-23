@@ -184,4 +184,15 @@ return [
             'delete_category' => 'Eliminar',
         ],
     ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'storage_title'      => 'Arquivo Centralizado',
+        'storage_desc'       => 'Guarde faturas, contratos e atas num único espaço cloud sempre acessível.',
+        'organization_title' => 'Organização Rápida',
+        'organization_desc'  => 'Utilize pastas e etiquetas para encontrar instantaneamente documentos importantes durante as assembleias.',
+        'privacy_title'      => 'Privacidade e Permissões',
+        'privacy_desc'       => 'Faça a gestão de quem pode visualizar os documentos definindo níveis de visibilidade públicos ou privados.',
+    ]
 ];

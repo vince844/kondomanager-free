@@ -22,14 +22,16 @@ class SegnalazioneIndexRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'page'       => ['sometimes', 'integer', 'min:1'],
-            'per_page'   => ['sometimes', 'integer'],
-            'subject'    => ['sometimes', 'string', 'max:255'],
-            'priority'   => ['sometimes', 'array'],
-            'priority.*' => ['string', 'in:bassa,media,alta,urgente'],
-            'stato'      => ['sometimes', 'array'],
-            'stato.*'    => ['string', 'in:aperta,in lavorazione,chiusa'],
-            'search'     => ['nullable', 'string'],
+            'page'              => ['sometimes', 'integer', 'min:1'],
+            'per_page'          => ['sometimes', 'integer'],
+            'subject'           => ['sometimes', 'string', 'max:255'],
+            'priority'          => ['sometimes', 'array'],
+            'priority.*'        => ['string', 'in:bassa,media,alta,urgente'],
+            'stato'             => ['sometimes', 'array'],
+            'stato.*'           => ['string', 'in:aperta,in lavorazione,chiusa'],
+            'condominio_id'     => ['nullable', 'array'],
+            'condominio_id.*'   => ['integer'],
+            'search'            => ['nullable', 'string'],
         ];
     }
 }

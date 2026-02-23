@@ -39,6 +39,10 @@ return [
         'address'        => 'Address',
         'filter_by_name' => 'Filter by name...',
         'actions'        => 'Actions',
+        'residents'      => 'Residents',
+        'residents_desc' => 'Quickly view the complete list of people associated with this building.',
+        'total'          => 'Total',
+        'click_to_manage' => 'Click to manage',
     ],
 
     /* ------------------------------------------------------------------
@@ -71,6 +75,7 @@ return [
         'section'            => 'Section',
         'sheet'              => 'Sheet',
         'parcel'             => 'Parcel',
+        'no_address'         => 'Address not available',
     ],
 
     /* ------------------------------------------------------------------
@@ -78,6 +83,7 @@ return [
      | ------------------------------------------------------------------ */
     'dialogs' => [
         'no_buildings_created' => "No buildings have been created yet",
+        'close_list'           => "Close List",
     ],
 
     /* ------------------------------------------------------------------

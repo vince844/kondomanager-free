@@ -184,4 +184,15 @@ return [
             'delete_category' => 'Delete',
         ],
     ],
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'storage_title'      => 'Centralized Archive',
+        'storage_desc'       => 'Store invoices, contracts, and meeting minutes in a single, always-accessible cloud space.',
+        'organization_title' => 'Quick Organization',
+        'organization_desc'  => 'Use folders and tags to instantly find important documents during meetings.',
+        'privacy_title'      => 'Privacy and Permissions',
+        'privacy_desc'       => 'Manage who can view documents by setting public or private visibility levels.',
+    ]
 ];

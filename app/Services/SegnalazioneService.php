@@ -41,7 +41,7 @@ class SegnalazioneService
      * @param Collection|null $condominioIds
      * @param array $validated
      * @param bool $isAdmin
-     * @param int|null $limit <-- NUOVO PARAMETRO
+     * @param int|null $limit
      * @return LengthAwarePaginator|Collection
      */
     private function getScopedQuery(
@@ -68,6 +68,10 @@ class SegnalazioneService
             )
             ->when($validated['stato'] ?? false, fn($q, $stati) =>
                 $q->whereIn('stato', $stati)
+            )
+            // NUOVO FILTRO: Array di Condomini per le Segnalazioni
+            ->when($validated['condominio_id'] ?? false, fn($q, $condominioIds) =>
+                $q->whereIn('condominio_id', (array) $condominioIds)
             )
             ->orderBy('created_at', 'desc');
 

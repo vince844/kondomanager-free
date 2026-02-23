@@ -3,6 +3,20 @@
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
 ---
+## [1.9.7] - Visual Harmony & Smart Filters
+
+Continua il processo di modernizzazione e pulizia dell'interfaccia utente. Questa release uniforma il design system dei moduli operativi (Comunicazioni, Segnalazioni, Documenti e Agenda) e introduce filtri di ricerca avanzati e persistenti per una gestione multi-condominio più fluida.
+
+### 🎨 UI/UX Redesign & Visual Harmony
+* **Widget Guide Contestuali:** Aggiunto il nuovo componente `PageHeaderGuide` in tutte le pagine indice dei moduli operativi (Bacheca, Guasti, Archivio, Scadenze). L'header ora accoglie l'utente con breadcrumbs puliti e card informative dinamiche che spiegano "a colpo d'occhio" le funzionalità chiave del modulo, migliorando l'onboarding.
+* **Statistiche Semantiche (Pastel Design):** Refactoring completo dei moduli statistici (`ComunicazioniStats`, `SegnalazioniStats`, `DocumentiStats`, `EventiStats`). Abbandonate le "Card" generiche in favore di contenitori flat con fondini color pastello a opacità ridotta. I colori (Rosso, Ambra, Smeraldo, Blu, Violetto, Rosa) sono ora assegnati semanticamente per comunicare istantaneamente il livello di urgenza (es. scadenze e guasti) o la classificazione del dato (es. spazio cloud).
+* **Interattività Visiva:** I widget cliccabili (come le statistiche dell'Agenda che fungono da filtro) ora presentano un micro-feedback visivo al passaggio del mouse (sollevamento e ombra) per indicare chiaramente la loro interattività.
+* **Tabelle "Card Style":** Tutte le DataTables (liste dati) sono state incapsulate in moderni contenitori smussati (`rounded-2xl`) con ombre leggere (`shadow-sm`), allineando il design a quello della nuova Dashboard Contabile.
+
+### 🧠 Smart Filters & Backend Logic
+* **Filtro "Condominio" Persistente:** Introdotto un nuovo selettore a tendina all'interno delle Toolbar delle tabelle (Segnalazioni e Documenti) che permette di filtrare rapidamente i record appartenenti a uno specifico fabbricato. Il sistema ora salva e mantiene lo stato del filtro anche dopo il ricaricamento dei dati.
+* **Dynamic Clear Button:** Il pulsante "Svuota filtri" nelle DataTables ora è intelligente: compare a schermo solo se l'utente ha effettivamente applicato almeno un criterio di ricerca (testo, priorità, stato, o condominio).
+* **Backend Query Fix:** Corretta un'anomalia nei Service Layer (`SegnalazioneService` e `DocumentoService`). Aggiunte le istruzioni SQL mancanti per processare correttamente l'array `condominio_id` proveniente dal frontend, implementando query ottimizzate (`whereIn` per le relazioni 1:N e `whereHas` per le relazioni N:N) che garantiscono risultati istantanei e precisi.
 
 ## [1.9.6] - Active Budget Guardian & UI Refinements
 
