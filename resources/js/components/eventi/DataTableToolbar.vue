@@ -13,6 +13,7 @@ import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.v
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RangeCalendar } from '@/components/ui/range-calendar';
 import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internationalized/date';
+import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
@@ -118,19 +119,19 @@ const formattedRange = computed(() => {
   } else if (startDate) {
     return df.format(startDate)
   }
-  return 'Seleziona periodo'
+  return trans('eventi.table.period_placeholder')
 })
 
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
+  <div class="flex items-center justify-between w-full mb-3">
     <!-- Left Section: Filters -->
     <div class="flex flex-col space-y-2 w-full lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
       <!-- Search and Category Filters -->
       <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          :placeholder="trans('eventi.table.filter_by_name')"
           v-model="nameFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
@@ -154,7 +155,7 @@ const formattedRange = computed(() => {
             />
             <div class="p-2 border-t flex justify-end">
               <Button variant="outline" size="sm" @click="clearDateFilter">
-                Cancella
+                {{ trans('eventi.actions.cancel') }}
               </Button>
             </div>
           </PopoverContent>
@@ -163,7 +164,7 @@ const formattedRange = computed(() => {
         <DataTableFacetedFilter
           v-if="categoriaColumn"
           :column="categoriaColumn"
-          title="Categoria"
+          :title="trans('eventi.table.category')"
           :options="categorie"
           :isLoading="isLoading"
           @open="handleOpenDropdown"
@@ -177,7 +178,7 @@ const formattedRange = computed(() => {
         >
 
          <X />
-          Resetta tutti i filtri
+          {{ trans('eventi.table.clear_all_filters') }}
         </Button>
       </div>
 
@@ -191,7 +192,7 @@ const formattedRange = computed(() => {
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('eventi.actions.new_event') }}</span>
     </Link>
   </div>
 </template>

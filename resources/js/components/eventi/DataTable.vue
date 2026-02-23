@@ -8,6 +8,7 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/eventi/DataTableToolbar.vue';
 import { usePermission } from '@/composables/permissions';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
@@ -117,7 +118,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('eventi.table.no_results') }}
             </TableCell>
           </TableRow>
         </template>

@@ -7,6 +7,7 @@ import { ClockAlert, ClockArrowUp, Clock, ShieldCheck } from 'lucide-vue-next';
 import { visibilityConstants } from '@/lib/eventi/constants';
 import { Permission } from "@/enums/Permission";
 import { Badge } from '@/components/ui/badge';
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 import type { Building } from '@/types/buildings';
@@ -16,7 +17,7 @@ const { hasPermission, generateRoute } = usePermission();
 export const columns: ColumnDef<Evento>[] = [
   {
     accessorKey: 'occurs_at',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Data scadenza' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('eventi.table.due_date') }),
     cell: ({ row }) => {
       // No color, just the date
       return h('div', { class: 'font-normal text-gray-800' }, row.original.occurs_at);
@@ -24,7 +25,7 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'title',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Titolo' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('eventi.table.title') }),
 
     cell: ({ row, table }) => {
       const evento = row.original;
@@ -62,8 +63,8 @@ export const columns: ColumnDef<Evento>[] = [
       };
 
       const tooltip = evento.is_approved
-        ? 'Approvato - clicca per rimuovere approvazione'
-        : 'Non approvato - clicca per approvare';
+        ? trans('eventi.table.approved_tooltip')
+        : trans('eventi.table.unapproved_tooltip');
 
       const shieldIcon = hasPermission([Permission.APPROVE_EVENTS])
         ? h('div', {
@@ -86,7 +87,7 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'categoria',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Categoria' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('eventi.table.category') }),
     cell: ({ row }) => {
       const categoria = row.original.categoria;
 
@@ -100,7 +101,7 @@ export const columns: ColumnDef<Evento>[] = [
   {
     accessorKey: 'condomini',
     header: ({ column }) =>
-      h(DataTableColumnHeader, { column, title: 'Condomini' }),
+      h(DataTableColumnHeader, { column, title: trans('eventi.table.buildings') }),
 
     cell: ({ row }) => {
       const condomini = row.original.condomini;
@@ -142,7 +143,7 @@ export const columns: ColumnDef<Evento>[] = [
         avatars.push(
           h('div', {
             key: 'more-condomini',
-            title: `+${remainingCount} altri condomini`,
+            title: trans('eventi.table.more_buildings', { count: remainingCount }),
             class: `
               absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
               flex items-center justify-center border border-white shadow
@@ -171,7 +172,7 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'anagrafiche',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Anagrafiche' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('eventi.table.residents') }),
   
     cell: ({ row }) => {
       const anagrafiche = row.original.anagrafiche;
@@ -213,7 +214,7 @@ export const columns: ColumnDef<Evento>[] = [
         avatars.push(
           h('div', {
             key: 'more-anagrafiche',
-            title: `+${remainingCount} altre persone`,
+            title: trans('eventi.table.more_people', { count: remainingCount }),
             class: `
               absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
               flex items-center justify-center border border-white shadow
@@ -236,7 +237,7 @@ export const columns: ColumnDef<Evento>[] = [
   },
   {
     accessorKey: 'visibility',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('eventi.table.status') }),
     cell: ({ row }) => {
 
       const value = row.getValue('visibility');
