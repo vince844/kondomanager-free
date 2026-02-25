@@ -7,6 +7,7 @@ use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Fornitore;
+use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
@@ -63,6 +64,24 @@ class FatturaPassivaController extends Controller
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        // --- AUTOGENERAZIONE NUMERO PROTOCOLLO ---
+        // Cerchiamo l'ultimo protocollo dell'anno in corso per questo condominio
+        $annoInCorso = date('Y');
+        $ultimoProtocollo = FatturaPassiva::where('condominio_id', $condominio->id)
+            ->whereYear('created_at', $annoInCorso)
+            ->whereNotNull('numero_protocollo')
+            ->orderBy('id', 'desc')
+            ->value('numero_protocollo');
+
+        // Formato desiderato: PR-2026-0001
+        if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
+            $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
+            $protocolloSuggerito = "PR-{$annoInCorso}-{$nextNum}";
+        } else {
+            $protocolloSuggerito = "PR-{$annoInCorso}-0001";
+        }
+        // ------------------------------------------
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterNew', [
             'condominio' => $condominio,
             'fornitori'  => Fornitore::all(),
@@ -71,48 +90,68 @@ class FatturaPassivaController extends Controller
             'esercizio'  => $esercizio,
             'condomini'  => $listaCondomini, 
 
-            // FIX: Rimossa la colonna 'esercizio_id' inesistente
             'gestioni' => $condominio->gestioni()
-                ->where('attiva', true)
-                ->select('id', 'nome', 'tipo')
-                ->get(),
+                ->where('gestioni.attiva', true) // Specifico la tabella per evitare ambiguità
+                ->with('esercizi:id') // Carichiamo solo l'ID degli esercizi collegati per non appesantire
+                ->get()
+                ->map(function ($gestione) {
+                    return [
+                        'id'   => $gestione->id,
+                        'nome' => $gestione->nome,
+                        'tipo' => $gestione->tipo,
+                        // Estraiamo un array semplice di ID: es. [1, 2]
+                        'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
+                    ];
+                }),
 
-            // Conti recuperati tramite i Piani dei Conti del condominio
             'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
                 ->get()
                 ->map(function ($conto) {
-                    // Dalla tua migration, usiamo il campo 'importo' come budget assegnato
                     $budgetApprovato = $conto->importo ?? 0; 
-                    
-                    // La spesa attuale la ricaverai poi dalle scritture contabili.
-                    // Per ora usiamo 0 (o l'attributo se l'hai già creato) per non rompere nulla.
                     $spesaAttuale    = $conto->spesa_attuale ?? 0; 
-                    
                     $residuo         = $budgetApprovato - $spesaAttuale;
 
                     return [
                         'id'             => $conto->id,
                         'nome'           => $conto->nome,
-                        'codice'         => null, // Non c'è nella tua migration, evitiamo errori
+                        'codice'         => null,
                         'residuo_budget' => $residuo,
                         'is_capiente'    => $residuo > 0,
                     ];
                 }),
 
-            'banche' => ContoContabile::where('condominio_id', $condominio->id)
-                ->where('categoria', 'liquidita')
-                ->get(),
+            // --- CARICAMENTO CASSE E SALDO DINAMICO ---
+            'banche' => Cassa::where('condominio_id', $condominio->id)
+                ->where('attiva', true)
+                ->withSum(['movimenti as totale_entrate' => function ($q) {
+                    $q->where('tipo_riga', 'dare');
+                }], 'importo')
+                ->withSum(['movimenti as totale_uscite' => function ($q) {
+                    $q->where('tipo_riga', 'avere');
+                }], 'importo')
+                ->get()
+                ->map(function ($cassa) {
+                    $entrate = $cassa->totale_entrate ?? 0;
+                    $uscite  = $cassa->totale_uscite ?? 0;
+                    $saldoIniziale = $cassa->saldo_iniziale ?? 0; 
+                    $saldoAttuale = $saldoIniziale + $entrate - $uscite;
 
-            // Immobili formattati per la select "Spesa Personale"
+                    return [
+                        // PASSALA COME ID DEL CONTO CONTABILE, COSÌ IL SERVICE NON ESPLODE!
+                        'id' => $cassa->conto_contabile_id, 
+                        'cassa_id' => $cassa->id, // Lo teniamo per reference
+                        'nome' => $cassa->nome,
+                        'saldo_attuale' => $saldoAttuale, 
+                    ];
+                }),
+
             'immobili' => Immobile::where('condominio_id', $condominio->id)
-                ->with('anagrafiche') // <--- Modificato da anagrafichePrincipali ad anagrafiche
+                ->with('anagrafiche') 
                 ->select('id', 'interno')
                 ->get()
                 ->map(fn($imm) => [
                     'id'    => $imm->id,
-                    'label' => 'Int. ' . $imm->interno . ' - '
-                               // Usa nome_completo, o nome, oppure 'N/A' se non ci sono anagrafiche collegate
-                               . ($imm->anagrafiche->first()->nome_completo ?? $imm->anagrafiche->first()->nome ?? 'N/A'),
+                    'label' => 'Int. ' . $imm->interno . ' - '. ($imm->anagrafiche->first()->nome_completo ?? $imm->anagrafiche->first()->nome ?? 'N/A'),
                 ]),
         ]);
     }
@@ -127,7 +166,7 @@ class FatturaPassivaController extends Controller
             );
 
             return redirect()
-                ->route('gestionale.fatture.index', $condominio->id) // Assicurati che il nome rotta sia corretto qui (es: gestionale.fatture.index)
+                ->route('admin.gestionale.fatture.index', $condominio->id) 
                 ->with('success', 'Fattura registrata con successo.');
 
         } catch (ModelNotFoundException $e) {

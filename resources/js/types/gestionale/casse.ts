@@ -5,7 +5,6 @@ export type TipoConto = 'ordinario' | 'dedicato' | 'postale' | 'contabilita_spec
 
 export interface Cassa {
     id: number;
-    // condominio_id non viene passato dalla Resource, quindi lo rimuoviamo o lo rendiamo opzionale
     condominio_id?: number; 
     
     nome: string;
@@ -23,9 +22,15 @@ export interface Cassa {
     banca_predefinito?: boolean;
     banca_tipo_conto?: string | null;
 
-    // --- Dati Calcolati ---
-    saldo_attuale?: number; 
+    // --- Dati Calcolati (Aggiornati con la nuova Resource) ---
+    saldo_iniziale_raw?: number;
+    saldo_iniziale_formatted?: string;
+
+    saldo_raw?: number; // Sostituisce saldo_attuale per matchare la Resource
     saldo_formatted?: string; 
+    
+    totale_entrate_formatted?: string;
+    totale_uscite_formatted?: string;
 
     created_at?: string;
     updated_at?: string;

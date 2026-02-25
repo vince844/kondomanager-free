@@ -30,7 +30,7 @@ interface Fornitore {
 }
 interface Condominio { id: number; nome: string; }
 interface Esercizio  { id: number; nome: string; stato: string; }
-interface Gestione   { id: number; nome: string; tipo: string; }
+interface Gestione   { id: number; nome: string; tipo: string; esercizio_ids?: number[]; }
 interface Conto      { id: number; nome: string; residuo_budget?: number; is_capiente?: boolean; }
 interface Banca      { id: number; nome: string; saldo_attuale?: number; }
 interface Immobile   { id: number; label: string; }
@@ -40,7 +40,6 @@ const props = defineProps<{
     esercizio: Esercizio; esercizi: Esercizio[];
     gestioni: Gestione[]; fornitori: Fornitore[];
     conti: Conto[]; banche: Banca[]; immobili: Immobile[];
-    numero_protocollo_suggerito?: string; // es. "FT-2026-00042" dal controller
 }>();
 
 // ---------------------------------------------------------------------------
@@ -55,7 +54,7 @@ const form = useForm({
     esercizio_id:       props.esercizio?.id || null,
     gestione_id:        null as number | null,
     tipo_documento:     'fattura',
-    numero_documento:   props.numero_protocollo_suggerito || '',
+    numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
     conto_corrente_id:  null as number | null,
@@ -72,6 +71,7 @@ const form = useForm({
 // ---------------------------------------------------------------------------
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
+// NOTA: I totali calcolati dal form sono in EURO (perché l'utente digita in Euro)
 const totali = computed(() => {
     let imponibile = 0, iva = 0;
     form.righe.forEach(r => {
@@ -83,44 +83,63 @@ const totali = computed(() => {
         const base = imponibile * (Number(selectedFornitore.value.perc_imponibile_ritenuta) || 100) / 100;
         ritenuta   = base * (Number(selectedFornitore.value.perc_ritenuta) || 0) / 100;
     }
-    return { imponibile, iva, ritenuta, netto: imponibile + iva - ritenuta };
+    
+    // Arrotondamento per evitare errori di floating point js
+    return { 
+        imponibile: Math.round(imponibile * 100) / 100, 
+        iva: Math.round(iva * 100) / 100, 
+        ritenuta: Math.round(ritenuta * 100) / 100, 
+        netto: Math.round((imponibile + iva - ritenuta) * 100) / 100 
+    };
 });
 
+// Calcoli Budget INTERAMENTE IN CENTESIMI
 const budgetImpacts = computed(() => {
-    const grouped = new Map<number, { nome: string; speso: number; residuo: number }>();
+    const grouped = new Map<number, { nome: string; speso_cents: number; residuo_cents: number }>();
     form.righe.forEach(r => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
-        // residuo_budget dal backend può essere in centesimi o euro — normalizziamo a euro
-        const residuoEuro = normalizeSaldo(c.residuo_budget);
-        const cur = grouped.get(r.conto_id) || { nome: c.nome, speso: 0, residuo: residuoEuro };
-        cur.speso += Number(r.importo_imponibile) || 0;
+        
+        // residuo_budget dal backend è in centesimi
+        const residuoCents = c.residuo_budget || 0;
+        
+        // La riga form è in euro, convertiamola in centesimi per il confronto
+        const spesaCents = Math.round((Number(r.importo_imponibile) || 0) * 100);
+
+        const cur = grouped.get(r.conto_id) || { nome: c.nome, speso_cents: 0, residuo_cents: residuoCents };
+        cur.speso_cents += spesaCents;
         grouped.set(r.conto_id, cur);
     });
-    return Array.from(grouped.values()).map(i => ({ ...i, isOk: i.speso <= i.residuo, delta: i.residuo - i.speso }));
+    return Array.from(grouped.values()).map(i => ({ 
+        ...i, 
+        isOk: i.speso_cents <= i.residuo_cents, 
+        delta_cents: i.residuo_cents - i.speso_cents 
+    }));
 });
 
-// Normalizza saldo banca: il backend può passare centesimi (int) o euro (decimal).
-// Euristicamente: se il valore assoluto è > 10000 e non ha decimali, è in centesimi.
-const normalizeSaldo = (v: number | undefined): number => {
-    if (!v) return 0;
-    // Se è un intero grande (es 150000 = €1.500,00) lo trattiamo come centesimi
-    if (Number.isInteger(v) && Math.abs(v) > 10000) return v / 100;
-    return v;
-};
-
+// Le banche mantengono il loro valore in centesimi per uniformità col DB
 const bancheNormalizzate = computed(() =>
-    props.banche.map(b => ({ ...b, saldo_euro: normalizeSaldo(b.saldo_attuale) }))
+    props.banche.map(b => ({ ...b, saldo_attuale_cents: b.saldo_attuale || 0 }))
 );
 
+// Calcolo Cassa INTERAMENTE IN CENTESIMI
 const bankForecast = computed(() => {
     if (!form.conto_corrente_id) return null;
     const b = bancheNormalizzate.value.find(b => b.id === form.conto_corrente_id);
     if (!b) return null;
-    const attuale = b.saldo_euro;
-    const post    = attuale - totali.value.netto;
-    return { attuale, post, isRed: post < 0 };
+    
+    const attualeCents = b.saldo_attuale_cents;
+    // totali.netto è in euro, lo portiamo in centesimi per il calcolo
+    const spesaCents = Math.round(totali.value.netto * 100); 
+    
+    const postCents = attualeCents - spesaCents;
+    
+    return { 
+        attuale_cents: attualeCents, 
+        post_cents: postCents, 
+        isRed: postCents < 0 
+    };
 });
 
 const transactionStatus = computed(() => {
@@ -129,8 +148,9 @@ const transactionStatus = computed(() => {
     return 'SAFE';
 });
 
-const sforoBudgetTotale = computed(() =>
-    budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso - i.residuo), 0)
+// Restituisce il valore in centesimi per consistenza
+const sforoBudgetTotaleCents = computed(() =>
+    budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
 );
 
 // ---------------------------------------------------------------------------
@@ -146,6 +166,21 @@ watch(() => form.fornitore_id, (v) => {
     }
     form.iban_fornitore     = f.iban_principale            || '';
     form.modalita_pagamento = f.modalita_pagamento_default || 'bonifico';
+});
+
+const gestioniFiltrate = computed(() => {
+    if (!form.esercizio_id) return [];
+
+    return props.gestioni.filter((g) => {
+        // Se la gestione ha degli esercizi collegati, controlliamo se contiene quello selezionato
+        if (g.esercizio_ids && g.esercizio_ids.length > 0) {
+            return g.esercizio_ids.includes(form.esercizio_id as number);
+        }
+        
+        // Fallback: se una gestione per qualche motivo non ha ancora esercizi collegati
+        // (magari appena creata e non associata), la mostriamo per sicurezza.
+        return true;
+    });
 });
 
 watch(() => form.esercizio_id, (v) => {
@@ -169,8 +204,8 @@ const confirmOverride = () => {
     if (overrideMotivazione.value.length < 10) return;
     form.dati_extra.override_budget = {
         motivazione: overrideMotivazione.value,
-        importo_sforo: sforoBudgetTotale.value,        // già in euro
-        budget_residuo_al_momento: -sforoBudgetTotale.value,
+        importo_sforo: sforoBudgetTotaleCents.value, // Passato in centesimi!
+        budget_residuo_al_momento: -sforoBudgetTotaleCents.value,
         timestamp: new Date().toISOString(),
     };
     showOverrideModal.value   = false;
@@ -219,7 +254,6 @@ const pageGuides = [
                 :esercizi="(props.esercizi as any)"
             />
 
-            <!-- Alert banner -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
                 <div v-if="transactionStatus !== 'SAFE'"
                     class="rounded-xl p-4 flex items-center gap-4 border"
@@ -234,19 +268,11 @@ const pageGuides = [
                 </div>
             </Transition>
 
-            <!-- ============================================================ -->
-            <!-- LAYOUT 4 + 8 (Panel + Ledger)                               -->
-            <!-- ============================================================ -->
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-                <!-- ======================================================= -->
-                <!-- PANNELLO SINISTRO (col-span-4) — dati principali        -->
-                <!-- ======================================================= -->
                 <div class="lg:col-span-4 h-full flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
 
-                    <!-- Header pannello -->
                     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 shrink-0">
-                        <!-- Toggle tipo documento con descrizione -->
                         <div class="space-y-3 mb-4">
                             <div class="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
                                 <button type="button" @click="form.tipo_documento = 'fattura'"
@@ -260,7 +286,6 @@ const pageGuides = [
                                     Nota Credito
                                 </button>
                             </div>
-                            <!-- Spiegazione contestuale sotto il toggle -->
                             <Transition
                                 enter-active-class="transition duration-200 ease-out"
                                 enter-from-class="opacity-0 -translate-y-1"
@@ -285,10 +310,8 @@ const pageGuides = [
                         <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Dati Principali</h3>
                     </div>
 
-                    <!-- Corpo pannello -->
                     <div class="p-5 flex-1 overflow-y-auto space-y-5">
 
-                        <!-- Fornitore -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore *</Label>
                             <v-select v-model="form.fornitore_id" :options="fornitori"
@@ -304,7 +327,6 @@ const pageGuides = [
                                     </div>
                                 </template>
                             </v-select>
-                            <!-- Mini scheda fornitore -->
                             <div v-if="selectedFornitore && selectedFornitore.soggetto_ritenuta"
                                 class="flex items-center gap-2 p-2.5 bg-amber-50 border border-amber-100 rounded-lg mt-2">
                                 <AlertTriangle class="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -316,7 +338,6 @@ const pageGuides = [
 
                         <hr class="border-slate-100 dark:border-slate-800">
 
-                        <!-- Gestione + N. Documento -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Gestione</Label>
                             <v-select v-model="form.gestione_id" :options="gestioni"
@@ -324,22 +345,12 @@ const pageGuides = [
                         </div>
 
                         <div class="space-y-1.5">
-                            <div class="flex items-center justify-between">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento *</Label>
-                                <span v-if="props.numero_protocollo_suggerito"
-                                    class="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-primary/10 text-primary rounded-full">
-                                    Auto
-                                </span>
-                            </div>
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento (Fornitore)</Label>
                             <Input v-model="form.numero_documento"
                                 class="h-11 uppercase text-base tracking-widest"
-                                :placeholder="props.numero_protocollo_suggerito || 'Es. FT-2026-00001'" />
-                            <p v-if="props.numero_protocollo_suggerito" class="text-[10px] text-slate-400">
-                                Protocollo generato automaticamente — modificabile se necessario
-                            </p>
+                                placeholder="Es. 123/A" />
                         </div>
 
-                        <!-- Date -->
                         <div class="grid grid-cols-2 gap-3">
                             <div class="space-y-1.5">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data *</Label>
@@ -354,24 +365,23 @@ const pageGuides = [
 
                         <hr class="border-slate-100 dark:border-slate-800">
 
-                        <!-- Conto addebito -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conto Addebito</Label>
                             <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate"
                                 label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca..." class="style-chooser">
-                                <template #option="{ nome, saldo_euro }">
+                                <template #option="{ nome, saldo_attuale_cents }">
                                     <div class="flex justify-between items-center py-0.5">
                                         <span class="font-bold text-sm">{{ nome }}</span>
                                         <span class="text-[10px]"
-                                            :class="(saldo_euro || 0) >= 0 ? 'text-emerald-600' : 'text-rose-500'">
-                                            {{ euro(saldo_euro || 0) }}
+                                            :class="saldo_attuale_cents >= 0 ? 'text-emerald-600' : 'text-rose-500'">
+                                            {{ euro(saldo_attuale_cents) }} 
                                         </span>
                                     </div>
                                 </template>
-                                <template #selected-option="{ nome, saldo_euro }">
+                                <template #selected-option="{ nome, saldo_attuale_cents }">
                                     <div class="flex items-center gap-2">
                                         <span class="font-bold text-sm">{{ nome }}</span>
-                                        <span class="text-[10px] text-slate-400">{{ euro(saldo_euro || 0) }}</span>
+                                        <span class="text-[10px] text-slate-400">{{ euro(saldo_attuale_cents) }}</span>
                                     </div>
                                 </template>
                             </v-select>
@@ -393,7 +403,6 @@ const pageGuides = [
                             </select>
                         </div>
 
-                        <!-- Allegato -->
                         <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 transition-colors"
                             @click="fileInput?.click()">
                             <FileText class="w-5 h-5 text-slate-300 mx-auto mb-1" />
@@ -406,32 +415,30 @@ const pageGuides = [
                         </div>
                     </div>
 
-                    <!-- Footer pannello: totali + submit (sticky in basso) -->
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">Imponibile</span>
-                                <span>{{ euro(totali.imponibile) }}</span>
+                                <span>{{ euro(totali.imponibile, { fromCents: false }) }}</span>
                             </div>
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">IVA</span>
-                                <span>{{ euro(totali.iva) }}</span>
+                                <span>{{ euro(totali.iva, { fromCents: false }) }}</span>
                             </div>
                             <div v-if="totali.ritenuta > 0" class="flex justify-between text-xs">
                                 <span class="text-amber-400">Ritenuta</span>
-                                <span class="text-amber-400">- {{ euro(totali.ritenuta) }}</span>
+                                <span class="text-amber-400">- {{ euro(totali.ritenuta, { fromCents: false }) }}</span>
                             </div>
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
                                 <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Netto</span>
-                                <span class="font-black text-2xl">{{ euro(totali.netto) }}</span>
+                                <span class="font-black text-2xl">{{ euro(totali.netto, { fromCents: false }) }}</span>
                             </div>
                         </div>
 
-                        <!-- Previsione cassa compatta -->
                         <div v-if="bankForecast" class="flex justify-between items-center text-xs p-2.5 rounded-lg"
                             :class="bankForecast.isRed ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/10 text-emerald-400'">
                             <span>Saldo post-pag.</span>
-                            <span class="font-black">{{ euro(bankForecast.post) }}</span>
+                            <span class="font-black">{{ euro(bankForecast.post_cents) }}</span>
                         </div>
 
                         <Button type="button" :disabled="form.processing" @click="handleSubmit"
@@ -446,12 +453,8 @@ const pageGuides = [
                     </div>
                 </div>
 
-                <!-- ======================================================= -->
-                <!-- REGISTRO DESTRA (col-span-8) — voci + simulazione       -->
-                <!-- ======================================================= -->
                 <div class="lg:col-span-8 flex flex-col gap-5">
 
-                    <!-- Tabella voci (stile ledger contabile) -->
                     <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                         <div class="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 flex items-center justify-between">
                             <div class="flex items-center gap-2">
@@ -465,7 +468,6 @@ const pageGuides = [
                             </Button>
                         </div>
 
-                        <!-- Header tabella — nuova distribuzione colonne -->
                         <div class="grid grid-cols-12 gap-2 px-6 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 text-[10px] font-black uppercase tracking-wider text-slate-400">
                             <div class="col-span-4">Capitolo / Causale</div>
                             <div class="col-span-2">Unità</div>
@@ -475,12 +477,10 @@ const pageGuides = [
                             <div class="col-span-1"></div>
                         </div>
 
-                        <!-- Righe -->
                         <div class="divide-y divide-slate-50 dark:divide-slate-800/50">
                             <div v-for="(riga, idx) in form.righe" :key="idx"
                                 class="grid grid-cols-12 gap-2 px-6 py-4 items-start hover:bg-slate-50/20 group transition-colors">
 
-                                <!-- Capitolo + causale: col-span-4 -->
                                 <div class="col-span-4 space-y-2">
                                     <v-select v-model="riga.conto_id" :options="conti" label="nome"
                                         :reduce="(c: Conto) => c.id" placeholder="Capitolo..." class="style-chooser text-sm">
@@ -489,7 +489,7 @@ const pageGuides = [
                                                 <span class="font-bold text-sm" :class="!is_capiente ? 'text-rose-600' : ''">{{ nome }}</span>
                                                 <span class="text-[10px] px-1.5 py-0.5 rounded"
                                                     :class="is_capiente ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'">
-                                                    {{ euro(normalizeSaldo(residuo_budget)) }}
+                                                    {{ euro(residuo_budget) }}
                                                 </span>
                                             </div>
                                         </template>
@@ -497,7 +497,6 @@ const pageGuides = [
                                     <Input v-model="riga.descrizione" placeholder="Causale..." class="h-9 text-xs italic bg-white/50" />
                                 </div>
 
-                                <!-- Unità/immobile: col-span-2 -->
                                 <div class="col-span-2">
                                     <v-select v-model="riga.immobile_id" :options="immobili" label="label"
                                         :reduce="(i: Immobile) => i.id" placeholder="Comune" class="style-chooser text-xs">
@@ -510,25 +509,23 @@ const pageGuides = [
                                     </v-select>
                                 </div>
 
-                                <!-- Imponibile: col-span-3 (più largo) -->
                                 <div class="col-span-3">
                                     <div class="relative">
                                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">€</span>
                                         <Input min="0" v-model="riga.importo_imponibile"
                                             class="h-11 pl-7 text-right font-black text-base pr-3" />
                                     </div>
-                                    <!-- Indicatore sforo inline -->
                                     <div v-if="riga.conto_id && (() => {
                                         const c = conti.find(c => c.id === riga.conto_id);
                                         if (!c || c.residuo_budget === undefined) return false;
-                                        return Number(riga.importo_imponibile) > normalizeSaldo(c.residuo_budget);
+                                        // Confrontiamo centesimi con centesimi
+                                        return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
                                     })()" class="flex items-center gap-1 mt-1.5 text-rose-500">
                                         <TrendingDown class="w-3 h-3" />
                                         <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                     </div>
                                 </div>
 
-                                <!-- IVA: col-span-1 (più chiaro visivamente) -->
                                 <div class="col-span-1">
                                     <div class="relative">
                                         <Input min="0" max="100" v-model="riga.aliquota_iva"
@@ -537,14 +534,12 @@ const pageGuides = [
                                     </div>
                                 </div>
 
-                                <!-- Totale riga: col-span-1 -->
                                 <div class="col-span-1 text-right pt-3">
                                     <span class="font-black text-sm text-slate-800 dark:text-slate-200">
-                                        {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100)) }}
+                                        {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
                                     </span>
                                 </div>
 
-                                <!-- Elimina: col-span-1 -->
                                 <div class="col-span-1 flex justify-end pt-1">
                                     <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)"
                                         class="h-10 w-10 text-slate-200 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all">
@@ -554,16 +549,15 @@ const pageGuides = [
                             </div>
                         </div>
 
-                        <!-- Footer tabella con subtotali -->
                         <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
                             <div class="grid grid-cols-12 gap-2 text-xs">
                                 <div class="col-span-6 text-right text-slate-400 font-bold uppercase tracking-wider pt-1.5">Subtotali</div>
                                 <div class="col-span-3 text-right">
-                                    <span class="font-black text-slate-700 dark:text-slate-300 block text-base">{{ euro(totali.imponibile) }}</span>
+                                    <span class="font-black text-slate-700 dark:text-slate-300 block text-base">{{ euro(totali.imponibile, { fromCents: false }) }}</span>
                                     <span class="text-[9px] text-slate-400">Imponibile</span>
                                 </div>
                                 <div class="col-span-1 text-right">
-                                    <span class="font-black text-slate-700 dark:text-slate-300 block text-base">{{ euro(totali.iva) }}</span>
+                                    <span class="font-black text-slate-700 dark:text-slate-300 block text-base">{{ euro(totali.iva, { fromCents: false }) }}</span>
                                     <span class="text-[9px] text-slate-400">IVA</span>
                                 </div>
                                 <div class="col-span-2"></div>
@@ -571,7 +565,6 @@ const pageGuides = [
                         </div>
                     </div>
 
-                    <!-- Pannello Simulazione Impatto (full width sotto il ledger) -->
                     <div class="bg-slate-900 dark:bg-slate-950 text-white rounded-xl border shadow-lg overflow-hidden transition-all duration-300"
                         :class="transactionStatus === 'CRITICAL_BUDGET' ? 'border-rose-500 shadow-rose-500/10' : transactionStatus === 'WARNING_CASH' ? 'border-amber-500/30' : 'border-slate-700'">
 
@@ -596,10 +589,8 @@ const pageGuides = [
                             </div>
                         </div>
 
-                        <!-- Due colonne: Budget | Cassa -->
                         <div class="grid grid-cols-2 divide-x divide-slate-700/50">
 
-                            <!-- Colonna 1: Analisi capitoli -->
                             <div class="p-5">
                                 <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Analisi Budget — Capitoli</p>
                                 <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">Nessuna voce ancora</div>
@@ -609,46 +600,45 @@ const pageGuides = [
                                             <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
                                             <span class="text-xs font-black shrink-0"
                                                 :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
-                                                {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta) }}
+                                                {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
                                             </span>
                                         </div>
                                         <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
                                             <div class="h-full rounded-full transition-all duration-500"
                                                 :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
-                                                :style="{ width: Math.min((impact.speso / Math.max(impact.residuo, 0.01)) * 100, 100) + '%' }">
+                                                :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
                                             </div>
                                         </div>
                                         <div class="flex justify-between text-[9px] text-slate-600">
-                                            <span>Usato: {{ euro(impact.speso) }}</span>
-                                            <span>Budget: {{ euro(impact.residuo) }}</span>
+                                            <span>Usato: {{ euro(impact.speso_cents) }}</span>
+                                            <span>Budget: {{ euro(impact.residuo_cents) }}</span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Colonna 2: Previsione cassa -->
                             <div class="p-5">
                                 <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione Cassa</p>
                                 <div v-if="bankForecast" class="space-y-3">
                                     <div class="space-y-2">
                                         <div class="flex justify-between text-xs">
                                             <span class="text-slate-400">Saldo attuale</span>
-                                            <span class="text-white">{{ euro(bankForecast.attuale) }}</span>
+                                            <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
                                         </div>
                                         <div class="flex justify-between text-xs">
                                             <span class="text-slate-400">Uscita prevista</span>
-                                            <span class="text-rose-400">- {{ euro(totali.netto) }}</span>
+                                            <span class="text-rose-400">- {{ euro(totali.netto, { fromCents: false }) }}</span>
                                         </div>
                                     </div>
                                     <div class="pt-3 border-t border-slate-700 space-y-1">
                                         <p class="text-[9px] text-slate-500 uppercase font-bold">Saldo post-pagamento</p>
                                         <p class="font-black text-2xl" :class="bankForecast.isRed ? 'text-rose-500' : 'text-emerald-400'">
-                                            {{ euro(bankForecast.post) }}
+                                            {{ euro(bankForecast.post_cents) }}
                                         </p>
                                         <div class="h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
                                             <div class="h-full rounded-full transition-all"
                                                 :class="bankForecast.isRed ? 'bg-rose-500' : 'bg-emerald-500'"
-                                                :style="{ width: Math.min(Math.max((bankForecast.post / Math.max(bankForecast.attuale, 0.01)) * 100, 0), 100) + '%' }">
+                                                :style="{ width: Math.min(Math.max((bankForecast.post_cents / Math.max(bankForecast.attuale_cents, 1)) * 100, 0), 100) + '%' }">
                                             </div>
                                         </div>
                                     </div>
@@ -664,7 +654,6 @@ const pageGuides = [
             </div>
         </div>
 
-        <!-- MODAL OVERRIDE -->
         <Teleport to="body">
             <div v-if="showOverrideModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                 <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-800">
@@ -674,7 +663,7 @@ const pageGuides = [
                         </div>
                         <div>
                             <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">Sforamento Budget</h3>
-                            <p class="text-xs text-rose-700/70 mt-1">Eccesso: <span class="font-black">{{ euro(sforoBudgetTotale) }}</span></p>
+                            <p class="text-xs text-rose-700/70 mt-1">Eccesso: <span class="font-black">{{ euro(sforoBudgetTotaleCents) }}</span></p>
                         </div>
                     </div>
                     <div class="p-7 space-y-5">

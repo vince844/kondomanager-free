@@ -10,7 +10,6 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class FatturaPassivaService
 {
@@ -22,9 +21,7 @@ class FatturaPassivaService
             $isNotaCredito  = ($data['tipo_documento'] === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
 
-            // ------------------------------------------------------------------
             // 1. Elaborazione Righe (calcoli in centesimi)
-            // ------------------------------------------------------------------
             $imponibileTotale = 0;
             $ivaTotale        = 0;
             $righeProcessate  = [];
@@ -47,9 +44,7 @@ class FatturaPassivaService
                 ];
             }
 
-            // ------------------------------------------------------------------
-            // 2. Calcolo Ritenuta (solo su fatture, mai su note credito)
-            // ------------------------------------------------------------------
+            // 2. Calcolo Ritenuta
             $ritenuta     = 0;
             $datiRitenuta = null;
             if ($fornitore->soggetto_ritenuta && !$isNotaCredito) {
@@ -63,34 +58,22 @@ class FatturaPassivaService
             }
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
-
-            // FIX: moltiplicatore applicato al netto finale in modo coerente.
-            // $ritenuta è sempre 0 sulle note credito (bloccato sopra),
-            // quindi non serve moltiplicarla separatamente.
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
-            // ------------------------------------------------------------------
-            // 3. Determinazione stato_approvazione
-            // ------------------------------------------------------------------
-            // Se l'amministratore ha compilato l'override_budget nel frontend,
-            // la fattura nasce già con stato 'sforo_motivato' invece di quello
-            // scelto manualmente. Il listener creerà automaticamente il reminder
-            // di ratifica assembleare.
+            // 3. Determinazione stato_approvazione (Override Budget)
             $statoApprovazione = $data['stato_approvazione'];
             if (!empty($data['dati_extra']['override_budget'])) {
                 $statoApprovazione = 'sforo_motivato';
             }
 
-            // ------------------------------------------------------------------
             // 4. Creazione Fattura
-            // ------------------------------------------------------------------
             $fattura = FatturaPassiva::create([
                 'condominio_id'      => $condominioId,
                 'fornitore_id'       => $fornitore->id,
                 'esercizio_id'       => $data['esercizio_id'],
                 'conto_corrente_id'  => $data['conto_corrente_id'] ?? null,
                 'tipo_documento'     => $data['tipo_documento'],
-                'numero_documento'   => $data['numero_documento'],
+                'numero_documento'   => $data['numero_documento'],               
                 'data_documento'     => $data['data_documento'],
                 'data_scadenza'      => $data['data_scadenza'],
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
@@ -114,9 +97,7 @@ class FatturaPassivaService
 
             $fattura->righe()->createMany($righeProcessate);
 
-            // ------------------------------------------------------------------
             // 5. Upload Documento
-            // ------------------------------------------------------------------
             if ($file) {
                 $path = $file->store('fatture/' . $condominioId, 'public');
                 $fattura->documenti()->create([
@@ -131,16 +112,10 @@ class FatturaPassivaService
                 ]);
             }
 
-            // ------------------------------------------------------------------
             // 6. Contabilità (Partita Doppia)
-            // ------------------------------------------------------------------
             $contoDebiti = ContoContabile::where('condominio_id', $condominioId)
                 ->where('ruolo', 'debiti_fornitori')
                 ->firstOrFail();
-
-            // FIX: numero_protocollo obbligatorio per il vincolo unique su scritture_contabili.
-            // Generato dopo la creazione della fattura per avere l'ID disponibile.
-            $numeroProtocollo = 'FT-' . date('Y') . '-' . str_pad($fattura->id, 5, '0', STR_PAD_LEFT);
 
             $scrittura = ScritturaContabile::create([
                 'condominio_id'      => $condominioId,
@@ -148,13 +123,15 @@ class FatturaPassivaService
                 'gestione_id'        => $data['gestione_id'],
                 'data_registrazione' => now(),
                 'data_competenza'    => $fattura->data_documento,
-                'numero_protocollo'  => $numeroProtocollo,
+                // Manteniamo la coerenza: forziamo la scrittura ad avere lo stesso protocollo.
+                // Siccome glielo passiamo esplicitamente, il Trait NON lo sovrascriverà!
+                'numero_protocollo'  => $fattura->numero_protocollo,
                 'causale'            => "Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
                 'tipo_movimento'     => 'fattura_acquisto',
                 'stato'              => 'registrata',
             ]);
 
-            // DARE — una riga per ogni voce di costo
+            // DARE — Costi
             foreach ($righeProcessate as $riga) {
                 if ($riga['conto_id']) {
                     $contoBudget = Conto::find($riga['conto_id']);
@@ -170,7 +147,7 @@ class FatturaPassivaService
                 }
             }
 
-            // AVERE — debito verso il fornitore
+            // AVERE — Debito
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
@@ -184,11 +161,7 @@ class FatturaPassivaService
                 'tipo'             => 'competenza',
             ]);
 
-            // ------------------------------------------------------------------
             // 7. Fire Evento
-            // ------------------------------------------------------------------
-            // auth()->id() viene catturato QUI, in contesto sincro con la request,
-            // e passato all'evento. Il listener in coda non avrà auth() disponibile.
             event(new FatturaRegistrata($fattura, auth()->id() ?? 1));
 
             return $fattura;

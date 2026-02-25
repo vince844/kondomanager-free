@@ -5,10 +5,13 @@ namespace App\Models\Gestionale;
 use App\Models\Condominio;
 use App\Models\Documento;
 use App\Models\Fornitore;
+use App\Traits\HasProtocolNumber;
 use Illuminate\Database\Eloquent\Model;
 
 class FatturaPassiva extends Model
 {
+    use HasProtocolNumber;
+
     protected $table = 'fatture_passive';
     protected $guarded = ['id'];
 

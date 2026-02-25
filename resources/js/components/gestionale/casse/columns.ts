@@ -69,71 +69,71 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
         const isBanca = cassa.tipo === 'banca'
 
         return h('div', { class: 'flex flex-col space-y-1' }, [
-          // Nome
           h(
             'span',
-            {
-              class:
-                'font-semibold text-gray-900 dark:text-gray-100 text-sm md:text-base',
-            },
+            { class: 'font-semibold text-gray-900 dark:text-gray-100 text-sm md:text-base' },
             cassa.nome,
           ),
-
-          // Tipologia conto / descrizione
           h(
             'span',
             { class: 'text-xs text-muted-foreground' },
-            isBanca
-              ? formatTipoConto(cassa.banca_tipo_conto)
-              : cassa.descrizione || '-',
+            isBanca ? formatTipoConto(cassa.banca_tipo_conto) : cassa.descrizione || '-',
           ),
-
-          // IBAN (solo banca)
           isBanca && cassa.banca_iban
             ? h('div', { class: 'flex items-center gap-1 mt-1' }, [
-                h(
-                  'span',
-                  {
-                    class:
-                      'text-[10px] uppercase text-muted-foreground font-bold',
-                  },
-                  'IBAN:',
-                ),
-                h(
-                  'span',
-                  {
-                    class:
-                      'text-xs font-mono text-gray-600 dark:text-gray-400 tracking-wide',
-                  },
-                  cassa.banca_iban,
-                ),
+                h('span', { class: 'text-[10px] uppercase text-muted-foreground font-bold' }, 'IBAN:'),
+                h('span', { class: 'text-xs text-gray-600 dark:text-gray-400 tracking-wide' }, cassa.banca_iban),
               ])
             : null,
         ])
       },
     },
+
+    // ─────────────────────────────────────────────────────────────
+    // NUOVA COLONNA: SALDO INIZIALE
+    // ─────────────────────────────────────────────────────────────
     {
-      // Usiamo 'saldo_raw' per l'ordinamento (sorting) corretto
+      accessorKey: 'saldo_iniziale_raw', 
+      header: ({ column }) =>
+        h(DataTableColumnHeader, { column, title: 'Saldo Iniziale' }),
+      cell: ({ row }) => {
+        const amount = row.getValue('saldo_iniziale_raw') as number
+        const formattedLabel = row.original.saldo_iniziale_formatted
+
+        // Per il saldo iniziale usiamo un grigio neutro o slate, 
+        // è un dato storico, non deve "urlare" come il saldo attuale.
+        return h(
+            'div', 
+            { class: 'text-xs text-slate-500 dark:text-slate-400 font-medium' }, 
+            formattedLabel
+        )
+      },
+    },
+
+    // ─────────────────────────────────────────────────────────────
+    // COLONNA: SALDO ATTUALE (Esistente)
+    // ─────────────────────────────────────────────────────────────
+    {
       accessorKey: 'saldo_raw', 
       header: ({ column }) =>
         h(DataTableColumnHeader, { column, title: 'Saldo Attuale' }),
       cell: ({ row }) => {
-        // 1. Recuperiamo il numero per decidere il COLORE
         const amount = row.getValue('saldo_raw') as number
-
-        // 2. Recuperiamo la stringa già pronta per la VISUALIZZAZIONE
-        // (Nota: row.original ci dà accesso a tutto l'oggetto CassaResource)
         const formattedLabel = row.original.saldo_formatted
 
-        // 3. Logica Colori semplicissima
         let colorClass = 'text-gray-500'
-        if (amount > 0.01) colorClass = 'text-emerald-600'
-        if (amount < -0.01) colorClass = 'text-red-600'
+        if (amount > 0.01) colorClass = 'text-emerald-600 dark:text-emerald-400'
+        if (amount < -0.01) colorClass = 'text-red-600 dark:text-red-400'
+
+        // Aggiunto uno sfondo leggerissimo per far risaltare il saldo attuale
+        let bgClass = ''
+        if (amount > 0.01) bgClass = 'bg-emerald-50 dark:bg-emerald-950/30'
+        if (amount < -0.01) bgClass = 'bg-red-50 dark:bg-red-950/30'
 
         return h(
             'div', 
-            { class: `font-bold text-sm ${colorClass}` }, 
-            formattedLabel // Stampiamo direttamente la stringa di PHP
+            { class: `inline-flex px-2 py-1 rounded-md font-bold text-sm ${colorClass} ${bgClass}` }, 
+            formattedLabel 
         )
       },
     },
@@ -160,10 +160,6 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
       },
       size: 100,
     },
-
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA 5: AZIONI
-    // ─────────────────────────────────────────────────────────────
     {
       id: 'actions',
       enableHiding: false,
