@@ -12,5 +12,69 @@ return [
     'error_attach_anagrafica'            => "Si è verificato un errore durante l'associazione dell'anagrafica al fornitore.",
     'success_detach_anagrafica'          => "L'anagrafica è stata dissociata con successo dal fornitore.",
     'error_detach_anagrafica'            => "Si è verificato un errore durante la dissociazione dell'anagrafica dal fornitore.",
+
+    /* ------------------------------------------------------------------
+     | Intestazioni, Titoli e Descrizioni
+     | ------------------------------------------------------------------ */
+    'header' => [
+        'list_fornitori_head'           => "Elenco fornitori",
+        'list_fornitori_title'          => "Elenco fornitori",
+        'list_fornitori_description'    => "Gestisci l'anagrafica dei fornitori e dei professionisti collegati ai tuoi condomini.",
+        'new_fornitore_head'            => "Crea fornitore",
+        'new_fornitore_title'           => "Crea fornitore",
+        'new_fornitore_description'     => "Inserisci i dati per registrare una nuova ditta o un professionista.",
+    ],
+
+    /* ------------------------------------------------------------------
+     | Tabella
+     | ------------------------------------------------------------------ */
+    'table' => [
+        'name'           => 'Ragione Sociale',
+        'address'        => 'Indirizzo',
+        'contacts'       => 'Contatti',
+        'type'           => 'Tipologia',
+        'actions'        => 'Azioni',
+        'click_to_view'  => 'Clicca per visualizzare',
+        'filter_by_name' => 'Cerca fornitore...',
+        'residents'      => 'Referenti', // Chiave per il Drawer dei fornitori
+        'residents_desc' => 'Elenco dei contatti e referenti associati a questo fornitore.',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Etichette e Placeholder
+     | ------------------------------------------------------------------ */
+    'label' => [
+        'tax_code' => 'Codice Fiscale',
+        'vat_number' => 'Partita IVA',
+    ],
+
+    'placeholder' => [
+        'no_address' => 'Indirizzo non disponibile',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Azioni
+     | ------------------------------------------------------------------ */
+    'actions' => [
+        'new_fornitore'   => 'Nuovo Fornitore',
+        'edit_fornitore'  => 'Modifica',
+        'delete_fornitore'=> 'Elimina',
+        'save_fornitore'  => 'Salva Fornitore',
+        'list'            => 'Elenco', 
+    ],
+
+    /* ------------------------------------------------------------------
+     | Guide (PageHeaderGuide)
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'portfolio_title'             => 'Anagrafica Fornitori',
+        'portfolio_desc'              => 'Accedi rapidamente ai dati fiscali e di contatto di tutte le ditte e professionisti registrati.',
+        'compliance_title'            => 'Dati Fiscali',
+        'compliance_desc'             => 'Verifica Partite IVA e Codici Fiscali per una corretta fatturazione elettronica.',
+        'management_title'            => 'Gestione Rapida',
+        'management_desc'             => 'Aggiungi nuovi fornitori o aggiorna i recapiti per migliorare la comunicazione operativa.',
+        'new_fornitore_guide_title'   => 'Inserimento Dati', 
+        'new_fornitore_guide_desc'    => 'Assicurati di inserire correttamente la P.IVA per abilitare l\'invio delle ritenute d\'acconto.', 
+    ],
     
 ];

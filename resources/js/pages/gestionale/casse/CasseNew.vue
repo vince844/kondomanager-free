@@ -7,15 +7,15 @@ import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle, Info } from 'lucide-vue-next'; // Aggiunto Info
+import { List, Plus, LoaderCircle, Info } from 'lucide-vue-next'; 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; // Aggiunto HoverCard
-import MoneyInput from '@/components/MoneyInput.vue'; // Aggiunto MoneyInput
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; 
+import MoneyInput from '@/components/MoneyInput.vue'; 
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';

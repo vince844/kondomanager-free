@@ -1,14 +1,7 @@
 <script setup lang="ts">
+
 import { computed } from 'vue';
-import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/components/ui/drawer';
+import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -17,7 +10,12 @@ import { Users, MapPin, ChevronRight, User } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
-  anagrafiche: Array<{ id?: number; nome: string; indirizzo?: string; email?: string; telefono?: string }>;
+    anagrafiche: Array<{ 
+    id?: number | string;
+    nome: string; 
+    indirizzo?: string; 
+    email?: string; 
+    telefono?: string }>;
 }>();
 
 const maxAvatars = 3; 

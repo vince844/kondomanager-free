@@ -9,7 +9,6 @@ use App\Models\Condominio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
-use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Immobile;
 use App\Services\Gestionale\FatturaPassivaService;
@@ -104,23 +103,37 @@ class FatturaPassivaController extends Controller
                     ];
                 }),
 
+            // --- CARICAMENTO CONTI (SOLO "FOGLIE" CON PARENT_NOME SEPARATO) ---
             'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+                ->with('parent')
+                ->whereDoesntHave('sottoconti')
                 ->get()
                 ->map(function ($conto) {
+                    
                     $budgetApprovato = $conto->importo ?? 0; 
                     $spesaAttuale    = $conto->spesa_attuale ?? 0; 
-                    $residuo         = $budgetApprovato - $spesaAttuale;
+                    $residuo = $budgetApprovato - $spesaAttuale;
 
                     return [
                         'id'             => $conto->id,
-                        'nome'           => $conto->nome,
+                        // NOME DELLA FOGLIA PULITO (es. "Pulizie Generali")
+                        'nome'           => $conto->nome, 
+                        // NOME DEL PADRE SEPARATO (es. "Spese Generali"), se esiste
+                        'parent_nome'    => $conto->parent ? $conto->parent->nome : null, 
+                        
+                        // Questo campo serve solo per l'ordinamento alfabetico nel backend
+                        '_sort_key'      => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
+
                         'codice'         => null,
                         'residuo_budget' => $residuo,
-                        'is_capiente'    => $residuo > 0,
+                        'is_capiente'    => $residuo >= 0, 
                     ];
-                }),
+                })
+                ->sortBy('_sort_key') // Ordiniamo usando la chiave nascosta
+                ->values(),
 
-            // --- CARICAMENTO CASSE E SALDO DINAMICO ---
+           
+                // --- CARICAMENTO CASSE E SALDO DINAMICO ---
             'banche' => Cassa::where('condominio_id', $condominio->id)
                 ->where('attiva', true)
                 ->withSum(['movimenti as totale_entrate' => function ($q) {
@@ -146,13 +159,17 @@ class FatturaPassivaController extends Controller
                 }),
 
             'immobili' => Immobile::where('condominio_id', $condominio->id)
-                ->with('anagrafiche') 
-                ->select('id', 'interno')
+                ->where('attivo', true) // Carichiamo solo quelli attivi
+                ->select('id', 'interno', 'nome') // Selezioniamo SOLO i campi che ci servono per la label
+                ->orderBy('interno') // Li ordiniamo per interno per facilitare la ricerca
                 ->get()
-                ->map(fn($imm) => [
-                    'id'    => $imm->id,
-                    'label' => 'Int. ' . $imm->interno . ' - '. ($imm->anagrafiche->first()->nome_completo ?? $imm->anagrafiche->first()->nome ?? 'N/A'),
-                ]),
+                ->map(function ($imm) {
+                    return [
+                        'id'    => $imm->id,
+                        // Costruiamo un'etichetta pulita: "Int. 1A — Appartamento"
+                        'label' => 'Int. ' . $imm->interno . ' — ' . $imm->nome, 
+                    ];
+                }),
         ]);
     }
 
