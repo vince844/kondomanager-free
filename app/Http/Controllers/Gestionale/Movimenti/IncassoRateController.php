@@ -27,9 +27,7 @@ class IncassoRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio, HasCondomini;
 
-    public function __construct(
-        private IncassoRateService $incassoService
-    ) {}
+    public function __construct(private IncassoRateService $incassoService) {}
 
     public function index(Request $request, Condominio $condominio)
     {

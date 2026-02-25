@@ -7,6 +7,7 @@ use App\Http\Controllers\Gestionale\Gestioni\GestioneController;
 use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaController;
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
+use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
@@ -154,4 +155,17 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
+
+    // --- CICLO PASSIVO: FATTURE ---
+    Route::get('/fatture', [FatturaPassivaController::class, 'index'])
+        ->name('fatture.index');
+
+    Route::get('/fatture/create', [FatturaPassivaController::class, 'create'])
+        ->name('fatture.create');
+
+    Route::post('/fatture', [FatturaPassivaController::class, 'store'])
+        ->name('fatture.store');
+
+    Route::get('/fatture/{fattura}', [FatturaPassivaController::class, 'show'])
+        ->name('fatture.show');
 });
