@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref, computed } from 'vue';
-import { Link, Head, useForm } from '@inertiajs/vue3';
+import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,8 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
+/* const page = usePage(); 
+const backUrl = route('fornitori.index');  */
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -39,7 +41,7 @@ const breadcrumbs: BreadcrumbItem[] = [
       title: trans('fornitori.header.new_fornitore_head'),
       href: '#',
   }
-];
+]; 
 
 const pageGuides = computed(() => [
   {
@@ -120,7 +122,7 @@ const submit = () => {
 <template>
   <Head :title="trans('fornitori.header.new_fornitore_title')" />
 
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout>
     <div class="px-6 py-8 space-y-6">
       
       <PageHeaderGuide
@@ -129,6 +131,8 @@ const submit = () => {
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :video-url="null"
+        :back-url="route(generateRoute('fornitori.index'))"
+        back-text="Torna all'Elenco"
       />
 
       <form @submit.prevent="submit" class="space-y-6">
@@ -249,7 +253,7 @@ const submit = () => {
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Fax</Label>
-                        <Input v-model="form.fax" class="mt-1 bg-white text-muted-foreground" />
+                        <Input v-model="form.fax" class="mt-1 bg-white" />
                     </div>
 
                     <div class="sm:col-span-2">
@@ -258,11 +262,11 @@ const submit = () => {
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Email PEC</Label>
-                        <Input v-model="form.pec" type="email" placeholder="pec@legalmail.it" class="mt-1 bg-white font-medium" />
+                        <Input v-model="form.pec" type="email" placeholder="pec@legalmail.it" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
                         <Label>Sito Internet</Label>
-                        <Input v-model="form.sito_web" placeholder="https://..." class="mt-1 text-blue-600 bg-white" />
+                        <Input v-model="form.sito_web" placeholder="https://..." class="mt-1 bg-white" />
                     </div>
                 </div>
             </CardContent>
@@ -323,31 +327,44 @@ const submit = () => {
                     </div>
                 </div>
 
-                <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="-translate-y-2 opacity-0">
-                    <div v-if="form.soggetto_ritenuta" class="pt-4 border-t border-dashed">
-                        <h4 class="text-sm font-medium mb-3">Dettagli Modello F24</h4>
-                        <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6 bg-white dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800 shadow-sm">
-                            <div class="sm:col-span-2">
-                                <Label class="text-xs uppercase tracking-wider">% Da Trattenere</Label>
-                                <div class="relative mt-1">
-                                    <Input v-model="form.perc_ritenuta" placeholder="Es. 4" class="pr-8" />
-                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">%</span>
-                                </div>
-                            </div>
-                            
-                            <div class="sm:col-span-2">
-                                <Label class="text-xs uppercase tracking-wider">% Base Imponibile</Label>
-                                <div class="relative mt-1">
-                                    <Input v-model="form.perc_imponibile_ritenuta" placeholder="Es. 100" class="pr-8" />
-                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xsfont-bold">%</span>
-                                </div>
-                            </div>
-                            
-                            <div class="sm:col-span-2">
-                                <Label class="text-xs uppercase tracking-wider">Codice Tributo</Label>
-                                <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="mt-1 uppercase" />
+               <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="-translate-y-2 opacity-0">
+                    <div v-if="form.soggetto_ritenuta" class="pt-5 border-t border-dashed border-slate-200 dark:border-slate-800">
+                        
+                        <div class="mb-5">
+                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">Automazioni Fiscali (F24 e CU)</h4>
+                            <div class="flex items-start gap-3 bg-blue-50/50 dark:bg-blue-900/20 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30">
+                                <p class="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                                    Questi parametri permettono al sistema di <strong>calcolare automaticamente la trattenuta</strong> in fase di registrazione fattura. Il software scorporerà in automatico il <em>netto da pagare</em> per il fornitore e alimenterà lo scadenziario fiscale per la <strong>generazione automatica del Modello F24 e della Certificazione Unica</strong>.
+                                </p>
                             </div>
                         </div>
+
+                        <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6 bg-white dark:bg-slate-950 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div class="sm:col-span-2">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Da Trattenere *</Label>
+                                <div class="relative">
+                                    <Input v-model="form.perc_ritenuta" placeholder="Es. 4" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                                </div>
+                                <InputError :message="form.errors.perc_ritenuta" class="mt-1" />
+                            </div>
+                            
+                            <div class="sm:col-span-2">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Base Imponibile *</Label>
+                                <div class="relative">
+                                    <Input v-model="form.perc_imponibile_ritenuta" placeholder="Es. 100" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                                </div>
+                                <InputError :message="form.errors.perc_imponibile_ritenuta" class="mt-1" />
+                            </div>
+                            
+                            <div class="sm:col-span-2">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Codice Tributo *</Label>
+                                <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
+                                <InputError :message="form.errors.codice_tributo" class="mt-1" />
+                            </div>
+                        </div>
+
                     </div>
                 </Transition>
             </CardContent>
@@ -355,7 +372,7 @@ const submit = () => {
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold">Datiss societari</CardTitle>
+                <CardTitle class="text-base font-semibold">Dati societari</CardTitle>
                 <CardDescription>Iscrizioni a camere di commercio, ordini e certificazioni.</CardDescription>
             </CardHeader>
             <CardContent class="space-y-6">
@@ -420,7 +437,8 @@ const submit = () => {
                         <div class="flex items-center space-x-2 p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
                             <Checkbox 
                                 id="certificazione_iso" 
-                                v-model:checked="form.certificazione_iso" 
+                                v-model="form.certificazione_iso"
+                                @update:checked="(val: boolean ) => form.certificazione_iso = val"
                             />
                             <Label for="certificazione_iso" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
                                 L'azienda possiede la certificazione ISO conforme alle normative europee
@@ -431,10 +449,10 @@ const submit = () => {
             </CardContent>
         </Card>
 
-        <div class="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
+        <div class="flex items-center justify-end gap-3">
             <Link
                 :href="route(generateRoute('fornitori.index'))"
-                class="inline-flex items-center justify-center h-10 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
             >
                 Annulla
             </Link>
@@ -442,7 +460,7 @@ const submit = () => {
             <Button 
                 type="submit"
                 :disabled="form.processing" 
-                class="h-10 px-8 text-sm font-semibold shadow-md gap-2"
+                class="h-9 px-8 text-sm font-semibold shadow-md gap-2"
             >
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                 <Plus v-else class="h-4 w-4" />

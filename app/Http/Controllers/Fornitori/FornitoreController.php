@@ -75,25 +75,40 @@ class FornitoreController extends Controller
 
     /**
      * Store a newly created fornitore in storage.
-     * Creates a new fornitore record and attaches related referenti.
+     * Creates a new fornitore record, attaches related referenti,
+     * and creates the default bank account if an IBAN is provided.
      *
      * @param CreateFornitoreRequest $request Validated request data
-     * @param Fornitore $fornitore Fornitore model instance
      * @return RedirectResponse Redirects to index with success/error message
-     * @since v1.8.0
+     * @since v1.9.0
      */
-    public function store(CreateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
+    public function store(CreateFornitoreRequest $request): RedirectResponse
     {
 
+        // Otteniamo i dati validati.
+        // Assicurati che CreateFornitoreRequest accetti e validi anche iban_principale
         $data = $request->validated();
 
         try {
-
             DB::beginTransaction();
 
+            // 1. Creazione del Fornitore (i campi fiscali verranno salvati in automatico se presenti in $data)
             $fornitore = Fornitore::create($data);
 
-            $fornitore->referenti()->attach($data['anagrafica_id']);
+            // 2. Associazione dell'Anagrafica come referente (se presente)
+            if (!empty($data['anagrafica_id'])) {
+                $fornitore->referenti()->attach($data['anagrafica_id']);
+            }
+
+            // 3. Creazione del Conto Corrente predefinito (se è stato inserito un IBAN)
+            if (!empty($data['iban_principale'])) {
+                $fornitore->contiCorrenti()->create([
+                    'iban'         => str_replace(' ', '', strtoupper($data['iban_principale'])),
+                    'intestatario' => $fornitore->ragione_sociale,
+                    'predefinito'  => true,
+                    'tipo'         => 'ordinario'
+                ]);
+            }
 
             DB::commit();
 
@@ -102,7 +117,6 @@ class FornitoreController extends Controller
             );
 
         } catch (\Throwable $e) {
-
             DB::rollback();
             
             Log::error('Error creating fornitore', [
@@ -113,7 +127,6 @@ class FornitoreController extends Controller
             return to_route('admin.fornitori.index')->with(
                 $this->flashError(__('fornitori.error_create_fornitore'))
             );
-
         }
     }
 
@@ -151,20 +164,54 @@ class FornitoreController extends Controller
 
     /**
      * Update the specified fornitore in storage.
-     * Updates fornitore data and redirects with success/error message.
+     * Updates fornitore data, manages referenti relations, and updates/creates the default IBAN.
      *
      * @param UpdateFornitoreRequest $request Validated request data
      * @param Fornitore $fornitore Fornitore to update
      * @return RedirectResponse Redirects to index with message
-     * @since v1.8.0
+     * @since v1.9.0
      */
     public function update(UpdateFornitoreRequest $request, Fornitore $fornitore): RedirectResponse
     {
         $validated = $request->validated(); 
 
-         try {
+        try {
+            DB::beginTransaction();
 
+            // 1. Aggiorna i dati del fornitore (inclusi i campi fiscali e lo stato)
             $fornitore->update($validated);
+
+            // 2. Sincronizza l'Anagrafica (Referente Principale)
+            if (!empty($validated['anagrafica_id'])) {
+                $fornitore->referenti()->sync([$validated['anagrafica_id']]);
+            } else {
+                // Se viene svuotato il campo nel form, rimuoviamo l'associazione
+                $fornitore->referenti()->detach();
+            }
+
+            // 3. Gestione del Conto Corrente (Tesoreria)
+            // Se c'è un IBAN, lo aggiorniamo (o lo creiamo se non esisteva).
+            if (!empty($validated['iban_principale'])) {
+                $ibanPulito = str_replace(' ', '', strtoupper($validated['iban_principale']));
+                
+                // updateOrCreate cerca il primo conto 'ordinario' di questo fornitore.
+                // Se lo trova lo aggiorna, se non c'è lo crea.
+                $fornitore->contiCorrenti()->updateOrCreate(
+                    ['tipo' => 'ordinario'], // Condizione di ricerca
+                    [
+                        'iban'         => $ibanPulito,
+                        'intestatario' => $fornitore->ragione_sociale,
+                        'predefinito'  => true
+                    ] // Valori da aggiornare/inserire
+                );
+            } else {
+                // Se l'utente cancella l'IBAN dal form, potresti volerlo eliminare
+                // o lasciarlo nello storico. Per sicurezza e coerenza col form, 
+                // cancelliamo il conto ordinario associato (se c'era).
+                $fornitore->contiCorrenti()->where('tipo', 'ordinario')->delete();
+            }
+
+            DB::commit();
 
             return RedirectHelper::backOr(
                 route('admin.fornitori.index'),
@@ -172,20 +219,19 @@ class FornitoreController extends Controller
             );
 
         } catch (\Exception $e) {
-
+            DB::rollBack();
             Log::error('Error updating fornitore: ' . $e->getMessage());
 
-             return RedirectHelper::backOr(
+            return RedirectHelper::backOr(
                 route('admin.fornitori.index'),
                 $this->flashError(__('fornitori.error_update_fornitore'))
             );
         }
-
     }
 
-    /**
+   /**
      * Remove the specified fornitore from storage.
-     * Deletes a fornitore record and returns appropriate response.
+     * Ensures polymorphic relations are cleaned and prevents deletion if invoices exist.
      *
      * @param Fornitore $fornitore Fornitore to delete
      * @return RedirectResponse Redirects back with success/error message
@@ -194,21 +240,38 @@ class FornitoreController extends Controller
     public function destroy(Fornitore $fornitore): RedirectResponse
     {
         try {
+            // 1. CONTROLLO CONTABILE (Fondamentale!)
+            if ($fornitore->fatture()->exists()) {
+                return back()->with(
+                   $this->flashError(__('fornitori.error_delete_has_invoices'))
+                );
+            }
 
+            // Iniziamo la transazione per essere sicuri che la pulizia sia completa
+            DB::beginTransaction();
+
+            // 2. PULIZIA DATI POLIMORFICI
+            // Eliminiamo tutti i conti correnti associati a questo fornitore
+            $fornitore->contiCorrenti()->delete();
+
+            // 3. ELIMINAZIONE FORNITORE
+            // I referenti nella tabella pivot verranno eliminati automaticamente 
+            // dal DB grazie all'onDelete('cascade') della migrazione.
             $fornitore->delete();
+
+            DB::commit();
 
             return back()->with(
                 $this->flashSuccess(__('fornitori.success_delete_fornitore'))
             );
 
         } catch (\Exception $e) {
-
+            DB::rollBack();
             Log::error('Error deleting fornitore: ' . $e->getMessage());
 
             return back()->with(
                 $this->flashError(__('fornitori.error_delete_fornitore'))
             );
-
         }
     }
 }

@@ -1,7 +1,6 @@
 <script setup lang="ts">
-
 import { computed, ref, watch } from 'vue';
-import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp } from 'lucide-vue-next';
+import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft } from 'lucide-vue-next'; // Aggiunto ArrowLeft
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
@@ -27,12 +26,15 @@ const props = defineProps<{
   guides: GuideItem[];
   breadcrumbs?: Breadcrumb[];
   
-  // MODIFICA CHIRURGICA: Resi opzionali (?)
   condominio?: Building; 
   condomini?: (Building & { esercizio_aperto?: { id: number } | null })[];
   
   esercizio?: Esercizio | null;
   esercizi?: Esercizio[];
+
+  // --- NUOVE PROPS OPZIONALI PER IL PULSANTE INDIETRO ---
+  backUrl?: string | null;
+  backText?: string;
 }>();
 
 const colorStyles = {
@@ -42,7 +44,6 @@ const colorStyles = {
   slate: 'bg-slate-100/50 text-slate-600 dark:bg-slate-900/30 dark:text-slate-400 border-slate-200/50 dark:border-slate-800/50',
 };
 
-// MODIFICA CHIRURGICA: Protezione per undefined
 const showCondominioDropdown = computed(() => (props.condomini?.length ?? 0) > 1);
 const showEsercizioDropdown = computed(() => (props.esercizi?.length ?? 0) > 1);
 const hasBreadcrumbs = computed(() => props.breadcrumbs && props.breadcrumbs.length > 0);
@@ -52,7 +53,7 @@ const { generatePath } = usePermission();
 const page = usePage<{ condominio: Building; condomini: (Building & { esercizio_aperto?: { id: number } | null })[] }>();
 
 function selectCondominio(id: string | number) {
-  if (!props.condomini || !props.condominio) return; // Protezione
+  if (!props.condomini || !props.condominio) return;
   const currentUrl = page.url;
   const segments = currentUrl.split('/');
   const selected = props.condomini.find((c) => String(c.id) === String(id));
@@ -164,18 +165,29 @@ function selectEsercizio(esercizioId: number | string) {
             </div>
           </template>
 
+          <Link 
+            :href="generatePath('dashboard')"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+          >
+            <CornerLeftUp class="w-3.5 h-3.5 text-white" />
+            Dashboard Social
+          </Link>
+        </template> 
+
         <Link 
-          :href="generatePath('dashboard')"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+            v-if="backUrl"
+            :href="backUrl"
+            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
-          <CornerLeftUp class="w-3.5 h-3.5 text-white" />
-          Social
+            <ArrowLeft class="w-3.5 h-3.5 text-slate-500" />
+            <span>{{ backText || 'Indietro' }}</span>
         </Link>
 
-        </template> <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
+        <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
           <PlayCircle class="w-3.5 h-3.5" />
           VIDEO GUIDA
         </a>
+
       </div>
     </div>
 
