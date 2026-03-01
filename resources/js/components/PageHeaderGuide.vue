@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft } from 'lucide-vue-next'; // Aggiunto ArrowLeft
+import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
@@ -32,7 +32,7 @@ const props = defineProps<{
   esercizio?: Esercizio | null;
   esercizi?: Esercizio[];
 
-  // --- NUOVE PROPS OPZIONALI PER IL PULSANTE INDIETRO ---
+  // Props opzionali per il pulsante indietro custom
   backUrl?: string | null;
   backText?: string;
 }>();
@@ -93,22 +93,24 @@ function selectEsercizio(esercizioId: number | string) {
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
       
       <div>
-        <nav 
-          v-if="hasBreadcrumbs" 
-          class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
-        >
-          <template v-for="(item, index) in breadcrumbs" :key="index">
-            <Link v-if="item.href && index < breadcrumbs!.length - 1" :href="item.href" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 hover:text-primary transition-colors">
-              {{ item.title }}
-            </Link>
-            <span v-else class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
-              {{ item.title }}
-            </span>
-            <ChevronRight v-if="index < breadcrumbs!.length - 1" class="w-3 h-3 text-slate-300 dark:text-slate-700" />
-          </template>
-        </nav>
+        <slot name="breadcrumb">
+          <nav 
+            v-if="hasBreadcrumbs" 
+            class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm"
+          >
+            <template v-for="(item, index) in breadcrumbs" :key="index">
+              <Link v-if="item.href && index < breadcrumbs!.length - 1" :href="item.href" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 hover:text-primary transition-colors">
+                {{ item.title }}
+              </Link>
+              <span v-else class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500">
+                {{ item.title }}
+              </span>
+              <ChevronRight v-if="index < breadcrumbs!.length - 1" class="w-3 h-3 text-slate-300 dark:text-slate-700" />
+            </template>
+          </nav>
+        </slot>
 
-        <div v-else class="pl-5 border-l-2 border-primary py-1">
+        <div v-if="!hasBreadcrumbs && !$slots.breadcrumb" class="pl-5 border-l-2 border-primary py-1">
           <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
               {{ pageTitle }}
           </h1>
@@ -174,6 +176,8 @@ function selectEsercizio(esercizioId: number | string) {
           </Link>
         </template> 
 
+        <slot name="actions"></slot>
+
         <Link 
             v-if="backUrl"
             :href="backUrl"
@@ -191,7 +195,7 @@ function selectEsercizio(esercizioId: number | string) {
       </div>
     </div>
 
-    <div v-if="hasBreadcrumbs" class="pl-5 border-l-2 border-primary py-1">
+    <div v-if="hasBreadcrumbs || $slots.breadcrumb" class="pl-5 border-l-2 border-primary py-1">
         <h1 class="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight leading-none">
             {{ pageTitle }}
         </h1>

@@ -18,17 +18,26 @@ return [
     'header' => [
         'list_buildings_head'           => "Elenco condomini",
         'list_buildings_title'          => "Elenco condomini",
-        'list_buildings_description'    => "Di seguito la tabella con l'elenco di tutti i profili dei condomini registrati",
+        'list_buildings_description'    => "Di seguito la tabella con l'elenco di tutti i profili dei condomini registrati.",
         'new_building_head'             => "Crea condominio",
         'new_building_title'            => "Crea condominio",
-        'new_building_description'      => "Compila il seguente modulo per la creazione di un nuovo condominio",
+        'new_building_description'      => "Compila il seguente modulo per la creazione di un nuovo condominio.",
         'edit_building_head'            => "Modifica condominio",
         'edit_building_title'           => "Modifica condominio",
-        'edit_building_description'     => "Compila il seguente modulo per aggiornare o modificare i dati del condominio",
-        'building_info_heading'         => "Dati anagrafici",
-        'building_info_description'     => "Di seguito è possibile specificare i dati anagrafici del condominio",
-        'building_registry_heading'     => "Dati catastali",
-        'building_registry_description' => "Di seguito è possibile specificare i dati catastali del condominio",
+        'edit_building_description'     => "Compila il seguente modulo per aggiornare o modificare i dati del condominio.",
+    ],
+
+    /* ------------------------------------------------------------------
+     | Sezioni del Modulo (Card)
+     | ------------------------------------------------------------------ */
+    'cards' => [
+        'info_title'            => "Informazioni principali",
+        'info_desc'             => "Dati identificativi essenziali del condominio.",
+        'location_title'        => "Ubicazione",
+        'location_desc'         => "Indirizzo di riferimento dello stabile.",
+        'registry_title'        => "Dati strutturali e catastali",
+        'registry_desc'         => "Informazioni sul fabbricato ed estremi di registrazione al catasto.",
+        'notes_helper'          => "Le note inserite saranno visibili solo allo staff dello studio amministrativo.",
     ],
 
     /* ------------------------------------------------------------------
@@ -42,7 +51,7 @@ return [
         'residents'      => 'Anagrafiche',
         'residents_desc' => 'Consulta rapidamente l\'elenco completo delle persone associate a questo condominio.',
         'total'          => 'Totali',
-        'click_to_manage' => 'Clicca per gestire',
+        'click_to_manage'=> 'Clicca per gestire',
     ],
 
     /* ------------------------------------------------------------------
@@ -50,10 +59,16 @@ return [
      | ------------------------------------------------------------------ */
     'label' => [
         'name'               => 'Denominazione',
-        'address'            => 'Indirizzo',
-        'tax_code'           => 'Codice fiscale',
+        'address'            => 'Indirizzo e civico',
+        'city'               => 'Comune',
+        'province'           => 'Prov.',
+        'zip_code'           => 'CAP',
+        'tax_code'           => 'Codice Fiscale',
         'email'              => 'Indirizzo email',
-        'notes'              => 'Note',
+        'notes'              => 'Note aggiuntive interne',
+        'build_year'         => 'Anno di costruzione',
+        'acquisition_year'   => 'Anno di acquisizione',
+        'floors'             => 'Numero di piani',
         'municipality'       => 'Comune catasto',
         'municipality_code'  => 'Codice catasto',
         'section'            => 'Sezione',
@@ -65,16 +80,22 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
-        'name'               => 'Inserisci la denominazione del condominio',
-        'address'            => "Inserisci l'indirizzo del condominio",
-        'tax_code'           => 'Codice fiscale del condominio',
-        'email'              => 'Indirizzo email del condominio',
-        'notes'              => 'Inserisci una nota aggiuntiva qui',
+        'name'               => 'Es. Condominio Le Vele',
+        'address'            => 'Via, Piazza, Corso...',
+        'city'               => 'Es. Roma, Milano',
+        'province'           => 'RM',
+        'zip_code'           => '00000',
+        'tax_code'           => 'Codice fiscale',
+        'email'              => 'email@condominio.it',
+        'notes'              => 'Inserisci una nota visibile solo agli amministratori...',
+        'build_year'         => 'Es. 1980',
+        'acquisition_year'   => 'Es. 2024',
+        'floors'             => 'Es. 5',
         'municipality'       => 'Comune catasto',
         'municipality_code'  => 'Codice catasto',
-        'section'            => 'Sezione catasto',
-        'sheet'              => 'Foglio catasto',
-        'parcel'             => 'Particella catasto',
+        'section'            => 'Sezione',
+        'sheet'              => 'Foglio',
+        'parcel'             => 'Particella',
         'no_address'         => 'Indirizzo non presente',
     ],
 
@@ -94,11 +115,13 @@ return [
         'edit_building'  => 'Modifica',
         'delete_building'=> 'Elimina',
         'save_building'  => 'Salva',
+        'update_building'=> 'Aggiorna', 
         'list_buildings' => 'Elenco',
+        'cancel'         => 'Annulla',
     ],
 
     /* ------------------------------------------------------------------
-     | Page Guides (Cards)
+     | Page Guides (Cards - PageHeaderGuide)
      | ------------------------------------------------------------------ */
     'guides' => [
         'portfolio_title'        => 'Portafoglio Fabbricati',
@@ -107,5 +130,21 @@ return [
         'quick_access_desc'      => 'Clicca su un condominio per entrare nel suo gestionale dedicato (fatture, rate, bilanci).',
         'new_acquisitions_title' => 'Nuove Acquisizioni',
         'new_acquisitions_desc'  => 'Aggiungi nuovi stabili al gestionale e inizia a configurarne anagrafica e conti correnti.',
+        
+        // Guide per la pagina CREATE (Nuovo Condominio)
+        'create_info_title'      => 'Dati Generali',
+        'create_info_desc'       => 'Inserisci il nome, i contatti e le informazioni principali del nuovo stabile.',
+        'create_registry_title'  => 'Dati Catastali',
+        'create_registry_desc'   => 'Compila i dati catastali, indispensabili per gli adempimenti fiscali e le pratiche edilizie.',
+        'create_notes_title'     => 'Note Interne',
+        'create_notes_desc'      => 'Aggiungi appunti, codici di accesso o istruzioni visibili solo allo studio.',
+
+        // Guide per la pagina EDIT (Modifica Condominio)
+        'edit_info_title'        => 'Dati Generali',
+        'edit_info_desc'         => 'Modifica il nome, i contatti e le informazioni principali del condominio.',
+        'edit_registry_title'    => 'Dati Catastali',
+        'edit_registry_desc'     => 'Aggiorna i dati catastali per mantenere la contabilità allineata alle normative.',
+        'edit_notes_title'       => 'Note Interne',
+        'edit_notes_desc'        => 'Aggiorna gli appunti, i codici di accesso o le istruzioni riservate allo studio.',
     ],
 ];

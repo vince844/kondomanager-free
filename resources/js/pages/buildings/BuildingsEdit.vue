@@ -1,272 +1,352 @@
 <script setup lang="ts">
-
+import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import Heading from '@/components/Heading.vue';
+import { Save, LoaderCircle, Building2, MapPin, Info } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
-import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from '@/types/buildings';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 const props = defineProps<{ building: Building }>();
 
 const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Nuovo condominio',
-        href: '/condomini/create',
-    },
+  {
+      title: trans('condomini.header.list_buildings_title'),
+      href: route('condomini.index') 
+  },
+  {
+      title: trans('condomini.header.edit_building_title'),
+      href: '#',
+  }
 ];
+
+const pageGuides = computed(() => [
+  {
+    title: trans('condomini.guides.edit_info_title'),
+    description: trans('condomini.guides.edit_info_desc'),
+    icon: Building2,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('condomini.guides.edit_registry_title'),
+    description: trans('condomini.guides.edit_registry_desc'),
+    icon: MapPin,
+    colorVariant: 'amber' as const
+  },
+  {
+    title: trans('condomini.guides.edit_notes_title'),
+    description: trans('condomini.guides.edit_notes_desc'),
+    icon: Info,
+    colorVariant: 'emerald' as const
+  }
+]);
 
 const form = useForm({
     id: props.building.id,
-    nome: props.building.nome,
-    indirizzo: props.building.indirizzo,
-    email: props.building.email,
-    note: props.building.note,
-    codice_fiscale: props.building.codice_fiscale,
-    comune_catasto: props.building.comune_catasto,
-    codice_catasto: props.building.codice_catasto,
-    sezione_catasto: props.building.sezione_catasto,
-    foglio_catasto: props.building.foglio_catasto,
-    particella_catasto: props.building.particella_catasto,
+    nome: props.building.nome || '',
+    codice_fiscale: props.building.codice_fiscale || '',
+    email: props.building.email || '',
+    note: props.building.note || '',
+    indirizzo: props.building.indirizzo || '',
+    comune: props.building.comune || '',
+    provincia: props.building.provincia || '',
+    cap: props.building.cap || '',
+    anno_costruzione: props.building.anno_costruzione || '',
+    anno_acquisizione: props.building.anno_acquisizione || '',
+    numero_piani: props.building.numero_piani || '',
+    comune_catasto: props.building.comune_catasto || '',
+    codice_catasto: props.building.codice_catasto || '',
+    sezione_catasto: props.building.sezione_catasto || '',
+    foglio_catasto: props.building.foglio_catasto || '',
+    particella_catasto: props.building.particella_catasto || '',
 });
 
 const submit = () => {
-    form.put(route("condomini.update", {id: props.building.id}), {
+    form.put(route("condomini.update", { id: props.building.id }), {
         preserveScroll: true,
-        onFinish: () => form.reset(),
     });
 };
-
 </script>
 
 <template>
+  <Head :title="trans('condomini.header.edit_building_head')" />
 
-    <Head :title="trans('condomini.header.edit_building_head')" />
-  
-    <AppLayout :breadcrumbs="breadcrumbs">
-  
-      <div class="px-4 py-6">
-        
-        <Heading 
-          :title="trans('condomini.header.edit_building_title')" 
-          :description="trans('condomini.header.edit_building_description')" 
-        />
+  <AppLayout>
+    <div class="px-6 py-8 space-y-6">
+      
+      <PageHeaderGuide
+        :page-title="`Modifica ${props.building.nome}`"
+        :page-subtitle="trans('condomini.header.edit_building_description')"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :video-url="null"
+        :back-url="route('condomini.index')"
+        :back-text="trans('condomini.actions.list_buildings')"
+      />
 
-            <div class="mt-3 flex flex-col">
-                <div class="-my-2 -mx-4 sm:-mx-6 lg:-mx-8">
-                    <div class="inline-block min-w-full py-2 align-middle md:px-6 lg:px-8">
-                   
-                        <form class="space-y-2" @submit.prevent="submit">
+      <form @submit.prevent="submit" class="space-y-6">
 
-                            <div class="flex flex-col lg:flex-row lg:justify-end items-start lg:items-center space-y-2 lg:space-y-0 lg:space-x-2">
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+            <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold">{{ trans('condomini.cards.info_title') }}</CardTitle>
+                <CardDescription>{{ trans('condomini.cards.info_desc') }}</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    
+                    <div class="sm:col-span-3">
+                        <Label for="nome">{{ trans('condomini.label.name') }} *</Label>
+                        <Input 
+                            id="nome" 
+                            v-model="form.nome" 
+                            @focus="form.clearErrors('nome')"
+                            :placeholder="trans('condomini.placeholder.name')" 
+                            class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.nome" />
+                    </div>
 
-                              <Button :disabled="form.processing" class="lg:flex h-8 w-full lg:w-auto">
-                                <Plus class="w-4 h-4" v-if="!form.processing" />
-                                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                                {{trans('condomini.actions.save_building')}}
-                              </Button>
+                    <div class="sm:col-span-3 sm:col-start-1">
+                        <Label for="codice_fiscale">{{ trans('condomini.label.tax_code') }}</Label>
+                        <Input 
+                            id="codice_fiscale" 
+                            v-model="form.codice_fiscale" 
+                            @focus="form.clearErrors('codice_fiscale')"
+                            :placeholder="trans('condomini.placeholder.tax_code')" 
+                            class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.codice_fiscale" />
+                    </div>
 
-                              <Link 
-                                as="button"
-                                :href="route('condomini.index')" 
-                                class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 w-full lg:w-auto"
-                              >
-                                <List class="w-4 h-4" />
-                                <span>
-                                  {{ trans('condomini.actions.list_buildings') }}
-                                </span>
-                              </Link>
+                    <div class="sm:col-span-3">
+                        <Label for="email">{{ trans('condomini.label.email') }}</Label>
+                        <Input 
+                            id="email" 
+                            type="email"
+                            v-model="form.email" 
+                            @focus="form.clearErrors('email')"
+                            :placeholder="trans('condomini.placeholder.email')" 
+                            class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.email" />
+                    </div>
 
-                            </div>
+                    <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>
 
-                            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
+                    <div class="sm:col-span-6">
+                        <Label for="note">{{ trans('condomini.label.notes') }}</Label>
+                        <Textarea 
+                            id="note" 
+                            class="mt-1 w-full bg-white dark:bg-slate-950" 
+                            :placeholder="trans('condomini.placeholder.notes')" 
+                            v-model="form.note" 
+                            @focus="form.clearErrors('note')"
+                        />
+                        <InputError :message="form.errors.note" />
+                        <p class="text-[11px] text-muted-foreground mt-1 italic">{{ trans('condomini.cards.notes_helper') }}</p>
+                    </div>
+                    
+                </div>
+            </CardContent>
+        </Card>
 
-                              <div class="pt-3">
-                                <h3 class="text-lg font-medium leading-6 text-gray-900">{{ trans('condomini.header.building_info_heading') }}</h3>
-                                <p class="mt-1 text-sm text-gray-500">{{ trans('condomini.header.building_info_description') }}</p>
-                              </div>
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+            <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold">{{ trans('condomini.cards.location_title') }}</CardTitle>
+                <CardDescription>{{ trans('condomini.cards.location_desc') }}</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
+                        <Label for="indirizzo">{{ trans('condomini.label.address') }}</Label>
+                        <Input 
+                          id="indirizzo"
+                          v-model="form.indirizzo" 
+                          @focus="form.clearErrors('indirizzo')"
+                          :placeholder="trans('condomini.placeholder.address')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.indirizzo" />
+                    </div>
+                    
+                    <div class="sm:col-span-3">
+                        <Label for="comune">{{ trans('condomini.label.city') }}</Label>
+                        <Input 
+                          id="comune"
+                          v-model="form.comune" 
+                          @focus="form.clearErrors('comune')"
+                          :placeholder="trans('condomini.placeholder.city')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.comune" />
+                    </div>
 
-                              <Separator class="my-4" />
+                    <div class="sm:col-span-1">
+                        <Label for="provincia">{{ trans('condomini.label.province') }}</Label>
+                        <Input 
+                          id="provincia"
+                          v-model="form.provincia" 
+                          @focus="form.clearErrors('provincia')"
+                          :placeholder="trans('condomini.placeholder.province')" 
+                          class="mt-1 bg-white" 
+                          maxlength="2"
+                        />
+                        <InputError :message="form.errors.provincia" />
+                    </div>
 
-                              <div class="pt-3">
-                                  
-                                  <!--  Name field -->
-                                  <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                      <div class="sm:col-span-3">
-                                        <Label for="nome">{{ trans('condomini.label.name') }}</Label>
-                                        <Input 
-                                          id="nome" 
-                                          class="mt-1 block w-full"
-                                          v-model="form.nome" 
-                                          v-on:focus="form.clearErrors('nome')"
-                                          :placeholder="trans('condomini.placeholder.name')" 
-                                        />
-                                        
-                                        <InputError :message="form.errors.nome" />
-                            
-                                      </div>
-                                  </div> 
+                    <div class="sm:col-span-2">
+                        <Label for="cap">{{ trans('condomini.label.zip_code') }}</Label>
+                        <Input 
+                          id="cap"
+                          v-model="form.cap" 
+                          @focus="form.clearErrors('cap')"
+                          :placeholder="trans('condomini.placeholder.zip_code')" 
+                          class="mt-1 bg-white" 
+                          maxlength="5"
+                        />
+                        <InputError :message="form.errors.cap" />
+                    </div>
+                    
+                </div>
+            </CardContent>
+        </Card>
 
-                                  <!--  Indirizzo field -->
-                                  <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                      <div class="sm:col-span-6">
-                                        <Label for="indirizzo">{{ trans('condomini.label.address') }}</Label>
-                                        <Input 
-                                          id="indirizzo" 
-                                          class="mt-1 block w-full"
-                                          v-model="form.indirizzo" 
-                                          v-on:focus="form.clearErrors('indirizzo')"
-                                          :placeholder="trans('condomini.placeholder.address')" 
-                                        />
-                                        
-                                        <InputError class="mt-2" :message="form.errors.indirizzo" />
-                            
-                                      </div>
-                                  </div>
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+            <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold">{{ trans('condomini.cards.registry_title') }}</CardTitle>
+                <CardDescription>{{ trans('condomini.cards.registry_desc') }}</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    <div class="sm:col-span-2">
+                        <Label for="anno_costruzione">{{ trans('condomini.label.build_year') }}</Label>
+                        <Input 
+                          id="anno_costruzione"
+                          v-model="form.anno_costruzione" 
+                          @focus="form.clearErrors('anno_costruzione')"
+                          :placeholder="trans('condomini.placeholder.build_year')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.anno_costruzione" />
+                    </div>
 
-                                  <!--  Codice fiscale field -->
-                                  <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                      <div class="sm:col-span-3">
-                                        <Label for="codice_fiscale">{{ trans('condomini.label.tax_code') }}</Label>
-                                        <Input 
-                                          id="codice_fiscale" 
-                                          class="mt-1 block w-full"
-                                          v-model="form.codice_fiscale" 
-                                          v-on:focus="form.clearErrors('codice_fiscale')"
-                                          :placeholder="trans('condomini.placeholder.tax_code')" 
-                                        />
-                                        
-                                        <InputError class="mt-2" :message="form.errors.codice_fiscale" />
-                            
-                                      </div>
+                    <div class="sm:col-span-2">
+                        <Label for="anno_acquisizione">{{ trans('condomini.label.acquisition_year') }}</Label>
+                        <Input 
+                          id="anno_acquisizione"
+                          v-model="form.anno_acquisizione" 
+                          @focus="form.clearErrors('anno_acquisizione')"
+                          :placeholder="trans('condomini.placeholder.acquisition_year')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.anno_acquisizione" />
+                    </div>
 
-                                      <div class="sm:col-span-3">
-                                        <Label for="email">{{ trans('condomini.label.email') }}</Label>
-                                        <Input 
-                                          id="email" 
-                                          class="mt-1 block w-full"
-                                          v-model="form.email" 
-                                          v-on:focus="form.clearErrors('email')"
-                                          :placeholder="trans('condomini.placeholder.email')" 
-                                        />
-                                        
-                                        <InputError class="mt-2" :message="form.errors.email" />
-                            
-                                      </div>
-                                  </div>
+                    <div class="sm:col-span-2">
+                        <Label for="numero_piani">{{ trans('condomini.label.floors') }}</Label>
+                        <Input 
+                          id="numero_piani"
+                          v-model="form.numero_piani" 
+                          @focus="form.clearErrors('numero_piani')"
+                          :placeholder="trans('condomini.placeholder.floors')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.numero_piani" />
+                    </div>
 
-                                  <!--  Note -->
-                                  <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                      <div class="sm:col-span-6">
-                                          <Label for="note">{{ trans('condomini.label.notes') }}</Label>
-                                          <Textarea 
-                                              id="note" 
-                                              :placeholder="trans('condomini.placeholder.notes')" 
-                                              v-model="form.note" 
-                                              v-on:focus="form.clearErrors('note')"
-                                          />
-                                      </div>
+                    <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>
 
-                                      <InputError :message="form.errors.note" />
-                            
-                                  </div>
-                              
-                              </div>
+                    <div class="sm:col-span-4">
+                        <Label for="comune_catasto">{{ trans('condomini.label.municipality') }}</Label>
+                        <Input 
+                          id="comune_catasto" 
+                          v-model="form.comune_catasto" 
+                          @focus="form.clearErrors('comune_catasto')"
+                          :placeholder="trans('condomini.placeholder.municipality')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.comune_catasto" />
+                    </div>
+                    
+                    <div class="sm:col-span-2">
+                        <Label for="codice_catasto">{{ trans('condomini.label.municipality_code') }}</Label>
+                        <Input 
+                          id="codice_catasto" 
+                          v-model="form.codice_catasto" 
+                          @focus="form.clearErrors('codice_catasto')"
+                          :placeholder="trans('condomini.placeholder.municipality_code')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.codice_catasto" />
+                    </div>
 
-                              <div class="pt-3">
-                                <h3 class="text-lg font-medium leading-6 text-gray-900">{{ trans('condomini.header.building_registry_heading') }}</h3>
-                                <p class="mt-1 text-sm text-gray-500">{{ trans('condomini.header.building_registry_description') }}</p>
-                              </div>
+                    <div class="sm:col-span-2">
+                        <Label for="sezione_catasto">{{ trans('condomini.label.section') }}</Label>
+                        <Input 
+                          id="sezione_catasto" 
+                          v-model="form.sezione_catasto" 
+                          @focus="form.clearErrors('sezione_catasto')"
+                          :placeholder="trans('condomini.placeholder.section')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.sezione_catasto" />
+                    </div>
 
-                              <Separator class="my-4" />
+                    <div class="sm:col-span-2">
+                        <Label for="foglio_catasto">{{ trans('condomini.label.sheet') }}</Label>
+                        <Input 
+                          id="foglio_catasto" 
+                          v-model="form.foglio_catasto" 
+                          @focus="form.clearErrors('foglio_catasto')"
+                          :placeholder="trans('condomini.placeholder.sheet')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.foglio_catasto" />
+                    </div>
 
-                              <div class="pt-3 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                <!-- Comune catasto -->
-                                <div class="sm:col-span-4">
-                                  <Label for="comune_catasto">{{ trans('condomini.label.municipality') }}</Label>
-                                  <Input 
-                                    id="comune_catasto" 
-                                    class="mt-1 block w-full"
-                                      v-model="form.comune_catasto" 
-                                      v-on:focus="form.clearErrors('comune_catasto')"
-                                      :placeholder="trans('condomini.placeholder.municipality')" 
-                                  />
-                                  
-                                  <InputError :message="form.errors.comune_catasto" />
-                        
-                                </div>
-                                <!-- Codice catasto -->
-                                <div class="sm:col-span-2">
-                                  <Label for="codice_catasto">{{ trans('condomini.label.municipality_code') }}</Label>
-                                  <Input 
-                                    id="codice_catasto" 
-                                    class="mt-1 block w-full"
-                                      v-model="form.codice_catasto" 
-                                      v-on:focus="form.clearErrors('codice_catasto')"
-                                      :placeholder="trans('condomini.placeholder.municipality_code')" 
-                                  />
-                                  
-                                  <InputError :message="form.errors.codice_catasto" />
-                                </div>
-                              </div>
-
-                              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                <!-- Sezione catasto -->
-                                <div class="sm:col-span-2">
-                                  <Label for="sezione_catasto">{{ trans('condomini.label.section') }}</Label>
-                                  <Input 
-                                    id="sezione_catasto" 
-                                    class="mt-1 block w-full"
-                                      v-model="form.sezione_catasto" 
-                                      v-on:focus="form.clearErrors('sezione_catasto')"
-                                      :placeholder="trans('condomini.placeholder.section')" 
-                                  />
-                                  
-                                  <InputError :message="form.errors.sezione_catasto" />
-                                </div>
-                                <!-- Foglio catasto -->
-                                <div class="sm:col-span-2">
-                                  <Label for="foglio_catasto">{{ trans('condomini.label.sheet') }}</Label>
-                                  <Input 
-                                    id="foglio_catasto" 
-                                    class="mt-1 block w-full"
-                                      v-model="form.foglio_catasto" 
-                                      v-on:focus="form.clearErrors('foglio_catasto')"
-                                      :placeholder="trans('condomini.placeholder.sheet')"  
-                                  />
-                                  
-                                  <InputError :message="form.errors.foglio_catasto" />
-                                </div>
-                                <!-- Particella catasto -->
-                                <div class="sm:col-span-2">
-                                  <Label for="name">{{ trans('condomini.label.parcel') }}</Label>
-                                  <Input 
-                                    id="particella_catasto" 
-                                    class="mt-1 block w-full"
-                                    v-model="form.particella_catasto" 
-                                    v-on:focus="form.clearErrors('particella_catasto')"
-                                    :placeholder="trans('condomini.placeholder.parcel')" 
-                                  />
-                                  
-                                  <InputError :message="form.errors.particella_catasto" />
-                                </div>
-                              </div>
-
-                            </div>
-                                
-                        </form>
-                      
+                    <div class="sm:col-span-2">
+                        <Label for="particella_catasto">{{ trans('condomini.label.parcel') }}</Label>
+                        <Input 
+                          id="particella_catasto" 
+                          v-model="form.particella_catasto" 
+                          @focus="form.clearErrors('particella_catasto')"
+                          :placeholder="trans('condomini.placeholder.parcel')" 
+                          class="mt-1 bg-white" 
+                        />
+                        <InputError :message="form.errors.particella_catasto" />
                     </div>
                 </div>
-            </div> 
-      </div>
-    </AppLayout> 
-  
+            </CardContent>
+        </Card>
+
+        <div class="flex items-center justify-end gap-3">
+            <Link
+                :href="route('condomini.index')"
+                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+            >
+                {{ trans('condomini.actions.cancel') }}
+            </Link>
+
+            <Button 
+                type="submit"
+                :disabled="form.processing" 
+                class="h-9 px-8 text-sm font-semibold shadow-md gap-2"
+            >
+                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                <Save v-else class="h-4 w-4" />
+                {{ trans('condomini.actions.update_building') }}
+            </Button>
+        </div>
+
+      </form>
+      
+    </div>
+  </AppLayout>
 </template>

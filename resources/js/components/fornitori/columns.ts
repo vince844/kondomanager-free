@@ -71,7 +71,7 @@ export const columns: ColumnDef<Fornitore>[] = [
 
       return h('div', { class: 'flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 font-medium' }, [
         h(MapPin, { class: 'w-3.5 h-3.5 shrink-0 text-slate-400' }),
-        h('span', { class: 'truncate max-w-[250px] italic' }, dettagli || '—')
+        h('span', { class: 'truncate max-w-[250px]' }, dettagli || '—')
       ])
     },
   },

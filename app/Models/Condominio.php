@@ -9,6 +9,7 @@ use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Condominio extends Model
 {
@@ -27,10 +28,16 @@ class Condominio extends Model
     protected $fillable = [
         'codice_identificativo',
         'nome',   
-        'indirizzo',              
+        'indirizzo',
+        'comune',             
+        'provincia',          
+        'cap',                
         'email',   
         'note',              
-        'codice_fiscale',       
+        'codice_fiscale',
+        'anno_costruzione',   
+        'anno_acquisizione',  
+        'numero_piani',       
         'comune_catasto',     
         'codice_catasto',      
         'sezione_catasto', 
@@ -38,57 +45,101 @@ class Condominio extends Model
         'particella_catasto',
     ];
 
-    public function anagrafiche()
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        'anno_costruzione' => 'integer',
+        'anno_acquisizione' => 'integer',
+        'numero_piani' => 'integer',
+    ];
+
+    /**
+     * Le anagrafiche (condòmini, fornitori, professionisti) associate al condominio.
+     */
+    public function anagrafiche(): BelongsToMany
     {
         return $this->belongsToMany(Anagrafica::class);
     }
 
-    public function comunicazioni()
+    /**
+     * Le comunicazioni inviate o relative a questo condominio.
+     */
+    public function comunicazioni(): BelongsToMany
     {
         return $this->belongsToMany(Comunicazione::class, 'comunicazione_condominio')->withTimestamps();
     }
 
-    public function documenti()
+    /**
+     * I documenti archiviati per il condominio nel sistema.
+     */
+    public function documenti(): BelongsToMany
     {
         return $this->belongsToMany(Documento::class, 'condominio_documento');
     }
 
-    public function eventi()
+    /**
+     * Gli eventi (es. scadenze, alert scadenze intelligenti, o futuri moduli lavori e sinistri) legati al condominio.
+     */
+    public function eventi(): BelongsToMany
     {
         return $this->belongsToMany(Evento::class, 'condominio_evento');
     }
 
-    public function palazzine()
+    /**
+     * Le palazzine o gli edifici fisici che compongono il supercondominio/condominio.
+     */
+    public function palazzine(): HasMany
     {
         return $this->hasMany(Palazzina::class);
     }
 
-    public function scale()
+    /**
+     * Le scale presenti all'interno del condominio.
+     */
+    public function scale(): HasMany
     {
         return $this->hasMany(Scala::class);
     }
 
-    public function immobili()
+    /**
+     * Le unità immobiliari (appartamenti, box, cantine) che compongono il condominio.
+     */
+    public function immobili(): HasMany
     {
         return $this->hasMany(Immobile::class);
     }
 
-    public function tabelle()
+    /**
+     * Le tabelle millesimali associate al condominio.
+     */
+    public function tabelle(): HasMany
     {
         return $this->hasMany(Tabella::class);
     }
 
-    public function esercizi()
+    /**
+     * Gli esercizi contabili (anni di gestione) del condominio.
+     */
+    public function esercizi(): HasMany
     {
         return $this->hasMany(Esercizio::class);
     }
 
-    public function gestioni()
+    /**
+     * Le gestioni attive nel condominio (ordinaria, ed eventualmente future gestioni straordinarie).
+     */
+    public function gestioni(): HasMany
     {
         return $this->hasMany(Gestione::class);
     }
 
-    public function pianiDeiConti()
+    /**
+     * Il piano dei conti economico (spese e ricavi) configurato per il condominio.
+     */
+    public function pianiDeiConti(): HasMany
     {
         return $this->hasMany(PianoConto::class);
     }
@@ -109,5 +160,4 @@ class Condominio extends Model
     {
         return $this->hasMany(ContoContabile::class);
     }
-
 }

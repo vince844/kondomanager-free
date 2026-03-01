@@ -132,7 +132,7 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :video-url="null"
         :back-url="route(generateRoute('fornitori.index'))"
-        back-text="Torna all'Elenco"
+        back-text="Indietro"
       />
 
       <form @submit.prevent="submit" class="space-y-6">
@@ -144,24 +144,27 @@ const submit = () => {
             </CardHeader>
             <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    
                     <div class="sm:col-span-3">
-                        <Label for="ragione_sociale">Ragione sociale *</Label>
+                        <div class="flex items-center min-h-[24px]">
+                            <Label for="ragione_sociale">Ragione sociale</Label>
+                        </div>
                         <Input 
-                          id="ragione_sociale" 
-                          v-model="form.ragione_sociale" 
-                          placeholder="Es: Rossi Impianti S.r.l." 
-                          class="mt-1 bg-white" 
-                          required 
+                            id="ragione_sociale" 
+                            v-model="form.ragione_sociale" 
+                            placeholder="Es: Rossi Impianti S.r.l." 
+                            class="mt-1 bg-white" 
+                            required 
                         />
                         <InputError :message="form.errors.ragione_sociale" />
                     </div>
 
                     <div class="sm:col-span-3">
-                        <div class="flex items-center gap-2 mb-1">
-                            <Label for="referente">Referente Principale</Label>
+                        <div class="flex items-center gap-2 min-h-[24px]">
+                            <Label for="referente">Referente principale</Label>
                             <HoverCard>
                                 <HoverCardTrigger as-child>
-                                <button type="button" class="text-slate-400 hover:text-primary">
+                                <button type="button" class="text-slate-400 hover:text-primary outline-none">
                                     <Info class="w-4 h-4" />
                                 </button>
                                 </HoverCardTrigger>
@@ -196,7 +199,7 @@ const submit = () => {
                     </div>
                     
                     <div class="sm:col-span-3">
-                        <Label for="codice_fiscale">Codice Fiscale</Label>
+                        <Label for="codice_fiscale">Codice fiscale</Label>
                         <Input id="codice_fiscale" v-model="form.codice_fiscale" class="mt-1 bg-white" placeholder="Codice fiscale" />
                         <InputError :message="form.errors.codice_fiscale" />
                     </div>
@@ -257,7 +260,7 @@ const submit = () => {
                     </div>
 
                     <div class="sm:col-span-2">
-                        <Label>Email Ordinaria</Label>
+                        <Label>Email ordinaria</Label>
                         <Input v-model="form.email" type="email" placeholder="email@esempio.it" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
@@ -265,7 +268,7 @@ const submit = () => {
                         <Input v-model="form.pec" type="email" placeholder="pec@legalmail.it" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Sito Internet</Label>
+                        <Label>Sito internet</Label>
                         <Input v-model="form.sito_web" placeholder="https://..." class="mt-1 bg-white" />
                     </div>
                 </div>
@@ -464,7 +467,7 @@ const submit = () => {
             >
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                 <Plus v-else class="h-4 w-4" />
-                Salva Fornitore
+                Salva fornitore
             </Button>
         </div>
 
