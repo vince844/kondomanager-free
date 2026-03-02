@@ -12,7 +12,14 @@ class BudgetCoverageService
         $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli']);
         
         if (!$gestione->pianoConto) {
-            return ['status' => 'empty', 'items' => []];
+            return [
+                'status' => 'empty', 
+                'items'  => [],
+                'totali' => [
+                    'budget'      => 0, 
+                    'pianificato' => 0
+                ]
+            ];
         }
 
         $contiRadice     = $gestione->pianoConto->conti->whereNull('parent_id');
@@ -165,19 +172,18 @@ class BudgetCoverageService
                     $figliFonte = $figliConDeficit; // copia modificabile
 
                     while ($residuoPiano > 0 && !empty($figliFonte)) {
-                        $n         = count($figliFonte);
+                        $n = count($figliFonte);
                         $quotaBase = (int) floor($residuoPiano / $n);
 
+                        // Gestione del resto distribuito in modo equo (Round-Robin)
                         if ($quotaBase === 0) {
-                            // Residuo troppo piccolo per dividere equamente:
-                            // diamo 1 centesimo al primo figlio ancora in deficit
-                            $map[$figliFonte[0]['id']] += 1;
-                            $residuoPiano              -= 1;
-                            $figliFonte[0]['deficit']  -= 1;
-                            if ($figliFonte[0]['deficit'] <= 0) {
-                                array_shift($figliFonte);
+                            foreach ($figliFonte as $f) {
+                                if ($residuoPiano <= 0) break;
+                                
+                                $map[$f['id']] = ($map[$f['id']] ?? 0) + 1;
+                                $residuoPiano -= 1;
                             }
-                            continue;
+                            break; // Residuo esaurito in un solo passaggio, usciamo dal ciclo.
                         }
 
                         $nuoviFigli = [];
@@ -194,14 +200,10 @@ class BudgetCoverageService
                             }
                         }
 
-                        // Se nessun figlio ha consumato meno della quota (tutti saturi),
-                        // usciamo per evitare loop infinito
-                    /*     if (count($nuoviFigli) === count($figliFonte)) {
-                            break;
-                        } */
-
+                        // Se abbiamo soddisfatto tutti i figli o non ci sono più soldi, il ciclo si fermerà naturalmente
                         $figliFonte = $nuoviFigli;
                     }
+
                 }
             }
         }

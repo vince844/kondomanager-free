@@ -10,6 +10,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestione;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
@@ -331,27 +332,49 @@ class GestioneController extends Controller
     public function destroy(Condominio $condominio, Esercizio $esercizio, Gestione $gestione): RedirectResponse
     {
         try {
+            // Livello 1: Verifica Piani Rate e Rate Emesse
+            $haRateGenerate = $gestione->pianiRate()->whereHas('rate')->exists();
+            if ($haRateGenerate) {
+                return back()->with($this->flashError(
+                    'Impossibile eliminare: esistono rate emesse in questa gestione. Per eliminarla, devi prima cancellare le rate dal Piano Rate, oppure puoi modificarla e togliere la spunta "Attiva" per nasconderla.'
+                ));
+            }
 
+            // Livello 2: Verifica Scritture Contabili (Movimenti in Partita Doppia)
+            $totaleScritture = \App\Models\Gestionale\ScritturaContabile::where('gestione_id', $gestione->id)->count();
+            
+            if ($totaleScritture > 0) {
+                return back()->with($this->flashError(
+                    "Impossibile eliminare: la gestione contiene {$totaleScritture} scritture contabili. Elimina prima i movimenti associati, oppure disattiva la gestione togliendo la spunta 'Attiva'."
+                ));
+            }
+
+            // Livello 3: Eliminazione sicura in Cascata
+            DB::beginTransaction();
+            
+            if ($gestione->pianoConto) {
+                $gestione->pianoConto->delete(); 
+            }
+            
+            $gestione->pianiRate()->delete();
             $gestione->delete();
+
+            DB::commit();
 
             return to_route('admin.gestionale.esercizi.gestioni.index', [
                 'condominio'  => $condominio->id,
                 'esercizio'   => $esercizio->id,
-            ])->with($this->flashSuccess(__('gestionale.success_delete_gestione')));
-                
-        } catch (\Throwable $e) {
+            ])->with($this->flashSuccess('Gestione eliminata con successo.'));
 
+        } catch (\Throwable $e) {
+            DB::rollBack();
             Log::error('Error deleting gestione', [
                 'gestione_id'    => $gestione->id,
                 'condominio_id'  => $condominio->id,
                 'exception'      => $e,
             ]);
 
-            return to_route('admin.gestionale.esercizi.gestioni.index', [
-                'condominio'  => $condominio->id,
-                'esercizio'   => $esercizio->id,
-            ])->with($this->flashError(__('gestionale.error_delete_gestione')));
-
+            return back()->with($this->flashError(__('gestionale.error_delete_gestione')));
         }
     }
 }

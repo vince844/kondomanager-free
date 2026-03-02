@@ -23,6 +23,7 @@ use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
+use App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController;
 use App\Http\Controllers\Gestionale\Scale\ScalaController;
 use App\Http\Controllers\Gestionale\Struttura\StrutturaController;
 use App\Http\Controllers\Gestionale\Tabelle\FetchTabelleController;
@@ -60,6 +61,9 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::resource('scale', ScalaController::class)
         ->parameters(['scale' => 'scala']);
+    
+    Route::resource('saldi', SaldoInizialeController::class)
+        ->parameters(['saldi' => 'saldo']);
     
     Route::resource('immobili', ImmobileController::class)
         ->parameters(['immobili' => 'immobile']);

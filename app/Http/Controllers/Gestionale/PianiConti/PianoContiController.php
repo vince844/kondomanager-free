@@ -15,7 +15,7 @@ use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestione;
-use App\Services\Gestionale\BudgetCoverageService;  // ← AGGIUNTO
+use App\Services\Gestionale\BudgetCoverageService; 
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;

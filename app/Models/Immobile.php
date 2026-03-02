@@ -121,4 +121,9 @@ class Immobile extends Model
         return $this->morphMany(Documento::class, 'documentable');
     }
 
+    public function saldi()
+    {
+        return $this->hasMany(Saldo::class);
+    }
+
 }

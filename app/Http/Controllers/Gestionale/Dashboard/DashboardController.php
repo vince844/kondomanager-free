@@ -32,6 +32,12 @@ class DashboardController extends Controller
 
             foreach ($esercizio->gestioni as $gestione) {
                 $report = $coverageService->analyze($gestione);
+
+                // Salta la gestione se l'array restituito ha lo status 'empty'
+                if (($report['status'] ?? '') === 'empty') {
+                    continue;
+                }
+                
                 $totPrev += $report['totali']['budget'];
                 $totPian += $report['totali']['pianificato'];
 

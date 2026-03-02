@@ -124,4 +124,12 @@ class Fornitore extends Model
     {
         return $this->hasMany(FatturaPassiva::class, 'fornitore_id');
     }
+
+    /**
+     * Scope per filtrare i fornitori attivi.
+     */
+    public function scopeAttivi($query)
+    {
+        return $query->where('stato', 'attivo');
+    }
 }
