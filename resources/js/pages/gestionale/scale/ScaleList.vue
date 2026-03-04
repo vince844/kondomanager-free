@@ -82,13 +82,13 @@ const pageGuides = [
       <div class="w-full">
         <StrutturaLayout>
 
-          <div class="container mx-auto p-0 mt-4">
+          <div class="container mx-auto">
             
             <div v-if="flashMessage">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />
             </div>
 
-            <div>
+            <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4">
               <DataTable 
                 :columns="columns" 
                 :data="props.scale" 

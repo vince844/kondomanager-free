@@ -11,7 +11,6 @@ use Illuminate\Validation\Rule;
  * @method bool filled(string $key)
  * @method \Illuminate\Routing\Route|null route(string|null $param = null, mixed $default = null)
  * @method string|null input(string $key, mixed $default = null)
- * @property-read string $saldo_iniziale
  */
 class CreateImmobileAnagraficaRequest extends FormRequest
 {
@@ -34,7 +33,6 @@ class CreateImmobileAnagraficaRequest extends FormRequest
     {
           return [
             'quota'               => 'required|numeric', 
-            'saldo_iniziale'      => 'nullable|string',
             'note'                => 'sometimes|nullable|string',
             'anagrafica_id'       => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],

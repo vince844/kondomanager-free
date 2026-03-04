@@ -120,24 +120,6 @@ class ImmobileAnagraficaController extends Controller
                 'note'            => $data['note'] ?? null,
             ]);
 
-             // Recupera l’esercizio aperto
-            $esercizio = $condominio->esercizi()->where('stato', 'aperto')->first();
-
-            if ($esercizio) {
-                Saldo::updateOrCreate(
-                    [
-                        'esercizio_id'  => $esercizio->id,
-                        'condominio_id' => $condominio->id,
-                        'anagrafica_id' => $data['anagrafica_id'],
-                        'immobile_id'   => $immobile->id,
-                    ],
-                    [
-                        'saldo_iniziale' => MoneyHelper::toCents($data['saldo_iniziale']) ?? 0,
-                        'saldo_finale'   => 0,
-                    ]
-                );
-            }
-
            return to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
@@ -180,20 +162,12 @@ class ImmobileAnagraficaController extends Controller
         $anagraficaPivot = $immobile->anagrafiche()->where('anagrafica_id', $anagrafica->id)->first();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
-        // Recupera il saldo per questo esercizio/anagrafica/immobile
-        $saldo = Saldo::where('esercizio_id', $esercizio->id)
-                    ->where('condominio_id', $condominio->id)
-                    ->where('anagrafica_id', $anagrafica->id)
-                    ->where('immobile_id', $immobile->id)
-                    ->first();
-
         return Inertia::render('gestionale/immobili/anagrafiche/AnagraficheEdit', [
             'condominio'    => $condominio,
             'esercizio'     => $esercizio,
             'immobile'      => new ImmobileResource($immobile),
             'anagrafiche'   => AnagraficaResource::collection(Anagrafica::all()),
             'anagrafica'    => $anagraficaPivot,
-            'saldoIniziale' => $saldo ? $saldo->saldo_iniziale : 0,
         ]);
     }
 
@@ -241,37 +215,6 @@ class ImmobileAnagraficaController extends Controller
                     'data_fine'       => $data['data_fine'] ?? null,
                     'note'            => $data['note'] ?? null,
                 ]);
-            }
-
-            // 2. GESTIONE SALDO INIZIALE
-            $esercizio = $this->getEsercizioCorrente($condominio);
-
-            if ($esercizio) {
-                
-                // Se l'anagrafica è cambiata, cancelliamo il saldo del "vecchio" proprietario per questo immobile/esercizio
-                // per evitare che rimangano debiti/crediti orfani su questo immobile.
-                if ($anagraficaCambiata) {
-                    Saldo::where('esercizio_id', $esercizio->id)
-                        ->where('condominio_id', $condominio->id)
-                        ->where('immobile_id', $immobile->id)
-                        ->where('anagrafica_id', $vecchioAnagraficaId)
-                        ->delete();
-                }
-
-                // Aggiorna o Crea il saldo per l'anagrafica corrente (quella del form)
-                // Nota: MoneyHelper::toCents gestisce la conversione (es. 100,00 -> 10000)
-                Saldo::updateOrCreate(
-                    [
-                        'esercizio_id'  => $esercizio->id,
-                        'condominio_id' => $condominio->id,
-                        'immobile_id'   => $immobile->id,
-                        'anagrafica_id' => $nuovoAnagraficaId, 
-                    ],
-                    [
-                        'saldo_iniziale' => MoneyHelper::toCents($data['saldo_iniziale'] ?? 0),
-                        // 'saldo_finale' => 0 // Non sovrascriviamo il saldo finale se esiste logica di calcolo altrove
-                    ]
-                );
             }
 
             DB::commit();

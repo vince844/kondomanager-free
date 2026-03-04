@@ -5,7 +5,6 @@ namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 use App\Traits\ValidatesImmobileAnagraficaPivot;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -31,7 +30,6 @@ class UpdateImmobileAnagraficaRequest extends FormRequest
             'note'            => 'sometimes|nullable|string',
             'anagrafica_id'   => ['required','integer', Rule::exists('anagrafiche', 'id')],
             'tipologia'       => 'required|in:proprietario,inquilino,usufruttuario',
-            'saldo_iniziale'  => 'nullable|string',
             'data_inizio'     => 'required|date',
             'data_fine'       => 'sometimes|nullable|date',
         ];

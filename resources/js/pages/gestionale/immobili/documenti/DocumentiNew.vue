@@ -1,19 +1,21 @@
 <script setup lang="ts">
-  
 import { computed, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle, UploadCloud, Info } from 'lucide-vue-next';
+import { UploadCloud, LoaderCircle, Info, FileText, Share2, Eye } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { Building } from '@/types/buildings';
@@ -31,9 +33,30 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'crea documento', href: '#' },
+  { title: 'Carica Documento', href: '#' },
+]);
+
+const pageGuides = computed(() => [
+  {
+    title: 'Nome e Dettagli',
+    description: "Assegna un titolo chiaro (es. 'Planimetria Catastale') per facilitare la ricerca.",
+    icon: FileText,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Visibilità',
+    description: "Scegli se il documento è ad uso interno o visibile al proprietario sull'app.",
+    icon: Eye,
+    colorVariant: 'amber' as const
+  },
+  {
+    title: 'Upload (Solo PDF)',
+    description: "Trascina o seleziona il file dal tuo computer. Assicurati che sia in formato PDF.",
+    icon: UploadCloud,
+    colorVariant: 'emerald' as const
+  }
 ]);
 
 const file = ref<File | null>(null)
@@ -84,155 +107,187 @@ const submit = (): void => {
 </script>
 
 <template>
-  <Head title="Crea documento immobile" />
+  <Head title="Carica documento immobile" />
 
-  <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <ImmobileLayout>
-      <form class="space-y-2" @submit.prevent="submit">
-        <!-- Action buttons -->
-        <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
-          <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-            <Plus class="w-4 h-4" v-if="!form.processing" />
-            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva
-          </Button>
+  <GestionaleLayout>
+    <div class="px-6 py-8 space-y-4">
 
-          <Link
-            as="button"
-            :href="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
-            class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-          >
-            <List class="w-4 h-4" />
-            <span>Elenco</span>
-          </Link>
-        </div>
+      <PageHeaderGuide
+        page-title="Carica documento"
+        :page-subtitle="`Aggiungi un nuovo file all'archivio dell'unità immobiliare: ${props.immobile.nome}`"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :back-url="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
+        back-text="Annulla e torna all'elenco"
+      />
 
-        <Separator class="my-4" />
+      <ImmobileLayout>
+        <div class="space-y-6">
 
-        <!-- Two-column layout (3:1 ratio) -->
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 ">
-          <!-- Main Card (3/4 width) -->
-          <div class="col-span-1 lg:col-span-3 mt-3">
-            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
-              <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                <div class="sm:col-span-3">
-                  <Label for="nome">Nome documento</Label>
-                  <Input 
-                    id="name" 
-                    class="mt-1 block w-full"
-                    v-model="form.name" 
-                    v-on:focus="form.clearErrors('name')"
-                    placeholder="Nome documento" 
-                  />
-                  <InputError :message="form.errors.name" />
-                </div>
-              </div> 
+          <form @submit.prevent="submit" class="space-y-6">
 
-              <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <Label for="nome">Descrizione documento</Label>
-                  <Textarea 
-                    id="description" 
-                    class="mt-1 block w-full min-h-[200px]"
-                    v-model="form.description" 
-                    v-on:focus="form.clearErrors('description')"
-                    placeholder="Descrizone documento" 
-                  />
-                  <InputError :message="form.errors.description" />
-                </div>     
-              </div> 
-
-              <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <Label for="file-upload">Seleziona documento</Label>
-                  <label
-                    for="file-upload"
-                    class="mt-2 flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-                  >
-                    <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
-                    <span class="text-gray-500 dark:text-gray-400 text-center">
-                      <strong>Clicca qui per selezionare il documento</strong>
-                    </span>
-                    <input
-                      id="file-upload"
-                      type="file"
-                      class="hidden"
-                      accept="application/pdf"
-                      @change="handleFileChange"
+            <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Dettagli e Permessi</CardTitle>
+                <CardDescription>Inserisci le informazioni e chi può visualizzare il file.</CardDescription>
+              </CardHeader>
+              
+              <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-12">
+                  
+                  <div class="sm:col-span-8">
+                    <Label for="name" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Nome documento *</Label>
+                    <Input 
+                      id="name" 
+                      v-model="form.name" 
+                      class="w-full bg-white dark:bg-slate-950"
+                      placeholder="es. Contratto di Locazione 2026" 
+                      v-on:focus="form.clearErrors('name')"
                     />
-                  </label>
-
-                  <div v-if="file" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                    File selezionato: <strong>{{ file.name }}</strong>
-                    <button 
-                      type="button" 
-                      @click="removeFile" 
-                      class="ml-2 text-red-500 hover:text-red-700"
-                    >
-                      Rimuovi
-                    </button>
+                    <InputError :message="form.errors.name" />
                   </div>
-                  <InputError :message="form.errors.file" />
 
-                  <!-- Progress bar -->
-                  <div v-if="progress !== null" class="mt-4">
-                    <div class="w-full h-2 bg-gray-200 rounded overflow-hidden">
-                      <div
-                        class="h-full bg-blue-600 transition-all duration-300"
-                        :style="{ width: `${progress}%` }"
-                      ></div>
+                  <div class="sm:col-span-4">
+                    <div class="flex items-center gap-1 mb-1.5">
+                      <Label for="is_published" class="font-bold text-xs uppercase tracking-widest text-slate-500">Visibilità</Label>
+                      <HoverCard>
+                        <HoverCardTrigger as-child>
+                          <button type="button" class="cursor-pointer flex items-center">
+                            <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                          </button>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
+                          <p class="text-sm">Scegli se il documento deve essere pubblicato sull'app dei condòmini associati o rimanere ad uso interno.</p>
+                        </HoverCardContent>
+                      </HoverCard>
                     </div>
-                    <p class="text-xs text-gray-600 mt-1">{{ progress }}%</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
-          <!-- Side Card (1/4 width) -->
-          <div class="col-span-1 mt-3">
-            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
-              <div class="grid grid-cols-1 sm:grid-cols-6">
-                <div class="sm:col-span-6">
-                  <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                    <Label for="stato">Stato pubblicazione</Label>
-                    <HoverCard>
-                      <HoverCardTrigger as-child>
-                        <button type="button" class="cursor-pointer">
-                          <Info class="w-4 h-4 text-muted-foreground" />
-                        </button>
-                      </HoverCardTrigger>
-                      <HoverCardContent class="w-80">
-                        <div class="flex justify-between space-x-4">
-                          <div class="space-y-1">
-                            <h4 class="text-sm font-semibold">
-                              Stato pubblicazione
-                            </h4>
-                            <p class="text-sm">
-                              Scegli se rendere visibile il documento o mantenerlo nascosto.
-                            </p>
-                          </div>
+                    <v-select 
+                      class="w-full bg-white dark:bg-slate-950 text-sm"
+                      :options="publishedConstants" 
+                      label="label" 
+                      v-model="form.is_published"
+                      :reduce="(is_published: PublishedType) => is_published.value"
+                      placeholder="Seleziona visibilità..."
+                    >
+                      <template #option="{ label, icon }">
+                        <div class="flex items-center gap-2">
+                            <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                            <span>{{ trans(label) }}</span> 
                         </div>
-                      </HoverCardContent>
-                    </HoverCard>
+                      </template>
+                      <template #selected-option="{ label, icon }">
+                        <div class="flex items-center gap-2">
+                            <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                            <span>{{ trans(label) }}</span>
+                        </div>
+                      </template>
+                    </v-select>
+                    <InputError :message="form.errors.is_published" />
                   </div>
 
-                  <v-select 
-                    :options="publishedConstants" 
-                    label="label" 
-                    v-model="form.is_published"
-                    placeholder="Stato pubblicazione"
-                    @update:modelValue="form.clearErrors('is_published')" 
-                    :reduce="(is_published: PublishedType) => is_published.value"
-                  />
-                  <InputError :message="form.errors.is_published" />
+                  <div class="sm:col-span-12">
+                    <Label for="description" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Descrizione (Opzionale)</Label>
+                    <Textarea 
+                      id="description" 
+                      v-model="form.description" 
+                      class="w-full min-h-[100px] bg-white dark:bg-slate-950 resize-none"
+                      placeholder="Eventuali note o dettagli sul contenuto del documento..." 
+                      v-on:focus="form.clearErrors('description')"
+                    />
+                    <InputError :message="form.errors.description" />
+                  </div>
+
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+
+            <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Allega file</CardTitle>
+                <CardDescription>Carica il documento in formato PDF (Max 10MB).</CardDescription>
+              </CardHeader>
+              
+              <CardContent class="space-y-6">
+                <div class="grid grid-cols-1">
+                  
+                  <div class="sm:col-span-1">
+                    <label
+                      for="file-upload"
+                      class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl cursor-pointer bg-white dark:bg-slate-950 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors group"
+                    >
+                      <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <div class="p-3 bg-indigo-50 dark:bg-indigo-900/30 rounded-full mb-3 group-hover:scale-110 transition-transform">
+                          <UploadCloud class="w-8 h-8 text-indigo-500" />
+                        </div>
+                        <p class="mb-2 text-sm text-slate-500 dark:text-slate-400">
+                          <span class="font-semibold text-indigo-600 dark:text-indigo-400">Clicca per caricare</span> o trascina il file qui
+                        </p>
+                        <p class="text-xs text-slate-400 dark:text-slate-500">Solo PDF</p>
+                      </div>
+                      <input
+                        id="file-upload"
+                        type="file"
+                        class="hidden"
+                        accept="application/pdf"
+                        @change="handleFileChange"
+                      />
+                    </label>
+
+                    <div v-if="file" class="mt-4 flex items-center justify-between p-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">
+                      <div class="flex items-center gap-3 overflow-hidden">
+                        <FileText class="w-5 h-5 text-indigo-500 shrink-0" />
+                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300 truncate">{{ file.name }}</span>
+                      </div>
+                      <button 
+                        type="button" 
+                        @click="removeFile" 
+                        class="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded-md shrink-0"
+                      >
+                        Rimuovi
+                      </button>
+                    </div>
+                    <InputError :message="form.errors.file" class="mt-2" />
+
+                    <div v-if="progress !== null" class="mt-4 space-y-1.5">
+                      <div class="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          class="h-full bg-indigo-500 transition-all duration-300"
+                          :style="{ width: `${progress}%` }"
+                        ></div>
+                      </div>
+                      <p class="text-[10px] font-bold text-slate-500 text-right">{{ progress }}% completato</p>
+                    </div>
+                  </div>
+
+                </div>
+              </CardContent>
+            </Card>
+
+            <div class="flex items-center justify-end gap-3 pt-2">
+              <Link
+                  :href="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
+                  class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+              >
+                Annulla
+              </Link>
+
+              <Button 
+                  type="submit"
+                  :disabled="form.processing || !file" 
+                  class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+              >
+                  <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                  <UploadCloud v-else class="h-4 w-4" />
+                  Carica documento
+              </Button>
             </div>
-          </div>
+
+          </form>
+
         </div>
-      </form>
-    </ImmobileLayout>
+      </ImmobileLayout>
+   </div>
   </GestionaleLayout>
 </template>
 

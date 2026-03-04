@@ -7,16 +7,17 @@ import DataTable from '@/components/gestionale/palazzine/DataTable.vue';
 import { getColumns } from '@/components/gestionale/palazzine/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
-import { Building, PieChart, Layers } from 'lucide-vue-next';
+import { Building as BuildingIcon, PieChart, Layers } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
 import type { Palazzina } from '@/types/gestionale/palazzine';
-import type { Building as BuildingType } from '@/types/buildings';
+import type { Building } from '@/types/buildings';
 import type { PaginationMeta } from '@/types/pagination';
 
 const props = defineProps<{
-  condominio: BuildingType;
-  condomini: BuildingType[];
+  condominio: Building;
+  condomini: Building[];
   palazzine: Palazzina[];
   meta: PaginationMeta;
 }>()
@@ -28,19 +29,19 @@ const columns = computed(() => getColumns(props.condominio));
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
-// Breadcrumbs testuali per il nuovo componente Header
+// Breadcrumbs testuali per il componente Header
 const headerBreadcrumbs = computed(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: 'Struttura', href: '#' },
-  { title: 'Elenco Palazzine' }
+  { title: 'Palazzine' }
 ]);
 
-// Configurazione della guida per le Palazzine
+// Configurazione della guida
 const pageGuides = [
   {
     title: 'Complessi Multipli',
     description: 'Gestisci super-condomini suddividendoli in palazzine, scale o blocchi indipendenti per mantenere l\'anagrafica ordinata.',
-    icon: Building,
+    icon: BuildingIcon,
     colorVariant: 'blue' as const
   },
   {
@@ -63,6 +64,10 @@ const pageGuides = [
 
   <GestionaleLayout>
 
+    <template #breadcrumb-condominio>
+      <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
+    </template>
+
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
@@ -73,19 +78,17 @@ const pageGuides = [
         :video-url="null /* 'https://youtube.com/...' */"
         :condominio="props.condominio"
         :condomini="props.condomini"
-      >
-      </PageHeaderGuide>
+      />
 
       <div class="w-full">
         <StrutturaLayout>
-
-          <div class="container mx-auto p-0 mt-4">
+          <section class="w-full space-y-4">
             
             <div v-if="flashMessage">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />
             </div>
 
-            <div>
+            <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4">
               <DataTable 
                 :columns="columns" 
                 :data="props.palazzine" 
@@ -94,12 +97,10 @@ const pageGuides = [
               />
             </div>
 
-          </div>
-
+          </section>
         </StrutturaLayout>
       </div>
 
     </div>
-
   </GestionaleLayout>
 </template>

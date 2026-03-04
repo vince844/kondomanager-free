@@ -172,7 +172,7 @@ function selectEsercizio(esercizioId: number | string) {
             class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
           >
             <CornerLeftUp class="w-3.5 h-3.5 text-white" />
-            Dashboard Social
+            Dashboard social
           </Link>
         </template> 
 
@@ -181,7 +181,7 @@ function selectEsercizio(esercizioId: number | string) {
         <Link 
             v-if="backUrl"
             :href="backUrl"
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
             <ArrowLeft class="w-3.5 h-3.5 text-slate-500" />
             <span>{{ backText || 'Indietro' }}</span>
@@ -189,7 +189,7 @@ function selectEsercizio(esercizioId: number | string) {
 
         <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
           <PlayCircle class="w-3.5 h-3.5" />
-          VIDEO GUIDA
+          Video guida
         </a>
 
       </div>

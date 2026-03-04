@@ -6,6 +6,7 @@ import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import { Pencil, Trash2, Lock, Plus, Users, Coins, TrendingUp, TrendingDown, ChevronDown, Building2, User } from "lucide-vue-next";
 import MoneyInput from '@/components/MoneyInput.vue';
 import { unformat } from 'v-money3';
+import vSelect from "vue-select";
 import type { ImmobileConSaldi } from "@/types/gestionale/saldi";
 import type { Building } from "@/types/buildings";
 
@@ -150,15 +151,32 @@ const modalForm = ref({
 });
 
 function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
+  // Pre-calcolo al volo per auto-selezionare, se possibile
+  const idAssegnati = props.immobile.saldi
+    .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null)
+    .map((s: any) => s.anagrafica_id);
+    
+  const liberi = props.immobile.anagrafiche?.filter(a => !idAssegnati.includes(a.id)) || [];
+
   modalForm.value = {
     gestioneId,
     tipo,
     targetType: 'solidale',
-    anagraficaId: props.immobile.anagrafiche?.length === 1 ? props.immobile.anagrafiche[0].id : null,
+    anagraficaId: liberi.length === 1 ? liberi[0].id : null,
     importo: ''
   };
   showAddModal.value = true;
 }
+
+const anagraficheDisponibili = computed(() => {
+  if (!modalForm.value.gestioneId || !props.immobile.anagrafiche) return [];
+
+  const idAssegnati = props.immobile.saldi
+    .filter((s: any) => s.gestione_id == modalForm.value.gestioneId && s.anagrafica_id != null)
+    .map((s: any) => s.anagrafica_id);
+
+  return props.immobile.anagrafiche.filter(a => !idAssegnati.includes(a.id));
+});
 
 function closeAddModal() {
   showAddModal.value = false;
@@ -500,12 +518,36 @@ function submitAddModal() {
               </div>
 
               <div v-if="modalForm.targetType === 'personale'" class="mt-3">
-                <select v-model="modalForm.anagraficaId" class="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm rounded-lg px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:text-slate-200">
-                  <option :value="null" disabled>Seleziona l'anagrafica...</option>
-                  <option v-for="a in immobile.anagrafiche" :key="a.id" :value="a.id">
-                    {{ a.nome }} ({{ a.pivot?.tipologia }})
-                  </option>
-                </select>
+  
+                <div v-if="anagraficheDisponibili.length > 0">
+                  <v-select 
+                    class="w-full bg-white dark:bg-slate-800 text-sm rounded-lg"
+                    :options="anagraficheDisponibili" 
+                    v-model="modalForm.anagraficaId"
+                    :reduce="(a: any) => a.id"
+                    placeholder="Cerca o seleziona l'anagrafica..."
+                  >
+                    <template #option="{ nome, cognome, pivot }">
+                      <div class="flex flex-col py-1">
+                        <span class="font-medium text-sm">{{ nome }} {{ cognome }}</span>
+                        <span class="text-xs text-slate-400 capitalize">{{ pivot?.tipologia }}</span>
+                      </div>
+                    </template>
+
+                    <template #selected-option="{ nome, cognome, pivot }">
+                      <div class="flex items-center gap-1.5 text-sm">
+                        <span class="font-medium">{{ nome }} {{ cognome }}</span>
+                        <span class="text-xs text-slate-400">({{ pivot?.tipologia }})</span>
+                      </div>
+                    </template>
+                  </v-select>
+                </div>
+
+                <div v-else class="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-400">
+                  Tutti i soggetti associati hanno già un saldo per questa gestione. <br>
+                  <strong>Suggerimento:</strong> modifica l'importo della riga già esistente.
+                </div>
+
               </div>
             </div>
 
@@ -546,3 +588,5 @@ function submitAddModal() {
 
   </div>
 </template>
+
+<style src="vue-select/dist/vue-select.css"></style>

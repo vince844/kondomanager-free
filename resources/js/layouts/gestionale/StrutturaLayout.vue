@@ -72,7 +72,7 @@ const currentPath = window.location.pathname;
     </nav>
 
     <!-- Main content -->
-    <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
+    <div class="w-full">
       <section class="w-full">
         <slot />
       </section>

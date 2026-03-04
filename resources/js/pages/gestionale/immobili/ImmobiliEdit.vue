@@ -1,15 +1,16 @@
 <script setup lang="ts">
-
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { List, Save, LoaderCircle, Home, Hash, Info, MapPin } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
@@ -32,9 +33,30 @@ const { generatePath, generateRoute } = usePermission();
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'modifica immobile', href: '#' },
+  { title: 'Modifica', href: '#' },
+]);
+
+const pageGuides = computed(() => [
+  {
+    title: 'Aggiornamento Dati',
+    description: "Modifica le informazioni generali, la tipologia o la collocazione dell'unità.",
+    icon: Home,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Consistenza',
+    description: "Rivedi i dati tecnici come superficie e vani, essenziali per i calcoli millesimali.",
+    icon: Info,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Riferimenti Catastali',
+    description: "Aggiorna i dati identificativi ufficiali per la conformità dell'anagrafe condominiale.",
+    icon: Hash,
+    colorVariant: 'amber' as const
+  }
 ]);
 
 const form = useForm({
@@ -59,288 +81,241 @@ const form = useForm({
 const submit = () => {
     form.put(route(...generateRoute('gestionale.immobili.update', { condominio: props.condominio.id, immobile: props.immobile.id })), {
         preserveScroll: true,
-        onSuccess: () => {
-            form.reset()
-        }
     });
 };
 
 </script>
 
 <template>
+  <Head title="Modifica immobile" />
 
-    <Head title="Modifica immobile" />
+  <GestionaleLayout>
+    <div class="px-6 py-8 space-y-6">
 
-    <GestionaleLayout :breadcrumbs="breadcrumbs">
+      <PageHeaderGuide
+        page-title="Modifica immobile"
+        :page-subtitle="`Stai modificando l'unità immobiliare: ${props.immobile.nome}`"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :back-url="generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id })"
+        back-text="Annulla e torna al dettaglio"
+      />
 
-      <div class="px-4 py-6">
-        <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4">
-          <section class="w-full">
+      <form @submit.prevent="submit" class="space-y-6">
 
-            <form class="space-y-2" @submit.prevent="submit">
-
-              <!-- Action buttons -->
-              <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
-                <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-                  <Plus class="w-4 h-4" v-if="!form.processing" />
-                  <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                  Salva
-                </Button>
-
-                <Link
-                  as="button"
-                  :href="generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id })"
-                  class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-                >
-                  <List class="w-4 h-4" />
-                  <span>Immobili</span>
-                </Link>
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+          <CardHeader class="pb-3 border-b border-dashed mb-4">
+            <CardTitle class="text-base font-semibold">Ubicazione e Tipologia</CardTitle>
+            <CardDescription>Aggiorna il nome e la posizione dell'unità.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-6">
+            <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
+              
+              <div class="sm:col-span-3">
+                <Label for="nome">Nome immobile</Label>
+                <Input 
+                    id="nome" 
+                    v-model="form.nome" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                    v-on:focus="form.clearErrors('nome')"
+                />
+                <InputError :message="form.errors.nome" />
               </div>
 
-              <Separator class="my-4" />
-
-              <div class="bg-white dark:bg-muted rounded space-y-4 mt-3" >
-
-                <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                    <div class="sm:col-span-3">
-                      <Label for="nome">Nome</Label>
-                      <Input 
-                        id="nome" 
-                        class="mt-1 block w-full"
-                          v-model="form.nome" 
-                          v-on:focus="form.clearErrors('nome')"
-                          placeholder="Nome" 
-                      />
-                      
-                      <InputError :message="form.errors.nome" />
-            
-                    </div>
-                </div> 
-
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                  <div class="sm:col-span-6">
-                    <Label for="indirizzo">Descrizione</Label>
-                    <Input 
-                      id="descrizione" 
-                      class="mt-1 block w-full"
-                        v-model="form.descrizione" 
-                        v-on:focus="form.clearErrors('descrizione')"
-                        placeholder="Descrizione" 
-                    />
-                    
-                    <InputError class="mt-2" :message="form.errors.descrizione" />
-          
-                  </div>
-                </div>
-
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-
-                  <div class="sm:col-span-2">
-                    <Label for="tipologia">Tipologia</Label>
-                    <v-select 
-                        :options="tipologie" 
-                        label="nome" 
-                        class="mt-1 block w-full"
-                        v-model="form.tipologia_id"
-                        placeholder="Associa tipologia immobile"
-                        @update:modelValue="form.clearErrors('tipologia_id')" 
-                        :reduce="(tipologia: TipologiaImmobile) => tipologia.id"
-                    />
-                    <InputError :message="form.errors.tipologia_id" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="palazzina">Palazzina</Label>
-                      <v-select 
-                          :options="palazzine" 
-                          label="name" 
-                          class="mt-1 block w-full"
-                          v-model="form.palazzina_id"
-                          placeholder="Associa ad una palazzina"
-                          @update:modelValue="form.clearErrors('palazzina_id')" 
-                          :reduce="(palazzina: Palazzina) => palazzina.id"
-                      />
-                    <InputError :message="form.errors.palazzina_id" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="scala">Scala</Label>
-                    <v-select 
-                        :options="scale" 
-                        label="name" 
-                        class="mt-1 block w-full"
-                        v-model="form.scala_id"
-                        placeholder="Associa ad una scala"
-                        @update:modelValue="form.clearErrors('scala_id')" 
-                        :reduce="(scala: Scala) => scala.id"
-                    />
-                    <InputError :message="form.errors.scala_id" />
-                  </div>
-                  
-                </div>
-
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-8">
-
-                  <div class="sm:col-span-2">
-                    <Label for="interno">Interno</Label>
-                    <Input 
-                      id="interno" 
-                      class="mt-1 block w-full"
-                      v-model="form.interno" 
-                      v-on:focus="form.clearErrors('interno')"
-                      placeholder="Interno" 
-                    />
-                    <InputError :message="form.errors.interno" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="piano">Piano</Label>
-                    <Input 
-                      id="foglio_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.piano" 
-                      v-on:focus="form.clearErrors('piano')"
-                      placeholder="Piano" 
-                    />
-                    <InputError :message="form.errors.piano" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="superficie">Superficie</Label>
-                    <Input 
-                      id="superficie" 
-                      class="mt-1 block w-full"
-                      v-model="form.superficie" 
-                      v-on:focus="form.clearErrors('superficie')"
-                      placeholder="Superficie" 
-                    />
-                    <InputError :message="form.errors.superficie" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="numero_vani">Numero vani</Label>
-                    <Input 
-                      id="numero_vani" 
-                      class="mt-1 block w-full"
-                      v-model="form.numero_vani" 
-                      v-on:focus="form.clearErrors('numero_vani')"
-                      placeholder="Numero vani" 
-                    />
-                    <InputError :message="form.errors.numero_vani" />
-                  </div>
-                </div>
-
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                    <div class="sm:col-span-6">
-                        <Label for="note">Note</Label>
-                        <Textarea 
-                            id="note" 
-                            placeholder="Inserisci una nota qui" 
-                            v-model="form.note" 
-                            v-on:focus="form.clearErrors('note')"
-                        />
-                    </div>
-
-                    <InputError :message="form.errors.note" />
-          
-                </div>
-
-                <div>
-                  <h3 class="text-lg font-medium leading-6 text-gray-900">Dati catastali</h3>
-                  <p class="mt-1 text-sm text-gray-500">Di seguito è possibile specificare i dati catastali dell'immobile</p>
-                </div>
-                
-                <Separator class="my-4" />
-
-                <div class="pt-3 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-4">
-                  <!-- Comune catasto (3/4) -->
-                  <div class="sm:col-span-3">
-                    <Label for="comune_catasto">Comune</Label>
-                    <Input 
-                      id="comune_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.comune_catasto" 
-                      v-on:focus="form.clearErrors('comune_catasto')"
-                      placeholder="Comune catasto" 
-                    />
-                    <InputError :message="form.errors.comune_catasto" />
-                  </div>
-
-                  <!-- Codice catasto (1/4) -->
-                  <div class="sm:col-span-1">
-                    <Label for="codice_catasto">Codice</Label>
-                    <Input 
-                      id="codice_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.codice_catasto" 
-                      v-on:focus="form.clearErrors('codice_catasto')"
-                      placeholder="Codice catasto" 
-                    />
-                    <InputError :message="form.errors.codice_catasto" />
-                  </div>
-                </div>
-
-                <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-8">
-
-                  <div class="sm:col-span-2">
-                    <Label for="sezione_catasto">Sezione</Label>
-                    <Input 
-                      id="sezione_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.sezione_catasto" 
-                      v-on:focus="form.clearErrors('sezione_catasto')"
-                      placeholder="Sezione catasto" 
-                    />
-                    <InputError :message="form.errors.sezione_catasto" />
-                  </div>
-                  
-                  <div class="sm:col-span-2">
-                    <Label for="foglio_catasto">Foglio</Label>
-                    <Input 
-                      id="foglio_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.foglio_catasto" 
-                      v-on:focus="form.clearErrors('foglio_catasto')"
-                      placeholder="Foglio catasto" 
-                    />
-                    <InputError :message="form.errors.foglio_catasto" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="particella_catasto">Particella</Label>
-                    <Input 
-                      id="particella_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.particella_catasto" 
-                      v-on:focus="form.clearErrors('particella_catasto')"
-                      placeholder="Particella catasto" 
-                    />
-                    <InputError :message="form.errors.particella_catasto" />
-                  </div>
-
-                  <div class="sm:col-span-2">
-                    <Label for="subalterno_catasto">Subalterno</Label>
-                    <Input 
-                      id="subalterno_catasto" 
-                      class="mt-1 block w-full"
-                      v-model="form.subalterno_catasto" 
-                      v-on:focus="form.clearErrors('subalterno_catasto')"
-                      placeholder="Subalterno catasto" 
-                    />
-                    <InputError :message="form.errors.subalterno_catasto" />
-                  </div>
-                </div>
-
+              <div class="sm:col-span-3">
+                <Label for="tipologia">Tipologia</Label>
+                <v-select 
+                  class="mt-1 bg-white dark:bg-slate-950 text-sm"
+                  :options="tipologie" label="nome" v-model="form.tipologia_id"
+                  :reduce="(t: TipologiaImmobile) => t.id"
+                  @update:modelValue="form.clearErrors('tipologia_id')"
+                />
+                <InputError :message="form.errors.tipologia_id" />
               </div>
 
-            </form>
+              <div class="sm:col-span-6">
+                <Label for="descrizione">Descrizione</Label>
+                <Input 
+                    id="descrizione" 
+                    v-model="form.descrizione" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                    v-on:focus="form.clearErrors('descrizione')"
+                />
+                <InputError :message="form.errors.descrizione" />
+              </div>
 
-          </section>
+              <div class="sm:col-span-3">
+                <Label for="palazzina">Palazzina</Label>
+                <v-select 
+                    class="mt-1 bg-white dark:bg-slate-950 text-sm" 
+                    :options="palazzine" 
+                    label="name" 
+                    v-model="form.palazzina_id" 
+                    :reduce="(p: Palazzina) => p.id" 
+                />
+              </div>
+
+              <div class="sm:col-span-3">
+                <Label for="scala">Scala</Label>
+                <v-select 
+                    class="mt-1 bg-white dark:bg-slate-950 text-sm" 
+                    :options="scale" 
+                    label="name" 
+                    v-model="form.scala_id" 
+                    :reduce="(s: Scala) => s.id" 
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+          <CardHeader class="pb-3 border-b border-dashed mb-4">
+            <CardTitle class="text-base font-semibold">Dettagli strutturali</CardTitle>
+            <CardDescription>Consistenza e informazioni di servizio.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-6">
+            <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-8">
+              
+              <div class="sm:col-span-2">
+                <Label for="interno">Interno</Label>
+                <Input 
+                    id="interno" 
+                    v-model="form.interno" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                    v-on:focus="form.clearErrors('interno')"
+                />
+                <InputError :message="form.errors.interno" />
+              </div>
+              
+              <div class="sm:col-span-2">
+                <Label for="piano">Piano</Label>
+                <Input 
+                    id="piano" 
+                    v-model="form.piano" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono" 
+                />
+              </div>
+              
+              <div class="sm:col-span-2">
+                <Label for="superficie">Superficie (m²)</Label>
+                <Input 
+                    id="superficie" 
+                    v-model="form.superficie" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                />
+              </div>
+              
+              <div class="sm:col-span-2">
+                <Label for="numero_vani">Numero vani</Label>
+                <Input 
+                    id="numero_vani" 
+                    v-model="form.numero_vani" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                />
+              </div>
+
+              <div class="sm:col-span-8">
+                <Label for="note">Note riservate</Label>
+                <Textarea 
+                    id="note" 
+                    v-model="form.note" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                />
+              </div>
+
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+          <CardHeader class="pb-3 border-b border-dashed mb-4">
+              <CardTitle class="text-base font-semibold">Identificativi catastali</CardTitle>
+              <CardDescription>Dati catastali dell'unità immobiliare.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-6">
+            <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4">
+              
+              <div class="sm:col-span-3 font-sans">
+                <Label for="comune_catasto">Comune catastale</Label>
+                <Input 
+                    id="comune_catasto" 
+                    v-model="form.comune_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950" 
+                />
+              </div>
+              
+              <div class="sm:col-span-1 font-sans">
+                <Label for="codice_catasto">Codice</Label>
+                <Input 
+                    id="codice_catasto" 
+                    v-model="form.codice_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                />
+              </div>
+              
+              <div class="sm:col-span-1 font-sans">
+                <Label for="sezione_catasto">Sezione</Label>
+                <Input 
+                    id="sezione_catasto" 
+                    v-model="form.sezione_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                />
+              </div>
+              
+              <div class="sm:col-span-1 font-sans">
+                <Label for="foglio_catasto">Foglio</Label>
+                <Input 
+                    id="foglio_catasto" 
+                    v-model="form.foglio_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                />
+              </div>
+              
+              <div class="sm:col-span-1 font-sans">
+                <Label for="particella_catasto">Particella</Label>
+                <Input 
+                    id="particella_catasto" 
+                    v-model="form.particella_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                />
+              </div>
+              
+              <div class="sm:col-span-1 font-sans">
+                <Label for="subalterno_catasto">Subalterno</Label>
+                <Input 
+                    id="subalterno_catasto" 
+                    v-model="form.subalterno_catasto" 
+                    class="mt-1 bg-white dark:bg-slate-950 font-mono uppercase" 
+                />
+              </div>
+
+            </div>
+          </CardContent>
+        </Card>
+
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <Link
+            :href="generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id })"
+            class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-6 text-[10px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          >
+            Annulla
+          </Link>
+
+          <Button 
+            type="submit"
+            :disabled="form.processing" 
+            class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+          >
+            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+            <Save v-else class="h-4 w-4" />
+            Salva modifiche
+          </Button>
         </div>
-      </div>
 
-    </GestionaleLayout>
+      </form>
+    </div>
+  </GestionaleLayout>
+</template>
 
-  </template>
-
-  <style src="vue-select/dist/vue-select.css"></style>
+<style src="vue-select/dist/vue-select.css"></style>

@@ -1,17 +1,17 @@
 <script setup lang="ts">
-
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
-import CondominioDropdown from "@/components/CondominioDropdown.vue";
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle} from 'lucide-vue-next';
+import { Plus, LoaderCircle, Building2, MapPin, Info } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { Building } from '@/types/buildings'
 import type { BreadcrumbItem } from '@/types';
 
@@ -24,8 +24,30 @@ const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'crea palazzina', href: '#' },
+  { title: props.condominio.nome, href: '#' },
+  { title: 'Struttura', href: generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id }) },
+  { title: 'Nuova Palazzina', href: '#' },
+]);
+
+const pageGuides = computed(() => [
+  {
+    title: 'Identificazione',
+    description: "Assegna un nome o una lettera (es. 'Palazzina A') per raggruppare fisicamente le unità.",
+    icon: Building2,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Dettagli',
+    description: "Aggiungi una descrizione per facilitare il riconoscimento all'interno del complesso.",
+    icon: MapPin,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Note Operative',
+    description: "Inserisci appunti interni utili alla gestione dello stabile, non visibili ai condòmini.",
+    icon: Info,
+    colorVariant: 'amber' as const
+  }
 ]);
 
 const form = useForm({
@@ -42,96 +64,101 @@ const submit = () => {
         }
     });
 };
-
 </script>
 
 <template>
+  <Head title="Crea nuova palazzina" />
 
-    <Head title="Crea nuova palazzina" />
+  <GestionaleLayout>
+    <div class="px-6 py-6 space-y-4">
 
-    <GestionaleLayout :breadcrumbs="breadcrumbs">
-
-      <template #breadcrumb-condominio>
-        <CondominioDropdown :condominio="props.condominio" :condomini="props.condomini" />
-      </template>
+      <PageHeaderGuide
+        page-title="Nuova palazzina"
+        :page-subtitle="`Aggiungi un nuovo blocco edilizio per il condominio: ${props.condominio.nome}`"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :back-url="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
+        back-text="Annulla e torna all'elenco"
+      />
 
       <StrutturaLayout>
+        <div class="space-y-6">
 
-          <form class="space-y-2" @submit.prevent="submit">
+          <form @submit.prevent="submit" class="space-y-6">
 
-            <!-- Action buttons -->
-            <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
-              <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-                <Plus class="w-4 h-4" v-if="!form.processing" />
-                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
-              </Button>
-
-              <Link
-                as="button"
-                :href="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
-                class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-              >
-                <List class="w-4 h-4" />
-                <span>Elenco</span>
-              </Link>
-            </div>
-
-            <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border mt-3" >
-
-              <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+            <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Dati palazzina</CardTitle>
+                <CardDescription>Inserisci i dettagli del nuovo fabbricato.</CardDescription>
+              </CardHeader>
+              
+              <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-6">
+                  
                   <div class="sm:col-span-3">
-                    <Label for="nome">Nome</Label>
+                    <Label for="nome" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Nome palazzina</Label>
                     <Input 
                       id="nome" 
-                      class="mt-1 block w-full"
-                        v-model="form.name" 
-                        v-on:focus="form.clearErrors('name')"
-                        placeholder="Nome" 
+                      class="mt-1 block w-full bg-white dark:bg-slate-950"
+                      v-model="form.name" 
+                      v-on:focus="form.clearErrors('name')"
+                      placeholder="es. Palazzina A, Corpo B..." 
                     />
-                    
                     <InputError :message="form.errors.name" />
-          
                   </div>
-              </div> 
 
-              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                    <Label for="descrizione">Descrizione</Label>
+                    <Label for="descrizione" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Descrizione</Label>
                     <Input 
                       id="descrizione" 
-                      class="mt-1 block w-full"
-                        v-model="form.description" 
-                        v-on:focus="form.clearErrors('description')"
-                        placeholder="Descrizione" 
+                      class="mt-1 block w-full bg-white dark:bg-slate-950"
+                      v-model="form.description" 
+                      v-on:focus="form.clearErrors('description')"
+                      placeholder="es. Fabbricato principale lato strada" 
                     />
-                    
-                    <InputError class="mt-2" :message="form.errors.description" />
-          
+                    <InputError :message="form.errors.description" />
                   </div>
-              </div>
 
-              <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                   <div class="sm:col-span-6">
-                      <Label for="note">Note</Label>
-                      <Textarea 
-                          id="note" 
-                          placeholder="Inserisci una nota qui" 
-                          v-model="form.note" 
-                          v-on:focus="form.clearErrors('note')"
-                      />
+                    <Label for="note" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Note interne</Label>
+                    <Textarea 
+                      id="note" 
+                      class="w-full mt-1 bg-white dark:bg-slate-950 resize-none" 
+                      rows="3"
+                      placeholder="Note visibili solo agli amministratori..." 
+                      v-model="form.note" 
+                      v-on:focus="form.clearErrors('note')"
+                    />
+                    <InputError :message="form.errors.note" />
                   </div>
 
-                  <InputError :message="form.errors.note" />
-        
-              </div>
-       
+                </div>
+              </CardContent>
+            </Card>
+
+            <div class="flex items-center justify-end gap-3 pt-2">
+              <Link
+                  :href="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
+                  class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+              >
+                Annulla
+              </Link>
+
+              <Button 
+                  type="submit"
+                  :disabled="form.processing" 
+                  class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"
+              >
+                  <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                  <Plus v-else class="h-4 w-4" />
+                  Salva Palazzina
+              </Button>
             </div>
 
           </form>
 
+        </div>
       </StrutturaLayout>
-
-    </GestionaleLayout>
-
-  </template>
+    </div>
+  </GestionaleLayout>
+</template>

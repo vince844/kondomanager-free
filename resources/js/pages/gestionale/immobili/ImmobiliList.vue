@@ -38,7 +38,7 @@ const headerBreadcrumbs = computed(() => [
 // Configurazione della guida
 const pageGuides = [
   {
-    title: 'Anagrafica Unità',
+    title: 'Anagrafica immobile',
     description: 'Registra i dati catastali e le informazioni principali degli appartamenti, box e locali commerciali che compongono il condominio.',
     icon: Home,
     colorVariant: 'blue' as const
