@@ -37,6 +37,12 @@ class CreatePianoRateRequest extends FormRequest
             'capitoli_config.*.id' => 'required|exists:conti,id',
             'capitoli_config.*.importo' => 'nullable|numeric|min:0', 
             'capitoli_config.*.note' => 'nullable|string|max:255',
+            // NUOVO: Configurazione personalizzata dei saldi (Riparto manuale Art. 63)
+            'saldi_config'                             => ['nullable', 'array'],
+            'saldi_config.*.saldo_id'                  => ['required', 'exists:saldi,id'],
+            'saldi_config.*.ripartizioni'              => ['required', 'array'],
+            'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'exists:anagrafiche,id'],
+            'saldi_config.*.ripartizioni.*.importo'    => ['required', 'numeric'],
             
         ];
     }

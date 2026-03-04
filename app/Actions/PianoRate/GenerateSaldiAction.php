@@ -2,73 +2,117 @@
 
 namespace App\Actions\PianoRate;
 
-use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
+use App\Models\Saldo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class GenerateSaldiAction
 {
     /**
-     * Recupera i saldi (debiti/crediti) da applicare al piano rate.
-     * Restituisce un array semplice: [anagrafica_id => importo_centesimi]
+     * @return array Formato: [ anagrafica_id => [ immobile_id => [ 'importo' => X, 'meta' => [...] ] ] ]
      */
-    public function execute(PianoRate $pianoRate, Gestione $gestione, Esercizio $esercizio): array
+    public function execute(PianoRate $pianoRate, Gestione $gestione, array $saldiConfig = []): array
     {
-        $condominioId = $pianoRate->condominio_id;
-        $saldi = [];
+        $saldiDaApplicare = Saldo::where('gestione_id', $gestione->id)
+            ->where('is_applicato', false)
+            ->where('saldo_iniziale', '!=', 0)
+            ->get();
 
-        // 1. TENTATIVO A: Esercizio Precedente CHIUSO (Automatico)
-        // Questo serve per il futuro: quando chiuderai il 2026, il 2027 userà questo blocco.
-        $esercizioPrecedente = Esercizio::where('condominio_id', $condominioId)
-            ->where('data_fine', '<', $esercizio->data_inizio)
-            ->where('stato', 'chiuso')
-            ->orderBy('data_fine', 'desc')
-            ->first();
+        if ($saldiDaApplicare->isEmpty()) {
+            return [];
+        }
 
-        if ($esercizioPrecedente) {
-            Log::info("Generazione Saldi: Trovato esercizio precedente chiuso ID: {$esercizioPrecedente->id}");
+        $distribuzione = [];
+        $saldiConfigMap = collect($saldiConfig)->keyBy('saldo_id');
 
-            $results = DB::table('rate_quote')
-                ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
-                ->join('piani_rate', 'rate.piano_rate_id', '=', 'piani_rate.id')
-                ->join('gestioni', 'piani_rate.gestione_id', '=', 'gestioni.id')
-                ->join('esercizio_gestione', 'gestioni.id', '=', 'esercizio_gestione.gestione_id')
-                ->where('esercizio_gestione.esercizio_id', $esercizioPrecedente->id)
-                ->where('gestioni.condominio_id', $condominioId)
-                ->select(
-                    'rate_quote.anagrafica_id',
-                    DB::raw('SUM(rate_quote.importo - rate_quote.importo_pagato) as saldo')
-                )
-                ->groupBy('rate_quote.anagrafica_id')
-                ->havingRaw('SUM(rate_quote.importo - rate_quote.importo_pagato) != 0')
-                ->get();
-
-            foreach ($results as $row) {
-                $saldi[$row->anagrafica_id] = (int) $row->saldo;
+        foreach ($saldiDaApplicare as $saldo) {
+            
+            // CASO A: Saldo Nominale (Ha già un'anagrafica assegnata)
+            if ($saldo->anagrafica_id !== null) {
+                $this->assegnaQuota(
+                    $distribuzione,
+                    $saldo->anagrafica_id,
+                    $saldo->immobile_id,
+                    $saldo->saldo_iniziale,
+                    $this->creaMeta($saldo, 'nominale')
+                );
+                continue;
             }
 
-        } else {
-            // 2. TENTATIVO B: Saldi Manuali (Importazione Iniziale)
-            // Questo è quello che serve ADESSO per il tuo caso.
-            Log::info("Generazione Saldi: Uso saldi manuali per esercizio corrente ID: {$esercizio->id}");
+            // CASO B: Saldo Solidale (Art. 63) - anagrafica_id è NULL
+            $configCustom = $saldiConfigMap->get($saldo->id);
 
-            $results = DB::table('saldi')
-                ->where('condominio_id', $condominioId)
-                ->where('esercizio_id', $esercizio->id)
-                ->select('anagrafica_id', DB::raw('SUM(saldo_iniziale) as totale'))
-                ->groupBy('anagrafica_id')
-                ->havingRaw('SUM(saldo_iniziale) != 0')
-                ->get();
+            if ($configCustom) {
+                // B1. Riparto Manuale (L'utente ha forzato le quote da Vue)
+                foreach ($configCustom['ripartizioni'] as $rip) {
+                    $this->assegnaQuota(
+                        $distribuzione,
+                        $rip['anagrafica_id'],
+                        $saldo->immobile_id,
+                        (int) ($rip['importo'] * 100), // Assumendo che il frontend mandi Euro, convertiamo in centesimi
+                        $this->creaMeta($saldo, 'solidale_manuale')
+                    );
+                }
+            } else {
+                // B2. Riparto Automatico (Pro-Quota sui proprietari attuali)
+                $proprietari = DB::table('anagrafica_immobile')
+                    ->where('immobile_id', $saldo->immobile_id)
+                    ->where('attivo', true)
+                    // Filtra per tipologia se necessario (es. solo proprietari, non inquilini)
+                    // ->whereIn('tipologia', ['proprietario', 'comproprietario'])
+                    ->get();
 
-            foreach ($results as $row) {
-                $saldi[$row->anagrafica_id] = (int) $row->totale;
+                $totaleQuote = $proprietari->sum('quota') ?: 100;
+
+                foreach ($proprietari as $prop) {
+                    $importoProQuota = (int) round(($saldo->saldo_iniziale * $prop->quota) / $totaleQuote);
+                    
+                    if ($importoProQuota !== 0) {
+                        $this->assegnaQuota(
+                            $distribuzione,
+                            $prop->anagrafica_id,
+                            $saldo->immobile_id,
+                            $importoProQuota,
+                            $this->creaMeta($saldo, 'solidale_automatico', $prop->quota)
+                        );
+                    }
+                }
             }
         }
 
-        Log::info("Generazione Saldi: Totale anagrafiche con saldo da applicare: " . count($saldi));
+        Log::info("Saldi elaborati e distribuiti su " . count($distribuzione) . " anagrafiche.");
+        return $distribuzione;
+    }
 
-        return $saldi;
+    private function assegnaQuota(array &$distribuzione, int $anagraficaId, ?int $immobileId, int $importo, array $meta): void
+    {
+        $immobileKey = $immobileId ?? 0; // Usiamo 0 come fallback se il saldo non è legato a un immobile
+
+        if (!isset($distribuzione[$anagraficaId])) {
+            $distribuzione[$anagraficaId] = [];
+        }
+        
+        if (!isset($distribuzione[$anagraficaId][$immobileKey])) {
+            $distribuzione[$anagraficaId][$immobileKey] = [
+                'importo' => 0,
+                'meta_storico' => []
+            ];
+        }
+
+        $distribuzione[$anagraficaId][$immobileKey]['importo'] += $importo;
+        $distribuzione[$anagraficaId][$immobileKey]['meta_storico'][] = $meta;
+    }
+
+    private function creaMeta(Saldo $saldo, string $tipoRiparto, ?float $quotaUsata = null): array
+    {
+        return [
+            'saldo_origine_id' => $saldo->id,
+            'gestione_origine_id' => $saldo->gestione_id,
+            'tipo_riparto' => $tipoRiparto,
+            'importo_originale' => $saldo->saldo_iniziale,
+            'quota_applicata' => $quotaUsata
+        ];
     }
 }

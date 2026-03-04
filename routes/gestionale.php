@@ -64,6 +64,9 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::resource('saldi', SaldoInizialeController::class)
         ->parameters(['saldi' => 'saldo']);
+
+    Route::get('esercizi/{esercizio}/fetch-saldi-analitici/{gestione}', [PianoRateController::class, 'fetchSaldiAnalitici'])
+        ->name('fetch-saldi-analitici');
     
     Route::resource('immobili', ImmobileController::class)
         ->parameters(['immobili' => 'immobile']);

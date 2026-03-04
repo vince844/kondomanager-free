@@ -30,19 +30,19 @@ const moneyOptions = ref({
   masked: true 
 });
 
-// Opzioni per l'editing inline (può essere negativo perché non c'è il bottone)
+// Opzioni per l'editing inline
 const moneyOptionsInline = ref({
   ...moneyOptions.value,
   disableNegative: false
 });
 
-const { euro: _euro }       = useCurrencyFormatter({ fromCents: props.valoriInCentesimi ?? false });
-const { euro: _euroSigned } = useCurrencyFormatter({ fromCents: props.valoriInCentesimi ?? false, forcePlus: true });
-
-function fmtEuro(val: number | null | undefined)   { return _euro(val);       }
-function fmtSigned(val: number | null | undefined) { return _euroSigned(val); }
+const { euro, format: formatSigned } = useCurrencyFormatter({ 
+  fromCents: props.valoriInCentesimi ?? false,
+  showSpaceAfterSign: true 
+});
 
 const openGestioni = ref<Set<number>>(new Set());
+const showLockedInfoModal = ref(false); // Flag per la modale di spiegazione lucchetto
 
 function toggleGestione(id: number) {
   if (openGestioni.value.has(id)) openGestioni.value.delete(id);
@@ -67,9 +67,9 @@ interface GestioneGroup {
   totaleCrediti: number;
   totaleDebiti:  number;
   netto: number;
+  isGestioneBloccata: boolean; 
 }
 
-// ── LA VERA LOGICA CONTABILE (Pescando i saldi correttamente) ──────────────
 const gestioniGroups = computed<GestioneGroup[]>(() =>
   props.gestioni.map(g => {
     const crediti: SaldoItem[] = [];
@@ -96,7 +96,9 @@ const gestioniGroups = computed<GestioneGroup[]>(() =>
     const totaleDebiti  = debiti.reduce( (s, d) => s + (d.saldo.saldo_iniziale ?? 0), 0);
     const netto = totaleDebiti - totaleCrediti;
 
-    return { gestione: g, crediti, debiti, totaleCrediti, totaleDebiti, netto };
+    const isGestioneBloccata = g.saldo_applicato === 1 || g.saldo_applicato === true;
+
+    return { gestione: g, crediti, debiti, totaleCrediti, totaleDebiti, netto, isGestioneBloccata }; 
   })
 );
 
@@ -107,9 +109,6 @@ const netto         = computed(() => totaleDebiti.value - totaleCrediti.value);
 // ── Actions Modifica Inline ────────────────────────────────────────────────
 function startEdit(saldo: any) {
   editingSaldoId.value = saldo.id;
-  
-  // Dividiamo per 100 per ottenere gli Euro, e forziamo 2 decimali col punto 
-  // (es. 150.50). Questo è il formato nativo che v-money3 capisce senza errori.
   const importoInEuro = Math.abs(saldo.saldo_iniziale ?? 0) / 100;
   editingAmount.value  = importoInEuro.toFixed(2);
 }
@@ -118,7 +117,6 @@ function saveEdit(saldo: any, tipo: 'credito' | 'debito') {
   const rawValue = unformat(editingAmount.value, moneyOptionsInline.value);
   let cents = Math.round(Math.abs(Number(rawValue)) * 100);
 
-  // Se stiamo modificando un saldo nella colonna Crediti, deve rimanere un credito (negativo)!
   if (tipo === 'credito') {
     cents = -cents; 
   }
@@ -135,7 +133,6 @@ function cancelEdit() { editingSaldoId.value = null; }
 function deleteSaldo(saldo: any) {
   if (!confirm('Rimuovere questo saldo dal wallet?')) return;
   router.delete(
-    // CAMBIO DA 'id' A 'saldo' QUI:
     route('admin.gestionale.saldi.destroy', { condominio: props.condominio.id, saldo: saldo.id }),
     { preserveScroll: true }
   );
@@ -151,7 +148,6 @@ const modalForm = ref({
 });
 
 function openAddModal(gestioneId: number, tipo: 'credito' | 'debito') {
-  // Pre-calcolo al volo per auto-selezionare, se possibile
   const idAssegnati = props.immobile.saldi
     .filter((s: any) => s.gestione_id == gestioneId && s.anagrafica_id != null)
     .map((s: any) => s.anagrafica_id);
@@ -182,7 +178,6 @@ function closeAddModal() {
   showAddModal.value = false;
 }
 
-// Modifica la funzione submitAddModal per usare unformat
 function submitAddModal() {
   if (!modalForm.value.importo || !modalForm.value.gestioneId) return;
   
@@ -191,10 +186,8 @@ function submitAddModal() {
       return;
   }
 
-  // 1. Usa unformat di v-money3 per ottenere il numero "pulito" (es. "1.500,50" -> "1500.50")
   const rawValue = unformat(modalForm.value.importo, moneyOptions.value);
   
-  // 2. Converti in centesimi
   let cents = Math.round(Number(rawValue) * 100);
   if (isNaN(cents)) cents = 0;
   
@@ -234,8 +227,8 @@ function submitAddModal() {
           <span class="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
             <TrendingUp class="w-3 h-3" /> Crediti
           </span>
-          <span class="font-mono text-sm font-semibold text-emerald-700 dark:text-emerald-300 mt-0.5">
-            {{ fmtEuro(totaleCrediti) }}
+          <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mt-0.5">
+            {{ euro(totaleCrediti) }}
           </span>
         </div>
 
@@ -243,8 +236,8 @@ function submitAddModal() {
           <span class="text-[10px] font-bold uppercase tracking-widest text-red-500 dark:text-red-400 flex items-center gap-1">
             <TrendingDown class="w-3 h-3" /> Debiti
           </span>
-          <span class="font-mono text-sm font-semibold text-red-700 dark:text-red-300 mt-0.5">
-            {{ fmtEuro(totaleDebiti) }}
+          <span class="text-sm font-semibold text-red-700 dark:text-red-300 mt-0.5">
+            {{ euro(totaleDebiti) }}
           </span>
         </div>
 
@@ -255,13 +248,13 @@ function submitAddModal() {
             'bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700': netto === 0,
           }">
           <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Saldo netto</span>
-          <span class="font-mono text-sm font-semibold mt-0.5"
+          <span class="text-sm font-semibold mt-0.5"
             :class="{
               'text-red-700 dark:text-red-300': netto > 0,
               'text-emerald-700 dark:text-emerald-300': netto < 0,
               'text-slate-500': netto === 0,
             }">
-            {{ fmtSigned(netto) }}
+            {{ formatSigned(netto, { forcePlus: true }) }}
           </span>
         </div>
       </div>
@@ -309,13 +302,13 @@ function submitAddModal() {
               </span>
               <span class="text-[11px] text-slate-400 shrink-0 hidden sm:inline">{{ group.crediti.length + group.debiti.length }} voci</span>
             </div>
-            <span class="font-mono text-sm font-semibold shrink-0 ml-3"
+            <span class="text-sm font-semibold shrink-0 ml-3"
               :class="{
                 'text-red-600 dark:text-red-400': group.netto > 0,
                 'text-emerald-600 dark:text-emerald-400': group.netto < 0,
                 'text-slate-400': group.netto === 0,
               }">
-              {{ fmtSigned(group.netto) }}
+              {{ formatSigned(group.netto, { forcePlus: true }) }}
             </span>
           </button>
 
@@ -328,7 +321,7 @@ function submitAddModal() {
                 </p>
 
                 <div class="space-y-1.5">
-                  <div v-for="item in group.crediti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.is_applicato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
+                  <div v-for="item in group.crediti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="(item.saldo.is_applicato || group.isGestioneBloccata) ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
                     
                     <span class="flex-1 text-xs text-slate-600 dark:text-slate-400 truncate flex items-center gap-1.5">
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
@@ -361,10 +354,15 @@ function submitAddModal() {
                     </template>
 
                     <template v-else>
-                      <span class="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
-                        {{ fmtEuro(Math.abs(item.saldo.saldo_iniziale)) }}
+                      <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
+                        {{ euro(Math.abs(item.saldo.saldo_iniziale)) }}
                       </span>
-                      <Lock v-if="item.saldo.is_applicato" class="w-3 h-3 text-slate-400 shrink-0" />
+                      <button v-if="item.saldo.is_applicato || group.isGestioneBloccata" 
+                              @click.prevent="showLockedInfoModal = true" 
+                              class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
+                              title="Saldo Bloccato">
+                        <Lock class="w-3 h-3" />
+                      </button>
                       <template v-else>
                         <button @click="startEdit(item.saldo)" class="text-slate-300 hover:text-indigo-500 transition-colors shrink-0"><Pencil class="w-3 h-3" /></button>
                         <button @click="deleteSaldo(item.saldo)" class="text-slate-300 hover:text-red-500 transition-colors shrink-0"><Trash2 class="w-3 h-3" /></button>
@@ -374,14 +372,14 @@ function submitAddModal() {
 
                   <p v-if="group.crediti.length === 0" class="text-[11px] text-slate-400 italic px-2">Nessun credito registrato</p>
 
-                  <button @click="openAddModal(group.gestione.id, 'credito')" class="w-full mt-1 py-1.5 border border-dashed border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-400 flex items-center justify-center gap-1.5 hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-all">
+                  <button v-if="!group.isGestioneBloccata" @click="openAddModal(group.gestione.id, 'credito')" class="w-full mt-1 py-1.5 border border-dashed border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-400 flex items-center justify-center gap-1.5 hover:border-emerald-400 hover:text-emerald-600 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 transition-all">
                     <Plus class="w-3 h-3" /> Aggiungi credito
                   </button>
                 </div>
 
                 <div class="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 text-right">
-                  <span class="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                    Totale: {{ fmtEuro(group.totaleCrediti) }}
+                  <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    Totale: {{ euro(group.totaleCrediti) }}
                   </span>
                 </div>
               </div>
@@ -392,7 +390,7 @@ function submitAddModal() {
                 </p>
 
                 <div class="space-y-1.5">
-                  <div v-for="item in group.debiti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.is_applicato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
+                  <div v-for="item in group.debiti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="(item.saldo.is_applicato || group.isGestioneBloccata) ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
                     
                     <span class="flex-1 text-xs text-slate-600 dark:text-slate-400 truncate flex items-center gap-1.5">
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
@@ -425,10 +423,15 @@ function submitAddModal() {
                     </template>
 
                     <template v-else>
-                      <span class="font-mono text-xs font-semibold text-red-600 dark:text-red-400 shrink-0">
-                        {{ fmtEuro(item.saldo.saldo_iniziale) }}
+                      <span class="text-xs font-semibold text-red-600 dark:text-red-400 shrink-0">
+                        {{ euro(item.saldo.saldo_iniziale) }}
                       </span>
-                      <Lock v-if="item.saldo.is_applicato" class="w-3 h-3 text-slate-400 shrink-0" />
+                      <button v-if="item.saldo.is_applicato || group.isGestioneBloccata" 
+                              @click.prevent="showLockedInfoModal = true" 
+                              class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
+                              title="Saldo Bloccato">
+                        <Lock class="w-3 h-3" />
+                      </button>
                       <template v-else>
                         <button @click="startEdit(item.saldo)" class="text-slate-300 hover:text-indigo-500 transition-colors shrink-0"><Pencil class="w-3 h-3" /></button>
                         <button @click="deleteSaldo(item.saldo)" class="text-slate-300 hover:text-red-500 transition-colors shrink-0"><Trash2 class="w-3 h-3" /></button>
@@ -438,14 +441,14 @@ function submitAddModal() {
 
                   <p v-if="group.debiti.length === 0" class="text-[11px] text-slate-400 italic px-2">Nessun debito registrato</p>
 
-                  <button @click="openAddModal(group.gestione.id, 'debito')" class="w-full mt-1 py-1.5 border border-dashed border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-400 flex items-center justify-center gap-1.5 hover:border-red-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/10 transition-all">
+                  <button v-if="!group.isGestioneBloccata" @click="openAddModal(group.gestione.id, 'debito')" class="w-full mt-1 py-1.5 border border-dashed border-slate-200 dark:border-slate-700 rounded-md text-[11px] text-slate-400 flex items-center justify-center gap-1.5 hover:border-red-400 hover:text-red-500 hover:bg-red-50/50 dark:hover:bg-red-900/10 transition-all">
                     <Plus class="w-3 h-3" /> Aggiungi debito
                   </button>
                 </div>
 
                 <div class="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 text-right">
-                  <span class="font-mono text-xs font-semibold text-red-600 dark:text-red-400">
-                    Totale: {{ fmtEuro(group.totaleDebiti) }}
+                  <span class="text-xs font-semibold text-red-600 dark:text-red-400">
+                    Totale: {{ euro(group.totaleDebiti) }}
                   </span>
                 </div>
               </div>
@@ -582,6 +585,71 @@ function submitAddModal() {
             </button>
           </div>
 
+        </div>
+      </div>
+    </Transition>
+
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0" enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100" leave-to-class="opacity-0"
+      >
+      <div v-if="showLockedInfoModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
+        <div class="fixed inset-0 bg-slate-900/60 dark:bg-black/60 backdrop-blur-sm" @click="showLockedInfoModal = false"></div>
+        
+        <div class="relative bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col border dark:border-slate-700">
+          <div class="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-amber-50 dark:bg-amber-900/20">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center">
+                <Lock class="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <h3 class="text-lg font-bold text-amber-900 dark:text-amber-300">Saldo bloccato dal sistema</h3>
+                <p class="text-xs text-amber-700/70 dark:text-amber-400/60 font-medium">Integrazione piano rate attiva</p>
+              </div>
+            </div>
+            <button @click="showLockedInfoModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-white/50 dark:bg-slate-800/50 p-1.5 rounded-full transition-colors">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          
+          <div class="p-8 space-y-6 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p class="text-base">
+              Non è possibile modificare o eliminare questo saldo iniziale perché <strong>è già stato integrato in un piano rate</strong> e sono state generate le relative quote di pagamento.
+            </p>
+            
+            <div class="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-6 border border-slate-100 dark:border-slate-700 space-y-4">
+              <h4 class="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <div class="w-1 h-4 bg-amber-400 rounded-full"></div>
+                Come procedere per la correzione?
+              </h4>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-2">
+                  <p class="font-bold text-xs uppercase tracking-wider text-indigo-400">Opzione A: Eliminazione</p>
+                  <p class="text-xs leading-normal">
+                    <strong>Nessun incasso registrato?</strong> <br>
+                    Vai nella sezione <em>Piani Rate</em>, individua il piano associato a questa gestione ed eliminalo. Il sistema rimuoverà i "lucchetti" e renderà i saldi nuovamente editabili.
+                  </p>
+                </div>
+                
+                <div class="space-y-2">
+                  <p class="font-bold text-xs uppercase tracking-wider text-indigo-400">Opzione B: Rettifica</p>
+                  <p class="text-xs leading-normal">
+                    <strong>Incassi già registrati?</strong> <br>
+                    Per garantire l'integrità del Libro Giornale, non puoi eliminare il passato. Registra un <strong>Movimento di Storno</strong> manuale per compensare l'errore (nuovo debito o credito).
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-t dark:border-slate-700 flex justify-end gap-3">
+             <button @click="showLockedInfoModal = false" class="px-6 py-2.5 rounded-lg text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md transition-all active:scale-95">
+              Ho capito
+            </button>
+          </div>
         </div>
       </div>
     </Transition>

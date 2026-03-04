@@ -4,7 +4,7 @@ import { Link } from '@inertiajs/vue3'
 import { usePermission } from "@/composables/permissions"
 import DropdownAction from '@/components/gestionale/immobili/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/immobili/DataTableColumnHeader.vue'
-import { Home, ArrowRight, MapPin, Ruler, FileSearch, Hash } from 'lucide-vue-next'
+import { Home, ArrowRight, MapPin, FileSearch, Hash } from 'lucide-vue-next'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
@@ -24,27 +24,30 @@ export function getColumns(condominio: Building): ColumnDef<Immobile>[] {
           class: 'group flex items-center gap-3 py-1 outline-none'
         }, () => [
           h('div', { 
-              class: 'p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0' 
+              // Sostituito slate-100 con indigo-50
+              class: 'p-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg text-indigo-500 dark:text-indigo-400 shadow-sm group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 transition-colors shrink-0' 
           }, [
               h(Home, { class: 'w-4 h-4' })
           ]),
           
           h('div', { class: 'flex flex-col min-w-0' }, [
               h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
-                  // Sostituito Badge con span rounded-md per un look più pulito
                   h('span', { 
                       class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
                   }, immobile.tipologia?.nome || 'U.I.'),
 
                   h('span', {
-                      class: 'font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate',
+                      // Sostituito group-hover:text-primary con group-hover:text-indigo-600
+                      class: 'font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate',
                   }, immobile.nome),
               ]),
               h('span', { 
-                  class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-slate-500 transition-colors' 
+                  // Sostituito group-hover:text-slate-500 con group-hover:text-indigo-500
+                  class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors' 
               }, [
                   `Visualizza Interno ${immobile.interno || '-'}`,
-                  h(ArrowRight, { class: 'w-3 h-3 animate-pulse text-primary/60' })
+                  // Sostituito text-primary/60 con text-indigo-500/60
+                  h(ArrowRight, { class: 'w-3 h-3 animate-pulse text-indigo-500/60' })
               ])
           ])
         ]);

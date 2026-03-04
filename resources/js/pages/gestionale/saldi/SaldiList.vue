@@ -1,13 +1,14 @@
 <script setup lang="ts">
+
 import { computed, ref } from "vue";
-import { Head, router } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
-import { Coins, Lock, Search, Building2 } from 'lucide-vue-next';
+import { Coins, Lock, Search, Building2, Users } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
 
@@ -57,6 +58,12 @@ const pageGuides = [
     description: 'I saldi inclusi in un piano rate emesso mostreranno un lucchetto e non potranno essere modificati per garantire la quadratura.',
     icon: Lock,
     colorVariant: 'blue' as const
+  },
+  {
+    title: 'Subentri e Art. 63',
+    description: "Assegna i saldi all'intera unità (riparto automatico pro-quota) o a un singolo soggetto per gestire facilmente compravendite e cambi inquilino.",
+    icon: Users,
+    colorVariant: 'amber' as const
   }
 ];
 </script>

@@ -12,6 +12,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestione;
+use App\Models\Saldo;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use Inertia\Inertia;
@@ -340,8 +341,17 @@ class GestioneController extends Controller
                 ));
             }
 
+            // --- NUOVO CONTROLLO: Livello 1.5: Verifica Saldi (Versione 1.9) ---
+            $totaleSaldi = Saldo::where('gestione_id', $gestione->id)->count();
+            if ($totaleSaldi > 0) {
+                return back()->with($this->flashError(
+                    "Impossibile eliminare: la gestione contiene saldi iniziali pregressi. Devi prima eliminare i saldi associati dalla sezione 'saldi'"
+                ));
+            }
+            // -------------------------------------------------------------------
+
             // Livello 2: Verifica Scritture Contabili (Movimenti in Partita Doppia)
-            $totaleScritture = \App\Models\Gestionale\ScritturaContabile::where('gestione_id', $gestione->id)->count();
+            $totaleScritture = ScritturaContabile::where('gestione_id', $gestione->id)->count();
             
             if ($totaleScritture > 0) {
                 return back()->with($this->flashError(

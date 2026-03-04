@@ -9,32 +9,43 @@ use Illuminate\Support\Facades\Schema;
  * Migration v1.9 — Saldi Iniziali (ADR-001) — DEFINITIVA
  * Compatibile MySQL 5.7+
  *
- * anagrafica_id nullable — scelta architetturale deliberata:
- *   NULL        = saldo solidale sull'immobile (Art. 63 disp. att. c.c.)
- *                 Il NULL non è un dato mancante, è uno stato contabile
- *                 esplicito: "debito solidale, non ancora intestato a nessuno,
- *                 distribuito pro-quota alla generazione rate"
- *   valorizzato = saldo personale su quel soggetto specifico
+ * Gestisce due scenari di partenza:
+ *   A) DB vergine o v1.8 originale → indice saldi_esercizio_id_anagrafica_id_immobile_id_unique
+ *   B) DB che ha già girato la vecchia v1.9 con sentinella → indice saldi_wallet_unique
+ *      (la sentinella era anagrafica_id_key — viene rimossa se presente)
  *
- * FK nullable è il pattern standard SQL per relazioni 0..1 to N.
- * Nessuna sentinella, nessun trigger, nessuna tabella aggiuntiva.
- * L'unicità dei saldi solidali è garantita dalla StoreSaldoRequest.
+ * ORDINE CRITICO MySQL:
+ *   1. Drop di TUTTE le FK (inclusa gestione_id se esiste)
+ *   2. Drop degli indici UNIQUE (ora liberi da dipendenze FK)
+ *   3. Modifiche strutturali
+ *   4. Ricrea FK
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        // ── STEP 1: Sgancia FK e indice esistenti ─────────────────────────────
+        // ── STEP 1a: Drop di TUTTE le FK prima di toccare qualsiasi indice ────
+        // MySQL non permette di droppare un indice UNIQUE usato come supporto
+        // da una FK. Tutte le FK devono essere rimosse prima.
         Schema::table('saldi', function (Blueprint $table) {
-            $table->dropForeign(['esercizio_id']);
-            $table->dropForeign(['anagrafica_id']);
-            $table->dropUnique('saldi_esercizio_id_anagrafica_id_immobile_id_unique');
+            $this->tryDropForeign($table, 'saldi', 'gestione_id');
+            $this->tryDropForeign($table, 'saldi', 'esercizio_id');
+            $this->tryDropForeign($table, 'saldi', 'anagrafica_id');
         });
+
+        // ── STEP 1b: Drop degli indici (ora sicuro, nessuna FK dipendente) ────
+        $this->tryDropIndex('saldi', 'saldi_wallet_unique');
+        $this->tryDropIndex('saldi', 'saldi_esercizio_id_anagrafica_id_immobile_id_unique');
 
         // ── STEP 2: Modifiche strutturali ─────────────────────────────────────
         Schema::table('saldi', function (Blueprint $table) {
             if (Schema::hasColumn('saldi', 'saldo_finale')) {
                 $table->dropColumn('saldo_finale');
+            }
+
+            // Rimuove la sentinella se presente dalla vecchia v1.9
+            if (Schema::hasColumn('saldi', 'anagrafica_id_key')) {
+                $table->dropColumn('anagrafica_id_key');
             }
 
             if (!Schema::hasColumn('saldi', 'gestione_id')) {
@@ -50,14 +61,6 @@ return new class extends Migration
             }
 
             $table->unsignedBigInteger('anagrafica_id')->nullable()->change();
-
-            $table->foreign('esercizio_id')
-                  ->references('id')->on('esercizi')
-                  ->onDelete('cascade');
-
-            $table->foreign('anagrafica_id')
-                  ->references('id')->on('anagrafiche')
-                  ->onDelete('cascade');
         });
 
         // ── STEP 3: Travaso dati ───────────────────────────────────────────────
@@ -95,8 +98,16 @@ return new class extends Migration
                 });
         });
 
-        // ── STEP 4: FK gestione ────────────────────────────────────────────────
+        // ── STEP 4: Ricrea tutte le FK ─────────────────────────────────────────
         Schema::table('saldi', function (Blueprint $table) {
+            $table->foreign('esercizio_id')
+                  ->references('id')->on('esercizi')
+                  ->onDelete('cascade');
+
+            $table->foreign('anagrafica_id')
+                  ->references('id')->on('anagrafiche')
+                  ->onDelete('cascade');
+
             $table->foreign('gestione_id')
                   ->references('id')->on('gestioni')
                   ->onDelete('restrict');
@@ -106,9 +117,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('saldi', function (Blueprint $table) {
-            $table->dropForeign(['gestione_id']);
-            $table->dropForeign(['esercizio_id']);
-            $table->dropForeign(['anagrafica_id']);
+            $this->tryDropForeign($table, 'saldi', 'gestione_id');
+            $this->tryDropForeign($table, 'saldi', 'esercizio_id');
+            $this->tryDropForeign($table, 'saldi', 'anagrafica_id');
         });
 
         Schema::table('saldi', function (Blueprint $table) {
@@ -128,5 +139,45 @@ return new class extends Migration
                 'saldi_esercizio_id_anagrafica_id_immobile_id_unique'
             );
         });
+    }
+
+    // ── Helpers difensivi ──────────────────────────────────────────────────────
+
+    private function tryDropForeign(Blueprint $table, string $tableName, string $column): void
+    {
+        if ($this->foreignExists($tableName, $column)) {
+            $table->dropForeign([$column]);
+        }
+    }
+
+    private function tryDropIndex(string $tableName, string $indexName): void
+    {
+        $exists = DB::select("
+            SELECT COUNT(*) as cnt
+            FROM information_schema.STATISTICS
+            WHERE table_schema = DATABASE()
+              AND table_name   = ?
+              AND index_name   = ?
+        ", [$tableName, $indexName]);
+
+        if ($exists[0]->cnt > 0) {
+            Schema::table($tableName, function (Blueprint $table) use ($indexName) {
+                $table->dropIndex($indexName);
+            });
+        }
+    }
+
+    private function foreignExists(string $tableName, string $column): bool
+    {
+        $result = DB::select("
+            SELECT COUNT(*) as cnt
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE table_schema          = DATABASE()
+              AND table_name            = ?
+              AND column_name           = ?
+              AND referenced_table_name IS NOT NULL
+        ", [$tableName, $column]);
+
+        return $result[0]->cnt > 0;
     }
 };

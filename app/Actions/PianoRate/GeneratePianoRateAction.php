@@ -19,7 +19,7 @@ class GeneratePianoRateAction
      * @param PianoRate $pianoRate
      * @param bool|null $forzaApplicazioneSaldi 
      */
-    public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null): array
+    public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null, array $saldiConfig = []): array
     {
         Log::info("=== GENERAZIONE PIANO RATE ===");
 
@@ -29,9 +29,6 @@ class GeneratePianoRateAction
             $pianoRate->load('gestione');
         }
         $gestione = $pianoRate->gestione;
-
-        $esercizio = $gestione->esercizi()->wherePivot('attiva', true)->first()
-            ?? $gestione->esercizi()->first();
 
         // 2. Calcolo Spese (Quote pure ordinarie)
         $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
@@ -48,7 +45,8 @@ class GeneratePianoRateAction
         }
 
         if ($applicare) {
-            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $esercizio);
+            // Passiamo $saldiConfig alla action dei saldi!
+            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $saldiConfig);
             Log::info("Generazione: Saldi INCLUSI (" . count($saldi) . " anagrafiche)");
         } else {
             $saldi = [];

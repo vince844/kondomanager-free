@@ -39,7 +39,8 @@ class SaldoInizialeController extends Controller
 
         $gestioni = Gestione::where('condominio_id', $condominio->id)
             ->where('attiva', true)
-            ->get(['id', 'nome', 'tipo']);
+            // --- MODIFICA 1: Aggiunto 'saldo_applicato' al get() per farlo arrivare al frontend (serve per il lucchetto) ---
+            ->get(['id', 'nome', 'tipo', 'saldo_applicato']);
 
         return Inertia::render('gestionale/saldi/SaldiList', [
             'condominio' => $condominio,
@@ -89,7 +90,11 @@ class SaldoInizialeController extends Controller
     public function destroy(Condominio $condominio, Saldo $saldo)
     {
         abort_unless($saldo->condominio_id === $condominio->id, 403);
-        abort_if($saldo->is_applicato, 403, 'Non puoi eliminare un saldo già applicato a un piano rate.');
+        
+        // --- MODIFICA 2: Controlla se è bloccata la riga specifica OPPURE l'intera gestione madre ---
+        $gestioneBloccata = $saldo->gestione && $saldo->gestione->saldo_applicato;
+        abort_if($saldo->is_applicato || $gestioneBloccata, 403, 'Non puoi eliminare un saldo già applicato a un piano rate.');
+        // ------------------------------------------------------------------------------------------
 
         $saldo->delete();
 

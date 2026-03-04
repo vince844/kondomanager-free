@@ -22,6 +22,12 @@ class PianoDeiContiResource extends JsonResource
             'descrizione'       => $this->descrizione,
             'note'              => $this->note,
             'gestione'          => new GestioneResource($this->whenLoaded('gestione')),
+            // Dati Finanziari
+            'importo_totale'    => $this->conti_sum_importo ?? $this->conti()->sum('importo'),
+            // Quanti conti/capitoli ci sono in questo piano?
+            'capitoli_count'    => $this->conti_count ?? $this->conti()->count(),
+            // Data formattata
+            'data_creazione'    => $this->created_at ? $this->created_at->format('d/m/Y') : 'N/D',
         ];
     }
 }
