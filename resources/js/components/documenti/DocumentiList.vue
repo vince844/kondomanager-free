@@ -41,7 +41,7 @@ const truncatedName = (name: string, length: number = 80) => {
                     <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
                         <Folders />
                     </EmptyMedia>
-                    <EmptyTitle>Cloud Storage Empty</EmptyTitle>
+                    <EmptyTitle>Nessun documento creato</EmptyTitle>
                     <EmptyDescription>
                         {{ trans('documenti.dialogs.no_documents_created') }}
                     </EmptyDescription>

@@ -1,16 +1,14 @@
 <script setup lang="ts">
+
 import { computed, onMounted, watch } from "vue";
 import { usePage, Head } from "@inertiajs/vue3";
 import AppLayout from '@/layouts/AppLayout.vue';
-import PageHeaderGuide from '@/components/PageHeaderGuide.vue'; // Il nostro componente standard
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue'; 
 import DataTable from '@/components/fornitori/DataTable.vue';
 import { columns } from '@/components/fornitori/columns';
 import Alert from "@/components/Alert.vue";
 import { trans } from 'laravel-vue-i18n';
-
-// Icone Lucide per i Fornitori
 import { Truck, ShieldCheck, PlusCircle } from 'lucide-vue-next';
-
 import type { Flash } from '@/types/flash';
 import type { Fornitore } from '@/types/fornitori';
 import type { BreadcrumbItem } from '@/types';

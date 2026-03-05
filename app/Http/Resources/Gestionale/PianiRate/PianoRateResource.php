@@ -40,19 +40,14 @@ class PianoRateResource extends JsonResource
             'numero_rate'     => $this->numero_rate,
             'stato'           => $statoValue,
             'giorno_scadenza' => $this->giorno_scadenza,
-            'metodo_distribuzione' => $this->metodo_distribuzione,
+            'metodo_distribuzione'  => $this->metodo_distribuzione,
             'data_inizio'     => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
-            
             // FIX: Usiamo il totale calcolato dalla pivot
             'totale_capitoli' => (int) $totaleReale,
-            
             // Totale rate generate (controllo incrociato)
             'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
-            
             'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
-
             'budget_movements' => $this->whenLoaded('budgetMovements'),
-
             'capitoli' => $this->whenLoaded('capitoli', function() {
                 return $this->capitoli->map(function ($c) {
                     $isParent = $c->sottoconti()->exists();
@@ -81,26 +76,6 @@ class PianoRateResource extends JsonResource
                     ];
                 });
             }),
-            
-          /*   'capitoli'        => $this->whenLoaded('capitoli', function() {
-                return $this->capitoli->map(function ($c) {
-                    $isParent = $c->sottoconti()->exists();
-                    
-                    // Qui decidiamo quale importo mostrare nel dettaglio
-                    $importoEffettivo = !is_null($c->pivot->importo) 
-                        ? $c->pivot->importo 
-                        : $c->importo;
-
-                    return [
-                        'id'          => $c->id,
-                        'nome'        => $c->nome,
-                        'importo'     => (int) $importoEffettivo, // Importo reale (Override o Standard)
-                        'note'        => $c->pivot->note,
-                        'is_parent'   => $isParent,
-                        'figli_names' => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
-                    ];
-                });
-            }), */
         ];
     }
 }

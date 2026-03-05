@@ -1,6 +1,6 @@
 <script setup lang="ts">
-
 import { computed } from 'vue';
+import { Link } from '@inertiajs/vue3'; // 1. Aggiunto l'import del Link
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,11 +11,13 @@ import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
     anagrafiche: Array<{ 
-    id?: number | string;
-    nome: string; 
-    indirizzo?: string; 
-    email?: string; 
-    telefono?: string }>;
+        id?: number | string;
+        nome: string; 
+        indirizzo?: string; 
+        email?: string; 
+        telefono?: string;
+        url?: string; // 2. Aggiunta la prop opzionale url
+    }>;
 }>();
 
 const maxAvatars = 3; 
@@ -71,7 +73,6 @@ const finalWidth = computed(() => {
       <div class="mx-auto w-full max-w-3xl font-inter"> 
         
         <DrawerHeader class="pb-4 relative">
-         
           <DrawerTitle class="flex items-center justify-between">
             <div class="flex items-center gap-3 text-left">
                 <div class="p-2 bg-primary/10 rounded-lg">
@@ -98,10 +99,13 @@ const finalWidth = computed(() => {
           <ScrollArea class="max-h-[calc(100vh-250px)] w-full pr-4">
             <div class="flex flex-col gap-3 py-2 pb-24">
               
-              <div 
+              <component
+                :is="person.url ? Link : 'div'"
+                :href="person.url"
                 v-for="(person, idx) in anagrafiche" 
                 :key="idx" 
-                class="group/item relative flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/30"
+                class="group/item relative flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 shadow-sm transition-all duration-300"
+                :class="person.url ? 'hover:shadow-md hover:-translate-y-0.5 hover:border-primary/30 cursor-pointer' : ''"
               >
                 <div class="relative shrink-0">
                      <div class="rounded-full w-12 h-12 flex items-center justify-center text-base font-extrabold shadow-sm transition-colors duration-300 bg-slate-100 text-slate-600 group-hover/item:bg-primary/10 group-hover/item:text-primary dark:bg-slate-800 dark:text-slate-300">
@@ -113,7 +117,7 @@ const finalWidth = computed(() => {
                 </div>
                 
                 <div class="flex flex-col flex-1 min-w-0 text-left">
-                  <span class="text-base font-bold text-slate-900 dark:text-white leading-tight truncate group-hover/item:text-primary transition-colors">
+                  <span class="text-base font-bold text-slate-900 dark:text-white leading-tight truncate transition-colors" :class="person.url ? 'group-hover/item:text-primary' : ''">
                     {{ person.nome }}
                   </span>
                   
@@ -125,9 +129,9 @@ const finalWidth = computed(() => {
                   </div>
                 </div>
 
-                <ChevronRight class="w-5 h-5 text-slate-300 dark:text-slate-600 group-hover/item:text-primary group-hover/item:translate-x-1 transition-all" />
+                <ChevronRight v-if="person.url" class="w-5 h-5 text-slate-300 dark:text-slate-600 group-hover/item:text-primary group-hover/item:translate-x-1 transition-all" />
 
-              </div>
+              </component>
             </div>
           </ScrollArea>
         </div>

@@ -14,51 +14,49 @@ const { generateRoute } = usePermission();
 
 export const columns: ColumnDef<Building>[] = [
   {
-    accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('condomini.table.name') }), 
+      accessorKey: 'nome',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('condomini.table.name') }), 
 
-    cell: ({ row }) => {
-      const condominio = row.original
-      const label = row.original.codice_identificativo
+      cell: ({ row }) => {
+        const condominio = row.original
+        const label = row.original.codice_identificativo
 
-      // L'intero blocco è avvolto nel Link per rendere tutto cliccabile
-      return h(Link, {
-        href: route(generateRoute('gestionale.index'), { condominio: condominio.id }),
-        class: 'group flex items-center gap-3 py-1 outline-none'
-      }, () => [
-        // Icona stilizzata (cambia colore al passaggio del mouse sulla riga)
-        h('div', { 
-            class: 'p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 shadow-sm group-hover:bg-primary/10 group-hover:text-primary transition-colors shrink-0' 
-        }, [
-            h(Building2, { class: 'w-4 h-4' })
-        ]),
-        
-        // Contenitore Testi
-        h('div', { class: 'flex flex-col min-w-0' }, [
-            h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
-                
-                // 1. CODICE (Prima del nome)
-                label ? h(Badge, { 
-                    variant: 'secondary', 
-                    class: 'h-4 px-1.5 text-[10px] font-mono bg-slate-100 dark:bg-slate-800 border-none text-slate-500' 
-                }, () => label) : null,
+        return h(Link, {
+          href: route(generateRoute('gestionale.index'), { condominio: condominio.id }),
+          class: 'group flex items-center gap-3 py-1 outline-none'
+        }, () => [
+          // Icona stilizzata con palette Indigo
+          h('div', { 
+              class: 'p-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg text-indigo-500 dark:text-indigo-400 shadow-sm group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 transition-colors shrink-0' 
+          }, [
+              h(Building2, { class: 'w-4 h-4' })
+          ]),
+          
+          // Contenitore Testi
+          h('div', { class: 'flex flex-col min-w-0' }, [
+              h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
+                  
+                  // 1. CODICE (Badge stilizzato come il selettore tipologia immobili)
+                  label ? h('span', { 
+                      class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
+                  }, label) : null,
 
-                // 2. NOME
-                h('span', {
-                    class: 'font-bold text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate',
-                }, condominio.nome),
-            ]),
-            
-            // Sottotitolo interattivo
-            h('span', { 
-                class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-slate-500 transition-colors' 
-            }, [
-                trans('condomini.table.click_to_manage'),
-                h(ArrowRight, { class: 'w-3 h-3 animate-pulse text-primary/60' })
-            ])
-        ])
-      ]);
-    }
+                  // 2. NOME
+                  h('span', {
+                      class: 'font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate',
+                  }, condominio.nome),
+              ]),
+              
+              // Sottotitolo interattivo allineato all'estetica indigo
+              h('span', { 
+                  class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors' 
+              }, [
+                  trans('condomini.table.click_to_manage'),
+                  h(ArrowRight, { class: 'w-3 h-3 animate-pulse text-indigo-500/60' })
+              ])
+          ])
+        ]);
+      }
   },
   {
     accessorKey: 'indirizzo',

@@ -12,6 +12,7 @@ import InputError from '@/components/InputError.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { usePermission } from '@/composables/permissions';
 import { trans } from 'laravel-vue-i18n';
@@ -21,7 +22,6 @@ import '@vuepic/vue-datepicker/dist/main.css';
 import type { BreadcrumbItem } from '@/types';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 const props = defineProps<{
   anagrafiche: Anagrafica[];

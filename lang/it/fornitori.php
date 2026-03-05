@@ -60,7 +60,7 @@ return [
      | Azioni
      | ------------------------------------------------------------------ */
     'actions' => [
-        'new_fornitore'   => 'Nuovo Fornitore',
+        'new_fornitore'   => 'Crea fornitore',
         'edit_fornitore'  => 'Modifica',
         'delete_fornitore'=> 'Elimina',
         'save_fornitore'  => 'Salva Fornitore',

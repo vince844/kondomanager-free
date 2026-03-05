@@ -1,10 +1,11 @@
 <script setup lang="ts">
+
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, Tags } from 'lucide-vue-next';
-import { trans } from 'laravel-vue-i18n';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni';
 
 const props = defineProps<{
@@ -20,7 +21,7 @@ const priorityIcons = {
 };
 
 const priorityColors: Record<string, string> = {
-    bassa: 'text-green-500',
+    bassa: 'text-green-600',
     media: 'text-blue-500',
     alta: 'text-orange-500',
     urgente: 'text-red-500',

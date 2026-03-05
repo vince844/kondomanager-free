@@ -33,6 +33,7 @@ return [
      | ------------------------------------------------------------------ */
     'table' => [
         'name'      => 'Nome e cognome',
+        'contacts'  => 'Contatti',
         'address'   => 'Indirizzo',
         'buildings' => 'Condomini',
         'actions'   => 'Azioni',
@@ -43,7 +44,7 @@ return [
      | Actions
      | ------------------------------------------------------------------ */
     'actions' => [
-        'new_resident'    => 'Crea',
+        'new_resident'    => 'Crea anagrafica',
         'edit_resident'   => 'Modifica',
         'delete_resident' => 'Elimina',
         'save_resident'   => 'Salva',

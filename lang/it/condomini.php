@@ -111,7 +111,7 @@ return [
      | Action buttons (toolbar, card actions, etc.)
      | ------------------------------------------------------------------ */
     'actions' => [
-        'new_building'   => 'Crea',
+        'new_building'   => 'Crea condominio',
         'edit_building'  => 'Modifica',
         'delete_building'=> 'Elimina',
         'save_building'  => 'Salva',

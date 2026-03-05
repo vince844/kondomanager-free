@@ -206,8 +206,8 @@ return [
             ]
         ],
         'anagrafica' => [
-            'after:today' => ':attribute deve essere successivo a oggi',
-            'before:today' => ':attribute deve essere precedente a oggi',
+            'after:today' => 'Il campo :attribute deve essere successivo a oggi',
+            'before:today' => 'Il campo :attribute deve essere precedente a oggi',
             'codice_fiscale' => [
                 'unique' => 'Esiste già una anagrafica registrata con questo :attribute'
             ]
@@ -230,8 +230,8 @@ return [
 
     'attributes' => [
         'email' => 'indirizzo email',
-        'email_secondaria' => 'indirizzo email',
-        'pec' => 'indirizzo email',
+        'email_secondaria' => 'indirizzo email secondario',
+        'pec' => 'indirizzo email pec',
         'name' => 'nome e cognome',
         'building' => [
             'nome' => 'denominazione',
@@ -241,10 +241,10 @@ return [
             'roles' => 'ruolo'
         ],
         'anagrafica' => [
-            'nome' => 'Il campo nome e cognome anagrafica',
-            'indirizzo' => 'Il campo indirizzo anagrafica',
-            'scadenza_documento' => 'Il campo scadenza documento',
-            'data_nascita' => 'Il campo data nascita',
+            'nome' => 'nome e cognome anagrafica',
+            'indirizzo' => 'indirizzo anagrafica',
+            'scadenza_documento' => 'scadenza documento',
+            'data_nascita' => 'data nascita',
             'codice_fiscale' => 'codice fiscale'
         ],
         'ruoli' => [

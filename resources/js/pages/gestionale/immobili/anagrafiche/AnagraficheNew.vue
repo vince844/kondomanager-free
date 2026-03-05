@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';

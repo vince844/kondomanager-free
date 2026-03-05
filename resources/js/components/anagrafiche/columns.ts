@@ -1,76 +1,133 @@
 import { h } from 'vue'
-import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue';
-import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue';
-import { trans } from 'laravel-vue-i18n';
+import { Link } from '@inertiajs/vue3'
+import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue'
+import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue'
+import { usePermission } from "@/composables/permissions"
+import { trans } from 'laravel-vue-i18n'
+import AnagraficheStack from '@/components/buildings/AnagraficheStack.vue'
+import { User, MapPin, Mail, Smartphone, Phone, ArrowRight } from 'lucide-vue-next' 
 import type { ColumnDef } from '@tanstack/vue-table'
-import type { Anagrafica } from '@/types/anagrafiche';
-import type { Building } from '@/types/buildings';
+import type { Anagrafica } from '@/types/anagrafiche'
+import type { Building } from '@/types/buildings'
+
+const { generateRoute } = usePermission();
 
 export const columns: ColumnDef<Anagrafica>[] = [
   {
     accessorKey: 'nome',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.name') }), 
-    cell: ({ row }) => h('div', { class: 'capitalize font-bold' }, row.getValue('nome')),
+    
+    cell: ({ row }) => {
+      const anagrafica = row.original
+      const codiceFiscale = anagrafica.codice_fiscale
+
+      return h(Link, {
+        href: route(generateRoute('anagrafiche.show'), { anagrafica: anagrafica.id }),
+        class: 'group flex items-start gap-3 py-1 outline-none' 
+      }, () => [
+        // Icona Anagrafica
+        h('div', { 
+            class: 'p-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg text-indigo-500 dark:text-indigo-400 shadow-sm group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 transition-colors shrink-0 mt-0.5' 
+        }, [
+            h(User, { class: 'w-4 h-4' })
+        ]),
+        
+        // Contenitore Nome e CF
+        h('div', { class: 'flex flex-col min-w-0' }, [
+            h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
+                codiceFiscale ? h('span', { 
+                    class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
+                }, codiceFiscale) : null,
+
+                h('span', {
+                    class: 'font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate capitalize',
+                }, anagrafica.nome),
+            ]),
+            
+            // Sottotitolo interattivo
+      /*       h('span', { 
+                class: 'text-[10px] text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors mt-1.5' 
+            }, [
+                trans('anagrafiche.table.click_to_view') || 'Visualizza Scheda', 
+                h(ArrowRight, { class: 'w-3 h-3 text-indigo-500/60' })
+            ]) */
+        ])
+      ]);
+    }
+  },
+  {
+    id: 'contatti',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.contacts') || 'Contatti' }),
+    cell: ({ row }) => {
+      const a = row.original;
+      
+      // Logica "intelligente": prende il cellulare se c'è, altrimenti il telefono fisso
+      const recapitoTelefonico = a.cellulare || a.telefono;
+      const emailPrincipale = a.email || a.pec;
+
+      if (!emailPrincipale && !recapitoTelefonico) {
+        return h('span', { class: 'text-xs text-slate-400 italic' }, 'Nessun contatto');
+      }
+
+      return h('div', { class: 'flex flex-col gap-1.5 text-sm text-slate-600 dark:text-slate-400' }, [
+        emailPrincipale ? h('div', { class: 'flex items-center gap-2' }, [
+            h(Mail, { class: 'w-3.5 h-3.5 shrink-0 text-slate-400' }),
+            h('span', { class: 'truncate max-w-[160px]' }, emailPrincipale)
+        ]) : null,
+        
+        recapitoTelefonico ? h('div', { class: 'flex items-center gap-2' }, [
+            // Usa l'icona Smartphone se è un cellulare, altrimenti il Phone classico
+            h(a.cellulare ? Smartphone : Phone, { class: 'w-3.5 h-3.5 shrink-0 text-slate-400' }),
+            h('span', { class: 'truncate font-mono text-xs' }, recapitoTelefonico)
+        ]) : null,
+      ]);
+    }
   },
   {
     accessorKey: 'indirizzo',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.address') }), 
-    cell: ({ row }) => h('div', { class: 'capitalize' }, row.getValue('indirizzo')),
+    cell: ({ row }) => {
+      // Dato che l'indirizzo è già completo nel DB, usiamo direttamente quello!
+      const indirizzo = row.original.indirizzo?.trim()
+
+      return h('div', { class: 'flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400 font-medium' }, [
+        h(MapPin, { class: 'w-3.5 h-3.5 shrink-0 text-slate-400 mt-0.5' }),
+        h('span', { class: 'truncate max-w-[200px] capitalize whitespace-normal leading-tight' }, indirizzo || '—')
+      ])
+    },
   },
   {
     accessorKey: 'condomini',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('anagrafiche.table.buildings') }),
     
     cell: ({ row }) => {
-      const condomini = row.original.condomini ?? [];
-  
-      if (!Array.isArray(condomini) || condomini.length === 0) {
-        return '—';
-      }
-  
-      const maxAvatars = 3;
-      const visibleCondomini = condomini.slice(0, maxAvatars);
-      const remainingCount = condomini.length - maxAvatars;
-  
-      const createAvatar = (text: string, index: number, tooltip?: string) => h('div', {
-        key: `${text}-${index}`,
-        title: tooltip ?? text,
-        class: 'absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold flex items-center justify-center border border-white shadow',
-        style: `z-index: ${10 + index}; left: ${index * 18}px; top: 50%; transform: translateY(-50%);`
-      }, text);
-  
-      const avatars = visibleCondomini.map((option, index) => {
-        const initials = (option.nome || '?')
-          .split(' ')
-          .map(word => word[0]?.toUpperCase())
-          .join('')
-          .slice(0, 2);
-        return createAvatar(initials, index, option.nome);
-      });
-  
-      if (remainingCount > 0) {
-        avatars.push(createAvatar(`+${remainingCount}`, visibleCondomini.length, `+${remainingCount} altri condomini`));
-      }
-  
-      return h('div', { class: 'relative flex items-center h-10' }, avatars);
+        const condomini = row.original.condomini || [];
+        
+        const mappedCondomini = condomini.map(c => {
+            // Qui manteniamo la concatenazione perché i Condomini HANNO i campi separati
+            const capComune = [c.cap, c.comune].filter(Boolean).join(' ');
+            const prov = c.provincia ? `(${c.provincia})` : '';
+            const indirizzoCompleto = [c.indirizzo, capComune, prov].filter(Boolean).join(', ');
+
+            return {
+                id: c.id,
+                nome: c.nome,
+                indirizzo: indirizzoCompleto || undefined,
+                url: route(generateRoute('gestionale.index'), { condominio: c.id })
+            };
+        });
+
+        return h(AnagraficheStack, { anagrafiche: mappedCondomini });
     },
 
-    // Manteniamo questa filterFn per sicurezza, anche se il grosso del lavoro lo fa il backend
     filterFn: (row, id, value) => {
       const condomini = row.original.condomini ?? [];
-      // Value è l'array di ID selezionati nel dropdown
       return condomini.some((condominio: Building) => value.includes(String(condominio.id)));
     }
-
   },
   {
     id: 'actions',
     enableHiding: false,
-    cell: ({ row }) => {
-      const anagrafica = row.original
-      return h('div', { class: 'relative' }, h(DropdownAction, {
-        anagrafica,
-      }))
-    },
+    cell: ({ row }) => h('div', { class: 'relative text-right pr-2' }, h(DropdownAction, { anagrafica: row.original })),
   }
 ]

@@ -42,7 +42,7 @@ class AnagraficaController extends Controller
     {   
         $validated = $request->validated();
 
-        $anagrafiche = Anagrafica::with(['condomini:id,nome'])
+        $anagrafiche = Anagrafica::with(['condomini:id,nome,indirizzo'])
             // Filtro per Nome (Esistente)
             ->when($validated['nome'] ?? false, function ($query, $nome) {
                 $query->where('nome', 'like', "%{$nome}%");

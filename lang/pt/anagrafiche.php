@@ -36,6 +36,7 @@ return [
      | ------------------------------------------------------------------ */
     'table' => [
         'name'      => 'Nome completo',
+        'contacts'  => 'Contatos',
         'address'   => 'Morada',
         'buildings' => 'Condomínios',
         'actions'   => 'Ações',

@@ -1,8 +1,10 @@
 <script setup lang="ts">
+
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { trans } from 'laravel-vue-i18n';
 import type { Comunicazione } from '@/types/comunicazioni';
 
@@ -19,7 +21,7 @@ const priorityIcons = {
 };
 
 const priorityColors: Record<string, string> = {
-    bassa: 'text-green-500',
+    bassa: 'text-green-600',
     media: 'text-blue-500',
     alta: 'text-orange-500',
     urgente: 'text-red-500',
@@ -46,12 +48,19 @@ const truncate = (text: string, length: number = 120) => {
     <div class="flow-root">
         <ul role="list" class="divide-y divide-slate-100 dark:divide-slate-800">
 
-            <div
-                v-if="!comunicazioni.length"
-                class="flex items-center justify-center py-8 text-xs font-medium text-slate-400 uppercase tracking-widest"
-            >
-                {{ trans('comunicazioni.dialogs.no_communications_created') }}
-            </div>
+            <Empty v-if="!comunicazioni.length" class="border border-dashed my-4">
+                <EmptyHeader>
+                    <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
+                        <Tags />
+                    </EmptyMedia>
+                    <EmptyTitle> 
+                        Nessuna comunicazione creata
+                    </EmptyTitle>
+                    <EmptyDescription>
+                        {{ trans('comunicazioni.dialogs.no_communications_created') }}
+                    </EmptyDescription>
+                </EmptyHeader>
+            </Empty>
 
             <li
                 v-for="comunicazione in comunicazioni"

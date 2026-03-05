@@ -1,18 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
-import { usePage, Head, Link } from "@inertiajs/vue3";
+import { usePage, Head } from "@inertiajs/vue3";
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import DataTable from '@/components/anagrafiche/DataTable.vue';
 import { columns } from '@/components/anagrafiche/columns';
 import Alert from "@/components/Alert.vue";
 import { trans } from 'laravel-vue-i18n';
-
-// Icone mirate per la rubrica anagrafiche
 import { Users, Link as LinkIcon, ShieldCheck } from 'lucide-vue-next';
-
 import type { Flash } from '@/types/flash';
 import type { Anagrafica } from '@/types/anagrafiche';
+import type { BreadcrumbItem } from '@/types';
 
 defineProps<{ 
   anagrafiche: Anagrafica[],
@@ -24,14 +22,11 @@ defineProps<{
   } 
 }>()
 
-// Extract `$page` props with proper typing
 const page = usePage<{ flash: { message?: Flash } }>();
-
-// Computed property to safely access flash messages
 const flashMessage = computed(() => page.props.flash.message);
 
-// Array vuoto per forzare l'header in modalità "Dashboard/Root" compatta
-const breadcrumbs: never[] = [];
+// Usiamo il tipo corretto come nel modello fornitori
+const breadcrumbs: BreadcrumbItem[] = [];
 
 // Guide reattive per le traduzioni
 const pageGuides = computed(() => [
@@ -55,7 +50,6 @@ const pageGuides = computed(() => [
   }
 ]);
 
-// Scroll to top when flashMessage exists
 const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
 onMounted(() => {
@@ -71,8 +65,7 @@ watch(flashMessage, (newValue) => {
   <Head :title="trans('anagrafiche.header.list_residents_head')" />
 
   <AppLayout :breadcrumbs="breadcrumbs">
-
-    <div class="px-6 py-8 space-y-4">
+    <div class="px-6 py-8 space-y-6">
       
       <PageHeaderGuide
         :page-title="trans('anagrafiche.header.list_residents_title')"

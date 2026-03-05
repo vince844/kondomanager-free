@@ -1,9 +1,11 @@
 <script setup lang="ts">
+
 import { ref } from "vue";
-import type { Evento } from '@/types/eventi';
 import { useEventStyling } from '@/composables/useEventStyling';
 import EventDetailsDialog from '@/components/eventi/EventDetailsDialog.vue'; 
 import { Building2, Tag, CalendarDays } from 'lucide-vue-next';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import type { Evento } from '@/types/eventi';
 
 const props = defineProps<{
   eventi: Evento[];
@@ -44,13 +46,18 @@ const getCondominioName = (evento: Evento) => {
 <template>
   <div class="flow-root">
     <ul role="list" class="divide-y divide-gray-200">
-      <div
-        v-if="!eventi.length"
-        class="p-4 mt-7 text-sm text-gray-800 rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-300"
-        role="alert"
-      >
-        <span class="font-medium">Nessuna scadenza in agenda ancora creata!</span>
-      </div>
+
+      <Empty v-if="!eventi.length" class="border border-dashed my-4">
+        <EmptyHeader>
+          <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
+              <CalendarDays />
+          </EmptyMedia>
+          <EmptyTitle>Nessuna scadenza imminente</EmptyTitle>
+          <EmptyDescription>
+              Nessuna scadenza in agenda ancora creata!
+          </EmptyDescription>
+        </EmptyHeader>
+      </Empty>
 
       <li v-for="evento in eventi" :key="evento.id" class="py-3 sm:py-4">
         <div 

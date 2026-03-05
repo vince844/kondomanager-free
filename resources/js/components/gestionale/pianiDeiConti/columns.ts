@@ -83,7 +83,7 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
       const capitoliCount = row.original.capitoli_count ?? 0;
       
       return h('div', { class: 'flex flex-col gap-1' }, [
-        h('span', { class: 'font-mono text-sm font-bold text-slate-700 dark:text-slate-300' }, euro(totale)),
+        h('span', { class: 'text-sm font-bold text-slate-700 dark:text-slate-300' }, euro(totale)),
         h('span', { class: 'text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-tight' }, [
             h(Layers, { class: 'w-3 h-3' }),
             `${capitoliCount} voci di spesa`

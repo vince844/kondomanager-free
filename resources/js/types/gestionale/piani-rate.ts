@@ -5,17 +5,21 @@ export interface PianoRate {
   id: number
   nome: string
   descrizione: string
-  note: string
-  gestione: Gestione
+  note?: string
+  numero_rate: number
+  stato: string // o 'bozza' | 'approvato' se preferisci string literal types
+  giorno_scadenza?: number
+  metodo_distribuzione?: string
+  data_inizio: string
+  totale_capitoli?: number
+  totale_piano?: number
+  gestione?: Gestione
 }
 
 /**
  * Stato contabile del piano nell'esercizio
  */
 export interface PianoRateContabile extends PianoRate {
-  stato: 'bozza' | 'approvato'
-  numero_rate: number
-  totale_capitoli?: number
   capitoli: Conto[]
   budget_movements?: BudgetMovement[]
 }
