@@ -59,7 +59,7 @@ const closeModal = () => {
                         <DialogHeader class="space-y-3">
                             <DialogTitle>Sei sicuro di volere eliminare il tuo account?</DialogTitle>
                             <DialogDescription>
-                                Una volta che il tuo account sarà eliminato, tutti i dati ad esso associati verrano anche eliminati permanentemente. 
+                                Una volta che il tuo account sarà eliminato, tutti i dati ad esso associati verranno anche eliminati permanentemente. 
                                 Per favore inserisci la tua passsword per confermare l'eliminazione permanente del tuo account.
                             </DialogDescription>
                         </DialogHeader>

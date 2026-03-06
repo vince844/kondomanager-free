@@ -1,5 +1,4 @@
 <script setup lang="ts">
-    
 import { ref, reactive, computed, watch } from "vue";
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -51,79 +50,61 @@ const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-// --- LOGICA SINCRONIZZAZIONE GRANULARE (SOLUZIONE REATTIVA) ---
-// Usiamo un oggetto reattivo per mappare ID -> Booleano
-// Questo garantisce compatibilità totale con v-model di componenti UI
+
 const orphanCheckboxes = reactive<Record<number, boolean>>({});
 
 // --- LOGICA DETACH / RIMozione VOCE ---
 const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number } | null>(null);
 const isDeleteItemModalOpen = ref(false);
-// Stato per l'accordion (default false = chiuso per risparmiare spazio)
 const isCapitoliExpanded = ref(false);
 const isReloadingCapitoli = ref(false);
-const isSpostaSpesaOpen = ref(false); // Stato modale sposta spesa
+const isSpostaSpesaOpen = ref(false); 
 
 const isDisallineato = computed(() => {
     if (!props.pianoRate.capitoli || !aggregates.value) return false;
 
-    // 1. Come hai suggerito: sommiamo dinamicamente gli importi reali delle righe visibili
     const totaleVoci = props.pianoRate.capitoli.reduce((acc: number, cap: any) => acc + (cap.importo || 0), 0);
 
-    // Se non ci sono rate generate (es. piano appena svuotato), non mostriamo l'allarme
     if (aggregates.value.totaleTeorico === 0) return false;
 
-    // 2. IL TRUCCO: Calcoliamo la somma dei Saldi Iniziali (debiti pregressi) inclusi nelle rate.
-    // Usiamo sempre quotePerAnagrafica per avere il dato completo.
     const saldiPregressi = (props.quotePerAnagrafica || []).reduce((sum, item) => {
         return sum + (item.saldo_iniziale || 0);
     }, 0);
 
-    // 3. Il VERO totale delle rate di quest'anno (depurato dai saldi vecchi)
     const totaleRatePuro = aggregates.value.totaleTeorico - saldiPregressi;
 
-    // 4. Confronto con tolleranza di 2 euro (200 centesimi) per compensare i normali arrotondamenti
     return Math.abs(totaleVoci - totaleRatePuro) > 200;
 });
 
 const confirmDetachItem = (capitolo: any) => {
-    // 1. BLOCCO INCASSI
     if (aggregates.value.totaleVersato > 0) {
         showFeedback('Azione bloccata', 'Non puoi rimuovere voci se ci sono incassi registrati.', true);
         return;
     }
 
-    // 2. CONTROLLO MOVIMENTI BIDIREZIONALE
     const movimenti = props.pianoRate.budget_movements || [];
-    const capId = Number(capitolo.id); // Sicurezza sui tipi
+    const capId = Number(capitolo.id); 
 
-    // È una destinazione? (Ha ricevuto soldi)
     const isDestination = movimenti.some((m: any) => Number(m.destination_conto_id) === capId);
-    
-    // È una sorgente? (Ha inviato soldi)
     const isSource = movimenti.some((m: any) => Number(m.source_conto_id) === capId);
 
     if (isDestination || isSource) {
         let msg = `Il capitolo "${capitolo.nome}" è vincolato. `;
-        
         if (isDestination) {
             msg += `Ha RICEVUTO fondi extra da altre voci. `;
         } else {
             msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
         }
-        
         msg += `Per mantenere la coerenza contabile, devi annullare questi movimenti (restituendo i fondi) prima di eliminare la voce.`;
 
         showFeedback('Voce bloccata da movimenti', msg, true);
-        return; // Stop
+        return; 
     }
 
-    // 3. APERTURA DIALOG
     itemToDelete.value = capitolo;
     isDeleteItemModalOpen.value = true;
 };
 
-// Aggiungi questa funzione negli script
 const toggleCapitoli = () => {
     if (!isCapitoliExpanded.value) {
         isReloadingCapitoli.value = true;
@@ -158,19 +139,13 @@ const executeDetachItem = () => {
             showFeedback('Voce rimossa', 'Il piano è stato ricalcolato senza la voce selezionata.', false);
         },
         onError: (errors) => {
-            // Chiudiamo il dialog di conferma eliminazione
             isDeleteItemModalOpen.value = false;
-            
-            // Cerchiamo il messaggio flash o il primo errore disponibile
             const msg = page.props.flash.message?.message || Object.values(errors)[0] || "Errore durante la rimozione.";
-            
-            // Mostriamo il Feedback Dialog con l'errore del backend
             showFeedback('Impossibile rimuovere', msg, true);
         }
     });
 };
 
-// Computed per ottenere l'array di IDs da inviare al backend
 const selectedOrphanIds = computed(() => {
     return Object.entries(orphanCheckboxes)
         .filter(([_, isChecked]) => isChecked)
@@ -181,7 +156,6 @@ watch(() => props.pianoRate.stato, (newVal) => {
     switchState.value = newVal === 'approvato';
 });
 
-// --- GESTIONE FEEDBACK (Sostituisce Alert/Confirm) ---
 const feedbackDialog = ref({
     open: false,
     title: '',
@@ -198,7 +172,6 @@ const showFeedback = (title: string, message: string, isError: boolean = false) 
     };
 };
 
-// --- LOGICA MIGRAZIONE (AGGIUNTA) ---
 const isMigrationDialogOpen = ref(props.needsMigration);
 
 const executeMigration = () => {
@@ -213,9 +186,7 @@ const executeMigration = () => {
             showFeedback('Aggiornamento completato', 'Il piano rate è stato aggiornato alla nuova versione contabile (v1.8).', false);
         },
         onError: () => {
-             // Questo caso non dovrebbe capitare grazie al filtro "Soft" nel controller, 
-             // ma lo gestiamo per sicurezza.
-             isMigrationDialogOpen.value = false; // Chiudiamo per non bloccare l'utente in un loop
+             isMigrationDialogOpen.value = false; 
              showFeedback('Attenzione', 'Impossibile aggiornare automaticamente il piano rate (probabilmente ci sono rate emesse). Il piano resterà nella versione precedente.', true);
         }
     });
@@ -225,7 +196,6 @@ const isAlertOpen = ref(false);
 const rataToAnnullareId = ref<number | null>(null);
 const isRecalculateAlertOpen = ref(false);
 
-// --- LOGICA CAMBIO STATO ---
 const toggleStatoPiano = (newValue: boolean) => {
     if (isProcessingStatus.value) return;
     isProcessingStatus.value = true;
@@ -239,9 +209,7 @@ const toggleStatoPiano = (newValue: boolean) => {
         { approvato: newValue },
         {
             preserveScroll: true,
-            onSuccess: () => {
-                // Successo gestito dal watcher o flash message
-            },
+            onSuccess: () => {},
             onError: (err) => {
                 console.error("Errore cambio stato:", err);
                 switchState.value = !newValue;
@@ -259,7 +227,6 @@ const showOnlyCredits = ref(false);
 const today = new Date();
 today.setHours(0, 0, 0, 0);
 
-// --- LOGICA EMISSIONE ---
 const selectedRateIds = ref<number[]>([]);
 const isEmissionModalOpen = ref(false);
 
@@ -339,8 +306,6 @@ const executeAnnullamento = () => {
     });
 };
 
-// --- RICALCOLO ---
-// Funzione di apertura modale e reset
 const confirmRecalculate = () => {
     const haRateEmesse = props.ratePure?.some(r => r.is_emessa);
 
@@ -353,12 +318,10 @@ const confirmRecalculate = () => {
         return; 
     }
     
-    // Reset dello stato reattivo (pulizia profonda)
     for (const key in orphanCheckboxes) {
         delete orphanCheckboxes[key];
     }
     
-    // Inizializzazione: Tutte le voci orfane selezionate di default
     if (props.copertura?.orfani) {
         props.copertura.orfani.forEach(o => {
             orphanCheckboxes[Number(o.id)] = true; 
@@ -368,7 +331,6 @@ const confirmRecalculate = () => {
     isRecalculateAlertOpen.value = true;
 };
 
-// Funzione di invio al backend (invariata, usa il computed)
 const executeRecalculate = () => {
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
@@ -385,7 +347,6 @@ const executeRecalculate = () => {
     });
 };
 
-// --- HELPER DI STILE ---
 const getRataStyle = (rata: any) => {
   const scaduta = new Date(rata.scadenza) < new Date() && rata.stato === 'da_pagare';
   if (rata.stato === 'annullata') return { container: 'bg-gray-50 border-gray-200 text-gray-400 opacity-60', text: 'line-through decoration-gray-400', icon: Ban, label: 'Annullata' };
@@ -413,11 +374,8 @@ const immobileDettagli = (immobile: any) => {
   return `Int. ${interno} • Piano ${piano}`;
 };
 
-// Funzione helper per capire se la voce è una destinazione di fondi
 const isVoceRicevente = (capitoloId: number) => {
     if (!props.pianoRate.budget_movements) return false;
-    
-    // Cerchiamo se esiste un movimento dove questa voce è la DESTINAZIONE
     return props.pianoRate.budget_movements.some((m: any) => 
         Number(m.destination_conto_id) === Number(capitoloId)
     );
@@ -429,10 +387,8 @@ const rateColumns = computed(() => {
   if (!isReady.value || !props.ratePure) return [];
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
   
-  // Usiamo direttamente le rate che arrivano dal backend, così si adatta da solo se c'è la Rata 0
   return props.ratePure.map(rataPura => {
     const numero = rataPura.numero_rata;
-    // Cerchiamo una quota qualsiasi per estrarre la data formattata (o usiamo il fallback)
     const sample = Array.isArray(src) ? src.find((item: any) => item.rate?.some((r: any) => r.numero === numero)) : null;
     const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
     
@@ -444,24 +400,6 @@ const rateColumns = computed(() => {
     };
   });
 });
-
-/* const rateColumns = computed(() => {
-  if (!isReady.value) return [];
-  const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
-  if (!Array.isArray(src)) return [];
-  return Array.from({ length: props.pianoRate.numero_rate }, (_, i) => {
-    const numero = i + 1;
-    const sample = src.find((item: any) => item.rate?.some((r: any) => r.numero === numero));
-    const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
-    const rataPura = props.ratePure?.find(r => r.numero_rata === numero);
-    return { 
-        numero, 
-        scadenza: scadenza ? new Date(scadenza) : null,
-        is_emessa: rataPura?.is_emessa ?? false, 
-        id: rataPura?.id 
-    };
-  });
-}); */
 
 const dataWithMap = computed(() => {
   if (!isReady.value) return [];
@@ -511,9 +449,7 @@ const aggregates = computed(() => {
   if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: {}, totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
   
-  // FIX: Usiamo un Oggetto (Dizionario) invece di un array, così la rata "0" non va in indice -1
   const perRata: Record<number, number> = {};
-  
   let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
   
   (src || []).forEach((item: any) => {
@@ -522,7 +458,6 @@ const aggregates = computed(() => {
       const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
       const isScaduta = scadenzaTime <= today.getTime();
       
-      // Somma sicura per qualsiasi numero di rata (0, 1, 2...)
       perRata[r.numero] = (perRata[r.numero] || 0) + importo;
       
       totaleTeorico += importo;
@@ -539,38 +474,48 @@ const aggregates = computed(() => {
   return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
 });
 
-/* const aggregates = computed(() => {
-  if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: [], totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
-  const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
-  const perRata = Array(props.pianoRate.numero_rate).fill(0);
-  let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
-  
-  (src || []).forEach((item: any) => {
-    (item.rate || []).forEach((r: any) => {
-      const importo = r.importo ?? 0;
-      const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
-      const isScaduta = scadenzaTime <= today.getTime();
-      perRata[r.numero - 1] += importo;
-      totaleTeorico += importo;
-      if (r.stato === "pagata") versato += importo;
-      else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
-      if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
-         if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
-         else scadute += importo;
-      }
-      if (importo < 0) crediti += Math.abs(importo);
-    });
-  });
-  const daIncassareTotale = totaleTeorico - versato;
-  return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
-}); */
-
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'Piani Rate', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: 'Dettaglio', href: '#' },
 ]);
+
+// --- HELPER ESTRAZIONE SALDI PER UI V1.9 ---
+interface DettaglioStats {
+    spesa: number;
+    saldo: number;
+    totale_debiti: number;
+    totale_crediti: number;
+    saldo_netto: number;
+    hasDebito: boolean;
+    hasCredito: boolean;
+}
+
+const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
+    if (!dettaglioQuote || !Array.isArray(dettaglioQuote)) {
+        return { spesa: 0, saldo: 0, totale_debiti: 0, totale_crediti: 0, saldo_netto: 0, hasDebito: false, hasCredito: false };
+    }
+    
+    // Ora TypeScript sa esattamente cosa sono "acc" e "q"
+    return dettaglioQuote.reduce((acc: DettaglioStats, q: any) => {
+        const s = q.componente_saldo || 0;
+        const spesa = q.componente_spesa || 0;
+        
+        acc.spesa += spesa;
+        acc.saldo += s;
+        acc.totale_debiti += (s > 0 ? s : 0);
+        acc.totale_crediti += (s < 0 ? s : 0);
+        acc.saldo_netto += s;
+        
+        if (s > 0) acc.hasDebito = true;
+        if (s < 0) acc.hasCredito = true;
+        
+        return acc;
+    }, { spesa: 0, saldo: 0, totale_debiti: 0, totale_crediti: 0, saldo_netto: 0, hasDebito: false, hasCredito: false });
+};
+// -------------------------------------------
+
 </script>
 
 <template>   
@@ -901,7 +846,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
                               <div class="flex flex-col items-center relative z-20 pointer-events-none">
                                   <div class="font-semibold text-gray-700 flex items-center gap-1">
-                                    <!--   Rata {{ col.numero }} -->
                                        {{ col.numero === 0 ? 'Saldi Iniziali' : 'Rata ' + col.numero }}
                                       <Badge v-if="col.is_emessa" class="ml-1 h-1.5 w-1.5 p-0 bg-emerald-500 rounded-full" title="Emessa"></Badge>
                                   </div>
@@ -978,16 +922,16 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                             <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20">
                                                 PARZ.
                                             </div>
-                                          <!--   <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale"  -->
-                                            <div v-if="tab === 'anagrafica' && rateColumns[0]?.numero === col.numero && item.saldo_iniziale"
-                                                class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 shadow-sm ring-1 ring-white z-20"
-                                                :class="item.saldo_iniziale > 0 ? 'bg-red-500' : 'bg-blue-500'"
-                                            ></div>
-                                            <!-- <div v-if="tab === 'immobile' && col.numero === 1" class="z-20"> -->
-                                                <div v-if="tab === 'immobile' && rateColumns[0]?.numero === col.numero" class="z-20">
-                                                <div v-if="item.totale_debiti > 0 && item.totale_crediti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
-                                                <div v-if="item.totale_crediti < 0 && item.totale_debiti === 0" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
-                                                <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="absolute -top-1 -right-1 flex gap-0.5">
+                                            
+                                            <div v-if="item.rateMap[col.numero].dettaglio_quote" 
+                                                v-for="stats in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" 
+                                                :key="'dots-' + col.numero" class="z-20"
+                                            >
+                                                <div v-if="stats.hasDebito && !stats.hasCredito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
+                                                
+                                                <div v-if="stats.hasCredito && !stats.hasDebito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
+                                                
+                                                <div v-if="stats.hasDebito && stats.hasCredito" class="absolute -top-1 -right-1 flex gap-0.5">
                                                     <div class="rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                     <div class="rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
                                                 </div>
@@ -999,23 +943,37 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                                         <div class="text-xs text-center">
                                             <p class="font-bold mb-1">{{ getRataStyle(item.rateMap[col.numero]).label }}</p>
                                             
-                                            <!-- <div v-if="tab === 'anagrafica' && col.numero === 1 && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20"> -->
-                                            <div v-if="tab === 'anagrafica' && rateColumns[0]?.numero === col.numero && item.saldo_iniziale !== 0" class="mb-1 pb-1 border-b border-white/20">
-                                                <p>Incluso saldo iniziale:</p>
-                                                <p :class="item.saldo_iniziale > 0 ? 'text-red-300' : 'text-blue-300'">
-                                                    {{ item.saldo_iniziale > 0 ? 'Debito: ' : 'Credito: ' }} 
-                                                    {{ euro(Math.abs(item.saldo_iniziale)) }}
-                                                </p>
-                                            </div>
+                                            <div v-if="item.rateMap[col.numero].dettaglio_quote && item.rateMap[col.numero].dettaglio_quote.length > 0" class="mb-2 pb-1.5 border-b border-white/20 text-left space-y-1">
+    
+                                                <div v-for="dettaglio in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" :key="'dettaglio-' + col.numero" class="space-y-1">
+                                                
+                                                    <div v-if="dettaglio.spesa !== 0" class="flex justify-between gap-4 text-slate-300">
+                                                        <span>Quota ordinaria:</span>
+                                                        <span class="font-mono">{{ euro(dettaglio.spesa) }}</span>
+                                                    </div>
+                                                    
+                                                    <template v-if="dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0">
+                                                        <div v-if="dettaglio.totale_debiti > 0" class="flex justify-between gap-4 text-red-300">
+                                                            <span>Debiti pregressi:</span>
+                                                            <span class="font-mono">{{ euro(dettaglio.totale_debiti) }}</span>
+                                                        </div>
+                                                        <div v-if="dettaglio.totale_crediti < 0" class="flex justify-between gap-4 text-blue-300">
+                                                            <span>Crediti pregressi:</span>
+                                                            <span class="font-mono">{{ euro(Math.abs(dettaglio.totale_crediti)) }}</span>
+                                                        </div>
 
-                                            <div v-if="tab === 'immobile' && col.numero === 1 && (item.totale_debiti > 0 || item.totale_crediti < 0)" class="mb-1 pb-1 border-b border-white/20 text-left">
-                                                <p class="font-semibold text-center mb-1">Saldi pregressi:</p>
-                                                <div v-if="item.totale_debiti > 0" class="text-red-300 whitespace-nowrap flex justify-between gap-2"><span>Debiti:</span><span>{{ euro(item.totale_debiti) }}</span></div>
-                                                <div v-if="item.totale_crediti < 0" class="text-blue-300 whitespace-nowrap flex justify-between gap-2"><span>Crediti:</span><span>{{ euro(Math.abs(item.totale_crediti)) }}</span></div>
-                                                <div v-if="item.totale_debiti > 0 && item.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium border-t border-white/10 pt-1">
-                                                    <span v-if="(item.totale_debiti + item.totale_crediti) === 0" class="text-emerald-300">Compensazione totale (0€)</span>
-                                                    <span v-else-if="(item.totale_debiti + item.totale_crediti) > 0" class="text-red-200">Residuo debito: {{ euro(item.totale_debiti + item.totale_crediti) }}</span>
-                                                    <span v-else class="text-blue-200">Residuo credito: {{ euro(Math.abs(item.totale_debiti + item.totale_crediti)) }}</span>
+                                                        <div v-if="dettaglio.totale_debiti > 0 && dettaglio.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium pt-1">
+                                                            <span v-if="dettaglio.saldo_netto === 0" class="text-emerald-300">Compensazione totale (0€)</span>
+                                                            <span v-else-if="dettaglio.saldo_netto > 0" class="text-red-200">Residuo debito: {{ euro(dettaglio.saldo_netto) }}</span>
+                                                            <span v-else class="text-blue-200">Residuo credito: {{ euro(Math.abs(dettaglio.saldo_netto)) }}</span>
+                                                        </div>
+                                                    </template>
+                                                    
+                                                    <div v-if="dettaglio.spesa !== 0 && (dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0)" class="flex justify-between gap-4 text-[10px] font-bold pt-1 border-t border-white/10 mt-1">
+                                                        <span>Totale rata:</span>
+                                                        <span class="font-mono">{{ euro(dettaglio.spesa + dettaglio.saldo_netto) }}</span>
+                                                    </div>
+
                                                 </div>
                                             </div>
 
@@ -1055,7 +1013,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
                       <tr class="border-t-2 border-muted bg-gray-50 font-bold text-gray-700">
                         <td class="px-6 py-3 sticky left-0 bg-gray-50 z-40 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">TOTALE</td>
                         <td v-for="col in rateColumns" :key="col.numero" class="text-center px-3 py-3">
-                          <!-- {{ euro(aggregates.totaliPerRata[col.numero - 1] ?? 0) }} -->
                             {{ euro(aggregates.totaliPerRata[col.numero] ?? 0) }}
                         </td>
                         <td class="px-4 py-3 text-right text-amber-600 bg-red-50/20 border-l border-red-100">{{ euro(aggregates.totaleRateScadute) }}</td>
@@ -1287,7 +1244,6 @@ table {
 
 /* Assicura che le colonne sticky siano totalmente coprenti */
 .sticky {
-  background-clip: padding-box; /* Evita che i bordi creino micro-fessure visibili */
+  background-clip: padding-box; 
 }
-
 </style>

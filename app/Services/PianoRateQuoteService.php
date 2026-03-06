@@ -15,7 +15,6 @@ class PianoRateQuoteService
     private function determinaSePianoUsaSaldi(PianoRate $pianoRate): bool
     {
         // Ottimizzazione: prendiamo un campione di quote (es. 50) per non scansionare tutto il DB
-        // Se in 50 anagrafiche nessuno ha un saldo usato, è molto probabile che il piano non li preveda.
         $quoteCampione = $pianoRate->rate()
             ->join('rate_quote', 'rate.id', '=', 'rate_quote.rata_id')
             ->whereNotNull('rate_quote.regole_calcolo')
@@ -24,8 +23,12 @@ class PianoRateQuoteService
 
         foreach ($quoteCampione as $json) {
             $snapshot = json_decode($json, true);
-            // Se troviamo anche solo 1 centesimo di saldo usato, ACCENDIAMO TUTTO
+            // Compatibilità V1.9: Controlla la nuova chiave 'importi'
             if (isset($snapshot['importi']['saldo_usato']) && $snapshot['importi']['saldo_usato'] != 0) {
+                return true;
+            }
+            // Compatibilità Legacy (<= V1.8.x): Controlla la vecchia chiave 'audit'
+            if (isset($snapshot['audit']['saldo_usato']) && $snapshot['audit']['saldo_usato'] != 0) {
                 return true;
             }
         }
@@ -48,9 +51,8 @@ class PianoRateQuoteService
 
                 $anagrafica = $quotes->first()->anagrafica;
                 
-                // --- RECUPERO SALDO ---
+                // RECUPERO SALDO (Manteniamo per visualizzazioni future/legacy, ma non guida più la UI)
                 $saldoIniziale = 0;
-                
                 if ($pianoUsaSaldi && $esercizio) {
                     $saldoRecord = Saldo::where('esercizio_id', $esercizio->id)
                         ->where('condominio_id', $pianoRate->condominio_id)
@@ -58,7 +60,6 @@ class PianoRateQuoteService
                         ->sum('saldo_iniziale');
                     $saldoIniziale = (int) $saldoRecord;
                 }
-                // ----------------------
 
                 $rate = $quotes
                     ->groupBy(fn($q) => $q->rata->numero_rata)
@@ -66,6 +67,7 @@ class PianoRateQuoteService
                         $rata = $q->first()->rata;
                         $importo = $q->sum('importo');
                         $pagato  = $q->sum('importo_pagato');
+                        $residuo = max(0, $importo - $pagato);
                         
                         $stato = 'da_pagare';
                         if ($q->first()->stato === 'annullata') $stato = 'annullata';
@@ -78,13 +80,37 @@ class PianoRateQuoteService
                                            ->first()
                                            ?->data_pagamento;
 
+                        // --- MODIFICA CHIRURGICA V1.9: APERTURA JSON ---
+                        $dettaglioQuote = $q->map(function ($quota) {
+                            $componenteSpesa = $quota->importo;
+                            $componenteSaldo = 0;
+
+                            if (!empty($quota->regole_calcolo)) {
+                                $meta = json_decode($quota->regole_calcolo, true);
+                                // Leggiamo il nuovo standard (V1.9) oppure il vecchio (V1.8), o fallbacchiamo all'importo totale
+                                $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
+                                $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
+                            }
+
+                            return [
+                                'id'               => $quota->id,
+                                'importo'          => $quota->importo,
+                                'residuo'          => max(0, $quota->importo - $quota->importo_pagato),
+                                'componente_spesa' => $componenteSpesa,
+                                'componente_saldo' => $componenteSaldo,
+                            ];
+                        })->values()->toArray();
+                        // ---------------------------------------------
+
                         return [
-                            'numero'   => $rata->numero_rata,
-                            'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
-                            'importo'  => $importo,
-                            'importo_pagato' => $pagato,
-                            'stato'          => $stato,
-                            'data_pagamento' => $dataPagamento ? $dataPagamento->format('Y-m-d') : null,
+                            'numero'          => $rata->numero_rata,
+                            'scadenza'        => optional($rata->data_scadenza)->format('Y-m-d'),
+                            'importo'         => $importo,
+                            'importo_pagato'  => $pagato,
+                            'residuo'         => $residuo, 
+                            'stato'           => $stato,
+                            'data_pagamento'  => $dataPagamento ? $dataPagamento->format('Y-m-d') : null,
+                            'dettaglio_quote' => $dettaglioQuote, // INIEZIONE CHIAVI PIATTE
                         ];
                     })
                     ->sortBy('numero')
@@ -96,8 +122,6 @@ class PianoRateQuoteService
                         'nome'      => $anagrafica->nome,
                         'indirizzo' => $anagrafica->indirizzo,
                     ],
-                    // Se $pianoUsaSaldi è true, qui arriva il valore corretto (+/-)
-                    // Il frontend Vue userà questo per colorare il pallino (Rosso > 0, Blu < 0)
                     'saldo_iniziale' => $saldoIniziale,
                     'rate' => $rate,
                 ];
@@ -110,7 +134,6 @@ class PianoRateQuoteService
         $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
                      ?? $pianoRate->gestione->esercizi()->first();
 
-        // 1. Verifica anche qui
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 
         return $pianoRate->rate
@@ -121,7 +144,6 @@ class PianoRateQuoteService
 
                 $immobile = $quotes->first()->immobile;
 
-                // 2. Recupero Dettagliato (Debiti vs Crediti separati)
                 $totaleDebiti = 0;
                 $totaleCrediti = 0;
 
@@ -146,6 +168,7 @@ class PianoRateQuoteService
                         $rata = $q->first()->rata;
                         $importo = $q->sum('importo');
                         $pagato = $q->sum('importo_pagato');
+                        $residuo = max(0, $importo - $pagato);
                         
                         $stato = 'da_pagare';
                         if ($q->first()->stato === 'annullata') $stato = 'annullata';
@@ -153,13 +176,36 @@ class PianoRateQuoteService
                         elseif ($pagato >= $importo && $importo > 0) $stato = 'pagata';
                         elseif ($pagato > 0 && $pagato < $importo) $stato = 'parzialmente_pagata';
 
+                        // --- MODIFICA CHIRURGICA V1.9: APERTURA JSON ---
+                        $dettaglioQuote = $q->map(function ($quota) {
+                            $componenteSpesa = $quota->importo;
+                            $componenteSaldo = 0;
+
+                            if (!empty($quota->regole_calcolo)) {
+                                $meta = json_decode($quota->regole_calcolo, true);
+                                $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
+                                $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
+                            }
+
+                            return [
+                                'id'               => $quota->id,
+                                'importo'          => $quota->importo,
+                                'residuo'          => max(0, $quota->importo - $quota->importo_pagato),
+                                'componente_spesa' => $componenteSpesa,
+                                'componente_saldo' => $componenteSaldo,
+                            ];
+                        })->values()->toArray();
+                        // ---------------------------------------------
+
                         return [
                             'numero'   => $rata->numero_rata,
                             'scadenza' => optional($rata->data_scadenza)->format('Y-m-d'),
                             'importo'  => $importo,
                             'importo_pagato' => $pagato,
+                            'residuo'         => $residuo, 
                             'stato'          => $stato,
                             'data_pagamento' => $q->sortByDesc('data_pagamento')->first()?->data_pagamento?->format('Y-m-d'),
+                            'dettaglio_quote' => $dettaglioQuote, // INIEZIONE CHIAVI PIATTE
                         ];
                     })
                     ->sortBy('numero')
@@ -173,8 +219,6 @@ class PianoRateQuoteService
                         'piano'      => $immobile->piano,
                         'superficie' => $immobile->superficie,
                     ],
-                    // Passiamo i valori separati: il Frontend Vue li userà per mostrare
-                    // i doppi pallini (Rosso e Blu) se esistono entrambi
                     'totale_debiti'  => (int) $totaleDebiti,
                     'totale_crediti' => (int) $totaleCrediti, 
                     'rate' => $rate,

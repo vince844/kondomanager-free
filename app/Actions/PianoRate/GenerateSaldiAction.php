@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 class GenerateSaldiAction
 {
     /**
-     * @return array Formato: [ anagrafica_id => [ immobile_id => [ 'importo' => X, 'meta' => [...] ] ] ]
+     * @return array Formato: [ anagrafica_id => [ immobile_id => [ 'importo' => X, 'meta_storico' => [...] ] ] ]
      */
     public function execute(PianoRate $pianoRate, Gestione $gestione, array $saldiConfig = []): array
     {
@@ -35,7 +35,7 @@ class GenerateSaldiAction
                     $distribuzione,
                     $saldo->anagrafica_id,
                     $saldo->immobile_id,
-                    $saldo->saldo_iniziale,
+                    $saldo->saldo_iniziale, // Importo in centesimi dal DB
                     $this->creaMeta($saldo, 'nominale')
                 );
                 continue;
@@ -44,14 +44,14 @@ class GenerateSaldiAction
             // CASO B: Saldo Solidale (Art. 63) - anagrafica_id è NULL
             $configCustom = $saldiConfigMap->get($saldo->id);
 
-            if ($configCustom) {
+            if ($configCustom && !empty($configCustom['ripartizioni'])) {
                 // B1. Riparto Manuale (L'utente ha forzato le quote da Vue)
                 foreach ($configCustom['ripartizioni'] as $rip) {
                     $this->assegnaQuota(
                         $distribuzione,
                         $rip['anagrafica_id'],
                         $saldo->immobile_id,
-                        (int) ($rip['importo'] * 100), // Assumendo che il frontend mandi Euro, convertiamo in centesimi
+                        (int) ($rip['importo'] * 100), // Convertiamo l'input manuale (Euro) in centesimi
                         $this->creaMeta($saldo, 'solidale_manuale')
                     );
                 }
@@ -60,8 +60,6 @@ class GenerateSaldiAction
                 $proprietari = DB::table('anagrafica_immobile')
                     ->where('immobile_id', $saldo->immobile_id)
                     ->where('attivo', true)
-                    // Filtra per tipologia se necessario (es. solo proprietari, non inquilini)
-                    // ->whereIn('tipologia', ['proprietario', 'comproprietario'])
                     ->get();
 
                 $totaleQuote = $proprietari->sum('quota') ?: 100;
@@ -75,7 +73,7 @@ class GenerateSaldiAction
                             $prop->anagrafica_id,
                             $saldo->immobile_id,
                             $importoProQuota,
-                            $this->creaMeta($saldo, 'solidale_automatico', $prop->quota)
+                            $this->creaMeta($saldo, 'solidale_automatico', (float) $prop->quota)
                         );
                     }
                 }
@@ -95,12 +93,14 @@ class GenerateSaldiAction
         }
         
         if (!isset($distribuzione[$anagraficaId][$immobileKey])) {
+            // FIX: Inizializziamo esplicitamente 'importo' a 0 prima di sommarlo
             $distribuzione[$anagraficaId][$immobileKey] = [
                 'importo' => 0,
                 'meta_storico' => []
             ];
         }
 
+        // FIX: Sommiamo l'importo calcolato alla chiave corretta
         $distribuzione[$anagraficaId][$immobileKey]['importo'] += $importo;
         $distribuzione[$anagraficaId][$immobileKey]['meta_storico'][] = $meta;
     }

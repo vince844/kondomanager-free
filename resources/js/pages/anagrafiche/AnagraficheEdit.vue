@@ -329,7 +329,7 @@ const submit = () => {
                         <Input
                             id="codice_fiscale" 
                             v-model="form.codice_fiscale" 
-                            class="mt-1 bg-white uppercase" 
+                            class="mt-1 bg-white" 
                             :placeholder="trans('anagrafiche.placeholder.fiscal_code')" 
                             @focus="form.clearErrors('codice_fiscale')" 
                         />

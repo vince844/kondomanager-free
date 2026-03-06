@@ -237,36 +237,23 @@ class PianoRateController extends Controller
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
             }
 
-            // 6. Applicazione Saldi (Lock micro e macro)
+            // 6. Generazione Rate fisiche tramite Action (PRIMA DEL LOCK!)
+            $statistiche = [];
+            if (!empty($validated['genera_subito'])) {
+                // Passiamo l'array originale del form. 
+                // Se è vuoto, GenerateSaldiAction pescherà automaticamente i saldi "is_applicato = false"
+                $statistiche = app(GeneratePianoRateAction::class)->execute(
+                    $pianoRate, 
+                    $applicareSaldi, 
+                    $validated['saldi_config'] ?? []
+                );
+            }
+
+            // 7. Applicazione Saldi (Lock micro e macro) (DOPO LA GENERAZIONE!)
             if ($applicareSaldi) {
                 $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
                 $gestione->refresh();
                 $pianoRate->setRelation('gestione', $gestione);
-            }
-
-            // 7. Generazione Rate fisiche tramite Action
-            $statistiche = [];
-            if (!empty($validated['genera_subito'])) {
-                
-                // RECUPERO SALDI REALI: Se non ci sono config manuali dal front, 
-                // prendiamo tutti i saldi non applicati della gestione dal DB
-                $saldiConfig = $validated['saldi_config'] ?? [];
-                
-                if (empty($saldiConfig) && $applicareSaldi) {
-                    $saldiConfig = Saldo::where('gestione_id', $gestione->id)
-                        ->where('is_applicato', false) 
-                        ->get()
-                        ->map(fn($s) => [
-                            'saldo_id' => $s->id,
-                            'ripartizioni' => [] // Vuoto significa "usa riparto automatico"
-                        ])->toArray();
-                }
-
-                $statistiche = app(GeneratePianoRateAction::class)->execute(
-                    $pianoRate, 
-                    $applicareSaldi, 
-                    $saldiConfig 
-                );
             }
 
             DB::commit();
