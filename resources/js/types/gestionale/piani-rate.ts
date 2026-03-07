@@ -14,6 +14,7 @@ export interface PianoRate {
   totale_capitoli?: number
   totale_piano?: number
   gestione?: Gestione
+  has_saldi: boolean
 }
 
 /**

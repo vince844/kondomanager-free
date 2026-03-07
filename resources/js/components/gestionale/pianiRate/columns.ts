@@ -5,7 +5,7 @@ import DropdownAction from '@/components/gestionale/pianiRate/DataTableRowAction
 import DataTableColumnHeader from '@/components/gestionale/pianiRate/DataTableColumnHeader.vue'
 import { usePermission } from "@/composables/permissions"
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter" 
-import { CalendarRange, ArrowRight } from 'lucide-vue-next'
+import { CalendarRange, ArrowRight, Wallet } from 'lucide-vue-next' // Aggiunto Wallet
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { PianoRate } from '@/types/gestionale/piani-rate'
 import type { Building } from '@/types/buildings'
@@ -17,13 +17,26 @@ const { generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter({ fromCents: true });
 
 export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<PianoRate>[] => [
-  {
+{
     accessorKey: 'nome',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
     cell: ({ row }) => {
       const pianoRate = row.original
       const stato = pianoRate.stato 
       const desc = pianoRate.descrizione
+      const hasSaldi = pianoRate.has_saldi || false; 
+
+      // --- LOGICA COLORI DINAMICA ---
+      const isApprovato = stato === 'approvato';
+      
+      const colorClasses = isApprovato 
+        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-100 dark:border-emerald-800'
+        : 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-800';
+
+      const iconBgClasses = isApprovato
+        ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-500 dark:text-emerald-400 group-hover:bg-emerald-100'
+        : 'bg-indigo-50 dark:bg-indigo-900/40 text-indigo-500 dark:text-indigo-400 group-hover:bg-indigo-100';
+      // ------------------------------
 
       return h(Link, {
         prefetch: true,
@@ -31,19 +44,30 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
         class: 'group flex items-start gap-3 py-1 outline-none'
       }, () => [
         h('div', { 
-            class: 'p-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-lg text-indigo-500 dark:text-indigo-400 shadow-sm group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 transition-colors shrink-0 mt-0.5' 
+            class: `p-2 rounded-lg shadow-sm transition-colors shrink-0 mt-0.5 ${iconBgClasses}` 
         }, [
             h(CalendarRange, { class: 'w-4 h-4' })
         ]),
         
         h('div', { class: 'flex flex-col min-w-0' }, [
-            h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
+            h('div', { class: 'flex items-center gap-2 mb-0.5 flex-wrap' }, [
+                
+                // BADGE STATO (Dinamico)
                 stato ? h('span', { 
-                    class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
+                    class: `px-1.5 py-0.5 text-[9px] font-bold uppercase border rounded-md ${colorClasses}` 
                 }, stato) : null,
 
+                // BADGE SALDI (Sempre Amber per contrasto)
+                hasSaldi ? h('span', { 
+                    class: 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-800',
+                    title: 'Questo piano include i saldi dell\'anno precedente'
+                }, [
+                    h(Wallet, { class: 'w-2.5 h-2.5' }),
+                    'Saldi Inclusi'
+                ]) : null,
+
                 h('span', {
-                    class: 'font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate',
+                    class: 'font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-primary transition-colors truncate',
                 }, pianoRate.nome),
             ]),
             
@@ -52,10 +76,10 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
             }, desc) : null,
 
             h('span', { 
-                class: 'text-[10px] font-semibold text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors mt-2' 
+                class: 'text-[10px] font-semibold text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-primary transition-colors mt-2' 
             }, [
-                'Gestisci Piano Rate',
-                h(ArrowRight, { class: 'w-3 h-3 text-indigo-400/60' })
+                isApprovato ? 'Gestisci Scadenze' : 'Gestisci Piano Rate',
+                h(ArrowRight, { class: 'w-3 h-3 text-slate-400 group-hover:text-primary' })
             ])
         ])
       ]);

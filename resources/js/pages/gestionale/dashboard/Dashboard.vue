@@ -89,6 +89,36 @@ const suggerimentoOperativo = computed(() => {
     }
     return null;
 });
+
+// Calcolo intelligente della percentuale testuale
+const percentualeFormattata = computed(() => {
+    if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
+
+    // Ricalcoliamo con i decimali esatti
+    const rawPct = (props.copertura.pianificato / props.copertura.preventivo) * 100;
+
+    // SCENARIO 1 & 2: Deficit (Non deve MAI mostrare 100.0)
+    if (statoCopertura.value === 'deficit' || statoCopertura.value === 'misaligned') {
+        if (rawPct >= 99.9) return '99.9'; // Forza a 99.9 se manca anche solo 1 centesimo
+        return rawPct.toFixed(1);
+    }
+
+    // SCENARIO 4: Surplus (Può superare il 100%)
+    if (statoCopertura.value === 'surplus') {
+        return rawPct.toFixed(1); 
+    }
+
+    // SCENARIO 3: Allineato perfetto
+    return '100.0';
+});
+
+// Calcolo larghezza grafica della barra (massimo 100%)
+const larghezzaBarra = computed(() => {
+    if (!props.copertura || props.copertura.preventivo === 0) return '0%';
+    const rawPct = (props.copertura.pianificato / props.copertura.preventivo) * 100;
+    return Math.min(rawPct, 100) + '%';
+});
+
 </script>
 
 <template>
@@ -165,15 +195,17 @@ const suggerimentoOperativo = computed(() => {
                             <div class="mb-4">
                                 <div class="flex justify-between items-center mb-1">
                                     <span class="text-[9px] font-semibold uppercase text-slate-400">Copertura</span>
+                                    
                                     <span class="text-[10px] font-bold tabular-nums"
                                         :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-emerald-600': statoCopertura === 'aligned'}">
-                                        {{ Math.min(copertura.percentuale, 100).toFixed(1) }}%
+                                        {{ percentualeFormattata }}%
                                     </span>
                                 </div>
                                 <div class="relative h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                    
                                     <div class="h-full transition-all duration-1000 ease-in-out"
                                         :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"
-                                        :style="{ width: Math.min(copertura.percentuale, 100) + '%' }">
+                                        :style="{ width: larghezzaBarra }">
                                     </div>
                                 </div>
                             </div>

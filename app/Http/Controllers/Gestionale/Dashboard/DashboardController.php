@@ -95,21 +95,18 @@ class DashboardController extends Controller
                     ->get();
                 
                 foreach ($pianiRate as $piano) {
-                    $hasRate = $piano->rate->count() > 0;
-                    
-                    // Se il piano ha già delle rate generate, facciamo il controllo
-                    if ($hasRate) {
-                        // 1. Calcoliamo quanto PREVENTIVO PURO abbiamo effettivamente generato
+                    if ($piano->rate->count() > 0) {
                         $totalePuroGenerato = 0;
                         foreach ($piano->rate as $rata) {
                             foreach ($rata->rateQuote as $quota) {
-                                $regole = json_decode($quota->regole_calcolo ?? '{}', true);
+                                // FIX: regole_calcolo è già un array grazie al cast nel modello
+                                $regole = $quota->regole_calcolo;
                                 
-                                // V1.9: Estraiamo SOLO la spesa pura, ignorando il saldo_usato
-                                if (isset($regole['importi']['quota_pura_gestione'])) {
+                                // V1.9: Estraiamo SOLO la spesa pura
+                                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
                                     $totalePuroGenerato += $regole['importi']['quota_pura_gestione'];
                                 } else {
-                                    // Fallback retrocompatibile V1.8 (ignora la Rata 0)
+                                    // Fallback retrocompatibile V1.8
                                     if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
                                         $totalePuroGenerato += $quota->importo;
                                     }
@@ -117,19 +114,17 @@ class DashboardController extends Controller
                             }
                         }
 
-                        // 2. Quanto mi richiedono i conti del preventivo ADESSO?
                         $totaleAtteso = 0;
                         foreach ($piano->capitoli as $capitolo) {
                             $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
                         }
 
-                        // 3. Confronto "Mele con Mele" (Preventivo VS Preventivo)
                         if ($totaleAtteso !== $totalePuroGenerato) {
                             $pianiDisallineati[] = [
                                 'id' => $piano->id,
                                 'nome' => $piano->nome,
                                 'gestione' => $gestione->nome,
-                                'delta' => $totaleAtteso - $totalePuroGenerato // Positivo se mancano soldi
+                                'delta' => $totaleAtteso - $totalePuroGenerato
                             ];
                         }
                     }

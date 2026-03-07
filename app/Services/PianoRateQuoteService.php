@@ -10,11 +10,9 @@ class PianoRateQuoteService
 {
     /**
      * Helper privato: Scansiona il piano per capire se include saldi.
-     * Non si ferma al primo record, ma cerca attivamente un utilizzo.
      */
     private function determinaSePianoUsaSaldi(PianoRate $pianoRate): bool
     {
-        // Ottimizzazione: prendiamo un campione di quote (es. 50) per non scansionare tutto il DB
         $quoteCampione = $pianoRate->rate()
             ->join('rate_quote', 'rate.id', '=', 'rate_quote.rata_id')
             ->whereNotNull('rate_quote.regole_calcolo')
@@ -22,12 +20,11 @@ class PianoRateQuoteService
             ->pluck('rate_quote.regole_calcolo');
 
         foreach ($quoteCampione as $json) {
-            $snapshot = json_decode($json, true);
-            // Compatibilità V1.9: Controlla la nuova chiave 'importi'
+            // Qui json_decode serve ancora perché pluck() su query builder restituisce stringhe grezze
+            $snapshot = is_array($json) ? $json : json_decode($json, true);
             if (isset($snapshot['importi']['saldo_usato']) && $snapshot['importi']['saldo_usato'] != 0) {
                 return true;
             }
-            // Compatibilità Legacy (<= V1.8.x): Controlla la vecchia chiave 'audit'
             if (isset($snapshot['audit']['saldo_usato']) && $snapshot['audit']['saldo_usato'] != 0) {
                 return true;
             }
@@ -41,7 +38,6 @@ class PianoRateQuoteService
         $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 
                      ?? $pianoRate->gestione->esercizi()->first();
 
-        // 1. Verifica se dobbiamo mostrare i saldi
         $pianoUsaSaldi = $this->determinaSePianoUsaSaldi($pianoRate);
 
         return $pianoRate->rate
@@ -51,7 +47,6 @@ class PianoRateQuoteService
 
                 $anagrafica = $quotes->first()->anagrafica;
                 
-                // RECUPERO SALDO (Manteniamo per visualizzazioni future/legacy, ma non guida più la UI)
                 $saldoIniziale = 0;
                 if ($pianoUsaSaldi && $esercizio) {
                     $saldoRecord = Saldo::where('esercizio_id', $esercizio->id)
@@ -80,14 +75,14 @@ class PianoRateQuoteService
                                            ->first()
                                            ?->data_pagamento;
 
-                        // --- MODIFICA CHIRURGICA V1.9: APERTURA JSON ---
+                        // --- FIX V1.9: Rimosso json_decode (Laravel lo casta già in array) ---
                         $dettaglioQuote = $q->map(function ($quota) {
                             $componenteSpesa = $quota->importo;
                             $componenteSaldo = 0;
 
-                            if (!empty($quota->regole_calcolo)) {
-                                $meta = json_decode($quota->regole_calcolo, true);
-                                // Leggiamo il nuovo standard (V1.9) oppure il vecchio (V1.8), o fallbacchiamo all'importo totale
+                            $meta = $quota->regole_calcolo; // È già un array!
+
+                            if (!empty($meta) && is_array($meta)) {
                                 $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
                                 $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
                             }
@@ -100,7 +95,6 @@ class PianoRateQuoteService
                                 'componente_saldo' => $componenteSaldo,
                             ];
                         })->values()->toArray();
-                        // ---------------------------------------------
 
                         return [
                             'numero'          => $rata->numero_rata,
@@ -110,7 +104,7 @@ class PianoRateQuoteService
                             'residuo'         => $residuo, 
                             'stato'           => $stato,
                             'data_pagamento'  => $dataPagamento ? $dataPagamento->format('Y-m-d') : null,
-                            'dettaglio_quote' => $dettaglioQuote, // INIEZIONE CHIAVI PIATTE
+                            'dettaglio_quote' => $dettaglioQuote,
                         ];
                     })
                     ->sortBy('numero')
@@ -176,13 +170,14 @@ class PianoRateQuoteService
                         elseif ($pagato >= $importo && $importo > 0) $stato = 'pagata';
                         elseif ($pagato > 0 && $pagato < $importo) $stato = 'parzialmente_pagata';
 
-                        // --- MODIFICA CHIRURGICA V1.9: APERTURA JSON ---
+                        // --- FIX V1.9: Rimosso json_decode ---
                         $dettaglioQuote = $q->map(function ($quota) {
                             $componenteSpesa = $quota->importo;
                             $componenteSaldo = 0;
 
-                            if (!empty($quota->regole_calcolo)) {
-                                $meta = json_decode($quota->regole_calcolo, true);
+                            $meta = $quota->regole_calcolo;
+
+                            if (!empty($meta) && is_array($meta)) {
                                 $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
                                 $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
                             }
@@ -195,7 +190,6 @@ class PianoRateQuoteService
                                 'componente_saldo' => $componenteSaldo,
                             ];
                         })->values()->toArray();
-                        // ---------------------------------------------
 
                         return [
                             'numero'   => $rata->numero_rata,
@@ -205,7 +199,7 @@ class PianoRateQuoteService
                             'residuo'         => $residuo, 
                             'stato'          => $stato,
                             'data_pagamento' => $q->sortByDesc('data_pagamento')->first()?->data_pagamento?->format('Y-m-d'),
-                            'dettaglio_quote' => $dettaglioQuote, // INIEZIONE CHIAVI PIATTE
+                            'dettaglio_quote' => $dettaglioQuote,
                         ];
                     })
                     ->sortBy('numero')

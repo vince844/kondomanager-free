@@ -441,7 +441,8 @@ class PianoRateController extends Controller
      * 1. Blocca se ci sono pagamenti registrati.
      * 2. Blocca se ci sono emissioni in partita doppia (Libro Giornale).
      * 3. Blocca se il piano è Approvato (forzando il ripristino in Bozza per eliminare gli eventi dello scadenziario).
-     * Se i controlli passano, elimina il piano e rimuove i lucchetti (is_applicato=false) dai saldi originari.
+     * Se i controlli passano, elimina il piano e rimuove i lucchetti (is_applicato=false) dai saldi originari,
+     * MA SOLO SE i saldi erano stati effettivamente inclusi in questo specifico piano rate.
      *
      * @param Condominio $condominio Il condominio corrente
      * @param Esercizio $esercizio L'esercizio contabile corrente
@@ -459,7 +460,7 @@ class PianoRateController extends Controller
 
         if ($hasPagamenti) {
             return back()->with($this->flashError(
-                'Impossibile eliminare il Piano Rate: risultano incassi già registrati. ' .
+                'Impossibile eliminare il piano rate: risultano incassi già registrati. ' .
                 'Devi prima annullare le registrazioni di incasso associate a queste rate.'
             ));
         }
@@ -471,7 +472,7 @@ class PianoRateController extends Controller
 
         if ($hasEmissioni) {
             return back()->with($this->flashError(
-                'Impossibile eliminare il Piano Rate: le rate risultano già emesse in contabilità. ' .
+                'Impossibile eliminare il piano rate: le rate risultano già emesse in contabilità. ' .
                 'Usa l\'opzione "Annulla Emissioni" all\'interno del piano rate prima di eliminarlo.'
             ));
         }
@@ -479,19 +480,41 @@ class PianoRateController extends Controller
         // C. Controllo Approvazione (Ping-Pong Scadenziario)
         if ($pianoRate->stato === StatoPianoRate::APPROVATO) {
             return back()->with($this->flashError(
-                'Impossibile eliminare un Piano Rate approvato. ' .
+                'Impossibile eliminare un piano rate approvato. ' .
                 'Devi prima togliere l\'approvazione (riportandolo in Bozza) affinché il sistema elimini automaticamente in modo pulito gli eventi dallo scadenziario.'
             ));
         }
 
-        // 2. ELIMINAZIONE E SBLOCCO SALDI
+        // 2. VERIFICA PRESENZA SALDI IN QUESTO PIANO (Il Fix Integrativi)
+        $hasSaldiInThisPlan = false;
+        $rate = $pianoRate->rate()->with('rateQuote')->get();
+        
+        foreach($rate as $rata) {
+            foreach($rata->rateQuote as $quota) {
+                // Controllo retrocompatibilità (V1.8)
+                if ($quota->tipo === 'saldo_iniziale') {
+                    $hasSaldiInThisPlan = true;
+                    break 2;
+                }
+
+                // FIX V1.9: regole_calcolo è già un array grazie al cast nel modello
+                $regole = $quota->regole_calcolo;
+
+                if (is_array($regole) && isset($regole['importi']['saldo_usato']) && $regole['importi']['saldo_usato'] != 0) {
+                    $hasSaldiInThisPlan = true;
+                    break 2;
+                }
+            }
+        }
+
+        // 3. ELIMINAZIONE E SBLOCCO SALDI
         try {
             DB::beginTransaction();
 
             $gestione = $pianoRate->gestione;
 
-            // Se la gestione aveva il blocco saldi attivo, lo rimuoviamo (Rollback contabile)
-            if ($gestione && $gestione->saldo_applicato) {
+            // Rimuoviamo il blocco saldi SOLO SE questo piano è quello che li aveva assorbiti
+            if ($hasSaldiInThisPlan && $gestione && $gestione->saldo_applicato) {
                 // Sblocca la Gestione Macro
                 $gestione->update([
                     'saldo_applicato' => false,
@@ -504,7 +527,7 @@ class PianoRateController extends Controller
                     ->update(['is_applicato' => false]);
             }
 
-            // Elimina fisicamente il piano rate (le logiche ON DELETE CASCADE sul database gestiranno le tabelle pivot)
+            // Elimina fisicamente il piano rate
             $pianoRate->delete();
             
             DB::commit();

@@ -50,7 +50,8 @@ class EstrattoContoAnagraficaController extends Controller
             ->get()
             ->keyBy(fn($q) => $q->rata_id . '_' . $q->immobile_id);
 
-        // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE ---
+        
+        // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE (Senza json_decode manuale) ---
         $movimenti->each(function ($riga) use ($quoteMap) {
             $riga->quotaPura       = $riga->importo;
             $riga->saldoUsato      = 0;
@@ -63,13 +64,18 @@ class EstrattoContoAnagraficaController extends Controller
 
                 if ($quota) {
                     $riga->quotaRecord = $quota;
-                    if (!empty($quota->regole_calcolo)) {
-                        $json = is_string($quota->regole_calcolo)
-                            ? json_decode($quota->regole_calcolo)
-                            : (object) $quota->regole_calcolo;
-                        $riga->saldoUsato      = $json->importi->saldo_usato ?? 0;
-                        $riga->quotaPura       = $json->importi->quota_pura_gestione ?? ($riga->importo - $riga->saldoUsato);
-                        $riga->totaleRichiesto = $json->importi->totale_calcolato ?? $riga->importo;
+                    
+                    // Laravel trasforma già 'regole_calcolo' in array/oggetto grazie al cast nel modello
+                    $regole = $quota->regole_calcolo;
+
+                    if (!empty($regole)) {
+                        // Accediamo come array o oggetto a seconda di come Laravel ha castato
+                        // Per sicurezza usiamo la sintassi che supporta entrambi o forziamo array
+                        $data = (array) $regole;
+                        $importi = $data['importi'] ?? [];
+                        $riga->saldoUsato      = $importi['saldo_usato'] ?? 0;
+                        $riga->quotaPura       = $importi['quota_pura_gestione'] ?? ($riga->importo - $riga->saldoUsato);
+                        $riga->totaleRichiesto = $importi['totale_calcolato'] ?? $riga->importo;
                     }
                 }
             }

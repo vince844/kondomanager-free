@@ -28,7 +28,8 @@ class RataQuote extends Model
         'data_pagamento',
         'riferimento_pagamento',
         'scrittura_contabile_id', 
-        'note'
+        'note',
+        'regole_calcolo'
     ];
 
     protected $casts = [
@@ -36,6 +37,7 @@ class RataQuote extends Model
         'importo_pagato' => 'integer',
         'data_scadenza'  => 'date',
         'data_pagamento' => 'date',
+        'regole_calcolo' => 'json'
     ];
 
     // === RELAZIONI ===

@@ -190,22 +190,18 @@ watch(() => form.gestione_id, async (newId) => {
   isLoadingSaldi.value = true;
 
   try {
-    // Usiamo router.get per passare correttamente il parametro ?gestione_id=X al Controller
     router.get(
-      window.location.pathname, // Ricarica l'URL corrente (create)
-      { gestione_id: newId },   // Passa l'ID della gestione al controller
+      window.location.pathname, 
+      { gestione_id: newId },   
       {
-        only: ['saldoInfo'],    // Chiediamo al server di aggiornare SOLO la prop saldoInfo
-        preserveState: true,    // Mantiene i dati già scritti nel form
-        preserveScroll: true,   // Evita sbalzi della pagina
+        only: ['saldoInfo'],    
+        preserveState: true,    
+        preserveScroll: true,   
         onSuccess: (page: any) => {
-           // Controlliamo la risposta ESATTA appena arrivata dal server
-           if(page.props.saldoInfo && page.props.saldoInfo.applicabile) {
-               caricaDettagliGestione(newId);
-           } else {
-               isLoadingCapitoli.value = false;
-               isLoadingSaldi.value = false;
-           }
+           // CHIAMIAMO SEMPRE caricaDettagliGestione! 
+           // Passiamo un flag per dirgli se scaricare anche i saldi
+           const saldiApplicabili = page.props.saldoInfo?.applicabile || false;
+           caricaDettagliGestione(newId, saldiApplicabili);
         },
         onError: () => {
            isLoadingCapitoli.value = false;
@@ -220,25 +216,33 @@ watch(() => form.gestione_id, async (newId) => {
   }
 });
 
-// Helper per isolare le chiamate Axios originarie (Lascia intatto questo blocco che avevi già)
-const caricaDettagliGestione = async (idGestione: string | number) => {
+// Helper aggiornato
+const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSaldi: boolean) => {
   try {
+    // 1. CARICHIAMO SEMPRE I CAPITOLI DI SPESA (Anche se i saldi sono bloccati)
     const resCap = await axios.get(route('admin.gestionale.fetch-capitoli-gestione', {
       condominio: props.condominio.id
     }), { params: { gestione_id: idGestione } });
+    
     capitoliDisponibili.value = resCap.data;
 
-    const resSaldi = await axios.get(route('admin.gestionale.fetch-saldi-analitici', {
-      condominio: props.condominio.id,
-      esercizio: props.esercizio.id,
-      gestione: idGestione
-    }));
+    // 2. CARICHIAMO I SALDI SOLO SE SERVONO
+    if (caricaAncheSaldi) {
+        const resSaldi = await axios.get(route('admin.gestionale.fetch-saldi-analitici', {
+          condominio: props.condominio.id,
+          esercizio: props.esercizio.id,
+          gestione: idGestione
+        }));
 
-    saldiDettaglio.value = resSaldi.data.map((s: any) => ({
-      ...s,
-      ripartizione_mode: 'automatica',
-      ripartizioni_custom: []
-    }));
+        saldiDettaglio.value = resSaldi.data.map((s: any) => ({
+          ...s,
+          ripartizione_mode: 'automatica',
+          ripartizioni_custom: []
+        }));
+    } else {
+        saldiDettaglio.value = [];
+    }
+
   } catch (e) {
     console.error("Errore nel caricamento dati gestione", e);
   } finally {

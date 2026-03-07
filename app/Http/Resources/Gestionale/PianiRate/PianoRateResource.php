@@ -5,6 +5,7 @@ namespace App\Http\Resources\Gestionale\PianiRate;
 use App\Http\Resources\Gestionale\Gestioni\GestioneResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\DB;
 
 class PianoRateResource extends JsonResource
 {
@@ -48,6 +49,16 @@ class PianoRateResource extends JsonResource
             'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
             'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
             'budget_movements' => $this->whenLoaded('budgetMovements'),
+            'has_saldi' => DB::table('rate_quote') 
+                ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+                ->where('rate.piano_rate_id', $this->id)
+                ->where(function($q) {
+                    // Fallback V1.8
+                    $q->where('rate_quote.tipo', 'saldo_iniziale')
+                      // Controllo V1.9 (Guarda se c'è un valore nel JSON)
+                      ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != '0' AND JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) IS NOT NULL");
+                })
+                ->exists(),
             'capitoli' => $this->whenLoaded('capitoli', function() {
                 return $this->capitoli->map(function ($c) {
                     $isParent = $c->sottoconti()->exists();

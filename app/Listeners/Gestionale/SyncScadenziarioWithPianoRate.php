@@ -9,7 +9,7 @@ use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
 use App\Services\Gestionale\InboxService;
-use Illuminate\Contracts\Queue\ShouldQueue; // Usalo in produzione, puoi commentarlo per i test locali
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -126,8 +126,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                     if ($esiste) continue;
 
-                    // Calcoliamo il vero totale basandoci esclusivamente sui JSON delle quote,
-                    // ignorando eventuali righe orfane o alterate nel DB.
                     $importoVal = 0; 
                     
                     $dettaglioQuote = $quote->map(function($q) use (&$importoVal) {
@@ -138,11 +136,12 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                         $componenteSaldo = 0;
                         $totaleCalcolato = $q->importo;
 
-                        if (!empty($q->regole_calcolo)) {
-                            $meta = json_decode($q->regole_calcolo, true);
+                        // FIX: regole_calcolo è già un array grazie al cast nel modello
+                        $meta = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo, true) : $q->regole_calcolo;
+
+                        if (is_array($meta)) {
                             $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $q->importo;
                             $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
-                            // Prendi il totale blindato del JSON, se esiste
                             $totaleCalcolato = $meta['importi']['totale_calcolato'] ?? ($componenteSpesa + $componenteSaldo);
                         }
 
@@ -179,7 +178,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'is_emitted'        => false, 
                             'requires_action'   => false, 
                             'status'            => 'pending',
-                            'importo_originale' => $importoVal, // Ora è calcolato dal JSON, 100% blindato
+                            'importo_originale' => $importoVal,
                             'importo_pagato'    => 0,
                             'importo_restante'  => $importoVal,
                             'dettaglio_quote'   => $dettaglioQuote, 
