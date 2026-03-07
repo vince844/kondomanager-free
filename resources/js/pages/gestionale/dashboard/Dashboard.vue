@@ -1,21 +1,15 @@
 <script setup lang="ts">
+
 import { computed, ref } from 'vue';
 import { Head, Link, InfiniteScroll } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-
-import { 
-  AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, 
-  Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox,
-  TriangleAlert, CalendarClock, Loader2 
-} from 'lucide-vue-next';
-
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
@@ -130,7 +124,7 @@ const suggerimentoOperativo = computed(() => {
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger><Info class="w-3.5 h-3.5 text-slate-300 hover:text-primary cursor-help" /></TooltipTrigger>
-                                            <TooltipContent side="right"><p class="text-xs max-w-[200px]">Confronto tra spese e rate generate.</p></TooltipContent>
+                                            <TooltipContent side="right"><p class="text-xs max-w-[200px]">Confronto tra preventivo e spese allocate nei piani rate (esclusi saldi pregressi).</p></TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
                                 </div>

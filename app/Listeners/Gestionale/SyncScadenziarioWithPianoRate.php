@@ -8,9 +8,8 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
-use App\Models\Saldo; 
 use App\Services\Gestionale\InboxService;
-use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldQueue; // Usalo in produzione, puoi commentarlo per i test locali
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -37,17 +36,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         $pianoRate->loadMissing('gestione');
         $nomeGestione = $pianoRate->gestione->nome ?? 'Gestione';
 
-        // 1. RECUPERO MASIVO DEI SALDI INIZIALI
-        // Creiamo una mappa: [anagrafica_id => saldo_importo_centesimi]
-        // Assumiamo che il saldo sia unico per anagrafica in questo condominio/esercizio
-        $saldiMap = Saldo::where('esercizio_id', $esercizio->id)
-            ->where('condominio_id', $condominio->id)
-            ->selectRaw('anagrafica_id, SUM(saldo_iniziale) as totale')
-            ->groupBy('anagrafica_id')
-            ->pluck('totale', 'anagrafica_id')
-            ->toArray();
-
-        DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione, $saldiMap) {
+        DB::transaction(function () use ($pianoRate, $condominio, $esercizio, $user, $nomeGestione) {
 
             $catAdmin = CategoriaEvento::firstOrCreate(
                 ['name' => CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value],
@@ -60,21 +49,12 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
             $rate = $pianoRate->rate()
                 ->with(['rateQuote.anagrafica', 'rateQuote.immobile']) 
-                ->get(); 
+                ->get()
+                ->sortBy('data_scadenza');
 
-            Log::info("Trovate " . $rate->count() . " rate da processare.");
+            foreach ($rate as $rata) {
 
-            // Ordiniamo le rate per data per identificare la prima cronologica
-            $rate = $rate->sortBy('data_scadenza');
-            $isPrimaRataAssoluta = true; // Flag per capire se siamo nel primo loop
-
-            foreach ($rate as $index => $rata) {
-                
-                // Determiniamo se questa è la rata n.1 logica (quella che si accolla il saldo)
-                // Usiamo l'indice del loop o il numero rata
-                $isRataUno = ($rata->numero_rata == 1);
-
-                // --- 1. EVENTO ADMIN (Invariato) ---
+                // --- 1. EVENTO ADMIN ---
                 $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
                 $urlEmissione = route('admin.gestionale.esercizi.piani-rate.show', [
                     'condominio' => $condominio->id,
@@ -106,7 +86,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 );
                 $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
 
-                // --- 1-BIS. EVENTO ADMIN CHECK (Invariato) ---
+                // --- 1-BIS. EVENTO ADMIN CHECK ---
                 $dataCheck = $rata->data_scadenza->copy()->addDays(4)->setTime(9, 0); 
                 $urlIncassi = route('admin.gestionale.movimenti-rate.create', ['condominio' => $condominio->id]);
                 $eventoCheck = Evento::firstOrCreate(
@@ -132,14 +112,13 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 );
                 $eventoCheck->condomini()->syncWithoutDetaching([$condominio->id]);
 
-                // --- 2. EVENTI CONDÒMINI (CON LOGICA SALDO DINAMICA) ---
+                // --- 2. EVENTI CONDÒMINI (CALCOLO BLINDATO V1.9) ---
                 $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
 
                 foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
                     $anagrafica = $quote->first()->anagrafica;
                     if (!$anagrafica) continue;
 
-                    // Check esistenza
                     $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
                         ->whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
@@ -147,69 +126,46 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                     if ($esiste) continue;
 
-                    $importoVal = $quote->sum('importo'); // Importo NETTO della rata (quello nel DB)
+                    // Calcoliamo il vero totale basandoci esclusivamente sui JSON delle quote,
+                    // ignorando eventuali righe orfane o alterate nel DB.
+                    $importoVal = 0; 
                     
-                    // --- LOGICA SCONTRINO (MATEMATICA INVERSA) ---
-                    // Recuperiamo il saldo dal DB (tabella saldi)
-                    $saldoInizialeTotale = isset($saldiMap[$anagraficaId]) ? (int)$saldiMap[$anagraficaId] : 0;
-                    
-                    // Decidiamo se applicare il saldo a QUESTA rata
-                    // Regola: Il saldo si visualizza solo sulla Rata 1
-                    $saldoApplicatoQui = 0;
-                    if ($isRataUno && $saldoInizialeTotale != 0) {
-                        $saldoApplicatoQui = $saldoInizialeTotale;
-                    }
-
-                    // Costruzione Dettaglio Quote con Audit
-                    $dettaglioQuote = $quote->map(function($q, $key) use ($saldoApplicatoQui) {
+                    $dettaglioQuote = $quote->map(function($q) use (&$importoVal) {
                         $immobile = $q->immobile;
                         $desc = $immobile ? "Int. {$immobile->interno} ({$immobile->nome})" : "Unità";
                         
-                        // Trucco: Attribuiamo tutto il saldo alla PRIMA riga della rata
-                        // così lo scontrino appare una volta sola e i conti tornano.
-                        $saldoRiga = ($key === 0) ? $saldoApplicatoQui : 0;
-                        
-                        // Calcoliamo la "Quota Pura" inversa
-                        // Se ImportoNetto = QuotaPura + Saldo
-                        // Allora QuotaPura = ImportoNetto - Saldo
-                        $quotaPura = $q->importo - $saldoRiga;
+                        $componenteSpesa = $q->importo;
+                        $componenteSaldo = 0;
+                        $totaleCalcolato = $q->importo;
+
+                        if (!empty($q->regole_calcolo)) {
+                            $meta = json_decode($q->regole_calcolo, true);
+                            $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $q->importo;
+                            $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
+                            // Prendi il totale blindato del JSON, se esiste
+                            $totaleCalcolato = $meta['importi']['totale_calcolato'] ?? ($componenteSpesa + $componenteSaldo);
+                        }
+
+                        $importoVal += $totaleCalcolato;
 
                         return [
                             'descrizione' => $desc,
-                            'importo' => $q->importo, // Questo rimane il netto reale da pagare (o credito)
-                            'audit' => [
-                                'quota_pura' => $quotaPura,
-                                'saldo_usato' => $saldoRiga,
-                            ]
+                            'importo' => $totaleCalcolato,
+                            'componente_spesa' => $componenteSpesa,
+                            'componente_saldo' => $componenteSaldo,
                         ];
                     })->values()->toArray();
-                    // ---------------------------------------------
-
-                    // Logica Messaggi (Invariata)
-                    $saldoPregresso = \App\Models\Gestionale\RataQuote::where('anagrafica_id', $anagraficaId)
-                        ->whereHas('rata', function($q) use ($rata, $pianoRate) {
-                            $q->where('piano_rate_id', $pianoRate->id)
-                              ->where('data_scadenza', '<', $rata->data_scadenza);
-                        })
-                        ->sum('importo');
-
-                    $saldoAttuale = $saldoPregresso + $importoVal;
 
                     if ($importoVal < 0) {
-                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore (es. avanzo esercizio precedente).\n\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
-                    } elseif ($saldoAttuale < -0.01) {
-                        $descUser = "Gentile {$anagrafica->nome}, è in scadenza la rata n. {$rata->numero_rata}.\n\nGrazie al tuo credito pregresso, questa rata risulta attualmente COPERTA e non richiede alcun versamento.\n\nVerifica sempre il saldo aggiornato nella tua area riservata.";
+                        $descUser = "Gentile {$anagrafica->nome}, questa voce rappresenta un credito a tuo favore registrato nella rata n. {$rata->numero_rata}.\n\nNon è richiesto alcun pagamento: l'importo verrà utilizzato automaticamente per compensare le rate successive.";
                     } else {
-                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\n\nTi preghiamo di effettuare il pagamento entro la data indicata. Dopo aver effettuato il versamento, potrai segnalarlo all'amministratore tornando su questo evento.";
-                        if ($saldoPregresso < -0.01) {
-                            $descUser .= "\n\n(Nota: Una parte dell'importo è stata compensata dal tuo credito residuo. Verifica l'importo esatto da versare nella dashboard).";
-                        }
+                        $descUser = "Gentile {$anagrafica->nome}, ti ricordiamo la scadenza della rata condominiale n. {$rata->numero_rata}.\n\nVerifica il dettaglio quote e il netto da versare nello scontrino qui sotto. Dopo aver effettuato il versamento, potrai segnalarlo all'amministratore cliccando sul pulsante corrispondente.";
                     }
 
                     if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
 
                     $eventoUser = Evento::create([
-                        'title'       => "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
+                        'title'       => $rata->numero_rata == 0 ? "Saldo Iniziale - {$pianoRate->nome}" : "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
                         'start_time'  => $rata->data_scadenza->copy()->setTime(0, 0),
                         'end_time'    => $rata->data_scadenza->copy()->setTime(23, 59),
                         'created_by'  => $user->id,
@@ -223,7 +179,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'is_emitted'        => false, 
                             'requires_action'   => false, 
                             'status'            => 'pending',
-                            'importo_originale' => $importoVal,
+                            'importo_originale' => $importoVal, // Ora è calcolato dal JSON, 100% blindato
                             'importo_pagato'    => 0,
                             'importo_restante'  => $importoVal,
                             'dettaglio_quote'   => $dettaglioQuote, 
@@ -244,9 +200,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
             }
         }); 
 
-        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
         InboxService::clearAdminCache();
-        
         Log::info("Listener: Eventi creati con successo.");
     }
 
@@ -254,8 +208,6 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
     {
         Log::info("Cancellazione eventi...");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();
-
-        // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
         InboxService::clearAdminCache();
     }
 }

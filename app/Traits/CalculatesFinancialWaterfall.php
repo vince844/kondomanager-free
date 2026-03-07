@@ -7,15 +7,14 @@ use App\Models\Gestionale\RataQuote;
 trait CalculatesFinancialWaterfall
 {
     /**
-     * Applica il calcolo "a cascata" del debito.
-     * Versione: 1.9.3 (Fix Asimmetria Crediti/Debiti)
+     * Calcola gli arretrati e lo stato dei pagamenti storici.
+     * Versione: 1.9.5 (Solo Lettura, NESSUNA alterazione del totale fattura)
      */
     public function applyFinancialWaterfall($events, $anagraficaId, $condominioIds = null, $pianoRateIds = null)
     {
         $condominioIds = is_numeric($condominioIds) ? [$condominioIds] : $condominioIds;
         $pianoRateIds = is_numeric($pianoRateIds) ? [$pianoRateIds] : $pianoRateIds;
 
-        // 1. Recupero Quote
         $tutteLeQuote = RataQuote::where('anagrafica_id', $anagraficaId)
             ->whereHas('rata.pianoRate', function ($q) use ($condominioIds, $pianoRateIds) {
                 if (!empty($condominioIds)) {
@@ -34,7 +33,6 @@ trait CalculatesFinancialWaterfall
             return $events;
         }
 
-        // 2. Raggruppamento
         $quotesByCondominio = $tutteLeQuote->groupBy(function ($quota) {
             return $quota->rata->pianoRate->condominio_id;
         });
@@ -43,112 +41,66 @@ trait CalculatesFinancialWaterfall
 
         foreach ($quotesByCondominio as $condominioId => $quotesDelCondominio) {
             
-            // A. Calcolo Debito/Credito Iniziale (CENTESIMI)
-            $debitoPregressoDaCoprire = 0; 
-            
-            $rateAggregate = $quotesDelCondominio->groupBy('rata_id')->map(function ($quotes) use (&$debitoPregressoDaCoprire) {
+            $rateAggregate = $quotesDelCondominio->groupBy('rata_id')->map(function ($quotes) {
                 $rata = $quotes->first()->rata;
                 
-                $saldoIncorporato = 0; 
-                foreach($quotes as $q) {
-                    $regole = json_decode($q->regole_calcolo ?? '{}', true);
-                    if (isset($regole['importi']['saldo_usato'])) {
-                        $saldoIncorporato += (int)$regole['importi']['saldo_usato'];
-                    }
-                }
-                
-                $debitoPregressoDaCoprire += $saldoIncorporato;
+                // Nella V1.9, il totale ufficiale è quello scritto nel DB (non facciamo più reverse engineering)
+                $importoTotale = (int)$quotes->sum('importo');
+                $importoPagato = (int)$quotes->sum('importo_pagato');
 
                 return [
-                    'rata_id' => $rata->id,
-                    'numero_rata' => $rata->numero_rata,
-                    'scadenza' => $rata->data_scadenza,
-                    'importo_netto' => (int)$quotes->sum('importo'), 
-                    'pagato' => (int)$quotes->sum('importo_pagato'), 
-                    'saldo_incorporato' => $saldoIncorporato
+                    'rata_id'       => $rata->id,
+                    'numero_rata'   => $rata->numero_rata,
+                    'scadenza'      => $rata->data_scadenza,
+                    'importo_netto' => $importoTotale, 
+                    'pagato'        => $importoPagato, 
+                    'insoluto_rata' => max(0, $importoTotale - $importoPagato), // Quanto NON è stato pagato di QUESTA rata
                 ];
             })->sortBy('scadenza');
 
-            // B. Variabili di Stato (Wallet)
-            $creditoDisponibile = 0; 
-            $accumuloDebito = max(0, $debitoPregressoDaCoprire); 
-            
-            if ($debitoPregressoDaCoprire < 0) {
-                $creditoDisponibile = abs($debitoPregressoDaCoprire);
-            }
-
+            $accumuloDebiti = 0;
+            $accumuloCrediti = 0;
             $listaInsoluti = []; 
 
-            // C. Ciclo Waterfall
             foreach ($rateAggregate as $rata) {
                 $id = $rata['rata_id'];
-                $netto = $rata['importo_netto']; 
-                $saldoInRata = $rata['saldo_incorporato'];
                 
-                // Assorbimento Debito (solo se era un debito positivo)
-                if ($saldoInRata > 0) {
-                    $accumuloDebito = max(0, $accumuloDebito - $saldoInRata);
-                }
+                // 1. FOTOGRAFIA DEL PASSATO: Cosa è successo PRIMA di questa rata?
+                $snapshotDebiti = $accumuloDebiti;
+                $snapshotCrediti = $accumuloCrediti;
+                // FIX: Dobbiamo fotografare anche la lista dei nomi PRIMA di aggiornarla!
+                $snapshotListaInsoluti = implode(', ', $listaInsoluti); 
 
-                $creditoInizialeSnapshot = $creditoDisponibile; 
-                $residuoFinale = 0; 
-                $creditoUsatoQui = 0;
-
-                // --- FIX CRUCIALE: DETERMINIAMO COSA DOBBIAMO PAGARE ---
-                // Se il saldo incorporato è negativo (CREDITO), significa che l'importo $netto nel DB è già scontato.
-                // Per vedere se il nostro Wallet copre la spesa, dobbiamo ricostruire il "Costo Puro" della rata.
-                // Esempio Marta: Netto DB = -6671. SaldoInc = -10000.
-                // Da Pagare (Costo Puro) = -6671 - (-10000) = 3329.
-                
-                if ($saldoInRata < 0) {
-                    $daCoprire = $netto - $saldoInRata;
-                } else {
-                    // Se è un debito o zero, l'importo nel DB è quello che dobbiamo pagare davvero.
-                    $daCoprire = $netto;
-                }
-
-                // --- LOGICA DI PAGAMENTO ---
-                // Usiamo $daCoprire invece di $netto per erodere il credito
-                
-                if ($daCoprire > 0) {
-                    // C'è qualcosa da pagare (Costo Puro positivo)
-                    $daPagareReale = max(0, $daCoprire - $rata['pagato']); // Quanto resta da versare
-
-                    if ($creditoDisponibile >= $daPagareReale) {
-                        // Il credito copre tutto
-                        $creditoUsatoQui = $daPagareReale;
-                        $creditoDisponibile -= $daPagareReale;
-                        $residuoFinale = 0;
-                    } else {
-                        // Il credito non basta o è finito
-                        $creditoUsatoQui = $creditoDisponibile;
-                        $residuoFinale = $daPagareReale - $creditoDisponibile; // Questo è quanto manca
-                        $creditoDisponibile = 0;
+                // 2. AGGIORNAMENTO DEL FUTURO: Cosa succede DOPO questa rata?
+                if ($rata['importo_netto'] < 0) {
+                    // Questa rata era a credito (es. Rata 0 negativa)
+                    // Aggiungiamo al salvadanaio quello che NON è stato ancora rimborsato/usato
+                    $creditoResiduo = abs($rata['importo_netto']) - $rata['pagato'];
+                    if ($creditoResiduo > 0) {
+                        $accumuloCrediti += $creditoResiduo;
                     }
-                } else {
-                    // La rata pura è negativa (es. rimborso spese o conguaglio a favore non derivante dal saldo iniziale)
-                    $creditoDisponibile += abs($daCoprire);
-                    $residuoFinale = $daCoprire; // Sarà negativo o zero
-                }
-
-                $globalRataStatus[$id] = [
-                    'residuo_reale' => $residuoFinale,
-                    'is_covered_by_credit' => ($creditoUsatoQui > 0 && $residuoFinale === 0), 
-                    'credito_disponibile_start' => $creditoInizialeSnapshot,
-                    'numero_rata' => $rata['numero_rata'],
-                    'arretrati_pregressi' => $accumuloDebito, 
-                    'lista_rate_precedenti' => implode(', ', $listaInsoluti),
-                    'saldo_incorporato' => $saldoInRata
-                ];
-
-                if ($residuoFinale > 0) {
-                    $accumuloDebito += $residuoFinale;
+                } elseif ($rata['insoluto_rata'] > 0) {
+                    // Questa rata non è stata saldata completamente
+                    $accumuloDebiti += $rata['insoluto_rata'];
+                    // Aggiungiamo la rata alla lista PER IL FUTURO
                     $listaInsoluti[] = '#' . $rata['numero_rata']; 
                 }
+
+                // Se ho sia debiti che crediti vecchi, li compenso virtualmente solo per capire il VERO saldo finale
+                $veroDebitoPregresso = max(0, $snapshotDebiti - $snapshotCrediti);
+                $veroCreditoPregresso = max(0, $snapshotCrediti - $snapshotDebiti);
+
+                // 3. SALVATAGGIO STATO
+                $globalRataStatus[$id] = [
+                    'arretrati_pregressi'   => $veroDebitoPregresso, 
+                    'crediti_pregressi'     => $veroCreditoPregresso,
+                    // FIX: Usiamo la fotografia presa all'inizio del loop!
+                    'lista_rate_precedenti' => $snapshotListaInsoluti, 
+                ];
             }
         }
 
-        // 4. Iniezione (Invariato)
+        // Iniezione sicura nell'evento
         $collection = $events instanceof \Illuminate\Pagination\AbstractPaginator ? $events->getCollection() : $events;
 
         $processed = $collection->map(function ($event) use ($globalRataStatus) {
@@ -157,27 +109,15 @@ trait CalculatesFinancialWaterfall
             if (!is_array($meta)) $meta = [];
 
             $rataId = $meta['context']['rata_id'] ?? ($meta['rata_id'] ?? null);
-            if (!$rataId && !empty($meta['dettaglio_quote'][0]['rata_id'])) {
-                $rataId = $meta['dettaglio_quote'][0]['rata_id'];
-            }
 
             if ($rataId && isset($globalRataStatus[$rataId])) {
                 $status = $globalRataStatus[$rataId];
                 
-                $meta['importo_restante'] = $status['residuo_reale'];
-                $meta['is_covered_by_credit'] = $status['is_covered_by_credit'];
-                $meta['arretrati_pregressi'] = $status['arretrati_pregressi'];
-                $meta['rif_arretrati'] = $status['lista_rate_precedenti']; 
-                $meta['saldo_iniziale_assorbito'] = ($status['arretrati_pregressi'] <= 0);
-                $meta['saldo_incorporato'] = $status['saldo_incorporato']; 
-
-                if (!empty($meta['dettaglio_quote'])) {
-                    foreach ($meta['dettaglio_quote'] as $k => $quota) {
-                        if ($k === 0 && $status['credito_disponibile_start'] > 0) {
-                            $meta['dettaglio_quote'][$k]['audit']['credito_pregresso_usato'] = -$status['credito_disponibile_start'];
-                        }
-                    }
-                }
+                // ⚠️ Aggiungiamo metadati informativi, SENZA toccare l'importo originale/restante!
+                $meta['storico_arretrati'] = $status['arretrati_pregressi'];
+                $meta['storico_crediti']   = $status['crediti_pregressi']; 
+                $meta['storico_rate_rif']  = $status['lista_rate_precedenti']; 
+                
                 $event->setAttribute('meta', $meta);
             }
             return $event;

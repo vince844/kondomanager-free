@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,91 +6,61 @@ import { useEventStyling } from '@/composables/useEventStyling';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { format, differenceInDays } from 'date-fns';
 import { it } from 'date-fns/locale';
-import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Info, Clock, XCircle, Coins, RotateCcw, History, TrendingDown } from 'lucide-vue-next';
+import { Building2, Wallet, Banknote, CalendarDays, AlertCircle, ArrowRight, CheckCircle, AlertTriangle, Clock, XCircle, TrendingDown } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { router } from '@inertiajs/vue3'; 
 
 const props = defineProps<{ isOpen: boolean; evento: any; }>();
 const emit = defineEmits(['close']);
 const { getEventStyle } = useEventStyling();
-// Configurazione formatter (fromCents: true è default)
 const { euro } = useCurrencyFormatter(); 
 const isProcessing = ref(false); 
 
 const isAdmin = computed(() => props.evento?.meta?.type === 'emissione_rata');
 const isCondomino = computed(() => props.evento?.meta?.type === 'scadenza_rata_condomino');
 
-// Determina se mostrare la colonna sinistra con dettagli finanziari
 const hasFinancialDetails = computed(() => {
-    // Mostra se è un evento di rata (admin o condomino)
     if (isAdmin.value || isCondomino.value) return true;
-    
-    // Mostra se ci sono metadati finanziari (numero_rata, gestione, totale_rata, ecc.)
     const meta = props.evento?.meta;
-    if (meta?.numero_rata || meta?.totale_rata || meta?.importo_originale || meta?.gestione) {
-        return true;
-    }
-    
-    return false;
+    return !!(meta?.numero_rata !== undefined || meta?.totale_rata || meta?.importo_originale || meta?.gestione);
 });
 
-// --- FIX TYPESCRIPT: Tipizzazione esplicita <number> ---
-const importoOriginale = computed<number>(() => Number(props.evento?.meta?.totale_rata || props.evento?.meta?.importo_originale || 0));
+// --- LOGICA V1.9: SPECCHIO FEDELE DEL DATABASE ---
+// Prendiamo l'importo originale salvato nel meta dell'evento (es. 11248)
+const importoOriginale = computed<number>(() => Number(props.evento?.meta?.importo_originale || props.evento?.meta?.totale_rata || 0));
+
+// L'importo restante è quello che manca al saldo di QUESTA specifica rata
 const importoRestante = computed<number>(() => props.evento?.meta?.importo_restante !== undefined ? Number(props.evento?.meta?.importo_restante) : importoOriginale.value);
+
 const importoPagato = computed<number>(() => Number(props.evento?.meta?.importo_pagato || 0));
-const arretratiPregressi = computed<number>(() => Number(props.evento?.meta?.arretrati_pregressi || 0));
-const saldoIncorporato = computed<number>(() => Number(props.evento?.meta?.saldo_incorporato || 0));
-// --- Riferimento Arretrati "Smart" ---
-const rifArretrati = computed<string>(() => {
-    const raw = props.evento?.meta?.rif_arretrati || '';
-    if (!raw) return '';
 
-    // 1. Convertiamo in array e Rimuoviamo duplicati
-    const parts = raw.split(', ').filter(Boolean);
-    const uniqueParts = [...new Set(parts)]; // Rimuove #1 duplicati
-
-    // 2. Se sono poche (max 4), le mostriamo tutte
-    if (uniqueParts.length <= 4) {
-        return uniqueParts.join(', ');
-    }
-
-    // 3. Se sono tante, mostriamo le prime 3 e il conteggio delle altre
-    const firstFew = uniqueParts.slice(0, 2).join(', ');
-    const remaining = uniqueParts.length - 2;
-    
-    return `${firstFew} e altre ${remaining}`;
-});
-
-// Stati
+// Stati di pagamento
 const isPaid = computed(() => props.evento?.meta?.status === 'paid'); 
 const isReported = computed(() => props.evento?.meta?.status === 'reported');
 const isRejected = computed(() => props.evento?.meta?.status === 'rejected');
 
-// Logiche Credito
-const isGeneratingCredit = computed(() => isCondomino.value && importoRestante.value < -0.01);
-const isFullyCoveredByCredit = computed(() => props.evento?.meta?.is_covered_by_credit === true);
+// Gestione visiva: Un evento è "Credito" solo se il suo importo totale nel DB è negativo (es. Rata Zero con credito)
+const isGeneratingCredit = computed(() => isCondomino.value && importoOriginale.value < -0.01);
 
-// Ora TS non si lamenta più perché sa che sono number
-const isPartiallyCoveredByCredit = computed(() => 
-    isCondomino.value && 
+// Una rata è coperta solo se l'importo restante è zero ma non è ancora segnata come pagata (raro in V1.9, ma possibile)
+const isFullyCoveredByCredit = computed(() => importoRestante.value === 0 && importoOriginale.value > 0 && !isPaid.value && isCondomino.value);
+
+// --- CALCOLO SCADENZA ---
+const daysDiff = computed(() => { 
+    if (!props.evento?.start_time) return 0; 
+    return differenceInDays(new Date(props.evento.start_time), new Date()); 
+});
+
+// Mostriamo l'allarme rosso solo se c'è effettivamente un debito residuo sulla rata
+const isExpired = computed(() => 
+    daysDiff.value < 0 && 
     !isGeneratingCredit.value && 
-    !isFullyCoveredByCredit.value && 
     !isPaid.value && 
-    importoRestante.value > 0.01 && 
-    importoRestante.value < importoOriginale.value
+    !isReported.value && 
+    importoRestante.value > 0.01
 );
 
-const daysDiff = computed(() => { if (!props.evento?.start_time) return 0; return differenceInDays(new Date(props.evento.start_time), new Date()); });
-const isExpired = computed(() => daysDiff.value < 0 && !isGeneratingCredit.value && !isFullyCoveredByCredit.value && !isPaid.value && !isReported.value && importoRestante.value > 0.01);
 const isEmitted = computed(() => props.evento?.meta?.is_emitted === true);
-
-// --- LOGICA UX: MESSAGGI DINAMICI PER CREDITO ---
-// Capire se questa rata è coperta specificamente dal "Tesoretto" dell'anno scorso
-const isSubsequentRataCoveredByInitialCredit = computed(() => 
-    isFullyCoveredByCredit.value &&          // La rata è coperta (verde)
-    saldoIncorporato.value < -0.01 &&        // C'era un credito iniziale forte
-    (props.evento?.meta?.numero_rata || 0) > 1 // Siamo dalla rata 2 in poi
-);
 
 const formatDate = (dateStr: string) => { if(!dateStr) return ''; return format(new Date(dateStr), "d MMMM yyyy", { locale: it }); };
 
@@ -104,53 +73,29 @@ const reportPayment = () => {
     });
 };
 
-// --- INTERFACCIA PER TYPESCRIPT ---
 interface ScontrinoItem {
     descrizione: string;
-    credito_disponibile: number;
-    quota_rata: number;
-    nuovo_saldo: number;
-    is_credito: boolean;
+    quota_pura: number;
+    saldo_applicato_diretto: number; 
+    costo_netto: number;             
 }
 
-// --- LOGICA SCONTRINO ---
+// --- SCONTRINO V1.9 (Nessuna cascata, solo lista voci) ---
 const scontrinoData = computed<ScontrinoItem[]>(() => {
     const quote = props.evento.meta?.dettaglio_quote || [];
-    
-    // FIX: Non calcoliamo più saldoInizialeGlobale sommando i 'saldo_usato' grezzi.
-    // Questo causava il raddoppio se più quote avevano lo stesso saldo di origine.
-    // Partiamo da 0 e lasciamo che sia il loop (qui sotto) a leggere il 
-    // 'credito_pregresso_usato' che il Backend ha iniettato nella prima quota.
-    
-    let currentAvailableCredit = 0; 
 
     return quote.map((q: any) => {
-        const quotaPura = Number(q.audit?.quota_pura !== undefined ? q.audit.quota_pura : q.importo);
+        const quotaSpesa = Number(q.componente_spesa ?? q.audit?.quota_pura ?? q.importo);
+        const saldoDiretto = Number(q.componente_saldo ?? q.audit?.saldo_usato ?? 0);
         
-        // Qui leggiamo il valore "Waterfall" calcolato dal Trait (es. -10000 per Rata 1, -16671 per Rata 2)
-        if (q.audit?.credito_pregresso_usato) {
-            // Nota: Se currentAvailableCredit è 0, lo sovrascriviamo o sommiamo.
-            // Dato che questo valore rappresenta lo "stato al momento 0 della rata",
-            // lo sommiamo (che equivale a settarlo se è la prima riga).
-            currentAvailableCredit += Number(q.audit.credito_pregresso_usato);
-        }
-
-        const nuovoSaldo = currentAvailableCredit + quotaPura;
-        
-        const item: ScontrinoItem = {
-            descrizione: q.descrizione,
-            credito_disponibile: currentAvailableCredit,
-            quota_rata: quotaPura,
-            nuovo_saldo: nuovoSaldo,
-            is_credito: nuovoSaldo < -0.01
+        return {
+            descrizione: q.descrizione || 'Quota ordinaria',
+            quota_pura: quotaSpesa,
+            saldo_applicato_diretto: saldoDiretto,
+            costo_netto: quotaSpesa + saldoDiretto,
         };
-
-        currentAvailableCredit = nuovoSaldo;
-        
-        return item;
     });
 });
-
 </script>
 
 <template>
@@ -158,7 +103,6 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
         <DialogContent class="sm:max-w-5xl p-0 overflow-hidden rounded-xl border-none shadow-2xl bg-white dark:bg-slate-950 block gap-0">
             <div class="flex flex-col md:flex-row h-full min-h-[450px]">
                 
-                <!-- Colonna sinistra: mostrata SOLO se ci sono dettagli finanziari -->
                 <div v-if="hasFinancialDetails" class="md:w-[45%] bg-slate-50 dark:bg-slate-900/50 p-8 flex flex-col gap-6 border-r border-slate-100 dark:border-slate-800 overflow-y-auto max-h-[80vh]">
                     
                     <div>
@@ -169,7 +113,7 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                         </div>
                         
                         <div class="mb-0">
-                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Data riferimento</span>
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Data scadenza</span>
                             <div class="flex items-center gap-2" :class="isExpired ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'">
                                 <CalendarDays class="w-5 h-5" :class="isExpired ? 'text-red-400' : 'text-slate-400'" />
                                 <span class="text-lg font-medium capitalize">{{ formatDate(evento.start_time) }}</span>
@@ -179,18 +123,17 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
 
                     <div>
                          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1"> 
-                             {{ isAdmin ? 'Totale emissione' : (isGeneratingCredit ? 'Importo a credito' : 'Totale da versare') }} 
+                             {{ isAdmin ? 'Totale emissione rata' : (isGeneratingCredit ? 'Credito di questa rata' : 'Totale da versare') }} 
                          </span>
                         
-                        <span class="text-3xl font-bold tracking-tight block tabular-nums" 
+                        <span class="text-4xl font-bold tracking-tight block tabular-nums" 
                               :class="isGeneratingCredit ? 'text-blue-600 dark:text-blue-400' : (isFullyCoveredByCredit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white')"> 
-                            {{ euro(isFullyCoveredByCredit ? 0 : importoRestante, { forcePlus: false }) }} 
+                            {{ euro(importoRestante, { forcePlus: false }) }} 
                         </span>
 
                         <div v-if="scontrinoData.length > 0" class="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 space-y-6">
-                            
                             <div class="flex flex-col gap-2 mb-2">
-                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dettaglio copertura / Utilizzo credito</p>
+                                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Dettaglio Rata Corrente</p>
                             </div>
 
                             <div v-for="(item, idx) in scontrinoData" :key="idx" class="relative group">
@@ -206,54 +149,43 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                                         
                                         <div class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 rounded-lg p-2.5 space-y-1.5 text-xs shadow-sm">
                                             
-                                            <div class="flex justify-between items-center text-slate-500 dark:text-slate-400">
+                                            <div v-if="item.quota_pura !== 0 || item.saldo_applicato_diretto === 0" class="flex justify-between items-center text-slate-500 dark:text-slate-400">
+                                                <span class="pl-3">Quota ordinaria:</span>
+                                                <span class="font-mono">{{ euro(item.quota_pura) }}</span>
+                                            </div>
+
+                                            <div v-if="item.saldo_applicato_diretto !== 0" class="flex justify-between items-center" :class="item.saldo_applicato_diretto > 0 ? 'text-red-500 dark:text-red-400' : 'text-emerald-500 dark:text-emerald-400'">
                                                 <span class="flex items-center gap-1.5">
-                                                    <div class="w-1.5 h-1.5 rounded-full" :class="item.credito_disponibile < 0 ? 'bg-emerald-500' : 'bg-red-400'"></div>
-                                                    {{ item.credito_disponibile < 0 ? 'Credito disp.:' : 'Saldo prog.:' }}
+                                                    <div class="w-1.5 h-1.5 rounded-full" :class="item.saldo_applicato_diretto > 0 ? 'bg-red-500' : 'bg-emerald-500'"></div>
+                                                    {{ item.saldo_applicato_diretto > 0 ? 'Debito pregresso integrato:' : 'Credito pregresso applicato:' }}
                                                 </span>
-                                                <span class="font-mono">{{ euro(item.credito_disponibile) }}</span>
+                                                <span class="font-mono font-medium">{{ euro(item.saldo_applicato_diretto, { forcePlus: item.saldo_applicato_diretto > 0 }) }}</span>
                                             </div>
 
-                                            <div class="flex justify-between items-center text-slate-900 dark:text-white font-medium">
-                                                <span class="pl-3">Quota rata:</span>
-                                                <span class="font-mono text-slate-700 dark:text-slate-300">
-                                                    {{ euro(item.quota_rata, { forcePlus: true }) }}
+                                            <div v-if="item.quota_pura !== 0 && item.saldo_applicato_diretto !== 0" class="border-t border-slate-100 dark:border-slate-700 pt-1.5 mt-1 flex justify-between items-center">
+                                                <span class="text-xs font-bold uppercase text-slate-400">Totale unità:</span>
+                                                <span class="font-mono font-bold" :class="item.costo_netto < -0.01 ? 'text-emerald-600 dark:text-emerald-400' : (item.costo_netto > 0.01 ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-white')">
+                                                    {{ euro(item.costo_netto) }}
                                                 </span>
-                                            </div>
-
-                                            <div class="border-t border-slate-100 dark:border-slate-700 pt-1.5 mt-1 flex justify-between items-center">
-                                                <span class="text-xs font-bold uppercase text-slate-400">Nuovo saldo:</span>
-                                                <span class="font-mono font-bold" :class="item.nuovo_saldo < -0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'">
-                                                    {{ euro(item.nuovo_saldo) }}
-                                                </span>
-                                            </div>
-                                            
-                                            <div v-if="item.is_credito" class="text-right text-xs text-emerald-600 dark:text-emerald-500 italic">
-                                                (Sei ancora a credito)
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             
-                            <div class="mt-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 -mx-2 px-3 py-3 rounded">
-                                
-                                <div v-if="importoPagato > 0.01 && !isGeneratingCredit && !isFullyCoveredByCredit" class="flex flex-col gap-1 mb-2 pb-2 border-b border-slate-200 dark:border-slate-700 text-xs">
-                                    <div class="flex justify-between text-slate-500 dark:text-slate-400">
-                                        <span>Totale rata</span>
-                                        <span>{{ euro(importoOriginale) }}</span>
-                                    </div>
-                                    <div class="flex justify-between text-emerald-600 dark:text-emerald-500 font-medium">
-                                        <span class="flex items-center gap-1"><CheckCircle class="w-3 h-3" /> Già versato</span>
-                                        <span>- {{ euro(importoPagato) }}</span>
-                                    </div>
+                            <div v-if="importoPagato > 0.01" class="mt-4 bg-slate-50/50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800 -mx-2 px-3 py-3 rounded">
+                                <div class="flex justify-between text-slate-500 dark:text-slate-400 mb-1 text-xs">
+                                    <span>Totale rata calcolato</span>
+                                    <span>{{ euro(importoOriginale) }}</span>
                                 </div>
-
-                                <div class="flex justify-between items-center">
-                                    <span class="font-bold text-sm text-slate-900 dark:text-white">Netto da pagare</span>
-                                    <span class="text-xl font-bold font-mono tracking-tight" 
-                                          :class="isFullyCoveredByCredit ? 'text-emerald-600' : (isGeneratingCredit ? 'text-blue-600' : 'text-slate-900 dark:text-white')"> 
-                                        {{ euro(isFullyCoveredByCredit ? 0 : importoRestante, { forcePlus: false }) }} 
+                                <div class="flex justify-between text-emerald-600 dark:text-emerald-500 font-medium pb-2 border-b border-slate-200 dark:border-slate-700 text-xs">
+                                    <span class="flex items-center gap-1"><CheckCircle class="w-3 h-3" /> Già versato</span>
+                                    <span>- {{ euro(importoPagato) }}</span>
+                                </div>
+                                <div class="flex justify-between items-center mt-2">
+                                    <span class="font-bold text-sm text-slate-900 dark:text-white">Residuo da pagare</span>
+                                    <span class="text-xl font-bold font-mono tracking-tight text-slate-900 dark:text-white"> 
+                                        {{ euro(importoRestante, { forcePlus: false }) }} 
                                     </span>
                                 </div>
                             </div>
@@ -263,7 +195,6 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
 
                 <div :class="hasFinancialDetails ? 'md:w-[55%]' : 'w-full'" class="p-6 flex flex-col relative overflow-y-auto max-h-[80vh]">
                     
-                    <!-- Badge e data per eventi generici (quando non c'è la colonna sinistra) -->
                     <div v-if="!hasFinancialDetails" class="mb-4">
                         <div class="flex flex-wrap items-center gap-3 mb-4">
                             <Badge variant="outline" :class="[getEventStyle(evento).color, 'border-current bg-white dark:bg-slate-900 shadow-sm px-2.5 py-1 whitespace-nowrap']">
@@ -298,122 +229,58 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                                 {{ evento.meta.gestione }}
                             </p>
                         </div>
-                        <div v-if="evento.meta?.numero_rata" class="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-lg min-w-0">
+                        <div v-if="evento.meta?.numero_rata !== undefined" class="bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800 p-3 rounded-lg min-w-0">
                             <span class="text-[10px] uppercase font-semibold text-slate-400 mb-1 flex items-center gap-1.5">
                                 <Banknote class="w-3.5 h-3.5" /> Rata
                             </span>
                             <p class="font-medium text-sm text-slate-900 dark:text-white truncate">
-                                Numero {{ evento.meta.numero_rata }}
+                                {{ evento.meta.numero_rata === 0 ? 'Saldo Iniziale' : 'Numero ' + evento.meta.numero_rata }}
                             </p>
                         </div>
                     </div>
 
                     <div v-if="isCondomino">
 
-                        <div v-if="saldoIncorporato > 0.01" class="mb-3 p-4 rounded-lg bg-amber-50 border border-amber-200 flex items-start gap-3">
-                            <div class="p-1.5 bg-amber-100 rounded-full text-amber-600 shrink-0 mt-0.5">
-                                <History class="w-4 h-4" />
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-bold text-amber-800 mb-1">Saldo precedente incluso</h4>
-                                <p class="text-xs text-amber-700 leading-relaxed mb-2">
-                                    Questa rata include un saldo debitore di <span class="font-bold">{{ euro(saldoIncorporato) }}</span> dall'esercizio precedente.
-                                </p>
-                                <p class="text-xs text-amber-600/80">
-                                    Pagando questa rata regolarizzerai anche il debito passato.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div v-else-if="saldoIncorporato < -0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                        <div v-if="evento.meta?.storico_crediti > 0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
                             <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
                                 <TrendingDown class="w-4 h-4" />
                             </div>
                             <div>
-                                <h4 class="text-sm font-bold text-blue-800 mb-1">Sconto da credito precedente</h4>
-                                <p class="text-xs text-blue-700 leading-relaxed mb-2">
-                                    L'importo di questa rata è stato ridotto grazie a un credito di <span class="font-bold">{{ euro(Math.abs(saldoIncorporato)) }}</span> dall'esercizio precedente.
+                                <h4 class="text-sm font-bold text-blue-800 mb-1">Hai un credito disponibile</h4>
+                                <p class="text-xs text-blue-700 leading-relaxed">
+                                    Dalle gestioni o rate precedenti risulta un credito non utilizzato di <span class="font-bold">{{ euro(evento.meta.storico_crediti) }}</span>. 
+                                    Puoi usarlo per compensare il pagamento di questa rata.
                                 </p>
                             </div>
                         </div>
 
-                        <div v-else-if="arretratiPregressi > 0.01" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+                        <div v-if="evento.meta?.storico_arretrati > 0.01" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
                             <div class="p-1.5 bg-orange-100 rounded-full text-orange-600 shrink-0 mt-0.5">
                                 <AlertTriangle class="w-4 h-4" />
                             </div>
                             <div>
                                 <h4 class="text-sm font-bold text-orange-800 mb-1">Attenzione: rate precedenti insolute</h4>
                                 <p class="text-xs text-orange-700 leading-relaxed mb-2">
-                                    Risultano arretrati non saldati per un totale di 
-                                    <span class="font-bold">{{ euro(arretratiPregressi) }}</span>
-                                    <span v-if="rifArretrati"> (rif. rate {{ rifArretrati }})</span>.
+                                    Oltre a questa rata, risultano arretrati non saldati per un totale di <span class="font-bold">{{ euro(evento.meta.storico_arretrati) }}</span>
+                                    <span v-if="evento.meta?.storico_rate_rif"> (rif. rate {{ evento.meta.storico_rate_rif }})</span>.
                                 </p>
-                                <p class="text-xs text-orange-600/80">
-                                    L'importo qui sotto si riferisce solo alla rata corrente. 
-                                    Per regolarizzare la situazione, verifica le rate scadute precedenti, effettua il pagamento e segnalalo.
+                                <p class="text-xs text-orange-700">
+                                    Ti invitiamo a regolarizzare la tua posizione saldando anche gli arretrati pregressi.
                                 </p>
                             </div>
                         </div>
 
-                        <div v-if="isPartiallyCoveredByCredit" class="mb-6">
-                            <div class="flex items-center justify-between p-4 rounded-lg bg-indigo-50 border border-indigo-200 mb-4">
-                                <div class="flex flex-col">
-                                    <span class="text-indigo-700 flex items-center gap-2 font-semibold text-sm"><RotateCcw class="w-4 h-4" /> Parzialmente coperta</span>
-                                    <span class="text-xs text-indigo-600/80 mt-1">Il credito ha coperto {{ euro(importoOriginale - importoRestante) }}.</span>
-                                </div>
+                        <div v-if="isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                            <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                <TrendingDown class="w-4 h-4" />
                             </div>
-                            <div class="flex items-center justify-between p-4 rounded-lg bg-amber-50 border border-amber-200 mb-4">
-                                <span class="text-amber-700 flex items-center gap-2 font-semibold text-sm"><AlertCircle class="w-4 h-4" /> Resta da versare</span>
-                                <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
+                            <div>
+                                <h4 class="text-sm font-bold text-blue-800 mb-1">Credito a tuo favore</h4>
+                                <p class="text-xs text-blue-700 leading-relaxed mb-2">
+                                    Questo documento certifica un credito a tuo favore di <span class="font-bold">{{ euro(Math.abs(importoRestante)) }}</span>. 
+                                    Non è richiesto alcun pagamento.
+                                </p>
                             </div>
-
-                            <div v-if="isReported">
-                                <Button class="w-full h-12 bg-amber-100 text-amber-700 border border-amber-200 cursor-not-allowed rounded-lg font-medium shadow-none text-xs" disabled>
-                                    Saldo inviato - In attesa di conferma...
-                                </Button>
-                            </div>
-                            <div v-else-if="!isEmitted">
-                                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200 mb-3 flex gap-3 items-start">
-                                    <Clock class="w-4 h-4 mt-0.5 text-slate-400" />
-                                    <div>
-                                        <h4 class="font-bold text-slate-700 text-xs mb-0.5">Rata in attesa di emissione</h4>
-                                        <p class="text-xs text-slate-500 leading-snug">
-                                            L'amministratore non ha ancora abilitato i versamenti per questa scadenza. 
-                                            Potrai registrare il pagamento nei prossimi giorni.
-                                        </p>
-                                    </div>
-                                </div>
-                                <Button class="w-full h-10 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed rounded-lg font-medium hover:bg-slate-100 shadow-none text-xs" disabled>
-                                    Pagamento non ancora attivo
-                                </Button>
-                            </div>
-                            <div v-else><Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">{{ isProcessing ? 'Invio...' : 'Segnala pagamento saldo' }}</Button></div>
-                        </div>
-
-                        <div v-else-if="isFullyCoveredByCredit" class="mb-3 flex items-center justify-between p-4 rounded-lg bg-emerald-50 border border-emerald-200">
-                            <div class="flex flex-col">
-                                <span class="text-emerald-700 flex items-center gap-2 font-semibold text-sm">
-                                    <CheckCircle class="w-4 h-4" /> Coperta da credito
-                                </span>
-                                <span class="text-xs text-emerald-600/80 mt-1">
-                                    {{ isSubsequentRataCoveredByInitialCredit 
-                                        ? "Rata coperta dal credito residuo dell'esercizio precedente." 
-                                        : "Rata saldata con il tuo credito residuo." 
-                                    }}
-                                </span>
-                            </div>
-                            <div class="text-right">
-                                <span class="text-xs uppercase text-emerald-600/70 font-bold block">Da versare</span>
-                                <span class="font-bold text-xl text-emerald-700">€ 0,00</span>
-                            </div>
-                        </div>
-                        
-                        <div v-else-if="isGeneratingCredit" class="mb-3 flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
-                            <div class="flex flex-col">
-                                <span class="text-blue-700 flex items-center gap-2 font-semibold text-sm"><Wallet class="w-4 h-4" /> Credito residuo</span>
-                                <span class="text-xs text-blue-600/80 mt-1">Eccedenza dal saldo precedente.</span>
-                            </div>
-                            <span class="font-bold text-xl text-blue-700">{{ euro(importoRestante) }}</span>
                         </div>
 
                         <div v-else-if="isReported" class="mb-6">
@@ -433,10 +300,27 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                             </Button>
                         </div>
 
-                        <div v-else-if="!isPaid && !isReported && !isRejected" class="mb-6 space-y-4">
-                            <div class="flex items-center justify-between p-3 rounded-lg bg-amber-50 border border-amber-200">
-                                <span class="text-amber-700 flex items-center gap-2 font-semibold text-sm"><AlertCircle class="w-4 h-4" /> Totale da versare</span>
-                                <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
+                        <div v-else-if="!isPaid && !isRejected" class="mb-6 space-y-4">
+                            
+                            <div class="p-4 rounded-lg bg-amber-50 border border-amber-200">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-amber-800 flex items-center gap-2 font-semibold text-sm">
+                                        <AlertCircle class="w-4 h-4" /> Totale rata corrente
+                                    </span>
+                                    <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
+                                </div>
+                                
+                                <div v-if="evento.meta?.storico_arretrati > 0.01" class="mt-3 pt-3 border-t border-amber-200/60">
+                                    <p class="text-xs text-amber-700 leading-snug">
+                                        * <b>Nota bene:</b> Questo importo non include il debito pregresso di <b>{{ euro(evento.meta.storico_arretrati) }}</b>. Per regolarizzare la tua posizione, puoi effettuare un bonifico unico cumulativo, o aprire le rate precedenti dal tuo scadenziario.
+                                    </p>
+                                </div>
+                                
+                                <div v-if="evento.meta?.storico_crediti > 0.01" class="mt-3 pt-3 border-t border-amber-200/60">
+                                    <p class="text-xs text-amber-700 leading-snug">
+                                        * <b>Nota bene:</b> L'importo indicato è il costo netto di questa rata. Al momento del versamento, ricordati che puoi sottrarre il credito a tuo favore di <b>{{ euro(evento.meta.storico_crediti) }}</b>.
+                                    </p>
+                                </div>
                             </div>
                             
                             <div v-if="!isEmitted">
@@ -446,7 +330,6 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                                         <h4 class="font-bold text-slate-700 text-xs mb-0.5">Rata in attesa di emissione</h4>
                                         <p class="text-xs text-slate-500 leading-snug">
                                             L'amministratore non ha ancora abilitato i versamenti per questa scadenza. 
-                                            Potrai registrare il pagamento nei prossimi giorni.
                                         </p>
                                     </div>
                                 </div>
@@ -455,12 +338,10 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                                 </Button>
                             </div>
                             <div v-else>
-                                <Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">{{ isProcessing ? 'Invio...' : 'Ho effettuato il pagamento' }}</Button>
+                                <Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">
+                                    {{ isProcessing ? 'Invio...' : 'Ho pagato questa rata' }}
+                                </Button>
                             </div>
-                        </div>
-
-                        <div v-if="isRejected" class="mb-6">
-                             <Button variant="destructive" class="w-full h-12 shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">{{ isProcessing ? 'Invio...' : 'Riprova Segnalazione' }}</Button>
                         </div>
                     </div>
 

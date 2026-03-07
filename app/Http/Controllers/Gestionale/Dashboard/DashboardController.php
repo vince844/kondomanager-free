@@ -86,35 +86,50 @@ class DashboardController extends Controller
                     }
                 }
 
-                // --- AGGIUNTA CHIRURGICA: CONTROLLO DISALLINEAMENTO PIANI RATE ---
-                // Preleviamo i piani rate della gestione con le relative rate generate e capitoli
+                // --- AGGIUNTA CHIRURGICA: CONTROLLO DISALLINEAMENTO PIANI RATE V1.9 ---
+                // Preleviamo i piani rate caricando anche le rate_quote, così possiamo leggere il JSON
                 $pianiRate = PianoRate::where('gestione_id', $gestione->id)
                     ->with(['capitoli' => function($q) {
                         $q->select('conti.id', 'conti.importo');
-                    }, 'rate' => function($q) {
-                        $q->select('id', 'piano_rate_id', 'importo_totale');
-                    }])
+                    }, 'rate.rateQuote']) 
                     ->get();
                 
                 foreach ($pianiRate as $piano) {
-                    // 1. Quanto ho già generato in rate?
-                    $totaleRateGenerate = $piano->rate->sum('importo_totale');
+                    $hasRate = $piano->rate->count() > 0;
                     
                     // Se il piano ha già delle rate generate, facciamo il controllo
-                    if ($totaleRateGenerate > 0) {
-                        // 2. Quanto mi richiedono i conti ADESSO?
+                    if ($hasRate) {
+                        // 1. Calcoliamo quanto PREVENTIVO PURO abbiamo effettivamente generato
+                        $totalePuroGenerato = 0;
+                        foreach ($piano->rate as $rata) {
+                            foreach ($rata->rateQuote as $quota) {
+                                $regole = json_decode($quota->regole_calcolo ?? '{}', true);
+                                
+                                // V1.9: Estraiamo SOLO la spesa pura, ignorando il saldo_usato
+                                if (isset($regole['importi']['quota_pura_gestione'])) {
+                                    $totalePuroGenerato += $regole['importi']['quota_pura_gestione'];
+                                } else {
+                                    // Fallback retrocompatibile V1.8 (ignora la Rata 0)
+                                    if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
+                                        $totalePuroGenerato += $quota->importo;
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Quanto mi richiedono i conti del preventivo ADESSO?
                         $totaleAtteso = 0;
                         foreach ($piano->capitoli as $capitolo) {
                             $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
                         }
 
-                        // 3. Se c'è differenza, scatta l'allarme
-                        if ($totaleAtteso !== $totaleRateGenerate) {
+                        // 3. Confronto "Mele con Mele" (Preventivo VS Preventivo)
+                        if ($totaleAtteso !== $totalePuroGenerato) {
                             $pianiDisallineati[] = [
                                 'id' => $piano->id,
                                 'nome' => $piano->nome,
                                 'gestione' => $gestione->nome,
-                                'delta' => $totaleAtteso - $totaleRateGenerate // Positivo se mancano soldi, negativo se c'è surplus
+                                'delta' => $totaleAtteso - $totalePuroGenerato // Positivo se mancano soldi
                             ];
                         }
                     }

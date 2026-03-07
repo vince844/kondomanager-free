@@ -14,7 +14,7 @@ use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException; // Aggiunto per gli errori di validazione personalizzati
+use Illuminate\Validation\ValidationException; 
 
 /**
  * Controller per la gestione delle voci di spesa/entrata (Conti) all'interno del Piano dei Conti.

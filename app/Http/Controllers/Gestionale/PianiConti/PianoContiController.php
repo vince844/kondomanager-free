@@ -180,8 +180,8 @@ class PianoContiController extends Controller
             ->orderBy('ragione_sociale')
             ->get(['id', 'ragione_sociale']);
         
-        // AGGIUNGI QUESTA RIGA: Calcolo super-veloce del totale preventivo
-        $totalePreventivo = Conto::where('piano_conto_id', $pianoConto->id)->sum('importo');
+        // Cast a (int) per forzare il tipo numerico ed evitare il warning di Vue
+        $totalePreventivo = (int) Conto::where('piano_conto_id', $pianoConto->id)->sum('importo');
 
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [
             'condominio' => [
@@ -195,7 +195,7 @@ class PianoContiController extends Controller
             'pianoConti' => new PianoDeiContiResource($pianoConto),
             'conti'      => ContoResource::collection($conti),
             'fornitori'  => $fornitori,
-            'totalePreventivo' => $totalePreventivo,  // ← AGGIUNTO
+            'totalePreventivo' => $totalePreventivo, 
         ]);
     }
 
