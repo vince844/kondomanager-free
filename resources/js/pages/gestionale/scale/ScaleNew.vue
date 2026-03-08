@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
@@ -29,7 +30,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
   { title: 'Struttura', href: generatePath('gestionale/:condominio/scale', { condominio: props.condominio.id }) },
-  { title: 'Nuova Scala', href: '#' },
+  { title: trans('gestionale.list_pages.scale.create.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
@@ -71,11 +72,10 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Crea nuova scala" />
+  <Head :title="trans('gestionale.list_pages.scale.create.head_title')" />
 
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
-
       <PageHeaderGuide
         page-title="Nuova scala"
         :page-subtitle="`Aggiungi un nuovo gruppo di scale per il condominio: ${props.condominio.nome}`"
@@ -106,19 +106,19 @@ const submit = () => {
                       class="mt-1 block w-full bg-white dark:bg-slate-950"
                       v-model="form.name" 
                       v-on:focus="form.clearErrors('name')"
-                      placeholder="es. Scala A, Scala Unica..." 
+                      :placeholder="trans('gestionale.list_pages.scale.create.placeholders.name')" 
                     />
                     <InputError :message="form.errors.name" />
                   </div>
 
                   <div class="sm:col-span-3">
-                    <Label for="palazzina" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Palazzina di appartenenza</Label>
+                    <Label for="palazzina" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.scale.create.labels.building') }}</Label>
                     <v-select 
                         :options="props.palazzine" 
                         label="name" 
                         class="mt-1 block w-full bg-white dark:bg-slate-950 text-sm"
                         v-model="form.palazzina_id"
-                        placeholder="Associa ad una palazzina (opzionale)"
+                        :placeholder="trans('gestionale.list_pages.scale.create.placeholders.select_building')"
                         @update:modelValue="form.clearErrors('palazzina_id')" 
                         :reduce="(palazzina: Palazzina) => palazzina.id"
                     />
@@ -132,7 +132,7 @@ const submit = () => {
                       class="mt-1 block w-full bg-white dark:bg-slate-950"
                       v-model="form.description" 
                       v-on:focus="form.clearErrors('description')"
-                      placeholder="es. Scala interna lato cortile" 
+                      :placeholder="trans('gestionale.list_pages.scale.create.placeholders.description')" 
                     />
                     <InputError :message="form.errors.description" />
                   </div>

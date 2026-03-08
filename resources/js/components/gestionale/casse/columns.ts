@@ -9,17 +9,18 @@ import { Star } from 'lucide-vue-next'
 
 import type { Cassa } from '@/types/gestionale/casse'
 import type { Building } from '@/types/buildings'
+import { trans } from 'laravel-vue-i18n'
 
 // Helper per formattare il tipo di conto
 const formatTipoConto = (tipo: string | null | undefined) => {
   if (!tipo) return ''
   const labels: Record<string, string> = {
-    ordinario: 'Conto Ordinario',
-    dedicato: 'Conto Dedicato',
-    postale: 'Conto Postale',
-    contabilita_speciale: 'Contabilità Speciale',
-    estero: 'Conto Estero',
-    altro: 'Altro',
+    ordinario: trans('gestionale.list_pages.casse.table.bank_account_types.ordinary'),
+    dedicato: trans('gestionale.list_pages.casse.table.bank_account_types.dedicated'),
+    postale: trans('gestionale.list_pages.casse.table.bank_account_types.postal'),
+    contabilita_speciale: trans('gestionale.list_pages.casse.table.bank_account_types.special_accounting'),
+    estero: trans('gestionale.list_pages.casse.table.bank_account_types.foreign'),
+    altro: trans('gestionale.list_pages.casse.table.bank_account_types.other'),
   }
   return labels[tipo] || tipo
 }
@@ -29,16 +30,16 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     {
       accessorKey: 'tipo',
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Tipo' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.casse.table.type') }),
       cell: ({ row }) => {
         const cassa = row.original
         const type = cassa.tipo
         const isPredefinito = Boolean(cassa.banca_predefinito)
 
-        let label = 'Altro'
-        if (type === 'banca') label = 'Conto corrente'
-        if (type === 'contanti') label = 'Cassa contanti'
-        if (type === 'fondo') label = 'Fondo riserva'
+        let label = trans('gestionale.list_pages.casse.table.types.other')
+        if (type === 'banca') label = trans('gestionale.list_pages.casse.table.types.bank_account')
+        if (type === 'contanti') label = trans('gestionale.list_pages.casse.table.types.cashbox')
+        if (type === 'fondo') label = trans('gestionale.list_pages.casse.table.types.reserve_fund')
 
         return h(
           Badge,
@@ -51,7 +52,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
             type === 'banca' && isPredefinito
               ? h(Star, {
                   class: 'w-3 h-3 fill-amber-400 text-amber-400 shrink-0', 
-                  'aria-label': 'Conto Principale',
+                  'aria-label': trans('gestionale.list_pages.casse.table.main_account'),
                 })
               : null,
             label,
@@ -63,7 +64,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     {
       accessorKey: 'nome',
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Dettagli Risorsa' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.casse.table.resource_details') }),
       cell: ({ row }) => {
         const cassa = row.original
         const isBanca = cassa.tipo === 'banca'
@@ -81,8 +82,22 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
           ),
           isBanca && cassa.banca_iban
             ? h('div', { class: 'flex items-center gap-1 mt-1' }, [
-                h('span', { class: 'text-[10px] uppercase text-muted-foreground font-bold' }, 'IBAN:'),
-                h('span', { class: 'text-xs text-gray-600 dark:text-gray-400 tracking-wide' }, cassa.banca_iban),
+                h(
+                  'span',
+                  {
+                    class:
+                      'text-[10px] uppercase text-muted-foreground font-bold',
+                  },
+                  trans('gestionale.list_pages.casse.table.iban'),
+                ),
+                h(
+                  'span',
+                  {
+                    class:
+                      'text-xs font-mono text-gray-600 dark:text-gray-400 tracking-wide',
+                  },
+                    cassa.banca_iban,
+                ),
               ])
             : null,
         ])
@@ -116,7 +131,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     {
       accessorKey: 'saldo_raw', 
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Saldo Attuale' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.casse.table.current_balance') }),
       cell: ({ row }) => {
         const amount = row.getValue('saldo_raw') as number
         const formattedLabel = row.original.saldo_formatted
@@ -139,7 +154,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     },
     {
       accessorKey: 'attiva',
-      header: 'Stato',
+      header: trans('gestionale.list_pages.casse.table.status'),
       cell: ({ row }) => {
         const isActive = row.getValue('attiva')
 
@@ -154,7 +169,9 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
           h(
             'span',
             { class: 'text-xs font-medium text-gray-600 dark:text-gray-400' },
-            isActive ? 'Attiva' : 'Archiviata',
+            isActive
+              ? trans('gestionale.list_pages.casse.table.status_values.active')
+              : trans('gestionale.list_pages.casse.table.status_values.archived'),
           ),
         ])
       },

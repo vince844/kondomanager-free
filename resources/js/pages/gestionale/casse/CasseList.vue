@@ -33,32 +33,35 @@ const flashMessage = computed(() => page.props.flash.message);
 
 // Breadcrumbs testuali per il nuovo componente Header
 const headerBreadcrumbs = computed(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: 'Struttura', href: '#' },
-  { title: 'Risorse e Fondi' }
+  {
+    title: trans('gestionale.list_pages.casse.breadcrumbs.management'),
+    href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }),
+  },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.structure'), href: '#' },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.list') },
 ]);
 
 // Configurazione della guida per Risorse e Fondi
-const pageGuides = [
+const pageGuides = computed(() => [
   {
-    title: 'Conti Correnti',
-    description: 'Censire correttamente l\'IBAN e i dati della banca è fondamentale per automatizzare la riconciliazione e i pagamenti',
+    title: trans('gestionale.list_pages.casse.guides.bank_accounts_title'),
+    description: trans('gestionale.list_pages.casse.guides.bank_accounts_description'),
     icon: Landmark,
-    colorVariant: 'blue' as const
+    colorVariant: 'blue' as const,
   },
   {
-    title: 'Fondi e Riserve',
-    description: 'Oltre al conto principale, puoi gestire casse contanti o fondi accantonati (es. Fondo TFR Portiere o Fondo Morosità).',
+    title: trans('gestionale.list_pages.casse.guides.funds_title'),
+    description: trans('gestionale.list_pages.casse.guides.funds_description'),
     icon: Wallet,
-    colorVariant: 'emerald' as const
+    colorVariant: 'emerald' as const,
   },
   {
-    title: 'Saldi Iniziali',
-    description: 'Assicurati di inserire il saldo di partenza corretto per ogni risorsa per garantire la quadratura perfetta tra software e banca.',
+    title: trans('gestionale.list_pages.casse.guides.opening_balances_title'),
+    description: trans('gestionale.list_pages.casse.guides.opening_balances_description'),
     icon: ShieldCheck,
-    colorVariant: 'amber' as const
-  }
-];
+    colorVariant: 'amber' as const,
+  },
+]);
 </script>
 
 <template>
