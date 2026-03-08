@@ -41,6 +41,41 @@ const getCondominioName = (evento: Evento) => {
     }
     return null;
 };
+
+const normalizeCategory = (value?: string | null) =>
+  value
+    ?.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim() ?? '';
+
+const categoryKeyMap: Record<string, string> = {
+  manutenzione: 'maintenance',
+  assemblea: 'assembly',
+  pulizia: 'cleaning',
+  generiche: 'generic',
+  generica: 'generic',
+  'richieste di intervento': 'intervention_requests',
+  'richiesta di intervento': 'intervention_requests',
+  'scadenze amministrative': 'administrative_deadlines',
+  'scadenza amministrativa': 'administrative_deadlines',
+  'scadenze rate': 'installment_deadlines',
+  'scadenza rata': 'installment_deadlines',
+};
+
+const getLocalizedCategory = (evento: Evento) => {
+  const category = evento.categoria;
+  if (!category) return '—';
+
+  const normalized = normalizeCategory(category.name);
+  const mappedKey = categoryKeyMap[normalized];
+
+  if (mappedKey) {
+    return trans(`dashboard.event_categories.${mappedKey}`);
+  }
+
+  return category.localized_name ?? category.name;
+};
 </script>
 
 <template>
@@ -83,7 +118,7 @@ const getCondominioName = (evento: Evento) => {
               </span>
 
               <span class="flex items-center gap-1 whitespace-nowrap ml-1 shrink-0"> 
-                • <Tag class="w-3 h-3" /> {{ evento.categoria?.name?.toLowerCase() }}
+                • <Tag class="w-3 h-3" /> {{ getLocalizedCategory(evento) }}
               </span>
               
               <span v-if="evento.start_time" class="flex items-center gap-1 whitespace-nowrap ml-1 shrink-0"> 

@@ -3,6 +3,7 @@ import {
     ArrowUpFromLine, ArrowDownToLine, AlertTriangle, XCircle, 
     CalendarDays, Info, Coins, PieChart, LucideIcon 
 } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 
 // Interfaccia per il valore di ritorno (utile per intellisense)
 interface EventStyle {
@@ -64,7 +65,7 @@ export function useEventStyling() {
                     bgColor: 'bg-red-50 dark:bg-red-900/20', 
                     borderColor: 'border-red-200 dark:border-red-800', 
                     icon: AlertTriangle, 
-                    label: 'Scaduto e da emettere' 
+                    label: trans('dashboard.event_style.expired_and_to_issue')
                 };
             }
             return { 
@@ -72,7 +73,7 @@ export function useEventStyling() {
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20', 
                 borderColor: 'border-blue-200 dark:border-blue-800', 
                 icon: ArrowUpFromLine, 
-                label: 'Da emettere' 
+                label: trans('dashboard.event_style.to_issue')
             };
         }
 
@@ -83,7 +84,7 @@ export function useEventStyling() {
                     bgColor: 'bg-red-50 dark:bg-red-900/20', 
                     borderColor: 'border-red-200 dark:border-red-800', 
                     icon: AlertCircle, 
-                    label: 'Verifica urgente' 
+                    label: trans('dashboard.event_style.urgent_check')
                 };
             }
             return { 
@@ -91,7 +92,7 @@ export function useEventStyling() {
                 bgColor: 'bg-purple-50 dark:bg-purple-900/20', 
                 borderColor: 'border-purple-200 dark:border-purple-800', 
                 icon: ArrowDownToLine, 
-                label: 'Verifica incassi' 
+                label: trans('dashboard.event_style.payment_check')
             };
         }
 
@@ -104,7 +105,7 @@ export function useEventStyling() {
                 bgColor: 'bg-red-50 dark:bg-red-900/20', 
                 borderColor: 'border-red-200 dark:border-red-800', 
                 icon: XCircle, 
-                label: 'Rifiutato' 
+                label: trans('dashboard.event_style.rejected')
             };
         }
         
@@ -114,7 +115,7 @@ export function useEventStyling() {
                 bgColor: 'bg-emerald-50 dark:bg-emerald-900/20', 
                 borderColor: 'border-emerald-200 dark:border-emerald-800', 
                 icon: CheckCircle2, 
-                label: 'Pagato' 
+                label: trans('dashboard.event_style.paid')
             };
         }
 
@@ -127,7 +128,7 @@ export function useEventStyling() {
                 bgColor: 'bg-emerald-50 dark:bg-emerald-900/20', 
                 borderColor: 'border-emerald-200 dark:border-emerald-800', 
                 icon: Coins, 
-                label: 'Coperta' 
+                label: trans('dashboard.event_style.covered')
             };
         }
 
@@ -137,7 +138,7 @@ export function useEventStyling() {
                 bgColor: 'bg-indigo-50 dark:bg-indigo-900/20', 
                 borderColor: 'border-indigo-200 dark:border-indigo-800', 
                 icon: PieChart, 
-                label: 'Parz. Coperta' 
+                label: trans('dashboard.event_style.partially_covered')
             };
         }
 
@@ -147,7 +148,7 @@ export function useEventStyling() {
                 bgColor: 'bg-blue-50 dark:bg-blue-900/20', 
                 borderColor: 'border-blue-200 dark:border-blue-800', 
                 icon: Info, 
-                label: 'A credito' 
+                label: trans('dashboard.event_style.credit')
             };
         }
 
@@ -160,7 +161,7 @@ export function useEventStyling() {
                 bgColor: 'bg-orange-50 dark:bg-orange-900/20', 
                 borderColor: 'border-orange-200 dark:border-orange-800', 
                 icon: ClockArrowUp, 
-                label: 'Pagato parz.' 
+                label: trans('dashboard.event_style.partially_paid')
             };
         }
 
@@ -170,7 +171,7 @@ export function useEventStyling() {
                 bgColor: 'bg-amber-50 dark:bg-amber-900/20', 
                 borderColor: 'border-amber-200 dark:border-amber-800', 
                 icon: AlertCircle, 
-                label: 'In verifica' 
+                label: trans('dashboard.event_style.in_review')
             };
         }
 
@@ -183,7 +184,7 @@ export function useEventStyling() {
                 bgColor: 'bg-red-100 dark:bg-red-900/30', 
                 borderColor: 'border-red-300 dark:border-red-700', 
                 icon: ClockAlert, 
-                label: 'Scaduto' 
+                label: trans('dashboard.event_style.expired')
             };
         } else if (days <= 7) {
             return { 
@@ -191,7 +192,7 @@ export function useEventStyling() {
                 bgColor: 'bg-red-50 dark:bg-red-900/20', 
                 borderColor: 'border-red-200 dark:border-red-800', 
                 icon: ClockAlert, 
-                label: `Scade tra ${days} gg` 
+                label: trans('dashboard.event_style.expires_in_days', { count: days })
             };
         } else if (days <= 14) {
             return { 
@@ -199,7 +200,7 @@ export function useEventStyling() {
                 bgColor: 'bg-yellow-50 dark:bg-yellow-900/20', 
                 borderColor: 'border-yellow-200 dark:border-yellow-800', 
                 icon: ClockArrowUp, 
-                label: `Scade tra ${days} gg` 
+                label: trans('dashboard.event_style.expires_in_days', { count: days })
             };
         } else {
             return { 
@@ -207,7 +208,7 @@ export function useEventStyling() {
                 bgColor: 'bg-slate-50 dark:bg-slate-900/20', 
                 borderColor: 'border-slate-200 dark:border-slate-800', 
                 icon: CalendarDays, 
-                label: `Tra ${days} giorni` 
+                label: trans('dashboard.event_style.in_days', { count: days })
             };
         }
     };
