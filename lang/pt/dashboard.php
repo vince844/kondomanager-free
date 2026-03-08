@@ -41,6 +41,33 @@ return [
         'view_events' => 'Não possui permissões suficientes para visualizar os prazos da agenda!',
     ],
 
+    'event_style' => [
+        'expired_and_to_issue' => 'Expirado e por emitir',
+        'to_issue' => 'Por emitir',
+        'urgent_check' => 'Verificação urgente',
+        'payment_check' => 'Verificar recebimentos',
+        'rejected' => 'Rejeitado',
+        'paid' => 'Pago',
+        'covered' => 'Coberto',
+        'partially_covered' => 'Parcialmente coberto',
+        'credit' => 'A crédito',
+        'partially_paid' => 'Pago parcialmente',
+        'in_review' => 'Em verificação',
+        'expired' => 'Expirado',
+        'expires_in_days' => 'Expira em :count dias',
+        'in_days' => 'Em :count dias',
+    ],
+
+    'event_categories' => [
+        'maintenance' => 'Manutenção',
+        'assembly' => 'Assembleia',
+        'cleaning' => 'Limpeza',
+        'generic' => 'Genéricas',
+        'intervention_requests' => 'Pedidos de intervenção',
+        'administrative_deadlines' => 'Prazos administrativos',
+        'installment_deadlines' => 'Prazos de prestações',
+    ],
+
     'buildings_dropdown' => [
         'select_aria' => 'Selecionar condomínio',
         'select_placeholder' => 'Selecionar condomínio...',

@@ -41,6 +41,33 @@ return [
         'view_events' => 'You do not have enough permissions to view agenda deadlines!',
     ],
 
+    'event_style' => [
+        'expired_and_to_issue' => 'Expired and pending issue',
+        'to_issue' => 'To issue',
+        'urgent_check' => 'Urgent check',
+        'payment_check' => 'Payment check',
+        'rejected' => 'Rejected',
+        'paid' => 'Paid',
+        'covered' => 'Covered',
+        'partially_covered' => 'Partially covered',
+        'credit' => 'Credit',
+        'partially_paid' => 'Partially paid',
+        'in_review' => 'Under review',
+        'expired' => 'Expired',
+        'expires_in_days' => 'Expires in :count days',
+        'in_days' => 'In :count days',
+    ],
+
+    'event_categories' => [
+        'maintenance' => 'Maintenance',
+        'assembly' => 'Assembly',
+        'cleaning' => 'Cleaning',
+        'generic' => 'General',
+        'intervention_requests' => 'Intervention requests',
+        'administrative_deadlines' => 'Administrative deadlines',
+        'installment_deadlines' => 'Installment deadlines',
+    ],
+
     'buildings_dropdown' => [
         'select_aria' => 'Select building',
         'select_placeholder' => 'Select building...',

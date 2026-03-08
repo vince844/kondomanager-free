@@ -41,6 +41,33 @@ return [
         'view_events' => 'Non hai permessi sufficienti per visualizzare le scadenze in agenda!',
     ],
 
+    'event_style' => [
+        'expired_and_to_issue' => 'Scaduto e da emettere',
+        'to_issue' => 'Da emettere',
+        'urgent_check' => 'Verifica urgente',
+        'payment_check' => 'Verifica incassi',
+        'rejected' => 'Rifiutato',
+        'paid' => 'Pagato',
+        'covered' => 'Coperta',
+        'partially_covered' => 'Parz. coperta',
+        'credit' => 'A credito',
+        'partially_paid' => 'Pagato parz.',
+        'in_review' => 'In verifica',
+        'expired' => 'Scaduto',
+        'expires_in_days' => 'Scade tra :count gg',
+        'in_days' => 'Tra :count giorni',
+    ],
+
+    'event_categories' => [
+        'maintenance' => 'Manutenzione',
+        'assembly' => 'Assemblea',
+        'cleaning' => 'Pulizia',
+        'generic' => 'Generiche',
+        'intervention_requests' => 'Richieste di intervento',
+        'administrative_deadlines' => 'Scadenze amministrative',
+        'installment_deadlines' => 'Scadenze rate',
+    ],
+
     'buildings_dropdown' => [
         'select_aria' => 'Seleziona condominio',
         'select_placeholder' => 'Seleziona condominio...',
