@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { AlertTriangle, ClockAlert, ClockArrowUp, Clock } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 
 const emit = defineEmits<{
   (e: 'setFilter', payload: { date_from: string; date_to: string }): void;
@@ -18,7 +19,7 @@ defineProps<{
 const now = new Date();
 const formatDate = (d: Date) => d.toISOString().slice(0, 10);
 
-const displayStats = {
+const displayStats = computed(() => ({
   expired_last_seven_days: {
     title: trans('eventi.stats.expired_last_seven_days'),
     icon: AlertTriangle,
@@ -66,8 +67,8 @@ const displayStats = {
     titleColor: 'text-emerald-600/70 dark:text-emerald-500/70',
     numberColor: 'text-emerald-700 dark:text-emerald-400',
     iconColor: 'text-emerald-500'
-  }
-};
+  },
+}));
 </script>
 
 <template>
