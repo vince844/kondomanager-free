@@ -4,7 +4,7 @@ import { ref } from "vue";
 import { useEventStyling } from '@/composables/useEventStyling';
 import EventDetailsDialog from '@/components/eventi/EventDetailsDialog.vue'; 
 import { Building2, Tag, CalendarDays } from 'lucide-vue-next';
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
+import { trans } from 'laravel-vue-i18n';
 import type { Evento } from '@/types/eventi';
 
 const props = defineProps<{
@@ -46,18 +46,12 @@ const getCondominioName = (evento: Evento) => {
 <template>
   <div class="flow-root">
     <ul role="list" class="divide-y divide-gray-200">
-
-      <Empty v-if="!eventi.length" class="border border-dashed my-4">
-        <EmptyHeader>
-          <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
-              <CalendarDays />
-          </EmptyMedia>
-          <EmptyTitle>Nessuna scadenza imminente</EmptyTitle>
-          <EmptyDescription>
-              Nessuna scadenza in agenda ancora creata!
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div
+        v-if="!eventi.length"
+        class="flex items-center justify-center py-8 text-xs font-medium text-slate-400 uppercase tracking-widest"
+      >
+        {{ trans('dashboard.widgets.no_events_created') }}
+      </div>
 
       <li v-for="evento in eventi" :key="evento.id" class="py-3 sm:py-4">
         <div 
@@ -93,7 +87,7 @@ const getCondominioName = (evento: Evento) => {
               </span>
               
               <span v-if="evento.start_time" class="flex items-center gap-1 whitespace-nowrap ml-1 shrink-0"> 
-                • <CalendarDays class="w-3 h-3" /> inizia il {{ new Date(evento.start_time).toLocaleDateString() }}
+                • <CalendarDays class="w-3 h-3" /> {{ new Date(evento.start_time).toLocaleDateString() }}
               </span>
             </div>
 

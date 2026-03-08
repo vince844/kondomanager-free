@@ -2,9 +2,8 @@
 
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
-import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, Tags } from 'lucide-vue-next';
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { trans } from 'laravel-vue-i18n';
 import type { Segnalazione } from '@/types/segnalazioni';
 
@@ -47,20 +46,12 @@ const truncate = (text: string, length: number = 120) => {
 <template>
     <div class="flow-root">
         <ul role="list" class="divide-y divide-slate-100 dark:divide-slate-800">
-
-            <Empty v-if="!segnalazioni.length" class="border border-dashed my-4">
-                <EmptyHeader>
-                    <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
-                        <Tags />
-                    </EmptyMedia>
-                    <EmptyTitle> 
-                        {{ trans('segnalazioni.header.widget_tickets_title') }}
-                    </EmptyTitle>
-                    <EmptyDescription>
-                        {{ trans('segnalazioni.dialogs.no_tickets_created') }}
-                    </EmptyDescription>
-                </EmptyHeader>
-            </Empty>
+            <div
+                v-if="!segnalazioni.length"
+                class="flex items-center justify-center py-8 text-xs font-medium text-slate-400 uppercase tracking-widest"
+            >
+                {{ trans('segnalazioni.dialogs.no_tickets_created') }}
+            </div>
 
             <li
                 v-for="segnalazione in segnalazioni"

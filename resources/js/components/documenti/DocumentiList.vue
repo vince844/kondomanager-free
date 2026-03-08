@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { CloudDownload, Folders } from 'lucide-vue-next';
+import { CloudDownload } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { trans } from 'laravel-vue-i18n';
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import type { Documento } from '@/types/documenti';
 
 const props = defineProps<{
@@ -35,18 +34,12 @@ const truncatedName = (name: string, length: number = 80) => {
 <template>
     <div class="flow-root">
         <ul role="list" class="divide-y divide-slate-100 dark:divide-slate-800">
-
-            <Empty v-if="!documenti.length" class="border border-dashed my-4">
-                <EmptyHeader>
-                    <EmptyMedia variant="icon" class="bg-slate-50/50 dark:bg-slate-800/50">
-                        <Folders />
-                    </EmptyMedia>
-                    <EmptyTitle>Nessun documento creato</EmptyTitle>
-                    <EmptyDescription>
-                        {{ trans('documenti.dialogs.no_documents_created') }}
-                    </EmptyDescription>
-                </EmptyHeader>
-            </Empty>
+            <div
+                v-if="!documenti.length"
+                class="flex items-center justify-center py-8 text-xs font-medium text-slate-400 uppercase tracking-widest"
+            >
+                {{ trans('documenti.dialogs.no_documents_created') }}
+            </div>
 
             <li
                 v-for="documento in documenti"
