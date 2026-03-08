@@ -26,7 +26,7 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
-const { toBackend, toItalian } = useDateConverter();
+const { toBackend } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -77,7 +77,7 @@ const submit = () => {
 
 <template>
 
-    <Head title="Crea nuovo esercizio" />
+    <Head :title="trans('gestionale.list_pages.esercizi.head_title')" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
 
@@ -104,7 +104,7 @@ const submit = () => {
                             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                         >
                             <List class="w-4 h-4" />
-                            <span>Esercizi</span>
+                            <span>{{ trans('gestionale.list_pages.esercizi.page_title') }}</span>
                         </Link>
                         </div>
 
