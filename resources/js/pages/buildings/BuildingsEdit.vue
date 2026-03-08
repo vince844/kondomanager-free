@@ -82,7 +82,7 @@ const submit = () => {
     <div class="px-6 py-8 space-y-6">
       
       <PageHeaderGuide
-        :page-title="`Modifica ${props.building.nome}`"
+        :page-title="`${trans('condomini.header.edit_building_title')}: ${props.building.nome}`"
         :page-subtitle="trans('condomini.header.edit_building_description')"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
