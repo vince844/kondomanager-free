@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref, computed } from 'vue';
-import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
+import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,7 @@ import type { BreadcrumbItem } from '@/types';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Categoria } from '@/types/categorie';
 
-const props = defineProps<{
+defineProps<{
   anagrafiche: Anagrafica[];
   categorie: Categoria[];
 }>()
@@ -132,27 +132,27 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :video-url="null"
         :back-url="route(generateRoute('fornitori.index'))"
-        back-text="Indietro"
+        :back-text="trans('fornitori.common.back')"
       />
 
       <form @submit.prevent="submit" class="space-y-6">
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold">Informazioni principali</CardTitle>
-                <CardDescription>Dati identificativi e legali essenziali del fornitore.</CardDescription>
+                <CardTitle class="text-base font-semibold">{{ trans('fornitori.forms.main_info_title') }}</CardTitle>
+                <CardDescription>{{ trans('fornitori.forms.main_info_desc') }}</CardDescription>
             </CardHeader>
             <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
                     
                     <div class="sm:col-span-3">
                         <div class="flex items-center min-h-[24px]">
-                            <Label for="ragione_sociale">Ragione sociale</Label>
+                            <Label for="ragione_sociale">{{ trans('fornitori.forms.company_name') }}</Label>
                         </div>
                         <Input 
                             id="ragione_sociale" 
                             v-model="form.ragione_sociale" 
-                            placeholder="Es: Rossi Impianti S.r.l." 
+                            :placeholder="trans('fornitori.forms.company_name_placeholder')"
                             class="mt-1 bg-white" 
                             required 
                         />
@@ -161,7 +161,7 @@ const submit = () => {
 
                     <div class="sm:col-span-3">
                         <div class="flex items-center gap-2 min-h-[24px]">
-                            <Label for="referente">Referente principale</Label>
+                            <Label for="referente">{{ trans('fornitori.forms.main_contact') }}</Label>
                             <HoverCard>
                                 <HoverCardTrigger as-child>
                                 <button type="button" class="text-slate-400 hover:text-primary outline-none">
@@ -169,8 +169,8 @@ const submit = () => {
                                 </button>
                                 </HoverCardTrigger>
                                 <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
-                                    <h4 class="text-sm font-bold uppercase mb-2">Associazione Referente</h4>
-                                    <p class="text-xs text-slate-500 leading-relaxed">Puoi associare un'anagrafica esistente come referente per abilitare accessi dedicati al portale fornitori.</p>
+                                    <h4 class="text-sm font-bold uppercase mb-2">{{ trans('fornitori.sections.contact_assoc_title') }}</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">{{ trans('fornitori.sections.contact_assoc_desc') }}</p>
                                 </HoverCardContent>
                             </HoverCard>
                         </div>
@@ -180,7 +180,7 @@ const submit = () => {
                             v-model="form.anagrafica_id"
                             :reduce="(d: Anagrafica) => d.id"
                             label="nome"
-                            placeholder="Cerca tra le anagrafiche..."
+                            :placeholder="trans('fornitori.placeholder.record')"
                         >
                             <template #option="{ nome, indirizzo }">
                                 <div class="flex flex-col py-1">
@@ -193,20 +193,20 @@ const submit = () => {
                     </div>
 
                     <div class="sm:col-span-3">
-                        <Label for="partita_iva">Partita IVA</Label>
-                        <Input id="partita_iva" v-model="form.partita_iva" class="mt-1 bg-white" placeholder="Partita IVA" />
+                        <Label for="partita_iva">{{ trans('fornitori.label.vat_number') }}</Label>
+                        <Input id="partita_iva" v-model="form.partita_iva" class="mt-1 bg-white" :placeholder="trans('fornitori.label.vat_number')" />
                         <InputError :message="form.errors.partita_iva" />
                     </div>
                     
                     <div class="sm:col-span-3">
-                        <Label for="codice_fiscale">Codice fiscale</Label>
-                        <Input id="codice_fiscale" v-model="form.codice_fiscale" class="mt-1 bg-white" placeholder="Codice fiscale" />
+                        <Label for="codice_fiscale">{{ trans('fornitori.label.tax_code') }}</Label>
+                        <Input id="codice_fiscale" v-model="form.codice_fiscale" class="mt-1 bg-white" :placeholder="trans('fornitori.label.tax_code')" />
                         <InputError :message="form.errors.codice_fiscale" />
                     </div>
 
                     <div class="sm:col-span-6">
-                        <Label for="note">Note aggiuntive interne</Label>
-                        <Textarea id="note" class="mt-1 w-full bg-white dark:bg-slate-950" placeholder="Inserisci una nota visibile solo agli amministratori" v-model="form.note" />
+                        <Label for="note">{{ trans('fornitori.forms.internal_notes') }}</Label>
+                        <Textarea id="note" class="mt-1 w-full bg-white dark:bg-slate-950" :placeholder="trans('fornitori.forms.internal_notes_placeholder')" v-model="form.note" />
                         <InputError :message="form.errors.note" />
                     </div>
                 </div>
@@ -215,61 +215,61 @@ const submit = () => {
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold">Recapiti e sede</CardTitle>
-                <CardDescription>Indirizzo operativo e canali di comunicazione ufficiali.</CardDescription>
+                <CardTitle class="text-base font-semibold">{{ trans('fornitori.forms.contacts_title') }}</CardTitle>
+                <CardDescription>{{ trans('fornitori.forms.contacts_desc') }}</CardDescription>
             </CardHeader>
             <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
                     <div class="sm:col-span-6">
-                        <Label>Indirizzo e civico</Label>
-                        <Input v-model="form.indirizzo" placeholder="Via, Piazza, Corso..." class="mt-1 bg-white" />
+                        <Label>{{ trans('fornitori.forms.address') }}</Label>
+                        <Input v-model="form.indirizzo" :placeholder="trans('fornitori.forms.address_placeholder')" class="mt-1 bg-white" />
                         <InputError :message="form.errors.indirizzo" />
                     </div>
                     
                     <div class="sm:col-span-2">
-                        <Label>CAP</Label>
-                        <Input v-model="form.cap" placeholder="CAP" class="mt-1 bg-white" maxlength="5" />
+                        <Label>{{ trans('fornitori.forms.zip_code') }}</Label>
+                        <Input v-model="form.cap" :placeholder="trans('fornitori.forms.zip_code')" class="mt-1 bg-white" maxlength="5" />
                         <InputError :message="form.errors.cap" />
                     </div>
                     
                     <div class="sm:col-span-3">
-                        <Label>Comune</Label>
-                        <Input v-model="form.comune" placeholder="Comune" class="mt-1 bg-white" />
+                        <Label>{{ trans('fornitori.forms.city') }}</Label>
+                        <Input v-model="form.comune" :placeholder="trans('fornitori.forms.city')" class="mt-1 bg-white" />
                         <InputError :message="form.errors.comune" />
                     </div>
                     
                     <div class="sm:col-span-1">
-                        <Label>Prov.</Label>
-                        <Input v-model="form.provincia" placeholder="Prov." class="mt-1 bg-white" maxlength="2" />
+                        <Label>{{ trans('fornitori.forms.province') }}</Label>
+                        <Input v-model="form.provincia" :placeholder="trans('fornitori.forms.province')" class="mt-1 bg-white" maxlength="2" />
                         <InputError :message="form.errors.provincia" />
                     </div>
 
                     <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>
 
                     <div class="sm:col-span-2">
-                        <Label>Telefono fisso</Label>
+                        <Label>{{ trans('fornitori.forms.phone') }}</Label>
                         <Input v-model="form.telefono" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Cellulare</Label>
+                        <Label>{{ trans('fornitori.forms.mobile') }}</Label>
                         <Input v-model="form.cellulare" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Fax</Label>
+                        <Label>{{ trans('fornitori.forms.fax') }}</Label>
                         <Input v-model="form.fax" class="mt-1 bg-white" />
                     </div>
 
                     <div class="sm:col-span-2">
-                        <Label>Email ordinaria</Label>
-                        <Input v-model="form.email" type="email" placeholder="email@esempio.it" class="mt-1 bg-white" />
+                        <Label>{{ trans('fornitori.forms.email') }}</Label>
+                        <Input v-model="form.email" type="email" :placeholder="trans('fornitori.forms.email_placeholder')" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Email PEC</Label>
-                        <Input v-model="form.pec" type="email" placeholder="pec@legalmail.it" class="mt-1 bg-white" />
+                        <Label>{{ trans('fornitori.forms.pec') }}</Label>
+                        <Input v-model="form.pec" type="email" :placeholder="trans('fornitori.forms.pec_placeholder')" class="mt-1 bg-white" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Sito internet</Label>
-                        <Input v-model="form.sito_web" placeholder="https://..." class="mt-1 bg-white" />
+                        <Label>{{ trans('fornitori.forms.website') }}</Label>
+                        <Input v-model="form.sito_web" :placeholder="trans('fornitori.forms.website_placeholder')" class="mt-1 bg-white" />
                     </div>
                 </div>
             </CardContent>
@@ -280,9 +280,9 @@ const submit = () => {
                 <div class="flex items-center justify-between">
                     <div>
                         <CardTitle class="text-base font-semibold flex items-center gap-2">
-                            Fatturazione e pagamenti
+                            {{ trans('fornitori.forms.billing_title') }}
                         </CardTitle>
-                        <CardDescription>Regole per la registrazione e il pagamento dei compensi.</CardDescription>
+                        <CardDescription>{{ trans('fornitori.forms.billing_desc') }}</CardDescription>
                     </div>
                     <div class="flex items-center space-x-2">
                         <Checkbox 
@@ -290,7 +290,7 @@ const submit = () => {
                             v-model="form.soggetto_ritenuta" 
                         />
                         <Label for="soggetto_ritenuta" class="cursor-pointer font-medium text-sm">
-                            Soggetto a ritenuta d'acconto
+                            {{ trans('fornitori.forms.withholding_subject') }}
                         </Label>
                     </div>
                 </div>
@@ -298,34 +298,34 @@ const submit = () => {
             <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
                     <div class="sm:col-span-6">
-                        <Label>IBAN Principale (Coordinate di default)</Label>
+                        <Label>{{ trans('fornitori.forms.primary_iban') }}</Label>
                         <Input v-model="form.iban_principale" placeholder="IT00 0000 0000 0000 0000 0000 000" class="mt-1 text-lg uppercase tracking-wide bg-white" maxlength="27" />
                         <InputError :message="form.errors.iban_principale" />
                     </div>
                     
                     <div class="sm:col-span-4">
-                        <Label>Modalità di pagamento</Label>
+                        <Label>{{ trans('fornitori.forms.payment_method') }}</Label>
                         <v-select
                             class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
                             :options="[
-                                { label: 'Bonifico bancario', value: 'bonifico' },
-                                { label: 'MAV', value: 'mav' },
-                                { label: 'Ri.Ba.', value: 'ri.ba' },
-                                { label: 'Contanti', value: 'contanti' }
+                                { label: trans('fornitori.forms.payment_methods.bank_transfer'), value: 'bonifico' },
+                                { label: trans('fornitori.forms.payment_methods.mav'), value: 'mav' },
+                                { label: trans('fornitori.forms.payment_methods.riba'), value: 'ri.ba' },
+                                { label: trans('fornitori.forms.payment_methods.cash'), value: 'contanti' }
                             ]"
                             v-model="form.modalita_pagamento_default"
                             :reduce="(option: any) => option.value"
                             label="label"
-                            placeholder="Seleziona modalità..."
+                            :placeholder="trans('fornitori.forms.payment_method_placeholder')"
                             :clearable="false"
                         />
                         <InputError :message="form.errors.modalita_pagamento_default" />
                     </div>
                     <div class="sm:col-span-2">
-                        <Label>Scadenza (Giorni)</Label>
+                        <Label>{{ trans('fornitori.forms.deadline_days') }}</Label>
                         <div class="relative mt-1">
                             <Input v-model="form.giorni_scadenza" class="pr-8 text-right font-medium bg-white" />
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">gg</span>
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">{{ trans('fornitori.view.days_abbr') }}</span>
                         </div>
                     </div>
                 </div>
@@ -334,36 +334,36 @@ const submit = () => {
                     <div v-if="form.soggetto_ritenuta" class="pt-5 border-t border-dashed border-slate-200 dark:border-slate-800">
                         
                         <div class="mb-5">
-                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">Automazioni Fiscali (F24 e CU)</h4>
+                            <h4 class="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-2">{{ trans('fornitori.forms.tax_automation_title') }}</h4>
                             <div class="flex items-start gap-3 bg-blue-50/50 dark:bg-blue-900/20 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/30">
                                 <p class="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-                                    Questi parametri permettono al sistema di <strong>calcolare automaticamente la trattenuta</strong> in fase di registrazione fattura. Il software scorporerà in automatico il <em>netto da pagare</em> per il fornitore e alimenterà lo scadenziario fiscale per la <strong>generazione automatica del Modello F24 e della Certificazione Unica</strong>.
+                                    <span v-html="trans('fornitori.forms.tax_automation_desc')" />
                                 </p>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6 bg-white dark:bg-slate-950 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                             <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Da Trattenere *</Label>
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">{{ trans('fornitori.forms.withholding_rate') }}</Label>
                                 <div class="relative">
-                                    <Input v-model="form.perc_ritenuta" placeholder="Es. 4" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                    <Input v-model="form.perc_ritenuta" :placeholder="trans('fornitori.forms.example_4')" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
                                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
                                 </div>
                                 <InputError :message="form.errors.perc_ritenuta" class="mt-1" />
                             </div>
                             
                             <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Base Imponibile *</Label>
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">{{ trans('fornitori.forms.taxable_base') }}</Label>
                                 <div class="relative">
-                                    <Input v-model="form.perc_imponibile_ritenuta" placeholder="Es. 100" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                    <Input v-model="form.perc_imponibile_ritenuta" :placeholder="trans('fornitori.forms.example_100')" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
                                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
                                 </div>
                                 <InputError :message="form.errors.perc_imponibile_ritenuta" class="mt-1" />
                             </div>
                             
                             <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Codice Tributo *</Label>
-                                <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">{{ trans('fornitori.forms.tax_code') }}</Label>
+                                <Input v-model="form.codice_tributo" :placeholder="trans('fornitori.forms.example_1040')" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
                                 <InputError :message="form.errors.codice_tributo" class="mt-1" />
                             </div>
                         </div>
@@ -375,18 +375,18 @@ const submit = () => {
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
             <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold">Dati societari</CardTitle>
-                <CardDescription>Iscrizioni a camere di commercio, ordini e certificazioni.</CardDescription>
+                <CardTitle class="text-base font-semibold">{{ trans('fornitori.forms.company_data_title') }}</CardTitle>
+                <CardDescription>{{ trans('fornitori.forms.company_data_desc') }}</CardDescription>
             </CardHeader>
             <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
                     <div class="sm:col-span-3">
-                        <Label for="iscrizione_cciaa">Iscrizione CCIAA</Label>
-                        <Input id="iscrizione_cciaa" v-model="form.iscrizione_cciaa" placeholder="Numero iscrizione CCIA" class="mt-1 bg-white" />
+                        <Label for="iscrizione_cciaa">{{ trans('fornitori.forms.cciaa_registration') }}</Label>
+                        <Input id="iscrizione_cciaa" v-model="form.iscrizione_cciaa" :placeholder="trans('fornitori.forms.cciaa_registration_placeholder')" class="mt-1 bg-white" />
                     </div>
                     
                     <div class="sm:col-span-3">
-                        <Label for="data_iscrizione_cciaa">Data iscrizione CCIAA</Label>
+                        <Label for="data_iscrizione_cciaa">{{ trans('fornitori.forms.cciaa_registration_date') }}</Label>
                         <VueDatePicker
                             v-model="form.data_iscrizione_cciaa"
                             class="w-full mt-1 h-10"
@@ -395,12 +395,12 @@ const submit = () => {
                             locale="it"
                             :enable-time-picker="false"
                             auto-apply
-                            placeholder="Seleziona data"
+                            :placeholder="trans('fornitori.forms.select_date')"
                         />
                     </div>
 
                     <div class="sm:col-span-3">
-                        <Label for="capitale_sociale">Capitale sociale</Label>
+                        <Label for="capitale_sociale">{{ trans('fornitori.forms.share_capital') }}</Label>
                         <MoneyInput
                             id="capitale_sociale"
                             v-model="form.capitale_sociale"
@@ -409,31 +409,31 @@ const submit = () => {
                             placeholder="0,00"
                             class="mt-1"
                         />
-                        <p class="text-[11px] text-muted-foreground mt-1 italic">Es: 10.000,00</p>
+                        <p class="text-[11px] text-muted-foreground mt-1 italic">{{ trans('fornitori.forms.example_10000') }}</p>
                     </div>
                     
                     <div class="sm:col-span-3">
-                        <Label for="codice_ateco">Codice ATECO</Label>
-                        <Input id="codice_ateco" v-model="form.codice_ateco" placeholder="Codice ateco" class="mt-1 bg-white" />
+                        <Label for="codice_ateco">{{ trans('fornitori.view.labels.ateco_code') }}</Label>
+                        <Input id="codice_ateco" v-model="form.codice_ateco" :placeholder="trans('fornitori.view.labels.ateco_code')" class="mt-1 bg-white" />
                     </div>
 
                     <div class="sm:col-span-6 mt-2 mb-2 border-t border-dashed"></div>
 
                     <div class="sm:col-span-3">
-                        <Label for="categoria_id">Categoria fornitore</Label>
+                        <Label for="categoria_id">{{ trans('fornitori.forms.supplier_category') }}</Label>
                         <v-select
                             class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
                             :options="categorie"
                             v-model="form.categoria_id"
                             :reduce="(d: Categoria) => d.id"
                             label="name"
-                            placeholder="Seleziona categoria..."
+                            :placeholder="trans('fornitori.forms.select_category')"
                         />
                     </div>
 
                     <div class="sm:col-span-3">
-                        <Label for="numero_iscrizione_ordine">Iscrizione Albo/Ordine (se professionista)</Label>
-                        <Input id="numero_iscrizione_ordine" v-model="form.numero_iscrizione_ordine" placeholder="Numero iscrizione albo" class="mt-1 bg-white" />
+                        <Label for="numero_iscrizione_ordine">{{ trans('fornitori.forms.professional_register') }}</Label>
+                        <Input id="numero_iscrizione_ordine" v-model="form.numero_iscrizione_ordine" :placeholder="trans('fornitori.forms.professional_register_placeholder')" class="mt-1 bg-white" />
                     </div>
 
                     <div class="sm:col-span-6 mt-2">
@@ -444,7 +444,7 @@ const submit = () => {
                                 @update:checked="(val: boolean ) => form.certificazione_iso = val"
                             />
                             <Label for="certificazione_iso" class="cursor-pointer font-medium text-sm text-slate-700 dark:text-slate-300">
-                                L'azienda possiede la certificazione ISO conforme alle normative europee
+                                {{ trans('fornitori.forms.iso_certification') }}
                             </Label>
                         </div>
                     </div>
@@ -457,7 +457,7 @@ const submit = () => {
                 :href="route(generateRoute('fornitori.index'))"
                 class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
             >
-                Annulla
+                {{ trans('fornitori.actions.cancel') }}
             </Link>
 
             <Button 
@@ -467,7 +467,7 @@ const submit = () => {
             >
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                 <Plus v-else class="h-4 w-4" />
-                Salva fornitore
+                {{ trans('fornitori.actions.save_fornitore') }}
             </Button>
         </div>
 
