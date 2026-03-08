@@ -27,8 +27,22 @@ class IncassoRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio, HasCondomini;
 
+    /**
+     * Costruttore del controller.
+     * Inietta il service responsabile del recupero e della formattazione dei dati per gli incassi.
+     *
+     * @param IncassoRateService $incassoService
+     */
     public function __construct(private IncassoRateService $incassoService) {}
 
+    /**
+     * Mostra la lista degli incassi registrati per il condominio corrente.
+     * Supporta la ricerca, la paginazione e prepara i dati per i filtri frontend.
+     *
+     * @param Request $request La richiesta HTTP corrente (contiene eventuali query di ricerca).
+     * @param Condominio $condominio Il condominio su cui si sta operando.
+     * @return \Inertia\Response Renderizzazione della vista Vue (IncassoRateList).
+     */
     public function index(Request $request, Condominio $condominio)
     {
         $query = $this->incassoService->getIncassiQuery(
@@ -60,6 +74,14 @@ class IncassoRateController extends Controller
         ]);
     }
 
+    /**
+     * Mostra la schermata per la registrazione di un nuovo incasso.
+     * Prepara le dipendenze necessarie ai menu a tendina: risorse finanziarie,
+     * soggetti paganti, immobili e gestioni attive.
+     *
+     * @param Condominio $condominio Il condominio su cui si sta operando.
+     * @return \Inertia\Response Renderizzazione della vista Vue (IncassoRateNew).
+     */
     public function create(Condominio $condominio)
     {
         $risorse = Cassa::where('condominio_id', $condominio->id)
@@ -69,11 +91,10 @@ class IncassoRateController extends Controller
             ->get();
 
         $condomini = Anagrafica::whereHas('immobili', fn($q) => $q->where('condominio_id', $condominio->id))
-            ->orderBy('nome')->get()->map(fn($a) => ['id' => $a->id, 'label' => $a->nome]);
+            ->orderBy('nome')->get(['id', 'nome', 'indirizzo', 'codice_fiscale']);
 
         $immobili = Immobile::where('condominio_id', $condominio->id)
-            ->orderBy('interno')->get()
-            ->map(fn($i) => ['id' => $i->id, 'label' => "Int. $i->interno" . ($i->descrizione ? " - $i->descrizione" : "") . " ($i->nome)"]);
+            ->orderBy('interno')->get(['id', 'interno', 'descrizione', 'nome']);
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         
@@ -91,6 +112,17 @@ class IncassoRateController extends Controller
         ]);
     }
 
+    /**
+     * Salva un nuovo incasso nel sistema.
+     * Delega la logica contabile (spalmatura waterfall) alla StoreIncassoRateAction.
+     * Successivamente, aggiorna lo stato degli eventi ("scontrini digitali" nello scadenziario) 
+     * e chiude eventuali task pendenti nella Inbox dell'amministratore.
+     *
+     * @param StoreIncassoRateRequest $request Dati validati provenienti dal form Vue.
+     * @param Condominio $condominio Il condominio corrente.
+     * @param StoreIncassoRateAction $action L'azione di business che gestisce il salvataggio contabile.
+     * @return \Illuminate\Http\RedirectResponse Reindirizzamento alla lista incassi con messaggio di successo.
+     */
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
         // 1. Esegui l'azione di business (registra soldi)
@@ -157,6 +189,8 @@ class IncassoRateController extends Controller
         $relatedTaskId = $request->input('related_task_id');
 
         if ($relatedTaskId) {
+            
+            /** @var \App\Models\Evento $task */
             $task = Evento::find($relatedTaskId);
             
             if ($task && !$task->is_completed) {
@@ -173,6 +207,16 @@ class IncassoRateController extends Controller
             ->with($this->flashSuccess('Incasso registrato con successo.'));
     }
     
+    /**
+     * Esegue lo storno (annullamento) di un incasso precedentemente registrato.
+     * Ripristina il debito sulle rate e segna la scrittura contabile come annullata.
+     *
+     * @param Request $request La richiesta HTTP corrente.
+     * @param Condominio $condominio Il condominio corrente.
+     * @param ScritturaContabile $scrittura Il movimento contabile da stornare.
+     * @param StornoIncassoRateAction $action L'azione di business che gestisce lo storno.
+     * @return \Illuminate\Http\RedirectResponse Reindirizzamento alla vista precedente con messaggio di successo.
+     */
     public function storno(Request $request, Condominio $condominio, ScritturaContabile $scrittura, StornoIncassoRateAction $action) 
     {
         if ($scrittura->stato === 'annullata') {

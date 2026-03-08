@@ -86,11 +86,24 @@ class StoreIncassoRateAction
                 $quoteDaSaldare = RataQuote::where('rata_id', $quotaFaro->rata_id)
                     ->where('anagrafica_id', $validated['pagante_id'])
                     ->lockForUpdate()
-                    ->orderBy('id') // Assicura che riempia prima 1A, poi 1B, poi 1C
-                    ->get();
+                    ->get(); // Togliamo orderBy() dal DB, ordiniamo in memoria (più intelligente)
+
+                // 2.5 ORDINAMENTO INTELLIGENTE V1.9 (Spese Correnti > Debiti Pregressi > ID)
+                $quoteOrdinate = $quoteDaSaldare->sortByDesc(function ($quota) {
+                    $quotaPura = $quota->importo;
+                    // Estraiamo la spesa pura dal JSON
+                    $regole = $quota->regole_calcolo;
+                    if (!empty($regole)) {
+                        $jsonArr = is_string($regole) ? json_decode($regole, true) : (array) $regole;
+                        $quotaPura = $jsonArr['importi']['quota_pura_gestione'] ?? ($jsonArr['audit']['quota_pura'] ?? $quota->importo);
+                    }
+                    // Diamo un punteggio altissimo alla quota pura, a parità di quota pura usiamo l'ID inverso per mantenere coerenza
+                    return ($quotaPura * 1000000) - $quota->id;
+                })->values();
+
 
                 // 3. Distribuzione Intelligente a Cascata (Waterfall)
-                foreach ($quoteDaSaldare as $quota) {
+                foreach ($quoteOrdinate as $quota) {
                     
                     // Se i soldi sono finiti, interrompiamo il ciclo
                     if ($importoDaDistribuireCents <= 0) {
@@ -137,30 +150,6 @@ class StoreIncassoRateAction
                 }
             }
 
-          /*   foreach ($validated['dettaglio_pagamenti'] as $pagamento) {
-
-                $importoCents = (int) round($pagamento['importo'] * 100);
-
-                $quota = RataQuote::lockForUpdate()->findOrFail($pagamento['rata_id']);
-
-                $quota->pagamenti()->attach($scrittura->id, [
-                    'importo_pagato' => $importoCents,
-                    'data_pagamento' => $validated['data_pagamento'],
-                ]);
-
-                $scrittura->righe()->create([
-                    'conto_contabile_id' => $contoCrediti->id,
-                    'anagrafica_id' => $quota->anagrafica_id,
-                    'rata_id' => $quota->rata_id,
-                    'immobile_id' => $quota->immobile_id,
-                    'tipo_riga' => 'avere',
-                    'importo' => $importoCents,
-                    'note' => 'Incasso rata n.' . ($quota->rata->numero_rata ?? ''),
-                ]);
-
-                $quota->ricalcolaStato();
-            }
- */
             if (!empty($validated['eccedenza']) && $validated['eccedenza'] > 0) {
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoAnticipi->id,

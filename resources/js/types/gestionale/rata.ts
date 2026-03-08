@@ -73,12 +73,22 @@ export interface RigaPreview {
     residuo_futuro: number;
 }
 
+export interface PreviewContabileRiga {
+    id: number;
+    descrizione: string;
+    pagato: number;
+    status: 'SALDATA' | 'PARZIALE' | 'COPERTA_CREDITO'; 
+    residuo_futuro: number;
+    tipo?: 'normale' | 'parzialmente_coperta' | 'credito';
+    dettaglio?: string[]; 
+}
+
 export interface PreviewContabile {
     hasData: boolean;
     totale_versato: number;
     allocato_rate: number;
     anticipo: number;
-    righe: RigaPreview[];
+    righe: PreviewContabileRiga[];
 }
 
 export interface BilancioFinale {

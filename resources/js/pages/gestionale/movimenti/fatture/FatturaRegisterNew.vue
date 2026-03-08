@@ -361,7 +361,11 @@ const pageGuides = [
                             </div>
                             <div class="space-y-1.5">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">Scadenza *</Label>
-                                <Input type="date" v-model="form.data_scadenza" class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
+                                <Input 
+                                    type="date" 
+                                    v-model="form.data_scadenza"
+                                    class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" 
+                                />
                             </div>
                         </div>
 

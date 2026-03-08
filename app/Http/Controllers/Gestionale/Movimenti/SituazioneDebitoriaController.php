@@ -24,7 +24,7 @@ class SituazioneDebitoriaController extends Controller
                 $q->whereHas('pianoRate', fn($p) => $p->where('condominio_id', $condominio->id));
             });
 
-        // 2. Filtro Logico
+        // 2. Filtro Logico: Rate non ancora pagate del tutto o a credito
         $query->where(function($q) {
             $q->whereRaw('importo > importo_pagato') 
               ->orWhere('importo', '<', 0);          
@@ -44,7 +44,7 @@ class SituazioneDebitoriaController extends Controller
             ->orderBy('data_scadenza', 'asc') 
             ->get();
 
-        // 5. AGGREGAZIONE
+        // 5. AGGREGAZIONE PER RATA PADRE
         $groupedRate = $rawQuotes->groupBy('rata_id')->map(function ($gruppoQuotes) use ($condominio) {
             
             $first = $gruppoQuotes->first();
@@ -54,49 +54,63 @@ class SituazioneDebitoriaController extends Controller
             $importoPagato = $gruppoQuotes->sum('importo_pagato');
             $residuoNetto = ($importoTotale - $importoPagato);
 
-            if (abs($residuoNetto) < 1) return null; 
+            // Se il residuo netto totale è 0, controlliamo se è una "Compensazione Mista"
+            if (abs($residuoNetto) < 1) {
+                $hasDebiti = $gruppoQuotes->contains(fn($q) => ($q->importo - $q->importo_pagato) > 0);
+                $hasCrediti = $gruppoQuotes->contains(fn($q) => ($q->importo - $q->importo_pagato) < 0);
+                
+                // Se NON contiene sia debiti che crediti (cioè è solo una rata vuota/pagata), allora ignorala
+                if (!($hasDebiti && $hasCrediti)) {
+                    return null;
+                }
+            }
 
-            // Prepariamo dati per il fallback (Legacy)
+            // Prepariamo dati per il fallback (Legacy V1.7)
             $pianoRate = $first->rata->pianoRate;
             $metodoDist = $pianoRate->metodo_distribuzione ?? 'prima_rata'; 
             $numeroRata = $first->rata->numero_rata;
             $totaleRatePiano = $pianoRate->numero_rate;
 
-            // Cache locale per l'esercizio ID (serve solo nel fallback)
             $esercizioId = null;
 
-            // --- MAPPATURA DETTAGLIO (TOOLTIP) ---
+            // --- MAPPATURA DETTAGLIO QUOTE PER IL FRONTEND VUE ---
             $dettaglioTooltip = $gruppoQuotes->map(function($q) use ($condominio, &$esercizioId, $metodoDist, $numeroRata, $totaleRatePiano, $first) {
                 
                 $residuoNettoQuota = ($q->importo - $q->importo_pagato); 
                 $unita = $q->immobile ? "Int. {$q->immobile->interno}" : 'Generico';
+
+                // 1. RECUPERO RUOLO DALLA TUA TABELLA PIVOT
+                $ruoloIniziale = 'P'; // Default fallback
+                if ($q->anagrafica_id && $q->immobile_id) {
+                    $relazione = DB::table('anagrafica_immobile')
+                        ->where('anagrafica_id', $q->anagrafica_id)
+                        ->where('immobile_id', $q->immobile_id)
+                        ->where('attivo', true)
+                        ->first();
+                        
+                    if ($relazione) {
+                        // Prende la prima lettera: 'proprietario' -> 'P', 'inquilino' -> 'I', 'usufruttuario' -> 'U'
+                        $ruoloIniziale = strtoupper(substr($relazione->tipologia, 0, 1));
+                    }
+                }
                 
                 $componenteSaldo = 0;
                 $componenteSpesa = 0;
 
-                // LOGICA IBRIDA: 
-                // JSON (Introdotto nella versione 1.8) vs 
-                // CALCOLO (Se chi usava versioni precedenti aveva già emesso le rate e registarto pagamenti)
-                
-                // 1. C'è lo Snapshot JSON? (Versione 1.8+)
-                if (!empty($q->regole_calcolo)) {
-                    $json = is_string($q->regole_calcolo) ? json_decode($q->regole_calcolo) : (object) $q->regole_calcolo;
-                    
-                    // Leggiamo direttamente dallo storico
-                    $saldoUsato = $json->importi->saldo_usato ?? 0;
-                    $quotaPura  = $json->importi->quota_pura_gestione ?? 0;
+                // 1. Lettura JSON (V1.9) - SICURA SUL CAST ARRAY DI LARAVEL
+                $regole = $q->regole_calcolo;
 
-                    // NOTA: Qui stiamo mostrando come è composta la rata *Originale*.
-                    // Se l'utente ha pagato parzialmente, il residuo è calcolato matematicamente sopra.
-                    // Nel tooltip mostriamo i componenti originali per trasparenza.
-                    $componenteSaldo = $saldoUsato;
-                    $componenteSpesa = $quotaPura;
+                if (!empty($regole)) {
+                    // Forziamo in array per sicurezza, nel caso il cast sia stato object
+                    $jsonArr = json_decode(json_encode($regole), true);
+                    
+                    $componenteSaldo = $jsonArr['importi']['saldo_usato'] ?? ($jsonArr['audit']['saldo_usato'] ?? 0);
+                    $componenteSpesa = $jsonArr['importi']['quota_pura_gestione'] ?? ($jsonArr['audit']['quota_pura'] ?? 0);
 
                 } 
-                // 2. Fallback: Calcolo Inverso (Versione 1.7 e precedenti)
+                // 2. Fallback Legacy (V1.7)
                 else {
-                    
-                    // Recuperiamo Esercizio (Lazy Load solo se serve)
+                    // ... [Codice di fallback rimasto identico per compatibilità] ...
                     if (!$esercizioId) {
                         if ($first->data_scadenza) {
                             $esercizioId = DB::table('esercizi')
@@ -111,10 +125,8 @@ class SituazioneDebitoriaController extends Controller
                         }
                     }
 
-                    // Recupero Saldo
                     $saldoInizialeTrovato = 0;
                     if ($q->anagrafica_id && $esercizioId) {
-                        // Piccola ottimizzazione: potresti cachare anche questo se le righe sono tante
                         $saldoInizialeTrovato = DB::table('saldi')
                             ->where('condominio_id', $condominio->id)
                             ->where('esercizio_id', $esercizioId)
@@ -122,33 +134,45 @@ class SituazioneDebitoriaController extends Controller
                             ->sum('saldo_iniziale'); 
                     }
 
-                    // Logica di distribuzione Legacy
                     $applicareSaldoQui = ($q->id === $first->id);
 
                     if ($applicareSaldoQui) {
-                        if ($metodoDist === 'prima_rata') {
-                            if ($numeroRata == 1) {
-                                $componenteSaldo = $saldoInizialeTrovato;
-                            }
+                        if ($metodoDist === 'prima_rata' && $numeroRata == 1) {
+                            $componenteSaldo = $saldoInizialeTrovato;
                         } elseif ($metodoDist === 'tutte_rate' && $totaleRatePiano > 0) {
                             $componenteSaldo = intval($saldoInizialeTrovato / $totaleRatePiano);
                         }
                     }
-                    
-                    // Reverse Engineering
-                    // Nota: Qui usavamo il residuo netto, ma concettualmente il tooltip spiega l'origine.
-                    // Per coerenza col vecchio sistema manteniamo la logica esistente:
                     $componenteSpesa = $residuoNettoQuota - $componenteSaldo;
                 }
 
+                // Ritorniamo i dati formattati per la UI e per il motore composable Vue
                 return [
                     'unita'             => $unita,
+                    'anagrafica'        => $q->anagrafica ? $q->anagrafica->nome : 'Generico', 
+                    'ruolo'             => $ruoloIniziale, // INIETTIAMO IL RUOLO [P, I, U]
                     'residuo'           => MoneyHelper::fromCents($residuoNettoQuota), 
+                    'residuo_originale' => MoneyHelper::fromCents($residuoNettoQuota), 
                     'is_credito'        => $residuoNettoQuota < 0,
                     'componente_saldo'  => MoneyHelper::fromCents($componenteSaldo), 
                     'componente_spesa'  => MoneyHelper::fromCents($componenteSpesa)  
                 ];
             })->values();
+
+            // COMPRESSORE NOMI E STRINGA COMPLETA
+            $nomiUnici = $gruppoQuotes->map(function($q) {
+                return $q->anagrafica ? $q->anagrafica->nome : null;
+            })->filter()->unique()->values();
+
+            // 1. Stringa Completa per il Tooltip (Es: "Rossi Mario, Bianchi Anna, Erede 3, Erede 4...")
+            $intestatariCompleti = $nomiUnici->join(', ');
+
+            // 2. Stringa Compressa per non rompere la UI
+            if ($nomiUnici->count() > 2) {
+                $intestatariCoinvolti = $nomiUnici->take(2)->join(', ') . ' (+ altri ' . ($nomiUnici->count() - 2) . ')';
+            } else {
+                $intestatariCoinvolti = $nomiUnici->join(' & ');
+            }
 
             $unitaCoinvolte = $gruppoQuotes->map(function($q) {
                 return $q->immobile ? "Int. {$q->immobile->interno} ({$q->immobile->nome})" : null;
@@ -166,7 +190,8 @@ class SituazioneDebitoriaController extends Controller
                 'gestione'        => $first->rata->pianoRate->gestione->nome ?? 'Generica',
                 'gestione_id'     => $first->rata->pianoRate->gestione_id,
                 'unita'           => $unitaCoinvolte ?: 'Generico',
-                'intestatario'    => $first->anagrafica ? $first->anagrafica->nome : 'N/D',
+                'intestatario'    => $intestatariCoinvolti ?: 'N/D',          // La scritta corta
+                'intestatari_full'=> $intestatariCompleti ?: 'N/D',           // La lista completa per il tooltip
                 'tipologia'       => 'Aggregato',
                 'da_pagare'       => 0,     
                 'selezionata'     => false, 

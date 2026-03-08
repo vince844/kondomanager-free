@@ -25,7 +25,6 @@ interface Props {
   condominioId: number
   esercizioId: number
   pianoContoId: number
-  // <--- NUOVA PROP
   fornitori?: Array<{ id: number, ragione_sociale: string }> 
 }
 
@@ -48,9 +47,9 @@ const moneyOptions = ref({
 
 const form = useForm({
   nome: '',
-  codice: '', // <--- NUOVO
-  default_fornitore_id: null as number | null, // <--- NUOVO
-  tipo_spesa: 'standard', // <--- NUOVO
+  codice: '', 
+  default_fornitore_id: null as number | null, 
+  tipo_spesa: 'standard', 
   tipo: 'spesa' as 'spesa' | 'entrata',
   importo: '',
   descrizione: '',
