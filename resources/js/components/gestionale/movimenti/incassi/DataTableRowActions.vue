@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
 import { RotateCcw, MoreHorizontal, FileText,  Eye, Printer } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n'
 
 const props = defineProps<{
   incasso: any,

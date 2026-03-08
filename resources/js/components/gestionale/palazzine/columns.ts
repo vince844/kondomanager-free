@@ -5,13 +5,14 @@ import DataTableColumnHeader from '@/components/gestionale/palazzine/DataTableCo
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Palazzina } from '@/types/gestionale/palazzine'
 import type { Building } from '@/types/buildings'
+import { trans } from 'laravel-vue-i18n'
 
 export function getColumns(condominio: Building): ColumnDef<Palazzina>[] {
   return [
     {
       accessorKey: 'name',
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Denominazione' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.palazzine.table.name') }),
       cell: ({ row }) =>
         h('div', { class: 'flex space-x-2' }, [
           h('span', { class: 'capitalize font-bold' }, row.getValue('name') as string),
@@ -20,7 +21,7 @@ export function getColumns(condominio: Building): ColumnDef<Palazzina>[] {
     {
       accessorKey: 'description',
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Descrizione' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.palazzine.table.description') }),
       cell: ({ row }) =>
         h('div', { class: 'flex space-x-2' }, [
           h('span', { class: 'capitalize' }, row.getValue('description') as string),

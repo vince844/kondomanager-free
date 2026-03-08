@@ -5,6 +5,7 @@ import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n'
 import { usePermission } from "@/composables/permissions"
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Building } from '@/types/buildings'
@@ -49,7 +50,7 @@ function deletePianoDeiConti() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('gestionale.common.actions.delete_error'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -61,12 +62,12 @@ function deletePianoDeiConti() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('gestionale.common.actions.open_menu')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('gestionale.common.actions.menu') }}</DropdownMenuLabel>
 
       <DropdownMenuItem>
         <Link
@@ -75,7 +76,7 @@ function deletePianoDeiConti() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('gestionale.common.actions.edit') }}
         </Link>
       </DropdownMenuItem>
 
@@ -83,15 +84,15 @@ function deletePianoDeiConti() {
         @click="handleDelete(pianoDeiConti)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('gestionale.common.actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo piano dei conti?"
-    description="Questa azione non è reversibile. Eliminerà il piano dei conti e tutti i dati ad esso associati."
+    :title="trans('gestionale.common.confirm_delete_title')"
+    :description="trans('gestionale.common.confirm_delete_description')"
     @confirm="deletePianoDeiConti"
   />
 

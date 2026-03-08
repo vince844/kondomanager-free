@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { Column } from '@tanstack/vue-table';
 import type { Tabella } from '@/types/gestionale/tabelle';
 
@@ -39,13 +40,9 @@ export default {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         <DropdownMenuItem @click="column.toggleSorting(false)">
-          <ArrowUp class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Asc
-        </DropdownMenuItem>
+          <ArrowUp class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" /> {{ trans('gestionale.common.sort_asc') }} </DropdownMenuItem>
         <DropdownMenuItem @click="column.toggleSorting(true)">
-          <ArrowDown class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Desc
-        </DropdownMenuItem>
+          <ArrowDown class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" /> {{ trans('gestionale.common.sort_desc') }} </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>

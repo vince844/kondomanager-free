@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions"
+import { trans } from 'laravel-vue-i18n';
 import type { PianoRate } from '@/types/gestionale/piani-rate'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
@@ -49,7 +50,7 @@ function deletePianoRate() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('gestionale.piani_rate.messages.delete_error'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -61,12 +62,12 @@ function deletePianoRate() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('gestionale.piani_rate.actions.open_actions_menu')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('gestionale.piani_rate.actions.menu_label') }}</DropdownMenuLabel>
 
       <!-- <DropdownMenuItem>
         <Link
@@ -75,7 +76,7 @@ function deletePianoRate() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('gestionale.common.actions.edit') }}
         </Link>
       </DropdownMenuItem> -->
 
@@ -83,15 +84,15 @@ function deletePianoRate() {
         @click="handleDelete(pianoRate)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('gestionale.piani_rate.actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo piano rate?"
-    description="Questa azione non è reversibile. Eliminerà il piano rate e tutti i dati ad esso associati."
+    :title="trans('gestionale.piani_rate.confirm_delete_title')"
+    :description="trans('gestionale.piani_rate.confirm_delete_description')"
     @confirm="deletePianoRate"
   />
 

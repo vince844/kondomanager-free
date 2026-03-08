@@ -7,7 +7,7 @@ import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@ta
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/immobili/documenti/DataTableToolbar.vue';
-import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { Documento } from '@/types/documenti';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Building } from '@/types/buildings';
@@ -111,7 +111,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('gestionale.common.no_results') }}
             </TableCell>
           </TableRow>
         </template>

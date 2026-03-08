@@ -6,7 +6,7 @@ import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@ta
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/movimenti/incassi/DataTableToolbar.vue';
-import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 import type { Incasso } from '@/types/gestionale/movimenti';

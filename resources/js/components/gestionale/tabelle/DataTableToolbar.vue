@@ -5,6 +5,7 @@ import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Tabella } from '@/types/gestionale/tabelle';
@@ -56,7 +57,7 @@ watchDebounced(
     <div class="flex items-center space-x-2">
       <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          :placeholder="trans('gestionale.common.filter_by_name')"
           v-model="nameFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
@@ -70,7 +71,7 @@ watchDebounced(
       prefetch
     >
       <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <span>{{ trans('gestionale.common.actions.create') }}</span>
     </Link>
 
   </div>

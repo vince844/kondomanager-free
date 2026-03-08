@@ -2,6 +2,7 @@
 
 import { FlexRender, getCoreRowModel, useVueTable } from '@tanstack/vue-table'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { trans } from 'laravel-vue-i18n';
 import type { AnagraficaWithPivot } from '@/types/anagrafiche'
 import type { ColumnDef } from '@tanstack/vue-table'
 
@@ -18,7 +19,9 @@ const table = useVueTable({
 </script>
 
 <template>
-
+    <div class="flex items-center">
+      <DataTableToolbar :table="table" />
+    </div>
   <div class="border rounded-md">
     <Table>
       <TableHeader>
@@ -45,7 +48,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('gestionale.common.no_results') }}
             </TableCell>
           </TableRow>
         </template>

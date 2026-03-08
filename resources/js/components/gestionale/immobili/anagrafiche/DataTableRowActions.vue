@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Unplug, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
@@ -56,7 +57,7 @@ function deleteAnagrafica() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('gestionale.common.actions.delete_error'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -68,12 +69,12 @@ function deleteAnagrafica() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('gestionale.common.actions.open_menu')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('gestionale.common.actions.menu') }}</DropdownMenuLabel>
 
       <DropdownMenuItem>
         <Link
@@ -82,7 +83,7 @@ function deleteAnagrafica() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('gestionale.common.actions.edit') }}
         </Link>
       </DropdownMenuItem>
 

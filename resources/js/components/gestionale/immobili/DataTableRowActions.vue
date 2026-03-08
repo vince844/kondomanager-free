@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal, UserPlus } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n'
 import { usePermission } from "@/composables/permissions"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
@@ -47,7 +48,7 @@ function deleteImmobile() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('gestionale.common.actions.delete_error'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -60,12 +61,12 @@ function deleteImmobile() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('gestionale.common.actions.open_menu')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('gestionale.common.actions.menu') }}</DropdownMenuLabel>
 
       <DropdownMenuItem>
         <Link
@@ -74,7 +75,7 @@ function deleteImmobile() {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('gestionale.common.actions.edit') }}
         </Link>
       </DropdownMenuItem>
 
@@ -93,15 +94,15 @@ function deleteImmobile() {
         @click="handleDelete(immobile)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('gestionale.common.actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo immobile?"
-    description="Questa azione non è reversibile. Eliminerà l'immobile e tutti i dati ad esso associati."
+    :title="trans('gestionale.common.confirm_delete_title')"
+    :description="trans('gestionale.common.confirm_delete_description')"
     :loading="isDeleting"
     @confirm="deleteImmobile"
   />

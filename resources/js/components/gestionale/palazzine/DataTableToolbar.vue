@@ -5,6 +5,7 @@ import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
 import type { Table } from '@tanstack/vue-table';
 import type { Palazzina } from '@/types/gestionale/palazzine';
@@ -56,7 +57,7 @@ watchDebounced(
     <div class="flex items-center space-x-2">
       <div class="flex items-center space-x-2">
         <Input
-          placeholder="Filtra per nome..."
+          :placeholder="trans('gestionale.common.filter_by_name')"
           v-model="nameFilter"
           class="h-8 w-[150px] lg:w-[250px]"
         />
@@ -66,11 +67,11 @@ watchDebounced(
 
     <Link
       :href="route(generateRoute('gestionale.palazzine.create'), { condominio: page.props.condominio.id })"
-      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+      class="hidden h-8 lg:flex ml-auto items-center gap-2 rounded-md shadow px-3 bg-primary text-primary-foreground hover:bg-primary/90 transition"
       prefetch
     >
-      <Plus class="w-3.5 h-3.5" />
-      <span>Crea palazzina</span>
+      <Plus class="w-4 h-4" />
+      <span>{{ trans('gestionale.common.actions.create') }}</span>
     </Link>
 
   </div>

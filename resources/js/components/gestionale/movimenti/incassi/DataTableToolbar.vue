@@ -5,6 +5,7 @@ import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus, X } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';

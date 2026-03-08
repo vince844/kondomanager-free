@@ -2,12 +2,13 @@
 
 import { ref } from 'vue';
 import { router } from '@inertiajs/vue3';
+import { usePermission } from '@/composables/permissions';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@tanstack/vue-table';
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/esercizi/DataTableToolbar.vue';
-import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Building } from '@/types/buildings';
@@ -110,7 +111,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('gestionale.common.no_results') }}
             </TableCell>
           </TableRow>
         </template>

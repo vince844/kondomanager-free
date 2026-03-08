@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Check, PlusCircle } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n'
 
 interface Option {
   label: string
@@ -107,7 +108,7 @@ function clearFilters() {
               variant="secondary"
               class="rounded-sm px-1 font-normal"
             >
-              {{ selectedValues.size }} selezionati
+              {{ trans('gestionale.common.selected_count', { count: selectedValues.size }) }}
             </Badge>
             <template v-else>
               <Badge
@@ -127,11 +128,11 @@ function clearFilters() {
       <Command>
         <CommandInput :placeholder="title" />
         <CommandList v-if="props.isLoading">
-          <div class="p-4 text-sm text-muted-foreground">Caricamento...</div>
+          <div class="p-4 text-sm text-muted-foreground">{{ trans('gestionale.common.loading') }}</div>
         </CommandList>
 
         <CommandList>
-          <CommandEmpty>Nessun risultato trovato</CommandEmpty>
+          <CommandEmpty>{{ trans('gestionale.common.no_results') }}</CommandEmpty>
           <CommandGroup>
             <CommandItem
               v-for="option in options"
@@ -168,11 +169,11 @@ function clearFilters() {
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
-                :value="{ label: 'Resetta filtri' }"
+                :value="{ label: trans('gestionale.common.reset_filters') }"
                 class="justify-center text-center"
                 @select="clearFilters"
               >
-                Resetta filtri
+                {{ trans('gestionale.common.reset_filters') }}
               </CommandItem>
             </CommandGroup>
           </template>
