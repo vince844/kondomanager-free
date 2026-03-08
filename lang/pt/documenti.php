@@ -189,6 +189,11 @@ return [
     'user' => [
         'latest_documents_title' => 'Últimos documentos carregados',
         'latest_documents_description' => 'Lista dos últimos documentos no arquivo.',
+        'pdf_only' => 'Só são permitidos ficheiros PDF.',
+        'selected_file' => 'Ficheiro selecionado',
+        'private_document_label' => 'Criar documento privado',
+        'private_document_title' => 'Criar documento privado',
+        'private_document_description' => 'Quando esta opção é selecionada, o documento fica privado e visível apenas para administradores.',
     ],
     /* ------------------------------------------------------------------
      | Guides

@@ -189,6 +189,11 @@ return [
     'user' => [
         'latest_documents_title' => 'Latest uploaded documents',
         'latest_documents_description' => 'List of the latest documents in the archive.',
+        'pdf_only' => 'Only PDF files are allowed.',
+        'selected_file' => 'Selected file',
+        'private_document_label' => 'Create private document',
+        'private_document_title' => 'Create private document',
+        'private_document_description' => 'When this option is selected, the document is private and visible only to administrators.',
     ],
     /* ------------------------------------------------------------------
      | Guides

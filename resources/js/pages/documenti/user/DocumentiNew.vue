@@ -43,7 +43,7 @@ function handleFileChange(event: Event) {
   if (target?.files?.length) {
     const selectedFile = target.files[0]
     if (selectedFile.type !== 'application/pdf') {
-      alert("Solo file PDF sono ammessi.")
+      alert(trans('documenti.user.pdf_only'))
       return
     }
 
@@ -168,7 +168,7 @@ const submit = () => {
                         </label>
 
                         <div v-if="file" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                          File selezionato: <strong>{{ file.name }}</strong>
+                          {{ trans('documenti.user.selected_file') }}: <strong>{{ file.name }}</strong>
                         </div>
                         <InputError :message="form.errors.file" />
 
@@ -226,7 +226,7 @@ const submit = () => {
                                 for="is_private"
                                 class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-7 flex items-center"
                                 >
-                                Crea documento privato
+                                {{ trans('documenti.user.private_document_label') }}
 
                                 <HoverCard>
                                     <HoverCardTrigger as-child>
@@ -236,10 +236,10 @@ const submit = () => {
                                     <div class="flex justify-between space-x-4">
                                         <div class="space-y-1">
                                             <h4 class="text-sm font-semibold">
-                                                Crea documento privato
+                                                {{ trans('documenti.user.private_document_title') }}
                                             </h4>
                                             <p class="text-sm">
-                                                Quando viene selezionata questa opzione il documento verrà reso privato e sarà solo visibile agli amministratori e non a tutti gli altri condòmini
+                                                {{ trans('documenti.user.private_document_description') }}
                                             </p>
                                         </div>
                                     </div>

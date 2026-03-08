@@ -67,7 +67,7 @@ function handleFileChange(event: Event) {
   if (target?.files?.length) {
     const selectedFile = target.files[0]
     if (selectedFile.type !== 'application/pdf') {
-      alert("Solo file PDF sono ammessi.")
+      alert(trans('documenti.user.pdf_only'))
       return
     }
 
@@ -195,7 +195,7 @@ const submit = () => {
                         </label>
 
                         <div v-if="file" class="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                          File selezionato: <strong>{{ file.name }}</strong>
+                          {{ trans('documenti.user.selected_file') }}: <strong>{{ file.name }}</strong>
                         </div>
                         <InputError :message="form.errors.file" />
 
