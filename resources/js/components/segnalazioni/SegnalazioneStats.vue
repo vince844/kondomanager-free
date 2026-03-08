@@ -3,6 +3,7 @@
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Segnalazione } from '@/types/segnalazioni';
+import { trans } from 'laravel-vue-i18n';
 import { 
   House, 
   CircleArrowDown, 
@@ -16,7 +17,7 @@ import {
   ListX, 
 } from 'lucide-vue-next';
 
-const props = defineProps<{
+defineProps<{
   segnalazione: Segnalazione
 }>()
 
@@ -46,7 +47,7 @@ const statusIcons = {
         <Card>
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-md font-bold">
-              Condominio 
+              {{ trans('segnalazioni.label.building') }}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -63,7 +64,7 @@ const statusIcons = {
         <Card>
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-md font-bold">
-              Priorità segnalazione
+              {{ trans('segnalazioni.label.priority') }}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -83,7 +84,7 @@ const statusIcons = {
         <Card>
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-md font-bold">
-              Stato segnalazione
+              {{ trans('segnalazioni.label.status') }}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -103,7 +104,7 @@ const statusIcons = {
         <Card>
           <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle class="text-md font-bold">
-              Stato pubblicazione
+              {{ trans('segnalazioni.label.publication_status') }}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -116,7 +117,7 @@ const statusIcons = {
                 ]" 
               />
               <div class="capitalize text-lg text-muted-foreground">
-                {{ segnalazione.is_published ? 'Pubblicata' : 'Bozza' }}
+                {{ segnalazione.is_published ? trans('segnalazioni.label.published') : trans('segnalazioni.label.draft') }}
               </div>
             </div>
           </CardContent>

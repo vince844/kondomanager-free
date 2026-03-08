@@ -32,6 +32,8 @@ return [
         'upcoming_events_description' => 'Lista dos prazos nos próximos dias',
         'no_events_created' => 'Ainda não foi criado nenhum prazo na agenda!',
         'starts_on' => 'começa em',
+        'show_more' => 'Mostrar tudo',
+        'show_less' => 'Mostrar menos',
     ],
 
     'permissions' => [

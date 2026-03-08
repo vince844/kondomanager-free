@@ -32,6 +32,8 @@ return [
         'upcoming_events_description' => 'List of deadlines in the next days',
         'no_events_created' => 'No agenda deadlines have been created yet!',
         'starts_on' => 'starts on',
+        'show_more' => 'Show all',
+        'show_less' => 'Show less',
     ],
 
     'permissions' => [

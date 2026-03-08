@@ -7,7 +7,7 @@ import { Building2, Tag, CalendarDays } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 import type { Evento } from '@/types/eventi';
 
-const props = defineProps<{
+defineProps<{
   eventi: Evento[];
 }>();
 
@@ -136,7 +136,7 @@ const getLocalizedCategory = (evento: Evento) => {
                 class="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-white mt-1"
                 @click="(e) => toggleExpanded(Number(evento.id), e)"
               >
-                {{ isExpanded(Number(evento.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+                {{ isExpanded(Number(evento.id)) ? trans('dashboard.widgets.show_less') : trans('dashboard.widgets.show_more') }}
               </button>
             </div>
 

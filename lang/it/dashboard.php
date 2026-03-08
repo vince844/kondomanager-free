@@ -32,6 +32,8 @@ return [
         'upcoming_events_description' => 'Elenco delle scadenze nei prossimi giorni',
         'no_events_created' => 'Nessuna scadenza in agenda ancora creata!',
         'starts_on' => 'inizia il',
+        'show_more' => 'Mostra tutto',
+        'show_less' => 'Mostra meno',
     ],
 
     'permissions' => [

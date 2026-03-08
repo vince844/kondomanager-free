@@ -3,12 +3,12 @@
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
-import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, Tags } from 'lucide-vue-next';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { trans } from 'laravel-vue-i18n';
 import type { Comunicazione } from '@/types/comunicazioni';
 
-const props = defineProps<{
+defineProps<{
     comunicazioni: Comunicazione[];
     routeName: string;
 }>();
@@ -54,7 +54,7 @@ const truncate = (text: string, length: number = 120) => {
                         <Tags />
                     </EmptyMedia>
                     <EmptyTitle> 
-                        Nessuna comunicazione creata
+                        {{ trans('comunicazioni.dialogs.no_communications') }}
                     </EmptyTitle>
                     <EmptyDescription>
                         {{ trans('comunicazioni.dialogs.no_communications_created') }}
