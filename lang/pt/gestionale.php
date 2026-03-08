@@ -211,6 +211,45 @@ return [
             'head_title' => 'Lista de recursos e fundos',
             'page_title' => 'Recursos e fundos',
             'page_subtitle' => 'Configure contas bancárias, caixas e fundos do condomínio. Uma boa configuração é a base para uma tesouraria saudável.',
+            'breadcrumbs' => [
+                'management' => 'Gestão',
+                'structure' => 'Estrutura',
+                'list' => 'Recursos e fundos',
+            ],
+            'guides' => [
+                'bank_accounts_title' => 'Contas bancárias',
+                'bank_accounts_description' => 'Registe corretamente o IBAN e os dados bancários para automatizar reconciliações e pagamentos.',
+                'funds_title' => 'Fundos e reservas',
+                'funds_description' => 'Para além da conta principal, pode gerir caixas em numerário e fundos acumulados (ex.: Fundo de Reserva).',
+                'opening_balances_title' => 'Saldos iniciais',
+                'opening_balances_description' => 'Introduza o saldo inicial correto em cada recurso para garantir a reconciliação entre software e banco.',
+            ],
+            'table' => [
+                'type' => 'Tipo',
+                'resource_details' => 'Detalhes do recurso',
+                'current_balance' => 'Saldo atual',
+                'status' => 'Estado',
+                'main_account' => 'Conta principal',
+                'iban' => 'IBAN:',
+                'types' => [
+                    'bank_account' => 'Conta bancária',
+                    'cashbox' => 'Caixa em numerário',
+                    'reserve_fund' => 'Fundo de reserva',
+                    'other' => 'Outro',
+                ],
+                'bank_account_types' => [
+                    'ordinary' => 'Conta ordinária',
+                    'dedicated' => 'Conta dedicada',
+                    'postal' => 'Conta postal',
+                    'special_accounting' => 'Contabilidade especial',
+                    'foreign' => 'Conta estrangeira',
+                    'other' => 'Outro',
+                ],
+                'status_values' => [
+                    'active' => 'Ativa',
+                    'archived' => 'Arquivada',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Lista de blocos',
@@ -255,6 +294,18 @@ return [
                 'name' => 'Designação',
                 'building' => 'Bloco',
                 'description' => 'Descrição',
+            ],
+            'create' => [
+                'head_title' => 'Criar nova escada',
+                'breadcrumb' => 'Criar escada',
+                'labels' => [
+                    'building' => 'Bloco',
+                ],
+                'placeholders' => [
+                    'name' => 'Nome da escada',
+                    'select_building' => 'Associar a um bloco',
+                    'description' => 'Descrição da escada',
+                ],
             ],
         ],
         'tabelle' => [

@@ -211,6 +211,45 @@ return [
             'head_title' => 'Elenco risorse e fondi',
             'page_title' => 'Risorse e fondi',
             'page_subtitle' => 'Configura i conti bancari, le casse e i fondi del condominio. Una corretta impostazione è la base per una tesoreria sana.',
+            'breadcrumbs' => [
+                'management' => 'Gestionale',
+                'structure' => 'Struttura',
+                'list' => 'Risorse e fondi',
+            ],
+            'guides' => [
+                'bank_accounts_title' => 'Conti bancari',
+                'bank_accounts_description' => 'Censire correttamente IBAN e dati bancari e fondamentale per automatizzare riconciliazioni e pagamenti.',
+                'funds_title' => 'Fondi e riserve',
+                'funds_description' => 'Oltre al conto principale, puoi gestire casse contanti e fondi accantonati (es.: fondo riserva).',
+                'opening_balances_title' => 'Saldi iniziali',
+                'opening_balances_description' => 'Inserisci il saldo iniziale corretto per ogni risorsa per garantire la quadratura tra software e banca.',
+            ],
+            'table' => [
+                'type' => 'Tipo',
+                'resource_details' => 'Dettagli risorsa',
+                'current_balance' => 'Saldo attuale',
+                'status' => 'Stato',
+                'main_account' => 'Conto principale',
+                'iban' => 'IBAN:',
+                'types' => [
+                    'bank_account' => 'Conto corrente',
+                    'cashbox' => 'Cassa contanti',
+                    'reserve_fund' => 'Fondo riserva',
+                    'other' => 'Altro',
+                ],
+                'bank_account_types' => [
+                    'ordinary' => 'Conto ordinario',
+                    'dedicated' => 'Conto dedicato',
+                    'postal' => 'Conto postale',
+                    'special_accounting' => 'Contabilita speciale',
+                    'foreign' => 'Conto estero',
+                    'other' => 'Altro',
+                ],
+                'status_values' => [
+                    'active' => 'Attiva',
+                    'archived' => 'Archiviata',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Elenco palazzine',
@@ -255,6 +294,18 @@ return [
                 'name' => 'Denominazione',
                 'building' => 'Palazzina',
                 'description' => 'Descrizione',
+            ],
+            'create' => [
+                'head_title' => 'Crea nuova scala',
+                'breadcrumb' => 'Crea scala',
+                'labels' => [
+                    'building' => 'Palazzina',
+                ],
+                'placeholders' => [
+                    'name' => 'Nome scala',
+                    'select_building' => 'Associa a una palazzina',
+                    'description' => 'Descrizione scala',
+                ],
             ],
         ],
         'tabelle' => [

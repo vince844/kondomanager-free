@@ -211,6 +211,45 @@ return [
             'head_title' => 'Resources and funds list',
             'page_title' => 'Resources and funds',
             'page_subtitle' => 'Configure bank accounts, cashboxes and condominium funds. Correct setup is the basis for healthy treasury management.',
+            'breadcrumbs' => [
+                'management' => 'Management',
+                'structure' => 'Structure',
+                'list' => 'Resources and funds',
+            ],
+            'guides' => [
+                'bank_accounts_title' => 'Bank accounts',
+                'bank_accounts_description' => 'Register IBAN and bank details correctly to automate reconciliations and payments.',
+                'funds_title' => 'Funds and reserves',
+                'funds_description' => 'Besides the main account, you can manage cashboxes and reserved funds (e.g. reserve fund).',
+                'opening_balances_title' => 'Opening balances',
+                'opening_balances_description' => 'Enter the correct opening balance for each resource to ensure software and bank reconciliation.',
+            ],
+            'table' => [
+                'type' => 'Type',
+                'resource_details' => 'Resource details',
+                'current_balance' => 'Current balance',
+                'status' => 'Status',
+                'main_account' => 'Main account',
+                'iban' => 'IBAN:',
+                'types' => [
+                    'bank_account' => 'Bank account',
+                    'cashbox' => 'Cashbox',
+                    'reserve_fund' => 'Reserve fund',
+                    'other' => 'Other',
+                ],
+                'bank_account_types' => [
+                    'ordinary' => 'Ordinary account',
+                    'dedicated' => 'Dedicated account',
+                    'postal' => 'Postal account',
+                    'special_accounting' => 'Special accounting',
+                    'foreign' => 'Foreign account',
+                    'other' => 'Other',
+                ],
+                'status_values' => [
+                    'active' => 'Active',
+                    'archived' => 'Archived',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Buildings list',
@@ -255,6 +294,18 @@ return [
                 'name' => 'Name',
                 'building' => 'Building',
                 'description' => 'Description',
+            ],
+            'create' => [
+                'head_title' => 'Create new stairwell',
+                'breadcrumb' => 'Create stairwell',
+                'labels' => [
+                    'building' => 'Building',
+                ],
+                'placeholders' => [
+                    'name' => 'Stairwell name',
+                    'select_building' => 'Link to a building',
+                    'description' => 'Stairwell description',
+                ],
             ],
         ],
         'tabelle' => [
