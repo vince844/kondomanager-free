@@ -16,10 +16,11 @@ import vSelect from "vue-select";
 import { usePermission } from "@/composables/permissions";
 import type { Building } from '@/types/buildings';
 import type { CategoriaEvento } from '@/types/categorie-eventi';
+import { trans } from 'laravel-vue-i18n';
 
 const { generateRoute } = usePermission();
 
-const props = defineProps<{
+defineProps<{
   condomini: Building[];
   categorie: CategoriaEvento[];
 }>();
@@ -27,20 +28,20 @@ const props = defineProps<{
 const showRecurrence = ref(false);
 
 const frequencies = [
-  { label: 'Giornaliera', value: 'daily' },
-  { label: 'Settimanale', value: 'weekly' },
-  { label: 'Mensile', value: 'monthly' },
-  { label: 'Annuale', value: 'yearly' },
+  { label: trans('eventi.form.frequency_daily'), value: 'daily' },
+  { label: trans('eventi.form.frequency_weekly'), value: 'weekly' },
+  { label: trans('eventi.form.frequency_monthly'), value: 'monthly' },
+  { label: trans('eventi.form.frequency_yearly'), value: 'yearly' },
 ];
 
 const weekdays = [
-  { label: 'Luned\u00ec', value: 'MO' },
-  { label: 'Marted\u00ec', value: 'TU' },
-  { label: 'Mercoled\u00ec', value: 'WE' },
-  { label: 'Gioved\u00ec', value: 'TH' },
-  { label: 'Venerd\u00ec', value: 'FR' },
-  { label: 'Sabato', value: 'SA' },
-  { label: 'Domenica', value: 'SU' },
+  { label: trans('eventi.form.weekday_monday'), value: 'MO' },
+  { label: trans('eventi.form.weekday_tuesday'), value: 'TU' },
+  { label: trans('eventi.form.weekday_wednesday'), value: 'WE' },
+  { label: trans('eventi.form.weekday_thursday'), value: 'TH' },
+  { label: trans('eventi.form.weekday_friday'), value: 'FR' },
+  { label: trans('eventi.form.weekday_saturday'), value: 'SA' },
+  { label: trans('eventi.form.weekday_sunday'), value: 'SU' },
 ];
 
 const form = useForm({
@@ -76,11 +77,14 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Crea nuovo evento" />
+  <Head :title="trans('eventi.header.create_event_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
-      <Heading title="Crea scadenza in agenda" description="Compila il seguente modulo per la creazione di una nuova scadenza per l'agenda condominiale" />
+      <Heading
+        :title="trans('eventi.header.create_event_title')"
+        :description="trans('eventi.header.create_event_description')"
+      />
 
       <form class="space-y-2" @submit.prevent="submit">
 
@@ -89,7 +93,7 @@ const submit = () => {
             <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                 <Plus class="w-4 h-4" v-if="!form.processing" />
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
+                {{ trans('eventi.actions.save') }}
             </Button>
 
             <Link
@@ -98,7 +102,7 @@ const submit = () => {
                 class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
                 <List class="w-4 h-4" />
-                <span>Elenco</span>
+                <span>{{ trans('eventi.actions.list') }}</span>
             </Link>
         </div>
 
@@ -108,23 +112,23 @@ const submit = () => {
           <div class="lg:col-span-3 space-y-4 bg-white p-4 border rounded">
 
             <div>
-              <Label for="title">Oggetto</Label>
+              <Label for="title">{{ trans('eventi.form.subject') }}</Label>
               <Input id="title" v-model="form.title" @focus="form.clearErrors('title')" />
               <InputError :message="form.errors.title" />
             </div>
 
             <div>
-              <Label for="description">Descrizione</Label>
+              <Label for="description">{{ trans('eventi.form.description') }}</Label>
               <Textarea id="description" v-model="form.description" class="min-h-[120px]" @focus="form.clearErrors('description')" />
               <InputError :message="form.errors.description" />
             </div>
 
             <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
               <div class="sm:col-span-6">
-                <Label for="note">Note aggiuntive</Label>
+                <Label for="note">{{ trans('eventi.form.additional_notes') }}</Label>
                 <Textarea 
                     id="note" 
-                    placeholder="Inserisci una nota qui" 
+                    :placeholder="trans('eventi.form.note_placeholder')" 
                     v-model="form.note" 
                     v-on:focus="form.clearErrors('note')"
                 />
@@ -136,12 +140,12 @@ const submit = () => {
 
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <Label>Inizio</Label>
+                <Label>{{ trans('eventi.form.start') }}</Label>
                 <Input type="datetime-local" v-model="form.start_time" />
                 <InputError :message="form.errors.start_time" />
               </div>
               <div>
-                <Label>Fine</Label>
+                <Label>{{ trans('eventi.form.end') }}</Label>
                 <Input type="datetime-local" v-model="form.end_time" />
                 <InputError :message="form.errors.end_time" />
               </div>
@@ -149,7 +153,7 @@ const submit = () => {
 
             <div class="flex items-center space-x-2">
               <Checkbox class="size-4"  id="recurrenceToggle" v-model="showRecurrence" />
-              <Label for="recurrenceToggle">Imposta evento ricorrente</Label>
+              <Label for="recurrenceToggle">{{ trans('eventi.form.set_recurring_event') }}</Label>
               <HoverCard>
                 <HoverCardTrigger as-child>
                   <button type="button" class="cursor-pointer">
@@ -160,10 +164,10 @@ const submit = () => {
                 <div class="flex justify-between space-x-4">
                   <div class="space-y-1">
                       <h4 class="text-sm font-semibold">
-                          Evento ricorrente
+                          {{ trans('eventi.form.recurring_event_title') }}
                       </h4>
                       <p class="text-sm">
-                          Quando viene selezionata questa opzione verrano abilitati i campi per la configurazione della ricorrenza dell'evento.
+                          {{ trans('eventi.form.recurring_event_help') }}
                       </p>
                   </div>
                 </div>
@@ -173,14 +177,14 @@ const submit = () => {
             </div>
 
             <div v-if="showRecurrence">
-              <Label>Ricorrenza</Label>
+              <Label>{{ trans('eventi.form.recurrence') }}</Label>
               <div class="grid grid-cols-2 gap-4">
-                <v-select :options="frequencies" label="label" v-model="form.recurrence_frequency" :reduce="opt => opt.value" placeholder="Frequenza" />
-                <Input type="number" min="1" v-model="form.recurrence_interval" placeholder="Intervallo" />
+                <v-select :options="frequencies" label="label" v-model="form.recurrence_frequency" :reduce="opt => opt.value" :placeholder="trans('eventi.form.frequency_placeholder')" />
+                <Input type="number" min="1" v-model="form.recurrence_interval" :placeholder="trans('eventi.form.interval_placeholder')" />
               </div>
 
               <div class="mt-4">
-                <Label>Giorni specifici</Label>
+                <Label>{{ trans('eventi.form.specific_days') }}</Label>
                 <div class="grid grid-cols-3 gap-2 mt-2">
                   <div v-for="day in weekdays" :key="day.value" class="flex items-center gap-2">
                     <input
@@ -195,7 +199,7 @@ const submit = () => {
               </div>
 
               <div class="mt-4">
-                <Label>Ripeti fino al</Label>
+                <Label>{{ trans('eventi.form.repeat_until') }}</Label>
                 <Input type="datetime-local" v-model="form.recurrence_until" />
 
                  <InputError :message="form.errors.recurrence_until" />
@@ -209,14 +213,14 @@ const submit = () => {
           <div class="space-y-4 bg-white p-4 border rounded">
 
             <div>
-              <Label>Categorie</Label>
+              <Label>{{ trans('eventi.form.categories') }}</Label>
 
                   <v-select
                     :options="categorie"
                     label="localized_name"
                     v-model="form.category_id"
                     :reduce="(option: CategoriaEvento) => option.id"
-                    placeholder="Seleziona categoria"
+                    :placeholder="trans('eventi.form.select_category')"
                     class="flex-1"
                     @update:modelValue="form.clearErrors('category_id')" 
                   />
@@ -225,7 +229,7 @@ const submit = () => {
             </div>
 
             <div>
-              <Label>Condomini</Label>
+              <Label>{{ trans('eventi.form.buildings') }}</Label>
               <v-select 
                 multiple 
                 :options="condomini" 
@@ -233,7 +237,7 @@ const submit = () => {
                 v-model="form.condomini_ids" 
                 :reduce="(option: Building) => option.id"
                 @update:modelValue="form.clearErrors('condomini_ids')" 
-                placeholder="Seleziona condomini" 
+                :placeholder="trans('eventi.form.select_buildings')" 
               />
               <InputError :message="form.errors.condomini_ids" />
             </div>
