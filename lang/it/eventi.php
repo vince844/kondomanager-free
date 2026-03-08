@@ -54,6 +54,7 @@ return [
         'reset_filters' => 'Resetta filtri',
         'more_buildings' => '+:count altri condomini',
         'more_people' => '+:count altre persone',
+        'datetime_at' => 'alle',
     ],
 
     'actions' => [

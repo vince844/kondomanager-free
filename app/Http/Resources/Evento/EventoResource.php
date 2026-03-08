@@ -21,6 +21,8 @@ class EventoResource extends JsonResource
     public function toArray(Request $request): array
     {
         $occursAt = $this->occurs_at ?? $this->start_time;
+        $occursAtDate = Carbon::parse($occursAt)->format('d/m/Y');
+        $occursAtTime = Carbon::parse($occursAt)->format('H:i');
 
         return [
             'id'              => $this->id,
@@ -33,7 +35,7 @@ class EventoResource extends JsonResource
             'end_time'        => $this->end_time,
             'occurs_at_human' => Carbon::parse($occursAt)->diffForHumans(),
             'occurs'          => $this->occurs_at,
-            'occurs_at'       => Carbon::parse($occursAt)->format('d/m/Y \a\l\l\e H:i'),
+            'occurs_at'       => "{$occursAtDate} " . __('eventi.table.datetime_at') . " {$occursAtTime}",
             'updated_at'      => $this->updated_at,
             
             // Relazioni
