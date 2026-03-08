@@ -5,12 +5,13 @@ import { watchDebounced } from '@vueuse/core';
 import { router, usePage} from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Documento } from '@/types/documenti';
 import type { Immobile } from '@/types/gestionale/immobili';
 import type { Building } from '@/types/buildings';
 
-const { generateRoute, hasPermission, generatePath } = usePermission();
+const { generateRoute } = usePermission();
 
 // Change this to allow table reset when filter cleared
 const { table } = defineProps<{
@@ -55,7 +56,7 @@ watchDebounced(
   <div class="flex items-center space-x-2">
     <!-- Subject Filter -->
     <Input
-      placeholder="Filtra per titolo..."
+      :placeholder="trans('gestionale.common.filter_by_name')"
       v-model="nameFilter"
       class="h-8 w-[150px] lg:w-[250px]"
     />
