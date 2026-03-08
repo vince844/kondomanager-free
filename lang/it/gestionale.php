@@ -447,5 +447,9 @@ return [
             'no_data' => 'Nessun dato disponibile',
         ],
     ],
+    'movimenti_incassi' => [
+        'search_placeholder' => 'Cerca protocollo, anagrafica...',
+        'register_receipt' => 'Registra incasso',
+    ],
 
 ];

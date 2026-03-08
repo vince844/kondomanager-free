@@ -11,7 +11,7 @@ import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 
-const props = defineProps<{ table: Table<any> }>();
+defineProps<{ table: Table<any> }>();
 const page = usePage<{ condominio: Building }>();
 const { generateRoute } = usePermission();
 const condominioId = computed(() => page.props.condominio.id);
@@ -48,7 +48,7 @@ const resetFilter = () => { globalFilter.value = '' }
     <div class="flex items-center space-x-2 flex-1">
       <div class="relative w-full max-w-sm">
           <Input
-            placeholder="Cerca protocollo, anagrafica..."
+            :placeholder="trans('gestionale.movimenti_incassi.search_placeholder')"
             v-model="globalFilter"
             class="h-9 w-[200px] lg:w-[300px]"
           />
@@ -61,7 +61,7 @@ const resetFilter = () => { globalFilter.value = '' }
     <Button as-child>
         <Link :href="route(generateRoute('gestionale.movimenti-rate.create'), { condominio: condominioId })">
             <Plus class="w-4 h-4 mr-2" />
-            Registra Incasso
+            {{ trans('gestionale.movimenti_incassi.register_receipt') }}
         </Link>
     </Button>
   </div>

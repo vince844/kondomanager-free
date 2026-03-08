@@ -447,4 +447,8 @@ return [
             'no_data' => 'Sem dados disponíveis',
         ],
     ],
+    'movimenti_incassi' => [
+        'search_placeholder' => 'Pesquisar protocolo, registo...',
+        'register_receipt' => 'Registar recebimento',
+    ],
 ];
