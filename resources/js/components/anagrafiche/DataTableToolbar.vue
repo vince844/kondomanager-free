@@ -74,7 +74,7 @@ watchDebounced(
         <DataTableFacetedFilter
           v-if="condominioColumn"
           :column="condominioColumn"
-          title="Condominio" 
+          :title="trans('anagrafiche.table.buildings')"
           :options="condomini"
           :isLoading="isLoading"
           @open="handleOpenDropdown"
