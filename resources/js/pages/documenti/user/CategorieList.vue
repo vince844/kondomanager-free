@@ -8,6 +8,7 @@ import Alert from "@/components/Alert.vue";
 import CategorieDocumentiCards from '@/components/documenti/CategorieDocumentiCards.vue';
 import { Card, CardContent, CardHeader, CardDescription, CardTitle } from '@/components/ui/card';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 import type { Flash } from '@/types/flash';
@@ -24,14 +25,14 @@ const flashMessage = computed(() => page.props.flash.message);
 </script>
 
 <template>
-  <Head title="Elenco categorie archivio" />
+  <Head :title="trans('documenti.header.list_categories_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <!-- Page Heading -->
       <Heading
-        title="Elenco categorie archivio documenti"
-        description="Di seguito una lista delle categorie utilizzate per classificare i documenti nell'archivio del condominio."
+        :title="trans('documenti.header.list_categories_title')"
+        :description="trans('documenti.header.list_categories_description')"
       />
 
       <div v-if="flashMessage" class="py-4">
@@ -57,9 +58,9 @@ const flashMessage = computed(() => page.props.flash.message);
           <!-- Right Widget -->
           <Card class="w-full lg:w-1/3 border border-muted rounded-lg shadow-sm">
             <CardHeader class="p-3 ml-3">
-              <CardTitle class="text-base font-semibold">Ultimi documenti caricati</CardTitle>
+              <CardTitle class="text-base font-semibold">{{ trans('documenti.user.latest_documents_title') }}</CardTitle>
               <CardDescription>
-                Elenco degli ultimi documenti in archivio
+                {{ trans('documenti.user.latest_documents_description') }}
               </CardDescription>
             </CardHeader>
             <CardContent>

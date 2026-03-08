@@ -186,6 +186,10 @@ return [
             'delete_category' => 'Elimina',
         ],
     ],
+    'user' => [
+        'latest_documents_title' => 'Ultimi documenti caricati',
+        'latest_documents_description' => 'Elenco degli ultimi documenti in archivio.',
+    ],
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */

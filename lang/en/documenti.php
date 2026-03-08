@@ -186,6 +186,10 @@ return [
             'delete_category' => 'Delete',
         ],
     ],
+    'user' => [
+        'latest_documents_title' => 'Latest uploaded documents',
+        'latest_documents_description' => 'List of the latest documents in the archive.',
+    ],
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */
