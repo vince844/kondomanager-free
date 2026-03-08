@@ -58,6 +58,8 @@ return [
         'selected' => 'selected',
         'loading' => 'Loading...',
         'reset_filters' => 'Reset filters',
+        'sort_asc' => 'Ascending',
+        'sort_desc' => 'Descending',
         'more_buildings' => '+:count other buildings',
         'more_people' => '+:count other people',
         'datetime_at' => 'at',

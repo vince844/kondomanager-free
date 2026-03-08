@@ -58,6 +58,8 @@ return [
         'selected' => 'selecionados',
         'loading' => 'A carregar...',
         'reset_filters' => 'Repor filtros',
+        'sort_asc' => 'Ascendente',
+        'sort_desc' => 'Descendente',
         'more_buildings' => '+:count outros condomínios',
         'more_people' => '+:count outras pessoas',
         'datetime_at' => 'às',
