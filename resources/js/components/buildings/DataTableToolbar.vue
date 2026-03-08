@@ -57,9 +57,9 @@ watchDebounced(
       as="button"
       v-if="hasPermission([Permission.CREATE_CONDOMINI])"
       :href="route('condomini.create')" 
-      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-primary-foreground hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-4 h-4" />
       <span>{{ trans('condomini.actions.new_building') }}</span>
     </Link>
     
