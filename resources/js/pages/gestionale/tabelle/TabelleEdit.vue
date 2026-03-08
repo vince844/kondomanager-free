@@ -2,6 +2,7 @@
 
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
@@ -95,9 +96,7 @@ const submit = () => {
             <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
               <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                 <Plus class="w-4 h-4" v-if="!form.processing" />
-                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
-              </Button>
+                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />{{ trans('gestionale.form_common.actions.save') }}</Button>
 
               <Link
                 as="button"
@@ -160,7 +159,7 @@ const submit = () => {
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
 
                 <div class="sm:col-span-2">
-                  <Label for="tipologia">Tipologia</Label>
+                  <Label for="tipologia">{{ trans('gestionale.form_common.labels.type') }}</Label>
                   <v-select
                     class="w-full mt-1"
                     :options="tipologieTabelle"
@@ -201,7 +200,7 @@ const submit = () => {
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="descrizione">Descrizione</Label>
+                  <Label for="descrizione">{{ trans('gestionale.form_common.labels.description') }}</Label>
                   <Textarea
                     id="descrizione"
                     class="mt-1 block w-full"
@@ -214,12 +213,12 @@ const submit = () => {
 
               <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-6">
-                  <Label for="note">Note</Label>
+                  <Label for="note">{{ trans('gestionale.form_common.labels.notes') }}</Label>
                   <Textarea
                     id="note"
                     class="mt-1 block w-full"
                     v-model="form.note"
-                    placeholder="Inserisci una nota qui"
+                    :placeholder="trans('gestionale.form_common.placeholders.insert_note')"
                   />
                   <InputError :message="form.errors.note" />
                 </div>

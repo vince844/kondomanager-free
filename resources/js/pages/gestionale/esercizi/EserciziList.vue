@@ -7,6 +7,7 @@ import DataTable from '@/components/gestionale/esercizi/DataTable.vue';
 import { getColumns } from '@/components/gestionale/esercizi/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { CalendarRange, ArrowRightLeft, Lock } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
@@ -58,15 +59,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco esercizi" />
+  <Head :title="trans('gestionale.list_pages.esercizi.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4"> 
 
       <PageHeaderGuide
-        page-title="Esercizi contabili"
-        page-subtitle="Gestisci gli anni contabili del condominio. Apri nuovi esercizi o chiudi quelli passati per consolidare i saldi."
+        :page-title="trans('gestionale.list_pages.esercizi.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.esercizi.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* TODO: Inserire URL YouTube 'Come gestire gli anni contabili' */"

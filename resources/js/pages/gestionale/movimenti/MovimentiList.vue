@@ -5,6 +5,7 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { ArrowRightLeft, Landmark, Bot } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
@@ -49,15 +50,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Movimenti" />
+  <Head :title="trans('gestionale.list_pages.movimenti.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-3">
       
       <PageHeaderGuide
-        page-title="Gestione movimenti"
-        page-subtitle="Il cuore finanziario del condominio. Gestisci la cassa, registra le transazioni e mantieni allineata la contabilità."
+        :page-title="trans('gestionale.list_pages.movimenti.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.movimenti.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

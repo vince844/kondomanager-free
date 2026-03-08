@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'; // Aggiungi ref
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
@@ -103,7 +104,7 @@ const submit = () => {
 </script>
 
 <template>
-    <Head title="Modifica risorsa" />
+    <Head :title="trans('gestionale.form_common.actions.edit')" />
 
     <GestionaleLayout :breadcrumbs="breadcrumbs">
       <template #breadcrumb-condominio>
@@ -123,7 +124,7 @@ const submit = () => {
                     class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-secondary text-secondary-foreground px-3 py-1.5 text-sm font-medium hover:bg-secondary/80 border shadow-sm"
                     >
                     <List class="w-4 h-4" />
-                    <span>Annulla</span>
+                    <span>{{ trans('gestionale.form_common.actions.cancel') }}</span>
                 </Link>
 
                 <Button :disabled="form.processing" class="h-9 w-full lg:w-auto">
@@ -138,7 +139,7 @@ const submit = () => {
 
             <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                 <div class="sm:col-span-3">
-                  <Label for="nome">Nome identificativo</Label>
+                  <Label for="nome">{{ trans('gestionale.form_common.labels.name') }}</Label>
                   <Input 
                     id="nome" 
                     class="mt-1 block w-full"
@@ -149,7 +150,7 @@ const submit = () => {
                 </div>
 
                 <div class="sm:col-span-3">
-                    <Label for="tipo">Tipologia risorsa</Label>
+                    <Label for="tipo">{{ trans('gestionale.form_common.labels.type') }}</Label>
                     <v-select 
                         :options="tipiCassa" 
                         label="label" 
@@ -169,7 +170,7 @@ const submit = () => {
             <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
               
               <div class="sm:col-span-3">
-                  <Label for="saldo_iniziale">Saldo Iniziale (Apertura)</Label>
+                  <Label for="saldo_iniziale">{{ trans('gestionale.form_common.labels.initial_balance') }}</Label>
 
                   <HoverCard>
                     <HoverCardTrigger as-child>
@@ -201,7 +202,7 @@ const submit = () => {
               </div>
 
               <div class="sm:col-span-3">
-                <Label for="descrizione">Descrizione</Label>
+                <Label for="descrizione">{{ trans('gestionale.form_common.labels.description') }}</Label>
                 <Input 
                   id="descrizione" 
                   class="mt-1 block w-full"
@@ -212,7 +213,7 @@ const submit = () => {
 
             <div class="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6 pt-2">
               <div class="sm:col-span-6">
-                <Label for="note">Note interne</Label>
+                <Label for="note">{{ trans('gestionale.form_common.labels.notes') }}</Label>
                 <Textarea 
                     id="note" 
                     v-model="form.note" 
@@ -252,11 +253,11 @@ const submit = () => {
                              <InputError :message="form.errors.istituto" />
                         </div>
                         <div class="sm:col-span-2">
-                            <Label for="bic">BIC / SWIFT</Label>
+                            <Label for="bic">{{ trans('gestionale.form_common.labels.bic_swift') }}</Label>
                             <Input id="bic" v-model="form.bic" class="mt-1 font-mono uppercase" />
                         </div>
                         <div class="sm:col-span-6">
-                            <Label for="iban">IBAN</Label>
+                            <Label for="iban">{{ trans('gestionale.form_common.labels.iban') }}</Label>
                             <Input id="iban" v-model="form.iban" class="mt-1 font-mono text-lg uppercase tracking-wide" maxlength="27" />
                             <InputError :message="form.errors.iban" />
                         </div>
@@ -265,19 +266,19 @@ const submit = () => {
                         <h4 class="text-sm font-medium mb-3 text-muted-foreground">Indirizzo filiale</h4>
                         <div class="grid grid-cols-1 gap-y-4 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="indirizzo">Indirizzo e civico</Label>
+                                <Label for="indirizzo">{{ trans('gestionale.form_common.labels.address') }}</Label>
                                 <Input id="indirizzo" v-model="form.indirizzo" class="mt-1" />
                             </div>
                             <div class="sm:col-span-2">
-                                <Label for="cap">CAP</Label>
+                                <Label for="cap">{{ trans('gestionale.form_common.labels.postal_code') }}</Label>
                                 <Input id="cap" v-model="form.cap" class="mt-1" maxlength="5" />
                             </div>
                             <div class="sm:col-span-3">
-                                <Label for="comune">Comune</Label>
+                                <Label for="comune">{{ trans('gestionale.form_common.labels.city') }}</Label>
                                 <Input id="comune" v-model="form.comune" class="mt-1" />
                             </div>
                             <div class="sm:col-span-1">
-                                <Label for="provincia">Prov.</Label>
+                                <Label for="provincia">{{ trans('gestionale.form_common.labels.province') }}</Label>
                                 <Input id="provincia" v-model="form.provincia" class="mt-1 uppercase" maxlength="2" />
                             </div>
                         </div>

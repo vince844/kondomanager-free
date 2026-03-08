@@ -7,6 +7,7 @@ import DataTable from "@/components/gestionale/tabelle/DataTable.vue";
 import { getColumns } from "@/components/gestionale/tabelle/columns";
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { PieChart, Scale, TableProperties } from 'lucide-vue-next';
 import type { Flash } from "@/types/flash";
@@ -58,15 +59,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco tabelle" />
+  <Head :title="trans('gestionale.list_pages.tabelle.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
-        page-title="Tabelle millesimali"
-        page-subtitle="Configura i parametri di ripartizione del condominio. Il validatore di coerenza ti assisterà per evitare errori matematici."
+        :page-title="trans('gestionale.list_pages.tabelle.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.tabelle.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

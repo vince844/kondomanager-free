@@ -6,6 +6,7 @@ import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import DataTable from '@/components/gestionale/pianiDeiConti/DataTable.vue';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import { createColumns } from '@/components/gestionale/pianiDeiConti/columns'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Layers, Plus, FolderSync } from 'lucide-vue-next';
@@ -60,15 +61,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco piani conti" />
+  <Head :title="trans('gestionale.list_pages.piani_conti.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-         page-title="Piani dei conti"
-        page-subtitle="Configura la struttura delle voci di spesa (preventivo) per organizzare il budget delle gestioni del condominio."
+         :page-title="trans('gestionale.list_pages.piani_conti.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.piani_conti.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

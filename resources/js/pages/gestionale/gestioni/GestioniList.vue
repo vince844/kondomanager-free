@@ -7,6 +7,7 @@ import DataTable from '@/components/gestionale/gestioni/DataTable.vue';
 import { createColumns } from '@/components/gestionale/gestioni/columns'
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Network, Split, Infinity } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
@@ -57,15 +58,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco gestioni" />
+  <Head :title="trans('gestionale.list_pages.gestioni.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4"> 
 
       <PageHeaderGuide
-        page-title="Elenco gestioni"
-        page-subtitle="Crea e amministra i contenitori di spesa (ordinaria, straordinaria, riscaldamento) per strutturare la contabilità del condominio."
+        :page-title="trans('gestionale.list_pages.gestioni.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.gestioni.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

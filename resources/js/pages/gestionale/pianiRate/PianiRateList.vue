@@ -8,6 +8,7 @@ import { usePermission } from "@/composables/permissions";
 import { createColumns } from '@/components/gestionale/pianiRate/columns';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { CalendarDays, Layers, Coins } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { PianoRate } from '@/types/gestionale/piani-rate';
 import type { Building } from '@/types/buildings';
@@ -30,43 +31,43 @@ const flashMessage = computed(() => page.props.flash.message);
 
 // Breadcrumbs testuali per il nuovo componente Header
 const headerBreadcrumbs = computed(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: 'Piani Rate' }
+  { title: trans('gestionale.piani_rate.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.piani_rate.breadcrumbs.rate_plans') }
 ]);
 
 // Configurazione della guida per i Piani Rate
-const pageGuides = [
+const pageGuides = computed(() => [
   {
-    title: 'Emissione Rate',
-    description: 'Pianifica le scadenze per la riscossione delle quote. Puoi creare piani rateizzati per la gestione ordinaria o per fondi straordinari.',
+    title: trans('gestionale.piani_rate.guides.issue_installments_title'),
+    description: trans('gestionale.piani_rate.guides.issue_installments_description'),
     icon: CalendarDays,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Piani Integrativi',
-    description: 'Se devi richiedere fondi aggiuntivi in corso d\'anno, crea un piano rate integrativo e associalo al Piano dei Conti esistente.',
+    title: trans('gestionale.piani_rate.guides.integrative_plans_title'),
+    description: trans('gestionale.piani_rate.guides.integrative_plans_description'),
     icon: Layers,
     colorVariant: 'amber' as const
   },
   {
-    title: 'Gestione Saldi Pregressi',
-    description: 'Consigliamo di isolare il "Saldo Iniziale" dell\'anno precedente in una rata separata. Questa best practice è fondamentale per gestire i subentri in modo impeccabile.',
+    title: trans('gestionale.piani_rate.guides.previous_balances_title'),
+    description: trans('gestionale.piani_rate.guides.previous_balances_description'),
     icon: Coins,
     colorVariant: 'emerald' as const
   }
-];
+]);
 </script>
 
 <template>
-  <Head title="Elenco piani rate" />
+  <Head :title="trans('gestionale.piani_rate.head_title')" />
 
   <GestionaleLayout>
   
     <div class="px-6 py-8 space-y-3">
       
       <PageHeaderGuide
-        page-title="Piani rate"
-        page-subtitle="Configura i flussi di incasso. Definisci il numero di rate, le scadenze e gli importi da richiedere ai condòmini."
+        :page-title="trans('gestionale.piani_rate.page_title')"
+        :page-subtitle="trans('gestionale.piani_rate.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

@@ -2,6 +2,7 @@
 
 import { computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
@@ -84,9 +85,7 @@ const submit = () => {
                         <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
                         <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
                             <Plus class="w-4 h-4" v-if="!form.processing" />
-                            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                            Salva
-                        </Button>
+                            <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />{{ trans('gestionale.form_common.actions.save') }}</Button>
 
                         <Link
                             as="button"
@@ -104,13 +103,13 @@ const submit = () => {
 
                         <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-3">
-                                <Label for="nome">Nome</Label>
+                                <Label for="nome">{{ trans('gestionale.form_common.labels.name') }}</Label>
                                 <Input 
                                 id="nome" 
                                 class="mt-1 block w-full"
                                     v-model="form.nome" 
                                     v-on:focus="form.clearErrors('nome')"
-                                    placeholder="Nome" 
+                                    :placeholder="trans('gestionale.form_common.labels.name')" 
                                 />
                                 
                                 <InputError :message="form.errors.nome" />
@@ -125,7 +124,7 @@ const submit = () => {
                                     label="nome" 
                                      class="mt-1 block w-full"
                                     v-model="form.gestione_id"
-                                    placeholder="Seleziona una gestione"
+                                    :placeholder="trans('gestionale.form_common.placeholders.select_one')"
                                     @update:modelValue="form.clearErrors('gestione_id')" 
                                     :reduce="(gestioni: Gestione) => gestioni.id"
                                 />
@@ -136,13 +135,13 @@ const submit = () => {
 
                         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                            <Label for="indirizzo">Descrizione</Label>
+                            <Label for="indirizzo">{{ trans('gestionale.form_common.labels.description') }}</Label>
                             <Input 
                                 id="descrizione" 
                                 class="mt-1 block w-full"
                                 v-model="form.descrizione" 
                                 v-on:focus="form.clearErrors('descrizione')"
-                                placeholder="Descrizione" 
+                                :placeholder="trans('gestionale.form_common.labels.description')" 
                             />
                             
                             <InputError class="mt-2" :message="form.errors.descrizione" />
@@ -152,10 +151,10 @@ const submit = () => {
 
                         <div class="mt-6 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
-                                <Label for="note">Note</Label>
+                                <Label for="note">{{ trans('gestionale.form_common.labels.notes') }}</Label>
                                 <Textarea 
                                     id="note" 
-                                    placeholder="Inserisci una nota qui" 
+                                    :placeholder="trans('gestionale.form_common.placeholders.insert_note')" 
                                     v-model="form.note" 
                                     v-on:focus="form.clearErrors('note')"
                                 />

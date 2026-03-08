@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
@@ -128,7 +129,7 @@ const getImportoStyle = (riga: any) => {
                     <Badge variant="outline" class="font-mono font-normal text-xs">{{ anagrafica.codice_fiscale }}</Badge>
                 </h1>
                 <p class="text-sm text-gray-500 mt-1 flex items-center gap-2">
-                    <Mail class="w-3 h-3" /> {{ anagrafica.email || 'Nessuna email' }}
+                    <Mail class="w-3 h-3" /> {{ anagrafica.email || trans('gestionale.form_common.messages.no_email') }}
                     <span class="text-gray-300">|</span> Esercizio: {{ esercizio.nome }}
                 </p>
             </div>
@@ -205,7 +206,7 @@ const getImportoStyle = (riga: any) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="anagrafica.immobili.length === 0" class="text-center py-8 text-muted-foreground text-xs italic">Nessuna unità associata.</div>
+                            <div v-if="anagrafica.immobili.length === 0" class="text-center py-8 text-muted-foreground text-xs italic">{{ trans('gestionale.form_common.messages.no_data') }}</div>
                         </div>
                     </div>
                 </div>
@@ -257,7 +258,7 @@ const getImportoStyle = (riga: any) => {
                             </tr>
 
                             <tr v-if="timeline.length === 0">
-                                <td colspan="6" class="px-6 py-12 text-center text-muted-foreground">Nessun movimento registrato.</td>
+                                <td colspan="6" class="px-6 py-12 text-center text-muted-foreground">{{ trans('gestionale.form_common.messages.no_data') }}</td>
                             </tr>
 
                             <tr v-for="riga in timeline" :key="riga.id" class="hover:bg-gray-50 transition-colors group">

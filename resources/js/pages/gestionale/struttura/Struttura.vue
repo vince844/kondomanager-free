@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Head } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -20,28 +21,28 @@ const condominio = computed<Building>(() => props.condominio);
 
 // Breadcrumbs testuali per il nuovo componente Header
 const headerBreadcrumbs = computed(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: 'Struttura', href: '#' },
-  { title: 'Dettagli Fabbricato' }
+  { title: trans('gestionale.struttura.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.struttura.breadcrumbs.structure'), href: '#' },
+  { title: trans('gestionale.struttura.breadcrumbs.building_details') }
 ]);
 
 // Configurazione della guida per l'Anagrafica
 const pageGuides = [
   {
-    title: 'Dati Fiscali',
-    description: 'Mantieni sempre aggiornato il Codice Fiscale. È il dato fondamentale per la generazione delle Certificazioni Uniche (CU) e dei modelli F24.',
+    title: trans('gestionale.struttura.guides.fiscal_title'),
+    description: trans('gestionale.struttura.guides.fiscal_description'),
     icon: FileText,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Dati Catastali',
-    description: 'I dati catastali (Foglio, Particella, Sezione) sono necessari per le pratiche di detrazione fiscale sui lavori straordinari.',
+    title: trans('gestionale.struttura.guides.land_title'),
+    description: trans('gestionale.struttura.guides.land_description'),
     icon: MapPin,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Note Operative',
-    description: 'Usa le note per appuntare informazioni cruciali per i fornitori: codici di accesso, posizione dei contatori o orari della portineria.',
+    title: trans('gestionale.struttura.guides.notes_title'),
+    description: trans('gestionale.struttura.guides.notes_description'),
     icon: ClipboardList,
     colorVariant: 'amber' as const
   }
@@ -49,15 +50,15 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Dettagli condominio" />
+  <Head :title="trans('gestionale.struttura.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-        page-title="Dettagli fabbricato"
-        page-subtitle="Consulta le informazioni generali, i dati catastali e le note operative. Assicurati che i dati fiscali siano sempre aggiornati."
+        :page-title="trans('gestionale.struttura.page_title')"
+        :page-subtitle="trans('gestionale.struttura.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"
@@ -78,22 +79,22 @@ const pageGuides = [
                 <div class="p-6 lg:p-8">
                   <div class="mb-5">
                     <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ condominio.nome }}</h3>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Dettagli anagrafici e fiscali del fabbricato.</p> 
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ trans('gestionale.struttura.sections.anagraphic_subtitle') }}</p> 
                   </div>
 
                   <div class="flex flex-col gap-2">
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Indirizzo:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.address') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 capitalize ml-1">{{ condominio.indirizzo || '-' }}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5 flex items-center flex-wrap">
-                      <span class="font-bold text-slate-900 dark:text-white mr-2">Codice Fiscale:</span>
+                      <span class="font-bold text-slate-900 dark:text-white mr-2">{{ trans('gestionale.struttura.sections.tax_code') }}:</span>
                       <span class="font-mono text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{{ condominio.codice_fiscale ?? '-' }}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Cod. Identificativo:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.identifier_code') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.codice_identificativo ?? '-' }}</span>
                     </div>
                   </div>
@@ -101,33 +102,33 @@ const pageGuides = [
 
                 <div class="p-6 lg:p-8 bg-slate-50/50 dark:bg-slate-900/20">
                   <div class="mb-5">
-                    <h3 class="text-base font-bold text-slate-900 dark:text-white">Riferimenti Catastali</h3>
-                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Dati necessari per pratiche e detrazioni.</p>
+                    <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.land_refs_title') }}</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ trans('gestionale.struttura.sections.land_refs_subtitle') }}</p>
                   </div>
                   
                   <div class="flex flex-col gap-2">
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Comune Catasto:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.land_city') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.comune_catasto ?? '-' }}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Codice Catasto:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.land_code') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.codice_catasto ?? '-'}}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Sezione:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.section') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.sezione_catasto ?? '-' }}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Foglio:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.sheet') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.foglio_catasto ?? '-' }}</span>
                     </div>
 
                     <div class="text-[13px] py-0.5">
-                      <span class="font-bold text-slate-900 dark:text-white">Particella:</span>
+                      <span class="font-bold text-slate-900 dark:text-white">{{ trans('gestionale.struttura.sections.parcel') }}:</span>
                       <span class="text-slate-700 dark:text-slate-300 ml-1">{{ condominio.particella_catasto ?? '-' }}</span>
                     </div>
                   </div>
@@ -137,9 +138,9 @@ const pageGuides = [
             </div>
 
             <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-xl shadow-sm p-6 lg:p-8">
-              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-4">Note Operative</h3>
+              <h3 class="text-base font-bold text-slate-900 dark:text-white mb-4">{{ trans('gestionale.struttura.sections.notes_title') }}</h3>
               <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap" :class="{'italic text-slate-400 dark:text-slate-500': !condominio.note}">
-                {{ condominio.note || 'Nessuna nota inserita per questo condominio.' }}
+                {{ condominio.note || trans('gestionale.struttura.sections.no_notes') }}
               </p>
             </div>
 

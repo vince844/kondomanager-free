@@ -1,6 +1,7 @@
 <script setup lang="ts">
 
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
+import { trans } from 'laravel-vue-i18n';
 import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
@@ -305,7 +306,7 @@ const rimuoviTabella = () => {
       title="Rimuovi tabella associata"
       description="Sei sicuro di voler rimuovere questa tabella millesimale dal conto?"
       confirm-text="Rimuovi"
-      cancel-text="Annulla"
+      :cancel-text="trans('gestionale.form_common.actions.cancel')"
       variant="destructive"
       @confirm="rimuoviTabella"
       @cancel="annullaRimozioneTabella"
@@ -316,7 +317,7 @@ const rimuoviTabella = () => {
       title="Sei sicuro di voler eliminare"
       description="Questa azione non è reversibile. Il conto verrà eliminato permanentemente."
       confirm-text="Elimina"
-      cancel-text="Annulla"
+      :cancel-text="trans('gestionale.form_common.actions.cancel')"
       variant="destructive"
       @confirm="eliminaConto"
       @cancel="annullaEliminazione"

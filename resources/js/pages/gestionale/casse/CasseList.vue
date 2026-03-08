@@ -7,6 +7,7 @@ import DataTable from '@/components/gestionale/casse/DataTable.vue';
 import { getColumns } from '@/components/gestionale/casse/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 
 // Icone mirate per la gestione finanziaria e banche
@@ -65,15 +66,15 @@ const pageGuides = computed(() => [
 </script>
 
 <template>
-  <Head title="Elenco risorse e fondi" />
+  <Head :title="trans('gestionale.list_pages.casse.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
-        page-title="Risorse e fondi"
-        page-subtitle="Configura i conti bancari, le casse e i fondi del condominio. Una corretta impostazione è la base per una tesoreria sana."
+        :page-title="trans('gestionale.list_pages.casse.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.casse.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

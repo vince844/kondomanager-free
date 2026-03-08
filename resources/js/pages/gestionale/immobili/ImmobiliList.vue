@@ -7,6 +7,7 @@ import DataTable from '@/components/gestionale/immobili/DataTable.vue';
 import { getColumns } from '@/components/gestionale/immobili/columns';
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Home, UsersRound, Link as LinkIcon } from 'lucide-vue-next';
@@ -59,7 +60,7 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco immobili" />
+  <Head :title="trans('gestionale.list_pages.immobili.head_title')" />
 
   <GestionaleLayout>
 
@@ -70,8 +71,8 @@ const pageGuides = [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
-        page-title="Unità Immobiliari"
-        page-subtitle="Gestisci l'anagrafica fisica del condominio. Aggiungi le unità immobiliari e preparati ad assegnare i soggetti."
+        :page-title="trans('gestionale.list_pages.immobili.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.immobili.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"
