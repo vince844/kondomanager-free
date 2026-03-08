@@ -22,3 +22,6 @@ yarn-error.log
 /.vscode
 /.zed
 .DS_Store
+
+# Local helper scripts
+z_myscripts/
