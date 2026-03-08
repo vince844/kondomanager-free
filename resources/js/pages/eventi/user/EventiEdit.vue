@@ -28,7 +28,7 @@ const props = defineProps<{
   occurrenceDate?: string;
 }>();
 
-const mode = ref(props.mode ?? 'only_this');
+const mode = ref(props.mode ?? 'all');
 const occurrenceDate = ref(props.occurrenceDate ?? null);
 
 // Toggle recurrence if editing and recurrence exists
@@ -97,7 +97,7 @@ const submit = () => {
     form.recurrence_until = '';
   }
   
-  form.put(route(generateRoute('eventi.update'), { id: props.evento.id }), {
+  form.put(route(generateRoute('eventi.update'), { evento: props.evento.id }), {
     preserveScroll: true
   });
 };
@@ -248,7 +248,7 @@ const submit = () => {
 
               <v-select
                 :options="categorie"
-                label="name"
+                label="localized_name"
                 v-model="form.category_id"
                 :reduce="(option: CategoriaEvento) => option.id"
                 placeholder="Seleziona categoria"

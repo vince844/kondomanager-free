@@ -25,6 +25,7 @@ import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import { Permission } from '@/enums/Permission'
 import type { Evento } from '@/types/eventi'
+import { trans } from 'laravel-vue-i18n'
 
 const props = defineProps<{ evento: Evento }>()
 
@@ -79,7 +80,7 @@ function deleteEvento() {
       closeModal()
     },
     onError: () => {
-      console.error('Errore durante la cancellazione.')
+      console.error(trans('eventi.row_actions.delete_error_log'))
     },
     onFinish: () => {
       isDeleting.value = false
@@ -124,12 +125,12 @@ async function editEvento() {
           closeEditModal()
         },
         onError: (errors) => {
-          console.error('Edit error:', errors)
+          console.error(trans('eventi.row_actions.edit_error_log'), errors)
         }
       }
     )
   } catch (error) {
-    console.error('Navigation error:', error)
+    console.error(trans('eventi.row_actions.navigation_error_log'), error)
   }
 }
 
@@ -160,13 +161,13 @@ function goToEdit(evento: Evento, e?: Event) {
     ])"
   >
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" class="w-8 h-8 p-0" aria-label="Apri menu azioni">
+      <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('eventi.row_actions.open_actions_menu')">
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
 
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('eventi.row_actions.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem
        v-if="hasPermission([Permission.EDIT_EVENTS, Permission.EDIT_OWN_EVENTS])"
@@ -174,7 +175,7 @@ function goToEdit(evento: Evento, e?: Event) {
       >
 
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica
+        {{ trans('eventi.row_actions.edit') }}
         
       </DropdownMenuItem>
 
@@ -183,7 +184,7 @@ function goToEdit(evento: Evento, e?: Event) {
        @click="handleDelete(evento)"
       >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('eventi.row_actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
@@ -191,35 +192,35 @@ function goToEdit(evento: Evento, e?: Event) {
   <AlertDialog v-model:open="isAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Sei sicuro di voler eliminare questo evento?</AlertDialogTitle>
+        <AlertDialogTitle>{{ trans('eventi.row_actions.delete_title') }}</AlertDialogTitle>
         <AlertDialogDescription>
           <template v-if="isRecurring">
-            Questo evento fa parte di una serie ricorrente. Scegli cosa vuoi eliminare:
+            {{ trans('eventi.row_actions.delete_recurring_description') }}
             <RadioGroup v-model="deleteMode" class="mt-4 space-y-2">
               <div class="flex items-center space-x-2">
                 <RadioGroupItem id="only_this" value="only_this" />
-                <label for="only_this" class="text-sm">Solo questo evento</label>
+                <label for="only_this" class="text-sm">{{ trans('eventi.row_actions.only_this_event') }}</label>
               </div>
               <div class="flex items-center space-x-2">
                 <RadioGroupItem id="this_and_future" value="this_and_future" />
-                <label for="this_and_future" class="text-sm">Questo e tutti i futuri</label>
+                <label for="this_and_future" class="text-sm">{{ trans('eventi.row_actions.this_and_future') }}</label>
               </div>
               <div class="flex items-center space-x-2">
                 <RadioGroupItem id="all" value="all" />
-                <label for="all" class="text-sm">Tutta la serie</label>
+                <label for="all" class="text-sm">{{ trans('eventi.row_actions.all_series') }}</label>
               </div>
             </RadioGroup>
           </template>
           <template v-else>
-            Questa azione non è reversibile. Eliminerà l'evento definitivamente.
+            {{ trans('eventi.row_actions.delete_non_recurring_description') }}
           </template>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
+        <AlertDialogCancel @click="closeModal">{{ trans('eventi.row_actions.cancel') }}</AlertDialogCancel>
         <AlertDialogAction :disabled="isDeleting" @click="deleteEvento">
-          <span v-if="isDeleting">Eliminazione...</span>
-          <span v-else>Continua</span>
+          <span v-if="isDeleting">{{ trans('eventi.row_actions.deleting') }}</span>
+          <span v-else>{{ trans('eventi.row_actions.continue') }}</span>
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
@@ -228,25 +229,25 @@ function goToEdit(evento: Evento, e?: Event) {
   <AlertDialog v-model:open="isEditAlertOpen">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Modifica evento ricorrente</AlertDialogTitle>
+        <AlertDialogTitle>{{ trans('eventi.row_actions.edit_recurring_title') }}</AlertDialogTitle>
         <AlertDialogDescription>
-          Questo evento fa parte di una serie ricorrente. Cosa vuoi modificare?
+          {{ trans('eventi.row_actions.edit_recurring_description') }}
           <RadioGroup v-model="editMode" class="mt-4 space-y-2">
             <div class="flex items-center space-x-2">
               <RadioGroupItem id="edit_only_this" value="only_this" />
-              <label for="edit_only_this" class="text-sm">Solo questo evento</label>
+              <label for="edit_only_this" class="text-sm">{{ trans('eventi.row_actions.only_this_event') }}</label>
             </div>
             <div class="flex items-center space-x-2">
               <RadioGroupItem id="edit_all" value="all" />
-              <label for="edit_all" class="text-sm">Tutta la serie</label>
+              <label for="edit_all" class="text-sm">{{ trans('eventi.row_actions.all_series') }}</label>
             </div>
           </RadioGroup>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="closeEditModal">Annulla</AlertDialogCancel>
+        <AlertDialogCancel @click="closeEditModal">{{ trans('eventi.row_actions.cancel') }}</AlertDialogCancel>
         <AlertDialogAction @click="editEvento">
-          Continua
+          {{ trans('eventi.row_actions.continue') }}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

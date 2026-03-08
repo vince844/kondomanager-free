@@ -213,7 +213,7 @@ const submit = () => {
 
                   <v-select
                     :options="categorie"
-                    label="name"
+                    label="localized_name"
                     v-model="form.category_id"
                     :reduce="(option: CategoriaEvento) => option.id"
                     placeholder="Seleziona categoria"
