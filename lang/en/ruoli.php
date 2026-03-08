@@ -13,4 +13,17 @@ return [
     'cannot_delete_default_role'   => 'Cannot delete the default role ":role".',
     'default_role_not_found'       => 'Default role not found.',
     'success_delete_with_reassign' => 'The role has been deleted and all associated users have been reassigned to the :default_role role.',
+    'table' => [
+        'filter' => 'Filter by name...',
+    ],
+    'actions' => [
+        'new_role' => 'New role',
+        'settings' => 'Settings',
+        'edit' => 'Edit',
+        'delete' => 'Delete',
+        'cancel' => 'Cancel',
+        'understood' => 'Understood',
+        'actions_label' => 'Actions',
+        'sr_only_actions' => 'Actions',
+    ],
 ];

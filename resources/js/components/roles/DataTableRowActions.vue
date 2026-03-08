@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { MoreHorizontal } from 'lucide-vue-next'
 import { Trash2, FilePenLine } from 'lucide-vue-next'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { trans } from 'laravel-vue-i18n';
 import type { Role } from '@/types/roles';
 
 interface Props {
@@ -88,21 +89,21 @@ const protectedDialogDescription = computed(() => {
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+        <span class="sr-only">{{ trans('ruoli.actions.sr_only_actions') }}</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('ruoli.actions.actions_label') }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="handleEdit(role)">
         <FilePenLine class="w-4 h-4 text-xs" />
-        Modifica 
+        {{ trans('ruoli.actions.edit') }}
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="handleDelete(role)">
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina 
+        {{ trans('ruoli.actions.delete') }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
@@ -127,8 +128,8 @@ const protectedDialogDescription = computed(() => {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Annulla</AlertDialogCancel>
-        <AlertDialogAction @click="deleteRole">Elimina</AlertDialogAction>
+        <AlertDialogCancel>{{ trans('ruoli.actions.cancel') }}</AlertDialogCancel>
+        <AlertDialogAction @click="deleteRole">{{ trans('ruoli.actions.delete') }}</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
@@ -153,7 +154,7 @@ const protectedDialogDescription = computed(() => {
         </div>
       </AlertDialogDescription>
       <AlertDialogFooter>
-        <AlertDialogAction @click="isProtectedDialogOpen = false">Ho capito</AlertDialogAction>
+        <AlertDialogAction @click="isProtectedDialogOpen = false">{{ trans('ruoli.actions.understood') }}</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

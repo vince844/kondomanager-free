@@ -13,5 +13,17 @@ return [
     'cannot_delete_default_role'   => 'Non è possibile eliminare il ruolo di default ":role".',
     'default_role_not_found'       => 'Il ruolo di default non è stato trovato.',
     'success_delete_with_reassign' => 'Ruolo eliminato con successo. :count utenti sono stati assegnati al ruolo :default_role.',
-
+    'table' => [
+        'filter' => 'Filtra per nome...',
+    ],
+    'actions' => [
+        'new_role' => 'Nuovo ruolo',
+        'settings' => 'Impostazioni',
+        'edit' => 'Modifica',
+        'delete' => 'Elimina',
+        'cancel' => 'Annulla',
+        'understood' => 'Ho capito',
+        'actions_label' => 'Azioni',
+        'sr_only_actions' => 'Azioni',
+    ],
 ];

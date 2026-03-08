@@ -20,7 +20,7 @@ defineProps<{
     <!-- Left Section: Input -->
     <div class="flex items-center space-x-2">
       <Input
-        :placeholder="trans('users.table.filter')"
+        :placeholder="trans('ruoli.table.filter')"
         :model-value="(table.getColumn('name')?.getFilterValue() as string) ?? ''"
         class="h-8 w-[150px] lg:w-[250px]"
         @input="table.getColumn('name')?.setFilterValue($event.target.value)"
@@ -30,7 +30,7 @@ defineProps<{
       <!-- Right Section: Button (force it to the right) -->
       <Button class="hidden h-8 lg:flex ml-auto">
         <ShieldPlus class="w-4 h-4" />
-        <Link :href="route('ruoli.create')">Nuovo ruolo</Link>
+        <Link :href="route('ruoli.create')">{{ trans('ruoli.actions.new_role') }}</Link>
       </Button>
 
       <Link
@@ -39,7 +39,7 @@ defineProps<{
           class="h-8 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           <Settings class="w-4 h-4" />
-          <span>{{ trans('impostazioni.label.settings') }}</span>
+          <span>{{ trans('ruoli.actions.settings') }}</span>
       </Link>
     </div>
 
