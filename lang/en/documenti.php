@@ -195,6 +195,20 @@ return [
         'private_document_title' => 'Create private document',
         'private_document_description' => 'When this option is selected, the document is private and visible only to administrators.',
     ],
+    'user_list' => [
+        'category_title' => 'Documents: :category',
+        'category_description' => 'Manage digital documents related to this condominium category.',
+        'search_placeholder' => 'Search by title...',
+        'loading' => 'Updating...',
+        'load_error' => 'Loading error.',
+        'try_again' => 'Try again',
+        'no_results_title' => 'No results found',
+        'no_results_description' => 'Try adjusting your search terms.',
+        'empty_category_title' => 'Empty category',
+        'empty_category_description' => 'No documents have been uploaded in this category yet.',
+        'clear_search' => 'Clear search',
+        'upload_document' => 'Upload document',
+    ],
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */

@@ -8,6 +8,7 @@ import DocumentiListCards from '@/components/documenti/DocumentiListCards.vue';
 import { usePermission } from "@/composables/permissions";
 import { useDocumenti } from '@/composables/useDocumenti';
 import { Permission } from '@/enums/Permission';
+import { trans } from 'laravel-vue-i18n';
 import { Button } from "@/components/ui/button";
 import Alert from "@/components/Alert.vue";
 import { 
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/empty';
 import { 
   CircleAlert, List, Loader2, SearchX, Plus, 
-  FileStack, ChevronLeftIcon, ChevronRightIcon 
+  FileStack
 } from "lucide-vue-next";
 import { 
   Pagination, 
@@ -106,7 +107,7 @@ async function handlePageChange(p: number) {
         loadingCount.value = Math.max(0, loadingCount.value - 1);
         showDelayedLoading.value = false;
       },
-      onError: () => (errorState.value = "Errore di caricamento.")
+      onError: () => (errorState.value = trans('documenti.user_list.load_error'))
     }
   );
 }
@@ -141,13 +142,13 @@ watchDebounced(searchQuery, async (newQuery) => {
 </script>
 
 <template>
-  <Head :title="`Documenti: ${categoria.name}`" />
+  <Head :title="trans('documenti.user_list.category_title', { category: categoria.name })" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        :title="`Documenti: ${categoria.name}`"
-        description="Gestione dei documenti digitali relativi a questa categoria condominiale."
+        :title="trans('documenti.user_list.category_title', { category: categoria.name })"
+        :description="trans('documenti.user_list.category_description')"
       />
 
       <div class="container mx-auto mt-4">
@@ -155,7 +156,7 @@ watchDebounced(searchQuery, async (newQuery) => {
           <input
             v-model="searchQuery"
             type="text"
-            placeholder="Cerca per titolo..."
+            :placeholder="trans('documenti.user_list.search_placeholder')"
             class="max-w-md w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none transition-all"
           />
 
@@ -167,7 +168,7 @@ watchDebounced(searchQuery, async (newQuery) => {
               class="gap-2"
             >
               <Plus class="w-4 h-4" />
-              <span>Crea</span>
+              <span>{{ trans('documenti.actions.new_document') }}</span>
             </Button>
 
             <Link 
@@ -176,7 +177,7 @@ watchDebounced(searchQuery, async (newQuery) => {
               class="inline-flex items-center justify-center gap-2 rounded-md bg-secondary text-secondary-foreground text-sm font-medium px-3 py-1.5 h-10 hover:bg-secondary/80 transition-colors"
             >
               <List class="w-4 h-4" />
-              <span>Categorie</span>
+              <span>{{ trans('documenti.actions.list_categories') }}</span>
             </Link>
           </div>
         </div>
@@ -189,7 +190,7 @@ watchDebounced(searchQuery, async (newQuery) => {
           <Transition name="fade">
             <div v-if="showDelayedLoading && isLoading" class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 gap-2">
               <Loader2 class="w-8 h-8 animate-spin text-primary" />
-              <span class="text-sm font-medium text-gray-500">Aggiornamento...</span>
+              <span class="text-sm font-medium text-gray-500">{{ trans('documenti.user_list.loading') }}</span>
             </div>
           </Transition>
 
@@ -197,7 +198,7 @@ watchDebounced(searchQuery, async (newQuery) => {
             <CircleAlert class="w-5 h-5 text-red-500 mt-0.5" />
             <div>
               <p class="text-red-700 font-medium">{{ errorState }}</p>
-              <Button variant="link" size="sm" class="p-0 h-auto text-red-600" @click="handlePageChange(meta.current_page)">Riprova</Button>
+              <Button variant="link" size="sm" class="p-0 h-auto text-red-600" @click="handlePageChange(meta.current_page)">{{ trans('documenti.user_list.try_again') }}</Button>
             </div>
           </div>
 
@@ -226,18 +227,18 @@ watchDebounced(searchQuery, async (newQuery) => {
                   <FileStack v-else class="text-muted-foreground" />
                 </EmptyMedia>
                 <EmptyTitle>
-                  {{ showNoResults ? 'Nessun risultato trovato' : 'Categoria vuota' }}
+                  {{ showNoResults ? trans('documenti.user_list.no_results_title') : trans('documenti.user_list.empty_category_title') }}
                 </EmptyTitle>
                 <EmptyDescription>
-                  {{ showNoResults ? 'Prova a modificare i termini della tua ricerca.' : 'Non sono ancora stati caricati documenti in questa categoria.' }}
+                  {{ showNoResults ? trans('documenti.user_list.no_results_description') : trans('documenti.user_list.empty_category_description') }}
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent>
                 <Button v-if="showNoResults" variant="outline" size="sm" @click="searchQuery = ''">
-                  Annulla ricerca
+                  {{ trans('documenti.user_list.clear_search') }}
                 </Button>
                 <Button v-else-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])" size="sm" as="a" :href="route(generateRoute('documenti.create'), { categoria: props.categoria.id })">
-                  Carica documento
+                  {{ trans('documenti.user_list.upload_document') }}
                 </Button>
               </EmptyContent>
             </Empty>

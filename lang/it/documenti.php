@@ -195,6 +195,20 @@ return [
         'private_document_title' => 'Crea documento privato',
         'private_document_description' => 'Quando questa opzione è selezionata, il documento sarà privato e visibile solo agli amministratori.',
     ],
+    'user_list' => [
+        'category_title' => 'Documenti: :category',
+        'category_description' => 'Gestione dei documenti digitali relativi a questa categoria condominiale.',
+        'search_placeholder' => 'Cerca per titolo...',
+        'loading' => 'Aggiornamento...',
+        'load_error' => 'Errore di caricamento.',
+        'try_again' => 'Riprova',
+        'no_results_title' => 'Nessun risultato trovato',
+        'no_results_description' => 'Prova a modificare i termini della tua ricerca.',
+        'empty_category_title' => 'Categoria vuota',
+        'empty_category_description' => 'Non sono ancora stati caricati documenti in questa categoria.',
+        'clear_search' => 'Annulla ricerca',
+        'upload_document' => 'Carica documento',
+    ],
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */

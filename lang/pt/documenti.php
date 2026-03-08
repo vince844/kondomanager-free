@@ -195,6 +195,20 @@ return [
         'private_document_title' => 'Criar documento privado',
         'private_document_description' => 'Quando esta opção é selecionada, o documento fica privado e visível apenas para administradores.',
     ],
+    'user_list' => [
+        'category_title' => 'Documentos: :category',
+        'category_description' => 'Gestão dos documentos digitais relativos a esta categoria do condomínio.',
+        'search_placeholder' => 'Pesquisar por título...',
+        'loading' => 'A atualizar...',
+        'load_error' => 'Erro de carregamento.',
+        'try_again' => 'Tentar novamente',
+        'no_results_title' => 'Nenhum resultado encontrado',
+        'no_results_description' => 'Tente ajustar os termos da pesquisa.',
+        'empty_category_title' => 'Categoria vazia',
+        'empty_category_description' => 'Ainda não foram carregados documentos nesta categoria.',
+        'clear_search' => 'Limpar pesquisa',
+        'upload_document' => 'Carregar documento',
+    ],
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */
