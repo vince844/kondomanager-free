@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { Link, Head, useForm } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { ref } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { List, Plus, LoaderCircle, UploadCloud, Info } from 'lucide-vue-next';
@@ -14,9 +14,8 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet";
 import axios from 'axios';
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
-import { publishedConstants } from '@/lib/documenti/constants';
-import type { PublishedType } from '@/types/documenti';
 import type { Categoria } from '@/types/categorie';
 import type { Documento } from '@/types/documenti';
 
@@ -58,7 +57,7 @@ const createCategory = async () => {
     newCategoryName.value = ''
     newCategoryDescription.value = ''
   } catch (error) {
-    console.error('Errore creazione categoria', error)
+    console.error(trans('documenti.error_create_category'), error)
   }
 
 }
@@ -105,14 +104,14 @@ const submit = () => {
 
 
 <template>
-  <Head title="Modifica documento" />
+  <Head :title="trans('documenti.header.edit_document_head')" />
 
   <AppLayout >
     <div class="px-4 py-6">
 
       <Heading
-        title="Modifica documento archivio"
-        description="Compila il seguente modulo per modificare documento per l'archivo del condominio"
+        :title="trans('documenti.header.edit_document_title')"
+        :description="trans('documenti.header.edit_document_description')"
       />
 
       <form @submit.prevent="submit" class="space-y-2">
@@ -122,7 +121,7 @@ const submit = () => {
           <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
             <Plus class="w-4 h-4" v-if="!form.processing" />
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva
+            {{ trans('documenti.actions.save_document') }}
           </Button>
 
           <Link
@@ -131,7 +130,7 @@ const submit = () => {
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
-            <span>Elenco</span>
+            <span>{{ trans('documenti.actions.list_documents') }}</span>
           </Link>
         </div>
 
@@ -144,13 +143,13 @@ const submit = () => {
                     
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-3">
-                          <Label for="nome">Nome documento</Label>
+                          <Label for="nome">{{ trans('documenti.label.name') }}</Label>
                           <Input 
                               id="name" 
                               class="mt-1 block w-full"
                               v-model="form.name" 
                               v-on:focus="form.clearErrors('name')"
-                              placeholder="Nome documento" 
+                              :placeholder="trans('documenti.placeholder.name')"
                           />
                           
                           <InputError :message="form.errors.name" />
@@ -160,13 +159,13 @@ const submit = () => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                          <Label for="nome">Descrizione documento</Label>
+                          <Label for="nome">{{ trans('documenti.label.description') }}</Label>
                           <Textarea 
                               id="description" 
                               class="mt-1 block w-full min-h-[200px]"
                               v-model="form.description" 
                               v-on:focus="form.clearErrors('description')"
-                              placeholder="Descrizone documento" 
+                              :placeholder="trans('documenti.placeholder.description')"
                           />
                           
                           <InputError :message="form.errors.description" />
@@ -176,14 +175,14 @@ const submit = () => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                        <Label for="file-upload">Seleziona documento</Label>
+                        <Label for="file-upload">{{ trans('documenti.label.select_document') }}</Label>
                         <label
                           for="file-upload"
                           class="mt-2 flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                         >
                           <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
                           <span class="text-gray-500 dark:text-gray-400 text-center">
-                            <strong>Clicca qui per selezionare il documento</strong>
+                            <strong>{{ trans('documenti.dialogs.select_document_title') }}</strong>
                           </span>
                           <input
                             id="file-upload"
@@ -225,7 +224,7 @@ const submit = () => {
 
                         <!-- Label + info icon -->
                         <div class="flex items-center gap-x-2 text-sm font-medium mb-1">
-                          <Label for="stato">Categoria</Label>
+                          <Label for="stato">{{ trans('documenti.label.category') }}</Label>
                           <HoverCard>
                             <HoverCardTrigger as-child>
                               <button type="button" class="cursor-pointer">
@@ -234,9 +233,9 @@ const submit = () => {
                             </HoverCardTrigger>
                             <HoverCardContent class="w-80">
                               <div class="space-y-1">
-                                <h4 class="text-sm font-semibold">Categoria documento</h4>
+                                <h4 class="text-sm font-semibold">{{ trans('documenti.label.category') }}</h4>
                                 <p class="text-sm">
-                                  Seleziona una categoria per organizzare meglio i documenti, oppure creane una nuova.
+                                  {{ trans('documenti.tooltip.category') }}
                                 </p>
                               </div>
                             </HoverCardContent>
@@ -250,7 +249,7 @@ const submit = () => {
                             label="name"
                             v-model="form.category_id"
                             :reduce="(option: Categoria) => option.id"
-                            placeholder="Seleziona categoria"
+                            :placeholder="trans('documenti.placeholder.category')"
                             class="flex-1"
                             @update:modelValue="form.clearErrors('category_id')" 
                           />
@@ -262,36 +261,36 @@ const submit = () => {
                             </SheetTrigger>
                             <SheetContent side="right" class="p-6">
                               <SheetHeader class="mt-4 p-0">
-                                <SheetTitle>Crea nuova categoria</SheetTitle>
+                                <SheetTitle>{{ trans('documenti.header.categories.new_category_title') }}</SheetTitle>
                                 <SheetDescription>
-                                  Aggiungi una nuova categoria per i documenti.
+                                  {{ trans('documenti.header.categories.new_category_description') }}
                                 </SheetDescription>
                               </SheetHeader>
 
                               <form @submit.prevent="createCategory" class="mt-6 space-y-4">
                                 <div>
-                                  <Label for="new-category-name">Nome</Label>
+                                  <Label for="new-category-name">{{ trans('documenti.label.categories.category_name') }}</Label>
                                   <Input
                                     id="new-category-name"
                                     v-model="newCategoryName"
-                                    placeholder="Nome della categoria"
+                                    :placeholder="trans('documenti.placeholder.categories.category_name')"
                                     class="w-full mt-1"
                                   />
                                 </div>
 
                                 <div>
-                                  <Label for="new-category-description">Descrizione</Label>
+                                  <Label for="new-category-description">{{ trans('documenti.label.categories.category_description') }}</Label>
                                   <Textarea
                                     id="new-category-description"
                                     v-model="newCategoryDescription"
-                                    placeholder="Descrizione della categoria"
+                                    :placeholder="trans('documenti.placeholder.categories.category_description')"
                                     class="w-full mt-1 min-h-[200px]"
                                   />
                                 </div>
 
                                 <div class="flex justify-end">
                                   <SheetClose as-child>
-                                    <Button type="submit">Salva</Button>
+                                    <Button type="submit">{{ trans('documenti.actions.categories.save_category') }}</Button>
                                   </SheetClose>
                                 </div>
                               </form>

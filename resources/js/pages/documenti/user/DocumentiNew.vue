@@ -14,6 +14,7 @@ import InputError from '@/components/InputError.vue';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 
@@ -76,15 +77,15 @@ const submit = () => {
 
 
 <template>
-  <Head title="Crea nuovo documento" />
+  <Head :title="trans('documenti.header.new_document_head')" />
 
 <!--   <AppLayout :breadcrumbs="breadcrumbs"> -->
   <AppLayout >
     <div class="px-4 py-6">
 
       <Heading
-        title="Crea documento archivio"
-        description="Compila il seguente modulo per la creazione di un nuovo documento per l'archivo del condominio"
+        :title="trans('documenti.header.new_document_title')"
+        :description="trans('documenti.header.new_document_description')"
       />
 
       <form @submit.prevent="submit" class="space-y-2">
@@ -94,7 +95,7 @@ const submit = () => {
           <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
             <Plus class="w-4 h-4" v-if="!form.processing" />
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            Salva
+            {{ trans('documenti.actions.save_document') }}
           </Button>
 
           <Link
@@ -103,7 +104,7 @@ const submit = () => {
             class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
           >
             <List class="w-4 h-4" />
-            <span>Elenco</span>
+            <span>{{ trans('documenti.actions.list_documents') }}</span>
           </Link>
         </div>
 
@@ -116,13 +117,13 @@ const submit = () => {
                     
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-3">
-                          <Label for="nome">Nome documento</Label>
+                          <Label for="nome">{{ trans('documenti.label.name') }}</Label>
                           <Input 
                               id="name" 
                               class="mt-1 block w-full"
                               v-model="form.name" 
                               v-on:focus="form.clearErrors('name')"
-                              placeholder="Nome documento" 
+                              :placeholder="trans('documenti.placeholder.name')"
                           />
                           
                           <InputError :message="form.errors.name" />
@@ -132,13 +133,13 @@ const submit = () => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                          <Label for="nome">Descrizione documento</Label>
+                          <Label for="nome">{{ trans('documenti.label.description') }}</Label>
                           <Textarea 
                               id="description" 
                               class="mt-1 block w-full min-h-[200px]"
                               v-model="form.description" 
                               v-on:focus="form.clearErrors('description')"
-                              placeholder="Descrizone documento" 
+                              :placeholder="trans('documenti.placeholder.description')"
                           />
                           
                           <InputError :message="form.errors.description" />
@@ -148,14 +149,14 @@ const submit = () => {
 
                     <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
                       <div class="sm:col-span-6">
-                        <Label for="file-upload">Seleziona documento</Label>
+                        <Label for="file-upload">{{ trans('documenti.label.select_document') }}</Label>
                         <label
                           for="file-upload"
                           class="mt-2 flex flex-col items-center justify-center w-full h-48 p-6 border-2 border-dashed rounded-lg cursor-pointer bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
                         >
                           <UploadCloud class="w-10 h-10 mb-2 text-gray-400" />
                           <span class="text-gray-500 dark:text-gray-400 text-center">
-                            <strong>Clicca qui per selezionare il documento</strong>
+                            <strong>{{ trans('documenti.dialogs.select_document_title') }}</strong>
                           </span>
                           <input
                             id="file-upload"
@@ -193,14 +194,14 @@ const submit = () => {
 
                     <div class="pt-3 grid grid-cols-1 sm:grid-cols-6">
                         <div class="sm:col-span-6">
-                            <Label for="condomini">Condominio</Label>
+                            <Label for="condomini">{{ trans('documenti.label.buildings') }}</Label>
 
                             <v-select 
                               multiple
                               :options="condomini" 
                               label="nome" 
                               v-model="form.condomini_ids"
-                              placeholder="Condomini"
+                              :placeholder="trans('documenti.placeholder.buildings')"
                               @update:modelValue="form.clearErrors('condomini_ids')" 
                               :reduce="(condomini: Building) => condomini.id"
                             />
