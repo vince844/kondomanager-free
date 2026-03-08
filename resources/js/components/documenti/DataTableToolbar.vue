@@ -130,7 +130,7 @@ const clearAllFilters = () => {
         class="h-8 px-2 lg:px-3 text-slate-500 hover:bg-slate-100"
       >
         <X class="w-4 h-4 mr-2" />
-        Svuota filtri
+        {{ trans('documenti.table.clear_all_filters') }}
       </Button>
     </div>
   </div>
@@ -140,7 +140,7 @@ const clearAllFilters = () => {
       as="button"
       v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
       :href="route(generateRoute('documenti.create'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 h-8"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 h-8"
     >
       <Plus class="w-4 h-4" />
       <span>{{ trans('documenti.actions.new_document') }}</span>
@@ -149,7 +149,7 @@ const clearAllFilters = () => {
     <Link 
       as="button"
       :href="route(generateRoute('categorie.index'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 h-8"
+      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 h-8"
     >
       <List class="w-4 h-4" />
       <span>{{ trans('documenti.actions.list_categories') }}</span>
