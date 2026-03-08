@@ -1,12 +1,12 @@
 <script setup lang="ts">
-
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { List, Plus, Wallet } from 'lucide-vue-next'
+import { List, Plus, Wallet, FolderTree, Settings2, Calculator } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
 import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDeiConti.vue'
@@ -24,10 +24,12 @@ import type { Flash } from '@/types/flash';
 const props = defineProps<{
   condominio: Building
   esercizio: Esercizio
+  esercizi?: Esercizio[] // Aggiunto per il PageHeaderGuide
+  condomini?: Building[] // Aggiunto per il PageHeaderGuide
   pianoConti: PianoDeiConti
   conti: Conto[]
   fornitori: Array<{ id: number, ragione_sociale: string }>
-  totalePreventivo: number // <-- Aggiungi questa nuova prop
+  totalePreventivo: number
 }>()
 
 const { generatePath } = usePermission()
@@ -41,18 +43,38 @@ const showModalAssociaTabella = ref(false)
 const showModalRimuoviTabella = ref(false)
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-// Inizializza il formatore subito sotto
+
 const { euro } = useCurrencyFormatter()
 
-const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+// Rinominato in headerBreadcrumbs per coerenza
+const headerBreadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: props.condominio.nome, href: '#' },
-  { title: props.esercizio.nome.toLowerCase(), href: '#' },
   { title: 'Piani dei conti', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: props.pianoConti.nome, href: '#' }
 ])
 
-// Funzione ricorsiva per trovare un conto o sottoconto per ID
+// Guide specifiche per questa pagina
+const pageGuides = [
+  {
+    title: 'Struttura ad Albero',
+    description: 'Organizza le spese in Mastro, Conto e Sottoconto per una maggiore granularità e precisione nel bilancio.',
+    icon: FolderTree,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Associazione Tabelle',
+    description: 'Collega direttamente le tabelle millesimali ai conti per automatizzare i futuri riparti di spesa.',
+    icon: Settings2,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Monitoraggio Preventivo',
+    description: 'Tieni d\'occhio il totale preventivato per assicurarti che il budget assegnato sia sempre sotto controllo.',
+    icon: Calculator,
+    colorVariant: 'amber' as const
+  }
+];
+
 function trovaContoInArray(conti: Conto[], id: number): Conto | null {
   for (const conto of conti) {
     if (conto.id === id) return conto;
@@ -64,7 +86,6 @@ function trovaContoInArray(conti: Conto[], id: number): Conto | null {
   return null;
 }
 
-// Watch per aggiornare contoSelezionato quando i conti cambiano
 watch(
   () => props.conti,
   (newConti) => {
@@ -80,24 +101,9 @@ watch(
   { deep: true }
 );
 
-// Seleziona un conto
-const selezionaConto = (conto: Conto) => {
-  contoSelezionato.value = conto
-}
-
-// Apre il modal di modifica
-const modificaConto = (conto: Conto) => {
-  contoSelezionato.value = conto
-  showModalEdit.value = true
-}
-
-// Apre il dialog di conferma eliminazione
-const confermaEliminazione = (conto: Conto) => {
-  contoDaEliminare.value = conto
-  showModalDelete.value = true
-}
-
-// Apre il dialog di conferma rimozione tabella
+const selezionaConto = (conto: Conto) => { contoSelezionato.value = conto }
+const modificaConto = (conto: Conto) => { contoSelezionato.value = conto; showModalEdit.value = true }
+const confermaEliminazione = (conto: Conto) => { contoDaEliminare.value = conto; showModalDelete.value = true }
 const confermaRimozioneTabella = (payload: { conto: Conto, tabellaId: number }) => {
   contoSelezionato.value = payload.conto
   tabellaDaRimuovere.value = payload.tabellaId
@@ -106,7 +112,6 @@ const confermaRimozioneTabella = (payload: { conto: Conto, tabellaId: number }) 
 
 const eliminaConto = () => {
   if (!contoDaEliminare.value) return
-  
   router.delete(route('admin.gestionale.esercizi.piani-conti.conti.destroy', {
     condominio: props.condominio.id,
     esercizio: props.esercizio.id,
@@ -114,47 +119,18 @@ const eliminaConto = () => {
     conto: contoDaEliminare.value.id
   }), {
     preserveScroll: true,
-    onSuccess: () => {
-      contoSelezionato.value = null
-      contoDaEliminare.value = null
-      showModalDelete.value = false
-    },
-    onError: () => {
-      showModalDelete.value = false
-    }
+    onSuccess: () => { contoSelezionato.value = null; contoDaEliminare.value = null; showModalDelete.value = false },
+    onError: () => { showModalDelete.value = false }
   })
 }
 
-// Chiude il dialog di conferma
-const annullaEliminazione = () => {
-  contoDaEliminare.value = null
-  showModalDelete.value = false
-}
+const annullaEliminazione = () => { contoDaEliminare.value = null; showModalDelete.value = false }
+const annullaRimozioneTabella = () => { tabellaDaRimuovere.value = null; showModalRimuoviTabella.value = false }
+const onModificaSuccess = () => { showModalEdit.value = false }
+const onAggiungiTabella = (conto: Conto) => { contoSelezionato.value = conto; showModalAssociaTabella.value = true }
 
-const annullaRimozioneTabella = () => {
-  tabellaDaRimuovere.value = null
-  showModalRimuoviTabella.value = false
-}
-
-// Gestisce il successo della modifica
-const onModificaSuccess = () => {
-  showModalEdit.value = false
-}
-
-// Gestione eventi dal DettaglioConto
-const onAggiungiTabella = (conto: Conto) => {
-  contoSelezionato.value = conto
-  showModalAssociaTabella.value = true
-}
-
-// Metodo per associare una tabella
 const associaTabella = (dati: any) => {
-  
-  if (!contoSelezionato.value) {
-    console.error('Nessun conto selezionato')
-    return
-  }
-
+  if (!contoSelezionato.value) return
   router.post(route('admin.gestionale.esercizi.piani-conti.conti.associa-tabella', {
     condominio: props.condominio.id,
     esercizio: props.esercizio.id,
@@ -162,20 +138,12 @@ const associaTabella = (dati: any) => {
     conto: contoSelezionato.value.id
   }), dati, {
     preserveScroll: true,
-    onSuccess: () => {
-      showModalAssociaTabella.value = false
-    },
-    onError: (errors) => {
-      console.error('Errore durante l\'associazione della tabella:', errors)
-    }
+    onSuccess: () => { showModalAssociaTabella.value = false }
   })
 }
 
-// Rimuove una tabella associata
 const rimuoviTabella = () => {
-  console.log('Rimuovi tabella con ID:', tabellaDaRimuovere.value)
   if (!contoSelezionato.value || !tabellaDaRimuovere.value) return
-
   router.delete(route('admin.gestionale.esercizi.piani-conti.conti.dissocia-tabella', {
     condominio: props.condominio.id,
     esercizio: props.esercizio.id,
@@ -184,93 +152,83 @@ const rimuoviTabella = () => {
     tabella: tabellaDaRimuovere.value
   }), {
     preserveScroll: true,
-    onSuccess: () => {
-      showModalRimuoviTabella.value = false
-      tabellaDaRimuovere.value = null
-    },
-    onError: (errors) => {
-      console.error('Errore durante la dissociazione della tabella:', errors)
-    }
+    onSuccess: () => { showModalRimuoviTabella.value = false; tabellaDaRimuovere.value = null }
   })
 }
-
 </script>
 
 <template>
   <Head title="Gestione conto" />
 
-  <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <div class="px-4 py-6">
-      <div class="flex justify-between items-center mb-6">
-        <div>
-          <h2 class="text-2xl font-bold text-gray-900">Gestione spese</h2>
-          <div class="flex items-center gap-3 mt-1">
-             <p class="text-gray-600">{{ props.pianoConti.nome }}</p>
-          </div>
-        </div>
-   
-        <div class="flex gap-2">
-            <Button @click="showModalNew = true" class="h-9">
-              <Plus class="w-4 h-4" />
-              <span class="ml-1">Aggiungi voce di spesa</span>
-            </Button>
-
-            <Link
-              as="button"
-              :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-              class="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+  <GestionaleLayout>
+    <div class="px-6 py-8 space-y-4">
+      
+      <PageHeaderGuide
+        page-title="Gestione spese"
+        :page-subtitle="props.pianoConti.nome"
+        :guides="pageGuides"
+        :breadcrumbs="headerBreadcrumbs"
+        :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+        back-text="Piani dei conti"
+      >
+        <template #actions>
+          <div class="flex items-center gap-2">
+            <button
+              @click="showModalNew = true"
+              class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              <List class="w-4 h-4" />
-              <span>Piani dei conti</span>
-            </Link>
+              <Plus class="w-3.5 h-3.5" />
+              <span>Aggiungi Voce</span>
+            </button>
           </div>
-        </div>
+        </template>
+      </PageHeaderGuide>
 
-        <div v-if="flashMessage" class="py-3">
-          <Alert :message="flashMessage.message" :type="flashMessage.type" />
-        </div>
+      <div class="w-full">
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-          <!-- Colonna sinistra: Albero dei conti -->
-          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-            
-            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-slate-50/50 rounded-t-lg">
-              <h3 class="text-lg font-semibold text-gray-900">Elenco conti e sottoconti</h3>
+        <section class="w-full">
+          <div v-if="flashMessage" class="py-3">
+            <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+              <div class="p-4 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Elenco conti e sottoconti</h3>
+                
+                <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                   <Wallet class="w-4 h-4" />
+                   Totale: {{ euro(props.totalePreventivo) }}
+                </span>
+              </div>
               
-              <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
-                 <Wallet class="w-4 h-4" />
-                 Totale: {{ euro(props.totalePreventivo) }}
-              </span>
+              <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto"> 
+                <AlberoDeiConti
+                  :conti="props.conti" 
+                  @seleziona="selezionaConto"
+                />
+              </div>
             </div>
-            
-            <div class="p-4 max-h-[600px] overflow-y-auto"> 
-              <AlberoDeiConti
-                :conti="props.conti" 
-                @seleziona="selezionaConto"
-              />
-            </div>
-          </div>
 
-          <!-- Colonna destra: Dettagli conto selezionato -->
-          <div class="bg-white border border-gray-200 rounded-lg shadow-sm">
-            <div class="p-4 border-b border-gray-200">
-              <h3 class="text-lg font-semibold text-gray-900">Dettagli voce selezionata</h3>
-            </div>
-            <div class="p-4">
-            <DettaglioConto
-                :conto="contoSelezionato" 
-                @elimina="confermaEliminazione" 
-                @modifica="modificaConto"
-                @aggiungi-tabella="onAggiungiTabella"
-                @rimuovi-tabella="confermaRimozioneTabella"
-              />
+            <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+              <div class="p-4 border-b border-gray-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Dettagli voce selezionata</h3>
+              </div>
+              <div class="p-2">
+              <DettaglioConto
+                  :conto="contoSelezionato" 
+                  @elimina="confermaEliminazione" 
+                  @modifica="modificaConto"
+                  @aggiungi-tabella="onAggiungiTabella"
+                  @rimuovi-tabella="confermaRimozioneTabella"
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
+    </div>
 
-     <!-- Modal per creare nuovo conto -->
     <ModalNuovoConto
       :show="showModalNew"
       :condominio-id="props.condominio.id"
@@ -279,7 +237,6 @@ const rimuoviTabella = () => {
       :fornitori="props.fornitori"  @update:show="showModalNew = $event"
     />
 
-    <!-- Modal per associare nuove tabelle -->
     <ModalAssociaTabella
       :show="showModalAssociaTabella"
       :conto="contoSelezionato"
@@ -288,7 +245,6 @@ const rimuoviTabella = () => {
       @success="associaTabella"
     />
 
-    <!-- Modal per modificare conto -->
     <ModalModificaConto
       :show="showModalEdit"
       :conto="contoSelezionato"
@@ -299,7 +255,6 @@ const rimuoviTabella = () => {
       @success="onModificaSuccess"
     />
 
-    <!-- Dialog di conferma rimozione tabella -->
     <ConfirmDialog
       v-model:modelValue="showModalRimuoviTabella"
       title="Rimuovi tabella associata"
@@ -321,6 +276,5 @@ const rimuoviTabella = () => {
       @confirm="eliminaConto"
       @cancel="annullaEliminazione"
     />
-
   </GestionaleLayout>
 </template>

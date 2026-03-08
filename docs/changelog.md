@@ -2,6 +2,43 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.9] - Tenant Wallet UX & Smart Intent Sync
+
+Questa release chiude il cerchio del sistema "Smart Wallet", estendendo le potenzialità della gestione crediti direttamente all'area riservata dei condòmini. È stato introdotto un sistema di "Comunicazione di Intenti" che permette al condomino di decidere attivamente come usare i propri fondi, mantenendo l'amministratore in totale controllo della contabilità.
+
+### 🤝 Smart Intent Sync (Ponte Condòmino-Admin)
+* **Frontend Condòmino (Il Salvadanaio):** Se un condòmino vanta un credito pregresso (su Rata 0), la modale di pagamento della rata mostra ora un widget interattivo ("Il tuo Salvadanaio"). Il sistema calcola matematicamente se il credito è sufficiente a coprire l'intera rata o se è necessaria un'integrazione tramite bonifico, mostrando i totali parziali con estrema chiarezza.
+* **Dichiarazione di Compensazione:** Il condòmino può ora cliccare su pulsanti specifici per notificare all'amministratore la volontà di usare il credito (es. "Salda con il credito" o "Ho pagato la differenza"). 
+* **Inbox Admin Contestuale:** L'evento generato nella Inbox dell'amministratore non mostra più il totale nominale della rata, ma esplicita testualmente l'intento (es. *"Il condòmino ha richiesto di usare 100€ del suo salvadanaio, aspetta un bonifico di 12,48€"*).
+* **Guida Operativa Visiva:** Cliccando sulla notifica, la pagina di registrazione incasso (`IncassoRateNew`) rileva automaticamente l'intento di compensazione tramite parametro URL (`intent_usa_credito`) e mostra un Alert Giallo strategico, guidando l'amministratore a cliccare sul tasto "Usa Credito" per completare la quadratura.
+
+### 🧠 Ottimizzazioni Architetturali & Bug Fixes
+* **Lazy Loading dei Saldi Pregressi:** Ottimizzato il Listener `SyncScadenziarioWithPianoRate`. Il backend ora interroga il database alla ricerca di crediti su Rata 0 *solo ed esclusivamente* se il piano rate corrente è configurato con la strategia `metodo_distribuzione === 'rata_zero'`, azzerando query inutili per i piani a spalmatura.
+* **Bugfix "Paradosso Arretrati" (`EventModal`):** Risolto un falso positivo visivo nell'area condòmini. Aprendo il dettaglio di una Rata 0 a credito, il sistema non mostra più l'alert arancione ingannevole relativo ad altre rate ordinarie non ancora saldate (ramanzina inappropriata su un documento di credito). L'alert arretrati compare ora solo sulle vere rate a debito.
+* **Data Scadenza Notifiche Admin:** Il Task "Verifica Incasso" generato dal click del condòmino imposta ora il suo `start_time` al momento esatto del click (`now()`), garantendo la sua apparizione immediata e istantanea in cima alla Inbox dell'amministratore.
+
+## [1.9.8] - Smart Wallet & Payment Intelligence
+
+Questa release rivoluziona l'esperienza di incasso rate e la gestione dei crediti pregressi. Abbandonando vecchie logiche di alterazione visiva dei residui, la piattaforma adotta ora un approccio "Single Source of Truth" supportato da un vero e proprio "Portafoglio Virtuale" (Wallet) a disposizione dell'amministratore, garantendo quadratura contabile assoluta e massima flessibilità operativa.
+
+### 💰 Smart Wallet (Gestione Compensazioni Reali)
+* **Single Source of Truth:** La pagina di registrazione incassi mostra ora gli importi nominali esatti delle rate (allineati perfettamente ai PDF e all'App dei condòmini), eliminando la logica del finto "Waterfall" sul frontend che generava confusione visiva.
+* **Pulsante "Compensa Credito":** L'amministratore può ora attingere a crediti precedenti (Rata 0 negativa) tramite un pulsante dedicato. I fondi virtuali si sommano ai contanti versati in tempo reale, aumentando la "potenza di fuoco" disponibile per saldare i debiti aperti.
+* **Prelievo Intelligente (Smart Withdrawal):** Se un credito pregresso (es. 200€) è superiore alla rata da pagare (es. 112€), il sistema non "brucia" l'intero salvadanaio, ma preleva in automatico solo l'esatto importo necessario (112€), mantenendo il resto a disposizione per incassi futuri.
+* **Anteprima Scrittura Dinamica:** Il widget di riepilogo riconosce l'utilizzo del credito e mostra diciture specifiche (es. *"Credito rimanente nel salvadanaio: € 88,00"*), garantendo che l'amministratore sappia esattamente cosa verrà registrato in contabilità prima ancora di salvare.
+
+### 🧠 Logiche di Base e Architettura
+* **Refactoring Modulo Incassi (`IncassoRateNew`):** Il componente Vue è stato completamente riprogettato con un'architettura chirurgica. Separazione netta tra stato, calcoli matematici isolati (`math.parse`) e azioni di sistema, eliminando oltre 100 righe di codice ridondante e garantendo una reattività immediata dell'interfaccia.
+* **Ottimizzazione Tasto "Scadute":** La logica di autoselezione delle rate in ritardo è stata potenziata. Ora include correttamente le rate che scadono nella giornata odierna ("Oggi") e forza l'aggiornamento visivo immediato della UI senza perdere il focus.
+* **Tipizzazione Rigorosa (TypeScript):** Estese e aggiornate le interfacce contabili (`Rata`, `DettaglioQuotaRata`) per supportare nativamente le nuove stringhe compresse dei nomi e i ruoli dei proprietari, garantendo una build a zero errori.
+
+### 🎨 UI/UX Enhancements (Maschera Incassi)
+* **Feedback Cromatico Istantaneo:** I residui in tabella utilizzano ora classi semantiche Tailwind avanzate: **Verde sgargiante** per i crediti a favore del condomino, **Rosso acceso** per i debiti pregressi urgenti, e grigio standard per l'amministrazione ordinaria.
+* **Lettura Tabella Pivot Avanzata:** Il tooltip nero ("scontrino") ora interroga direttamente la tabella pivot per estrapolare dinamicamente il ruolo del pagante e mostrare badge dedicati (es. `[P]` per Proprietario, `[I]` per Inquilino), senza appesantire la query principale.
+* **Smart Truncation & Hover Text:** In presenza di unità immobiliari con molteplici eredi (es. "Rossi, Bianchi + altri 18"), la UI comprime automaticamente la stringa per non rompere il layout della tabella. Passando il mouse sul nome (con cursore "help"), viene svelato il tooltip nativo con l'elenco completo di tutti i comproprietari.
+* **Filtro "Mostra solo scadute":** Aggiunto un interruttore dinamico sopra la tabella per nascondere le rate future, mantenendo sempre "appuntata" in cima l'eventuale Rata 0 per non perdere mai di vista i saldi storici.
+* **Input Protections:** I campi degli importi (MoneyInput) si disabilitano e vanno in "fade-out" quando la rata è esattamente a zero o è un credito puro, evitando errori di digitazione e registrazioni di "incassi su incassi". 
+
 ---
 ## [1.9.7] - Visual Harmony & Smart Filters
 

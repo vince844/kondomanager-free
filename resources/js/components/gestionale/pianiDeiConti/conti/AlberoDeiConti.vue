@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { Folder, FolderOpen, FileText, Lock } from 'lucide-vue-next'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -67,7 +66,7 @@ const getTextColor = (conto: Conto) => {
 
 <template>
   <div class="albero-conti">
-    <div v-if="props.conti.length === 0" class="text-center py-8 text-muted-foreground">
+    <div v-if="props.conti.length === 0" class="text-center py-4 text-muted-foreground">
       <Empty class="border border-dashed">
         <EmptyHeader class="max-w-lg">
           <EmptyMedia variant="icon">
@@ -88,21 +87,21 @@ const getTextColor = (conto: Conto) => {
         class="conto-item"
       >
         <div 
-          class="flex flex-col py-2 px-3 hover:bg-muted rounded cursor-pointer transition-colors border-b"
+          class="flex flex-col py-1.5 px-2 hover:bg-muted rounded cursor-pointer transition-colors border-b"
           @click="selezionaConto(conto)"
         >
-          <div class="flex items-center gap-2">
-            <div class="w-6"></div>
+          <div class="flex items-center gap-1.5">
+            <div class="w-3"></div>
 
             <Folder v-if="isCapitolo(conto)" class="w-4 h-4 text-indigo-500" />
             <FileText v-else class="w-4 h-4 text-gray-400" />
 
             <div class="flex-1 truncate text-sm font-medium">
-              <span v-if="conto.codice" class="text-xs text-gray-500 mr-2">[{{ conto.codice }}]</span>
+              <span v-if="conto.codice" class="text-xs text-gray-500 mr-1.5">[{{ conto.codice }}]</span>
               <span :class="{'font-bold': isCapitolo(conto)}">{{ conto.nome }}</span>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5">
               <Lock v-if="conto.has_rate_emesse" class="w-3 h-3 text-amber-500" title="Bloccato da rate emesse" />
               
               <span 
@@ -115,9 +114,9 @@ const getTextColor = (conto: Conto) => {
             </div>
           </div>
 
-          <div v-if="!isCapitolo(conto) && conto.percentuale_copertura !== undefined" class="mt-2 pl-12 pr-4">
+          <div v-if="!isCapitolo(conto) && conto.percentuale_copertura !== undefined" class="mt-1 pl-6 pr-2">
               
-              <div class="flex items-center gap-2">
+              <div class="flex items-center">
                 <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                   <div 
                     class="h-full rounded-full transition-all duration-500"
@@ -127,11 +126,11 @@ const getTextColor = (conto: Conto) => {
                 </div>
               </div>
 
-              <div class="flex justify-between items-center mt-1">
+              <div class="flex justify-between items-center mt-0.5">
                 <span class="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">
                   Copertura
                 </span>
-                <div class="flex items-center gap-1 text-[10px]">
+                <div class="flex items-center gap-0.5 text-[10px]">
                   
                   <span :class="getTextColor(conto)">
                      {{ euro(conto.impegnato || 0) }}
@@ -154,7 +153,7 @@ const getTextColor = (conto: Conto) => {
 
         <div 
           v-if="hasSottoconti(conto)" 
-          class="sottoconti border-l-2 border-muted ml-6 border-b"
+          class="sottoconti border-l-2 border-muted ml-4 border-b"
         >
           <AlberoDeiConti 
             :conti="conto.sottoconti || []" 

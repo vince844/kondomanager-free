@@ -4,6 +4,8 @@
 export interface DettaglioQuotaRata {
     unita: string;
     residuo: number;
+    anagrafica: string;      
+    ruolo: string;           
     is_credito: boolean;
     componente_saldo: number;
     componente_spesa: number;
@@ -36,6 +38,7 @@ export interface Rata {
     scadenza_human: string;
     /** Nome dell'intestatario della rata */
     intestatario: string;
+    intestatari_full?: string;
     /** Tipologia della rata (opzionale) */
     tipologia?: string;
     /** Nome della gestione */

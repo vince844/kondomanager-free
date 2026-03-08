@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue'
-import { Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge } from 'lucide-vue-next'
+import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -76,7 +76,7 @@ const statusColorClass = computed(() => {
 </script>
 
 <template>
-  <div class="dettaglio-conto pb-12 px-1">
+  <div class="dettaglio-conto px-1">
 
     <div v-if="!props.conto" class="flex flex-col items-center justify-center min-h-[360px] text-muted-foreground">
       <Empty class="border border-dashed">
@@ -92,10 +92,10 @@ const statusColorClass = computed(() => {
       </Empty>
     </div>
 
-    <div v-else class="space-y-6">
+    <div v-else class="space-y-3">
 
       <Card>
-        <CardHeader class="flex flex-row items-start justify-between space-y-0 pb-2">
+        <CardHeader class="flex flex-row items-start justify-between space-y-0">
           <div class="space-y-1 flex-1 min-w-0">
             <div class="flex items-center gap-2">
                <Badge variant="outline" v-if="props.conto.codice" class="text-xs text-muted-foreground">
@@ -146,17 +146,19 @@ const statusColorClass = computed(() => {
       </Card>
 
       <Card>
-        <CardHeader class="pb-3">
-          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground">Informazioni</CardTitle>
+        <CardHeader class="p-3">
+          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <Info class="w-4 h-4" /> Informazioni
+          </CardTitle>
         </CardHeader>
-        <CardContent class="grid gap-4">
+        <CardContent class="grid gap-4 p-3">
           <div v-if="!isCapitolo(props.conto)" class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="space-y-1">
               <label class="text-xs font-medium text-muted-foreground uppercase">Importo</label>
               <p class="text-lg font-bold text-foreground">{{ props.conto.importo }}</p>
             </div>
             <div v-if="props.conto.fornitore_nome" class="space-y-1">
-              <label class="text-xs font-medium text-muted-foreground uppercase">Fornitore Suggerito</label>
+              <label class="text-xs font-medium text-muted-foreground uppercase">Fornitore suggerito</label>
               <p class="text-sm font-medium">{{ props.conto.fornitore_nome }}</p>
             </div>
           </div>
@@ -178,12 +180,12 @@ const statusColorClass = computed(() => {
       </Card>
 
       <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw">
-        <CardHeader class="pb-3">
+        <CardHeader class="p-3">
           <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <PieChart class="w-4 h-4" /> Analisi Copertura
+            <PieChart class="w-4 h-4" /> Analisi copertura
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent class="p-2">
           
           <div class="space-y-2 mb-4">
             <div class="flex justify-between text-sm">
@@ -267,16 +269,19 @@ const statusColorClass = computed(() => {
         </CardContent>
       </Card>
       <Card v-if="!isCapitolo(props.conto)">
-        <CardHeader class="pb-3 flex flex-row items-center justify-between space-y-0">
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 p-3">
           <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <Percent class="w-4 h-4" />
             Ripartizione
-            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">{{ getTabelleAssociate().length }}</Badge>
+            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">
+              {{ getTabelleAssociate().length }}
+            </Badge>
           </CardTitle>
           <Button variant="outline" size="sm" class="h-7 text-xs" @click="aggiungiTabella">
             <Plus class="w-3.5 h-3.5 mr-1" /> Aggiungi
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent class="p-2">
           <div v-if="getTabelleAssociate().length === 0" class="text-center py-6 text-muted-foreground border border-dashed rounded-md">
             <Link class="w-8 h-8 mx-auto mb-2 opacity-50" />
             <p class="text-sm">Nessuna tabella associata</p>

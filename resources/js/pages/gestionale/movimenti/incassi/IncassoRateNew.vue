@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, watch, computed, onMounted, nextTick } from 'vue'; 
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -6,12 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import MoneyInput from '@/components/MoneyInput.vue';
+import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-    AlertCircle, CheckCircle2, Calculator, RotateCcw, 
-    User, Building, ArrowRight, FileText, Receipt, 
-    ArrowRightLeft, Info 
-} from 'lucide-vue-next';
+import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
@@ -19,8 +18,6 @@ import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata'; 
-import MoneyInput from '@/components/MoneyInput.vue';
-import InputError from '@/components/InputError.vue';
 
 const props = defineProps<{
     condominio: any;
@@ -50,7 +47,6 @@ const {
     isScaduta,
     setPriorityRataId,
     getRateListByGestione,
-    getTotalAllocato,
     getTotaleDebito,
     getBilancioFinale,
     distributeGreedy,
@@ -118,19 +114,20 @@ const totalAllocato = computed(() => {
 const totaleDebito = computed(() => getTotaleDebito(rateList.value));
 const bilancioFinale = computed(() => getBilancioFinale(totaleDebito.value, importoNumerico.value));
 const showOnlyOverdue = ref(false);
+const intentUsaCredito = ref(false);
 
 // RILEVATORE PRESENZA SALDO IN LISTA
 const hasSaldoPregressoInLista = computed(() => {
     return rateList.value.some(r => isRataZero(r));
 });
 
-// ANTEPRIMA CONTABILE PULITA
+// ANTEPRIMA CONTABILE PULITA E INTELLIGENTE
 const previewContabile = computed(() => {
     const pagamenti = form.dettaglio_pagamenti;
     const importo = importoNumerico.value;
     const eccedenza = form.eccedenza;
 
-    if (importo <= 0) {
+    if (pagamenti.length === 0 && importo <= 0) {
         return { hasData: false, righe: [], anticipo: 0, allocato_rate: 0, totale_versato: 0 };
     }
 
@@ -138,16 +135,29 @@ const previewContabile = computed(() => {
         const r = rateList.value.find(rate => rate.id === p.rata_id);
         if (!r) return null;
         
-        const baseRata = parseResiduoQuota(r.residuo_originale || r.importo_totale || r.residuo);
-        const residuoDopoPagamento = baseRata - p.importo;
+        const baseRata = parseResiduoQuota(r.residuo); // Il residuo di partenza
+        const isCredito = baseRata < 0;
+        
+        let residuoDopoPagamento = 0;
+        let status = '';
+
+        if (isCredito) {
+            // Es: baseRata = -200, p.importo = -112.  (-200) - (-112) = -88
+            residuoDopoPagamento = baseRata - p.importo; 
+            status = (residuoDopoPagamento >= -0.01) ? 'ESAURITO' : 'CREDITO_USATO';
+        } else {
+            // Normale debito
+            residuoDopoPagamento = Math.max(0, baseRata - p.importo);
+            status = (residuoDopoPagamento <= 0.01) ? 'SALDATA' : 'PARZIALE';
+        }
         
         return {
             id: r.id,
             descrizione: r.descrizione,
             pagato: p.importo,
-            status: (residuoDopoPagamento <= 0.01) ? 'SALDATA' : 'PARZIALE',
-            residuo_futuro: Math.max(0, residuoDopoPagamento),
-            tipo: 'normale'
+            status: status,
+            residuo_futuro: residuoDopoPagamento,
+            isCredito: isCredito
         };
     }).filter(Boolean) as any[];
 
@@ -176,16 +186,59 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?
     }
 };
 
+// Gestione del pulsante (Ora fa solo da "interruttore On/Off")
+const toggleCredito = (rata: Rata) => {
+    rata.selezionata = !rata.selezionata;
+    if (!rata.selezionata) rata.da_pagare = 0;
+    runDistribution();
+};
+
+// Algoritmo di distribuzione con PRELIEVO INTELLIGENTE
 const runDistribution = async () => { 
     await nextTick(); 
-    if (mode.value === 'auto') distributeAuto(); 
-    else calculateExcessOnly(); 
+    
+    // Trova la rata a credito se l'amministratore ha cliccato "Usa Credito"
+    const rataCredito = rateList.value.find(r => isRataZero(r) && parseResiduoQuota(r.residuo) < 0 && r.selezionata);
+    const creditoDisponibile = rataCredito ? Math.abs(parseResiduoQuota(rataCredito.residuo)) : 0;
+    
+    if (mode.value === 'auto') {
+        // 1. Calcoliamo la somma di tutti i DEBITI aperti
+        const totaleDebiti = rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0).reduce((s, r) => s + parseResiduoQuota(r.residuo), 0);
+        
+        // 2. Calcoliamo quanti soldi ci MANCANO dopo aver usato i contanti
+        let creditoDaUsare = 0;
+        if (rataCredito) {
+            const fabbisogno = Math.max(0, totaleDebiti - importoNumerico.value);
+            // Preleviamo dal salvadanaio solo quello che serve, senza superare il credito disponibile
+            creditoDaUsare = Math.min(creditoDisponibile, fabbisogno);
+            rataCredito.da_pagare = -creditoDaUsare; // Si registra col segno meno (uscita dal salvadanaio)
+        }
+
+        // 3. Potenza di fuoco = Contanti + Credito Prelevato
+        const budgetTotale = importoNumerico.value + creditoDaUsare;
+        form.eccedenza = distributeGreedy(rateList.value, budgetTotale); 
+        
+    } else {
+        // Stessa logica per la modalità MANUALE
+        const debitiAllocati = rateList.value.filter(r => parseResiduoQuota(r.residuo) > 0).reduce((s, r) => s + parseResiduoQuota(r.da_pagare), 0);
+        
+        let creditoDaUsare = 0;
+        if (rataCredito) {
+            const fabbisogno = Math.max(0, debitiAllocati - importoNumerico.value);
+            creditoDaUsare = Math.min(creditoDisponibile, fabbisogno);
+            rataCredito.da_pagare = -creditoDaUsare;
+        }
+        
+        const budgetTotale = importoNumerico.value + creditoDaUsare;
+        form.eccedenza = calculateExcess(rateList.value, budgetTotale);
+    }
+
+    rateList.value = [...rateList.value]; 
+    syncForm(); 
 };
 
 const distributeAuto = () => { 
-    form.eccedenza = distributeGreedy(rateList.value, importoNumerico.value); 
-    rateList.value = [...rateList.value]; 
-    syncForm(); 
+    runDistribution();
 };
 
 const handleManualChange = (rata: any, val: string | number) => { 
@@ -291,6 +344,12 @@ onMounted(async () => {
     const prefillImporto = params.get('prefill_importo');
     const prefillDesc = params.get('prefill_descrizione');
     const prefillRataId = params.get('prefill_rata_id');
+
+    // NUOVO: Leggiamo l'intento di usare il credito
+    if (params.get('intent_usa_credito') === 'true') {
+        intentUsaCredito.value = true;
+    }
+
     if (taskId) form.related_task_id = parseInt(taskId);
     if (prefillDesc) form.descrizione = prefillDesc;
     if (prefillRataId) setPriorityRataId(parseInt(prefillRataId)); else setPriorityRataId(null);
@@ -310,7 +369,7 @@ onMounted(async () => {
                     <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Nuovo incasso rate</h1>
                     <p class="text-sm text-muted-foreground">Registrazione incasso per il pagamento delle rate condominiali</p>
                 </div>
-                <Badge variant="outline" class="font-mono bg-white">{{ new Date().toLocaleDateString() }}</Badge>
+                <Badge variant="outline" class="bg-white">{{ new Date().toLocaleDateString() }}</Badge>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
@@ -523,6 +582,20 @@ onMounted(async () => {
                         </div>
 
                         <div class="flex-1 overflow-y-auto custom-scrollbar">
+
+                            <div v-if="intentUsaCredito" class="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3 text-amber-800 shrink-0">
+                                <div class="p-1 bg-amber-100 rounded-full mt-0.5 shrink-0">
+                                    <AlertCircle class="w-4 h-4 text-amber-600" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-0.5">Richiesta di compensazione</span>
+                                    <span class="text-[11px] leading-snug block opacity-90">
+                                        Il condomino ha chiesto di saldare questo importo usando il suo credito pregresso.
+                                        Clicca sul tasto <strong>"usa credito"</strong> nella riga del saldo iniziale per confermare l'operazione.
+                                    </span>
+                                </div>
+                            </div>
+
                             <div v-if="rateList.length > 0 && !hasSaldoPregressoInLista" class="bg-emerald-50/80 border-b border-emerald-100 px-3 py-2 flex items-center text-emerald-700 shrink-0">
                                 <CheckCircle2 class="w-4 h-4 mr-2 text-emerald-500" />
                                 <span class="text-[11px] font-medium">Situazione pregressa regolare. Procedi con l'incasso delle rate ordinarie.</span>
@@ -674,7 +747,22 @@ onMounted(async () => {
                                                 ]" 
                                                 placeholder="0,00" 
                                             />
-                                            <div v-else class="text-xs text-slate-400 italic flex items-center justify-end h-8 opacity-80 pr-2">Non pagabile</div>
+                                            
+                                            <div v-else-if="parseResiduoQuota(r.residuo) < 0" class="flex justify-end h-8 items-center">
+                                                <Button 
+                                                    size="sm" 
+                                                    variant="outline" 
+                                                    @click="toggleCredito(r)"
+                                                    class="h-7 px-2 text-[10px] font-bold tracking-tight uppercase transition-all"
+                                                    :class="r.selezionata ? 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-emerald-200' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'"
+                                                >
+                                                    <CheckCircle2 v-if="r.selezionata" class="w-3.5 h-3.5 mr-1" />
+                                                    <ArrowRightLeft v-else class="w-3.5 h-3.5 mr-1" />
+                                                    {{ r.selezionata ? 'Credito applicato' : 'Usa credito' }}
+                                                </Button>
+                                            </div>
+
+                                            <div v-else class="text-xs text-slate-400 italic flex items-center justify-end h-8 opacity-80 pr-2">N/D</div>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -711,13 +799,23 @@ onMounted(async () => {
                                 <div v-for="riga in previewContabile.righe" :key="riga.id" class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
                                     <div class="flex-1 mr-4">
                                         <div class="font-medium text-slate-200">{{ riga.descrizione }}</div>
+                                        
                                         <div v-if="riga.status === 'PARZIALE'" class="mt-0.5 text-amber-500 text-[10px] font-bold">
                                             Resta da pagare: {{ euro(riga.residuo_futuro) }}
                                         </div>
+                                        <div v-else-if="riga.status === 'CREDITO_USATO'" class="mt-0.5 text-blue-400 text-[10px] font-bold">
+                                            Credito rimanente nel salvadanaio: {{ euro(riga.residuo_futuro) }}
+                                        </div>
                                     </div>
+                                    
                                     <div class="text-right shrink-0">
-                                        <div class="font-mono font-bold text-white">{{ euro(riga.pagato) }}</div>
+                                        <div class="font-mono font-bold" :class="riga.isCredito ? 'text-blue-400' : 'text-white'">
+                                            {{ euro(riga.pagato) }}
+                                        </div>
+                                        
                                         <span v-if="riga.status === 'SALDATA'" class="text-[9px] text-emerald-500 uppercase font-bold tracking-wider">Saldata</span>
+                                        <span v-else-if="riga.status === 'ESAURITO'" class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Esaurito</span>
+                                        <span v-else-if="riga.status === 'CREDITO_USATO'" class="text-[9px] text-blue-400 uppercase font-bold tracking-wider">Usato parzialmente</span>
                                         <span v-else class="text-[9px] text-amber-500 uppercase font-bold tracking-wider">Parziale</span>
                                     </div>
                                 </div>

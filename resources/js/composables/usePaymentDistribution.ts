@@ -36,7 +36,6 @@ export function usePaymentDistribution() {
     };
     
     const setPriorityRataId = (id: number | null) => { priorityRataId.value = id; };
-    //const isScaduta = (data: string | null) => { if (!data) return false; return new Date(data) < new Date(new Date().toDateString()); };
 
     const isScaduta = (dateStr: string | null) => {
         if (!dateStr) return false;
@@ -80,7 +79,7 @@ export function usePaymentDistribution() {
         
         list.sort(cronologicalSort);
 
-        // 🟢 ABBIAMO ELIMINATO TUTTO IL BLOCCO WATERFALL! 
+        // ABBIAMO ELIMINATO TUTTO IL BLOCCO WATERFALL! 
         // Il backend ha già fatto il suo dovere. 
         // I residui restano esattamente quelli decisi dal file PHP.
 
@@ -173,5 +172,22 @@ export function usePaymentDistribution() {
         .filter(r => r.selezionata && parseMoney(r.da_pagare) > 0)
         .map(r => ({ rata_id: r.id, importo: parseMoney(r.da_pagare) }));
 
-    return { rawRateList, loadingRate, mode, isScaduta, setPriorityRataId, getRateListByGestione, getTotalAllocato, getTotaleDebito, getBilancioFinale, distributeGreedy, calculateExcess, onManualChange, resetAllocation, pagaTutto, pagaScadute, syncFormData };
+    return { 
+        rawRateList, 
+        loadingRate, 
+        mode, 
+        isScaduta, 
+        setPriorityRataId, 
+        getRateListByGestione, 
+        getTotalAllocato, 
+        getTotaleDebito, 
+        getBilancioFinale, 
+        distributeGreedy, 
+        calculateExcess, 
+        onManualChange, 
+        resetAllocation, 
+        pagaTutto, 
+        pagaScadute, 
+        syncFormData 
+    };
 }

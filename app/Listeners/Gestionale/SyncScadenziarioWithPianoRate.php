@@ -115,6 +115,26 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                 // --- 2. EVENTI CONDÒMINI (CALCOLO BLINDATO V1.9) ---
                 $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
 
+                // PRE-CALCOLO: Cerchiamo eventuali crediti puri sulla Rata 0 per queste anagrafiche.
+                // Questa query viene eseguita solo se NON stiamo processando la rata 0 stessa 
+                // E SOLO SE il piano rate è configurato esplicitamente per usare la rata zero.
+                $creditiRataZero = [];
+                if ($rata->numero_rata > 0 && $pianoRate->metodo_distribuzione === 'rata_zero') {
+                    
+                    $rateZero = $pianoRate->rate()->where('numero_rata', 0)->first();
+                    
+                    if ($rateZero) {
+                        $quoteRataZero = $rateZero->rateQuote()->whereIn('anagrafica_id', $quotePerAnagrafica->keys())->get();
+                        foreach ($quoteRataZero->groupBy('anagrafica_id') as $anagId => $quote0) {
+                            $totaleQuota0 = $quote0->sum('importo');
+                            // Se la Rata 0 è un credito (negativo), lo salviamo in positivo per il frontend
+                            if ($totaleQuota0 < 0) {
+                                $creditiRataZero[$anagId] = abs($totaleQuota0); 
+                            }
+                        }
+                    }
+                }
+
                 foreach ($quotePerAnagrafica as $anagraficaId => $quote) {
                     $anagrafica = $quote->first()->anagrafica;
                     if (!$anagrafica) continue;
@@ -163,6 +183,9 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
 
                     if (!empty($rata->note)) $descUser .= "\n\nNote: {$rata->note}";
 
+                    // ESTIAMO IL CREDITO SE ESISTE (In centesimi, come il resto degli importi)
+                    $creditoRataZeroApplicabile = $creditiRataZero[$anagraficaId] ?? 0;
+
                     $eventoUser = Evento::create([
                         'title'       => $rata->numero_rata == 0 ? "Saldo Iniziale - {$pianoRate->nome}" : "Scadenza rata {$rata->numero_rata} - {$pianoRate->nome}",
                         'start_time'  => $rata->data_scadenza->copy()->setTime(0, 0),
@@ -186,6 +209,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'condominio_nome'   => $condominio->nome,
                             'numero_rata'       => $rata->numero_rata,
                             'piano_nome'        => $pianoRate->nome,
+                            'credito_rata_zero' => $creditoRataZeroApplicabile, // 🟢 NUOVO CAMPO WALLET
                             'context' => [
                                 'piano_rate_id' => $pianoRate->id,
                                 'rata_id'       => $rata->id

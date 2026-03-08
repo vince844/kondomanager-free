@@ -96,6 +96,31 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
         };
     });
 });
+
+// LOGICA WALLET: Rileva se c'è un credito di Rata Zero (Salvato in meta come storico_crediti_rata0)
+const creditoDisponibile = computed<number>(() => {
+    // Leggiamo un nuovo parametro che il backend ci passerà: il credito puro della rata 0
+    return Number(props.evento?.meta?.credito_rata_zero || 0);
+});
+
+// Calcoliamo se il credito copre tutto o solo una parte
+const creditoCapiente = computed(() => creditoDisponibile.value >= importoRestante.value);
+const differenzaDaPagare = computed(() => Math.max(0, importoRestante.value - creditoDisponibile.value));
+
+// Nuovo metodo per segnalare il pagamento CON intenzione di usare il credito
+const reportPaymentWithCredit = () => {
+    isProcessing.value = true;
+    // Inviando intent_usa_credito = true, il backend saprà che deve avvisare l'admin
+    router.post(route('user.eventi.report_payment', props.evento.id), {
+        intent_usa_credito: true,
+        credito_richiesto: Math.min(creditoDisponibile.value, importoRestante.value)
+    }, {
+        preserveScroll: true,
+        onSuccess: () => { isProcessing.value = false; emit('close'); },
+        onError: () => { isProcessing.value = false; }
+    });
+};
+
 </script>
 
 <template>
@@ -254,7 +279,7 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                             </div>
                         </div>
 
-                        <div v-if="evento.meta?.storico_arretrati > 0.01" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+                        <div v-if="evento.meta?.storico_arretrati > 0.01 && !isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
                             <div class="p-1.5 bg-orange-100 rounded-full text-orange-600 shrink-0 mt-0.5">
                                 <AlertTriangle class="w-4 h-4" />
                             </div>
@@ -338,8 +363,50 @@ const scontrinoData = computed<ScontrinoItem[]>(() => {
                                 </Button>
                             </div>
                             <div v-else>
+                                <div v-if="creditoDisponibile > 0.01" class="mb-4">
+                                    <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                                        <div class="absolute right-0 bottom-0 opacity-10 translate-x-1/4 translate-y-1/4">
+                                            <Wallet class="w-32 h-32 text-blue-500" />
+                                        </div>
+                                        
+                                        <div class="relative z-10">
+                                            <h4 class="font-bold text-blue-900 text-sm flex items-center gap-2 mb-1">
+                                                <Wallet class="w-4 h-4 text-blue-600" /> Il tuo salvadanaio
+                                            </h4>
+                                            <p class="text-xs text-blue-800 mb-3">
+                                                Hai un credito disponibile di <strong class="text-blue-900">{{ euro(creditoDisponibile) }}</strong>.
+                                                Vuoi usarlo per compensare questa rata?
+                                            </p>
+
+                                            <div v-if="creditoCapiente">
+                                                <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 shadow-md">
+                                                    {{ isProcessing ? 'Invio...' : 'Sì, salda la rata con il credito (Nessun bonifico richiesto)' }}
+                                                </Button>
+                                            </div>
+
+                                            <div v-else>
+                                                <div class="bg-white/60 p-2 rounded-lg border border-blue-100 mb-3 text-xs">
+                                                    <div class="flex justify-between text-blue-800"><span>Costo rata:</span><span>{{ euro(importoRestante) }}</span></div>
+                                                    <div class="flex justify-between text-emerald-600 font-bold"><span>Credito applicato:</span><span>-{{ euro(creditoDisponibile) }}</span></div>
+                                                    <div class="flex justify-between text-blue-900 font-black mt-1 pt-1 border-t border-blue-200/50">
+                                                        <span>Nuovo totale da versare:</span><span>{{ euro(differenzaDaPagare) }}</span>
+                                                    </div>
+                                                </div>
+                                                <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 shadow-md text-xs">
+                                                    {{ isProcessing ? 'Invio...' : 'Ho pagato la differenza (' + euro(differenzaDaPagare) + ')' }}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="flex items-center justify-center my-3">
+                                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest bg-slate-50 px-2 relative z-10">OPPURE</span>
+                                        <div class="h-px bg-slate-200 absolute w-full left-0"></div>
+                                    </div>
+                                </div>
+
                                 <Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">
-                                    {{ isProcessing ? 'Invio...' : 'Ho pagato questa rata' }}
+                                    {{ isProcessing ? 'Invio...' : 'Ho pagato l\'intera rata tramite bonifico' }}
                                 </Button>
                             </div>
                         </div>
