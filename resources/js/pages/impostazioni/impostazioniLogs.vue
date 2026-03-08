@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { trans } from 'laravel-vue-i18n';
 
 // Props
 const props = defineProps<{
@@ -52,17 +53,17 @@ const getInitials = (name: string) => {
 
 <template>
     <AppLayout>
-        <Head title="Audit & Logs" />
+        <Head :title="trans('impostazioni.dialogs.logs_settings_title')" />
 
         <div class="px-4 py-6">
             
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div>
                     <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white flex items-center gap-2">
-                        Audit & Logs
+                        {{ trans('impostazioni.dialogs.logs_settings_title') }}
                     </h1>
                     <p class="text-muted-foreground text-sm mt-1">
-                        Centro di monitoraggio unificato per email e attività di sistema.
+                        {{ trans('impostazioni.dialogs.logs_settings_description') }}
                     </p>
                 </div>
                 
@@ -70,7 +71,7 @@ const getInitials = (name: string) => {
                     <Search class="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input 
                         v-model="search" 
-                        placeholder="Cerca..." 
+                        :placeholder="trans('impostazioni.dialogs.logs_search_placeholder')" 
                         class="pl-8 h-9 bg-white dark:bg-gray-950" 
                     />
                 </div>
@@ -85,7 +86,7 @@ const getInitials = (name: string) => {
                     @click="activeTab = 'mail'"
                 >
                     <Mail class="h-4 w-4" />
-                    Email Logs
+                    {{ trans('impostazioni.dialogs.logs_mail_tab') }}
                     <Badge variant="secondary" class="ml-1 h-5 px-1.5 text-[10px] pointer-events-none">
                         {{ props.mailLogs.total }}
                     </Badge>
@@ -98,7 +99,7 @@ const getInitials = (name: string) => {
                     @click="activeTab = 'activity'"
                 >
                     <Activity class="h-4 w-4" />
-                    Attività Sistema
+                    {{ trans('impostazioni.dialogs.logs_activity_tab') }}
                     <Badge variant="secondary" class="ml-1 h-5 px-1.5 text-[10px] pointer-events-none">
                         {{ props.activityLogs.total }}
                     </Badge>

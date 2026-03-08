@@ -123,6 +123,9 @@ return [
 
         'logs_settings_title'           => 'Audit & Logs di Sistema',
         'logs_settings_description'     => 'Visualizza lo storico delle email inviate, le attività degli utenti e i log di sistema.',
+        'logs_search_placeholder'       => 'Cerca...',
+        'logs_mail_tab'                 => 'Log email',
+        'logs_activity_tab'             => 'Attività sistema',
     ],
     /* ------------------------------------------------------------------
      | Placeholders for inputs

@@ -120,6 +120,11 @@ return [
         'webhook_url_badge'             => 'Secret',
         'security_warning_title'        => 'IP security active',
         'security_warning_description'  => 'The system only accepts requests from official cron-job.org IP addresses. If you use a different service, this configuration will not work.',
+        'logs_settings_title'           => 'System audit and logs',
+        'logs_settings_description'     => 'View the history of sent emails, user activities, and system logs.',
+        'logs_search_placeholder'       => 'Search...',
+        'logs_mail_tab'                 => 'Email logs',
+        'logs_activity_tab'             => 'System activity',
     ],
     /* ------------------------------------------------------------------
      | Placeholders for inputs
