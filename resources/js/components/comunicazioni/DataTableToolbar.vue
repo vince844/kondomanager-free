@@ -97,7 +97,7 @@ watchDebounced(
         <DataTableFacetedFilter
           v-if="condominioColumn"
           :column="condominioColumn"
-          title="Condominio"
+          :title="trans('comunicazioni.table.buildings')"
           :options="condomini"
           :isLoading="isLoadingCondomini"
           @open="handleOpenCondomini"

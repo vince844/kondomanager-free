@@ -64,6 +64,8 @@ return [
         'loading'               => 'A carregar...',
         'no_results'            => 'Nenhum resultado encontrado.',
         'clear_all_filters'     => 'Limpar todos os filtros',
+        'sort_asc'              => 'Ascendente',
+        'sort_desc'             => 'Descendente',
         'approved_tooltip'      => 'Aprovada - clique para remover aprovação',
         'unapproved_tooltip'    => 'Não aprovada - clique para aprovar',
         'actions'               => 'Ações',

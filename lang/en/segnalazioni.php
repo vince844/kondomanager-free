@@ -76,6 +76,8 @@ return [
         'approved_tooltip'   => 'Approved - click to remove approval',
         'unapproved_tooltip' => 'Not approved - click to approve',
         'clear_all_filters'  => 'Reset all filters',
+        'sort_asc'           => 'Ascending',
+        'sort_desc'          => 'Descending',
         'loading'            => 'Loading...',
         'no_results'         => 'No results found.',
         'selected'           => 'Selected',

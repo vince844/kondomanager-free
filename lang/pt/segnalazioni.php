@@ -79,6 +79,8 @@ return [
         'approved_tooltip'    => 'Aprovada - clique para remover aprovação',
         'unapproved_tooltip'  => 'Não aprovada - clique para aprovar',
         'clear_all_filters'   => 'Limpar todos os filtros',
+        'sort_asc'            => 'Ascendente',
+        'sort_desc'           => 'Descendente',
         'loading'             => 'A carregar...',
         'no_results'          => 'Nenhum resultado encontrado.',
         'selected'            => 'Selecionados',

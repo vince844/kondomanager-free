@@ -95,7 +95,7 @@ const clearAllFilters = () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 w-full mb-3 mt-4 lg:flex-row lg:items-center lg:justify-between">
+  <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
     <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
       
       <Input
