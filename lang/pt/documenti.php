@@ -66,6 +66,8 @@ return [
         'selected'          => 'selecionados',
         'loading'           => 'A carregar...',
         'clear_all_filters' => 'Limpar todos os filtros',
+        'sort_asc'          => 'Ascendente',
+        'sort_desc'         => 'Descendente',
         'categories' => [
             'name'        => 'Nome da categoria',
             'description' => 'Descrição da categoria',

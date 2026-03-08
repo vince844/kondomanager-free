@@ -157,7 +157,7 @@ function clearFilters() {
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
-                :value="{ label: 'Resetta filtri' }"
+                :value="{ label: trans('documenti.table.clear_all_filters') }"
                 class="justify-center text-center"
                 @select="clearFilters"
               >
