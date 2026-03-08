@@ -131,6 +131,8 @@ return [
         'loading'        => 'A carregar...',
         'reset_filters'  => 'Limpar filtros',
         'selected_count' => ':count selecionados',
+        'sort_asc'       => 'Ascendente',
+        'sort_desc'      => 'Descendente',
     ],
 
     'roles' => [

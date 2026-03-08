@@ -128,6 +128,8 @@ return [
         'loading'        => 'Loading...',
         'reset_filters'  => 'Reset filters',
         'selected_count' => ':count selected',
+        'sort_asc'       => 'Ascending',
+        'sort_desc'      => 'Descending',
     ],
 
     'roles' => [

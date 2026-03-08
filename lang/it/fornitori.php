@@ -128,6 +128,8 @@ return [
         'loading'        => 'Caricamento...',
         'reset_filters'  => 'Resetta filtri',
         'selected_count' => ':count selezionati',
+        'sort_asc'       => 'Crescente',
+        'sort_desc'      => 'Decrescente',
     ],
 
     'roles' => [
