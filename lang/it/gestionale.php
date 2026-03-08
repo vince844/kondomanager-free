@@ -80,6 +80,63 @@ return [
     'error_delete_piano_rate'           => "Si è verificato un errore durante l'eliminazione del piano rate.",
     // Casse
     'success_create_cassa'              => "La nuova risorsa di cassa è stata creata con successo",
-    'error_create_cassa'                => "Si è verificato un errore durante la creazione della nuova risorsa di cassa."
+    'error_create_cassa'                => "Si è verificato un errore durante la creazione della nuova risorsa di cassa.",
+    'list_pages' => [
+        'casse' => [
+            'breadcrumbs' => [
+                'management' => 'Gestionale',
+                'structure' => 'Struttura',
+                'list' => 'Risorse e fondi',
+            ],
+            'guides' => [
+                'bank_accounts_title' => 'Conti bancari',
+                'bank_accounts_description' => 'Censire correttamente IBAN e dati bancari e fondamentale per automatizzare riconciliazioni e pagamenti.',
+                'funds_title' => 'Fondi e riserve',
+                'funds_description' => 'Oltre al conto principale, puoi gestire casse contanti e fondi accantonati (es.: fondo riserva).',
+                'opening_balances_title' => 'Saldi iniziali',
+                'opening_balances_description' => 'Inserisci il saldo iniziale corretto per ogni risorsa per garantire la quadratura tra software e banca.',
+            ],
+            'table' => [
+                'type' => 'Tipo',
+                'resource_details' => 'Dettagli risorsa',
+                'current_balance' => 'Saldo attuale',
+                'status' => 'Stato',
+                'main_account' => 'Conto principale',
+                'iban' => 'IBAN:',
+                'types' => [
+                    'bank_account' => 'Conto corrente',
+                    'cashbox' => 'Cassa contanti',
+                    'reserve_fund' => 'Fondo riserva',
+                    'other' => 'Altro',
+                ],
+                'bank_account_types' => [
+                    'ordinary' => 'Conto ordinario',
+                    'dedicated' => 'Conto dedicato',
+                    'postal' => 'Conto postale',
+                    'special_accounting' => 'Contabilita speciale',
+                    'foreign' => 'Conto estero',
+                    'other' => 'Altro',
+                ],
+                'status_values' => [
+                    'active' => 'Attiva',
+                    'archived' => 'Archiviata',
+                ],
+            ],
+        ],
+        'scale' => [
+            'create' => [
+                'head_title' => 'Crea nuova scala',
+                'breadcrumb' => 'Crea scala',
+                'labels' => [
+                    'building' => 'Palazzina',
+                ],
+                'placeholders' => [
+                    'name' => 'Nome scala',
+                    'select_building' => 'Associa a una palazzina',
+                    'description' => 'Descrizione scala',
+                ],
+            ],
+        ],
+    ],
 
 ];

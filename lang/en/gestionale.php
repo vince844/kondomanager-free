@@ -80,5 +80,62 @@ return [
     'error_delete_piano_rate'           => "An error occurred while deleting the rate plan.",
     // Casse
     'success_create_cassa'              => "The new bank resource has been created successfully",
-    'error_create_cassa'                => "An error occurred while creating the new bank resource."
+    'error_create_cassa'                => "An error occurred while creating the new bank resource.",
+    'list_pages' => [
+        'casse' => [
+            'breadcrumbs' => [
+                'management' => 'Management',
+                'structure' => 'Structure',
+                'list' => 'Resources and funds',
+            ],
+            'guides' => [
+                'bank_accounts_title' => 'Bank accounts',
+                'bank_accounts_description' => 'Register IBAN and bank details correctly to automate reconciliations and payments.',
+                'funds_title' => 'Funds and reserves',
+                'funds_description' => 'Besides the main account, you can manage cashboxes and reserved funds (e.g. reserve fund).',
+                'opening_balances_title' => 'Opening balances',
+                'opening_balances_description' => 'Enter the correct opening balance for each resource to ensure software and bank reconciliation.',
+            ],
+            'table' => [
+                'type' => 'Type',
+                'resource_details' => 'Resource details',
+                'current_balance' => 'Current balance',
+                'status' => 'Status',
+                'main_account' => 'Main account',
+                'iban' => 'IBAN:',
+                'types' => [
+                    'bank_account' => 'Bank account',
+                    'cashbox' => 'Cashbox',
+                    'reserve_fund' => 'Reserve fund',
+                    'other' => 'Other',
+                ],
+                'bank_account_types' => [
+                    'ordinary' => 'Ordinary account',
+                    'dedicated' => 'Dedicated account',
+                    'postal' => 'Postal account',
+                    'special_accounting' => 'Special accounting',
+                    'foreign' => 'Foreign account',
+                    'other' => 'Other',
+                ],
+                'status_values' => [
+                    'active' => 'Active',
+                    'archived' => 'Archived',
+                ],
+            ],
+        ],
+        'scale' => [
+            'create' => [
+                'head_title' => 'Create new stairwell',
+                'breadcrumb' => 'Create stairwell',
+                'labels' => [
+                    'building' => 'Building',
+                ],
+                'placeholders' => [
+                    'name' => 'Stairwell name',
+                    'select_building' => 'Link to a building',
+                    'description' => 'Stairwell description',
+                ],
+            ],
+        ],
+    ],
 ];
