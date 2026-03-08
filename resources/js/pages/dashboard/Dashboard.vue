@@ -25,7 +25,7 @@ const page = usePage();
 
 const inboxCount = computed(() => (page.props as any).inbox_count || 0);
 
-const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
+const breadcrumbs: BreadcrumbItem[] = [{ title: trans('appHeader.dashboard'), href: '/dashboard' }];
 
 interface DashboardStats {
     total_condomini: number;
@@ -79,7 +79,7 @@ const navigateToDocumenti = () => {
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head :title="trans('appHeader.dashboard')" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="px-6 py-8 space-y-6">
@@ -87,8 +87,8 @@ const navigateToDocumenti = () => {
             <!-- ── TOP BAR ── -->
             <div class="flex flex-col-reverse md:flex-row justify-between items-stretch md:items-center gap-3">
                 <div>
-                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pannello di controllo</p>
-                    <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Dashboard comunicazioni</h1>
+                    <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">{{ trans('dashboard.header.control_panel') }}</p>
+                    <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{{ trans('appHeader.dashboard') }}</h1>
                 </div>
                 <div class="flex items-center gap-3">
                     <Link :href="route('admin.inbox')">
@@ -104,7 +104,7 @@ const navigateToDocumenti = () => {
                                 <Bell class="w-3.5 h-3.5" :class="{ 'animate-pulse': inboxCount > 0 }" />
                                 <span v-if="inboxCount > 0" class="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-red-500"></span>
                             </div>
-                            Action inbox
+                            {{ trans('dashboard.actions.action_inbox') }}
                             <Badge v-if="inboxCount > 0" variant="destructive" class="h-4 px-1 text-[9px] font-black rounded-sm">
                                 {{ inboxCount }}
                             </Badge>
@@ -125,11 +125,11 @@ const navigateToDocumenti = () => {
                         <House class="h-24 w-24" />
                     </div>
                     <div class="p-5 relative z-10">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Condomini registrati</p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{{ trans('dashboard.kpis.registered_buildings') }}</p>
                         <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ stats.total_condomini }}</p>
                     </div>
                     <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Tutti i fabbricati</span>
+                        <span class="text-[10px] text-slate-400 font-medium">{{ trans('dashboard.kpis.all_buildings') }}</span>
                         <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                 </div>
@@ -146,7 +146,7 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="p-5 relative z-10">
                         <div class="flex items-center gap-2 mb-3">
-                            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Segnalazioni aperte</p>
+                            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">{{ trans('dashboard.kpis.open_tickets') }}</p>
                             <span v-if="stats.segnalazioni_aperte > 0" class="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                         </div>
                         <p class="text-3xl font-black" :class="stats.segnalazioni_aperte > 0 ? 'text-amber-600 dark:text-amber-500' : 'text-slate-700 dark:text-slate-200'">
@@ -155,7 +155,7 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="border-t border-t px-4 py-2.5 flex items-center justify-between" :class="stats.segnalazioni_aperte > 0 ? 'border-amber-100 dark:border-amber-900/30 bg-amber-50/50 dark:bg-amber-900/10' : 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50'">
                         <span class="text-[10px] font-medium" :class="stats.segnalazioni_aperte > 0 ? 'text-amber-600/80' : 'text-slate-400'">
-                            {{ stats.segnalazioni_aperte > 0 ? 'Azione richiesta' : 'Nessuna segnalazione' }}
+                            {{ stats.segnalazioni_aperte > 0 ? trans('dashboard.kpis.action_required') : trans('dashboard.kpis.no_tickets') }}
                         </span>
                         <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
@@ -169,11 +169,11 @@ const navigateToDocumenti = () => {
                         <CalendarClock class="h-24 w-24" />
                     </div>
                     <div class="p-5 relative z-10">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Scadenze imminenti</p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">{{ trans('dashboard.kpis.upcoming_deadlines') }}</p>
                         <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ stats.scadenze_imminenti }}</p>
                     </div>
                     <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Prossimi 7 giorni</span>
+                        <span class="text-[10px] text-slate-400 font-medium">{{ trans('dashboard.kpis.next_7_days') }}</span>
                         <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                 </div>
@@ -186,11 +186,11 @@ const navigateToDocumenti = () => {
                         <HardDrive class="h-24 w-24" />
                     </div>
                     <div class="p-5 relative z-10 space-y-2">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Archiviazione</p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">{{ trans('dashboard.kpis.storage') }}</p>
                         <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ stats.storage.used_formatted }}</p>
                         <div v-if="storagePercent !== null">
                             <div class="flex justify-between items-center mb-1">
-                                <span class="text-[9px] text-slate-400 font-semibold uppercase">Utilizzo</span>
+                                <span class="text-[9px] text-slate-400 font-semibold uppercase">{{ trans('dashboard.kpis.usage') }}</span>
                                 <span class="text-[10px] font-bold tabular-nums text-slate-500">{{ storagePercent }}%</span>
                             </div>
                             <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -205,10 +205,10 @@ const navigateToDocumenti = () => {
                                 />
                             </div>
                         </div>
-                        <p class="text-[10px] text-slate-400">{{ stats.storage.total_files }} file archiviati</p>
+                        <p class="text-[10px] text-slate-400">{{ trans('dashboard.kpis.files_archived', { count: stats.storage.total_files }) }}</p>
                     </div>
                     <div class="border-t border-slate-100 dark:border-slate-800 px-4 py-2.5 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                        <span class="text-[10px] text-slate-400 font-medium">Archivio documenti</span>
+                        <span class="text-[10px] text-slate-400 font-medium">{{ trans('dashboard.kpis.document_archive') }}</span>
                         <ArrowRight class="w-3 h-3 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all" />
                     </div>
                 </div>
@@ -293,12 +293,12 @@ const navigateToDocumenti = () => {
                 <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
                         <div>
-                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Ultimi documenti</h2>
-                            <p class="text-[10px] text-slate-400 mt-0.5">Elenco degli ultimi documenti in archivio caricati</p>
+                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">{{ trans('dashboard.widgets.latest_documents_title') }}</h2>
+                            <p class="text-[10px] text-slate-400 mt-0.5">{{ trans('dashboard.widgets.latest_documents_description') }}</p>
                         </div>
                         <Link v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])" :href="route(generateRoute('documenti.index'))">
                             <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                Visualizza tutti <ArrowRight class="w-3 h-3" />
+                                {{ trans('dashboard.actions.view_all') }} <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
                     </div>
@@ -309,7 +309,7 @@ const navigateToDocumenti = () => {
                         />
                         <div v-else class="flex items-center gap-2 px-4 py-6 text-xs text-slate-400">
                             <AlertCircle class="w-4 h-4 shrink-0" />
-                            Non hai permessi sufficienti per visualizzare documenti in archivio!
+                            {{ trans('dashboard.permissions.view_archive_documents') }}
                         </div>
                     </div>
                 </div>
@@ -318,12 +318,12 @@ const navigateToDocumenti = () => {
                 <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
                         <div>
-                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Prossime scadenze in agenda</h2>
-                            <p class="text-[10px] text-slate-400 mt-0.5">Elenco delle scadenze nei prossimi giorni</p>
+                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">{{ trans('dashboard.widgets.upcoming_events_title') }}</h2>
+                            <p class="text-[10px] text-slate-400 mt-0.5">{{ trans('dashboard.widgets.upcoming_events_description') }}</p>
                         </div>
                         <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route(generateRoute('eventi.index'))">
                             <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                Visualizza tutte <ArrowRight class="w-3 h-3" />
+                                {{ trans('dashboard.actions.view_all_feminine') }} <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
                     </div>
@@ -334,7 +334,7 @@ const navigateToDocumenti = () => {
                         />
                         <div v-else class="flex items-center gap-2 px-4 py-6 text-xs text-slate-400">
                             <AlertCircle class="w-4 h-4 shrink-0" />
-                            Non hai permessi sufficienti per visualizzare le scadenze in agenda!
+                            {{ trans('dashboard.permissions.view_events') }}
                         </div>
                     </div>
                 </div>
