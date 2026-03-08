@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Unplug, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
+import { trans } from 'laravel-vue-i18n';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Fornitore } from '@/types/fornitori';
 
@@ -50,16 +51,16 @@ const deleteAnagrafica = () => {
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+        <span class="sr-only">{{ trans('fornitori.table.actions') }}</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('fornitori.table.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem @click="handleDelete(anagrafica)" >
         <Unplug class="w-4 h-4 text-xs" />
-        Dissocia
+        {{ trans('fornitori.actions.detach_referent') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>
@@ -67,8 +68,8 @@ const deleteAnagrafica = () => {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere dissociare questa anagrafica dal fornitore?"
-    description="Questa azione non è reversibile. L'anagrafica verrà dissociata e non potrà più visualizzare i dati del fornitore."
+    :title="trans('fornitori.dialogs.detach_referent_title')"
+    :description="trans('fornitori.dialogs.detach_referent_description')"
     @confirm="deleteAnagrafica"
   />
 

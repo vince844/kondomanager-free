@@ -8,6 +8,7 @@ import {FlexRender,getCoreRowModel,useVueTable,getSortedRowModel } from '@tansta
 import { valueUpdater } from '@/lib/utils'
 import DataTablePagination from '@/components/DataTablePagination.vue'
 import DataTableToolbar from '@/components/fornitori/DataTableToolbar.vue'
+import { trans } from 'laravel-vue-i18n';
 import type { Fornitore } from '@/types/fornitori'
 
 const props = defineProps<{
@@ -105,7 +106,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('fornitori.table.no_results') }}
             </TableCell>
           </TableRow>
         </template>

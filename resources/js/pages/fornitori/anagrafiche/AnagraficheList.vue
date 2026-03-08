@@ -7,6 +7,7 @@ import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
 import DataTable from '@/components/fornitori/anagrafiche/DataTable.vue';
 import { createColumns } from '@/components/fornitori/anagrafiche/columns'
 import Alert from "@/components/Alert.vue";
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Fornitore } from '@/types/fornitori';
 
@@ -21,7 +22,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
 <template>
   <AppLayout>
-    <Head title="Elenco rappresentanti fornitore" />
+    <Head :title="trans('fornitori.header.referents_list_title')" />
 
     <FornitoreLayout>
 

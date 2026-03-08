@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { trans } from 'laravel-vue-i18n';
 import type { Fornitore } from '@/types/fornitori';
 
 defineProps<{ fornitore: Fornitore }>()
@@ -39,12 +40,12 @@ const deleteFornitore = () => {
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0">
-        <span class="sr-only">Azioni</span>
+        <span class="sr-only">{{ trans('fornitori.table.actions') }}</span>
         <MoreHorizontal class="w-4 h-4" />
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
-      <DropdownMenuLabel>Azioni</DropdownMenuLabel>
+      <DropdownMenuLabel>{{ trans('fornitori.table.actions') }}</DropdownMenuLabel>
 
        <DropdownMenuItem>
         <Link
@@ -52,13 +53,13 @@ const deleteFornitore = () => {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
+          {{ trans('fornitori.actions.edit_fornitore') }}
         </Link>
       </DropdownMenuItem> 
 
       <DropdownMenuItem @click="handleDelete(fornitore)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
+        {{ trans('fornitori.actions.delete_fornitore') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>
@@ -66,8 +67,8 @@ const deleteFornitore = () => {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di volere eliminare questo fornitore?"
-    description="Questa azione non è reversibile. Eliminerà il fornitore e tutti i dati ad esso associati."
+    :title="trans('fornitori.dialogs.delete_supplier_title')"
+    :description="trans('fornitori.dialogs.delete_supplier_description')"
     @confirm="deleteFornitore"
   />
 

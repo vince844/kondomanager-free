@@ -21,6 +21,8 @@ return [
         'list_fornitori_head'           => "Suppliers list",
         'list_fornitori_title'          => "Suppliers list",
         'list_fornitori_description'    => "Manage the records of suppliers and professionals linked to your buildings.",
+        'referents_list_title'          => "Supplier referents",
+        'documents_list_title'          => "Supplier documents",
         'new_fornitore_head'            => "Create supplier",
         'new_fornitore_title'           => "Create supplier",
         'new_fornitore_description'     => "Enter data to register a new company or professional.",
@@ -40,6 +42,7 @@ return [
         'actions'        => 'Actions',
         'click_to_view'  => 'Click to view',
         'filter_by_name' => 'Search supplier...',
+        'no_results'     => 'No results found',
         'residents'      => 'Referents',
         'residents_desc' => 'List of contacts and referents associated with this supplier.',
     ],
@@ -63,8 +66,29 @@ return [
         'new_fornitore'   => 'New Supplier',
         'edit_fornitore'  => 'Edit',
         'delete_fornitore'=> 'Delete',
+        'detach_referent' => 'Detach',
         'save_fornitore'  => 'Save Supplier',
         'list'            => 'List', 
+    ],
+
+    'navigation' => [
+        'details'   => 'Details',
+        'referents' => 'Referents',
+        'documents' => 'Documents',
+        'suppliers' => 'Suppliers',
+    ],
+
+    'dialogs' => [
+        'delete_supplier_title'       => 'Are you sure you want to delete this supplier?',
+        'delete_supplier_description' => 'This action cannot be undone. It will remove the supplier and all associated data.',
+        'detach_referent_title'       => 'Are you sure you want to detach this referent from the supplier?',
+        'detach_referent_description' => 'This action cannot be undone. The referent will be detached and will no longer access supplier data.',
+    ],
+
+    'common' => [
+        'loading'        => 'Loading...',
+        'reset_filters'  => 'Reset filters',
+        'selected_count' => ':count selected',
     ],
 
     /* ------------------------------------------------------------------

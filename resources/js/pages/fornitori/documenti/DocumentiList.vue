@@ -7,7 +7,7 @@ import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
 import DataTable from '@/components/fornitori/documenti/DataTable.vue';
 import { createColumns } from '@/components/fornitori/documenti/columns'
 import Alert from "@/components/Alert.vue";
-import { usePermission } from "@/composables/permissions";
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Fornitore } from '@/types/fornitori';
 import type { Documento } from '@/types/documenti';
@@ -19,8 +19,6 @@ const props = defineProps<{
   meta: PaginationMeta
 }>()
  
-const { generatePath } = usePermission();
-
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
@@ -37,7 +35,7 @@ const flashMessage = computed(() => page.props.flash.message);
 <template>
 
   <AppLayout>
-    <Head title="Elenco documenti immobile" />
+    <Head :title="trans('fornitori.header.documents_list_title')" />
 
     <FornitoreLayout>
 

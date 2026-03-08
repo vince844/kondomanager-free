@@ -40,7 +40,7 @@ export function useCapitoliConti() {
         throw new Error('Formato dati non valido')
       }
     } catch (err: any) {
-      let errorMessage = 'Errore nel caricamento dei capitoli'
+      const errorMessage = 'Errore nel caricamento dei capitoli'
       
       error.value = errorMessage
       

@@ -21,6 +21,8 @@ return [
         'list_fornitori_head'           => "Elenco fornitori",
         'list_fornitori_title'          => "Elenco fornitori",
         'list_fornitori_description'    => "Gestisci l'anagrafica dei fornitori e dei professionisti collegati ai tuoi condomini.",
+        'referents_list_title'          => "Referenti fornitore",
+        'documents_list_title'          => "Documenti fornitore",
         'new_fornitore_head'            => "Crea fornitore",
         'new_fornitore_title'           => "Crea nuovo fornitore",
         'new_fornitore_description'     => "Inserisci i dati per registrare una nuova ditta o un professionista.",
@@ -40,6 +42,7 @@ return [
         'actions'        => 'Azioni',
         'click_to_view'  => 'Clicca per visualizzare',
         'filter_by_name' => 'Cerca fornitore...',
+        'no_results'     => 'Nessun risultato trovato',
         'residents'      => 'Referenti', 
         'residents_desc' => 'Elenco dei contatti e referenti associati a questo fornitore.',
     ],
@@ -63,8 +66,29 @@ return [
         'new_fornitore'   => 'Crea fornitore',
         'edit_fornitore'  => 'Modifica',
         'delete_fornitore'=> 'Elimina',
+        'detach_referent' => 'Dissocia',
         'save_fornitore'  => 'Salva Fornitore',
         'list'            => 'Elenco', 
+    ],
+
+    'navigation' => [
+        'details'   => 'Dettagli',
+        'referents' => 'Referenti',
+        'documents' => 'Documenti',
+        'suppliers' => 'Fornitori',
+    ],
+
+    'dialogs' => [
+        'delete_supplier_title'       => 'Sei sicuro di voler eliminare questo fornitore?',
+        'delete_supplier_description' => 'Questa azione non è reversibile. Eliminerà il fornitore e tutti i dati ad esso associati.',
+        'detach_referent_title'       => 'Sei sicuro di voler dissociare questa anagrafica dal fornitore?',
+        'detach_referent_description' => 'Questa azione non è reversibile. L\'anagrafica verrà dissociata e non potrà più visualizzare i dati del fornitore.',
+    ],
+
+    'common' => [
+        'loading'        => 'Caricamento...',
+        'reset_filters'  => 'Resetta filtri',
+        'selected_count' => ':count selezionati',
     ],
 
     /* ------------------------------------------------------------------

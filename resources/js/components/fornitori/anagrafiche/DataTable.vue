@@ -4,6 +4,7 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
 import {FlexRender,getCoreRowModel,useVueTable } from '@tanstack/vue-table'
 import DataTableToolbar from '@/components/fornitori/anagrafiche/DataTableToolbar.vue'
+import { trans } from 'laravel-vue-i18n';
 import type { Anagrafica } from '@/types/anagrafiche'
 
 const props = defineProps<{
@@ -50,7 +51,7 @@ const table = useVueTable({
         <template v-else>
           <TableRow>
             <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
+              {{ trans('fornitori.table.no_results') }}
             </TableCell>
           </TableRow>
         </template>

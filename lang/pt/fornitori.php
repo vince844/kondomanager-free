@@ -24,6 +24,8 @@ return [
         'list_fornitori_head'           => "Lista de fornecedores",
         'list_fornitori_title'          => "Lista de fornecedores",
         'list_fornitori_description'    => "Gerencie o registo de fornecedores e profissionais associados aos seus condomínios.",
+        'referents_list_title'          => "Referentes do fornecedor",
+        'documents_list_title'          => "Documentos do fornecedor",
         'new_fornitore_head'            => "Criar fornecedor",
         'new_fornitore_title'           => "Criar fornecedor",
         'new_fornitore_description'     => "Insira os dados para registar uma nova empresa ou profissional.",
@@ -43,6 +45,7 @@ return [
         'actions'        => 'Ações',
         'click_to_view'  => 'Clique para visualizar',
         'filter_by_name' => 'Procurar fornecedor...',
+        'no_results'     => 'Nenhum resultado encontrado',
         'residents'      => 'Referentes',
         'residents_desc' => 'Lista de contactos e referentes associados a este fornecedor.',
     ],
@@ -66,8 +69,29 @@ return [
         'new_fornitore'   => 'Novo Fornecedor',
         'edit_fornitore'  => 'Editar',
         'delete_fornitore'=> 'Eliminar',
+        'detach_referent' => 'Desassociar',
         'save_fornitore'  => 'Guardar Fornecedor',
         'list'            => 'Lista', 
+    ],
+
+    'navigation' => [
+        'details'   => 'Detalhes',
+        'referents' => 'Referentes',
+        'documents' => 'Documentos',
+        'suppliers' => 'Fornecedores',
+    ],
+
+    'dialogs' => [
+        'delete_supplier_title'       => 'Tem a certeza de que pretende eliminar este fornecedor?',
+        'delete_supplier_description' => 'Esta ação não pode ser revertida. Irá eliminar o fornecedor e todos os dados associados.',
+        'detach_referent_title'       => 'Tem a certeza de que pretende desassociar este registo do fornecedor?',
+        'detach_referent_description' => 'Esta ação não pode ser revertida. O registo será desassociado e deixará de poder visualizar os dados do fornecedor.',
+    ],
+
+    'common' => [
+        'loading'        => 'A carregar...',
+        'reset_filters'  => 'Limpar filtros',
+        'selected_count' => ':count selecionados',
     ],
 
     /* ------------------------------------------------------------------
