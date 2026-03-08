@@ -93,7 +93,7 @@ export const columns: ColumnDef<Evento>[] = [
 
       return h('div', { class: 'flex space-x-2 items-center' }, [
         categoria
-          ? h(Badge, { variant: 'outline', class: 'rounded-md' }, () => categoria.name)
+          ? h(Badge, { variant: 'outline', class: 'rounded-md' }, () => categoria.localized_name ?? categoria.name)
           : null,
       ]);
     },
@@ -244,10 +244,16 @@ export const columns: ColumnDef<Evento>[] = [
       const stato = visibilityConstants.find(p => p.value === value);
   
       if (!stato) return h('span', '–');
+
+      const visibilityLabelMap: Record<string, string> = {
+        hidden: trans('eventi.form.visibility_hidden'),
+        private: trans('eventi.form.visibility_private'),
+        public: trans('eventi.form.visibility_public'),
+      };
   
       return h('div', { class: 'flex items-center gap-2' }, [
         h(stato.icon, { class: `h-4 w-4 ${stato.colorClass}` }),
-        h('span', stato.label)
+        h('span', visibilityLabelMap[String(value)] ?? stato.label)
       ]);
     },
     filterFn: (row, id, value) =>

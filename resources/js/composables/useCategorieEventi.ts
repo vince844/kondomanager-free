@@ -4,6 +4,7 @@ import axios from 'axios';
 interface CategoriaEvento {
   id: number
   name: string
+  localized_name?: string
 }
 
 export function useCategorieEventi() {
@@ -22,7 +23,7 @@ export function useCategorieEventi() {
       const response = await axios.get(route('admin.categorie.eventi'))
 
       categorie.value = response.data.map((categoria: CategoriaEvento) => ({
-        label: categoria.name,
+        label: categoria.localized_name ?? categoria.name,
         value: categoria.id,
       }))
 

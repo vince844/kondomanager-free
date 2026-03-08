@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Eventi;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
 use App\Models\CategoriaEvento;
 use Illuminate\Http\JsonResponse;
 
@@ -13,8 +14,8 @@ class FetchCategorieController extends Controller
      */
     public function __invoke(): JsonResponse
     {
-        $categorie = CategoriaEvento::select('id', 'name')->orderBy('name')->get();
+        $categorie = CategoriaEvento::query()->orderBy('name')->get();
 
-        return response()->json($categorie);
+        return response()->json(CategoriaEventoResource::collection($categorie));
     }
 }
