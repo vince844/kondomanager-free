@@ -65,6 +65,20 @@ return [
         'datetime_at' => 'at',
     ],
 
+    'user_list' => [
+        'search_error' => 'Error while searching.',
+        'load_error_title' => 'Loading error',
+        'load_error_desc' => 'Loading error. Please try again.',
+        'loading' => 'Loading...',
+        'try_again' => 'Try again',
+        'no_results_title' => 'No events found',
+        'no_results_desc' => 'Try adjusting your search criteria.',
+        'clear_search' => 'Clear search',
+        'legend_7_days' => '≤ 7 days',
+        'legend_14_days' => '≤ 14 days',
+        'legend_over' => 'later',
+    ],
+
     'actions' => [
         'new_event' => 'Create',
         'cancel' => 'Cancel',

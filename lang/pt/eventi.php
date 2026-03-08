@@ -65,6 +65,20 @@ return [
         'datetime_at' => 'às',
     ],
 
+    'user_list' => [
+        'search_error' => 'Erro durante a pesquisa.',
+        'load_error_title' => 'Erro ao carregar',
+        'load_error_desc' => 'Erro de carregamento. Tente novamente.',
+        'loading' => 'A carregar...',
+        'try_again' => 'Tentar novamente',
+        'no_results_title' => 'Nenhum evento encontrado',
+        'no_results_desc' => 'Tente ajustar os critérios de pesquisa.',
+        'clear_search' => 'Limpar pesquisa',
+        'legend_7_days' => '≤ 7 dias',
+        'legend_14_days' => '≤ 14 dias',
+        'legend_over' => 'mais tarde',
+    ],
+
     'actions' => [
         'new_event' => 'Criar',
         'cancel' => 'Cancelar',

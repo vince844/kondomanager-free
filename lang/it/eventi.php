@@ -65,6 +65,20 @@ return [
         'datetime_at' => 'alle',
     ],
 
+    'user_list' => [
+        'search_error' => 'Errore durante la ricerca.',
+        'load_error_title' => 'Errore di caricamento',
+        'load_error_desc' => 'Errore di caricamento. Riprova.',
+        'loading' => 'Caricamento...',
+        'try_again' => 'Riprova',
+        'no_results_title' => 'Nessun evento trovato',
+        'no_results_desc' => 'Prova a modificare i criteri di ricerca.',
+        'clear_search' => 'Cancella ricerca',
+        'legend_7_days' => '≤ 7 giorni',
+        'legend_14_days' => '≤ 14 giorni',
+        'legend_over' => 'oltre',
+    ],
+
     'actions' => [
         'new_event' => 'Crea',
         'cancel' => 'Cancella',

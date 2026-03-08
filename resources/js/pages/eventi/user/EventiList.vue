@@ -14,6 +14,7 @@ import { useEventi } from '@/composables/useEventi';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from "@/enums/Permission";
 import { CircleAlert, Pencil, Trash2, Loader2, SearchX, Plus, ChevronLeftIcon, ChevronRightIcon } from "lucide-vue-next";
+import { trans } from 'laravel-vue-i18n';
 import type { PaginationMeta } from '@/types/pagination';
 import type { Evento } from "@/types/eventi";
 import type { Flash } from '@/types/flash';
@@ -180,7 +181,7 @@ async function handleSearch(query: string) {
       }
     );
   } catch {
-    errorState.value = "Errore durante la ricerca.";
+    errorState.value = trans('eventi.user_list.search_error');
     stopLoading();
   }
 }
@@ -202,13 +203,13 @@ async function handlePageChange(page: number) {
         preserveScroll: true,
         onFinish: stopLoading,
         onError: () => {
-          errorState.value = "Errore di caricamento. Riprova.";
+          errorState.value = trans('eventi.user_list.load_error_desc');
           stopLoading();
         },
       }
     );
   } catch {
-    errorState.value = "Errore di caricamento. Riprova.";
+    errorState.value = trans('eventi.user_list.load_error_desc');
     stopLoading();
   }
 }
@@ -262,7 +263,7 @@ function deleteEvento() {
     },
     onSuccess: closeModal,
     onError: () => {
-      console.error('Errore durante la cancellazione.');
+      console.error(trans('eventi.row_actions.delete_error_log'));
     },
     onFinish: () => {
       isDeleting.value = false;
@@ -307,12 +308,12 @@ async function editEvento() {
           closeEditModal()
         },
         onError: (errors) => {
-          console.error('Edit error:', errors)
+          console.error(trans('eventi.row_actions.edit_error_log'), errors)
         }
       }
     )
   } catch (error) {
-    console.error('Navigation error:', error)
+    console.error(trans('eventi.row_actions.navigation_error_log'), error)
   }
 }
 
@@ -335,13 +336,13 @@ function goToEdit(evento: Evento, e?: Event) {
 </script>
 
 <template>
-  <Head title="Elenco scadenze agenda" />
+  <Head :title="trans('eventi.header.list_events_head')" />
 
   <AppLayout>
     <div class="px-4 py-6">
       <Heading
-        title="Elenco scadenza in agenda"
-        description="Di seguito la tabella con l'elenco di tutte le scadenza nell'agenda del condominio"
+        :title="trans('eventi.header.list_events_title')"
+        :description="trans('eventi.header.list_events_description')"
       />
 
       <div v-if="flashMessage" class="py-4">
@@ -356,7 +357,7 @@ function goToEdit(evento: Evento, e?: Event) {
             <input
               v-model="searchQuery"
               type="text"
-              placeholder="Cerca per titolo..."
+              :placeholder="trans('eventi.table.filter_by_name')"
               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
           </div>
@@ -366,13 +367,13 @@ function goToEdit(evento: Evento, e?: Event) {
             <!-- Legend -->
             <div class="flex items-center gap-4 text-sm border border-gray-300 rounded-md px-4 py-1.5 bg-white shadow-sm">
               <div class="flex items-center gap-1">
-                <span class="w-3 h-3 rounded-full bg-red-500"></span> ≤ 7 giorni
+                <span class="w-3 h-3 rounded-full bg-red-500"></span> {{ trans('eventi.user_list.legend_7_days') }}
               </div>
               <div class="flex items-center gap-1">
-                <span class="w-3 h-3 rounded-full bg-yellow-500"></span> ≤ 14 giorni
+                <span class="w-3 h-3 rounded-full bg-yellow-500"></span> {{ trans('eventi.user_list.legend_14_days') }}
               </div>
               <div class="flex items-center gap-1">
-                <span class="w-3 h-3 rounded-full bg-green-500"></span> oltre
+                <span class="w-3 h-3 rounded-full bg-green-500"></span> {{ trans('eventi.user_list.legend_over') }}
               </div>
             </div>
 
@@ -384,7 +385,7 @@ function goToEdit(evento: Evento, e?: Event) {
               class="h-8 lg:flex items-center gap-2"
             >
               <Plus class="w-4 h-4" />
-              <span>Crea</span>
+              <span>{{ trans('eventi.actions.new_event') }}</span>
             </Button>
           </div>
         </div>
@@ -397,7 +398,7 @@ function goToEdit(evento: Evento, e?: Event) {
               class="absolute inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-10 gap-2"
             >
               <Loader2 class="w-8 h-8 animate-spin text-gray-500" />
-              <p class="text-gray-600">Caricamento in corso...</p>
+              <p class="text-gray-600">{{ trans('eventi.user_list.loading') }}</p>
             </div>
           </Transition>
 
@@ -409,7 +410,7 @@ function goToEdit(evento: Evento, e?: Event) {
             >
               <CircleAlert class="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
               <div>
-                <h3 class="font-medium text-red-800">Errore di caricamento</h3>
+                <h3 class="font-medium text-red-800">{{ trans('eventi.user_list.load_error_title') }}</h3>
                 <p class="text-red-700">{{ errorState }}</p>
                 <Button 
                   variant="outline" 
@@ -417,7 +418,7 @@ function goToEdit(evento: Evento, e?: Event) {
                   class="mt-2"
                   @click="handlePageChange(meta.current_page)"
                 >
-                  Riprova
+                  {{ trans('eventi.user_list.try_again') }}
                 </Button>
               </div>
             </div>
@@ -457,7 +458,7 @@ function goToEdit(evento: Evento, e?: Event) {
                         v-if="hasPermission([Permission.EDIT_EVENTS]) || (hasPermission([Permission.EDIT_OWN_EVENTS]) && evento.created_by.user.id === auth.user.id)"
                         @click="handleEdit(evento)"
                         class="text-gray-700 hover:text-blue-600 transition-colors"
-                        title="Modifica"
+                        :title="trans('eventi.row_actions.edit')"
                       >
                         <Pencil class="w-4 h-4" />
                     </button>
@@ -466,7 +467,7 @@ function goToEdit(evento: Evento, e?: Event) {
                         v-if="hasPermission([Permission.DELETE_EVENTS]) ||  (hasPermission([Permission.DELETE_OWN_EVENTS]) && evento.created_by.user.id === auth.user.id)"
                         @click="handleDelete(evento)"
                         class="text-gray-700 hover:text-red-600 transition-colors"
-                        title="Elimina"
+                        :title="trans('eventi.row_actions.delete')"
                       >
                         <Trash2 class="w-4 h-4" />
                       </button>
@@ -488,10 +489,10 @@ function goToEdit(evento: Evento, e?: Event) {
             >
               <SearchX class="mx-auto w-10 h-10 text-gray-400 mb-3" />
               <h3 class="text-lg font-medium text-gray-900">
-                Nessun evento trovato
+                {{ trans('eventi.user_list.no_results_title') }}
               </h3>
               <p class="mt-1 text-gray-500">
-                Prova a modificare i criteri di ricerca
+                {{ trans('eventi.user_list.no_results_desc') }}
               </p>
               <Button
                 v-if="searchQuery"
@@ -499,7 +500,7 @@ function goToEdit(evento: Evento, e?: Event) {
                 class="mt-3"
                 @click="searchQuery = ''"
               >
-                Cancella ricerca
+                {{ trans('eventi.user_list.clear_search') }}
               </Button>
             </div>
           </TransitionGroup>
@@ -559,35 +560,35 @@ function goToEdit(evento: Evento, e?: Event) {
       <AlertDialog v-model:open="isAlertOpen">
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Sei sicuro di voler eliminare questo evento?</AlertDialogTitle>
+            <AlertDialogTitle>{{ trans('eventi.row_actions.delete_title') }}</AlertDialogTitle>
             <AlertDialogDescription>
               <template v-if="isRecurring">
-                Questo evento fa parte di una serie ricorrente. Scegli cosa vuoi eliminare:
+                {{ trans('eventi.row_actions.delete_recurring_description') }}
                 <RadioGroup v-model="deleteMode" class="mt-4 space-y-2">
                   <div class="flex items-center space-x-2">
                     <RadioGroupItem id="only_this" value="only_this" />
-                    <label for="only_this" class="text-sm">Solo questo evento</label>
+                    <label for="only_this" class="text-sm">{{ trans('eventi.row_actions.only_this_event') }}</label>
                   </div>
                   <div class="flex items-center space-x-2">
                     <RadioGroupItem id="this_and_future" value="this_and_future" />
-                    <label for="this_and_future" class="text-sm">Questo e tutti i futuri</label>
+                    <label for="this_and_future" class="text-sm">{{ trans('eventi.row_actions.this_and_future') }}</label>
                   </div>
                   <div class="flex items-center space-x-2">
                     <RadioGroupItem id="all" value="all" />
-                    <label for="all" class="text-sm">Tutta la serie</label>
+                    <label for="all" class="text-sm">{{ trans('eventi.row_actions.all_series') }}</label>
                   </div>
                 </RadioGroup>
               </template>
               <template v-else>
-                Questa azione non è reversibile. Eliminerà l'evento definitivamente.
+                {{ trans('eventi.row_actions.delete_non_recurring_description') }}
               </template>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel @click="closeModal">Annulla</AlertDialogCancel>
+            <AlertDialogCancel @click="closeModal">{{ trans('eventi.row_actions.cancel') }}</AlertDialogCancel>
             <AlertDialogAction :disabled="isDeleting" @click="deleteEvento">
-              <span v-if="isDeleting">Eliminazione...</span>
-              <span v-else>Continua</span>
+              <span v-if="isDeleting">{{ trans('eventi.row_actions.deleting') }}</span>
+              <span v-else>{{ trans('eventi.row_actions.continue') }}</span>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -596,25 +597,25 @@ function goToEdit(evento: Evento, e?: Event) {
       <AlertDialog v-model:open="isEditAlertOpen">
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Modifica evento ricorrente</AlertDialogTitle>
+            <AlertDialogTitle>{{ trans('eventi.row_actions.edit_recurring_title') }}</AlertDialogTitle>
             <AlertDialogDescription>
-              Questo evento fa parte di una serie ricorrente. Cosa vuoi modificare?
+              {{ trans('eventi.row_actions.edit_recurring_description') }}
               <RadioGroup v-model="editMode" class="mt-4 space-y-2">
                 <div class="flex items-center space-x-2">
                   <RadioGroupItem id="edit_only_this" value="only_this" />
-                  <label for="edit_only_this" class="text-sm">Solo questo evento</label>
+                  <label for="edit_only_this" class="text-sm">{{ trans('eventi.row_actions.only_this_event') }}</label>
                 </div>
                 <div class="flex items-center space-x-2">
                   <RadioGroupItem id="edit_all" value="all" />
-                  <label for="edit_all" class="text-sm">Tutta la serie</label>
+                  <label for="edit_all" class="text-sm">{{ trans('eventi.row_actions.all_series') }}</label>
                 </div>
               </RadioGroup>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel @click="closeEditModal">Annulla</AlertDialogCancel>
+            <AlertDialogCancel @click="closeEditModal">{{ trans('eventi.row_actions.cancel') }}</AlertDialogCancel>
             <AlertDialogAction @click="editEvento">
-              Continua
+              {{ trans('eventi.row_actions.continue') }}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
