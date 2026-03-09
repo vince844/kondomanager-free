@@ -378,6 +378,30 @@ return [
                     'save_scale' => 'Salva scala',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Modifica scala',
+                'breadcrumb' => 'Modifica scala',
+                'page_title' => 'Modifica scala',
+                'page_subtitle' => 'Stai modificando i dati della scala: :name',
+                'back_to_list' => 'Annulla e torna all\'elenco',
+                'card_title' => 'Dati scala',
+                'card_description' => 'Modifica i dettagli identificativi del gruppo scale.',
+                'labels' => [
+                    'name' => 'Nome scala',
+                    'building' => 'Palazzina di appartenenza',
+                    'description' => 'Descrizione',
+                    'notes' => 'Note interne',
+                ],
+                'placeholders' => [
+                    'name' => 'es. Scala A, Scala B...',
+                    'select_building' => 'Seleziona palazzina...',
+                    'description' => 'es. Accesso secondario da via Roma',
+                    'notes_internal' => 'Note visibili solo agli amministratori...',
+                ],
+                'actions' => [
+                    'save' => 'Salva modifiche',
+                ],
+            ],
         ],
         'tabelle' => [
             'head_title' => 'Elenco tabelle',

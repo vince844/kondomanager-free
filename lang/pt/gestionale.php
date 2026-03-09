@@ -378,6 +378,30 @@ return [
                     'save_scale' => 'Guardar escada',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Editar escada',
+                'breadcrumb' => 'Editar escada',
+                'page_title' => 'Editar escada',
+                'page_subtitle' => 'Está a editar os dados da escada: :name',
+                'back_to_list' => 'Cancelar e voltar à lista',
+                'card_title' => 'Dados da escada',
+                'card_description' => 'Edite os detalhes identificativos do grupo de escadas.',
+                'labels' => [
+                    'name' => 'Nome da escada',
+                    'building' => 'Bloco associado',
+                    'description' => 'Descrição',
+                    'notes' => 'Notas internas',
+                ],
+                'placeholders' => [
+                    'name' => 'Ex.: Escada A, Escada B...',
+                    'select_building' => 'Selecionar bloco...',
+                    'description' => 'Ex.: Acesso secundário pela rua principal',
+                    'notes_internal' => 'Notas visíveis apenas para administradores...',
+                ],
+                'actions' => [
+                    'save' => 'Guardar alterações',
+                ],
+            ],
         ],
         'tabelle' => [
             'head_title' => 'Lista de tabelas',

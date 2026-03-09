@@ -378,6 +378,30 @@ return [
                     'save_scale' => 'Save stairwell',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Edit stairwell',
+                'breadcrumb' => 'Edit stairwell',
+                'page_title' => 'Edit stairwell',
+                'page_subtitle' => 'You are editing stairwell data: :name',
+                'back_to_list' => 'Cancel and return to list',
+                'card_title' => 'Stairwell details',
+                'card_description' => 'Edit identifying details of the stairwell group.',
+                'labels' => [
+                    'name' => 'Stairwell name',
+                    'building' => 'Linked building',
+                    'description' => 'Description',
+                    'notes' => 'Internal notes',
+                ],
+                'placeholders' => [
+                    'name' => 'e.g. Stairwell A, Stairwell B...',
+                    'select_building' => 'Select building...',
+                    'description' => 'e.g. Secondary entrance from main street',
+                    'notes_internal' => 'Notes visible only to administrators...',
+                ],
+                'actions' => [
+                    'save' => 'Save changes',
+                ],
+            ],
         ],
         'tabelle' => [
             'head_title' => 'Allocation tables list',
