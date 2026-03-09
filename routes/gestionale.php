@@ -132,6 +132,9 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');
 
+    Route::post('esercizi/{esercizio}/piani-rate/{pianoRate}/publish-silent', [EmissioneRateController::class, 'publishSilent'])
+        ->name('piani-rate.publish-silent');
+
     // Emissione Rate (Massiva)
     Route::post('/piani-rate/{pianoRate}/emetti', [EmissioneRateController::class, 'store'])
         ->name('piani-rate.emetti');

@@ -22,15 +22,31 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
+/**
+ * Controller responsabile per l'emissione e l'annullamento delle rate condominiali.
+ * Gestisce la creazione delle scritture contabili in Prima Nota (Ciclo Attivo)
+ * e la visibilità/notifica degli eventi nello scadenziario dei condòmini.
+ */
 class EmissioneRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio;
 
+    /**
+     * Emette una o più rate di un piano approvato.
+     * Genera le scritture contabili e gestisce l'emissione "Silenziosa" 
+     * per evitare l'invio prematuro di notifiche (Finestra di Vulnerabilità).
+     *
+     * @param Request $request
+     * @param Condominio $condominio
+     * @param PianoRate $pianoRate
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function store(Request $request, Condominio $condominio, PianoRate $pianoRate)
     {
         Log::info("--- START EMISSIONE RATE ---", [
             'condominio_id' => $condominio->id,
-            'rate_ids' => $request->rate_ids
+            'rate_ids' => $request->rate_ids,
+            'invia_notifiche' => $request->invia_notifiche
         ]);
   
         if ($pianoRate->stato !== StatoPianoRate::APPROVATO) {
@@ -42,9 +58,11 @@ class EmissioneRateController extends Controller
             'rate_ids.*' => 'exists:rate,id',
             'data_emissione' => 'required|date',
             'descrizione_personalizzata' => 'nullable|string|max:255',
+            'invia_notifiche' => 'boolean' // Validazione del nuovo interruttore
         ]);
 
         $esercizio = $this->getEsercizioCorrente($condominio);
+        $inviaNotifiche = $request->boolean('invia_notifiche', true); // Default a true se non passato
         
         $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)
             ->where('ruolo', 'crediti_condomini')
@@ -58,7 +76,7 @@ class EmissioneRateController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione) {
+            DB::transaction(function () use ($request, $condominio, $pianoRate, $esercizio, $contoCrediti, $contoGestione, $inviaNotifiche) {
                 
                 $rateSelezionate = Rata::with('rateQuote')
                     ->where('piano_rate_id', $pianoRate->id)
@@ -70,6 +88,7 @@ class EmissioneRateController extends Controller
 
                     $totaleRataCentesimi = 0; 
 
+                    // 1. Scrittura Testata
                     $scrittura = ScritturaContabile::create([
                         'condominio_id'      => $condominio->id,
                         'esercizio_id'       => $esercizio->id,
@@ -81,14 +100,11 @@ class EmissioneRateController extends Controller
                         'stato'              => 'registrata',
                     ]);
 
+                    // 2. Scrittura Righe (Dettaglio quote)
                     foreach ($rata->rateQuote as $quota) {
                         
-                        // Default: usa l'importo standard (fallback per vecchie rate)
                         $importoDaRegistrare = $quota->importo;
 
-                        // 1. TENTA LETTURA DAL JSON (Versione 1.8+)
-                        // In contabilità dobbiamo registrare il DEBITO LORDO (Quota Pura),
-                        // ignorando il fatto che sia coperto dal saldo (credito).
                         if (!empty($quota->regole_calcolo)) {
                             $json = is_string($quota->regole_calcolo) ? json_decode($quota->regole_calcolo) : (object)$quota->regole_calcolo;
                             
@@ -97,8 +113,6 @@ class EmissioneRateController extends Controller
                             }
                         }
 
-                        // 2. Controllo di sicurezza: Registriamo solo debiti positivi
-                        // Se la spesa reale è <= 0, non emettiamo nulla.
                         if ($importoDaRegistrare <= 0) continue;
 
                         $scrittura->righe()->create([
@@ -107,16 +121,15 @@ class EmissioneRateController extends Controller
                             'immobile_id'        => $quota->immobile_id,
                             'rata_id'            => $rata->id,
                             'tipo_riga'          => 'dare',
-                            'importo'            => $importoDaRegistrare, // <--- USIAMO IL VALORE LORDO
+                            'importo'            => $importoDaRegistrare, 
                             'note'               => "Quota " . $rata->descrizione
                         ]);
 
                         $quota->update(['scrittura_contabile_id' => $scrittura->id]);
-                        
-                        // Sommiamo al totale scrittura l'importo EFFETTIVAMENTE registrato
                         $totaleRataCentesimi += $importoDaRegistrare;
                     }
 
+                    // 3. Chiusura in Avere (Gestione)
                     if ($totaleRataCentesimi > 0) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoGestione->id,
@@ -126,29 +139,42 @@ class EmissioneRateController extends Controller
                         ]);
                     }
 
-                    // ... (resto della logica eventi/task invariata) ...
+                    // 4. Gestione Eventi Condòmini (Finestra di Vulnerabilità)
                     $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
                         ->where('meta->context->rata_id', $rata->id)
                         ->get();
 
                     foreach ($userEvents as $evt) {
                         $meta = $evt->meta;
-                        $meta['is_emitted'] = true;
-                        $evt->update(['meta' => $meta]);
+                        $meta['is_emitted'] = true; // Contabilmente è emessa
+                        $meta['is_published'] = $inviaNotifiche; // Se falso, l'utente non lo sa ancora
+                        
+                        $evt->update([
+                            'meta' => $meta,
+                            // Nascondiamo fisicamente l'evento se è un'emissione silenziosa
+                            'visibility' => $inviaNotifiche ? VisibilityStatus::PRIVATE->value : VisibilityStatus::HIDDEN->value
+                        ]);
                     }
 
-                    RataEmessa::dispatch($rata);
+                    // 5. Invio Notifiche (SOLO SE RICHIESTO)
+                    if ($inviaNotifiche) {
+                        RataEmessa::dispatch($rata);
+                    }
 
+                    // 6. Pulizia Task Admin (Promemoria Emissione)
                     Evento::whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereJsonContains('meta->type', 'emissione_rata')
                         ->delete(); 
                 }
             });
 
-            // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
             InboxService::clearAdminCache();
 
-            return back()->with($this->flashSuccess('Rate emesse correttamente.'));
+            $msg = $inviaNotifiche 
+                ? 'Rate emesse e notificate correttamente ai condòmini.' 
+                : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.';
+
+            return back()->with($this->flashSuccess($msg));
 
         } catch (\Throwable $e) {
             Log::error("Errore emissione rate: " . $e->getMessage());
@@ -163,10 +189,18 @@ class EmissioneRateController extends Controller
         }
     }
 
-    // ... (metodo destroy invariato) ...
+    /**
+     * Annulla l'emissione di una singola rata.
+     * Rimuove la scrittura contabile e ripristina lo stato dell'evento utente in "Bozza".
+     *
+     * @param Request $request
+     * @param Condominio $condominio
+     * @param PianoRate $pianoRate
+     * @param Rata $rata
+     * @return \Illuminate\Http\RedirectResponse
+     */
     public function destroy(Request $request, Condominio $condominio, PianoRate $pianoRate, Rata $rata)
     {
-        // ... (il tuo codice destroy va bene così com'è) ...
         $haPagamenti = DB::table('rate_quote')
             ->where('rata_id', $rata->id)
             ->where('importo_pagato', '>', 0)
@@ -185,6 +219,7 @@ class EmissioneRateController extends Controller
         try {
             DB::transaction(function () use ($rata, $condominio, $pianoRate, $request, $esercizio) { 
                 
+                // 1. Sgancio e rimozione Scritture
                 $scrittureIds = $rata->rateQuote()->pluck('scrittura_contabile_id')->filter()->unique();
                 $rata->rateQuote()->update(['scrittura_contabile_id' => null]);
 
@@ -193,6 +228,7 @@ class EmissioneRateController extends Controller
                     ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
 
+                // 2. Ripristino Eventi Utente
                 $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
                     ->where('meta->context->rata_id', $rata->id)
                     ->get();
@@ -200,9 +236,15 @@ class EmissioneRateController extends Controller
                 foreach ($userEvents as $evt) {
                     $meta = $evt->meta;
                     $meta['is_emitted'] = false; 
-                    $evt->update(['meta' => $meta]);
+                    $meta['is_published'] = false; // Reset stato pubblicazione
+                    
+                    $evt->update([
+                        'meta' => $meta,
+                        'visibility' => VisibilityStatus::PRIVATE->value // Torna "Bozza" visibile ma non pagabile
+                    ]);
                 }
                 
+                // 3. Rigenerazione Task Admin (Promemoria Emissione)
                 $catAdmin = CategoriaEvento::where('name', CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value)->first();
                 $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
                 
@@ -255,8 +297,6 @@ class EmissioneRateController extends Controller
                 }
             });
 
-
-            // CACHE BUSTER INTELLIGENTE (Fix Multi-Admin)
             InboxService::clearAdminCache();
 
             return back()->with($this->flashSuccess('Emissione annullata. La rata è tornata in bozza e il promemoria è stato ripristinato.'));
@@ -264,6 +304,62 @@ class EmissioneRateController extends Controller
         } catch (\Throwable $e) {
             Log::error("Errore annullamento: " . $e->getMessage());
             return back()->with($this->flashError('Si è verificato un errore durante l\'annullamento.'));
+        }
+    }
+
+    /**
+     * Sblocca la visibilità delle rate emesse in modalità "Silenziosa".
+     * Le rende visibili nell'app e invia finalmente le notifiche ai condòmini.
+     */
+    public function publishSilent(Request $request, Condominio $condominio, $esercizio, PianoRate $pianoRate)
+    {
+        try {
+            DB::transaction(function () use ($pianoRate) {
+    
+                // 1. Trova tutti gli eventi "Silenziosi" usando i meta flag
+                $hiddenEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                    ->where('meta->context->piano_rate_id', $pianoRate->id)
+                    ->where('meta->is_emitted', true)
+                    ->where('meta->is_published', false)
+                    ->get();
+
+                if ($hiddenEvents->isEmpty()) {
+                    return;
+                }
+
+                $rataIds = [];
+
+                // 2. Sblocca la visibilità
+                foreach ($hiddenEvents as $evt) {
+                    $meta = $evt->meta;
+                    $meta['is_published'] = true;
+                    
+                    $evt->update([
+                        'meta' => $meta,
+                        'visibility' => VisibilityStatus::PRIVATE->value
+                    ]);
+                    
+                    // Raccoglie l'ID della rata per inviare la notifica collettiva
+                    if (isset($meta['context']['rata_id'])) {
+                        $rataIds[] = $meta['context']['rata_id'];
+                    }
+                }
+
+                // 3. Spedisce le notifiche Push/Email per ogni rata sbloccata
+                $uniqueRataIds = array_unique($rataIds);
+                foreach ($uniqueRataIds as $rataId) {
+                    $rata = Rata::find($rataId);
+                    if ($rata) {
+                        RataEmessa::dispatch($rata);
+                    }
+                }
+            });
+
+            return back()->with($this->flashSuccess('Rate pubblicate! I condòmini ora le vedono e hanno ricevuto le notifiche.'));
+
+        } catch (\Throwable $e) {
+            Log::error("Errore pubblicazione rate silenziose: " . $e->getMessage());
+            return back()->with($this->flashError('Errore durante la pubblicazione delle rate.'));
         }
     }
 }

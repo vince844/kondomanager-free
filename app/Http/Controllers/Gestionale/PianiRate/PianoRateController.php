@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Enums\StatoPianoRate;
+use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
@@ -13,6 +14,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\PianiRate\PianoRateResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Evento;
 use App\Models\Gestionale\BudgetMovement;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
@@ -346,6 +348,23 @@ class PianoRateController extends Controller
             Log::warning("Sposta Spesa: Nessun Piano Conto trovato per la gestione {$pianoRate->gestione_id}");
         }
 
+        // --- INIZIO DEBUG ---
+        $debugEventi = Evento::where('meta->type', 'scadenza_rata_condomino')
+            ->where('meta->context->piano_rate_id', $pianoRate->id)
+            ->get(['id', 'title', 'meta', 'visibility']);
+            
+        Log::info("=== DEBUG EVENTI PIANO RATE ID: {$pianoRate->id} ===");
+        Log::info($debugEventi->toArray());
+        
+        $conteggioNascoste = Evento::where('meta->type', 'scadenza_rata_condomino')
+            ->where('meta->context->piano_rate_id', $pianoRate->id)
+            ->where('meta->is_emitted', true)
+            ->where('meta->is_published', false)
+            ->count();
+            
+        Log::info("EVENTI TROVATI COME NASCOSTI: " . $conteggioNascoste);
+        // --- FINE DEBUG ---
+
         return Inertia::render('gestionale/pianiRate/PianiRateShow', [
             'condominio' => $condominio, 
             'esercizio' => $esercizio, 
@@ -356,7 +375,12 @@ class PianoRateController extends Controller
             'needsMigration' => false, 
             'copertura' => $coperturaData,
             'sources' => $sources,
-            'destinations' => $destinations
+            'destinations' => $destinations,
+            'has_unpublished_rates' => Evento::where('meta->type', 'scadenza_rata_condomino')
+                ->where('meta->context->piano_rate_id', $pianoRate->id)
+                ->where('meta->is_emitted', true)        // 🟢 Cerca quelle emesse...
+                ->where('meta->is_published', false)     // 🟢 ...ma ancora silenziose!
+                ->exists(),
         ]);
     }
 

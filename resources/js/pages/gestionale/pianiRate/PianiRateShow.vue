@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, reactive, computed, watch } from "vue";
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -9,11 +10,13 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Heading from '@/components/Heading.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
-import { List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-vue-next";
+import { BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue"; 
@@ -35,6 +38,7 @@ const props = defineProps<{
   needsMigration: boolean;
   sources: Array<any>;      
   destinations: Array<any>; 
+  has_unpublished_rates?: boolean;
   copertura: {
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number }>;
@@ -252,6 +256,7 @@ const formEmissione = useForm({
     rate_ids: [] as number[],
     data_emissione: new Date().toISOString().split('T')[0],
     descrizione_personalizzata: '',
+    invia_notifiche: true,
 });
 
 const openEmissionModal = () => {
@@ -516,6 +521,21 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
 };
 // -------------------------------------------
 
+const executePublishSilent = () => {
+    router.post(route(generateRoute('gestionale.piani-rate.publish-silent'), {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    }), {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            showFeedback('Pubblicazione completata', 'Le rate sono ora visibili ai condòmini e le notifiche sono state inviate.', false);
+        }
+    });
+};
+
+console.log("DEBUG VUE - has_unpublished_rates:", props.has_unpublished_rates);
+
 </script>
 
 <template>   
@@ -551,123 +571,252 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
 
           <Tabs v-model="tab" class="space-y-6">
 
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 w-full">
-              <TabsList class="grid w-full sm:w-[400px] grid-cols-2 bg-muted p-1 rounded-lg">
-                  <TabsTrigger value="anagrafica">Per anagrafica</TabsTrigger>
-                  <TabsTrigger value="immobile">Per immobile</TabsTrigger>
-              </TabsList>
+            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 w-full">
+              
+                <TabsList class="grid w-full xl:w-[350px] grid-cols-2 bg-muted p-1 rounded-lg shrink-0">
+                    <TabsTrigger value="anagrafica">Per anagrafica</TabsTrigger>
+                    <TabsTrigger value="immobile">Per immobile</TabsTrigger>
+                </TabsList>
 
-              <div class="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+                <div class="flex flex-wrap items-center justify-start xl:justify-end gap-3 w-full">
                   
-                  <div class="flex items-center space-x-2 border px-3 py-1.5 rounded-lg bg-gray-50/50 mr-2">
-                      <TooltipProvider>
-                          <Tooltip :delayDuration="0">
-                              <TooltipTrigger as-child>
-                                  <div class="flex items-center space-x-2">
-                                      <div class="flex items-center space-x-3">
-                                          <button 
-                                              type="button" 
-                                              class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
-                                              :class="[
-                                                  switchState ? 'bg-emerald-600' : 'bg-gray-200',
-                                                  (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
-                                              ]"
-                                              :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
-                                              @click="toggleStatoPiano(!switchState)"
-                                              role="switch"
-                                              :aria-checked="switchState"
+                  <div class="flex flex-wrap items-center gap-2 p-1.5 bg-gray-50/50 border rounded-lg">
+                      <HoverCard :open-delay="200">
+                          <HoverCardTrigger as-child>
+                              <div class="flex items-center space-x-2 px-2">
+                                  <button 
+                                      type="button" 
+                                      class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                                      :class="[
+                                          switchState ? 'bg-emerald-600' : 'bg-gray-200',
+                                          (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
+                                      ]"
+                                      :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
+                                      @click="toggleStatoPiano(!switchState)"
+                                      role="switch"
+                                      :aria-checked="switchState"
+                                  >
+                                      <span class="sr-only">Cambia stato piano</span>
+                                      <span 
+                                          aria-hidden="true" 
+                                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                          :class="switchState ? 'translate-x-5' : 'translate-x-0'"
+                                      >
+                                          <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                              :class="switchState ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in'"
                                           >
-                                              <span class="sr-only">Cambia stato piano</span>
-                                              
-                                              <span 
-                                                  aria-hidden="true" 
-                                                  class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                                                  :class="switchState ? 'translate-x-5' : 'translate-x-0'"
-                                              >
-                                                  <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
-                                                      :class="switchState ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in'"
-                                                      aria-hidden="true"
-                                                  >
-                                                      <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 12 12">
-                                                          <path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                                      </svg>
-                                                  </span>
-                                                  <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
-                                                      :class="switchState ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out'"
-                                                      aria-hidden="true"
-                                                  >
-                                                      <svg class="h-3 w-3 text-emerald-600" fill="currentColor" viewBox="0 0 12 12">
-                                                          <path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" />
-                                                      </svg>
-                                                  </span>
-                                              </span>
-                                          </button>
+                                              <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 12 12"><path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                          </span>
+                                          <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                              :class="switchState ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out'"
+                                          >
+                                              <svg class="h-3 w-3 text-emerald-600" fill="currentColor" viewBox="0 0 12 12"><path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" /></svg>
+                                          </span>
+                                      </span>
+                                  </button>
 
-                                          <Label 
-                                              class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
-                                              :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
-                                              @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
-                                          >
-                                              {{ switchState ? 'Approvato' : 'Bozza' }}
-                                          </Label>
+                                  <Label 
+                                      class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
+                                      :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
+                                      @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
+                                  >
+                                      {{ switchState ? 'Approvato' : 'Bozza' }}
+                                  </Label>
+                              </div>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80 z-50">
+                              
+                              <div v-if="switchState && props.ratePure.some(r => r.is_emessa)" class="space-y-3">
+                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700">
+                                      <Lock class="w-4 h-4 text-amber-600" /> Azione Bloccata
+                                  </h4>
+                                  <div class="text-sm space-y-2 text-slate-600">
+                                      <p>
+                                          Non puoi tornare in stato <strong>Bozza</strong> perché ci sono rate già emesse in contabilità.
+                                      </p>
+                                      <p class="text-[11px] text-slate-500">
+                                          Per sbloccare l'interruttore, annulla prima le emissioni usando il tasto con la freccia circolare nella tabella qui sotto.
+                                      </p>
+                                  </div>
+                              </div>
+
+                              <div v-else-if="switchState" class="space-y-3">
+                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                                      <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Stato: Approvato
+                                  </h4>
+                                  <div class="text-sm space-y-2 text-slate-600">
+                                      <p>
+                                          Il piano rate è protetto da modifiche strutturali (es. aggiunta/rimozione capitoli).
+                                      </p>
+                                      <p class="text-[11px] text-slate-500">
+                                          Puoi procedere con l'emissione delle rate, oppure tornare in Bozza se devi ricalcolare gli importi.
+                                      </p>
+                                  </div>
+                              </div>
+
+                              <div v-else class="space-y-3">
+                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700">
+                                      <History class="w-4 h-4 text-slate-500" /> Stato: Bozza
+                                  </h4>
+                                  <div class="text-sm space-y-2 text-slate-600">
+                                      <p>
+                                          Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel Libro Giornale.
+                                      </p>
+                                      <p class="text-[11px] text-slate-500 font-medium">
+                                          Clicca l'interruttore per passare ad Approvato e sbloccare i tasti di emissione.
+                                      </p>
+                                  </div>
+                              </div>
+
+                          </HoverCardContent>
+                      </HoverCard>
+
+                      <div class="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
+
+                      <div class="flex items-center gap-2">
+                          <HoverCard v-if="switchState">
+                              <HoverCardTrigger as-child>
+                                  <span class="inline-block" :tabindex="selectedRateIds.length === 0 ? 0 : -1">
+                                      <Button 
+                                          :disabled="selectedRateIds.length === 0" 
+                                          variant="default" 
+                                          class="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 w-full" 
+                                          :class="{'pointer-events-none': selectedRateIds.length === 0}"
+                                          @click="openEmissionModal"
+                                      >
+                                          <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
+                                      </Button>
+                                  </span>
+                              </HoverCardTrigger>
+                              <HoverCardContent class="w-80 z-50">
+                                  <div class="space-y-3">
+                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
+                                          <Wallet class="w-4 h-4 text-emerald-600" /> Emissione Rate
+                                      </h4>
+                                      <div class="text-sm space-y-2 text-slate-600">
+                                          <p v-if="selectedRateIds.length === 0">
+                                              Usa le <strong>spunte nella tabella</strong> qui sotto per selezionare le rate che vuoi emettere in contabilità.
+                                          </p>
+                                          <p v-else>
+                                              Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in Prima Nota.
+                                          </p>
                                       </div>
                                   </div>
-                              </TooltipTrigger>
-                              <TooltipContent 
-                                  v-if="switchState && props.ratePure.some(r => r.is_emessa)" 
-                                  class="bg-slate-900 text-white border-slate-800 shadow-xl"
-                              >
-                                  <div class="flex flex-col gap-1 p-1">
-                                      <p class="text-xs font-bold flex items-center text-amber-400">
-                                          <Lock class="w-3 h-3 mr-1" /> Azione bloccata
-                                      </p>
-                                      <p class="text-[10px] text-slate-300">
-                                          Annulla le emissioni delle rate prima di tornare in bozza.
-                                      </p>
+                              </HoverCardContent>
+                          </HoverCard>
+
+                          <HoverCard v-else>
+                              <HoverCardTrigger as-child>
+                                  <span class="inline-block" tabindex="0">
+                                      <Button disabled variant="secondary" class="h-8 px-3 opacity-70 w-full pointer-events-none">
+                                          <Lock class="w-4 h-4 mr-2" /> Approva per emettere
+                                      </Button>
+                                  </span>
+                              </HoverCardTrigger>
+                              <HoverCardContent class="w-80 z-50">
+                                  <div class="space-y-3">
+                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                          <Lock class="w-4 h-4 text-slate-500" /> Emissione Bloccata
+                                      </h4>
+                                      <div class="text-sm space-y-2 text-slate-600">
+                                          <p>
+                                              Il piano rate è attualmente in stato <strong>Bozza</strong>.
+                                          </p>
+                                          <p>
+                                              Usa l'interruttore a sinistra per passare allo stato <strong>Approvato</strong>. Solo in quel momento potrai procedere con l'emissione.
+                                          </p>
+                                      </div>
                                   </div>
-                              </TooltipContent>
-                          </Tooltip>
-                      </TooltipProvider>
+                              </HoverCardContent>
+                          </HoverCard>
+
+                          <HoverCard v-if="props.has_unpublished_rates">
+                              <HoverCardTrigger as-child>
+                                  <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all" @click="executePublishSilent">
+                                      <BellRing class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Pubblica Nascoste</span>
+                                  </Button>
+                              </HoverCardTrigger>
+                              <HoverCardContent class="w-80 z-50">
+                                  <div class="space-y-3">
+                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
+                                      <div class="text-sm space-y-2 text-slate-600">
+                                          <p>Ci sono rate emesse contabilmente ma attualmente <strong>nascoste</strong> ai condòmini.</p>
+                                          <p>Clicca questo pulsante per sbloccarne la visibilità nell'App e <strong>inviare le notifiche</strong> (Push/Email).</p>
+                                      </div>
+                                  </div>
+                              </HoverCardContent>
+                          </HoverCard>
+                      </div>
                   </div>
 
-                    <Button v-if="switchState" :disabled="selectedRateIds.length === 0" variant="default" class="bg-emerald-600 hover:bg-emerald-700 h-9" @click="openEmissionModal">
-                        <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
-                    </Button>
+                  <div class="flex flex-wrap items-center gap-2">
+                      
+                      <HoverCard>
+                          <HoverCardTrigger as-child>
+                              <Button 
+                                  @click="confirmRecalculate"
+                                  :disabled="aggregates.totaleVersato > 0"
+                                  class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white h-9 px-3 text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                  :class="aggregates.totaleVersato > 0 ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400' : 'text-gray-700 hover:bg-gray-50 hover:text-primary'"
+                              >
+                                  <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0}" />
+                                  <span :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0}">
+                                      {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
+                                  </span>
+                              </Button>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80 z-50">
+                              <div class="space-y-3">
+                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                      <RotateCw class="w-4 h-4 text-primary" /> Ricalcolo Piano Rate
+                                  </h4>
+                                  <div class="text-sm space-y-2 text-slate-600">
+                                      <p>
+                                          Rigenera le quote del piano rate in base ai millesimi attuali e ai preventivi di spesa aggiornati.
+                                      </p>
+                                      <div v-if="(copertura?.scoperto_count ?? 0) > 0" class="p-2 bg-amber-50 rounded-md border border-amber-200 text-amber-800 text-xs">
+                                          <strong>Sincronizzazione necessaria:</strong> Ci sono voci di spesa scoperte che possono essere incluse in questo piano.
+                                      </div>
+                                      <p v-if="aggregates.totaleVersato > 0" class="text-red-500 font-medium text-xs mt-1">
+                                          <Lock class="w-3 h-3 inline mr-1"/> Disabilitato: ci sono incassi registrati.
+                                      </p>
+                                  </div>
+                              </div>
+                          </HoverCardContent>
+                      </HoverCard>
 
-                    <Button v-else disabled variant="secondary" class="h-9 opacity-70">
-                        <Lock class="w-4 h-4 mr-2" /> Approva per emettere
-                    </Button>
+                      <HoverCard>
+                          <HoverCardTrigger as-child>
+                              <Button variant="outline" class="h-9 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white" @click="isSpostaSpesaOpen = true">
+                                  <ArrowRightLeft class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Sposta Spesa</span>
+                              </Button>
+                          </HoverCardTrigger>
+                          <HoverCardContent class="w-80 z-50">
+                              <div class="space-y-3">
+                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800">
+                                      <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta Spesa
+                                  </h4>
+                                  <div class="text-sm space-y-2 text-slate-600">
+                                      <p>
+                                          Trasferisci fondi da un capitolo di spesa all'altro all'interno di questo piano rate, o verso altri capitoli della gestione.
+                                      </p>
+                                      <p class="text-xs italic text-slate-500">
+                                          Utile per compensare spese impreviste senza dover ricalcolare l'intero piano o emettere nuove rate.
+                                      </p>
+                                  </div>
+                              </div>
+                          </HoverCardContent>
+                      </HoverCard>
 
-                    <Button 
-                        @click="confirmRecalculate"
-                        :disabled="aggregates.totaleVersato > 0"
-                        class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white px-4 py-2 h-9 w-full sm:w-auto text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                        :class="aggregates.totaleVersato > 0 ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400' : 'text-gray-700 hover:bg-gray-50 hover:text-primary'"
-                        title="Ricalcola importi e quote"
-                    >
-                        <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0}" />
-                        <span class="hidden sm:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0}">
-                            {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
-                        </span>
-                        <span class="sm:hidden">Ricalcola</span>
-                    </Button>
-
-                    <Button 
-                        variant="outline" 
-                        class="h-9 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
-                        @click="isSpostaSpesaOpen = true"
-                    >
-                        <ArrowRightLeft class="w-4 h-4 mr-2" /> Sposta Spesa
-                    </Button>
-
-                    <Link 
-                        :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id  })" 
-                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-4 py-2 h-9 w-full sm:w-auto hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
-                    >
-                        <List class="w-4 h-4" />
-                        <span>Lista</span>
-                    </Link>
-              </div>
+                      <Link 
+                          :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })" 
+                          class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white h-9 px-3 hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
+                      >
+                          <List class="w-4 h-4 sm:mr-1" />
+                          <span class="hidden sm:inline">Lista</span>
+                      </Link>
+                  </div>
+                </div>
             </div>
 
             <div v-if="switchState" class="flex items-center space-x-2 px-1 ml-1">
@@ -1043,6 +1192,7 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
                 <p v-else>{{ showOnlyCredits ? "Nessun credito da rimborsare." : "Nessuna quota trovata." }}</p>
               </div>
             </TabsContent>
+
           </Tabs>
 
         </section>
@@ -1061,11 +1211,66 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
             <DialogDescription>
                 Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>.
             </DialogDescription>
-            <div class="grid gap-2">
+
+            <div class="grid gap-2 mb-2">
                 <Label>Data registrazione</Label>
                 <Input type="date" v-model="formEmissione.data_emissione" />
             </div>
-        </div>
+
+            <div class="grid gap-2 mb-3">
+                <Label>Causale contabile (Opzionale)</Label>
+                <Input type="text" v-model="formEmissione.descrizione_personalizzata" placeholder="Es. Emissione rata conguaglio..." />
+                <p class="text-[10px] text-slate-500 leading-tight">
+                    Se lasciato vuoto, il sistema userà la dicitura standard (es. "Emissione Rata 1").
+                </p>
+            </div>
+
+            <div class="flex items-start space-x-3 p-3 rounded-lg border bg-slate-50/50">
+                <Checkbox 
+                    id="invia-notifiche" 
+                    v-model="formEmissione.invia_notifiche" 
+                    class="mt-1"
+                />
+                <div class="grid gap-1.5 leading-none flex-1">
+                    <label
+                        for="invia-notifiche"
+                        class="text-sm font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
+                    >
+                        Rendi visibile e invia notifiche
+                        
+                        <HoverCard>
+                            <HoverCardTrigger as-child>
+                                <button type="button" class="cursor-pointer flex items-center" @click.stop>
+                                    <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                                </button>
+                            </HoverCardTrigger>
+                            <HoverCardContent class="w-80 z-[100]">
+                                <div class="space-y-3">
+                                    <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                        <Info class="w-4 h-4 text-indigo-500" /> Emissione Silenziosa
+                                    </h4>
+                                    <div class="text-sm space-y-2 text-slate-600">
+                                        <p>
+                                            Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).
+                                        </p>
+                                        <p>
+                                            Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nell'App.
+                                        </p>
+                                        <Separator class="my-2"/>
+                                        <div class="text-xs text-amber-600 italic font-medium">
+                                            Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.
+                                        </div>
+                                    </div>
+                                </div>
+                            </HoverCardContent>
+                        </HoverCard>
+                    </label>
+                    <p class="text-xs text-muted-foreground">
+                        Se disattivato, i condòmini non vedranno la scadenza finché non la pubblichi manualmente.
+                    </p>
+                </div>
+            </div>
+            </div>
     </ConfirmDialog>
 
     <ConfirmDialog 

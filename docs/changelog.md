@@ -2,6 +2,23 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.10] - Silent Emission & Inbox Zero (Zero-Anxiety Update)
+
+Questa release introduce potenti strumenti di controllo sul flusso di lavoro dell'amministratore, chiudendo le "finestre di vulnerabilità" comunicative con i condòmini e automatizzando la pulizia della scrivania virtuale (Inbox).
+
+### 🤫 Emissione Silenziosa (Finestra di Vulnerabilità)
+* **Pubblicazione Differita:** Introdotta la possibilità di disaccoppiare l'atto contabile (emissione in prima nota) dall'atto comunicativo (visibilità e notifiche).
+* **Toggle "Rendi visibile e invia notifiche":** Nella modale di emissione rate, l'amministratore può ora togliere la spunta per effettuare un'emissione "in incognito". Le scritture contabili vengono generate, ma i condòmini non ricevono avvisi e non vedono le nuove scadenze sull'App.
+* **Allineamenti Excel senza panico:** Questa funzione è vitale per caricare massivamente pagamenti pregressi (catch-up) senza generare allarmi ingiustificati di "rata scaduta" sui telefoni dei condòmini.
+* **Pulsante "Pubblica Nascoste":** Un nuovo bottone intelligente (che compare automaticamente solo se ci sono rate congelate) permette di sbloccare la visibilità globale e inviare tutte le notifiche in un colpo solo, a lavoro di riconciliazione ultimato.
+* **HoverCard Guida Context-Aware:** L'intera toolbar del Piano Rate è stata arricchita con componenti `HoverCard` che spiegano dinamicamente lo stato in cui si trova il piano (Bozza, Approvato, Bloccato) e guidano l'utente sulle azioni possibili, eliminando i "punti ciechi" cognitivi.
+
+### 🧹 Inbox Zero (Automazione Task Admin)
+* **Smart Task Killer:** Implementata una logica di disinnesco automatico per i task amministrativi obsoleti.
+* **Uccisione Mirata (`verifica_pagamento`):** Quando l'amministratore registra un incasso che porta a zero il debito di un condòmino, il sistema intercetta l'evento e cancella all'istante il fastidioso promemoria di verifica per quella specifica persona.
+* **Uccisione Globale (`controllo_incassi`):** Se il pagamento registrato completa l'incasso del 100% dell'intera rata per tutto il condominio, il sistema "killa" in automatico anche il task generico di controllo della rata.
+* **Cache Buster Integrato:** Entrambe le operazioni forzano uno svuotamento del contatore in tempo reale, garantendo che il badge numerico rosso sulla campanella sparisca all'istante, mantenendo la Inbox pulita e focalizzata solo sulle reali urgenze.
+
 ## [1.9.9] - Tenant Wallet UX & Smart Intent Sync
 
 Questa release chiude il cerchio del sistema "Smart Wallet", estendendo le potenzialità della gestione crediti direttamente all'area riservata dei condòmini. È stato introdotto un sistema di "Comunicazione di Intenti" che permette al condomino di decidere attivamente come usare i propri fondi, mantenendo l'amministratore in totale controllo della contabilità.
