@@ -265,6 +265,57 @@ return [
                     'archived' => 'Arquivada',
                 ],
             ],
+            'create' => [
+                'breadcrumb' => 'Criar recurso',
+                'actions' => [
+                    'save_resource' => 'Guardar recurso',
+                ],
+                'placeholders' => [
+                    'name' => 'Ex.: caixa em numerário, conta CGD...',
+                    'notes' => 'Anotações adicionais...',
+                    'bank_branch' => 'Ex.: Caixa Geral de Depósitos',
+                    'address' => 'Rua Exemplo, 10',
+                ],
+                'balance' => [
+                    'title' => 'Instruções de saldo',
+                    'help_line_1' => 'Insira o valor existente na conta/caixa no momento da abertura do software.',
+                    'positive' => 'Positivo:',
+                    'positive_desc' => 'saldo disponível.',
+                    'negative' => 'Negativo:',
+                    'negative_desc' => 'conta a descoberto.',
+                    'example_prefix' => 'Ex.:',
+                    'example_positive' => 'Ativo',
+                    'example_negative' => 'Passivo/Descoberto',
+                ],
+                'bank_details' => [
+                    'title' => 'Dados bancários',
+                    'description' => 'Indique os dados da conta e da agência bancária.',
+                    'main_account' => 'Conta principal',
+                    'account_type' => 'Tipo de conta',
+                    'branch_address' => 'Morada da agência',
+                ],
+            ],
+            'edit' => [
+                'breadcrumb' => 'Editar recurso',
+                'page_title_named' => 'Editar :name',
+                'actions' => [
+                    'update_resource' => 'Atualizar',
+                ],
+                'messages' => [
+                    'type_change_blocked' => 'Não é possível alterar o tipo: recurso já utilizado em contabilidade.',
+                ],
+                'balance' => [
+                    'title' => 'Editar saldo inicial',
+                    'help_line_1' => 'Pode corrigir o saldo de abertura, se necessário.',
+                    'help_line_2' => 'Nota: isto não altera movimentos já registados, apenas o ponto de partida.',
+                ],
+                'bank_details' => [
+                    'title' => 'Dados bancários',
+                    'main_account' => 'Conta principal',
+                    'account_type' => 'Tipo de conta',
+                    'branch_address' => 'Morada da agência',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Lista de blocos',

@@ -45,27 +45,27 @@ const moneyOptions = ref({
 
 // --- BREADCRUMBS ---
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'Risorse e Fondi', href: generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id }) },
-  { title: 'Modifica risorsa', href: '#' },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.list'), href: generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.casse.edit.breadcrumb'), href: '#' },
 ]);
 
-const tipiCassa: CassaOption[] = [
-    { label: 'Cassa contanti', value: 'contanti' },
-    { label: 'Conto corrente bancario/postale', value: 'banca' },
-    { label: 'Fondo di riserva', value: 'fondo' },
-    { label: 'Cassa virtuale', value: 'virtuale' },
-];
+const tipiCassa = computed<CassaOption[]>(() => [
+    { label: trans('gestionale.list_pages.casse.table.types.cashbox'), value: 'contanti' },
+    { label: trans('gestionale.list_pages.casse.table.types.bank_account'), value: 'banca' },
+    { label: trans('gestionale.list_pages.casse.table.types.reserve_fund'), value: 'fondo' },
+    { label: trans('gestionale.list_pages.casse.table.types.other'), value: 'virtuale' },
+]);
 
-const tipiContoCorrente: ContoOption[] = [
-    { label: 'Ordinario / Condominiale', value: 'ordinario' },
-    { label: 'Dedicato (Lavori Straordinari)', value: 'dedicato' },
-    { label: 'Postale', value: 'postale' },
-    { label: 'Contabilità speciale', value: 'contabilita_speciale' },
-    { label: 'Estero', value: 'estero' },
-    { label: 'Altro', value: 'altro' },
-];
+const tipiContoCorrente = computed<ContoOption[]>(() => [
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.ordinary'), value: 'ordinario' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.dedicated'), value: 'dedicato' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.postal'), value: 'postale' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.special_accounting'), value: 'contabilita_speciale' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.foreign'), value: 'estero' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.other'), value: 'altro' },
+]);
 
 const cassaData = props.cassa.data || props.cassa; 
 const bancaData = cassaData.conto_corrente || {};
@@ -115,7 +115,7 @@ const submit = () => {
         <form class="space-y-2" @submit.prevent="submit">
 
           <div class="flex flex-col lg:flex-row lg:justify-between gap-2 w-full">
-            <h2 class="text-2xl font-bold tracking-tight hidden lg:block">Modifica {{ form.nome }}</h2>
+            <h2 class="text-2xl font-bold tracking-tight hidden lg:block">{{ trans('gestionale.list_pages.casse.edit.page_title_named', { name: form.nome }) }}</h2>
             
             <div class="flex gap-2 w-full lg:w-auto">
                  <Link
@@ -130,7 +130,7 @@ const submit = () => {
                 <Button :disabled="form.processing" class="h-9 w-full lg:w-auto">
                     <Save class="w-4 h-4 mr-2" v-if="!form.processing" />
                     <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin mr-2" />
-                    Aggiorna
+                    {{ trans('gestionale.list_pages.casse.edit.actions.update_resource') }}
                 </Button>
             </div>
           </div>
@@ -161,7 +161,7 @@ const submit = () => {
                         :disabled="cassaData.has_movements"  />
                     
                     <p v-if="cassaData.has_movements" class="text-xs text-amber-600 mt-1">
-                        Impossibile cambiare il tipo: risorsa già utilizzata in contabilità.
+                        {{ trans('gestionale.list_pages.casse.edit.messages.type_change_blocked') }}
                     </p>
                     <InputError :message="form.errors.tipo" />
                 </div>
@@ -180,10 +180,10 @@ const submit = () => {
                     </HoverCardTrigger>
                     <HoverCardContent class="w-80 z-50">
                       <div class="space-y-1">
-                        <h4 class="text-sm font-semibold">Modifica Saldo</h4>
+                        <h4 class="text-sm font-semibold">{{ trans('gestionale.list_pages.casse.edit.balance.title') }}</h4>
                         <p class="text-sm">
-                          Puoi correggere il saldo di apertura se necessario.<br>
-                          Nota: Questo NON influenza i movimenti già registrati, ma solo il punto di partenza.
+                          {{ trans('gestionale.list_pages.casse.edit.balance.help_line_1') }}<br>
+                          {{ trans('gestionale.list_pages.casse.edit.balance.help_line_2') }}
                         </p>
                       </div>
                     </HoverCardContent>
@@ -227,12 +227,12 @@ const submit = () => {
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <div>
-                                <CardTitle class="text-base font-semibold">Dettagli istituto di credito</CardTitle>
+                                <CardTitle class="text-base font-semibold">{{ trans('gestionale.list_pages.casse.edit.bank_details.title') }}</CardTitle>
                             </div>
                         </div>
                         <div class="flex items-center space-x-2">
                             <Switch id="predefinito" v-model="form.predefinito" />
-                            <Label for="predefinito">Conto principale</Label>
+                            <Label for="predefinito">{{ trans('gestionale.list_pages.casse.edit.bank_details.main_account') }}</Label>
                         </div>
                     </div>
                 </CardHeader>
@@ -240,15 +240,15 @@ const submit = () => {
                 <CardContent class="space-y-6">
                     <div class="grid grid-cols-1 gap-y-4 gap-x-4 sm:grid-cols-6">
                         <div class="sm:col-span-4">
-                            <Label for="intestatario">Intestatario conto</Label>
+                            <Label for="intestatario">{{ trans('gestionale.form_common.labels.account_holder') }}</Label>
                             <Input id="intestatario" v-model="form.intestatario" class="mt-1" />
                         </div>
                         <div class="sm:col-span-2">
-                            <Label for="tipo_conto">Tipologia conto</Label>
+                            <Label for="tipo_conto">{{ trans('gestionale.list_pages.casse.edit.bank_details.account_type') }}</Label>
                             <v-select id="tipo_conto" :options="tipiContoCorrente" label="label" class="mt-1 block w-full bg-white" v-model="form.tipo_conto" :reduce="(option: ContoOption) => option.value" :clearable="false" />
                         </div>
                         <div class="sm:col-span-4">
-                            <Label for="istituto">Nome banca / filiale</Label>
+                            <Label for="istituto">{{ trans('gestionale.form_common.labels.bank_branch') }}</Label>
                             <Input id="istituto" v-model="form.istituto" class="mt-1" />
                              <InputError :message="form.errors.istituto" />
                         </div>
@@ -263,7 +263,7 @@ const submit = () => {
                         </div>
                     </div>
                      <div class="pt-4 border-t border-dashed">
-                        <h4 class="text-sm font-medium mb-3 text-muted-foreground">Indirizzo filiale</h4>
+                        <h4 class="text-sm font-medium mb-3 text-muted-foreground">{{ trans('gestionale.list_pages.casse.edit.bank_details.branch_address') }}</h4>
                         <div class="grid grid-cols-1 gap-y-4 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
                                 <Label for="indirizzo">{{ trans('gestionale.form_common.labels.address') }}</Label>

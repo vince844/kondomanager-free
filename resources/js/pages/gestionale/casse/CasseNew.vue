@@ -48,28 +48,28 @@ const moneyOptions = ref({
 
 // --- BREADCRUMBS ---
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, component: "condominio-dropdown" } as any,
-  { title: 'Risorse e Fondi', href: generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id }) },
-  { title: 'Crea risorsa', href: '#' },
+  { title: trans('gestionale.list_pages.casse.breadcrumbs.list'), href: generatePath('gestionale/:condominio/casse', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.casse.create.breadcrumb'), href: '#' },
 ]);
 
 // --- OPZIONI DROPDOWN ---
-const tipiCassa: CassaOption[] = [
-    { label: 'Cassa contanti', value: 'contanti' },
-    { label: 'Conto corrente bancario/postale', value: 'banca' },
-    { label: 'Fondo di riserva', value: 'fondo' },
-    { label: 'Cassa virtuale', value: 'virtuale' },
-];
+const tipiCassa = computed<CassaOption[]>(() => [
+    { label: trans('gestionale.list_pages.casse.table.types.cashbox'), value: 'contanti' },
+    { label: trans('gestionale.list_pages.casse.table.types.bank_account'), value: 'banca' },
+    { label: trans('gestionale.list_pages.casse.table.types.reserve_fund'), value: 'fondo' },
+    { label: trans('gestionale.list_pages.casse.table.types.other'), value: 'virtuale' },
+]);
 
-const tipiContoCorrente: ContoOption[] = [
-    { label: 'Ordinario / Condominiale', value: 'ordinario' },
-    { label: 'Dedicato (Lavori Straordinari)', value: 'dedicato' },
-    { label: 'Postale', value: 'postale' },
-    { label: 'Contabilità speciale', value: 'contabilita_speciale' },
-    { label: 'Estero', value: 'estero' },
-    { label: 'Altro', value: 'altro' },
-];
+const tipiContoCorrente = computed<ContoOption[]>(() => [
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.ordinary'), value: 'ordinario' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.dedicated'), value: 'dedicato' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.postal'), value: 'postale' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.special_accounting'), value: 'contabilita_speciale' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.foreign'), value: 'estero' },
+    { label: trans('gestionale.list_pages.casse.table.bank_account_types.other'), value: 'altro' },
+]);
 
 const form = useForm({
   nome: '',
@@ -121,7 +121,7 @@ const submit = () => {
             <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
               <Plus class="w-4 h-4 mr-2" v-if="!form.processing" />
               <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin mr-2" />
-              Salva Risorsa
+              {{ trans('gestionale.list_pages.casse.create.actions.save_resource') }}
             </Button>
 
             <Link
@@ -144,7 +144,7 @@ const submit = () => {
                     class="mt-1 block w-full"
                     v-model="form.nome" 
                     v-on:focus="form.clearErrors('nome')"
-                    placeholder="Es. cassa contanti, banca intesa..." 
+                    :placeholder="trans('gestionale.list_pages.casse.create.placeholders.name')" 
                   />
                   <InputError :message="form.errors.nome" />
                 </div>
@@ -178,11 +178,13 @@ const submit = () => {
                     </HoverCardTrigger>
                     <HoverCardContent class="w-80 z-50">
                       <div class="space-y-1">
-                        <h4 class="text-sm font-semibold">Istruzioni Saldo</h4>
+                        <h4 class="text-sm font-semibold">{{ trans('gestionale.list_pages.casse.create.balance.title') }}</h4>
                         <p class="text-sm">
-                          Inserisci l'importo presente sul conto/cassa al momento dell'apertura del gestionale.<br>
-                          <strong>Positivo:</strong> Soldi presenti.<br>
-                          <strong>Negativo:</strong> Conto in rosso (scoperto).
+                          {{ trans('gestionale.list_pages.casse.create.balance.help_line_1') }}<br>
+                          <strong>{{ trans('gestionale.list_pages.casse.create.balance.positive') }}</strong>
+                          {{ trans('gestionale.list_pages.casse.create.balance.positive_desc') }}<br>
+                          <strong>{{ trans('gestionale.list_pages.casse.create.balance.negative') }}</strong>
+                          {{ trans('gestionale.list_pages.casse.create.balance.negative_desc') }}
                         </p>
                       </div>
                     </HoverCardContent>
@@ -200,7 +202,9 @@ const submit = () => {
 
                   <InputError :message="form.errors.saldo_iniziale" />
                   <p class="text-xs text-gray-500 mt-1">
-                    Es: <strong>1.000,00</strong> (Attivo) | <strong>-500,00</strong> (Passivo/Rosso)
+                    {{ trans('gestionale.list_pages.casse.create.balance.example_prefix') }}
+                    <strong>1.000,00</strong> ({{ trans('gestionale.list_pages.casse.create.balance.example_positive') }}) |
+                    <strong>-500,00</strong> ({{ trans('gestionale.list_pages.casse.create.balance.example_negative') }})
                   </p>
               </div>
 
@@ -220,7 +224,7 @@ const submit = () => {
                 <Label for="note">{{ trans('gestionale.form_common.labels.notes') }}</Label>
                 <Textarea 
                     id="note" 
-                    placeholder="Eventuali annotazioni aggiuntive..." 
+                    :placeholder="trans('gestionale.list_pages.casse.create.placeholders.notes')" 
                     v-model="form.note" 
                     class="mt-1"
                 />
@@ -232,8 +236,8 @@ const submit = () => {
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <div>
-                                <CardTitle class="text-base font-semibold">Dettagli istituto di credito</CardTitle>
-                                <CardDescription>Di seguito puoi specificare le coordinate bancarie e dati della filiale.</CardDescription>
+                                <CardTitle class="text-base font-semibold">{{ trans('gestionale.list_pages.casse.create.bank_details.title') }}</CardTitle>
+                                <CardDescription>{{ trans('gestionale.list_pages.casse.create.bank_details.description') }}</CardDescription>
                             </div>
                         </div>
                         
@@ -244,7 +248,7 @@ const submit = () => {
                             />
                             
                             <Label for="predefinito" class="cursor-pointer">
-                                Conto principale
+                                {{ trans('gestionale.list_pages.casse.create.bank_details.main_account') }}
                             </Label>
                         </div>
                     </div>
@@ -255,13 +259,13 @@ const submit = () => {
                     <div class="grid grid-cols-1 gap-y-4 gap-x-4 sm:grid-cols-6">
                         
                         <div class="sm:col-span-4">
-                            <Label for="intestatario">Intestatario conto</Label>
+                            <Label for="intestatario">{{ trans('gestionale.form_common.labels.account_holder') }}</Label>
                             <Input id="intestatario" v-model="form.intestatario" class="mt-1" />
                             <InputError :message="form.errors.intestatario" />
                         </div>
 
                         <div class="sm:col-span-2">
-                            <Label for="tipo_conto">Tipologia conto</Label>
+                            <Label for="tipo_conto">{{ trans('gestionale.list_pages.casse.create.bank_details.account_type') }}</Label>
                             <v-select 
                                 id="tipo_conto"
                                 :options="tipiContoCorrente" 
@@ -275,8 +279,8 @@ const submit = () => {
                         </div>
 
                         <div class="sm:col-span-4">
-                            <Label for="istituto">Nome banca / filiale</Label>
-                            <Input id="istituto" v-model="form.istituto" placeholder="Es. Intesa Sanpaolo" class="mt-1" />
+                            <Label for="istituto">{{ trans('gestionale.form_common.labels.bank_branch') }}</Label>
+                            <Input id="istituto" v-model="form.istituto" :placeholder="trans('gestionale.list_pages.casse.create.placeholders.bank_branch')" class="mt-1" />
                             <InputError :message="form.errors.istituto" />
                         </div>
 
@@ -298,11 +302,11 @@ const submit = () => {
                     </div>
 
                     <div class="pt-4 border-t border-dashed">
-                        <h4 class="text-sm font-medium mb-3 text-muted-foreground">Indirizzo filiale</h4>
+                        <h4 class="text-sm font-medium mb-3 text-muted-foreground">{{ trans('gestionale.list_pages.casse.create.bank_details.branch_address') }}</h4>
                         <div class="grid grid-cols-1 gap-y-4 gap-x-4 sm:grid-cols-6">
                             <div class="sm:col-span-6">
                                 <Label for="indirizzo">{{ trans('gestionale.form_common.labels.address') }}</Label>
-                                <Input id="indirizzo" v-model="form.indirizzo" class="mt-1" placeholder="Via roma, 10" />
+                                <Input id="indirizzo" v-model="form.indirizzo" class="mt-1" :placeholder="trans('gestionale.list_pages.casse.create.placeholders.address')" />
                             </div>
 
                             <div class="sm:col-span-2">

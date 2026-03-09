@@ -265,6 +265,57 @@ return [
                     'archived' => 'Archiviata',
                 ],
             ],
+            'create' => [
+                'breadcrumb' => 'Crea risorsa',
+                'actions' => [
+                    'save_resource' => 'Salva risorsa',
+                ],
+                'placeholders' => [
+                    'name' => 'Es. cassa contanti, conto banca...',
+                    'notes' => 'Annotazioni aggiuntive...',
+                    'bank_branch' => 'Es. Intesa Sanpaolo',
+                    'address' => 'Via esempio, 10',
+                ],
+                'balance' => [
+                    'title' => 'Istruzioni saldo',
+                    'help_line_1' => 'Inserisci l\'importo presente sul conto/cassa al momento dell\'apertura del gestionale.',
+                    'positive' => 'Positivo:',
+                    'positive_desc' => 'soldi disponibili.',
+                    'negative' => 'Negativo:',
+                    'negative_desc' => 'conto in rosso.',
+                    'example_prefix' => 'Es:',
+                    'example_positive' => 'Attivo',
+                    'example_negative' => 'Passivo/Rosso',
+                ],
+                'bank_details' => [
+                    'title' => 'Dettagli istituto di credito',
+                    'description' => 'Di seguito puoi specificare coordinate bancarie e dati della filiale.',
+                    'main_account' => 'Conto principale',
+                    'account_type' => 'Tipologia conto',
+                    'branch_address' => 'Indirizzo filiale',
+                ],
+            ],
+            'edit' => [
+                'breadcrumb' => 'Modifica risorsa',
+                'page_title_named' => 'Modifica :name',
+                'actions' => [
+                    'update_resource' => 'Aggiorna',
+                ],
+                'messages' => [
+                    'type_change_blocked' => 'Impossibile cambiare il tipo: risorsa già utilizzata in contabilità.',
+                ],
+                'balance' => [
+                    'title' => 'Modifica saldo',
+                    'help_line_1' => 'Puoi correggere il saldo di apertura se necessario.',
+                    'help_line_2' => 'Nota: questo non influenza i movimenti già registrati, ma solo il punto di partenza.',
+                ],
+                'bank_details' => [
+                    'title' => 'Dettagli istituto di credito',
+                    'main_account' => 'Conto principale',
+                    'account_type' => 'Tipologia conto',
+                    'branch_address' => 'Indirizzo filiale',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Elenco palazzine',

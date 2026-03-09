@@ -265,6 +265,57 @@ return [
                     'archived' => 'Archived',
                 ],
             ],
+            'create' => [
+                'breadcrumb' => 'Create resource',
+                'actions' => [
+                    'save_resource' => 'Save resource',
+                ],
+                'placeholders' => [
+                    'name' => 'e.g. cashbox, bank account...',
+                    'notes' => 'Additional notes...',
+                    'bank_branch' => 'e.g. Bank branch name',
+                    'address' => 'Example street, 10',
+                ],
+                'balance' => [
+                    'title' => 'Balance instructions',
+                    'help_line_1' => 'Enter the amount currently available in the account/cashbox when opening the software.',
+                    'positive' => 'Positive:',
+                    'positive_desc' => 'available funds.',
+                    'negative' => 'Negative:',
+                    'negative_desc' => 'overdrawn account.',
+                    'example_prefix' => 'e.g.',
+                    'example_positive' => 'Asset',
+                    'example_negative' => 'Liability/Overdrawn',
+                ],
+                'bank_details' => [
+                    'title' => 'Bank account details',
+                    'description' => 'Provide account and branch details below.',
+                    'main_account' => 'Main account',
+                    'account_type' => 'Account type',
+                    'branch_address' => 'Branch address',
+                ],
+            ],
+            'edit' => [
+                'breadcrumb' => 'Edit resource',
+                'page_title_named' => 'Edit :name',
+                'actions' => [
+                    'update_resource' => 'Update',
+                ],
+                'messages' => [
+                    'type_change_blocked' => 'Type cannot be changed: resource already used in accounting.',
+                ],
+                'balance' => [
+                    'title' => 'Edit opening balance',
+                    'help_line_1' => 'You can adjust the opening balance if needed.',
+                    'help_line_2' => 'Note: this does not affect recorded transactions, only the starting point.',
+                ],
+                'bank_details' => [
+                    'title' => 'Bank account details',
+                    'main_account' => 'Main account',
+                    'account_type' => 'Account type',
+                    'branch_address' => 'Branch address',
+                ],
+            ],
         ],
         'palazzine' => [
             'head_title' => 'Buildings list',
