@@ -563,6 +563,32 @@ return [
                     'save' => 'Save unit',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Edit unit',
+                'breadcrumb' => 'Edit',
+                'page_title' => 'Edit unit',
+                'page_subtitle_named' => 'You are editing unit: :name',
+                'back_to_detail' => 'Cancel and go back to details',
+                'guides' => [
+                    'update_title' => 'Data update',
+                    'update_description' => 'Edit general information, type and unit placement.',
+                    'consistency_title' => 'Consistency',
+                    'consistency_description' => 'Review surface and room data used for allocation calculations.',
+                    'land_title' => 'Land registry references',
+                    'land_description' => 'Update official identifiers to keep the registry compliant.',
+                ],
+                'sections' => [
+                    'location_title' => 'Location and type',
+                    'location_description' => 'Update unit name and placement.',
+                    'structure_title' => 'Structural details',
+                    'structure_description' => 'Consistency and internal operational information.',
+                    'land_title' => 'Land registry identifiers',
+                    'land_description' => 'Land registry details of the real estate unit.',
+                ],
+                'actions' => [
+                    'save' => 'Save changes',
+                ],
+            ],
         ],
         'movimenti' => [
             'head_title' => 'Transactions',

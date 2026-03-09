@@ -563,6 +563,32 @@ return [
                     'save' => 'Guardar imóvel',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Editar imóvel',
+                'breadcrumb' => 'Editar',
+                'page_title' => 'Editar imóvel',
+                'page_subtitle_named' => 'Está a editar a unidade imobiliária: :name',
+                'back_to_detail' => 'Cancelar e voltar ao detalhe',
+                'guides' => [
+                    'update_title' => 'Atualização de dados',
+                    'update_description' => 'Edite informações gerais, tipologia e localização da unidade.',
+                    'consistency_title' => 'Consistência',
+                    'consistency_description' => 'Revise área e divisões, essenciais para os cálculos de permilagem.',
+                    'land_title' => 'Referências cadastrais',
+                    'land_description' => 'Atualize os identificadores oficiais para manter conformidade cadastral.',
+                ],
+                'sections' => [
+                    'location_title' => 'Localização e tipologia',
+                    'location_description' => 'Atualize o nome e o enquadramento da unidade.',
+                    'structure_title' => 'Detalhes estruturais',
+                    'structure_description' => 'Consistência e informações internas de apoio à gestão.',
+                    'land_title' => 'Identificadores cadastrais',
+                    'land_description' => 'Dados cadastrais da unidade imobiliária.',
+                ],
+                'actions' => [
+                    'save' => 'Guardar alterações',
+                ],
+            ],
         ],
         'movimenti' => [
             'head_title' => 'Movimentos',

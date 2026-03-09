@@ -563,6 +563,32 @@ return [
                     'save' => 'Salva immobile',
                 ],
             ],
+            'edit' => [
+                'head_title' => 'Modifica immobile',
+                'breadcrumb' => 'Modifica',
+                'page_title' => 'Modifica immobile',
+                'page_subtitle_named' => 'Stai modificando l\'unità immobiliare: :name',
+                'back_to_detail' => 'Annulla e torna al dettaglio',
+                'guides' => [
+                    'update_title' => 'Aggiornamento dati',
+                    'update_description' => 'Modifica informazioni generali, tipologia e collocazione dell\'unità.',
+                    'consistency_title' => 'Consistenza',
+                    'consistency_description' => 'Rivedi superficie e vani, fondamentali per i calcoli millesimali.',
+                    'land_title' => 'Riferimenti catastali',
+                    'land_description' => 'Aggiorna i dati identificativi ufficiali per la conformità dell\'anagrafe condominiale.',
+                ],
+                'sections' => [
+                    'location_title' => 'Ubicazione e tipologia',
+                    'location_description' => 'Aggiorna nome e posizione dell\'unità.',
+                    'structure_title' => 'Dettagli strutturali',
+                    'structure_description' => 'Consistenza e informazioni di servizio.',
+                    'land_title' => 'Identificativi catastali',
+                    'land_description' => 'Dati catastali dell\'unità immobiliare.',
+                ],
+                'actions' => [
+                    'save' => 'Salva modifiche',
+                ],
+            ],
         ],
         'movimenti' => [
             'head_title' => 'Movimenti',
