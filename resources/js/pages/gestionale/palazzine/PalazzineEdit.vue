@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { trans } from 'laravel-vue-i18n';
 import type { Building } from '@/types/buildings'
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { BreadcrumbItem } from '@/types';
@@ -24,28 +25,28 @@ const props = defineProps<{
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.palazzine.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'Struttura', href: generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id }) },
-  { title: 'Modifica Palazzina', href: '#' },
+  { title: trans('gestionale.list_pages.palazzine.breadcrumbs.structure'), href: generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.palazzine.edit.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
   {
-    title: 'Identificazione',
-    description: "Aggiorna il nome o la lettera per raggruppare fisicamente le unità.",
+    title: trans('gestionale.list_pages.palazzine.guides.multi_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.multi_description'),
     icon: Building2,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Dettagli',
-    description: "Modifica la descrizione per facilitare il riconoscimento all'interno del complesso.",
+    title: trans('gestionale.list_pages.palazzine.guides.isolated_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.isolated_description'),
     icon: MapPin,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Note Operative',
-    description: "Aggiorna gli appunti interni utili alla gestione dello stabile, non visibili ai condòmini.",
+    title: trans('gestionale.list_pages.palazzine.guides.units_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.units_description'),
     icon: Info,
     colorVariant: 'amber' as const
   }
@@ -66,18 +67,18 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Modifica palazzina" />
+  <Head :title="trans('gestionale.list_pages.palazzine.edit.head_title')" />
 
   <GestionaleLayout>
     <div class="px-6 py-6 space-y-4">
 
       <PageHeaderGuide
-        page-title="Modifica palazzina"
-        :page-subtitle="`Aggiorna i dati del blocco edilizio: ${props.palazzina.name}`"
+        :page-title="trans('gestionale.list_pages.palazzine.edit.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.palazzine.edit.page_subtitle', { name: props.palazzina.name })"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
-        back-text="Annulla e torna all'elenco"
+        :back-text="trans('gestionale.list_pages.palazzine.edit.back_to_list')"
       />
 
       <StrutturaLayout>
@@ -87,44 +88,44 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Dati palazzina</CardTitle>
-                <CardDescription>Modifica i dettagli del fabbricato esistente.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.palazzine.edit.card_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.palazzine.edit.card_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-6">
                   
                   <div class="sm:col-span-3">
-                    <Label for="nome" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Nome Palazzina *</Label>
+                    <Label for="nome" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.palazzine.edit.labels.name') }}</Label>
                     <Input 
                       id="nome" 
                       class="mt-1 block w-full bg-white dark:bg-slate-950"
                       v-model="form.name" 
                       v-on:focus="form.clearErrors('name')"
-                      placeholder="es. Palazzina A, Corpo B..." 
+                      :placeholder="trans('gestionale.list_pages.palazzine.edit.placeholders.name')" 
                     />
                     <InputError :message="form.errors.name" />
                   </div>
 
                   <div class="sm:col-span-6">
-                    <Label for="descrizione" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Descrizione</Label>
+                    <Label for="descrizione" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.palazzine.edit.labels.description') }}</Label>
                     <Input 
                       id="descrizione" 
                       class="mt-1 block w-full bg-white dark:bg-slate-950"
                       v-model="form.description" 
                       v-on:focus="form.clearErrors('description')"
-                      placeholder="es. Fabbricato principale lato strada" 
+                      :placeholder="trans('gestionale.list_pages.palazzine.edit.placeholders.description')" 
                     />
                     <InputError :message="form.errors.description" />
                   </div>
 
                   <div class="sm:col-span-6">
-                    <Label for="note" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Note interne</Label>
+                    <Label for="note" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.palazzine.edit.labels.notes') }}</Label>
                     <Textarea 
                       id="note" 
                       class="w-full mt-1 bg-white dark:bg-slate-950 resize-none" 
                       rows="3"
-                      placeholder="Note visibili solo agli amministratori..." 
+                      :placeholder="trans('gestionale.list_pages.palazzine.edit.placeholders.notes')" 
                       v-model="form.note" 
                       v-on:focus="form.clearErrors('note')"
                     />
@@ -140,7 +141,7 @@ const submit = () => {
                   :href="generatePath('gestionale/:condominio/palazzine', { condominio: props.condominio.id })"
                   class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
               >
-                Annulla
+                {{ trans('gestionale.form_common.actions.cancel') }}
               </Link>
 
               <Button 
@@ -150,7 +151,7 @@ const submit = () => {
               >
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   <Save v-else class="h-4 w-4" />
-                  Salva modifiche
+                  {{ trans('gestionale.list_pages.palazzine.edit.actions.save') }}
               </Button>
             </div>
 

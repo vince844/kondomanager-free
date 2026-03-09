@@ -287,6 +287,50 @@ return [
                 'name' => 'Name',
                 'description' => 'Description',
             ],
+            'create' => [
+                'head_title' => 'Create new building block',
+                'breadcrumb' => 'New building block',
+                'page_title' => 'New building block',
+                'page_subtitle' => 'Add a new building block for condominium: :condominio',
+                'back_to_list' => 'Cancel and return to list',
+                'card_title' => 'Building block data',
+                'card_description' => 'Enter details for the new building block.',
+                'labels' => [
+                    'name' => 'Building block name',
+                    'description' => 'Description',
+                    'notes' => 'Internal notes',
+                ],
+                'placeholders' => [
+                    'name' => 'e.g. Building A, Block B...',
+                    'description' => 'e.g. Main building on street side',
+                    'notes' => 'Notes visible to administrators only...',
+                ],
+                'actions' => [
+                    'save' => 'Save building block',
+                ],
+            ],
+            'edit' => [
+                'head_title' => 'Edit building block',
+                'breadcrumb' => 'Edit building block',
+                'page_title' => 'Edit building block',
+                'page_subtitle' => 'Update building block data: :name',
+                'back_to_list' => 'Cancel and return to list',
+                'card_title' => 'Building block data',
+                'card_description' => 'Edit details of the existing building block.',
+                'labels' => [
+                    'name' => 'Building block name',
+                    'description' => 'Description',
+                    'notes' => 'Internal notes',
+                ],
+                'placeholders' => [
+                    'name' => 'e.g. Building A, Block B...',
+                    'description' => 'e.g. Main building on street side',
+                    'notes' => 'Notes visible to administrators only...',
+                ],
+                'actions' => [
+                    'save' => 'Save changes',
+                ],
+            ],
         ],
         'scale' => [
             'head_title' => 'Stairwells list',

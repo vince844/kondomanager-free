@@ -10,6 +10,7 @@ import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from "@/components/CondominioDropdown.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Building as BuildingIcon, PieChart, Layers } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { Flash } from '@/types/flash';
 import type { Palazzina } from '@/types/gestionale/palazzine';
 import type { Building } from '@/types/buildings';
@@ -31,28 +32,28 @@ const flashMessage = computed(() => page.props.flash.message);
 
 // Breadcrumbs testuali per il componente Header
 const headerBreadcrumbs = computed(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: 'Struttura', href: '#' },
-  { title: 'Palazzine' }
+  { title: trans('gestionale.list_pages.palazzine.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.palazzine.breadcrumbs.structure'), href: '#' },
+  { title: trans('gestionale.list_pages.palazzine.breadcrumbs.list') }
 ]);
 
 // Configurazione della guida
 const pageGuides = [
   {
-    title: 'Complessi Multipli',
-    description: 'Gestisci super-condomini suddividendoli in palazzine, scale o blocchi indipendenti per mantenere l\'anagrafica ordinata.',
+    title: trans('gestionale.list_pages.palazzine.guides.multi_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.multi_description'),
     icon: BuildingIcon,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Spese Isolate',
-    description: 'La suddivisione in palazzine è essenziale per applicare tabelle millesimali specifiche (es. manutenzione tetto per un singolo blocco).',
+    title: trans('gestionale.list_pages.palazzine.guides.isolated_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.isolated_description'),
     icon: PieChart,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Raggruppamento Unità',
-    description: 'Ogni palazzina conterrà le proprie unità immobiliari (appartamenti, box), semplificando la ricerca e l\'assegnazione delle quote.',
+    title: trans('gestionale.list_pages.palazzine.guides.units_title'),
+    description: trans('gestionale.list_pages.palazzine.guides.units_description'),
     icon: Layers,
     colorVariant: 'amber' as const
   }
@@ -60,7 +61,7 @@ const pageGuides = [
 </script>
 
 <template>
-  <Head title="Elenco palazzine" />
+  <Head :title="trans('gestionale.list_pages.palazzine.head_title')" />
 
   <GestionaleLayout>
 
@@ -71,8 +72,8 @@ const pageGuides = [
     <div class="px-6 py-8 space-y-4">
       
       <PageHeaderGuide
-        page-title="Gestione palazzine"
-        page-subtitle="Definisci i blocchi fisici che compongono il condominio. Una struttura ben organizzata semplifica le ripartizioni millesimali."
+        :page-title="trans('gestionale.list_pages.palazzine.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.palazzine.page_subtitle')"
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :video-url="null /* 'https://youtube.com/...' */"

@@ -287,6 +287,50 @@ return [
                 'name' => 'Denominazione',
                 'description' => 'Descrizione',
             ],
+            'create' => [
+                'head_title' => 'Crea nuova palazzina',
+                'breadcrumb' => 'Nuova palazzina',
+                'page_title' => 'Nuova palazzina',
+                'page_subtitle' => 'Aggiungi un nuovo blocco edilizio per il condominio: :condominio',
+                'back_to_list' => 'Annulla e torna all\'elenco',
+                'card_title' => 'Dati palazzina',
+                'card_description' => 'Inserisci i dettagli del nuovo fabbricato.',
+                'labels' => [
+                    'name' => 'Nome palazzina',
+                    'description' => 'Descrizione',
+                    'notes' => 'Note interne',
+                ],
+                'placeholders' => [
+                    'name' => 'es. Palazzina A, Corpo B...',
+                    'description' => 'es. Fabbricato principale lato strada',
+                    'notes' => 'Note visibili solo agli amministratori...',
+                ],
+                'actions' => [
+                    'save' => 'Salva palazzina',
+                ],
+            ],
+            'edit' => [
+                'head_title' => 'Modifica palazzina',
+                'breadcrumb' => 'Modifica palazzina',
+                'page_title' => 'Modifica palazzina',
+                'page_subtitle' => 'Aggiorna i dati del blocco edilizio: :name',
+                'back_to_list' => 'Annulla e torna all\'elenco',
+                'card_title' => 'Dati palazzina',
+                'card_description' => 'Modifica i dettagli del fabbricato esistente.',
+                'labels' => [
+                    'name' => 'Nome palazzina',
+                    'description' => 'Descrizione',
+                    'notes' => 'Note interne',
+                ],
+                'placeholders' => [
+                    'name' => 'es. Palazzina A, Corpo B...',
+                    'description' => 'es. Fabbricato principale lato strada',
+                    'notes' => 'Note visibili solo agli amministratori...',
+                ],
+                'actions' => [
+                    'save' => 'Salva modifiche',
+                ],
+            ],
         ],
         'scale' => [
             'head_title' => 'Elenco scale',

@@ -287,6 +287,50 @@ return [
                 'name' => 'Designação',
                 'description' => 'Descrição',
             ],
+            'create' => [
+                'head_title' => 'Criar novo bloco',
+                'breadcrumb' => 'Novo bloco',
+                'page_title' => 'Novo bloco',
+                'page_subtitle' => 'Adicione um novo bloco para o condomínio: :condominio',
+                'back_to_list' => 'Cancelar e voltar à lista',
+                'card_title' => 'Dados do bloco',
+                'card_description' => 'Introduza os detalhes do novo edifício.',
+                'labels' => [
+                    'name' => 'Nome do bloco',
+                    'description' => 'Descrição',
+                    'notes' => 'Notas internas',
+                ],
+                'placeholders' => [
+                    'name' => 'Ex.: Bloco A, Corpo B...',
+                    'description' => 'Ex.: Edifício principal lado da rua',
+                    'notes' => 'Notas visíveis apenas para administradores...',
+                ],
+                'actions' => [
+                    'save' => 'Guardar bloco',
+                ],
+            ],
+            'edit' => [
+                'head_title' => 'Editar bloco',
+                'breadcrumb' => 'Editar bloco',
+                'page_title' => 'Editar bloco',
+                'page_subtitle' => 'Atualize os dados do bloco: :name',
+                'back_to_list' => 'Cancelar e voltar à lista',
+                'card_title' => 'Dados do bloco',
+                'card_description' => 'Edite os detalhes do edifício existente.',
+                'labels' => [
+                    'name' => 'Nome do bloco',
+                    'description' => 'Descrição',
+                    'notes' => 'Notas internas',
+                ],
+                'placeholders' => [
+                    'name' => 'Ex.: Bloco A, Corpo B...',
+                    'description' => 'Ex.: Edifício principal lado da rua',
+                    'notes' => 'Notas visíveis apenas para administradores...',
+                ],
+                'actions' => [
+                    'save' => 'Guardar alterações',
+                ],
+            ],
         ],
         'scale' => [
             'head_title' => 'Lista de escadas',
