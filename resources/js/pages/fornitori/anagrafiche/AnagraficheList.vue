@@ -22,7 +22,7 @@ const flashMessage = computed(() => page.props.flash.message);
 
 <template>
   <AppLayout>
-    <Head :title="trans('fornitori.header.referents_list_title')" />
+    <Head :title="trans('fornitori.header.contacts_title')" />
 
     <FornitoreLayout>
 

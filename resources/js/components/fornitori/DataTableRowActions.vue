@@ -53,13 +53,13 @@ const deleteFornitore = () => {
           class="flex items-center gap-2"
         >
           <FilePenLine class="w-4 h-4 text-xs" />
-          {{ trans('fornitori.actions.edit_fornitore') }}
+          {{ trans('fornitori.actions.edit') }}
         </Link>
       </DropdownMenuItem> 
 
       <DropdownMenuItem @click="handleDelete(fornitore)" >
         <Trash2 class="w-4 h-4 text-xs" />
-        {{ trans('fornitori.actions.delete_fornitore') }}
+        {{ trans('fornitori.actions.delete') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>

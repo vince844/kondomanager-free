@@ -57,7 +57,7 @@ watchDebounced(
   <div class="flex items-center space-x-2">
     <!-- Subject Filter -->
     <Input
-      :placeholder="trans('documenti.table.filter_by')"
+      :placeholder="trans('fornitori.placeholder.filter_title')"
       v-model="nameFilter"
       class="h-8 w-[150px] lg:w-[250px]"
     />
@@ -73,7 +73,7 @@ watchDebounced(
       class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
     >
       <Plus class="w-4 h-4" />
-      <span>{{ trans('documenti.actions.new_document') }}</span>
+      <span>{{ trans('fornitori.actions.new') }}</span>
     </Link>
 
     <Link

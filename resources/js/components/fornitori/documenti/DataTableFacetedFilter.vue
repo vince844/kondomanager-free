@@ -97,7 +97,7 @@ function clearFilters() {
               variant="secondary"
               class="rounded-sm px-1 font-normal"
             >
-              {{ trans('fornitori.common.selected_count', { count: selectedValues.size }) }}
+              {{ selectedValues.size }} {{ trans('fornitori.table.selected') }}
             </Badge>
             <template v-else>
               <Badge
@@ -117,7 +117,7 @@ function clearFilters() {
       <Command>
         <CommandInput :placeholder="title" />
         <CommandList v-if="props.isLoading">
-          <div class="p-4 text-sm text-muted-foreground">{{ trans('fornitori.common.loading') }}</div>
+          <div class="p-4 text-sm text-muted-foreground">{{ trans('fornitori.table.loading') }}</div>
         </CommandList>
 
         <CommandList>
@@ -158,11 +158,11 @@ function clearFilters() {
             <CommandSeparator />
             <CommandGroup>
               <CommandItem
-                :value="{ label: trans('fornitori.common.reset_filters') }"
+                :value="{ label: trans('fornitori.table.clear_filters') }"
                 class="justify-center text-center"
                 @select="clearFilters"
               >
-                {{ trans('fornitori.common.reset_filters') }}
+                {{ trans('fornitori.table.clear_filters') }}
               </CommandItem>
             </CommandGroup>
           </template>

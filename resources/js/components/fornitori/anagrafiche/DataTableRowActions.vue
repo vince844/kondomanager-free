@@ -60,7 +60,7 @@ const deleteAnagrafica = () => {
 
       <DropdownMenuItem @click="handleDelete(anagrafica)" >
         <Unplug class="w-4 h-4 text-xs" />
-        {{ trans('fornitori.actions.detach_referent') }}
+        {{ trans('fornitori.actions.dissociate') }}
       </DropdownMenuItem>
 
     </DropdownMenuContent>
@@ -68,8 +68,8 @@ const deleteAnagrafica = () => {
 
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
-    :title="trans('fornitori.dialogs.detach_referent_title')"
-    :description="trans('fornitori.dialogs.detach_referent_description')"
+    :title="trans('fornitori.dialogs.detach_record_title')"
+    :description="trans('fornitori.dialogs.detach_record_description')"
     @confirm="deleteAnagrafica"
   />
 
