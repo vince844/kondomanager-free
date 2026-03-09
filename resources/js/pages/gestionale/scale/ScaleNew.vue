@@ -83,6 +83,8 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/scale', { condominio: props.condominio.id })"
         :back-text="trans('gestionale.list_pages.scale.create.back_to_list')"
+        :condominio="props.condominio"
+        :condomini="props.condomini"
       />
 
       <StrutturaLayout>
