@@ -110,7 +110,7 @@ export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
     {
       accessorKey: 'saldo_iniziale_raw', 
       header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Saldo Iniziale' }),
+        h(DataTableColumnHeader, { column, title: trans('gestionale.form_common.labels.initial_balance') }),
       cell: ({ row }) => {
         const amount = row.getValue('saldo_iniziale_raw') as number
         const formattedLabel = row.original.saldo_iniziale_formatted

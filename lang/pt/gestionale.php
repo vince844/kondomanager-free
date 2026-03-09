@@ -298,13 +298,25 @@ return [
             'create' => [
                 'head_title' => 'Criar nova escada',
                 'breadcrumb' => 'Criar escada',
+                'page_title' => 'Nova escada',
+                'page_subtitle' => 'Adicione um novo grupo de escadas para o condomínio: :condominio',
+                'back_to_list' => 'Cancelar e voltar à lista',
+                'card_title' => 'Dados da escada',
+                'card_description' => 'Introduza os detalhes e, se aplicável, o bloco associado.',
                 'labels' => [
+                    'name' => 'Nome da escada',
                     'building' => 'Bloco',
+                    'description' => 'Descrição',
+                    'notes' => 'Notas internas',
                 ],
                 'placeholders' => [
                     'name' => 'Nome da escada',
                     'select_building' => 'Associar a um bloco',
                     'description' => 'Descrição da escada',
+                    'notes_internal' => 'Notas visíveis apenas para administradores...',
+                ],
+                'actions' => [
+                    'save_scale' => 'Guardar escada',
                 ],
             ],
         ],

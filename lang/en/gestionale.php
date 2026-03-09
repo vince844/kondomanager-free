@@ -298,13 +298,25 @@ return [
             'create' => [
                 'head_title' => 'Create new stairwell',
                 'breadcrumb' => 'Create stairwell',
+                'page_title' => 'New stairwell',
+                'page_subtitle' => 'Add a new stairwell group for the condominium: :condominio',
+                'back_to_list' => 'Cancel and return to list',
+                'card_title' => 'Stairwell details',
+                'card_description' => 'Enter details and, if applicable, the related building.',
                 'labels' => [
+                    'name' => 'Stairwell name',
                     'building' => 'Building',
+                    'description' => 'Description',
+                    'notes' => 'Internal notes',
                 ],
                 'placeholders' => [
                     'name' => 'Stairwell name',
                     'select_building' => 'Link to a building',
                     'description' => 'Stairwell description',
+                    'notes_internal' => 'Notes visible only to administrators...',
+                ],
+                'actions' => [
+                    'save_scale' => 'Save stairwell',
                 ],
             ],
         ],

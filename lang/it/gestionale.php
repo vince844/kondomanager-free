@@ -298,13 +298,25 @@ return [
             'create' => [
                 'head_title' => 'Crea nuova scala',
                 'breadcrumb' => 'Crea scala',
+                'page_title' => 'Nuova scala',
+                'page_subtitle' => 'Aggiungi un nuovo gruppo di scale per il condominio: :condominio',
+                'back_to_list' => 'Annulla e torna all\'elenco',
+                'card_title' => 'Dati scala',
+                'card_description' => 'Inserisci i dettagli e l\'eventuale palazzina di appartenenza.',
                 'labels' => [
+                    'name' => 'Nome scala',
                     'building' => 'Palazzina',
+                    'description' => 'Descrizione',
+                    'notes' => 'Note interne',
                 ],
                 'placeholders' => [
                     'name' => 'Nome scala',
                     'select_building' => 'Associa a una palazzina',
                     'description' => 'Descrizione scala',
+                    'notes_internal' => 'Note visibili solo agli amministratori...',
+                ],
+                'actions' => [
+                    'save_scale' => 'Salva scala',
                 ],
             ],
         ],
