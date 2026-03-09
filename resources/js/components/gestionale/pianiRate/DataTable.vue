@@ -11,6 +11,7 @@ import { usePermission } from "@/composables/permissions";
 // Import componenti Empty e icone
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { CalendarDays, ArrowRight } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { PianoRate } from '@/types/gestionale/piani-rate';
@@ -113,10 +114,10 @@ const table = useVueTable({
       <EmptyMedia variant="icon" class="bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-500">
         <CalendarDays class="w-8 h-8" />
       </EmptyMedia>
-      <EmptyTitle>Nessun piano rate trovato</EmptyTitle>
+      <EmptyTitle>{{ trans('gestionale.piani_rate.empty.title') }}</EmptyTitle>
       <EmptyDescription>
-        Non sono ancora stati generati piani rate per questo esercizio. <br>
-        Se hai già creato un piano dei conti, inizia cliccando su "Crea piano rate" per definire le scadenze delle rate e i relativi importi.
+        {{ trans('gestionale.piani_rate.empty.description') }} <br>
+        {{ trans('gestionale.piani_rate.empty.hint') }}
       </EmptyDescription>
     </EmptyHeader>
   </Empty>

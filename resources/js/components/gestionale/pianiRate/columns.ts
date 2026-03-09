@@ -10,6 +10,7 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import type { PianoRate } from '@/types/gestionale/piani-rate'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
+import { trans } from 'laravel-vue-i18n'
 
 const { generateRoute } = usePermission();
 
@@ -19,7 +20,7 @@ const { euro } = useCurrencyFormatter({ fromCents: true });
 export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<PianoRate>[] => [
 {
     accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Denominazione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.piani_rate.table.name') }),
     cell: ({ row }) => {
       const pianoRate = row.original
       const stato = pianoRate.stato 
@@ -60,10 +61,10 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
                 // BADGE SALDI (Sempre Amber per contrasto)
                 hasSaldi ? h('span', { 
                     class: 'inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-800',
-                    title: 'Questo piano include i saldi dell\'anno precedente'
+                    title: trans('gestionale.piani_rate.table.balances_included_title')
                 }, [
                     h(Wallet, { class: 'w-2.5 h-2.5' }),
-                    'Saldi Inclusi'
+                    trans('gestionale.piani_rate.table.balances_included')
                 ]) : null,
 
                 h('span', {
@@ -78,7 +79,9 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
             h('span', { 
                 class: 'text-[10px] font-semibold text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-primary transition-colors mt-2' 
             }, [
-                isApprovato ? 'Gestisci Scadenze' : 'Gestisci Piano Rate',
+                isApprovato
+                  ? trans('gestionale.piani_rate.table.manage_deadlines')
+                  : trans('gestionale.piani_rate.table.manage_plan'),
                 h(ArrowRight, { class: 'w-3 h-3 text-slate-400 group-hover:text-primary' })
             ])
         ])
@@ -87,19 +90,19 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'dettagli_rate',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Emissione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.piani_rate.table.emission') }),
     cell: ({ row }) => {
       const pianoRate = row.original
       
       return h('div', { class: 'flex flex-col' }, [
-        h('span', { class: 'text-sm font-medium text-slate-700 dark:text-slate-300' }, `${pianoRate.numero_rate} Rate`),
-        h('span', { class: 'text-xs text-slate-500' }, `Dal ${new Date(pianoRate.data_inizio).toLocaleDateString('it-IT')}`)
+        h('span', { class: 'text-sm font-medium text-slate-700 dark:text-slate-300' }, `${pianoRate.numero_rate} ${trans('gestionale.piani_rate.table.installments')}`),
+        h('span', { class: 'text-xs text-slate-500' }, `${trans('gestionale.piani_rate.table.from_date')} ${new Date(pianoRate.data_inizio).toLocaleDateString('it-IT')}`)
       ])
     },
   },
   {
     accessorKey: 'totale_capitoli',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo totale' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.piani_rate.table.total_amount') }),
     cell: ({ row }) => {
       // Usiamo la funzione euro della tua composable
       const totale = row.original.totale_capitoli || 0;
@@ -109,14 +112,14 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'gestione',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Gestione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.piani_rate.table.management') }),
     cell: ({ row }) => {
       const nomeGestione = row.original.gestione?.nome;
       
       return h('div', { class: 'flex flex-col items-start gap-1.5' }, [
         nomeGestione
           ? h('span', { class: 'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700' }, nomeGestione)
-          : h('span', { class: 'text-xs text-slate-400 italic' }, 'Gestione N/D')
+          : h('span', { class: 'text-xs text-slate-400 italic' }, trans('gestionale.piani_rate.table.management_na'))
       ]);
     },
   },
