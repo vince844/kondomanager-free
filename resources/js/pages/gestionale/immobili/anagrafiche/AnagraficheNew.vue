@@ -19,6 +19,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import vSelect from "vue-select";
+import { trans } from 'laravel-vue-i18n';
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
 import type { Immobile } from '@/types/gestionale/immobili';
@@ -35,38 +36,38 @@ const { generatePath, generateRoute } = usePermission();
 const { toBackend } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.list'), href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'Associa Anagrafica', href: '#' },
+  { title: trans('gestionale.list_pages.immobili.anagrafiche.new.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
   {
-    title: 'Associazione Soggetti',
-    description: "Collega un'anagrafica all'immobile specificando il suo ruolo (Proprietario o Inquilino).",
+    title: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.association_title'),
+    description: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.association_description'),
     icon: UserCheck,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Quote Millesimali',
-    description: "Imposta la percentuale di possesso per garantire il corretto calcolo dei riparti.",
+    title: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.quota_title'),
+    description: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.quota_description'),
     icon: Coins,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Periodo Validità',
-    description: "Definisci le date di competenza per far subentrare automaticamente i nuovi soggetti.",
+    title: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.period_title'),
+    description: trans('gestionale.list_pages.immobili.anagrafiche.new.guides.period_description'),
     icon: CalendarDays,
     colorVariant: 'amber' as const
   }
 ]);
 
 const tipologia = [
-  { label: 'Proprietario', id: 'proprietario' },
-  { label: "Inquilino", id: 'inquilino' },
-  { label: "Usufruttuario", id: 'usufruttuario' }
+  { label: trans('gestionale.list_pages.immobili.anagrafiche.types.owner'), id: 'proprietario' },
+  { label: trans('gestionale.list_pages.immobili.anagrafiche.types.tenant'), id: 'inquilino' },
+  { label: trans('gestionale.list_pages.immobili.anagrafiche.types.usufructuary'), id: 'usufruttuario' }
 ];
 
 const form = useForm({
@@ -92,19 +93,19 @@ const submit = () => {
 </script>
 
 <template>
-  <Head title="Associa anagrafica immobile" />
+  <Head :title="trans('gestionale.list_pages.immobili.anagrafiche.new.head_title')" />
 
   <GestionaleLayout>
 
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-        page-title="Nuova associazione"
-        :page-subtitle="`Collega un soggetto all'immobile: ${immobile.nome} (Int. ${immobile.interno})`"
+        :page-title="trans('gestionale.list_pages.immobili.anagrafiche.new.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.immobili.anagrafiche.new.page_subtitle_named', { name: immobile.nome, unit: immobile.interno })"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: props.immobile.id })"
-        back-text="Annulla e torna all'elenco"
+        :back-text="trans('gestionale.list_pages.immobili.anagrafiche.new.back_to_list')"
       />
 
       <ImmobileLayout>
@@ -114,8 +115,8 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Soggetto e ruolo</CardTitle>
-                <CardDescription>Scegli chi vive in questo immobile e a che titolo.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.sections.subject_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.sections.subject_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
@@ -123,7 +124,7 @@ const submit = () => {
                   
                   <div class="sm:col-span-6">
                     <div class="flex items-center gap-1 mb-1.5">
-                      <Label for="anagrafica_id">Anagrafica</Label>
+                      <Label for="anagrafica_id">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.registry') }}</Label>
                       <HoverCard>
                         <HoverCardTrigger as-child>
                           <button type="button" class="cursor-pointer flex items-center">
@@ -133,14 +134,16 @@ const submit = () => {
                         <HoverCardContent class="w-80 z-50">
                           <div class="space-y-3">
                             <h4 class="text-sm font-semibold flex items-center gap-2">
-                              <Info class="w-4 h-4" /> Chi vedi qui?
+                              <Info class="w-4 h-4" /> {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.available_subjects_title') }}
                             </h4>
                             <div class="text-sm space-y-2 text-slate-500">
-                              <p>Mostra le anagrafiche del condominio <strong>non ancora associate</strong> a questo immobile.</p>
+                              <p>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.available_subjects_description') }}</p>
                               <Separator class="my-2"/>
                               <div class="text-xs">
-                                <span class="font-semibold text-slate-700">Manca qualcuno?</span><br>
-                                Vai in <Link :href="generatePath('anagrafiche')" class="text-indigo-600 hover:underline">gestione anagrafiche</Link> per crearlo e associare il condominio.
+                                <span class="font-semibold text-slate-700">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.missing_someone') }}</span><br>
+                                {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.go_to_registry_prefix') }}
+                                <Link :href="generatePath('anagrafiche')" class="text-indigo-600 hover:underline">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.registry_link') }}</Link>
+                                {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.go_to_registry_suffix') }}
                               </div>
                             </div>
                           </div>
@@ -155,7 +158,7 @@ const submit = () => {
                       v-model="form.anagrafica_id"
                       :reduce="(d: Anagrafica) => d.id"
                       label="nome"
-                      placeholder="Cerca o seleziona..."
+                      :placeholder="trans('gestionale.form_common.placeholders.search_or_select')"
                     >
                       <template #option="{ nome, cognome, indirizzo }">
                         <div class="flex flex-col py-0.5">
@@ -168,21 +171,21 @@ const submit = () => {
                   </div>
 
                   <div class="sm:col-span-3">
-                    <Label for="tipologia" class="mb-1.5 block">Tipologia</Label>
+                    <Label for="tipologia" class="mb-1.5 block">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.type') }}</Label>
                     <v-select
                       class="w-full bg-white dark:bg-slate-950 text-sm"
                       :options="tipologia"
                       label="label"
                       v-model="form.tipologia"
                       :reduce="(d: DropdownType) => d.id"
-                      placeholder="Scegli tipologia..."
+                      :placeholder="trans('gestionale.list_pages.immobili.anagrafiche.placeholders.select_type')"
                     />
                     <InputError :message="form.errors.tipologia" />
                   </div>
 
                   <div class="sm:col-span-3">
                     <div class="flex items-center gap-1 mb-1.5">
-                      <Label for="quota">Quota competenza (%)</Label>
+                      <Label for="quota">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.quota_competence') }}</Label>
                       
                       <HoverCard>
                         <HoverCardTrigger as-child>
@@ -193,18 +196,14 @@ const submit = () => {
                         <HoverCardContent class="w-80 z-50">
                           <div class="space-y-3">
                             <h4 class="text-sm font-semibold flex items-center gap-2">
-                              <Info class="w-4 h-4" /> Quota percentuale interna
+                              <Info class="w-4 h-4" /> {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.quota_title') }}
                             </h4>
                             <div class="text-sm space-y-2 text-slate-500">
-                              <p>
-                                <strong class="text-red-500 dark:text-red-400">Attenzione:</strong> Non inserire qui i millesimi dell'immobile.
-                              </p>
-                              <p>
-                                Questa è la percentuale (da 0 a 100) che indica il "peso" di questo soggetto all'interno dell'appartamento.
-                              </p>
+                              <p><strong class="text-red-500 dark:text-red-400">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.warning_label') }}</strong> {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.warning_text') }}</p>
+                              <p>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.quota_description') }}</p>
                               <ul class="list-disc pl-4 space-y-1 text-xs">
-                                <li><strong>Proprietario unico:</strong> 100%</li>
-                                <li><strong>Comproprietari (es. 2 coniugi):</strong> 50% ciascuno</li>
+                                <li><strong>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.quota_example_single') }}</strong></li>
+                                <li><strong>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.quota_example_shared') }}</strong></li>
                               </ul>
                             </div>
                           </div>
@@ -214,7 +213,7 @@ const submit = () => {
 
                     <Input
                       id="quota" 
-                      placeholder="es. 50.00" 
+                      :placeholder="trans('gestionale.list_pages.immobili.anagrafiche.placeholders.quota')" 
                       v-model="form.quota" 
                       class="w-full bg-white dark:bg-slate-950"
                       v-on:focus="form.clearErrors('quota')"
@@ -228,15 +227,15 @@ const submit = () => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Validità e note</CardTitle>
-                <CardDescription>Definisci il periodo di competenza contabile di questa associazione.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.sections.validity_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.sections.validity_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-2">
                   
                   <div>
-                    <Label for="data_inizio" class="mb-1.5 block">Data inizio competenza</Label>
+                    <Label for="data_inizio" class="mb-1.5 block">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.start_date') }}</Label>
                     <VueDatePicker
                       v-model="form.data_inizio"
                       class="w-full mt-1"
@@ -244,14 +243,14 @@ const submit = () => {
                       locale="it"
                       :enable-time-picker="false"
                       auto-apply
-                      placeholder="Seleziona data inizio competenza"
+                      :placeholder="trans('gestionale.list_pages.immobili.anagrafiche.placeholders.start_date')"
                     />
                     <InputError :message="form.errors.data_inizio" />
                   </div>
 
                   <div>
                     <div class="flex items-center gap-1 mb-1.5">
-                      <Label for="data_fine">Data fine competenza (Opzionale)</Label>
+                      <Label for="data_fine">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.end_date_optional') }}</Label>
                       
                       <HoverCard>
                         <HoverCardTrigger as-child>
@@ -262,18 +261,14 @@ const submit = () => {
                         <HoverCardContent class="w-80 z-50">
                           <div class="space-y-3">
                             <h4 class="text-sm font-semibold flex items-center gap-2">
-                              <Info class="w-4 h-4" /> Gestione Subentri
+                              <Info class="w-4 h-4" /> {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.takeover_title') }}
                             </h4>
                             <div class="text-sm space-y-2 text-slate-500">
-                              <p>
-                                Questo campo è fondamentale per i <strong>Subentri</strong> (es. compravendite o cambi inquilino).
-                              </p>
-                              <p>
-                                Inserendo la data di uscita, il sistema saprà esattamente quando <strong>interrompere l'addebito delle rate</strong> e come calcolare i riparti per questo soggetto.
-                              </p>
+                              <p>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.takeover_description_1') }}</p>
+                              <p>{{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.takeover_description_2') }}</p>
                               <Separator class="my-2"/>
                               <div class="text-xs text-slate-400 italic">
-                                Lascia il campo vuoto se la persona vive ancora qui.
+                                {{ trans('gestionale.list_pages.immobili.anagrafiche.new.help.takeover_hint') }}
                               </div>
                             </div>
                           </div>
@@ -288,7 +283,7 @@ const submit = () => {
                       locale="it"
                       :enable-time-picker="false"
                       auto-apply
-                      placeholder="Lascia vuoto se in corso"
+                      :placeholder="trans('gestionale.list_pages.immobili.anagrafiche.placeholders.end_date_empty_if_active')"
                     />
                     <InputError :message="form.errors.data_fine" />
                   </div>
@@ -296,17 +291,17 @@ const submit = () => {
                   <div class="sm:col-span-2 mt-2 mb-2 border-t border-dashed"></div>
 
                   <div class="sm:col-span-2">
-                    <Label for="note" class="mb-1.5 block">Note interne</Label>
+                    <Label for="note" class="mb-1.5 block">{{ trans('gestionale.list_pages.immobili.anagrafiche.labels.internal_notes') }}</Label>
                     <Textarea 
                         id="note" 
                         class="w-full mt-1 bg-white dark:bg-slate-950 resize-none" 
                         rows="3"
-                        placeholder="Eventuali note sull'associazione (visibili solo agli amministratori)..." 
+                        :placeholder="trans('gestionale.list_pages.immobili.anagrafiche.placeholders.notes')" 
                         v-model="form.note" 
                         v-on:focus="form.clearErrors('note')"
                     />
                     <InputError :message="form.errors.note" />
-                    <p class="text-[11px] text-muted-foreground mt-1 italic">Le note non saranno stampate in bolletta.</p>
+                    <p class="text-[11px] text-muted-foreground mt-1 italic">{{ trans('gestionale.list_pages.immobili.anagrafiche.new.messages.notes_not_printed') }}</p>
                   </div>
 
                 </div>
@@ -318,7 +313,7 @@ const submit = () => {
                   :href="generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: props.immobile.id })"
                   class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
               >
-                Annulla
+                {{ trans('gestionale.form_common.actions.cancel') }}
               </Link>
 
               <Button 
@@ -328,7 +323,7 @@ const submit = () => {
               >
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   <Plus v-else class="h-4 w-4" />
-                  Salva associazione
+                  {{ trans('gestionale.list_pages.immobili.anagrafiche.new.actions.save') }}
               </Button>
             </div>
 
