@@ -364,6 +364,15 @@ return [
             'head_title' => 'Elenco piani dei conti',
             'page_title' => 'Piani dei conti',
             'page_subtitle' => 'Configura la struttura delle voci di spesa (preventivo) per organizzare il budget delle gestioni del condominio.',
+            'table' => [
+                'chart_of_accounts' => 'Piano dei conti',
+                'view_structure' => 'Visualizza struttura',
+                'management' => 'Gestione',
+                'management_na' => 'Gestione N/D',
+                'budget_composition' => 'Budget e composizione',
+                'expense_entries' => ':count voci di spesa',
+                'created_at' => 'Data creazione',
+            ],
         ],
     ],
     'struttura' => [

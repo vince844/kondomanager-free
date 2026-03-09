@@ -10,6 +10,7 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi';
+import { trans } from 'laravel-vue-i18n'
 
 const { generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter({ fromCents: true }); 
@@ -17,7 +18,7 @@ const { euro } = useCurrencyFormatter({ fromCents: true });
 export const createColumns = (condominio: Building, esercizio: Esercizio): ColumnDef<PianoDeiConti>[] => [
   {
     accessorKey: 'nome',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Piano dei conti' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.piani_conti.table.chart_of_accounts') }),
     cell: ({ row }) => {
       const pianoConto = row.original;
       const desc = pianoConto.descrizione;
@@ -55,7 +56,7 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
             h('span', { 
                 class: 'text-[10px] font-semibold text-slate-400 leading-none truncate uppercase tracking-widest flex items-center gap-1 group-hover:text-indigo-500 transition-colors mt-2' 
             }, [
-                'Visualizza struttura',
+                trans('gestionale.list_pages.piani_conti.table.view_structure'),
                 h(ArrowRight, { class: 'w-3 h-3 text-indigo-400/60' })
             ])
         ])
@@ -64,20 +65,20 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   },
   {
     accessorKey: 'gestione',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Gestione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.piani_conti.table.management') }),
     cell: ({ row }) => {
       const nomeGestione = row.original.gestione?.nome;
       
       return h('div', { class: 'flex flex-col items-start gap-1.5' }, [
         nomeGestione
           ? h('span', { class: 'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-widest bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700' }, nomeGestione)
-          : h('span', { class: 'text-xs text-slate-400 italic' }, 'Gestione N/D')
+          : h('span', { class: 'text-xs text-slate-400 italic' }, trans('gestionale.list_pages.piani_conti.table.management_na'))
       ]);
     },
   },
   {
     id: 'totale',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Budget & Composizione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.piani_conti.table.budget_composition') }),
     cell: ({ row }) => {
       const totale = row.original.importo_totale ?? 0;
       const capitoliCount = row.original.capitoli_count ?? 0;
@@ -86,7 +87,7 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
         h('span', { class: 'text-sm font-bold text-slate-700 dark:text-slate-300' }, euro(totale)),
         h('span', { class: 'text-[10px] text-slate-500 flex items-center gap-1 uppercase tracking-tight' }, [
             h(Layers, { class: 'w-3 h-3' }),
-            `${capitoliCount} voci di spesa`
+            trans('gestionale.list_pages.piani_conti.table.expense_entries', { count: capitoliCount })
         ]),
       ]);
     },
@@ -94,7 +95,7 @@ export const createColumns = (condominio: Building, esercizio: Esercizio): Colum
   {
     // --- NUOVA COLONNA: Data di creazione ---
     accessorKey: 'data_creazione',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Data creazione' }),
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('gestionale.list_pages.piani_conti.table.created_at') }),
     cell: ({ row }) => {
         return h('div', { class: 'flex items-center gap-2 text-slate-500 dark:text-slate-400' }, [
             h(CalendarClock, { class: 'w-3.5 h-3.5' }),

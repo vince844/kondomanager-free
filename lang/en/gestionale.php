@@ -364,6 +364,15 @@ return [
             'head_title' => 'Chart of accounts list',
             'page_title' => 'Chart of accounts',
             'page_subtitle' => 'Configure the structure of expense items (budget) to organize management-period budgeting.',
+            'table' => [
+                'chart_of_accounts' => 'Chart of accounts',
+                'view_structure' => 'View structure',
+                'management' => 'Management',
+                'management_na' => 'Management N/A',
+                'budget_composition' => 'Budget & composition',
+                'expense_entries' => ':count expense entries',
+                'created_at' => 'Created at',
+            ],
         ],
     ],
     'struttura' => [

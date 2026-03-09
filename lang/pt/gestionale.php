@@ -364,6 +364,15 @@ return [
             'head_title' => 'Lista de planos de contas',
             'page_title' => 'Planos de contas',
             'page_subtitle' => 'Configure a estrutura das rubricas de despesa (orçamento) para organizar o budget das gestões do condomínio.',
+            'table' => [
+                'chart_of_accounts' => 'Plano de contas',
+                'view_structure' => 'Ver estrutura',
+                'management' => 'Gestão',
+                'management_na' => 'Gestão N/D',
+                'budget_composition' => 'Orçamento e composição',
+                'expense_entries' => ':count rubricas de despesa',
+                'created_at' => 'Data de criação',
+            ],
         ],
     ],
     'struttura' => [
