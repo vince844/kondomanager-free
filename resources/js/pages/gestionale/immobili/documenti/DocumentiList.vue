@@ -9,6 +9,7 @@ import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { Files, ShieldCheck, Share2, UploadCloud, List } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
 import type { Building } from '@/types/buildings';
@@ -29,29 +30,29 @@ const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.list'), href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'Documenti', href: '#' },
+  { title: trans('gestionale.list_pages.immobili.documents.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
   {
-    title: 'Fascicolo Immobile',
-    description: "Archivia planimetrie, visure catastali, contratti di locazione e atti di compravendita.",
+    title: trans('gestionale.list_pages.immobili.documents.guides.dossier_title'),
+    description: trans('gestionale.list_pages.immobili.documents.guides.dossier_description'),
     icon: Files,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Sicurezza e Privacy',
-    description: "I documenti sensibili sono protetti e accessibili solo al personale autorizzato dello studio.",
+    title: trans('gestionale.list_pages.immobili.documents.guides.security_title'),
+    description: trans('gestionale.list_pages.immobili.documents.guides.security_description'),
     icon: ShieldCheck,
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Condivisione',
-    description: "Decidi quali documenti rendere visibili ai condòmini direttamente sulla loro app.",
+    title: trans('gestionale.list_pages.immobili.documents.guides.sharing_title'),
+    description: trans('gestionale.list_pages.immobili.documents.guides.sharing_description'),
     icon: Share2,
     colorVariant: 'amber' as const
   }
@@ -59,14 +60,14 @@ const pageGuides = computed(() => [
 </script>
 
 <template>
-  <Head title="Documenti immobile" />
+  <Head :title="trans('gestionale.list_pages.immobili.documents.head_title')" />
 
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-        page-title="Archivio documenti"
-        :page-subtitle="`Gestisci i documenti relativi all'unità immobiliare: ${props.immobile.nome}`"
+        :page-title="trans('gestionale.list_pages.immobili.documents.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.immobili.documents.page_subtitle_named', { name: props.immobile.nome })"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
       >
@@ -77,7 +78,7 @@ const pageGuides = computed(() => [
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 text-[10px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <List class="w-3.5 h-3.5" />
-              <span>Immobili</span>
+              <span>{{ trans('gestionale.list_pages.immobili.breadcrumbs.list') }}</span>
             </Link>
 
             <Link
@@ -85,7 +86,7 @@ const pageGuides = computed(() => [
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
             >
               <UploadCloud class="w-3.5 h-3.5" />
-              <span>Carica file</span>
+              <span>{{ trans('gestionale.list_pages.immobili.documents.actions.upload_file') }}</span>
             </Link>
           </div>
         </template>

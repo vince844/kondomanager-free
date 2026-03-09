@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import vSelect from "vue-select";
 import { trans } from 'laravel-vue-i18n';
@@ -31,29 +30,29 @@ const props = defineProps<{
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.list'), href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'Carica Documento', href: '#' },
+  { title: trans('gestionale.list_pages.immobili.documents.create.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
   {
-    title: 'Nome e Dettagli',
-    description: "Assegna un titolo chiaro (es. 'Planimetria Catastale') per facilitare la ricerca.",
+    title: trans('gestionale.list_pages.immobili.documents.create.guides.name_title'),
+    description: trans('gestionale.list_pages.immobili.documents.create.guides.name_description'),
     icon: FileText,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Visibilità',
-    description: "Scegli se il documento è ad uso interno o visibile al proprietario sull'app.",
+    title: trans('gestionale.list_pages.immobili.documents.create.guides.visibility_title'),
+    description: trans('gestionale.list_pages.immobili.documents.create.guides.visibility_description'),
     icon: Eye,
     colorVariant: 'amber' as const
   },
   {
-    title: 'Upload (Solo PDF)',
-    description: "Trascina o seleziona il file dal tuo computer. Assicurati che sia in formato PDF.",
+    title: trans('gestionale.list_pages.immobili.documents.create.guides.upload_title'),
+    description: trans('gestionale.list_pages.immobili.documents.create.guides.upload_description'),
     icon: UploadCloud,
     colorVariant: 'emerald' as const
   }
@@ -75,7 +74,7 @@ function handleFileChange(event: Event): void {
   if (target?.files?.length) {
     const selectedFile = target.files[0]
     if (selectedFile.type !== 'application/pdf') {
-      alert("Solo file PDF sono ammessi.")
+      alert(trans('gestionale.list_pages.immobili.documents.messages.pdf_only'))
       return
     }
     file.value = selectedFile
@@ -107,18 +106,18 @@ const submit = (): void => {
 </script>
 
 <template>
-  <Head title="Carica documento immobile" />
+  <Head :title="trans('gestionale.list_pages.immobili.documents.create.head_title')" />
 
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-        page-title="Carica documento"
-        :page-subtitle="`Aggiungi un nuovo file all'archivio dell'unità immobiliare: ${props.immobile.nome}`"
+        :page-title="trans('gestionale.list_pages.immobili.documents.create.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.immobili.documents.create.page_subtitle_named', { name: props.immobile.nome })"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
-        back-text="Annulla e torna all'elenco"
+        :back-text="trans('gestionale.list_pages.immobili.documents.create.back_to_list')"
       />
 
       <ImmobileLayout>
@@ -128,20 +127,20 @@ const submit = (): void => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Dettagli e Permessi</CardTitle>
-                <CardDescription>Inserisci le informazioni e chi può visualizzare il file.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.documents.create.sections.details_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.documents.create.sections.details_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-12">
                   
                   <div class="sm:col-span-8">
-                    <Label for="name" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Nome documento *</Label>
+                    <Label for="name" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('documenti.label.name') }} *</Label>
                     <Input 
                       id="name" 
                       v-model="form.name" 
                       class="w-full bg-white dark:bg-slate-950"
-                      placeholder="es. Contratto di Locazione 2026" 
+                      :placeholder="trans('gestionale.list_pages.immobili.documents.create.placeholders.name')"
                       v-on:focus="form.clearErrors('name')"
                     />
                     <InputError :message="form.errors.name" />
@@ -149,7 +148,7 @@ const submit = (): void => {
 
                   <div class="sm:col-span-4">
                     <div class="flex items-center gap-1 mb-1.5">
-                      <Label for="is_published" class="font-bold text-xs uppercase tracking-widest text-slate-500">Visibilità</Label>
+                      <Label for="is_published" class="font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('documenti.label.visibility') }}</Label>
                       <HoverCard>
                         <HoverCardTrigger as-child>
                           <button type="button" class="cursor-pointer flex items-center">
@@ -157,7 +156,7 @@ const submit = (): void => {
                           </button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
-                          <p class="text-sm">Scegli se il documento deve essere pubblicato sull'app dei condòmini associati o rimanere ad uso interno.</p>
+                          <p class="text-sm">{{ trans('gestionale.list_pages.immobili.documents.messages.visibility_help') }}</p>
                         </HoverCardContent>
                       </HoverCard>
                     </div>
@@ -168,7 +167,7 @@ const submit = (): void => {
                       label="label" 
                       v-model="form.is_published"
                       :reduce="(is_published: PublishedType) => is_published.value"
-                      placeholder="Seleziona visibilità..."
+                      :placeholder="trans('documenti.placeholder.visibility')"
                     >
                       <template #option="{ label, icon }">
                         <div class="flex items-center gap-2">
@@ -187,12 +186,12 @@ const submit = (): void => {
                   </div>
 
                   <div class="sm:col-span-12">
-                    <Label for="description" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Descrizione (Opzionale)</Label>
+                    <Label for="description" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.immobili.documents.messages.description_optional') }}</Label>
                     <Textarea 
                       id="description" 
                       v-model="form.description" 
                       class="w-full min-h-[100px] bg-white dark:bg-slate-950 resize-none"
-                      placeholder="Eventuali note o dettagli sul contenuto del documento..." 
+                      :placeholder="trans('gestionale.list_pages.immobili.documents.create.placeholders.description')"
                       v-on:focus="form.clearErrors('description')"
                     />
                     <InputError :message="form.errors.description" />
@@ -204,8 +203,8 @@ const submit = (): void => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Allega file</CardTitle>
-                <CardDescription>Carica il documento in formato PDF (Max 10MB).</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.documents.create.sections.file_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.documents.create.sections.file_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
@@ -221,9 +220,9 @@ const submit = (): void => {
                           <UploadCloud class="w-8 h-8 text-indigo-500" />
                         </div>
                         <p class="mb-2 text-sm text-slate-500 dark:text-slate-400">
-                          <span class="font-semibold text-indigo-600 dark:text-indigo-400">Clicca per caricare</span> o trascina il file qui
+                          <span class="font-semibold text-indigo-600 dark:text-indigo-400">{{ trans('gestionale.list_pages.immobili.documents.messages.click_to_upload') }}</span> {{ trans('gestionale.list_pages.immobili.documents.messages.or_drag_file') }}
                         </p>
-                        <p class="text-xs text-slate-400 dark:text-slate-500">Solo PDF</p>
+                        <p class="text-xs text-slate-400 dark:text-slate-500">{{ trans('gestionale.list_pages.immobili.documents.messages.pdf_short') }}</p>
                       </div>
                       <input
                         id="file-upload"
@@ -244,7 +243,7 @@ const submit = (): void => {
                         @click="removeFile" 
                         class="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors px-2 py-1 bg-red-50 dark:bg-red-900/20 rounded-md shrink-0"
                       >
-                        Rimuovi
+                        {{ trans('documenti.label.remove_document') }}
                       </button>
                     </div>
                     <InputError :message="form.errors.file" class="mt-2" />
@@ -256,7 +255,8 @@ const submit = (): void => {
                           :style="{ width: `${progress}%` }"
                         ></div>
                       </div>
-                      <p class="text-[10px] font-bold text-slate-500 text-right">{{ progress }}% completato</p>
+                      <p class="text-[10px] font-bold text-slate-500 text-right">{{ trans('gestionale.list_pages.immobili.documents.messages.upload_completed', { percent: progress }) }}</p>
+                      
                     </div>
                   </div>
 
@@ -269,7 +269,7 @@ const submit = (): void => {
                   :href="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
                   class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
               >
-                Annulla
+                {{ trans('documenti.actions.cancel') }}
               </Link>
 
               <Button 
@@ -279,7 +279,7 @@ const submit = (): void => {
               >
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   <UploadCloud v-else class="h-4 w-4" />
-                  Carica documento
+                  {{ trans('gestionale.list_pages.immobili.documents.actions.upload_document') }}
               </Button>
             </div>
 

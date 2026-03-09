@@ -31,29 +31,29 @@ const props = defineProps<{
 const { generatePath, generateRoute } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
-  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.management'), href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
-  { title: 'Immobili', href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
+  { title: trans('gestionale.list_pages.immobili.breadcrumbs.list'), href: generatePath('gestionale/:condominio/immobili', { condominio: props.condominio.id }) },
   { title: props.immobile.nome, href: generatePath('gestionale/:condominio/immobili/:immobile', { condominio: props.condominio.id, immobile: props.immobile.id }) },
-  { title: 'Modifica Documento', href: '#' },
+  { title: trans('gestionale.list_pages.immobili.documents.edit.breadcrumb'), href: '#' },
 ]);
 
 const pageGuides = computed(() => [
   {
-    title: 'Dettagli',
-    description: "Modifica il nome o la descrizione per mantenere l'archivio ordinato.",
+    title: trans('gestionale.list_pages.immobili.documents.edit.guides.details_title'),
+    description: trans('gestionale.list_pages.immobili.documents.edit.guides.details_description'),
     icon: FileSignature,
     colorVariant: 'blue' as const
   },
   {
-    title: 'Visibilità',
-    description: "Aggiorna i permessi per nascondere o mostrare il file sull'app.",
+    title: trans('gestionale.list_pages.immobili.documents.edit.guides.visibility_title'),
+    description: trans('gestionale.list_pages.immobili.documents.edit.guides.visibility_description'),
     icon: Eye,
     colorVariant: 'amber' as const
   },
   {
-    title: 'Sostituzione',
-    description: "Seleziona un nuovo PDF per aggiornare la versione del documento esistente.",
+    title: trans('gestionale.list_pages.immobili.documents.edit.guides.replace_title'),
+    description: trans('gestionale.list_pages.immobili.documents.edit.guides.replace_description'),
     icon: UploadCloud,
     colorVariant: 'emerald' as const
   }
@@ -93,11 +93,11 @@ const validateFile = (selectedFile: File): boolean => {
   const maxSize = 20 * 1024 * 1024; 
   
   if (!allowedTypes.includes(selectedFile.type)) {
-    form.setError('file', 'Sono ammessi solo file PDF');
+    form.setError('file', trans('gestionale.list_pages.immobili.documents.messages.pdf_only'));
     return false;
   }
   if (selectedFile.size > maxSize) {
-    form.setError('file', 'Il file non può superare i 20MB');
+    form.setError('file', trans('gestionale.list_pages.immobili.documents.messages.max_size_20mb'));
     return false;
   }
   return true;
@@ -183,18 +183,18 @@ const submit = (): void => {
 </script>
 
 <template>
-  <Head title="Modifica documento immobile" />
+  <Head :title="trans('gestionale.list_pages.immobili.documents.edit.head_title')" />
 
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
 
       <PageHeaderGuide
-        page-title="Modifica Documento"
-        :page-subtitle="`Aggiorna i dettagli del file: ${props.documento.name}`"
+        :page-title="trans('gestionale.list_pages.immobili.documents.edit.page_title')"
+        :page-subtitle="trans('gestionale.list_pages.immobili.documents.edit.page_subtitle_named', { name: props.documento.name })"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
-        back-text="Annulla e torna all'elenco"
+        :back-text="trans('gestionale.list_pages.immobili.documents.edit.back_to_list')"
       />
 
       <ImmobileLayout>
@@ -204,20 +204,20 @@ const submit = (): void => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Dettagli e Permessi</CardTitle>
-                <CardDescription>Modifica le informazioni e chi può visualizzare il file.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.documents.edit.sections.details_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.documents.edit.sections.details_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
                 <div class="grid grid-cols-1 gap-x-6 gap-y-6 sm:grid-cols-12">
                   
                   <div class="sm:col-span-8">
-                    <Label for="name" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Nome documento *</Label>
+                    <Label for="name" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('documenti.label.name') }} *</Label>
                     <Input 
                       id="name" 
                       v-model="form.name" 
                       class="w-full bg-white dark:bg-slate-950"
-                      placeholder="es. Contratto di Locazione 2026" 
+                      :placeholder="trans('gestionale.list_pages.immobili.documents.create.placeholders.name')"
                       v-on:focus="form.clearErrors('name')"
                     />
                     <InputError :message="form.errors.name" />
@@ -225,7 +225,7 @@ const submit = (): void => {
 
                   <div class="sm:col-span-4">
                     <div class="flex items-center gap-1 mb-1.5">
-                      <Label for="is_published" class="font-bold text-xs uppercase tracking-widest text-slate-500">Visibilità</Label>
+                      <Label for="is_published" class="font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('documenti.label.visibility') }}</Label>
                       <HoverCard>
                         <HoverCardTrigger as-child>
                           <button type="button" class="cursor-pointer flex items-center">
@@ -233,7 +233,7 @@ const submit = (): void => {
                           </button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50 font-sans tracking-normal lowercase first-letter:uppercase">
-                          <p class="text-sm">Scegli se il documento deve essere pubblicato sull'app dei condòmini associati o rimanere ad uso interno.</p>
+                          <p class="text-sm">{{ trans('gestionale.list_pages.immobili.documents.messages.visibility_help') }}</p>
                         </HoverCardContent>
                       </HoverCard>
                     </div>
@@ -262,12 +262,12 @@ const submit = (): void => {
                   </div>
 
                   <div class="sm:col-span-12">
-                    <Label for="description" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Descrizione (Opzionale)</Label>
+                    <Label for="description" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">{{ trans('gestionale.list_pages.immobili.documents.messages.description_optional') }}</Label>
                     <Textarea 
                       id="description" 
                       v-model="form.description" 
                       class="w-full min-h-[100px] bg-white dark:bg-slate-950 resize-none"
-                      placeholder="Eventuali note o dettagli sul contenuto del documento..." 
+                      :placeholder="trans('gestionale.list_pages.immobili.documents.create.placeholders.description')"
                       v-on:focus="form.clearErrors('description')"
                     />
                     <InputError :message="form.errors.description" />
@@ -279,8 +279,8 @@ const submit = (): void => {
 
             <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
               <CardHeader class="pb-3 border-b border-dashed mb-4">
-                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">Sostituzione File</CardTitle>
-                <CardDescription>Carica un nuovo PDF se desideri aggiornare la versione attuale.</CardDescription>
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200">{{ trans('gestionale.list_pages.immobili.documents.edit.sections.replace_title') }}</CardTitle>
+                <CardDescription>{{ trans('gestionale.list_pages.immobili.documents.edit.sections.replace_description') }}</CardDescription>
               </CardHeader>
               
               <CardContent class="space-y-6">
@@ -307,7 +307,7 @@ const submit = (): void => {
                         class="text-[10px] font-bold uppercase tracking-widest gap-2"
                       >
                         <UploadCloud class="w-3.5 h-3.5" />
-                        Sostituisci
+                        {{ trans('gestionale.list_pages.immobili.documents.edit.actions.replace') }}
                       </Button>
                     </div>
 
@@ -323,9 +323,9 @@ const submit = (): void => {
                             <UploadCloud class="w-8 h-8 text-indigo-500" />
                           </div>
                           <p class="mb-2 text-sm text-slate-500 dark:text-slate-400">
-                            <span class="font-semibold text-indigo-600 dark:text-indigo-400">Clicca per caricare</span> o trascina il nuovo file qui
+                            <span class="font-semibold text-indigo-600 dark:text-indigo-400">{{ trans('gestionale.list_pages.immobili.documents.messages.click_to_upload') }}</span> {{ trans('gestionale.list_pages.immobili.documents.messages.or_drag_new_file') }}
                           </p>
-                          <p class="text-xs text-slate-400 dark:text-slate-500">Solo PDF (Max 20MB)</p>
+                          <p class="text-xs text-slate-400 dark:text-slate-500">{{ trans('gestionale.list_pages.immobili.documents.messages.pdf_max_20mb') }}</p>
                         </div>
                         <input
                           id="file-upload"
@@ -345,7 +345,7 @@ const submit = (): void => {
                           @click="cancelFileUpload"
                           class="text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-slate-700"
                         >
-                          Annulla Sostituzione
+                          {{ trans('gestionale.list_pages.immobili.documents.edit.actions.cancel_replace') }}
                         </Button>
                       </div>
                     </div>
@@ -358,7 +358,7 @@ const submit = (): void => {
                         <div class="flex flex-col min-w-0">
                           <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-400 truncate">{{ file.name }}</span>
                           <span class="text-[10px] text-emerald-500 font-mono mt-0.5">
-                            Nuovo file • {{ formatFileSize(file.size) }}
+                            {{ trans('gestionale.list_pages.immobili.documents.edit.messages.new_file') }} • {{ formatFileSize(file.size) }}
                           </span>
                         </div>
                       </div>
@@ -367,7 +367,7 @@ const submit = (): void => {
                         @click="removeFile" 
                         class="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors px-2 py-1 bg-white/50 dark:bg-black/20 rounded-md shrink-0"
                       >
-                        Rimuovi
+                        {{ trans('documenti.label.remove_document') }}
                       </button>
                     </div>
 
@@ -382,7 +382,7 @@ const submit = (): void => {
                   :href="generatePath('gestionale/:condominio/immobili/:immobile/documenti', { condominio: props.condominio.id, immobile: props.immobile.id })"
                   class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-[10px] font-bold uppercase tracking-widest hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
               >
-                Annulla
+                {{ trans('documenti.actions.cancel') }}
               </Link>
 
               <Button 
@@ -392,7 +392,7 @@ const submit = (): void => {
               >
                   <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
                   <Save v-else class="h-4 w-4" />
-                  Salva Modifiche
+                  {{ trans('gestionale.list_pages.immobili.documents.edit.actions.save_changes') }}
               </Button>
             </div>
 
