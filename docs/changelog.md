@@ -3,6 +3,27 @@
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
 ---
+## [1.9.8] - Chiusura Sincronizzazione `feature/i18n-layout-colors`
+
+Questa release documenta formalmente la chiusura della sincronizzazione con il branch legacy `feature/i18n-layout-colors`.
+
+### ✅ Integrato nel branch `v1.9.0-beta`
+* Porting incrementale e sicuro di sotto-lotti i18n/UI sul modulo **Fornitori** (layout, liste, azioni e compatibilita chiavi traduzione).
+* Consolidamento delle traduzioni gia presenti nel branch corrente senza regressioni su testi localizzati.
+* Pulizia operativa della sincronizzazione con commit tematici tracciabili.
+
+### ⚠️ Scartato dal branch legacy (per rischio regressione)
+* Cherry-pick diretti che reintroducevano testi hardcoded (italiano/inglese) al posto di `trans(...)`.
+* Rewrite estesi su file `lang/*` con conflitti strutturali rispetto allo stato corrente.
+* Blocchi frontend/backend ad alta divergenza (incluse parti applicative non strettamente i18n/layout).
+
+### 🧭 Decisione tecnica
+* `v1.9.0-beta` resta la **source of truth**.
+* Le prossime modifiche proseguiranno da branch dedicato post-sync, con criterio:
+  * nessuna regressione i18n;
+  * sublotti piccoli per file;
+  * validazione prima del merge.
+
 ## [1.9.7] - Visual Harmony & Smart Filters
 
 Continua il processo di modernizzazione e pulizia dell'interfaccia utente. Questa release uniforma il design system dei moduli operativi (Comunicazioni, Segnalazioni, Documenti e Agenda) e introduce filtri di ricerca avanzati e persistenti per una gestione multi-condominio più fluida.
