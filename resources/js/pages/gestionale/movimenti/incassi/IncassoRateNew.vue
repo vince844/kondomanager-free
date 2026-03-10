@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info } from 'lucide-vue-next';
+import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
@@ -103,7 +103,7 @@ const hasSaldoMisto = (r: any) => {
 const isRataZero = (r: any) => {
     const desc = (r.descrizione || '').toLowerCase();
     return desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
-};
+}; 
 
 const importoNumerico = computed(() => parseResiduoQuota(form.importo_totale));
 
@@ -335,7 +335,7 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], () => {
 
     rateList.value = list;
     runDistribution();
-}, { deep: true, immediate: true });
+}, { deep: true, immediate: true }); 
 
 onMounted(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -612,15 +612,34 @@ onMounted(async () => {
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
                                     <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="[r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50', parseResiduoQuota(r.residuo) < 0 ? 'bg-blue-50/30' : '']">
-                                        <td class="p-3 pl-4 align-top">
+                                       <td class="p-3 pl-4 align-top">
                                             <div class="flex flex-col">
                                                 <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
-                                                <span v-if="r.is_emitted === false" class="mt-1 inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" title="Questa rata non è stata ancora emessa contabilmente">
-                                                    <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
-                                                </span>
-                                                <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" class="text-[9px] text-red-500 font-bold uppercase mt-1 flex items-center bg-red-50 w-fit px-1 rounded">
-                                                    <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
-                                                </span>
+
+                                                <div class="mt-1 flex flex-col gap-1">
+                                                    
+                                                    <span v-if="r.is_emitted === false" 
+                                                        class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                        title="Questa rata non ha ancora generato una scrittura contabile">
+                                                        <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
+                                                    </span>
+
+                                                    <span v-else-if="r.is_published === false" 
+                                                        class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                        title="Rata emessa contabilmente ma attualmente nascosta ai condòmini">
+                                                        <Lock class="w-2.5 h-2.5 mr-1" /> Silenziosa
+                                                    </span>
+
+                                                    <span v-else 
+                                                        class="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter">
+                                                        <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Emessa
+                                                    </span>
+
+                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" 
+                                                        class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
+                                                        <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
+                                                    </span>
+                                                </div>
                                             </div>
                                         </td>
                                         <td class="p-3 align-top">

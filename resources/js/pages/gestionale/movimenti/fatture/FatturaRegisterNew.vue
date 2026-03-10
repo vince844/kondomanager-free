@@ -36,7 +36,7 @@ interface Fornitore {
     codice_tributo?: string;
 }
 interface Condominio { id: number; nome: string; }
-interface Esercizio  { id: number; nome: string; stato: string; }
+interface Esercizio  { id: number; nome: string; stato: string; data_inizio?: string;}
 interface Gestione   { id: number; nome: string; tipo: string; esercizio_ids?: number[]; }
 interface Conto      { id: number; nome: string; residuo_budget?: number; is_capiente?: boolean; }
 interface Banca      { id: number; nome: string; saldo_attuale?: number; }
@@ -61,6 +61,7 @@ const form = useForm({
     esercizio_id:       props.esercizio?.id || null,
     gestione_id:        null as number | null,
     tipo_documento:     'fattura',
+    is_pregresso:       false,
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
@@ -141,9 +142,25 @@ const bankForecast = computed(() => {
     };
 });
 
+// NUOVO: Smart Date Check
+watch(() => form.data_documento, (newDate) => {
+    if (newDate && props.esercizio?.data_inizio) {
+        // Tagliamo la data di inizio a YYYY-MM-DD per fare un confronto testuale pulito
+        const inizioEsercizio = props.esercizio.data_inizio.substring(0, 10);
+        
+        if (newDate < inizioEsercizio) {
+            form.is_pregresso = true;
+        } else {
+            form.is_pregresso = false;
+        }
+    }
+}, { immediate: true });
+
 const transactionStatus = computed(() => {
-    if (budgetImpacts.value.some(i => !i.isOk)) return 'CRITICAL_BUDGET';
-    if (bankForecast.value?.isRed)              return 'WARNING_CASH';
+    // Se la fattura è un Debito Pregresso, IGNORA il controllo budget!
+    if (!form.is_pregresso && budgetImpacts.value.some(i => !i.isOk)) return 'CRITICAL_BUDGET';
+    
+    if (bankForecast.value?.isRed) return 'WARNING_CASH';
     return 'SAFE';
 });
 
@@ -366,6 +383,20 @@ const pageGuides = [
                                     v-model="form.data_scadenza"
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" 
                                 />
+                            </div>
+                        </div>
+
+                        <div class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 flex items-start gap-3 transition-colors" :class="{'bg-amber-50/50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-700/50': form.is_pregresso}">
+                            <div class="flex items-center h-5">
+                                <input type="checkbox" id="is_pregresso" v-model="form.is_pregresso" class="w-4 h-4 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                            </div>
+                            <div class="flex flex-col">
+                                <label for="is_pregresso" class="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer">
+                                    Debito Esercizio Precedente
+                                </label>
+                                <p v-if="form.is_pregresso" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium leading-tight">
+                                    Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello Stato Patrimoniale.
+                                </p>
                             </div>
                         </div>
 

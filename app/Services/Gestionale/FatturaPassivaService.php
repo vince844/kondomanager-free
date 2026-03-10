@@ -20,6 +20,9 @@ class FatturaPassivaService
             $fornitore      = Fornitore::findOrFail($data['fornitore_id']);
             $isNotaCredito  = ($data['tipo_documento'] === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
+            
+            // NUOVO: Rileviamo se è un debito dell'esercizio precedente
+            $isPregresso    = $data['is_pregresso'] ?? false; 
 
             // 1. Elaborazione Righe (calcoli in centesimi)
             $imponibileTotale = 0;
@@ -76,6 +79,7 @@ class FatturaPassivaService
                 'numero_documento'   => $data['numero_documento'],               
                 'data_documento'     => $data['data_documento'],
                 'data_scadenza'      => $data['data_scadenza'],
+                'is_pregresso'       => $isPregresso, // NUOVO: Salvataggio flag
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva'        => $ivaTotale * $moltiplicatore,
                 'importo_ritenuta'   => $ritenuta,
@@ -123,31 +127,47 @@ class FatturaPassivaService
                 'gestione_id'        => $data['gestione_id'],
                 'data_registrazione' => now(),
                 'data_competenza'    => $fattura->data_documento,
-                // Manteniamo la coerenza: forziamo la scrittura ad avere lo stesso protocollo.
-                // Siccome glielo passiamo esplicitamente, il Trait NON lo sovrascriverà!
                 'numero_protocollo'  => $fattura->numero_protocollo,
-                'causale'            => "Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
+                'causale'            => ($isPregresso ? "[PREGRESSO] " : "") . "Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
                 'tipo_movimento'     => 'fattura_acquisto',
                 'stato'              => 'registrata',
             ]);
 
-            // DARE — Costi
-            foreach ($righeProcessate as $riga) {
-                if ($riga['conto_id']) {
-                    $contoBudget = Conto::find($riga['conto_id']);
-                    if ($contoBudget && $contoBudget->conto_contabile_id) {
-                        $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                            'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
-                            'voce_spesa_id'      => $riga['conto_id'],
-                            'immobile_id'        => $riga['immobile_id'] ?? null,
-                        ]);
+            // LA MAGIA DEL DEBITO PREGRESSO
+            if ($isPregresso) {
+                // Se è pregressa, NON tocchiamo i conti di spesa del budget!
+                // Mettiamo tutto il DARE in un conto patrimoniale di transito o "Passate Gestioni"
+                
+                // Assicurati di avere un conto con questo ruolo nel tuo piano dei conti standard
+                $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
+                    ->where('ruolo', 'passate_gestioni') // Oppure il ruolo che usi per il disavanzo iniziale
+                    ->firstOrFail();
+
+                $scrittura->righe()->create([
+                    'conto_contabile_id' => $contoPassateGestioni->id,
+                    'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                    'importo'            => abs($totaleDoc * $moltiplicatore),
+                    'note'               => 'Caricamento debito pregresso da fattura',
+                ]);
+            } else {
+                // DARE — Costi Normali (La fattura intacca il budget corrente)
+                foreach ($righeProcessate as $riga) {
+                    if ($riga['conto_id']) {
+                        $contoBudget = Conto::find($riga['conto_id']);
+                        if ($contoBudget && $contoBudget->conto_contabile_id) {
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
+                                'voce_spesa_id'      => $riga['conto_id'],
+                                'immobile_id'        => $riga['immobile_id'] ?? null,
+                            ]);
+                        }
                     }
                 }
             }
 
-            // AVERE — Debito
+            // AVERE — Debito v/Fornitore (Uguale per entrambi i casi)
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',

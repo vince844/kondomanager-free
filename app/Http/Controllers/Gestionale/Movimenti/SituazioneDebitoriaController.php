@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 use App\Http\Controllers\Controller;
 use App\Helpers\MoneyHelper; 
 use App\Models\Condominio;
+use App\Models\Evento;
 use App\Models\Gestionale\RataQuote; 
 use App\Traits\HasEsercizio;
 use Illuminate\Http\JsonResponse;
@@ -180,6 +181,28 @@ class SituazioneDebitoriaController extends Controller
 
             $isEmitted = $gruppoQuotes->contains(fn($q) => !is_null($q->scrittura_contabile_id));
 
+            // ID Rata sicuro
+            $rataId = (int) $first->rata_id;
+
+            // Cerchiamo l'evento specifico del condòmino per questa rata
+            $eventoRata = Evento::where('meta->type', 'scadenza_rata_condomino')
+                ->where(function($q) use ($rataId) {
+                    $q->where('meta->context->rata_id', $rataId)
+                      ->orWhere('meta->context->rata_id', (string) $rataId);
+                })
+                ->first();
+
+            // LOGICA DI PUBBLICAZIONE:
+            // 1. Se non c'è l'evento, la consideriamo pubblicata (fallback)
+            // 2. Se c'è l'evento, leggiamo il flag 'is_published' dentro il meta
+            // 3. Verifichiamo anche che la visibilità non sia 'hidden'
+            $isPublished = true;
+            if ($eventoRata) {
+                $meta = $eventoRata->meta;
+                $isPublished = (isset($meta['is_published']) && $meta['is_published'] === true) 
+                               && $eventoRata->visibility !== 'hidden';
+            }
+
             return [
                 'id'              => $first->id,
                 'rata_padre_id'   => $first->rata_id,
@@ -198,6 +221,7 @@ class SituazioneDebitoriaController extends Controller
                 'scaduta'         => $first->data_scadenza && Carbon::parse($first->data_scadenza)->isPast(),
                 'is_credito'      => $residuoNetto < 0,
                 'is_emitted'      => $isEmitted,
+                'is_published'    => $isPublished,
                 'dettaglio_quote' => $dettaglioTooltip 
             ];
         })

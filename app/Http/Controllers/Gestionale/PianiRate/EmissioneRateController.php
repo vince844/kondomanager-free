@@ -139,7 +139,40 @@ class EmissioneRateController extends Controller
                         ]);
                     }
 
-                    // 4. Gestione Eventi Condòmini (Finestra di Vulnerabilità)
+                    // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
+    $rataId = (int) $rata->id;
+    $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+        ->where(function($q) use ($rataId) {
+            $q->where('meta->context->rata_id', $rataId)
+              ->orWhere('meta->context->rata_id', (string) $rataId);
+        })
+        ->get();
+
+    foreach ($userEvents as $evt) {
+        $meta = $evt->meta;
+        $meta['is_emitted'] = true;
+        $meta['is_published'] = $inviaNotifiche; 
+        
+        $evt->update([
+            'meta' => $meta,
+            'visibility' => $inviaNotifiche ? VisibilityStatus::PRIVATE->value : VisibilityStatus::HIDDEN->value
+        ]);
+    }
+
+    // 5. Invio Notifiche
+    if ($inviaNotifiche) {
+        RataEmessa::dispatch($rata);
+    }
+
+    // 6. Pulizia Task Admin (CORRETTO: usiamo where standard per i path JSON)
+    Evento::where('meta->type', 'emissione_rata')
+        ->where(function($q) use ($rataId) {
+            $q->where('meta->context->rata_id', $rataId)
+              ->orWhere('meta->context->rata_id', (string) $rataId);
+        })
+        ->delete();
+
+                /*     // 4. Gestione Eventi Condòmini (Finestra di Vulnerabilità)
                     $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
                         ->where('meta->context->rata_id', $rata->id)
                         ->get();
@@ -164,7 +197,7 @@ class EmissioneRateController extends Controller
                     // 6. Pulizia Task Admin (Promemoria Emissione)
                     Evento::whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereJsonContains('meta->type', 'emissione_rata')
-                        ->delete(); 
+                        ->delete();  */
                 }
             });
 
@@ -311,55 +344,53 @@ class EmissioneRateController extends Controller
      * Sblocca la visibilità delle rate emesse in modalità "Silenziosa".
      * Le rende visibili nell'app e invia finalmente le notifiche ai condòmini.
      */
-    public function publishSilent(Request $request, Condominio $condominio, $esercizio, PianoRate $pianoRate)
+   public function publishSilent(Request $request, Condominio $condominio, $esercizio, PianoRate $pianoRate)
     {
         try {
-            DB::transaction(function () use ($pianoRate) {
-    
-                // 1. Trova tutti gli eventi "Silenziosi" usando i meta flag
-                $hiddenEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
-                    ->where('meta->context->piano_rate_id', $pianoRate->id)
-                    ->where('meta->is_emitted', true)
-                    ->where('meta->is_published', false)
-                    ->get();
+            $idPiano = (int) $pianoRate->id;
 
-                if ($hiddenEvents->isEmpty()) {
-                    return;
-                }
+            // 1. Trova gli eventi usando la ricerca robusta per ID Piano
+            $hiddenEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                ->where(function($q) use ($idPiano) {
+                    $q->where('meta->context->piano_rate_id', $idPiano)
+                      ->orWhere('meta->context->piano_rate_id', (string) $idPiano);
+                })
+                ->where('visibility', VisibilityStatus::HIDDEN->value)
+                ->get();
 
+            if ($hiddenEvents->isEmpty()) {
+                return back()->with($this->flashWarning('Nessuna rata nascosta trovata.'));
+            }
+
+            DB::transaction(function () use ($hiddenEvents) {
                 $rataIds = [];
 
-                // 2. Sblocca la visibilità
                 foreach ($hiddenEvents as $evt) {
                     $meta = $evt->meta;
-                    $meta['is_published'] = true;
+                    $meta['is_published'] = true; // Impostiamo a TRUE nel JSON
                     
                     $evt->update([
                         'meta' => $meta,
-                        'visibility' => VisibilityStatus::PRIVATE->value
+                        'visibility' => VisibilityStatus::PRIVATE->value // Rendiamo visibile (private)
                     ]);
                     
-                    // Raccoglie l'ID della rata per inviare la notifica collettiva
                     if (isset($meta['context']['rata_id'])) {
                         $rataIds[] = $meta['context']['rata_id'];
                     }
                 }
 
-                // 3. Spedisce le notifiche Push/Email per ogni rata sbloccata
-                $uniqueRataIds = array_unique($rataIds);
-                foreach ($uniqueRataIds as $rataId) {
-                    $rata = Rata::find($rataId);
-                    if ($rata) {
-                        RataEmessa::dispatch($rata);
-                    }
+                // 2. Notifiche (Dispatch una sola volta per rata id)
+                foreach (array_unique($rataIds) as $rId) {
+                    $rata = Rata::find($rId);
+                    if ($rata) RataEmessa::dispatch($rata);
                 }
             });
 
-            return back()->with($this->flashSuccess('Rate pubblicate! I condòmini ora le vedono e hanno ricevuto le notifiche.'));
+            return back()->with($this->flashSuccess('Rate pubblicate! I condòmini ora le vedono.'));
 
         } catch (\Throwable $e) {
-            Log::error("Errore pubblicazione rate silenziose: " . $e->getMessage());
-            return back()->with($this->flashError('Errore durante la pubblicazione delle rate.'));
+            Log::error("Errore sblocco rate: " . $e->getMessage());
+            return back()->with($this->flashError('Errore durante la pubblicazione.'));
         }
     }
 }

@@ -2,6 +2,14 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.11] Time-Travel Accounting (Debito Esercizio Precedente)
+* **Caricamento Fatture Pregresse:** Introdotta la possibilità vitale di registrare nel gestionale le fatture datate negli anni passati (es. fattura 2025 caricata nel 2026) senza inquinare il bilancio dell'anno in corso.
+* **Smart Date Check (Rilevatore di Competenza):** Quando l'amministratore inserisce la data del documento, l'interfaccia Vue riconosce in millisecondi se la fattura appartiene a un esercizio chiuso. Appare automaticamente un nuovo "Scudo Giallo" (Debito Esercizio Precedente) pronto per essere attivato.
+* **Esenzione Budget Attiva:** Attivando l'opzione "Debito Pregresso", il sistema disinnesca in automatico l'allarme "Sforamento Budget". Il gestionale comprende che essendo una spesa vecchia, non ha alcun senso confrontarla con il preventivo dell'anno corrente, evitando stress e falsi allarmi (Audit Trail).
+* **Partita Doppia Invisibile:** Il motore `FatturaPassivaService` è stato istruito a deviare questi importi. Invece di addebitare la spesa sui capitoli ordinari (Conto Economico), il debito viene forzato silenziosamente sul conto patrimoniale di sistema **"Fondo Passate Gestioni"**.
+* **Cash Flow Lineare:** Questo aggiornamento chiude perfettamente il cerchio con la "Rata 0": i soldi incassati dai vecchi morosi rimpinguano il Fondo Passate Gestioni, mentre i bonifici fatti ai fornitori per le fatture pregresse svuotano lo stesso fondo. Il bilancio quadra al centesimo e il debito sparisce magicamente dallo scadenzario.
+* **UI "Pregresso" Globale:** Aggiunto un badge dedicato `[Archive Pregresso]` nella Data Table principale delle fatture passive. L'amministratore può distinguere a colpo d'occhio i debiti correnti dagli strascichi delle gestioni passate.
+
 ## [1.9.10] - Silent Emission & Inbox Zero (Zero-Anxiety Update)
 
 Questa release introduce potenti strumenti di controllo sul flusso di lavoro dell'amministratore, chiudendo le "finestre di vulnerabilità" comunicative con i condòmini e automatizzando la pulizia della scrivania virtuale (Inbox).

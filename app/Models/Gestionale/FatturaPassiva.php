@@ -23,6 +23,7 @@ class FatturaPassiva extends Model
     protected $casts = [
         'data_documento'      => 'date',
         'data_scadenza'       => 'date',
+        'is_pregresso'        => 'boolean',
         'dati_extra'          => 'array',
         // Cast espliciti per i BigInt: senza questi Laravel li restituisce
         // come stringa in alcuni contesti, causando errori nei calcoli frontend

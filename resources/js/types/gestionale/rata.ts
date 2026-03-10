@@ -61,6 +61,7 @@ export interface Rata {
     coperta_da_credito?: boolean;
     parzialmente_coperta?: boolean;
     residuo_originale?: number;
+    is_published?: boolean;
 }
 
 export interface DettaglioPagamento {

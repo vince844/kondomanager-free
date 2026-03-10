@@ -348,23 +348,6 @@ class PianoRateController extends Controller
             Log::warning("Sposta Spesa: Nessun Piano Conto trovato per la gestione {$pianoRate->gestione_id}");
         }
 
-        // --- INIZIO DEBUG ---
-        $debugEventi = Evento::where('meta->type', 'scadenza_rata_condomino')
-            ->where('meta->context->piano_rate_id', $pianoRate->id)
-            ->get(['id', 'title', 'meta', 'visibility']);
-            
-        Log::info("=== DEBUG EVENTI PIANO RATE ID: {$pianoRate->id} ===");
-        Log::info($debugEventi->toArray());
-        
-        $conteggioNascoste = Evento::where('meta->type', 'scadenza_rata_condomino')
-            ->where('meta->context->piano_rate_id', $pianoRate->id)
-            ->where('meta->is_emitted', true)
-            ->where('meta->is_published', false)
-            ->count();
-            
-        Log::info("EVENTI TROVATI COME NASCOSTI: " . $conteggioNascoste);
-        // --- FINE DEBUG ---
-
         return Inertia::render('gestionale/pianiRate/PianiRateShow', [
             'condominio' => $condominio, 
             'esercizio' => $esercizio, 
@@ -378,8 +361,8 @@ class PianoRateController extends Controller
             'destinations' => $destinations,
             'has_unpublished_rates' => Evento::where('meta->type', 'scadenza_rata_condomino')
                 ->where('meta->context->piano_rate_id', $pianoRate->id)
-                ->where('meta->is_emitted', true)        // 🟢 Cerca quelle emesse...
-                ->where('meta->is_published', false)     // 🟢 ...ma ancora silenziose!
+                ->where('meta->is_emitted', true)        // Cerca quelle emesse...
+                ->where('meta->is_published', false)     // ...ma ancora silenziose!
                 ->exists(),
         ]);
     }

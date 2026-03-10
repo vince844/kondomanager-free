@@ -7,11 +7,8 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/pianiRate/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
-
-// Import componenti Empty e icone
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
-import { CalendarDays, ArrowRight } from 'lucide-vue-next';
-
+import { CalendarDays} from 'lucide-vue-next';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { PianoRate } from '@/types/gestionale/piani-rate';
 import type { Building } from '@/types/buildings';

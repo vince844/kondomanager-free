@@ -9,8 +9,19 @@ export function usePaymentDistribution() {
 
     const isRataZero = (r: Rata) => {
         const desc = (r.descrizione || '').toLowerCase();
-        return desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso') || r.is_emitted === false;
-    };
+        
+        // LOGICA CORRETTA:
+        // Una rata deve essere SEMPRE visibile all'admin se:
+        // 1. È un Saldo/Rata 0
+        // 2. Non è ancora stata emessa (ci sto lavorando)
+        // 3. È già stata emessa (è a libro giornale, quindi devo poterla incassare)
+        
+        const isSaldo = desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
+        const isContabilizzata = r.is_emitted === true; // Forza visibilità se emessa (Sia Silent che Public)
+        const isInBozza = r.is_emitted === false;
+
+        return isSaldo || isContabilizzata || isInBozza;
+    }; 
 
     const getValidTime = (dateStr: string | null) => {
         if (!dateStr) return 0; 
