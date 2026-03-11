@@ -1,7 +1,7 @@
 import { 
     ClockAlert, ClockArrowUp, CheckCircle2, AlertCircle, 
     ArrowUpFromLine, ArrowDownToLine, AlertTriangle, XCircle, 
-    CalendarDays, Info, Coins, PieChart, LucideIcon 
+    CalendarDays, Info, Coins, PieChart, LucideIcon, History
 } from 'lucide-vue-next';
 
 // Interfaccia per il valore di ritorno (utile per intellisense)
@@ -173,6 +173,36 @@ export function useEventStyling() {
                 label: 'In verifica' 
             };
         }
+
+        // INIZIO MODIFICHE UX CONDÒMINO -------------------------
+
+        // 4.1 LA DOPAMINA (Rata Pagata)
+        // Ora che il backend ci manda le rate pagate negli ultimi 30gg,
+        // dobbiamo assicurarci di intercettarle PRIMA che scatti l'allarme "Scaduto" in basso.
+        if (type === 'scadenza_rata_condomino' && status === 'paid') {
+            return { 
+                color: 'text-emerald-600 dark:text-emerald-400 font-bold', 
+                bgColor: 'bg-emerald-50 dark:bg-emerald-900/20', 
+                borderColor: 'border-emerald-200 dark:border-emerald-800', 
+                icon: CheckCircle2, 
+                label: 'Pagamento Ricevuto' 
+            };
+        }
+
+        // 4.2 L'ANTI-TRAUMA (Rata 0 Scaduta)
+        // Se è la Rata 0, è tecnicamente scaduta nel passato (es. 1 Gennaio),
+        // ma non vogliamo mostrare l'allarme rosso "Scaduto".
+        if (type === 'scadenza_rata_condomino' && meta.numero_rata === 0 && status !== 'paid') {
+            return { 
+                color: 'text-amber-600 dark:text-amber-500 font-bold', 
+                bgColor: 'bg-amber-50 dark:bg-amber-900/20', 
+                borderColor: 'border-amber-200 dark:border-amber-800', 
+                icon: History, 
+                label: 'Debito Pregresso' 
+            };
+        }
+        
+        // 🟢 FINE MODIFICHE UX CONDÒMINO ---------------------------
 
         // ---------------------------------------------------------
         // 5. SCADENZE TEMPORALI DEFAULT

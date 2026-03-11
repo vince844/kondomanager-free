@@ -60,7 +60,13 @@ const isExpired = computed(() =>
     importoRestante.value > 0.01
 );
 
-const isEmitted = computed(() => props.evento?.meta?.is_emitted === true);
+const isEmitted = computed(() => {
+    // Se la rata è nel calendario del condòmino, diamo per scontato che sia emessa
+    // Questo bypassa il "false" generato di default dal Listener.
+    if (isCondomino.value) return true;
+    
+    return props.evento?.meta?.is_emitted === true;
+});
 
 const formatDate = (dateStr: string) => { if(!dateStr) return ''; return format(new Date(dateStr), "d MMMM yyyy", { locale: it }); };
 
@@ -266,157 +272,142 @@ const reportPaymentWithCredit = () => {
 
                     <div v-if="isCondomino">
 
-                        <div v-if="evento.meta?.storico_crediti > 0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
-                            <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
-                                <TrendingDown class="w-4 h-4" />
+                        <div v-if="isPaid" class="mb-6 p-6 rounded-xl bg-emerald-50 border border-emerald-200 flex flex-col items-center justify-center text-center gap-3">
+                            <div class="p-3 bg-emerald-100 rounded-full text-emerald-600 shadow-sm">
+                                <CheckCircle class="w-8 h-8" />
                             </div>
                             <div>
-                                <h4 class="text-sm font-bold text-blue-800 mb-1">Hai un credito disponibile</h4>
-                                <p class="text-xs text-blue-700 leading-relaxed">
-                                    Dalle gestioni o rate precedenti risulta un credito non utilizzato di <span class="font-bold">{{ euro(evento.meta.storico_crediti) }}</span>. 
-                                    Puoi usarlo per compensare il pagamento di questa rata.
+                                <h4 class="text-lg font-bold text-emerald-800 mb-1">Rata Saldata</h4>
+                                <p class="text-sm text-emerald-700 leading-relaxed">
+                                    Il pagamento per questo documento è stato registrato e validato dall'amministratore. Non è richiesta alcuna azione.
                                 </p>
                             </div>
                         </div>
 
-                        <div v-if="evento.meta?.storico_arretrati > 0.01 && !isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
-                            <div class="p-1.5 bg-orange-100 rounded-full text-orange-600 shrink-0 mt-0.5">
-                                <AlertTriangle class="w-4 h-4" />
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-bold text-orange-800 mb-1">Attenzione: rate precedenti insolute</h4>
-                                <p class="text-xs text-orange-700 leading-relaxed mb-2">
-                                    Oltre a questa rata, risultano arretrati non saldati per un totale di <span class="font-bold">{{ euro(evento.meta.storico_arretrati) }}</span>
-                                    <span v-if="evento.meta?.storico_rate_rif"> (rif. rate {{ evento.meta.storico_rate_rif }})</span>.
-                                </p>
-                                <p class="text-xs text-orange-700">
-                                    Ti invitiamo a regolarizzare la tua posizione saldando anche gli arretrati pregressi.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div v-if="isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
-                            <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
-                                <TrendingDown class="w-4 h-4" />
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-bold text-blue-800 mb-1">Credito a tuo favore</h4>
-                                <p class="text-xs text-blue-700 leading-relaxed mb-2">
-                                    Questo documento certifica un credito a tuo favore di <span class="font-bold">{{ euro(Math.abs(importoRestante)) }}</span>. 
-                                    Non è richiesto alcun pagamento.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div v-else-if="isReported" class="mb-6">
-                            <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 mb-4 flex gap-3 items-start">
-                                <div class="p-1.5 bg-amber-100 rounded-full text-amber-600 shrink-0 mt-0.5">
-                                   <Clock class="w-4 h-4" />
+                        <div v-else class="mb-6 space-y-4">
+                            
+                            <div v-if="evento.meta?.storico_crediti > 0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                    <TrendingDown class="w-4 h-4" />
                                 </div>
                                 <div>
-                                    <h4 class="text-sm font-bold text-amber-800 mb-1">Pagamento in verifica</h4>
-                                    <p class="text-xs text-amber-700 leading-relaxed">
-                                        Hai segnalato di aver effettuato il pagamento. L'amministratore sta verificando l'incasso. Riceverai una notifica a conferma avvenuta.
+                                    <h4 class="text-sm font-bold text-blue-800 mb-1">Hai un credito disponibile</h4>
+                                    <p class="text-xs text-blue-700 leading-relaxed">
+                                        Dalle gestioni o rate precedenti risulta un credito non utilizzato di <span class="font-bold">{{ euro(evento.meta.storico_crediti) }}</span>. 
+                                        Puoi usarlo per compensare questa rata.
                                     </p>
                                 </div>
                             </div>
-                            <Button class="w-full h-12 bg-amber-100 text-amber-700 border border-amber-200 cursor-not-allowed rounded-lg font-medium shadow-none text-xs" disabled>
-                                In attesa di conferma...
-                            </Button>
-                        </div>
 
-                        <div v-else-if="!isPaid && !isRejected" class="mb-6 space-y-4">
-                            
-                            <div class="p-4 rounded-lg bg-amber-50 border border-amber-200">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-amber-800 flex items-center gap-2 font-semibold text-sm">
-                                        <AlertCircle class="w-4 h-4" /> Totale rata corrente
-                                    </span>
-                                    <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
+                            <div v-if="evento.meta?.storico_arretrati > 0.01 && !isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-orange-100 rounded-full text-orange-600 shrink-0 mt-0.5">
+                                    <AlertTriangle class="w-4 h-4" />
                                 </div>
-                                
-                                <div v-if="evento.meta?.storico_arretrati > 0.01" class="mt-3 pt-3 border-t border-amber-200/60">
-                                    <p class="text-xs text-amber-700 leading-snug">
-                                        * <b>Nota bene:</b> Questo importo non include il debito pregresso di <b>{{ euro(evento.meta.storico_arretrati) }}</b>. Per regolarizzare la tua posizione, puoi effettuare un bonifico unico cumulativo, o aprire le rate precedenti dal tuo scadenziario.
-                                    </p>
-                                </div>
-                                
-                                <div v-if="evento.meta?.storico_crediti > 0.01" class="mt-3 pt-3 border-t border-amber-200/60">
-                                    <p class="text-xs text-amber-700 leading-snug">
-                                        * <b>Nota bene:</b> L'importo indicato è il costo netto di questa rata. Al momento del versamento, ricordati che puoi sottrarre il credito a tuo favore di <b>{{ euro(evento.meta.storico_crediti) }}</b>.
+                                <div>
+                                    <h4 class="text-sm font-bold text-orange-800 mb-1">Attenzione: rate precedenti insolute</h4>
+                                    <p class="text-xs text-orange-700 leading-relaxed mb-2">
+                                        Oltre a questa rata, risultano arretrati non saldati per un totale di <span class="font-bold">{{ euro(evento.meta.storico_arretrati) }}</span>.
                                     </p>
                                 </div>
                             </div>
-                            
-                            <div v-if="!isEmitted">
-                                <div class="p-3 rounded-lg bg-slate-100 border border-slate-200 mb-3 flex gap-3 items-start">
-                                    <Clock class="w-4 h-4 mt-0.5 text-slate-500" />
+
+                            <div v-if="isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
+                                    <TrendingDown class="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-blue-800 mb-1">Credito a tuo favore</h4>
+                                    <p class="text-xs text-blue-700 leading-relaxed mb-2">
+                                        Questo documento certifica un credito a tuo favore di <span class="font-bold">{{ euro(Math.abs(importoRestante)) }}</span>. Non è richiesto alcun pagamento.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-else-if="isReported" class="mb-6">
+                                <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 mb-4 flex gap-3 items-start">
+                                    <div class="p-1.5 bg-amber-100 rounded-full text-amber-600 shrink-0 mt-0.5">
+                                    <Clock class="w-4 h-4" />
+                                    </div>
                                     <div>
-                                        <h4 class="font-bold text-slate-700 text-xs mb-0.5">Rata in attesa di emissione</h4>
-                                        <p class="text-xs text-slate-500 leading-snug">
-                                            L'amministratore non ha ancora abilitato i versamenti per questa scadenza. 
+                                        <h4 class="text-sm font-bold text-amber-800 mb-1">Pagamento in verifica</h4>
+                                        <p class="text-xs text-amber-700 leading-relaxed">
+                                            Hai segnalato di aver effettuato il pagamento. L'amministratore sta verificando l'incasso. Riceverai una notifica a conferma avvenuta.
                                         </p>
                                     </div>
                                 </div>
-                                <Button class="w-full h-10 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed rounded-lg font-medium hover:bg-slate-100 shadow-none text-xs" disabled>
-                                    Pagamento non ancora attivo
+                                <Button class="w-full h-12 bg-amber-100 text-amber-700 border border-amber-200 cursor-not-allowed rounded-lg font-medium shadow-none text-xs" disabled>
+                                    In attesa di conferma...
                                 </Button>
                             </div>
+
                             <div v-else>
-                                <div v-if="creditoDisponibile > 0.01" class="mb-4">
-                                    <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
-                                        <div class="absolute right-0 bottom-0 opacity-10 translate-x-1/4 translate-y-1/4">
-                                            <Wallet class="w-32 h-32 text-blue-500" />
-                                        </div>
-                                        
-                                        <div class="relative z-10">
-                                            <h4 class="font-bold text-blue-900 text-sm flex items-center gap-2 mb-1">
-                                                <Wallet class="w-4 h-4 text-blue-600" /> Il tuo salvadanaio
-                                            </h4>
-                                            <p class="text-xs text-blue-800 mb-3">
-                                                Hai un credito disponibile di <strong class="text-blue-900">{{ euro(creditoDisponibile) }}</strong>.
-                                                Vuoi usarlo per compensare questa rata?
-                                            </p>
-
-                                            <div v-if="creditoCapiente">
-                                                <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 shadow-md">
-                                                    {{ isProcessing ? 'Invio...' : 'Sì, salda la rata con il credito (Nessun bonifico richiesto)' }}
-                                                </Button>
-                                            </div>
-
-                                            <div v-else>
-                                                <div class="bg-white/60 p-2 rounded-lg border border-blue-100 mb-3 text-xs">
-                                                    <div class="flex justify-between text-blue-800"><span>Costo rata:</span><span>{{ euro(importoRestante) }}</span></div>
-                                                    <div class="flex justify-between text-emerald-600 font-bold"><span>Credito applicato:</span><span>-{{ euro(creditoDisponibile) }}</span></div>
-                                                    <div class="flex justify-between text-blue-900 font-black mt-1 pt-1 border-t border-blue-200/50">
-                                                        <span>Nuovo totale da versare:</span><span>{{ euro(differenzaDaPagare) }}</span>
-                                                    </div>
-                                                </div>
-                                                <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 shadow-md text-xs">
-                                                    {{ isProcessing ? 'Invio...' : 'Ho pagato la differenza (' + euro(differenzaDaPagare) + ')' }}
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="flex items-center justify-center my-3">
-                                        <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest bg-slate-50 px-2 relative z-10">OPPURE</span>
-                                        <div class="h-px bg-slate-200 absolute w-full left-0"></div>
+                                <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 mb-4">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-amber-800 flex items-center gap-2 font-semibold text-sm">
+                                            <AlertCircle class="w-4 h-4" /> Totale rata corrente
+                                        </span>
+                                        <span class="font-bold text-xl text-amber-700">{{ euro(importoRestante) }}</span>
                                     </div>
                                 </div>
+                                
+                                <div v-if="!isEmitted && !isRejected">
+                                    <Button class="w-full h-10 bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed rounded-lg font-medium shadow-none text-xs" disabled>
+                                        Pagamento non ancora attivo
+                                    </Button>
+                                </div>
+                                <div v-else>
+                                    
+                                    <div v-if="creditoDisponibile > 0.01" class="mb-4">
+                                        <div class="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 shadow-sm relative overflow-hidden">
+                                            <div class="absolute right-0 bottom-0 opacity-10 translate-x-1/4 translate-y-1/4">
+                                                <Wallet class="w-32 h-32 text-blue-500" />
+                                            </div>
+                                            
+                                            <div class="relative z-10">
+                                                <h4 class="font-bold text-blue-900 text-sm flex items-center gap-2 mb-1">
+                                                    <Wallet class="w-4 h-4 text-blue-600" /> Il tuo salvadanaio
+                                                </h4>
+                                                <p class="text-xs text-blue-800 mb-3">
+                                                    Hai un credito disponibile di <strong class="text-blue-900">{{ euro(creditoDisponibile) }}</strong>.
+                                                </p>
 
-                                <Button class="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold rounded-lg" :disabled="isProcessing" @click="reportPayment">
-                                    {{ isProcessing ? 'Invio...' : 'Ho pagato l\'intera rata tramite bonifico' }}
-                                </Button>
+                                                <div v-if="creditoCapiente">
+                                                    <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-11 shadow-md text-xs">
+                                                        {{ isProcessing ? 'Invio in corso...' : 'Sì, salda la rata con il credito' }}
+                                                    </Button>
+                                                </div>
+                                                <div v-else>
+                                                    <Button @click="reportPaymentWithCredit" :disabled="isProcessing" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-10 shadow-md text-xs">
+                                                        {{ isProcessing ? 'Invio in corso...' : 'Ho pagato la differenza (' + euro(differenzaDaPagare) + ')' }}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                        
+                                    <div v-if="!(creditoDisponibile > 0.01 && creditoCapiente)">
+                                        <div v-if="creditoDisponibile > 0.01" class="flex items-center justify-center my-3">
+                                            <span class="text-[10px] uppercase font-bold text-slate-400 tracking-widest bg-slate-50 px-2 relative z-10">OPPURE</span>
+                                            <div class="h-px bg-slate-200 absolute w-full left-0"></div>
+                                        </div>
+
+                                        <Button class="w-full h-12 text-white shadow-sm font-semibold rounded-lg" 
+                                                :class="isRejected ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+                                                :disabled="isProcessing" 
+                                                @click="reportPayment">
+                                            {{ isProcessing ? 'Invio in corso...' : (isRejected ? 'Ho ri-effettuato il pagamento (Segnala di nuovo)' : 'Ho pagato l\'intera rata tramite bonifico') }}
+                                        </Button>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+                        </div> 
                     </div>
 
                     <div v-if="isAdmin && evento.meta?.action_url" class="mb-6">
                         <Button as-child class="w-full h-12 text-white font-semibold shadow-lg rounded-lg" :class="isExpired ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'"><a :href="evento.meta.action_url" class="flex items-center justify-center gap-2">{{ isExpired ? 'Emetti subito' : "Vai all'emissione" }}<ArrowRight class="w-4 h-4" /></a></Button>
                     </div>
 
-                    <div v-if="evento.description" :class="hasFinancialDetails ? 'mt-3 pt-3 border-t border-slate-100 dark:border-slate-800' : ''">
+                    <div v-if="evento.description && !(isCondomino && isPaid)" :class="hasFinancialDetails ? 'mt-3 pt-3 border-t border-slate-100 dark:border-slate-800' : ''">
                         <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-line">{{ evento.description }}</p>
                     </div>
                 </div>

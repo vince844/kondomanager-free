@@ -100,10 +100,18 @@ class RecurrenceService
             // 1. CALENDARIO: Mostra tutto ciò che è nel range (futuro)
             $q->whereBetween('start_time', [$start, $end])
             
-            // 2. INBOX DEBITI: Mostra le rate passate SE non sono pagate
+            // 2. INBOX DEBITI & RICEVUTE: Mostra le rate passate
             ->orWhere(function ($sub) {
                 $sub->where('meta->type', 'scadenza_rata_condomino')
-                    ->where('meta->status', '!=', 'paid');
+                    ->where(function ($statusQuery) {
+                        // A. Mostra sempre quelle da pagare (pending, partial)
+                        $statusQuery->where('meta->status', '!=', 'paid')
+                        // B. Mostra quelle pagate, ma SOLO se modificate di recente (ultimi 30gg)
+                        ->orWhere(function ($paidQuery) {
+                            $paidQuery->where('meta->status', 'paid')
+                                    ->where('updated_at', '>=', now()->subDays(30));
+                        });
+                    });
             });
         });
 

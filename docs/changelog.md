@@ -2,6 +2,17 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.12] Tenant Experience & Payment Loops
+
+**Zero-Anxiety UI & Rassicurazione Visiva**
+* **Debito Pregresso non "Scaduto":** La Rata 0 (che rappresenta il saldo dell'anno precedente) non viene più etichettata con il badge rosso di allarme "Scaduta". Adotta ora un design dedicato color ambra con la dicitura "Debito Pregresso" e l'icona "Storico", eliminando la frustrazione visiva per i documenti di competenza passata.
+* **Positive Feedback Loop (Rata Saldata):** Una volta che l'amministratore registra l'incasso, la rata non scompare più disorientando l'utente. Nel widget delle scadenze compare un rassicurante badge verde "Pagamento Ricevuto". Aprendo il dettaglio, il condòmino viene accolto da un box trionfale "Rata Saldata", avendo l'immediata certezza che i suoi soldi sono stati contabilizzati.
+* **Pulizia Istruzioni Obsolete:** Nelle rate con stato "Pagato", il sistema nasconde automaticamente il testo descrittivo con le istruzioni per il bonifico e rimuove i pulsanti di segnalazione, garantendo un'interfaccia pulita, inequivocabile e priva di inviti ad azioni inutili.
+
+**Dispute Resolution & Logiche di Sblocco**
+* **Self-Healing Loop (Pagamenti Rifiutati):** Se l'amministratore rifiuta una segnalazione di incasso (es. bonifico non arrivato in banca), la modale mostra il motivo del rifiuto e *riattiva* dinamicamente i controlli. Il bottone di azione diventa rosso e cambia la dicitura in "Ho ri-effettuato il pagamento (Segnala di nuovo)", permettendo all'utente di risolvere la disputa in totale autonomia.
+* **Smart Visibility Bypass:** Risolto un "falso positivo" che manteneva bloccati i pulsanti di pagamento con la dicitura "Pagamento non ancora attivo" sulle nuove emissioni. Il frontend ora applica un'euristica intelligente: se la rata appare nella bacheca del condòmino, i pagamenti vengono sbloccati istantaneamente, ignorando i flag di sistema usati per l'emissione silenziosa lato admin.
+
 ## [1.9.11] Time-Travel Accounting (Debito Esercizio Precedente)
 * **Caricamento Fatture Pregresse:** Introdotta la possibilità vitale di registrare nel gestionale le fatture datate negli anni passati (es. fattura 2025 caricata nel 2026) senza inquinare il bilancio dell'anno in corso.
 * **Smart Date Check (Rilevatore di Competenza):** Quando l'amministratore inserisce la data del documento, l'interfaccia Vue riconosce in millisecondi se la fattura appartiene a un esercizio chiuso. Appare automaticamente un nuovo "Scudo Giallo" (Debito Esercizio Precedente) pronto per essere attivato.

@@ -41,6 +41,16 @@ const getCondominioName = (evento: Evento) => {
     }
     return null;
 };
+
+// Helper per intercettare le rate già pagate dal condòmino
+const isRataPagata = (evento: Evento) => {
+    return evento.meta?.type === 'scadenza_rata_condomino' && evento.meta?.status === 'paid';
+};
+
+const isRataRifiutata = (evento: Evento) => {
+    return evento.meta?.type === 'scadenza_rata_condomino' && evento.meta?.status === 'rejected';
+};
+
 </script>
 
 <template>
@@ -98,17 +108,32 @@ const getCondominioName = (evento: Evento) => {
             </div>
 
             <div class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              <p :class="{'line-clamp-2': !isExpanded(Number(evento.id))}" class="break-words">
-                {{ evento.description }}
-              </p>
               
-              <button
-                v-if="evento.description && evento.description.length > 120"
-                class="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-white mt-1"
-                @click="(e) => toggleExpanded(Number(evento.id), e)"
-              >
-                {{ isExpanded(Number(evento.id)) ? 'Mostra meno' : 'Mostra tutto' }}
-              </button>
+              <template v-if="isRataPagata(evento)">
+                <p class="line-clamp-2">
+                  Il pagamento di questa rata è stato registrato e verificato dall'amministratore.
+                </p>
+              </template>
+
+              <template v-else-if="isRataRifiutata(evento)">
+                <p class="line-clamp-2">
+                  L'amministratore non ha validato il pagamento. Clicca per leggere il motivo e riprovare.
+                </p>
+              </template>
+
+              <template v-else>
+                <p :class="{'line-clamp-2': !isExpanded(Number(evento.id))}" class="break-words">
+                  {{ evento.description }}
+                </p>
+                <button
+                  v-if="evento.description && evento.description.length > 120"
+                  class="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-white mt-1"
+                  @click="(e) => toggleExpanded(Number(evento.id), e)"
+                >
+                  {{ isExpanded(Number(evento.id)) ? 'Mostra meno' : 'Mostra tutto' }}
+                </button>
+              </template>
+
             </div>
 
           </div>
