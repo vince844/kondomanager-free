@@ -162,6 +162,9 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::resource('movimenti-rate', IncassoRateController::class)
         ->parameters(['movimenti-rate' => 'scrittura']);
+
+    Route::post('movimenti-rate/{scrittura}/storno', [IncassoRateController::class, 'storno'])
+    ->name('movimenti-rate.storno');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');

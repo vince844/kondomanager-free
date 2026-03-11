@@ -8,7 +8,7 @@ import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/h
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Incasso } from '@/types/gestionale/movimenti'
 
-const { formatDate, formatCurrency } = useFormat()
+const { formatDate } = useFormat()
 
 export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
   {
@@ -59,7 +59,7 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
             ? h('a', { href: `/admin/gestionale/${condominioId}/anagrafiche/${anagraficaId}/estratto-conto`, class: 'flex items-center' }, nameContent)
             : h('div', { class: 'flex items-center' }, nameContent);
 
-        // 🔥 STRUTTURA A DUE RIGHE
+        // STRUTTURA A DUE RIGHE
         return h('div', { class: 'flex flex-col' }, [
             linkWrapper, // Riga 1: Nome
             // Riga 2: Ruolo (stile "Reg: ...")
@@ -138,7 +138,7 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
         const cassaNome = row.original.cassa_nome || 'N/D';
         const cassaTipo = row.original.cassa_tipo_label || 'Risorsa'; // Campo nuovo dal backend
 
-        // 🔥 STRUTTURA A DUE RIGHE
+        // STRUTTURA A DUE RIGHE
         return h('div', { class: 'flex flex-col items-start gap-0.5' }, [
             // Riga 1: Badge col Nome
             h(Badge, { variant: 'outline', class: 'text-xs text-gray-600 rounded-md bg-white border-gray-200' }, () => [
@@ -176,7 +176,7 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
         variant: stato === 'annullata' ? 'destructive' : 'default',
         class: stato === 'registrata' 
             ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-none rounded-md' 
-            : 'shadow-none'
+            : 'shadow-none rounded-md'
       }, () => stato === 'registrata' ? 'Confermato' : 'Annullato')
     }
   },

@@ -64,12 +64,17 @@ class IncassoRateController extends Controller
         
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        $esercizi = $condominio->esercizi()
+            ->orderBy('data_inizio', 'desc')
+            ->get(['id', 'nome', 'stato']);
+
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateList', [
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
             'condomini'  => $listaPalazzi, 
             'soggetti'   => $soggettiList, 
             'esercizio'  => $esercizio,
+            'esercizi'   => $esercizi,
             'filters'    => $request->all(['search']),
         ]);
     }
@@ -145,9 +150,14 @@ class IncassoRateController extends Controller
                 ->unique()
                 ->toArray();
 
-            // Ora cerchiamo usando gli ID corretti
+            // Ora cerchiamo usando gli ID corretti (Query Robusta a prova di JSON)
             $eventiDaAggiornare = Evento::where('meta->type', 'scadenza_rata_condomino')
-                ->whereIn('meta->context->rata_id', $rataIdsReali)
+                ->where(function ($q) use ($rataIdsReali) {
+                    foreach ($rataIdsReali as $rId) {
+                        $q->orWhere('meta->context->rata_id', (int)$rId)
+                          ->orWhere('meta->context->rata_id', (string)$rId);
+                    }
+                })
                 ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $paganteId))
                 ->get();
 
@@ -223,8 +233,61 @@ class IncassoRateController extends Controller
             return back();
         }
 
+        // 1. PRE-CHECK: Fotografiamo rate e anagrafiche PRIMA di lanciare l'Action
+        // Usiamo la TUA relazione 'quotePagate' (Dato che la tua Action lavora con questa e non con le righe)
+        $rateIds = $scrittura->quotePagate()->pluck('rata_id')->unique()->toArray();
+        $anagraficheIds = $scrittura->quotePagate()->pluck('anagrafica_id')->unique()->toArray();
+
+        // 2. Eseguiamo l'azione contabile (ora può fare tutti i detach() che vuole)
         $action->execute($scrittura, $condominio);
 
-        return back()->with($this->flashSuccess('Storno completato.'));
+        // 3. Ripristiniamo gli eventi utente allo stato "Da Pagare"
+        if (!empty($rateIds) && !empty($anagraficheIds)) {
+            
+            // Query robusta a prova di JSON
+            $eventiDaRipristinare = Evento::where('meta->type', 'scadenza_rata_condomino')
+                ->where(function ($q) use ($rateIds) {
+                    foreach ($rateIds as $rId) {
+                        $q->orWhere('meta->context->rata_id', (int)$rId)
+                          ->orWhere('meta->context->rata_id', (string)$rId);
+                    }
+                })
+                ->whereHas('anagrafiche', fn($q) => $q->whereIn('anagrafica_id', $anagraficheIds))
+                ->get();
+
+            foreach ($eventiDaRipristinare as $evento) {
+                $rataId = $evento->meta['context']['rata_id'] ?? null;
+                $paganteId = $evento->anagrafiche->first()->id ?? null;
+
+                $rataFresca = Rata::with('rateQuote')->find($rataId);
+                
+                if ($rataFresca && $paganteId) {
+                    $quoteUtente = $rataFresca->rateQuote->where('anagrafica_id', $paganteId);
+                    
+                    $totalePagato = $quoteUtente->sum('importo_pagato');
+                    $totaleDovuto = $quoteUtente->sum('importo');
+                    
+                    // 🟢 FIX: Usiamo max(0) per evitare restanti negativi
+                    $restante = max(0, $totaleDovuto - $totalePagato);
+
+                    $meta = $evento->meta;
+                    $meta['importo_pagato'] = $totalePagato;
+                    $meta['importo_restante'] = $restante;
+                    
+                    // Ricalcolo stato post-storno
+                    if ($restante <= 0.01) {
+                        $meta['status'] = 'paid';
+                    } elseif ($totalePagato > 0.01) {
+                        $meta['status'] = 'partial';
+                    } else {
+                        $meta['status'] = 'pending';
+                    }
+
+                    $evento->update(['meta' => $meta]);
+                }
+            }
+        }
+
+        return back()->with($this->flashSuccess('Storno completato e scadenziario utenti aggiornato.'));
     }
 }

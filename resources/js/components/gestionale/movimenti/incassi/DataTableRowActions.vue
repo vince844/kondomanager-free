@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+
+import { ref, computed } from 'vue'
 import { router } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { RotateCcw, MoreHorizontal, FileText,  Eye, Printer } from 'lucide-vue-next'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { RotateCcw, MoreHorizontal, Eye, Printer } from 'lucide-vue-next'
 
 const props = defineProps<{
   incasso: any,
@@ -13,12 +15,20 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
+const { euro } = useCurrencyFormatter();
 const isAlertOpen = ref(false)
 const isStorning = ref(false)
 
 function handleStorno() {
   isAlertOpen.value = true
 }
+
+// Il Service ti passa i decimali (es. 124.57) ma useCurrencyFormatter vuole i centesimi (12457).
+// Quindi moltiplichiamo per 100.
+const importoDaStornare = computed(() => {
+    const importoDecimale = props.incasso.importo_totale_raw || 0;
+    return importoDecimale * 100; 
+});
 
 function confirmStorno() {
   if (isStorning.value) return
@@ -75,8 +85,8 @@ const printRicevuta = () => {
   <ConfirmDialog
     v-model:modelValue="isAlertOpen"
     title="Storno Movimento"
-    :description="`Stai per annullare l'incasso protocollo #${incasso.numero_protocollo} di € ${incasso.importo_totale}. Le rate torneranno 'da pagare'. Continuare?`"
-    confirmText="Sì, Procedi"
+    :description="`Stai per annullare l'incasso protocollo #${incasso.numero_protocollo || incasso.id} di ${euro(importoDaStornare)}. Le rate torneranno 'da pagare' per il condòmino. Continuare?`"
+    confirmText="Sì, Annulla Incasso"
     variant="destructive"
     :loading="isStorning"
     @confirm="confirmStorno"

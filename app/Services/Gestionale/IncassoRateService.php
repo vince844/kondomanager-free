@@ -70,7 +70,7 @@ class IncassoRateService
             'data_registrazione'       => $movimento->data_registrazione?->format('Y-m-d'),
             'causale'                  => $movimento->causale,
             
-            // 🔥 Passiamo l'oggetto intero, non l'ID, per usare i dati in memoria
+            // Passiamo l'oggetto intero, non l'ID, per usare i dati in memoria
             'dettagli_rate'            => $this->getDettagliRate($movimento),
             
             'importo_totale_raw'       => $rigaCassa ? $rigaCassa->importo / 100 : 0,
@@ -109,7 +109,7 @@ class IncassoRateService
                         ? $quota->rata->data_scadenza->format('d/m/Y') 
                         : '-',
                     
-                    // 🔥 Legge dalla pivot caricata in memoria
+                    // Legge dalla pivot caricata in memoria
                     'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato)
                 ];
             })

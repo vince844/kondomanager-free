@@ -207,13 +207,16 @@ export function useEventStyling() {
         // ---------------------------------------------------------
         // 5. SCADENZE TEMPORALI DEFAULT
         // ---------------------------------------------------------
+        // ---------------------------------------------------------
+        // 5. SCADENZE TEMPORALI DEFAULT
+        // ---------------------------------------------------------
         if (days < 0) {
             return { 
                 color: 'text-red-700 dark:text-red-500 font-bold', 
                 bgColor: 'bg-red-100 dark:bg-red-900/30', 
                 borderColor: 'border-red-300 dark:border-red-700', 
                 icon: ClockAlert, 
-                label: 'Scaduto' 
+                label: 'Scaduta' // Cambiato da "Scaduto" a "Scaduta" (la rata)
             };
         } else if (days <= 7) {
             return { 
@@ -232,6 +235,18 @@ export function useEventStyling() {
                 label: `Scade tra ${days} gg` 
             };
         } else {
+            // MODIFICA UX CONDÒMINO: Solo se la rata è EFFETTIVAMENTE emessa
+            if (type === 'scadenza_rata_condomino' && meta.is_emitted === true) {
+                return { 
+                    color: 'text-emerald-600 dark:text-emerald-500 font-medium', 
+                    bgColor: 'bg-emerald-50 dark:bg-emerald-900/20', 
+                    borderColor: 'border-emerald-200 dark:border-emerald-800', 
+                    icon: CheckCircle2, // Un bel check verde per confermare l'emissione
+                    label: 'Emessa' 
+                };
+            }
+
+            // Fallback per le rate non ancora emesse e per tutti gli altri eventi (Assemblee, ecc.)
             return { 
                 color: 'text-slate-600 dark:text-slate-400', 
                 bgColor: 'bg-slate-50 dark:bg-slate-900/20', 

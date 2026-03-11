@@ -534,8 +534,6 @@ const executePublishSilent = () => {
     });
 };
 
-console.log("DEBUG VUE - has_unpublished_rates:", props.has_unpublished_rates);
-
 </script>
 
 <template>   

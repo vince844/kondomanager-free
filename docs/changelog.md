@@ -2,6 +2,21 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+### [1.9.14] Tenant Experience & UI
+* **Smart Wallet (Salvadanaio Condòmino):** Completamente ridisegnato il widget per l'utilizzo dei crediti pregressi. Adotta ora un design pulito e professionale (stile "Digital Wallet"), con un breakdown matematico trasparente che mostra il costo della rata, il credito applicato e il nuovo totale da versare.
+* **Credito Puro (Zero-Payment):** Ripristinata e migliorata la "Card Trionfale" blu/azzurra per le rate che generano un credito netto a favore del condòmino. Il sistema nasconde automaticamente le istruzioni per il bonifico e i bottoni di pagamento, indicando chiaramente che non è richiesta alcuna azione.
+* **Sincronizzazione Dinamica UI:** L'interfaccia dell'app del condòmino reagisce ora istantaneamente a *qualsiasi* azione dell'amministratore (incasso, incasso parziale, storno, annullamento emissione), ricalcolando in tempo reale lo stato (Pagato, Parziale, In attesa) e l'importo residuo al centesimo.
+
+### [1.9.14] Accounting Engine & Sync (Ciclo Attivo)
+* **Motore di Storno "Self-Healing":** Sviluppato il sistema di annullamento incassi (Storno). L'architettura esegue una fotografia preventiva dei soggetti coinvolti, inverte la partita doppia (generando una scrittura di rettifica) e ripristina chirurgicamente il debito sulle quote originali. Immediatamente dopo, il Tenant Portal del condòmino viene aggiornato, rimuovendo la spunta verde di "Rata Saldata" e ripristinando la richiesta di pagamento.
+* **Onboarding Silenzioso (Gestione Iniziata):** Risolto un bug critico nel rilascio delle "Rate Silenziose". Ora, quando l'amministratore pubblica le rate (dopo aver magari registrato decine di incassi pregressi di nascosto), il sistema filtra ed elabora i pagamenti *esclusivamente* per la singola anagrafica, evitando di sovrascrivere l'estratto conto del singolo utente con il debito dell'intero condominio.
+* **Prevenzione Falsi Positivi JSON:** Reso impermeabile il frontend Vue ai problemi di serializzazione dei dati JSON provenienti da MySQL. Il flag di emissione (`is_emitted`) viene ora interpretato correttamente a prescindere dal tipo di dato (booleano, intero o stringa), garantendo lo sblocco immediato dei pulsanti di pagamento alla pubblicazione della rata.
+
+### [1.9.13] Bugfixes & Ottimizzazioni
+* **Fix Popup di Storno:** Corretto un errore che mostrava "€ 0,00" nel dialog di conferma dello storno. Il frontend ora riconverte correttamente i decimali del backend in centesimi prima di passarli al formattatore di valuta.
+* **Fix Vue Warnings:** Aggiunta la prop `esercizi` mancante nel controller della lista incassi, eliminando i warning in console e migliorando la stabilità del rendering.
+* **Protezione Query Relazionali:** Sostituite le fragili query dirette su campi JSON nidificati (`whereIn` su meta JSON) con costrutti logici multi-tipo più robusti, garantendo che gli eventi vengano sempre intercettati e aggiornati durante storni e annullamenti.
+
 ## [1.9.12] Tenant Experience & Payment Loops
 
 **Zero-Anxiety UI & Rassicurazione Visiva**
