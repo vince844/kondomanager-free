@@ -65,12 +65,9 @@ class EstrattoContoAnagraficaController extends Controller
                 if ($quota) {
                     $riga->quotaRecord = $quota;
                     
-                    // Laravel trasforma già 'regole_calcolo' in array/oggetto grazie al cast nel modello
                     $regole = $quota->regole_calcolo;
 
                     if (!empty($regole)) {
-                        // Accediamo come array o oggetto a seconda di come Laravel ha castato
-                        // Per sicurezza usiamo la sintassi che supporta entrambi o forziamo array
                         $data = (array) $regole;
                         $importi = $data['importi'] ?? [];
                         $riga->saldoUsato      = $importi['saldo_usato'] ?? 0;
@@ -82,10 +79,12 @@ class EstrattoContoAnagraficaController extends Controller
         });
 
         // --- STEP 3: ORDINAMENTO VISIVO INTELLIGENTE ---
-        // Per la stessa scrittura, ordina per quota pura decrescente.
-        // Così 1C (56€) sarà sempre prima di 1A (33€), indipendentemente dal credito rimasto.
         $movimenti = $movimenti->sortBy(function($riga) {
-            return [$riga->scrittura_id, -abs($riga->quotaPura)];
+            // 1. Ordina per ID Scrittura (raggruppa le operazioni)
+            // 2. Metti prima il DARE (prelievi/addebiti), poi l'AVERE (versamenti/incassi)
+            // 3. Ordina per importo decrescente
+            $ordineRiga = $riga->tipo_riga === 'dare' ? 0 : 1; 
+            return [$riga->scrittura_id, $ordineRiga, -abs($riga->quotaPura)];
         })->values();
 
         // --- STEP 4: CREAZIONE TIMELINE & SALDI PROGRESSIVI ---
@@ -100,12 +99,37 @@ class EstrattoContoAnagraficaController extends Controller
             $quota            = $riga->quotaRecord;
             
             $waterfallStart = $runningBalance;
+            $tipoMovimento = $riga->scrittura->tipo_movimento ?? 'generico';
             
+            // CALCOLO DARE / AVERE CON SUPPORTO AI NUOVI ENUM E ALLA COMPENSAZIONE
             if ($riga->tipo_riga === 'dare') {
-                $runningBalance += $quotaPura;
-                $dare  = $quotaPura; 
-                $avere = 0;
+                
+                // CASO 1: È uno storno di un incasso (errore) -> Ri-aumenta il debito
+                if ($tipoMovimento === 'rettifica') {
+                    $importoDaSommare = $importoContabile;
+                    $runningBalance += $importoDaSommare;
+                    $dare = $importoDaSommare;
+                    $avere = 0;
+                } 
+                // CASO 2: È il consumo del salvadanaio (Compensazione) -> Aumenta il debito
+                // Il credito era un saldo negativo. Azzerandolo, il debito globale matematicamente sale.
+                elseif ($tipoMovimento === 'storno_credito') {
+                    $importoDaSommare = $importoContabile;
+                    $runningBalance += $importoDaSommare;
+                    $dare = $importoDaSommare;
+                    $avere = 0;
+                }
+                // CASO 3: È una normale emissione di rata
+                else {
+                    $importoDaSommare = $quotaPura;
+                    $runningBalance += $importoDaSommare;
+                    $dare = $importoDaSommare; 
+                    $avere = 0;
+                }
+
             } else {
+                // GESTIONE AVERE (Incassi e compensazioni)
+                // Sia incasso_rata che storno_credito (lato Avere) abbattono il debito.
                 $runningBalance -= $importoContabile;
                 $dare  = 0; 
                 $avere = $importoContabile;
@@ -113,12 +137,14 @@ class EstrattoContoAnagraficaController extends Controller
             
             $waterfallEnd = $runningBalance;
 
-            $tipoMovimento = $riga->scrittura->tipo_movimento ?? 'generico';
+            // ASSEGNAZIONE ICONE (Aggiornata per la V 1.9)
             $icona = 'file'; 
             if ($tipoMovimento === 'emissione_rata') $icona = 'bill';
             if ($tipoMovimento === 'incasso_rata')   $icona = 'payment';
             if ($tipoMovimento === 'saldo_iniziale') $icona = 'landmark';
-
+            if ($tipoMovimento === 'rettifica')      $icona = 'rotate-ccw'; 
+            if ($tipoMovimento === 'storno_credito') $icona = 'rotate-ccw'; // Icona compensazione
+            
             $dettagli  = [];
             $breakdown = null;
 
@@ -129,65 +155,91 @@ class EstrattoContoAnagraficaController extends Controller
                     $labelBase .= " (Scad. " . $riga->rata->data_scadenza->format('d/m/Y') . ")";
                 }
 
+                // GESTIONE DETTAGLI E BREAKDOWN
                 if ($riga->tipo_riga === 'dare') {
                     
-                    $statoRata = $quota ? $quota->stato : ($waterfallEnd <= 0 ? 'credito' : 'da_pagare');
-                    
-                    if ($saldoUsato > 0) {
-                        $labelBase .= " + Recupero Debito";
-                    } elseif ($saldoUsato < 0) {
-                        $labelBase .= " (Sconto da Credito)";
+                    // CASO A: È UNO STORNO (RETTIFICA)
+                    if ($tipoMovimento === 'rettifica') {
+                        $dettagli[] = [
+                            'type'   => 'rata',
+                            'text'   => "Storno incasso su " . $labelBase,
+                            'status' => 'stornato'
+                        ];
+                        $breakdown = [
+                            'type'             => 'storno',
+                            'start'            => MoneyHelper::fromCents($waterfallStart),
+                            'cost'             => MoneyHelper::fromCents($importoContabile), 
+                            'end'              => MoneyHelper::fromCents($waterfallEnd),
+                            'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
+                        ];
                     }
-
-                    $dettagli[] = [
-                        'type'   => 'rata',
-                        'text'   => $labelBase,
-                        'status' => $statoRata 
-                    ];
-
-                    if ($saldoUsato != 0) {
+                    // CASO B: È IL CONSUMO DEL SALVADANAIO (STORNO CREDITO)
+                    elseif ($tipoMovimento === 'storno_credito') {
+                        $dettagli[] = [
+                            'type'   => 'info',
+                            'text'   => "Prelievo da salvadanaio per compensazione",
+                            'status' => null
+                        ];
+                        $breakdown = [
+                            'type'             => 'storno', // Trattato visivamente come storno (blu)
+                            'start'            => MoneyHelper::fromCents($waterfallStart),
+                            'cost'             => MoneyHelper::fromCents($importoContabile), 
+                            'end'              => MoneyHelper::fromCents($waterfallEnd),
+                            'immobile'         => 'Generico'
+                        ];
+                    }
+                    // CASO C: È UNA NORMALE EMISSIONE DI RATA
+                    else {
+                        $statoRata = $quota ? $quota->stato : ($waterfallEnd <= 0 ? 'credito' : 'da_pagare');
+                        
                         if ($saldoUsato > 0) {
-                            $dettagli[] = [
-                                'type'   => 'info',
-                                'text'   => "👉 Include recupero debito pregresso: " . MoneyHelper::format($saldoUsato),
-                                'status' => null
-                            ];
-                            $dettagli[] = [
-                                'type'   => 'info',
-                                'text'   => "💰 Totale richiesto per questa rata: " . MoneyHelper::format($totaleRichiesto),
-                                'status' => null
-                            ];
-                        } else {
-                            $dettagli[] = [
-                                'type'   => 'info',
-                                'text'   => "👉 Scontata da credito pregresso: " . MoneyHelper::format(abs($saldoUsato)),
-                                'status' => null
-                            ];
-                            $dettagli[] = [
-                                'type'   => 'info',
-                                'text'   => "💰 Valore originale della spesa: " . MoneyHelper::format($quotaPura),
-                                'status' => null
-                            ];
+                            $labelBase .= " + Recupero debito";
+                        } elseif ($saldoUsato < 0) {
+                            $labelBase .= " (Sconto da credito)";
                         }
-                    }
 
-                    $breakdown = [
-                        'type'             => 'emissione',
-                        'start'            => MoneyHelper::fromCents($waterfallStart),
-                        'cost'             => MoneyHelper::fromCents($quotaPura),
-                        'totale_richiesto' => MoneyHelper::fromCents($totaleRichiesto),
-                        'saldo_usato'      => $saldoUsato != 0 ? MoneyHelper::fromCents($saldoUsato) : null,
-                        'end'              => MoneyHelper::fromCents($waterfallEnd),
-                        'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
-                    ];
+                        $dettagli[] = [
+                            'type'   => 'rata',
+                            'text'   => $labelBase,
+                            'status' => $statoRata 
+                        ];
+
+                        if ($saldoUsato != 0) {
+                            if ($saldoUsato > 0) {
+                                $dettagli[] = ['type' => 'info', 'text' => "Include recupero debito pregresso: " . MoneyHelper::format($saldoUsato), 'status' => null];
+                                $dettagli[] = ['type' => 'info', 'text' => "Totale richiesto per questa rata: " . MoneyHelper::format($totaleRichiesto), 'status' => null];
+                            } else {
+                                $dettagli[] = ['type' => 'info', 'text' => "Scontata da credito pregresso: " . MoneyHelper::format(abs($saldoUsato)), 'status' => null];
+                                $dettagli[] = ['type' => 'info', 'text' => "Valore originale della spesa: " . MoneyHelper::format($quotaPura), 'status' => null];
+                            }
+                        }
+
+                        $breakdown = [
+                            'type'             => 'emissione',
+                            'start'            => MoneyHelper::fromCents($waterfallStart),
+                            'cost'             => MoneyHelper::fromCents($quotaPura),
+                            'totale_richiesto' => MoneyHelper::fromCents($totaleRichiesto),
+                            'saldo_usato'      => $saldoUsato != 0 ? MoneyHelper::fromCents($saldoUsato) : null,
+                            'end'              => MoneyHelper::fromCents($waterfallEnd),
+                            'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
+                        ];
+                    }
 
                 } else {
-
-                    $dettagli[] = [
-                        'type'   => 'rata',
-                        'text'   => "A copertura " . $labelBase,
-                        'status' => null 
-                    ];
+                    // CASO D: È UN INCASSO O UNA COMPENSAZIONE (AVERE)
+                    if ($tipoMovimento === 'storno_credito') {
+                        $dettagli[] = [
+                            'type'   => 'rata',
+                            'text'   => "Pagamento tramite credito su " . $labelBase,
+                            'status' => null 
+                        ];
+                    } else {
+                        $dettagli[] = [
+                            'type'   => 'rata',
+                            'text'   => "A copertura " . $labelBase,
+                            'status' => null 
+                        ];
+                    }
 
                     $breakdown = [
                         'type'     => 'incasso',

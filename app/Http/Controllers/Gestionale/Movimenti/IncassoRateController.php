@@ -27,22 +27,8 @@ class IncassoRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio, HasCondomini;
 
-    /**
-     * Costruttore del controller.
-     * Inietta il service responsabile del recupero e della formattazione dei dati per gli incassi.
-     *
-     * @param IncassoRateService $incassoService
-     */
     public function __construct(private IncassoRateService $incassoService) {}
 
-    /**
-     * Mostra la lista degli incassi registrati per il condominio corrente.
-     * Supporta la ricerca, la paginazione e prepara i dati per i filtri frontend.
-     *
-     * @param Request $request La richiesta HTTP corrente (contiene eventuali query di ricerca).
-     * @param Condominio $condominio Il condominio su cui si sta operando.
-     * @return \Inertia\Response Renderizzazione della vista Vue (IncassoRateList).
-     */
     public function index(Request $request, Condominio $condominio)
     {
         $query = $this->incassoService->getIncassiQuery(
@@ -54,10 +40,8 @@ class IncassoRateController extends Controller
             ->withQueryString()
             ->through(fn($mov) => $this->incassoService->formatMovimentoForFrontend($mov));
 
-        // 1. Recuperiamo i PALAZZI veri per il menu a tendina
         $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
         
-        // 2. Recuperiamo le PERSONE (se ti servono per la vista o i filtri) e li chiamiamo 'soggetti'
         $soggettiList = Anagrafica::whereHas('immobili', fn($q) => 
             $q->where('condominio_id', $condominio->id)
         )->orderBy('nome')->get();
@@ -79,14 +63,6 @@ class IncassoRateController extends Controller
         ]);
     }
 
-    /**
-     * Mostra la schermata per la registrazione di un nuovo incasso.
-     * Prepara le dipendenze necessarie ai menu a tendina: risorse finanziarie,
-     * soggetti paganti, immobili e gestioni attive.
-     *
-     * @param Condominio $condominio Il condominio su cui si sta operando.
-     * @return \Inertia\Response Renderizzazione della vista Vue (IncassoRateNew).
-     */
     public function create(Condominio $condominio)
     {
         $risorse = Cassa::where('condominio_id', $condominio->id)
@@ -117,40 +93,29 @@ class IncassoRateController extends Controller
         ]);
     }
 
-    /**
-     * Salva un nuovo incasso nel sistema.
-     * Delega la logica contabile (spalmatura waterfall) alla StoreIncassoRateAction.
-     * Successivamente, aggiorna lo stato degli eventi ("scontrini digitali" nello scadenziario) 
-     * e chiude eventuali task pendenti nella Inbox dell'amministratore.
-     *
-     * @param StoreIncassoRateRequest $request Dati validati provenienti dal form Vue.
-     * @param Condominio $condominio Il condominio corrente.
-     * @param StoreIncassoRateAction $action L'azione di business che gestisce il salvataggio contabile.
-     * @return \Illuminate\Http\RedirectResponse Reindirizzamento alla lista incassi con messaggio di successo.
-     */
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
-        // 1. Esegui l'azione di business (registra soldi)
         $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
 
-        // --- INIZIO AGGIORNAMENTO EVENTI ---
-
+        // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---
         $paganteId = $request->input('pagante_id');
-        
-        // Recuperiamo gli ID delle QUOTE (rate_quote) dal form
         $dettaglioPagamenti = $request->input('dettaglio_pagamenti', []);
-        $quoteIds = collect($dettaglioPagamenti)->pluck('rata_id')->filter()->toArray();
 
-        if (!empty($quoteIds) && $paganteId) {
-            
-            // FIX FONDAMENTALE: Convertiamo ID Quote -> ID Rate (Padri)
-            // L'evento è legato alla Rata generale, non alla singola quota
-            $rataIdsReali = RataQuote::whereIn('id', $quoteIds)
+        // 🟢 FIX: Consideriamo SOLO i pagamenti ordinari (importo > 0)
+        $quoteOrdinarie = collect($dettaglioPagamenti)
+            ->filter(fn($item) => $item['importo'] > 0)
+            ->pluck('rata_id')
+            ->filter()
+            ->toArray();
+
+        if (!empty($quoteOrdinarie) && $paganteId) {
+
+            // 🟢 FIX: Convertiamo ID Quote -> ID Rate (Padri)
+            $rataIdsReali = RataQuote::whereIn('id', $quoteOrdinarie)
                 ->pluck('rata_id')
                 ->unique()
                 ->toArray();
 
-            // Ora cerchiamo usando gli ID corretti (Query Robusta a prova di JSON)
             $eventiDaAggiornare = Evento::where('meta->type', 'scadenza_rata_condomino')
                 ->where(function ($q) use ($rataIdsReali) {
                     foreach ($rataIdsReali as $rId) {
@@ -164,24 +129,22 @@ class IncassoRateController extends Controller
             foreach ($eventiDaAggiornare as $evento) {
                 
                 $rataId = $evento->meta['context']['rata_id'] ?? null;
-                
-                // Ricarichiamo la rata dal DB per avere i dati aggiornati
                 $rataFresca = Rata::with('rateQuote')->find($rataId);
                 
                 if ($rataFresca) {
-                    // Filtriamo le quote di questo specifico condomino
-                    $quoteUtente = $rataFresca->rateQuote->where('anagrafica_id', $paganteId);
+                    // Escludiamo le quote saldo_iniziale negative (crediti) dal calcolo
+                    $quoteUtente = $rataFresca->rateQuote
+                        ->where('anagrafica_id', $paganteId)
+                        ->where('importo', '>', 0);
                     
                     $totaleDovuto = $quoteUtente->sum('importo');
                     $totalePagato = $quoteUtente->sum('importo_pagato');
                     $restante = $totaleDovuto - $totalePagato;
 
-                    // Aggiorniamo i metadati dell'evento
                     $meta = $evento->meta;
                     $meta['importo_pagato'] = $totalePagato;
-                    $meta['importo_restante'] = $restante;
+                    $meta['importo_restante'] = max(0, $restante);
 
-                    // Calcolo dello Stato
                     if ($restante <= 0.01) {
                         $meta['status'] = 'paid';
                     } elseif ($totalePagato > 0.01) {
@@ -195,20 +158,16 @@ class IncassoRateController extends Controller
             }
         }
 
-        // C. Chiusura Specifica del Task Admin (Solo se arriviamo dalla Inbox)
+        // Chiusura del Task Admin
         $relatedTaskId = $request->input('related_task_id');
 
         if ($relatedTaskId) {
-            
-            /** @var \App\Models\Evento $task */
             $task = Evento::find($relatedTaskId);
-            
             if ($task && !$task->is_completed) {
                 $task->update([
                     'is_completed' => true,
                     'completed_at' => now(),
                 ]);
-                
                 InboxService::clearAdminCache();
             }
         }
@@ -217,34 +176,29 @@ class IncassoRateController extends Controller
             ->with($this->flashSuccess('Incasso registrato con successo.'));
     }
     
-    /**
-     * Esegue lo storno (annullamento) di un incasso precedentemente registrato.
-     * Ripristina il debito sulle rate e segna la scrittura contabile come annullata.
-     *
-     * @param Request $request La richiesta HTTP corrente.
-     * @param Condominio $condominio Il condominio corrente.
-     * @param ScritturaContabile $scrittura Il movimento contabile da stornare.
-     * @param StornoIncassoRateAction $action L'azione di business che gestisce lo storno.
-     * @return \Illuminate\Http\RedirectResponse Reindirizzamento alla vista precedente con messaggio di successo.
-     */
     public function storno(Request $request, Condominio $condominio, ScritturaContabile $scrittura, StornoIncassoRateAction $action) 
     {
         if ($scrittura->stato === 'annullata') {
             return back();
         }
 
-        // 1. PRE-CHECK: Fotografiamo rate e anagrafiche PRIMA di lanciare l'Action
-        // Usiamo la TUA relazione 'quotePagate' (Dato che la tua Action lavora con questa e non con le righe)
-        $rateIds = $scrittura->quotePagate()->pluck('rata_id')->unique()->toArray();
-        $anagraficheIds = $scrittura->quotePagate()->pluck('anagrafica_id')->unique()->toArray();
+        // 🟢 FIX: Filtriamo solo le quote con importo positivo
+        $rateIds = $scrittura->quotePagate()
+            ->where('importo', '>', 0)
+            ->pluck('rata_id')
+            ->unique()
+            ->toArray();
 
-        // 2. Eseguiamo l'azione contabile (ora può fare tutti i detach() che vuole)
+        $anagraficheIds = $scrittura->quotePagate()
+            ->where('importo', '>', 0)
+            ->pluck('anagrafica_id')
+            ->unique()
+            ->toArray();
+
         $action->execute($scrittura, $condominio);
 
-        // 3. Ripristiniamo gli eventi utente allo stato "Da Pagare"
         if (!empty($rateIds) && !empty($anagraficheIds)) {
             
-            // Query robusta a prova di JSON
             $eventiDaRipristinare = Evento::where('meta->type', 'scadenza_rata_condomino')
                 ->where(function ($q) use ($rateIds) {
                     foreach ($rateIds as $rId) {
@@ -256,25 +210,24 @@ class IncassoRateController extends Controller
                 ->get();
 
             foreach ($eventiDaRipristinare as $evento) {
-                $rataId = $evento->meta['context']['rata_id'] ?? null;
+                $rataId    = $evento->meta['context']['rata_id'] ?? null;
                 $paganteId = $evento->anagrafiche->first()->id ?? null;
 
                 $rataFresca = Rata::with('rateQuote')->find($rataId);
                 
                 if ($rataFresca && $paganteId) {
-                    $quoteUtente = $rataFresca->rateQuote->where('anagrafica_id', $paganteId);
+                    $quoteUtente = $rataFresca->rateQuote
+                        ->where('anagrafica_id', $paganteId)
+                        ->where('importo', '>', 0);
                     
                     $totalePagato = $quoteUtente->sum('importo_pagato');
                     $totaleDovuto = $quoteUtente->sum('importo');
-                    
-                    // 🟢 FIX: Usiamo max(0) per evitare restanti negativi
-                    $restante = max(0, $totaleDovuto - $totalePagato);
+                    $restante     = max(0, $totaleDovuto - $totalePagato);
 
                     $meta = $evento->meta;
-                    $meta['importo_pagato'] = $totalePagato;
+                    $meta['importo_pagato']  = $totalePagato;
                     $meta['importo_restante'] = $restante;
                     
-                    // Ricalcolo stato post-storno
                     if ($restante <= 0.01) {
                         $meta['status'] = 'paid';
                     } elseif ($totalePagato > 0.01) {

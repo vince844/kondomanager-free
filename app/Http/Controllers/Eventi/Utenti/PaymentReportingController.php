@@ -2,15 +2,14 @@
 
 namespace App\Http\Controllers\Eventi\Utenti;
 
-use App\Enums\Role;
 use App\Http\Controllers\Controller;
 use App\Models\Evento;
-use App\Models\User; 
 use App\Enums\VisibilityStatus;
+use App\Services\Gestionale\InboxService;
+use App\Helpers\MoneyHelper; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Cache; 
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 
 class PaymentReportingController extends Controller
@@ -62,24 +61,22 @@ class PaymentReportingController extends Controller
             // La matematica pura: Bonifico atteso = Totale Rata - Credito prelevato
             $importoBancaCentesimi = max(0, $totaleRataCentesimi - $creditoRichiestoCentesimi);
             
-            $importoBancaEuro = $importoBancaCentesimi / 100;
-            $creditoEuro = $creditoRichiestoCentesimi / 100;
-            
-            $importoFormat = number_format($importoBancaEuro, 2, ',', '.');
-            $creditoFormat = number_format($creditoEuro, 2, ',', '.');
+            // REFACTOR: Utilizzo del MoneyHelper per la formattazione testuale
+            $importoFormat = MoneyHelper::format($importoBancaCentesimi);
+            $creditoFormat = MoneyHelper::format($creditoRichiestoCentesimi);
 
             // 4. Costruisci il messaggio perfetto per la Inbox
             if ($intentUsaCredito) {
                 if ($importoBancaCentesimi > 0) {
                     // Scenario A: Credito parziale + Bonifico differenza
-                    $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha richiesto di usare {$creditoFormat}€ del suo salvadanaio e ha segnalato di aver pagato la differenza di {$importoFormat}€ in banca.\n\nVerifica l'estratto conto e registra l'incasso compensando il credito.";
+                    $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha richiesto di usare {$creditoFormat} del suo salvadanaio e ha segnalato di aver pagato la differenza di {$importoFormat} in banca.\n\nVerifica l'estratto conto e registra l'incasso compensando il credito.";
                 } else {
                     // Scenario B: Credito capiente (Nessun bonifico)
-                    $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha richiesto di usare {$creditoFormat}€ del suo salvadanaio per saldare interamente questa rata.\n\nNessun incasso bancario previsto (0,00€). Clicca per confermare la compensazione.";
+                    $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha richiesto di usare {$creditoFormat} del suo salvadanaio per saldare interamente questa rata.\n\nNessun incasso bancario previsto (" . MoneyHelper::format(0) . "). Clicca per confermare la compensazione.";
                 }
             } else {
                 // Scenario C: Pagamento standard
-                $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha segnalato di aver pagato l'intero importo di {$importoFormat}€.\n\nVerifica l'estratto conto bancario e registra l'incasso.";
+                $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha segnalato di aver pagato l'intero importo di {$importoFormat}.\n\nVerifica l'estratto conto bancario e registra l'incasso.";
             }
 
             // 5. Crea Task Admin
@@ -117,7 +114,8 @@ class PaymentReportingController extends Controller
                     'condominio'            => $condominioId,
                     'prefill_rata_id'       => $meta['context']['rata_id'] ?? null,
                     'prefill_anagrafica_id' => $anagrafica?->id,
-                    'prefill_importo'       => $importoBancaEuro,
+                    // REFACTOR: Utilizzo del MoneyHelper per convertire in float (es. 124.57) per l'URL
+                    'prefill_importo'       => MoneyHelper::fromCents($importoBancaCentesimi),
                     'prefill_descrizione'   => $intentUsaCredito ? "Compensazione rata e saldo" : "Saldo rata condominiale",
                     'related_task_id'       => $adminEvent->id 
                 ];
@@ -133,10 +131,7 @@ class PaymentReportingController extends Controller
             }
 
             // 7. CACHE BUSTER INTELLIGENTE
-            $admins = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->get();
-            foreach ($admins as $admin) {
-                Cache::forget('inbox_count_' . $admin->id);
-            }
+            InboxService::clearAdminCache();
 
         });
 

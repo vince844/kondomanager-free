@@ -1,29 +1,15 @@
 <script setup lang="ts">
+
 import { computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-// 🔥 COMPOSABLES
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useDateConverter } from '@/composables/useDateConverter';
-
-// ICONE
-import { 
-  ArrowLeft, Printer, Mail, Wallet, 
-  ArrowDownCircle, ArrowUpCircle, Building2, Landmark,
-  FileText, Banknote, HelpCircle, 
-  CheckCircle2, AlertCircle, PieChart, Coins, Info 
-} from 'lucide-vue-next';
-import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
-} from '@/components/ui/tooltip';
-
+import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle } from 'lucide-vue-next';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -43,8 +29,6 @@ const props = defineProps<{
   };
 }>();
 
-// CONFIGURAZIONE FORMATTAZIONE
-// fromCents: false perché dividiamo manualmente per 100 nel template per sicurezza assoluta
 const { euro } = useCurrencyFormatter({ fromCents: false }); 
 const { toItalian } = useDateConverter();
 const { generatePath } = usePermission();
@@ -79,7 +63,6 @@ const saldoInizialeColorClass = computed(() => {
 });
 
 const getStatoConfig = (stato: string | null) => {
-    // Se lo stato è null (es. righe di incasso), non ritorniamo nulla
     if (!stato) return { label: '', class: '', icon: null };
 
     switch(stato) {
@@ -88,27 +71,31 @@ const getStatoConfig = (stato: string | null) => {
         case 'credito': 
             return { label: 'COMPENSATA', class: 'bg-indigo-50 text-indigo-700 border-indigo-200', icon: Coins };
         case 'parzialmente_pagata': 
+        case 'partial': // Aggiunto alias di sicurezza (se usato nel DB)
             return { label: 'PARZIALE', class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PieChart };
         case 'da_pagare': 
+        case 'pending': // Aggiunto alias
             return { label: 'NON PAGATA', class: 'bg-red-50 text-red-700 border-red-200', icon: AlertCircle };
         case 'credito_puro': 
             return { label: 'CREDITO', class: 'bg-blue-50 text-blue-700 border-blue-200', icon: ArrowDownCircle };
+        case 'stornato': // GESTIONE DELLO STORNO
+            return { label: 'STORNATA', class: 'bg-slate-100 text-slate-600 border-slate-300', icon: XCircle };
         default: 
             return { label: '', class: '', icon: null };
     }
 };
 
 const getImportoStyle = (riga: any) => {
-    // Rendiamo lo stile dinamico anche in base al tipo di riga, per sicurezza
     if (riga.tipo_riga === 'dare') {
-         // Se è un'emissione a debito
+         // FIX: Se è uno storno, stile più tenue per non sembrare una vera rata
+         if (riga.tipo_icona === 'rotate-ccw') {
+             return 'text-slate-600 font-semibold line-through decoration-slate-300 decoration-2';
+         }
          return 'text-red-600 font-medium';
     } else if (riga.tipo_riga === 'avere') {
-         // Se è un pagamento reale
          return 'text-emerald-600 font-bold font-mono text-sm bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100';
     }
     
-    // Fallback per righe compensate o altro
     const isCredito = riga.dettagli?.some((d: any) => d.type === 'rata' && d.status === 'credito');
     if (isCredito) return 'text-blue-600 font-bold';
     
@@ -138,7 +125,7 @@ const getImportoStyle = (riga: any) => {
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="rounded-lg border bg-gray-50/50 shadow-sm border-gray-200">
                     <div class="flex flex-row items-center justify-between p-4 pb-2">
@@ -212,10 +199,11 @@ const getImportoStyle = (riga: any) => {
             </div>
         </div>
 
-        <div class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200 mb-6">
+        <div class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200">
             <span class="font-bold uppercase tracking-wider text-[10px] text-gray-400 mr-1">Legenda:</span>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 shadow-sm"><FileText class="w-3 h-3" /></div><span>Emissione</span></div>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm"><Banknote class="w-3 h-3" /></div><span>Incasso</span></div>
+            <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-sm"><RotateCcw class="w-3 h-3" /></div><span>Storno</span></div>
             <div class="h-4 w-px bg-gray-300 mx-2 hidden sm:block"></div>
             <div class="flex items-center gap-1.5"><CheckCircle2 class="w-3.5 h-3.5 text-emerald-600" /> <span class="text-emerald-700 font-medium">Saldata</span></div>
             <div class="flex items-center gap-1.5"><PieChart class="w-3.5 h-3.5 text-amber-600" /> <span class="text-amber-700 font-medium">Parziale</span></div>
@@ -266,7 +254,8 @@ const getImportoStyle = (riga: any) => {
                                         <div v-if="riga.tipo_icona === 'bill'" class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-gray-500 border border-gray-200 shadow-sm"><FileText class="w-4 h-4" /></div>
                                         <div v-else-if="riga.tipo_icona === 'payment'" class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 border border-emerald-200 shadow-sm"><Banknote class="w-4 h-4" /></div>
                                         <div v-else-if="riga.tipo_icona === 'landmark'" class="w-8 h-8 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 border border-yellow-200 shadow-sm"><Landmark class="w-4 h-4" /></div>
-                                        <div v-else class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 border border-blue-100 shadow-sm"><HelpCircle class="w-4 h-4" /></div>
+                                        <div v-else-if="riga.tipo_icona === 'rotate-ccw'" class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-200 shadow-sm"><RotateCcw class="w-4 h-4" /></div>
+                                        <div v-else class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 border border-gray-200 shadow-sm"><HelpCircle class="w-4 h-4" /></div>
                                     </div>
                                 </td>
                                 <td class="px-4 py-3 align-top">
@@ -307,10 +296,14 @@ const getImportoStyle = (riga: any) => {
                                                     </div>
                                                 </TooltipTrigger>
                                                 <TooltipContent side="right" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-xl rounded-lg z-50">
+                                                    
                                                     <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 flex justify-between">
                                                         <span>
-                                                            {{ riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 'Dettaglio Addebito' }}
-                                                            (Int. {{ riga.breakdown.immobile }})
+                                                            {{ 
+                                                              riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 
+                                                              (riga.breakdown.type === 'storno' ? 'Dettaglio Storno' : 'Dettaglio Addebito') 
+                                                            }}
+                                                            <span v-if="riga.breakdown.immobile !== 'Generico'">(Int. {{ riga.breakdown.immobile }})</span>
                                                         </span>
                                                     </div>
 
@@ -318,20 +311,24 @@ const getImportoStyle = (riga: any) => {
                                                         <div class="flex justify-between items-center text-slate-400">
                                                             <span class="flex items-center gap-1">
                                                                 <div class="w-1.5 h-1.5 rounded-full" :class="riga.breakdown.start < 0 ? 'bg-emerald-500' : (riga.breakdown.start > 0 ? 'bg-red-500' : 'bg-gray-500')"></div>
-                                                                <span>Saldo Precedente:</span>
+                                                                <span>Saldo precedente:</span>
                                                             </span>
                                                             <span class="font-mono">{{ euro(riga.breakdown.start) }}</span>
                                                         </div>
 
                                                         <div class="flex justify-between items-center text-white">
-                                                            <span class="pl-2.5">Movimento in {{ riga.breakdown.type === 'incasso' ? 'Avere' : 'Dare' }}:</span>
-                                                            <span class="font-mono font-bold">{{ riga.breakdown.type === 'incasso' ? '-' : '+' }} {{ euro(riga.breakdown.cost) }}</span>
+                                                            <span class="pl-2.5">
+                                                                Movimento in {{ riga.breakdown.type === 'incasso' ? 'Avere' : 'Dare' }}:
+                                                            </span>
+                                                            <span class="font-mono font-bold" :class="riga.breakdown.type === 'storno' ? 'text-slate-400 line-through' : ''">
+                                                                {{ riga.breakdown.type === 'incasso' ? '-' : '+' }} {{ euro(riga.breakdown.cost) }}
+                                                            </span>
                                                         </div>
 
                                                         <template v-if="riga.breakdown.type === 'emissione' && riga.breakdown.saldo_usato && riga.breakdown.saldo_usato !== 0">
                                                             <div class="my-1.5 pl-2.5 border-l-2 border-slate-600 ml-1 py-0.5 space-y-1 text-[11px]">
                                                                 <div class="flex justify-between items-center text-slate-300">
-                                                                    <span class="italic text-slate-400">Quota Pura:</span>
+                                                                    <span class="italic text-slate-400">Quota pura:</span>
                                                                     <span class="font-mono">{{ euro(riga.breakdown.cost) }}</span>
                                                                 </div>
                                                                 <div class="flex justify-between items-center text-slate-300">
@@ -348,7 +345,7 @@ const getImportoStyle = (riga: any) => {
                                                         </template>
                                                         <div class="border-t border-slate-700 my-2 pt-2">
                                                             <div class="flex justify-between items-center font-bold text-sm">
-                                                                <span class="text-white">Nuovo Saldo Progressivo:</span>
+                                                                <span class="text-white">Nuovo saldo progressivo:</span>
                                                                 <span class="font-mono" :class="riga.breakdown.end < 0 ? 'text-emerald-400' : (riga.breakdown.end > 0 ? 'text-red-400' : 'text-white')">
                                                                     {{ euro(riga.breakdown.end) }}
                                                                 </span>

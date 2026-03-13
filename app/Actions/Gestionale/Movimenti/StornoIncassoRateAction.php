@@ -18,7 +18,7 @@ class StornoIncassoRateAction
                 'gestione_id' => $scrittura->gestione_id,
                 'data_registrazione' => now(),
                 'data_competenza' => $scrittura->data_competenza,
-                'causale' => 'STORNO: ' . $scrittura->causale,
+                'causale' => 'Storno: ' . $scrittura->causale,
                 'tipo_movimento' => 'rettifica',
                 'stato' => 'registrata',
                 'note' => 'Annullamento prot. ' . $scrittura->numero_protocollo,

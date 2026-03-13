@@ -10,14 +10,8 @@ export function usePaymentDistribution() {
     const isRataZero = (r: Rata) => {
         const desc = (r.descrizione || '').toLowerCase();
         
-        // LOGICA CORRETTA:
-        // Una rata deve essere SEMPRE visibile all'admin se:
-        // 1. È un Saldo/Rata 0
-        // 2. Non è ancora stata emessa (ci sto lavorando)
-        // 3. È già stata emessa (è a libro giornale, quindi devo poterla incassare)
-        
         const isSaldo = desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
-        const isContabilizzata = r.is_emitted === true; // Forza visibilità se emessa (Sia Silent che Public)
+        const isContabilizzata = r.is_emitted === true;
         const isInBozza = r.is_emitted === false;
 
         return isSaldo || isContabilizzata || isInBozza;
@@ -34,7 +28,6 @@ export function usePaymentDistribution() {
         return isNaN(time) ? 0 : time;
     };
     
-    // Parser corazzato
     const parseMoney = (val: any) => { 
         if (typeof val === 'number') return val;
         if (!val) return 0;
@@ -51,18 +44,15 @@ export function usePaymentDistribution() {
     const isScaduta = (dateStr: string | null) => {
         if (!dateStr) return false;
         
-        // Normalizziamo la data corrente a mezzanotte per un confronto pulito
         const oggi = new Date();
         oggi.setHours(0, 0, 0, 0);
 
-        // Se la data è in formato DD/MM/YYYY (tipico del tuo human_scadenza)
         if (dateStr.includes('/')) {
             const [d, m, y] = dateStr.split('/');
             const dataRata = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
             return dataRata < oggi;
         }
         
-        // Altrimenti proviamo il parse standard (ISO)
         const dataRata = new Date(dateStr);
         dataRata.setHours(0, 0, 0, 0);
         return dataRata < oggi;
@@ -71,14 +61,12 @@ export function usePaymentDistribution() {
     const getRateListByGestione = (gestioneId: number | null) => {
         if (!rawRateList.value) return [];
         
-        // 1. Cloniamo l'array in modo sicuro
         let list = [...rawRateList.value].map(r => ({...r}));
         
         if (gestioneId) {
             list = list.filter(r => r.gestione_id === gestioneId);
         }
 
-        // 2. Ordinamento: Rate 0 sempre per prime, poi ordine di data
         const cronologicalSort = (a: Rata, b: Rata) => {
             if (isRataZero(a) && !isRataZero(b)) return -1;
             if (!isRataZero(a) && isRataZero(b)) return 1;
@@ -89,10 +77,6 @@ export function usePaymentDistribution() {
         };
         
         list.sort(cronologicalSort);
-
-        // ABBIAMO ELIMINATO TUTTO IL BLOCCO WATERFALL! 
-        // Il backend ha già fatto il suo dovere. 
-        // I residui restano esattamente quelli decisi dal file PHP.
 
         return list;
     };
@@ -107,7 +91,6 @@ export function usePaymentDistribution() {
         else return { label: 'Saldo:', value: 0, class: 'text-gray-600 bg-gray-50 border-gray-200' };
     };
 
-    // Algoritmo di distribuzione dell'incasso (ignora i crediti puri)
     const distributeGreedy = (rateList: Rata[], importoTotaleEuro: number) => {
         let budgetCents = Math.round(importoTotaleEuro * 100);
 
@@ -117,7 +100,6 @@ export function usePaymentDistribution() {
 
             const residuoCents = Math.round(parseMoney(r.residuo) * 100);
             
-            // Se la rata è un credito puro (Rata 0 negativa), la saltiamo nell'assegnazione dei contanti
             if (residuoCents <= 0) return; 
 
             const allocabileCents = Math.min(budgetCents, residuoCents);
@@ -166,7 +148,6 @@ export function usePaymentDistribution() {
         let somma = 0; 
         rateList.forEach(r => { 
             const res = parseMoney(r.residuo);
-            // Usiamo isScaduta sulla data reale per includere anche la scadenza odierna
             if (isScaduta(r.data_scadenza || r.scadenza_human) && res > 0) { 
                 r.da_pagare = res; 
                 r.selezionata = true; 
@@ -180,7 +161,7 @@ export function usePaymentDistribution() {
     };
 
     const syncFormData = (rateList: Rata[]) => [...rateList]
-        .filter(r => r.selezionata && parseMoney(r.da_pagare) > 0)
+        .filter(r => r.selezionata && parseMoney(r.da_pagare) !== 0) // 🟢 FIX: Include i negativi
         .map(r => ({ rata_id: r.id, importo: parseMoney(r.da_pagare) }));
 
     return { 
@@ -188,6 +169,7 @@ export function usePaymentDistribution() {
         loadingRate, 
         mode, 
         isScaduta, 
+        priorityRataId, // 🟢 FIX: Esportato correttamente
         setPriorityRataId, 
         getRateListByGestione, 
         getTotalAllocato, 

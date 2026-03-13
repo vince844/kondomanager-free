@@ -2,7 +2,44 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
-### [1.9.14] Tenant Experience & UI
+# [1.9.16] - Accounting Intelligence & Precision (Latest)
+
+## Potenziamento del Motore Finanziario
+
+### Motore Finanziario in Centesimi (MoneyHelper)
+- **Rimosso l'uso dei float nativi di PHP** per i calcoli finanziari sensibili
+- **Integrata la classe `MoneyHelper`** in tutto il ciclo di incasso
+- **Precisione assoluta garantita** - eliminati definitivamente i bug di arrotondamento nel bilancio
+- Tutte le operazioni monetarie operano ora a livello centesimale per una precisione impeccabile
+
+### Ordinamento Visivo a Cascata (Waterfall)
+- **Riprogettata la visualizzazione dei movimenti** nell'Estratto Conto Anagrafica
+- All'interno della stessa operazione, i movimenti in **DARE** (Addebiti/Prelievi dal Salvadanaio) ora precedono visivamente quelli in **AVERE** (Incassi/Compensazioni)
+- Risulta in una **curva del saldo logica** e priva di "falsi rossi" nella visualizzazione
+
+### Single Source of Truth (Pivot Engine)
+- **Ottimizzato il processo di salvataggio delle quote**
+- **Eliminati gli aggiornamenti manuali ridondanti** (`update()`) sui record delle quote
+- Il ricalcolo dello stato ora si affida **interamente ai dati registrati nella tabella pivot**
+- Garantisce **massime performance e integrità dei dati** attraverso un'architettura semplificata
+
+### Correzioni di Bug
+
+#### Fix Race Condition "NON PAGATA"
+- Risolto un bug temporale nel ricalcolo degli stati durante le compensazioni
+- **Spostata la chiamata `ricalcolaStato()`** per eseguire **dopo** l'effettivo `attach()` dei pagamenti
+- Le rate chiuse tramite credito vengono ora etichettate correttamente come **"PAGATA" in tempo reale**
+
+#### Fix Sbilanciamento Incassi Misti
+- Introdotto il **controllo rigoroso `$budgetCashCents`** in `StoreIncassoRateAction`
+- Il sistema ora **impedisce alla scrittura di cassa di consumare debito virtuale**
+- Crea lo spazio appropriato per la scrittura di storno e completa **la partita doppia in modo perfettamente bilanciato**
+
+---
+
+*Questa release garantisce che ogni operazione finanziaria mantenga un'integrità perfetta, dalle transazioni individuali agli estratti conto completi.*
+
+### [1.9.15] Tenant Experience & UI
 * **Smart Wallet (Salvadanaio Condòmino):** Completamente ridisegnato il widget per l'utilizzo dei crediti pregressi. Adotta ora un design pulito e professionale (stile "Digital Wallet"), con un breakdown matematico trasparente che mostra il costo della rata, il credito applicato e il nuovo totale da versare.
 * **Credito Puro (Zero-Payment):** Ripristinata e migliorata la "Card Trionfale" blu/azzurra per le rate che generano un credito netto a favore del condòmino. Il sistema nasconde automaticamente le istruzioni per il bonifico e i bottoni di pagamento, indicando chiaramente che non è richiesta alcuna azione.
 * **Sincronizzazione Dinamica UI:** L'interfaccia dell'app del condòmino reagisce ora istantaneamente a *qualsiasi* azione dell'amministratore (incasso, incasso parziale, storno, annullamento emissione), ricalcolando in tempo reale lo stato (Pagato, Parziale, In attesa) e l'importo residuo al centesimo.

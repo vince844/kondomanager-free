@@ -174,6 +174,13 @@ const showFeedback = (title: string, message: string, isError: boolean = false) 
         message,
         isError
     };
+    
+    // Eliminiamo il messaggio flash globale di Inertia!
+    // Così l'Alert in background (in alto alla pagina) scompare istantaneamente 
+    // e l'utente vede solo ed esclusivamente la Modale.
+    if (page.props.flash) {
+        (page.props.flash as any).message = undefined;
+    }
 };
 
 const isMigrationDialogOpen = ref(props.needsMigration);
@@ -273,13 +280,13 @@ const submitEmissione = () => {
         onSuccess: () => {
             isEmissionModalOpen.value = false;
             selectedRateIds.value = [];
-            showFeedback('Emissione Completata', `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`, false);
+            showFeedback('Emissione completata', `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`, false);
         },
         onError: (errors) => {
-            console.error("Errore Emissione:", errors);
+            console.error("Errore emissione:", errors);
             const flashError = page.props.flash.message?.type === 'error' ? page.props.flash.message.message : null;
             const msg = flashError || Object.values(errors)[0] || "Si è verificato un errore imprevisto.";
-            showFeedback('Errore Emissione', msg, true); 
+            showFeedback('Errore emissione', msg, true); 
         },
     });
 };
@@ -298,15 +305,26 @@ const executeAnnullamento = () => {
         rata: rataToAnnullareId.value
     }), { 
         preserveScroll: true,
-        onSuccess: () => {
+        onSuccess: (page) => {
             isAlertOpen.value = false;
             rataToAnnullareId.value = null;
-            showFeedback('Emissione Annullata', 'La rata è tornata in stato di bozza.', false);
+            
+            // FIX: Controlliamo se c'è un flash message di ERRORE dal backend
+            // (Inertia tratta i redirect con errors/flash come un 'success' HTTP)
+            const flash = (page.props.flash as any).message;
+            if (flash && flash.type === 'error') {
+                showFeedback('Impossibile annullare', flash.message, true);
+                return; // Fermiamo l'esecuzione per non mostrare il messaggio verde!
+            }
+
+            // Altrimenti, mostriamo il vero successo
+            showFeedback('Emissione annullata', 'La rata è tornata in stato di bozza.', false);
         },
-        onError: () => {
+        onError: (errors) => {
+            // Qui entra solo se c'è un VERO errore HTTP (es. 500 Server Error)
             isAlertOpen.value = false;
-            const flashError = page.props.flash.message?.type === 'error' ? page.props.flash.message.message : 'Errore sconosciuto';
-            showFeedback('Impossibile Annullare', flashError, true);
+            const msg = Object.values(errors)[0] || 'Si è verificato un errore tecnico.';
+            showFeedback('Errore di sistema', msg, true);
         }
     });
 };
@@ -401,6 +419,7 @@ const rateColumns = computed(() => {
         numero, 
         scadenza: scadenza ? new Date(scadenza) : null,
         is_emessa: rataPura.is_emessa ?? false, 
+        is_published: rataPura.is_published ?? true, 
         id: rataPura.id 
     };
   });
@@ -689,7 +708,7 @@ const executePublishSilent = () => {
                               <HoverCardContent class="w-80 z-50">
                                   <div class="space-y-3">
                                       <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
-                                          <Wallet class="w-4 h-4 text-emerald-600" /> Emissione Rate
+                                          <Wallet class="w-4 h-4 text-emerald-600" /> Emissione rate
                                       </h4>
                                       <div class="text-sm space-y-2 text-slate-600">
                                           <p v-if="selectedRateIds.length === 0">
@@ -714,7 +733,7 @@ const executePublishSilent = () => {
                               <HoverCardContent class="w-80 z-50">
                                   <div class="space-y-3">
                                       <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
-                                          <Lock class="w-4 h-4 text-slate-500" /> Emissione Bloccata
+                                          <Lock class="w-4 h-4 text-slate-500" /> Emissione bloccata
                                       </h4>
                                       <div class="text-sm space-y-2 text-slate-600">
                                           <p>
@@ -731,7 +750,7 @@ const executePublishSilent = () => {
                           <HoverCard v-if="props.has_unpublished_rates">
                               <HoverCardTrigger as-child>
                                   <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all" @click="executePublishSilent">
-                                      <BellRing class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Pubblica Nascoste</span>
+                                      <BellRing class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Pubblica nascoste</span>
                                   </Button>
                               </HoverCardTrigger>
                               <HoverCardContent class="w-80 z-50">
@@ -766,7 +785,7 @@ const executePublishSilent = () => {
                           <HoverCardContent class="w-80 z-50">
                               <div class="space-y-3">
                                   <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
-                                      <RotateCw class="w-4 h-4 text-primary" /> Ricalcolo Piano Rate
+                                      <RotateCw class="w-4 h-4 text-primary" /> Ricalcolo piano rate
                                   </h4>
                                   <div class="text-sm space-y-2 text-slate-600">
                                       <p>
@@ -786,13 +805,13 @@ const executePublishSilent = () => {
                       <HoverCard>
                           <HoverCardTrigger as-child>
                               <Button variant="outline" class="h-9 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white" @click="isSpostaSpesaOpen = true">
-                                  <ArrowRightLeft class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Sposta Spesa</span>
+                                  <ArrowRightLeft class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Sposta spesa</span>
                               </Button>
                           </HoverCardTrigger>
                           <HoverCardContent class="w-80 z-50">
                               <div class="space-y-3">
                                   <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800">
-                                      <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta Spesa
+                                      <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta spesa
                                   </h4>
                                   <div class="text-sm space-y-2 text-slate-600">
                                       <p>
@@ -994,18 +1013,48 @@ const executePublishSilent = () => {
                               <div class="flex flex-col items-center relative z-20 pointer-events-none">
                                   <div class="font-semibold text-gray-700 flex items-center gap-1">
                                        {{ col.numero === 0 ? 'Saldi Iniziali' : 'Rata ' + col.numero }}
-                                      <Badge v-if="col.is_emessa" class="ml-1 h-1.5 w-1.5 p-0 bg-emerald-500 rounded-full" title="Emessa"></Badge>
+                                      
+                                       <TooltipProvider v-if="col.is_emessa" :delayDuration="100">
+                                            <Tooltip>
+                                                <TooltipTrigger class="pointer-events-auto cursor-help">
+                                                    <Badge 
+                                                        class="ml-1 h-2 w-2 p-0 rounded-full border border-white/50 shadow-sm"
+                                                        :class="col.is_published ? 'bg-emerald-500' : 'bg-amber-400 animate-pulse'"
+                                                    ></Badge>
+                                                </TooltipTrigger>
+                                                <TooltipContent class="pointer-events-none z-[100] text-xs">
+                                                    <div v-if="col.is_published" class="flex flex-col">
+                                                        <span class="font-bold text-emerald-500">Emessa e pubblicata</span>
+                                                        <span class="text-slate-400">Visibile ai condòmini.</span>
+                                                    </div>
+                                                    <div v-else class="flex flex-col">
+                                                        <span class="font-bold text-amber-500">Emessa ma nascosta</span>
+                                                        <span class="text-slate-400">Non visibile ai condòmini. Usa il tasto "Pubblica".</span>
+                                                    </div>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                       </TooltipProvider>
+
                                   </div>
                                   <div class="text-[10px] opacity-75 font-normal">{{ col.scadenza ? toItalian(col.scadenza) : "—" }}</div>
                               </div>
 
-                              <button v-if="switchState && col.is_emessa" 
-                                class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40"
-                                title="Annulla Emissione"
-                                @click.stop="confirmAnnullamento(col.id)"
-                              >
-                                <RotateCcw class="w-3 h-3" />
-                              </button>
+                              <TooltipProvider v-if="switchState && col.is_emessa" :delayDuration="150">
+                                  <Tooltip>
+                                      <TooltipTrigger as-child>
+                                          <button 
+                                            class="absolute top-1 right-1 opacity-0 group-hover/header:opacity-100 text-gray-400 hover:text-red-500 transition-colors z-40 outline-none"
+                                            @click.stop="confirmAnnullamento(col.id)"
+                                          >
+                                            <RotateCcw class="w-3 h-3" />
+                                          </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" class="bg-slate-900 text-white text-xs border-slate-800">
+                                          Annulla emissione
+                                      </TooltipContent>
+                                  </Tooltip>
+                              </TooltipProvider>
+
                           </div>
                         </th>
 
@@ -1245,14 +1294,14 @@ const executePublishSilent = () => {
                             <HoverCardContent class="w-80 z-[100]">
                                 <div class="space-y-3">
                                     <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
-                                        <Info class="w-4 h-4 text-indigo-500" /> Emissione Silenziosa
+                                        <Info class="w-4 h-4 text-indigo-500" /> Emissione silenziosa
                                     </h4>
                                     <div class="text-sm space-y-2 text-slate-600">
                                         <p>
                                             Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).
                                         </p>
                                         <p>
-                                            Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nell'App.
+                                            Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nella loro area privata.
                                         </p>
                                         <Separator class="my-2"/>
                                         <div class="text-xs text-amber-600 italic font-medium">
