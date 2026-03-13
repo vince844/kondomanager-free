@@ -11,6 +11,7 @@ use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
+use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
@@ -163,7 +164,7 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('movimenti-rate', IncassoRateController::class)
         ->parameters(['movimenti-rate' => 'scrittura']);
 
-    Route::post('movimenti-rate/{scrittura}/storno', [IncassoRateController::class, 'storno'])
+    Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
     ->name('movimenti-rate.storno');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])

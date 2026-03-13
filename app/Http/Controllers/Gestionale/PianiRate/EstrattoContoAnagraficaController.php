@@ -15,6 +15,18 @@ class EstrattoContoAnagraficaController extends Controller
 {
     use HasEsercizio;
 
+    /**
+     * Genera l'Estratto Conto finanziario di una singola Anagrafica.
+     * * Questo metodo costruisce un "Ledger" (Libro Mastro) cronologico che incrocia
+     * il Saldo Iniziale dell'esercizio con tutte le scritture contabili in Dare/Avere
+     * (Emissioni rate, Incassi, Compensazioni e Storni), calcolando il saldo progressivo
+     * "Waterfall" (a cascata) al centesimo, basato sul pattern Double-Entry.
+     *
+     * @param Request $request La richiesta HTTP corrente.
+     * @param Condominio $condominio Il Condominio in cui si sta operando.
+     * @param Anagrafica $anagrafica L'anagrafica del condòmino di cui calcolare l'estratto conto.
+     * @return \Inertia\Response Ritorna la vista Vue dell'estratto conto con le Statistiche e la Timeline elaborata.
+     */
     public function show(Request $request, Condominio $condominio, Anagrafica $anagrafica)
     {
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -23,11 +35,13 @@ class EstrattoContoAnagraficaController extends Controller
             $q->where('condominio_id', $condominio->id);
         }]);
 
+        // Calcolo Saldo Iniziale (Crediti/Debiti portati dall'anno precedente)
         $saldoInizialeCents = $anagrafica->saldi()
             ->where('condominio_id', $condominio->id)
             ->where('esercizio_id', $esercizio->id)
             ->sum('saldo_iniziale'); 
 
+        // Recupero tutti i movimenti dell'anagrafica escludendo i movimenti fittizi di cassa interna
         $movimenti = $anagrafica->movimenti()
             ->whereHas('scrittura', function($q) use ($condominio) {
                 $q->where('condominio_id', $condominio->id);
@@ -38,7 +52,7 @@ class EstrattoContoAnagraficaController extends Controller
             ->orderBy('id', 'asc')
             ->get();
 
-        // --- STEP 1: PRE-CARICAMENTO QUOTE (singola query) ---
+        // --- STEP 1: PRE-CARICAMENTO QUOTE (singola query per prevenire N+1) ---
         $rataIds = $movimenti
             ->filter(fn($r) => $r->rata && $r->tipo_riga === 'dare')
             ->pluck('rata.id')
@@ -51,7 +65,7 @@ class EstrattoContoAnagraficaController extends Controller
             ->keyBy(fn($q) => $q->rata_id . '_' . $q->immobile_id);
 
         
-        // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE (Senza json_decode manuale) ---
+        // --- STEP 2: PRE-ELABORAZIONE QUOTE PURE E SALDI USATI ---
         $movimenti->each(function ($riga) use ($quoteMap) {
             $riga->quotaPura       = $riga->importo;
             $riga->saldoUsato      = 0;
@@ -67,6 +81,7 @@ class EstrattoContoAnagraficaController extends Controller
                     
                     $regole = $quota->regole_calcolo;
 
+                    // Decodifica JSON Snapshot per isolare quota reale dal saldo compensato
                     if (!empty($regole)) {
                         $data = (array) $regole;
                         $importi = $data['importi'] ?? [];
@@ -80,14 +95,14 @@ class EstrattoContoAnagraficaController extends Controller
 
         // --- STEP 3: ORDINAMENTO VISIVO INTELLIGENTE ---
         $movimenti = $movimenti->sortBy(function($riga) {
-            // 1. Ordina per ID Scrittura (raggruppa le operazioni)
-            // 2. Metti prima il DARE (prelievi/addebiti), poi l'AVERE (versamenti/incassi)
-            // 3. Ordina per importo decrescente
+            // 1. Raggruppamento per scrittura contabile originaria
+            // 2. Dare (0) precede Avere (1) per garantire un flusso visivo lineare del Saldo Progressivo
+            // 3. A parità di riga, ordina per importo decrescente
             $ordineRiga = $riga->tipo_riga === 'dare' ? 0 : 1; 
             return [$riga->scrittura_id, $ordineRiga, -abs($riga->quotaPura)];
         })->values();
 
-        // --- STEP 4: CREAZIONE TIMELINE & SALDI PROGRESSIVI ---
+        // --- STEP 4: CREAZIONE TIMELINE & CALCOLO SALDI PROGRESSIVI ---
         $runningBalance = $saldoInizialeCents;
         
         $timeline = $movimenti->map(function ($riga) use (&$runningBalance) {
@@ -101,35 +116,24 @@ class EstrattoContoAnagraficaController extends Controller
             $waterfallStart = $runningBalance;
             $tipoMovimento = $riga->scrittura->tipo_movimento ?? 'generico';
             
-            // CALCOLO DARE / AVERE CON SUPPORTO AI NUOVI ENUM E ALLA COMPENSAZIONE
+            // CALCOLO DARE E AVERE PROGRESSIVI (Motore Partita Doppia)
             if ($riga->tipo_riga === 'dare') {
                 
-                // CASO 1: È uno storno di un incasso (errore) -> Ri-aumenta il debito
-                if ($tipoMovimento === 'rettifica') {
+                // Le rettifiche (storni) e gli utilizzi credito (salvadanaio) in Dare 
+                // re-incrementano fisicamente il debito globale.
+                if ($tipoMovimento === 'rettifica' || $tipoMovimento === 'storno_credito') {
                     $importoDaSommare = $importoContabile;
-                    $runningBalance += $importoDaSommare;
-                    $dare = $importoDaSommare;
-                    $avere = 0;
-                } 
-                // CASO 2: È il consumo del salvadanaio (Compensazione) -> Aumenta il debito
-                // Il credito era un saldo negativo. Azzerandolo, il debito globale matematicamente sale.
-                elseif ($tipoMovimento === 'storno_credito') {
-                    $importoDaSommare = $importoContabile;
-                    $runningBalance += $importoDaSommare;
-                    $dare = $importoDaSommare;
-                    $avere = 0;
-                }
-                // CASO 3: È una normale emissione di rata
-                else {
+                } else {
+                    // Emissione standard (ignora i crediti figurativi)
                     $importoDaSommare = $quotaPura;
-                    $runningBalance += $importoDaSommare;
-                    $dare = $importoDaSommare; 
-                    $avere = 0;
                 }
 
+                $runningBalance += $importoDaSommare;
+                $dare  = $importoDaSommare; 
+                $avere = 0;
+
             } else {
-                // GESTIONE AVERE (Incassi e compensazioni)
-                // Sia incasso_rata che storno_credito (lato Avere) abbattono il debito.
+                // Gli incassi in contanti, compensazioni e i rimborsi abbattono il debito.
                 $runningBalance -= $importoContabile;
                 $dare  = 0; 
                 $avere = $importoContabile;
@@ -137,13 +141,12 @@ class EstrattoContoAnagraficaController extends Controller
             
             $waterfallEnd = $runningBalance;
 
-            // ASSEGNAZIONE ICONE (Aggiornata per la V 1.9)
+            // ASSEGNAZIONE ICONE VISIVE
             $icona = 'file'; 
             if ($tipoMovimento === 'emissione_rata') $icona = 'bill';
             if ($tipoMovimento === 'incasso_rata')   $icona = 'payment';
             if ($tipoMovimento === 'saldo_iniziale') $icona = 'landmark';
-            if ($tipoMovimento === 'rettifica')      $icona = 'rotate-ccw'; 
-            if ($tipoMovimento === 'storno_credito') $icona = 'rotate-ccw'; // Icona compensazione
+            if ($tipoMovimento === 'rettifica' || $tipoMovimento === 'storno_credito') $icona = 'rotate-ccw'; 
             
             $dettagli  = [];
             $breakdown = null;
@@ -155,15 +158,15 @@ class EstrattoContoAnagraficaController extends Controller
                     $labelBase .= " (Scad. " . $riga->rata->data_scadenza->format('d/m/Y') . ")";
                 }
 
-                // GESTIONE DETTAGLI E BREAKDOWN
+                // GESTIONE DESCRIZIONI E BREAKDOWN DELLE SINGOLE VOCI
                 if ($riga->tipo_riga === 'dare') {
                     
-                    // CASO A: È UNO STORNO (RETTIFICA)
+                    // CASO A: È UNO STORNO O ANNULLAMENTO IN DARE (Ripristino Debito)
                     if ($tipoMovimento === 'rettifica') {
                         $dettagli[] = [
                             'type'   => 'rata',
                             'text'   => "Storno incasso su " . $labelBase,
-                            'status' => 'stornato'
+                            'status' => 'stornata' // Badge grigio visivo
                         ];
                         $breakdown = [
                             'type'             => 'storno',
@@ -173,7 +176,7 @@ class EstrattoContoAnagraficaController extends Controller
                             'immobile'         => $riga->immobile ? $riga->immobile->interno : 'Generico'
                         ];
                     }
-                    // CASO B: È IL CONSUMO DEL SALVADANAIO (STORNO CREDITO)
+                    // CASO B: PRELIEVO DAL SALVADANAIO
                     elseif ($tipoMovimento === 'storno_credito') {
                         $dettagli[] = [
                             'type'   => 'info',
@@ -181,14 +184,14 @@ class EstrattoContoAnagraficaController extends Controller
                             'status' => null
                         ];
                         $breakdown = [
-                            'type'             => 'storno', // Trattato visivamente come storno (blu)
+                            'type'             => 'storno', 
                             'start'            => MoneyHelper::fromCents($waterfallStart),
                             'cost'             => MoneyHelper::fromCents($importoContabile), 
                             'end'              => MoneyHelper::fromCents($waterfallEnd),
                             'immobile'         => 'Generico'
                         ];
                     }
-                    // CASO C: È UNA NORMALE EMISSIONE DI RATA
+                    // CASO C: EMISSIONE STANDARD
                     else {
                         $statoRata = $quota ? $quota->stato : ($waterfallEnd <= 0 ? 'credito' : 'da_pagare');
                         
@@ -226,8 +229,17 @@ class EstrattoContoAnagraficaController extends Controller
                     }
 
                 } else {
-                    // CASO D: È UN INCASSO O UNA COMPENSAZIONE (AVERE)
-                    if ($tipoMovimento === 'storno_credito') {
+                    // 🟢 CASO D: AVERE (Incassi, Compensazioni, e RESTITUZIONE CREDITI DA STORNI)
+                    
+                    if ($tipoMovimento === 'rettifica') {
+                        // FIX CHIRURGICO: Identifica le scritture in AVERE generate da uno Storno
+                        // Esempio: La riga che restituisce i 100€ nel Salvadanaio
+                        $dettagli[] = [
+                            'type'   => 'rata',
+                            'text'   => "Ripristino credito nel salvadanaio",
+                            'status' => 'stornata' 
+                        ];
+                    } elseif ($tipoMovimento === 'storno_credito') {
                         $dettagli[] = [
                             'type'   => 'rata',
                             'text'   => "Pagamento tramite credito su " . $labelBase,
@@ -275,6 +287,7 @@ class EstrattoContoAnagraficaController extends Controller
             ];
         });
 
+        // COMPILAZIONE STATISTICHE CENTESIMALI FINALI
         $stats = [
             'totale_addebiti'    => MoneyHelper::format($timeline->sum('dare')),
             'totale_versamenti'  => MoneyHelper::format($timeline->sum('avere')),

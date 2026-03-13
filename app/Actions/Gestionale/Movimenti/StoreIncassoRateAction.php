@@ -180,6 +180,7 @@ class StoreIncassoRateAction
                     'condominio_id'      => $condominio->id,
                     'esercizio_id'       => $esercizio->id,
                     'gestione_id'        => $gestioneId,
+                    'scrittura_padre_id' => $scritturaIncasso->id, // 🟢 IL LINK DI SANGUE!
                     'data_registrazione' => now(),
                     'data_competenza'    => $validated['data_pagamento'],
                     'causale'            => 'Compensazione credito pregresso - ' . ($validated['descrizione'] ?: 'Incasso rate'),
