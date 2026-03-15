@@ -39,6 +39,9 @@ Route::prefix('admin')->as('admin.')
     Route::post('/admin/inbox/{task}/reject', [ActionInboxController::class, 'reject'])
         ->name('inbox.reject');
 
+    Route::patch('/admin/inbox/{task}/complete', [ActionInboxController::class, 'complete'])
+        ->name('inbox.complete');
+
     /*
     |--------------------------------------------------------------------------
     | Anagrafiche e fornitori routes

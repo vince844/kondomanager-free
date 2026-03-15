@@ -196,7 +196,6 @@ class IncassoRateController extends Controller
         $relatedTaskId = $request->input('related_task_id');
 
         if ($relatedTaskId) {
-            
             /** @var \App\Models\Evento|null $task */
             $task = Evento::find($relatedTaskId);
 
@@ -205,9 +204,45 @@ class IncassoRateController extends Controller
                     'is_completed' => true,
                     'completed_at' => now(),
                 ]);
-                InboxService::clearAdminCache();
             }
         }
+
+        // -------------------------------------------------------------
+        // 2. SMART TASK KILLER: Uccisione Globale (Verifica incassi rata)
+        // -------------------------------------------------------------
+        if (!empty($quoteOrdinarie)) {
+            // Prendiamo le rate padri coinvolte in questo pagamento
+            $ratePadri = Rata::whereIn('id', $rataIdsReali)->with('rateQuote')->get();
+
+            foreach ($ratePadri as $rataPadre) {
+                // Calcoliamo quanto è stato pagato in totale per QUESTA rata in TUTTO il condominio
+                $totaleDovutoCondominio = $rataPadre->rateQuote->where('importo', '>', 0)->sum('importo');
+                $totalePagatoCondominio = $rataPadre->rateQuote->where('importo', '>', 0)->sum('importo_pagato');
+                
+                $residuoCondominio = $totaleDovutoCondominio - $totalePagatoCondominio;
+
+                // Se l'intera rata del condominio è stata saldata (tolleranza 1 centesimo)
+                if ($residuoCondominio <= 0.01) {
+                    
+                    // Cerchiamo l'evento globale "Verifica incassi" per questa rata
+                    $rataPadreId = (int) $rataPadre->id;
+                    
+                    Evento::where('meta->type', 'controllo_incassi')
+                        ->where(function($q) use ($rataPadreId) {
+                            $q->where('meta->context->rata_id', $rataPadreId)
+                              ->orWhere('meta->context->rata_id', (string) $rataPadreId);
+                        })
+                        ->where('is_completed', false)
+                        ->update([
+                            'is_completed' => true,
+                            'completed_at' => now(),
+                        ]);
+                }
+            }
+        }
+
+        // Svuotiamo la cache della inbox dell'admin una sola volta alla fine
+        InboxService::clearAdminCache();
 
         return to_route('admin.gestionale.movimenti-rate.index', $condominio)
             ->with($this->flashSuccess('Incasso registrato con successo.'));

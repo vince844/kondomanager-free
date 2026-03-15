@@ -139,4 +139,24 @@ class ActionInboxController extends Controller
 
         return back()->with('success', 'Segnalazione rifiutata e condòmino notificato.');
     }
+
+    /**
+     * Segna un Task Admin come completato dalla Inbox.
+     */
+    public function complete(Request $request, Evento $task)
+    {
+        // Evita di chiudere task già completati o task privati dei condòmini
+        if ($task->is_completed || $task->visibility === 'private') {
+            return back()->with('error', 'Impossibile completare questo task.');
+        }
+
+        $task->update([
+            'is_completed' => true,
+            'completed_at' => now(),
+        ]);
+
+        InboxService::clearAdminCache();
+
+        return back()->with('success', 'Task completato.');
+    }
 }

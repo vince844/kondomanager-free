@@ -139,41 +139,44 @@ class EmissioneRateController extends Controller
                         ]);
                     }
 
-                // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
-                $rataId = (int) $rata->id;
-                $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
-                    ->where(function($q) use ($rataId) {
-                        $q->where('meta->context->rata_id', $rataId)
-                        ->orWhere('meta->context->rata_id', (string) $rataId);
-                    })
-                    ->get();
+                    // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
+                    $rataId = (int) $rata->id;
+                    $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                        ->where(function($q) use ($rataId) {
+                            $q->where('meta->context->rata_id', $rataId)
+                            ->orWhere('meta->context->rata_id', (string) $rataId);
+                        })
+                        ->get();
 
-                foreach ($userEvents as $evt) {
-                    $meta = $evt->meta;
-                    $meta['is_emitted'] = true;
-                    $meta['is_published'] = $inviaNotifiche; 
-                    
-                    $evt->update([
-                        'meta' => $meta,
-                        'visibility' => $inviaNotifiche ? VisibilityStatus::PRIVATE->value : VisibilityStatus::HIDDEN->value
-                    ]);
+                    foreach ($userEvents as $evt) {
+                        $meta = $evt->meta;
+                        $meta['is_emitted'] = true;
+                        $meta['is_published'] = $inviaNotifiche; 
+                        
+                        $evt->update([
+                            'meta' => $meta,
+                            'visibility' => $inviaNotifiche ? VisibilityStatus::PRIVATE->value : VisibilityStatus::HIDDEN->value
+                        ]);
+                    }
+
+                    // 5. Invio Notifiche
+                    if ($inviaNotifiche) {
+                        RataEmessa::dispatch($rata);
+                    }
+
+                    // 6. Pulizia Task Admin (CORRETTO: usiamo where standard per i path JSON)
+                    Evento::where('meta->type', 'emissione_rata')
+                        ->where(function($q) use ($rataId) {
+                            $q->where('meta->context->rata_id', $rataId)
+                            ->orWhere('meta->context->rata_id', (string) $rataId);
+                        })
+                        ->delete();
+
                 }
 
-                // 5. Invio Notifiche
-                if ($inviaNotifiche) {
-                    RataEmessa::dispatch($rata);
-                }
-
-                // 6. Pulizia Task Admin (CORRETTO: usiamo where standard per i path JSON)
-                Evento::where('meta->type', 'emissione_rata')
-                    ->where(function($q) use ($rataId) {
-                        $q->where('meta->context->rata_id', $rataId)
-                        ->orWhere('meta->context->rata_id', (string) $rataId);
-                    })
-                    ->delete();
-
-                            }
-                        });
+                // Aggiorniamo lo stato massivo nel DB
+                Rata::whereIn('id', $request->rate_ids)->update(['stato' => 'emessa']);
+            });
 
             InboxService::clearAdminCache();
 
@@ -235,6 +238,9 @@ class EmissioneRateController extends Controller
                     RigaScrittura::whereIn('scrittura_id', $scrittureIds)->delete();
                     ScritturaContabile::whereIn('id', $scrittureIds)->forceDelete(); 
                 }
+
+                // Riportiamo la rata in stato di bozza
+                $rata->update(['stato' => 'bozza']);
 
                 $rataId = (int) $rata->id; // Cast sicuro
 

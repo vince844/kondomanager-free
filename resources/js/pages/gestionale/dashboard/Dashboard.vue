@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed, ref } from 'vue';
-import { Head, Link, InfiniteScroll } from '@inertiajs/vue3';
+import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
@@ -9,7 +9,10 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2 } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle } from 'lucide-vue-next';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 import type { Building } from '@/types/buildings';
 
 const props = defineProps<{
@@ -33,6 +36,7 @@ const props = defineProps<{
     total: number;
     data: Array<{
       id: number;
+      type: string;
       title: string;
       description: string;
       action_url: string | null;
@@ -55,7 +59,7 @@ const pageGuides = [
 const statoCopertura = computed(() => {
     if (!props.copertura) return 'loading';
     
-    // 🚨 PRIORITÀ ASSOLUTA: Se c'è un piano disallineato
+    // PRIORITÀ ASSOLUTA: Se c'è un piano disallineato
     if (props.pianiDisallineati && props.pianiDisallineati.length > 0) {
         return 'misaligned';
     }
@@ -118,6 +122,42 @@ const larghezzaBarra = computed(() => {
     const rawPct = (props.copertura.pianificato / props.copertura.preventivo) * 100;
     return Math.min(rawPct, 100) + '%';
 });
+
+const completeTask = (taskId: number) => {
+    // FIX: Passiamo taskId all'interno di un oggetto { task: taskId }
+    router.patch(route('admin.inbox.complete', { task: taskId }), {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+            // Feedback opzionale
+        }
+    });
+};
+
+// NUOVA LOGICA: Rifiuto segnalazioni pagamento
+const isRejectModalOpen = ref(false);
+const taskToReject = ref<any>(null);
+
+const rejectForm = useForm({ reason: '' });
+
+const openRejectModal = (task: any) => {
+    taskToReject.value = task;
+    rejectForm.reason = ''; 
+    rejectForm.clearErrors();
+    isRejectModalOpen.value = true;
+};
+
+const closeRejectModal = () => {
+    isRejectModalOpen.value = false;
+    setTimeout(() => taskToReject.value = null, 300); 
+};
+
+const confirmReject = () => {
+    if (!taskToReject.value) return;
+    rejectForm.post(route('admin.inbox.reject', taskToReject.value.id), {
+        preserveScroll: true,
+        onSuccess: () => closeRejectModal(),
+    });
+};
 
 </script>
 
@@ -339,21 +379,50 @@ const larghezzaBarra = computed(() => {
                                                         <h3 class="text-sm font-bold text-slate-900 dark:text-white" :class="{'text-red-700 dark:text-red-400': task.status === 'expired'}">{{ task.title }}</h3>
                                                         <p class="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-relaxed pr-6">{{ task.description }}</p>
                                                         <div class="flex items-center gap-3 mt-2 text-[10px] font-bold uppercase text-slate-400">
-                                                            <span v-if="task.status === 'expired'" class="text-red-500 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> SCADUTO</span>
-                                                            <span v-else class="text-emerald-500 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DA FARE</span>
-                                                            <span v-if="task.context.anagrafica_nome">• {{ task.context.anagrafica_nome }}</span>
+                                                            <span v-if="task.type === 'verifica_pagamento'" class="text-amber-500 flex items-center gap-1">
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> DA VERIFICARE
+                                                            </span>
+                                                            <span v-else-if="task.status === 'expired'" class="text-red-500 flex items-center gap-1">
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> SCADUTO
+                                                            </span>
+                                                            <span v-else class="text-emerald-500 flex items-center gap-1">
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DA FARE
+                                                            </span>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="shrink-0">
-                                                    <a v-if="task.action_url" :href="task.action_url" 
-                                                        class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-colors rounded-lg border"
-                                                        :class="task.status === 'expired' 
-                                                            ? 'border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20' 
-                                                            : 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'">
-                                                        Risolvi <ArrowRight class="w-3 h-3 ml-1.5" />
-                                                    </a>
+
+                                                <div class="shrink-0 flex items-center gap-2">
+    
+                                                    <template v-if="task.type === 'verifica_pagamento'">
+                                                        <button @click="openRejectModal(task)" title="Rifiuta segnalazione"
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-red-600 hover:border-red-200 hover:bg-red-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
+                                                            <XCircle class="w-4 h-4" />
+                                                        </button>
+                                                        
+                                                        <a v-if="task.action_url" :href="task.action_url" 
+                                                        class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-all rounded-md bg-white border border-slate-200 text-slate-700 shadow-sm hover:border-emerald-300 hover:text-emerald-700 hover:bg-emerald-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400">
+                                                            Registra <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
+                                                        </a>
+                                                    </template>
+
+                                                    <template v-else>
+                                                        <button @click="completeTask(task.id)" title="Segna come completato"
+                                                            class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-slate-200 text-slate-400 bg-white hover:text-emerald-600 hover:border-emerald-200 hover:bg-emerald-50 shadow-sm transition-all dark:bg-slate-800 dark:border-slate-700">
+                                                            <CheckCircle2 class="w-4 h-4" />
+                                                        </button>
+
+                                                        <a v-if="task.action_url" :href="task.action_url" 
+                                                            class="inline-flex items-center justify-center h-7 px-3 text-xs font-bold transition-all rounded-md bg-white border shadow-sm dark:bg-slate-800"
+                                                            :class="task.status === 'expired' 
+                                                                ? 'border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30' 
+                                                                : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-indigo-700 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-200 dark:hover:text-indigo-400'">
+                                                            Risolvi <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
+                                                        </a>
+                                                    </template>
+                                                    
                                                 </div>
+
                                             </div>
                                         </li>
                                     </ul>
@@ -365,7 +434,7 @@ const larghezzaBarra = computed(() => {
                             
                             <div v-else class="h-full flex flex-col items-center justify-center p-12 text-center">
                                 <CheckCircle2 class="w-12 h-12 text-emerald-500/20 mb-4" />
-                                <h3 class="text-sm font-black text-slate-400 uppercase tracking-widest">Inbox Vuota</h3>
+                                <h3 class="text-sm font-black text-slate-400 uppercase tracking-widest">Inbox vuota</h3>
                             </div>
                         </div>
                     </div>
@@ -414,6 +483,55 @@ const larghezzaBarra = computed(() => {
                 </div>
             </div>
         </Transition>
+
+        <Dialog v-model:open="isRejectModalOpen">
+            <DialogContent class="sm:max-w-[450px]">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2 text-red-600">
+                        <AlertTriangle class="w-5 h-5" />
+                        Rifiuta segnalazione
+                    </DialogTitle>
+                    <DialogDescription>
+                        Stai per rifiutare il pagamento segnalato da 
+                        <span class="font-bold text-slate-900">{{ taskToReject?.context?.anagrafica_nome || 'Condòmino' }}</span>.
+                        <strong> Attenzione: questa azione sarà irreversibile.</strong>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="grid gap-4 py-4">
+                    <div class="grid gap-2">
+                        <Label htmlFor="reason" class="text-slate-900">
+                            Motivazione (visibile all'utente)
+                        </Label>
+                        <Textarea 
+                            id="reason" 
+                            v-model="rejectForm.reason" 
+                            placeholder="Es: Bonifico non trovato nell'estratto conto..." 
+                            class="resize-none min-h-[100px]"
+                            :class="{'border-red-500 focus-visible:ring-red-500': rejectForm.errors.reason}"
+                        />
+                        <p v-if="rejectForm.errors.reason" class="text-[11px] text-red-600 font-medium">
+                            {{ rejectForm.errors.reason }}
+                        </p>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" @click="isRejectModalOpen = false" :disabled="rejectForm.processing">
+                        Annulla
+                    </Button>
+                    <Button 
+                        variant="destructive" 
+                        @click="confirmReject" 
+                        :disabled="rejectForm.processing || !rejectForm.reason"
+                    >
+                        <Loader2 v-if="rejectForm.processing" class="w-4 h-4 mr-2 animate-spin" />
+                        Conferma rifiuto
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
     </GestionaleLayout>
 </template>
 

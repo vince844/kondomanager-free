@@ -8,6 +8,7 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\Rata;
 use App\Models\Evento;
 use App\Actions\Gestionale\Movimenti\StornoIncassoRateAction;
+use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 
@@ -96,6 +97,25 @@ class StornoIncassoController extends Controller
                     $evento->update(['meta' => $meta]);
                 }
             }
+        }
+
+        // 7. SMART TASK REVIVER: Resuscitiamo l'evento di "Controllo incassi" globale se necessario
+        if (!empty($rateIds)) {
+            foreach ($rateIds as $rId) {
+                // Troviamo il task globale di verifica per questa rata
+                Evento::where('meta->type', 'controllo_incassi')
+                    ->where(function($q) use ($rId) {
+                        $q->where('meta->context->rata_id', (int) $rId)
+                          ->orWhere('meta->context->rata_id', (string) $rId);
+                    })
+                    ->where('is_completed', true) // Solo se era già stato completato
+                    ->update([
+                        'is_completed' => false,
+                        'completed_at' => null,
+                    ]);
+            }
+            // Puliamo la cache della inbox dell'amministratore per far ricomparire il badge rosso
+            InboxService::clearAdminCache();
         }
 
         return back()->with($this->flashSuccess('Storno completato e scadenziario utenti aggiornato.'));

@@ -4,15 +4,8 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { ref } from 'vue';
-import { 
-    Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, 
-    ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User,
-    ArrowUpFromLine, ArrowDownToLine 
-} from 'lucide-vue-next';
-import { 
-    Dialog, DialogContent, DialogDescription, 
-    DialogFooter, DialogHeader, DialogTitle 
-} from '@/components/ui/dialog';
+import { Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User, ArrowUpFromLine, ArrowDownToLine } from 'lucide-vue-next';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 
@@ -55,7 +48,7 @@ const STATUS_TOKENS: Record<string, { border: string, bg: string, iconBg: string
     expired: { 
         border: 'border-l-red-500', 
         bg: 'hover:bg-red-50/30', 
-        iconBg: 'bg-red-100', // Non usato se manteniamo l'icona del tipo
+        iconBg: 'bg-red-100', 
         iconColor: 'text-red-600',
         text: 'text-red-700' 
     },

@@ -649,6 +649,39 @@ onMounted(async () => {
                                                 <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
 
                                                 <div class="mt-1 flex flex-col gap-1">
+    
+                                                    <span v-if="parseResiduoQuota(r.residuo) < 0" 
+                                                        class="inline-flex items-center text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                        title="I crediti sono automaticamente attivi e pronti per la compensazione">
+                                                        <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Credito Attivo
+                                                    </span>
+
+                                                    <template v-else>
+                                                        <span v-if="!r.is_emitted || Number(r.is_emitted) === 0" 
+                                                            class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                            title="Questa rata non ha ancora generato una scrittura contabile">
+                                                            <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
+                                                        </span>
+
+                                                        <span v-else-if="!r.is_published || Number(r.is_published) === 0" 
+                                                            class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                            title="Rata emessa contabilmente ma attualmente nascosta ai condòmini">
+                                                            <Lock class="w-2.5 h-2.5 mr-1" /> Silenziosa
+                                                        </span>
+
+                                                        <span v-else 
+                                                            class="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter">
+                                                            <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Emessa
+                                                        </span>
+                                                    </template>
+
+                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" 
+                                                        class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
+                                                        <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
+                                                    </span>
+                                                </div>
+
+                                               <!--  <div class="mt-1 flex flex-col gap-1">
                                                     
                                                     <span v-if="r.is_emitted === false" 
                                                         class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
@@ -671,7 +704,7 @@ onMounted(async () => {
                                                         class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
                                                         <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
                                                     </span>
-                                                </div>
+                                                </div> -->
                                             </div>
                                         </td>
                                         <td class="p-3 align-top">

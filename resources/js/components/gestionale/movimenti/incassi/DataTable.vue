@@ -49,7 +49,6 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    // Gestione corretta della rotta con prefisso admin
     router.get(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }), {
       page: nextPage + 1,
       per_page: nextPageSize,
@@ -73,12 +72,18 @@ const table = useVueTable({
     </div>
     
     <div class="rounded-md border bg-white">
-      <Table>
+      <Table class="table-fixed w-full">
         <TableHeader>
           <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id" class="bg-gray-50/50">
-            <TableHead v-for="header in headerGroup.headers" :key="header.id" class="px-4">
+            <TableHead
+              v-for="header in headerGroup.headers"
+              :key="header.id"
+              class="px-4"
+              :style="{ width: header.getSize() + 'px' }"
+            >
               <FlexRender
-                v-if="!header.isPlaceholder" :render="header.column.columnDef.header"
+                v-if="!header.isPlaceholder"
+                :render="header.column.columnDef.header"
                 :props="header.getContext()"
               />
             </TableHead>
@@ -91,7 +96,12 @@ const table = useVueTable({
               :data-state="row.getIsSelected() ? 'selected' : undefined"
               class="hover:bg-gray-50/50 transition-colors"
             >
-              <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id" class="px-4 py-3">
+              <TableCell
+                v-for="cell in row.getVisibleCells()"
+                :key="cell.id"
+                class="px-4 py-3"
+                :style="{ width: cell.column.getSize() + 'px' }"
+              >
                 <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
               </TableCell>
             </TableRow>
