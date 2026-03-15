@@ -8,7 +8,7 @@ class CategoriaEvento extends Model
 {
     protected $table = 'categorie_evento';
 
-    protected $fillable = ['name', 'description', 'color'];
+    protected $fillable = ['name', 'description'];
 
     public function eventi()
     {

@@ -25,6 +25,7 @@ class StoreFatturaRequest extends FormRequest
         return [
             'fornitore_id'    => 'required|exists:fornitori,id',
             'esercizio_id'    => 'required|exists:esercizi,id',
+            'is_pregresso'    => 'nullable|boolean',
 
             // gestione_id deve appartenere al condominio della route.
             // Impedisce che un utente passi l'ID di una gestione di un altro condominio.
@@ -66,10 +67,12 @@ class StoreFatturaRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'dati_extra.override_budget.motivazione.min' =>
-                'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
-            'dati_extra.override_budget.motivazione.required_with' =>
-                'La motivazione è obbligatoria quando si supera il budget.',
+            'dati_extra.override_budget.motivazione.min' =>'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
+            'dati_extra.override_budget.motivazione.required_with' =>'La motivazione è obbligatoria quando si supera il budget.',
+            'numero_documento.required' => 'Il numero documento è obbligatorio.',
+            'righe.*.descrizione.required' => 'La causale della riga è obbligatoria.',
+            'righe.*.conto_id.required' => 'Il capitolo di spesa è obbligatorio.',
+            'righe.*.importo_imponibile.required' => 'L\'importo è obbligatorio.',
         ];
     }
 }

@@ -64,7 +64,6 @@ class FatturaPassivaController extends Controller
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         // --- AUTOGENERAZIONE NUMERO PROTOCOLLO ---
-        // Cerchiamo l'ultimo protocollo dell'anno in corso per questo condominio
         $annoInCorso = date('Y');
         $ultimoProtocollo = FatturaPassiva::where('condominio_id', $condominio->id)
             ->whereYear('created_at', $annoInCorso)
@@ -72,7 +71,6 @@ class FatturaPassivaController extends Controller
             ->orderBy('id', 'desc')
             ->value('numero_protocollo');
 
-        // Formato desiderato: PR-2026-0001
         if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
             $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
             $protocolloSuggerito = "PR-{$annoInCorso}-{$nextNum}";
@@ -80,6 +78,41 @@ class FatturaPassivaController extends Controller
             $protocolloSuggerito = "PR-{$annoInCorso}-0001";
         }
         // ------------------------------------------
+
+        // --- ESTRAZIONE ULTIME SPESE E CALCOLO REALE BUDGET ---
+        $ultimeSpese = collect();
+        $spesePerConto = collect(); // La nostra mappa dei costi reali
+
+        if ($esercizio) {
+            $ultimeSpese = \Illuminate\Support\Facades\DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
+                ->where('fatture_passive.condominio_id', $condominio->id)
+                ->where('fatture_passive.esercizio_id', $esercizio->id)
+                ->select(
+                    'righe_fattura.conto_id',
+                    'fatture_passive.data_documento',
+                    'fatture_passive.numero_documento',
+                    'fatture_passive.is_pregresso',
+                    'fornitori.ragione_sociale',
+                    'righe_fattura.importo_imponibile',
+                    'righe_fattura.importo_iva'
+                )
+                ->orderByDesc('fatture_passive.data_documento')
+                ->get()
+                ->groupBy('conto_id');
+
+            // --- CALCOLO SPESA REALE (CONSUNTIVATO) DALLE FATTURE ---
+            // Interroghiamo direttamente le righe delle fatture per la massima precisione
+            $spesePerConto = \Illuminate\Support\Facades\DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->where('fatture_passive.condominio_id', $condominio->id)
+                ->where('fatture_passive.esercizio_id', $esercizio->id)
+                ->where('fatture_passive.is_pregresso', false) // MAGIA: Ignoriamo i debiti pregressi!
+                ->groupBy('righe_fattura.conto_id')
+                ->selectRaw('righe_fattura.conto_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_spesa')
+                ->pluck('totale_spesa', 'righe_fattura.conto_id');
+        }
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterNew', [
             'condominio' => $condominio,
@@ -90,50 +123,60 @@ class FatturaPassivaController extends Controller
             'condomini'  => $listaCondomini, 
 
             'gestioni' => $condominio->gestioni()
-                ->where('gestioni.attiva', true) // Specifico la tabella per evitare ambiguità
-                ->with('esercizi:id') // Carichiamo solo l'ID degli esercizi collegati per non appesantire
+                ->where('gestioni.attiva', true)
+                ->with('esercizi:id')
                 ->get()
                 ->map(function ($gestione) {
                     return [
                         'id'   => $gestione->id,
                         'nome' => $gestione->nome,
                         'tipo' => $gestione->tipo,
-                        // Estraiamo un array semplice di ID: es. [1, 2]
                         'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
                     ];
                 }),
 
-            // --- CARICAMENTO CONTI (SOLO "FOGLIE" CON PARENT_NOME SEPARATO) ---
+            // --- CARICAMENTO CONTI CON BUDGET DINAMICO E STORICO ANTIDUPLICAZIONE ---
             'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
                 ->with('parent')
                 ->whereDoesntHave('sottoconti')
                 ->get()
-                ->map(function ($conto) {
+                // Aggiungiamo $spesePerConto all'uso della closure
+                ->map(function ($conto) use ($ultimeSpese, $spesePerConto) {
                     
                     $budgetApprovato = $conto->importo ?? 0; 
-                    $spesaAttuale    = $conto->spesa_attuale ?? 0; 
-                    $residuo = $budgetApprovato - $spesaAttuale;
+                    
+                    // Ora la spesa attuale è reale: se non c'è, è 0
+                    $spesaAttuale    = $spesePerConto->get($conto->id, 0); 
+                    $residuo         = $budgetApprovato - $spesaAttuale;
+
+                    $storicoRecente = [];
+                    if ($ultimeSpese->has($conto->id)) {
+                        $storicoRecente = $ultimeSpese->get($conto->id)->take(3)->map(function($spesa) {
+                            return [
+                                'data'         => \Carbon\Carbon::parse($spesa->data_documento)->format('d/m/Y'),
+                                'fornitore'    => $spesa->ragione_sociale,
+                                'documento'    => $spesa->numero_documento,
+                                'is_pregresso' => (bool) $spesa->is_pregresso, 
+                                'importo'      => $spesa->importo_imponibile + $spesa->importo_iva,
+                            ];
+                        })->values()->toArray();
+                    }
 
                     return [
-                        'id'             => $conto->id,
-                        // NOME DELLA FOGLIA PULITO (es. "Pulizie Generali")
-                        'nome'           => $conto->nome, 
-                        // NOME DEL PADRE SEPARATO (es. "Spese Generali"), se esiste
-                        'parent_nome'    => $conto->parent ? $conto->parent->nome : null, 
-                        
-                        // Questo campo serve solo per l'ordinamento alfabetico nel backend
-                        '_sort_key'      => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
-
-                        'codice'         => null,
-                        'residuo_budget' => $residuo,
-                        'is_capiente'    => $residuo >= 0, 
+                        'id'               => $conto->id,
+                        'nome'             => $conto->nome, 
+                        'parent_nome'      => $conto->parent ? $conto->parent->nome : null, 
+                        '_sort_key'        => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
+                        'codice'           => null,
+                        'residuo_budget'   => $residuo, // Questo finalmente scenderà!
+                        'is_capiente'      => $residuo >= 0,
+                        'ultimi_movimenti' => $storicoRecente 
                     ];
                 })
-                ->sortBy('_sort_key') // Ordiniamo usando la chiave nascosta
+                ->sortBy('_sort_key')
                 ->values(),
 
-           
-                // --- CARICAMENTO CASSE E SALDO DINAMICO ---
+            // --- CARICAMENTO CASSE E SALDO DINAMICO ---
             'banche' => Cassa::where('condominio_id', $condominio->id)
                 ->where('attiva', true)
                 ->withSum(['movimenti as totale_entrate' => function ($q) {
@@ -150,23 +193,21 @@ class FatturaPassivaController extends Controller
                     $saldoAttuale = $saldoIniziale + $entrate - $uscite;
 
                     return [
-                        // PASSALA COME ID DEL CONTO CONTABILE, COSÌ IL SERVICE NON ESPLODE!
-                        'id' => $cassa->conto_contabile_id, 
-                        'cassa_id' => $cassa->id, // Lo teniamo per reference
-                        'nome' => $cassa->nome,
+                        'id'            => $cassa->conto_contabile_id, 
+                        'cassa_id'      => $cassa->id,
+                        'nome'          => $cassa->nome,
                         'saldo_attuale' => $saldoAttuale, 
                     ];
                 }),
 
             'immobili' => Immobile::where('condominio_id', $condominio->id)
-                ->where('attivo', true) // Carichiamo solo quelli attivi
-                ->select('id', 'interno', 'nome') // Selezioniamo SOLO i campi che ci servono per la label
-                ->orderBy('interno') // Li ordiniamo per interno per facilitare la ricerca
+                ->where('attivo', true)
+                ->select('id', 'interno', 'nome')
+                ->orderBy('interno')
                 ->get()
                 ->map(function ($imm) {
                     return [
                         'id'    => $imm->id,
-                        // Costruiamo un'etichetta pulita: "Int. 1A — Appartamento"
                         'label' => 'Int. ' . $imm->interno . ' — ' . $imm->nome, 
                     ];
                 }),

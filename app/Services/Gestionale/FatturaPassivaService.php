@@ -17,12 +17,13 @@ class FatturaPassivaService
     {
         return DB::transaction(function () use ($data, $condominioId, $file) {
 
-            $fornitore      = Fornitore::findOrFail($data['fornitore_id']);
+            // FIX 1: Carichiamo la relazione corretta 'referenti'
+            $fornitore      = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
             $isNotaCredito  = ($data['tipo_documento'] === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
             
-            // NUOVO: Rileviamo se è un debito dell'esercizio precedente
-            $isPregresso    = $data['is_pregresso'] ?? false; 
+            // FIX 2: Assicuriamoci che is_pregresso sia trattato come un vero booleano
+            $isPregresso    = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN); 
 
             // 1. Elaborazione Righe (calcoli in centesimi)
             $imponibileTotale = 0;
@@ -79,7 +80,7 @@ class FatturaPassivaService
                 'numero_documento'   => $data['numero_documento'],               
                 'data_documento'     => $data['data_documento'],
                 'data_scadenza'      => $data['data_scadenza'],
-                'is_pregresso'       => $isPregresso, // NUOVO: Salvataggio flag
+                'is_pregresso'       => $isPregresso,
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva'        => $ivaTotale * $moltiplicatore,
                 'importo_ritenuta'   => $ritenuta,
@@ -136,12 +137,15 @@ class FatturaPassivaService
             // LA MAGIA DEL DEBITO PREGRESSO
             if ($isPregresso) {
                 // Se è pregressa, NON tocchiamo i conti di spesa del budget!
-                // Mettiamo tutto il DARE in un conto patrimoniale di transito o "Passate Gestioni"
-                
-                // Assicurati di avere un conto con questo ruolo nel tuo piano dei conti standard
+                // Proviamo a recuperare il conto "passate_gestioni"
                 $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
-                    ->where('ruolo', 'passate_gestioni') // Oppure il ruolo che usi per il disavanzo iniziale
-                    ->firstOrFail();
+                    ->where('ruolo', 'passate_gestioni') 
+                    ->first();
+                
+                // Alert di sicurezza se manca il conto passate gestioni
+                if (!$contoPassateGestioni) {
+                    throw new \Exception("Manca il conto 'Passate Gestioni' nel piano dei conti. Impossibile registrare il debito pregresso.");
+                }
 
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoPassateGestioni->id,
@@ -167,12 +171,15 @@ class FatturaPassivaService
                 }
             }
 
+            // FIX 3: Metodo relation ->referenti()->first() invece della collection
+            $anagraficaPrincipale = $fornitore->referenti()->first();
+
             // AVERE — Debito v/Fornitore (Uguale per entrambi i casi)
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
                 'importo'            => abs($totaleDoc * $moltiplicatore),
-                'anagrafica_id'      => $fornitore->anagrafiche->first()->id ?? null,
+                'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
             // Collegamento Pivot

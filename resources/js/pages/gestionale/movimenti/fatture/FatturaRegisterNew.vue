@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, computed, watch } from 'vue';
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -10,9 +11,11 @@ import { Badge } from '@/components/ui/badge';
 import {
     FileText, Plus, Trash2, AlertTriangle, User,
     ShieldAlert, Save, AlertOctagon,
-    TriangleAlert, Receipt, TrendingDown, Zap, ArrowRightLeft, Briefcase
+    TriangleAlert, Receipt, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { usePermission } from '@/composables/permissions';
+import MoneyInput from '@/components/MoneyInput.vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -21,6 +24,17 @@ import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
+const { generateRoute } = usePermission();
+
+const moneyOptions = ref({
+    prefix: '€ ',
+    suffix: '',
+    thousands: '.',
+    decimal: ',',
+    precision: 2,
+    allowBlank: false,
+    masked: false 
+});
 
 interface Fornitore {
     id: number; 
@@ -35,12 +49,51 @@ interface Fornitore {
     modalita_pagamento_default?: string; 
     codice_tributo?: string;
 }
-interface Condominio { id: number; nome: string; }
-interface Esercizio  { id: number; nome: string; stato: string; data_inizio?: string;}
-interface Gestione   { id: number; nome: string; tipo: string; esercizio_ids?: number[]; }
-interface Conto      { id: number; nome: string; residuo_budget?: number; is_capiente?: boolean; }
-interface Banca      { id: number; nome: string; saldo_attuale?: number; }
-interface Immobile   { id: number; label: string; }
+
+interface Condominio { 
+    id: number; 
+    nome: string; 
+}
+
+interface Esercizio  { 
+    id: number; 
+    nome: string; 
+    stato: string; 
+    data_inizio?: string;
+}
+
+interface Gestione   { 
+    id: number; 
+    nome: string; 
+    tipo: string; 
+    esercizio_ids?: number[]; 
+}
+
+interface Conto { 
+    id: number
+    nome: string
+    parent_nome?: string | null
+    residuo_budget?: number
+    is_capiente?: boolean
+    ultimi_movimenti?: {
+        data: string
+        fornitore: string
+        documento: string
+        importo: number
+        is_pregresso?: boolean
+    }[]
+}
+
+interface Banca      { 
+    id: number; 
+    nome: string; 
+    saldo_attuale?: number; 
+}
+
+interface Immobile   { 
+    id: number; 
+    label: string; 
+}
 
 const props = defineProps<{
     condominio: Condominio; condomini: Condominio[];
@@ -100,9 +153,19 @@ const totali = computed(() => {
     };
 });
 
+// Tiene traccia di quali conti hanno lo storico espanso
+const expandedHistory = ref<Record<number, boolean>>({});
+const toggleHistory = (contoId: number) => {
+    expandedHistory.value[contoId] = !expandedHistory.value[contoId];
+};
+
 // Calcoli Budget INTERAMENTE IN CENTESIMI
 const budgetImpacts = computed(() => {
-    const grouped = new Map<number, { nome: string; speso_cents: number; residuo_cents: number }>();
+    // FIX: Se è pregressa, l'impatto sul budget corrente è ZERO.
+    if (form.is_pregresso) return [];
+
+    const grouped = new Map<number, { id: number; nome: string; speso_cents: number; residuo_cents: number; ultimi_movimenti: any[] }>();
+
     form.righe.forEach(r => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
@@ -111,10 +174,17 @@ const budgetImpacts = computed(() => {
         const residuoCents = c.residuo_budget || 0;
         const spesaCents = Math.round((Number(r.importo_imponibile) || 0) * 100);
 
-        const cur = grouped.get(r.conto_id) || { nome: c.nome, speso_cents: 0, residuo_cents: residuoCents };
+        const cur = grouped.get(r.conto_id) || { 
+            id: c.id, 
+            nome: c.nome, 
+            speso_cents: 0, 
+            residuo_cents: residuoCents,
+            ultimi_movimenti: c.ultimi_movimenti || [] 
+        };
         cur.speso_cents += spesaCents;
         grouped.set(r.conto_id, cur);
     });
+
     return Array.from(grouped.values()).map(i => ({ 
         ...i, 
         isOk: i.speso_cents <= i.residuo_cents, 
@@ -226,7 +296,7 @@ const confirmOverride = () => {
 const cancelOverride = () => { showOverrideModal.value = false; overrideMotivazione.value = ''; };
 
 const doSubmit = () => {
-    form.post(route('admin.gestionale.fatture.store', { condominio: props.condominio.id }), {
+    form.post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
         forceFormData: true,
         onSuccess: () => { form.reset(); overrideMotivazione.value = ''; },
     });
@@ -236,8 +306,8 @@ const doSubmit = () => {
 // UI
 // ---------------------------------------------------------------------------
 const breadcrumbs = computed<Breadcrumb[]>(() => [
-    { title: 'Dashboard', href: route('admin.gestionale.index', { condominio: props.condominio.id }) },
-    { title: 'Fatture',   href: route('admin.gestionale.fatture.index', { condominio: props.condominio.id }) },
+    { title: 'Dashboard', href: route(generateRoute('gestionale.index'), { condominio: props.condominio.id }) },
+    { title: 'Fatture',   href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
     { title: 'Registrazione' },
 ]);
 
@@ -249,19 +319,18 @@ const pageGuides = [
 </script>
 
 <template>
-    <Head title="Registrazione Fattura" />
+    <Head title="Registrazione fattura" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
-                page-title="Registrazione Fattura Passiva"
+                page-title="Registrazione fattura passiva"
                 page-subtitle="Inserisci i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
-                :condominio="(props.condominio as any)"
-                :condomini="(props.condomini as any)"
-                :esercizio="(props.esercizio as any)"
-                :esercizi="(props.esercizi as any)"
+                :video-url="null"
+                :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
+                back-text="Indietro"
             />
 
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -368,7 +437,14 @@ const pageGuides = [
 
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento</Label>
-                            <Input v-model="form.numero_documento" class="h-9 uppercase text-base tracking-widest" placeholder="Es. 123/A" />
+                            <Input v-model="form.numero_documento" 
+                                class="h-9 uppercase text-base tracking-widest"
+                                :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors.numero_documento }"
+                                @input="form.clearErrors('numero_documento')"
+                                placeholder="Es. 123/A" />
+                            <p v-if="form.errors.numero_documento" class="text-[11px] text-red-600 font-medium">
+                                {{ form.errors.numero_documento }}
+                            </p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-3">
@@ -476,7 +552,7 @@ const pageGuides = [
                             <div>
                                 <div class="flex items-center gap-2">
                                     <Receipt class="w-5 h-5 text-slate-400" />
-                                    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Registro Voci di Spesa</h3>
+                                    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Registro voci di spesa</h3>
                                 </div>
                                 <p class="text-[11px] text-slate-500 mt-1">Aggiungi una o più righe per ripartire il documento sui capitoli corretti.</p>
                             </div>
@@ -487,7 +563,7 @@ const pageGuides = [
                                 </Badge>
                                 <Button variant="outline" size="sm" type="button" @click="addRiga" 
                                     class="h-9 text-[11px] font-bold uppercase border-primary/20 text-primary hover:bg-primary/5 hover:text-primary transition-colors gap-1.5 shadow-sm">
-                                    <Plus class="w-3.5 h-3.5" /> Aggiungi Riga
+                                    <Plus class="w-3.5 h-3.5" /> Aggiungi riga
                                 </Button>
                             </div>
                         </div>
@@ -497,7 +573,7 @@ const pageGuides = [
 
                                 <div class="grid grid-cols-12 gap-4">
                                     <div class="col-span-12 md:col-span-8 relative z-50">
-                                        <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Capitolo di Spesa *</Label>
+                                        <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Capitolo di spesa</Label>
                                         <v-select 
                                             v-model="riga.conto_id" 
                                             :options="conti" 
@@ -556,16 +632,27 @@ const pageGuides = [
                          <div class="grid grid-cols-12 gap-4 items-start">
                                     
                                     <div class="col-span-12 md:col-span-4 lg:col-span-5">
-                                        <Input v-model="riga.descrizione" placeholder="Causale riga..." class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50" />
+                                        <Input v-model="riga.descrizione" 
+                                            placeholder="Causale riga..." 
+                                            class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
+                                            :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }" 
+                                            @input="form.clearErrors(`righe.${idx}.descrizione`)"
+                                        />
+                                        <p v-if="form.errors[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                            {{ form.errors[`righe.${idx}.descrizione`] }}
+                                        </p>
                                     </div>
 
                                     <div class="col-span-4 md:col-span-3 relative z-30">
-                                        <div class="relative">
-                                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">€</span>
-                                            <Input min="0" v-model="riga.importo_imponibile" 
-                                                class="h-10 pl-7 text-right font-black text-base pr-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
-                                        </div>
-                                        <div v-if="riga.conto_id && (() => {
+                                        <MoneyInput
+                                            :id="'importo_' + idx"
+                                            v-model="riga.importo_imponibile"
+                                            :money-options="moneyOptions"
+                                            :lazy="false"
+                                            class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
+                                            placeholder="0,00"
+                                        />
+                                        <div v-if="!form.is_pregresso && riga.conto_id && (() => {
                                             const c = conti.find(c => c.id === riga.conto_id);
                                             if (!c || c.residuo_budget === undefined) return false;
                                             return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
@@ -655,28 +742,52 @@ const pageGuides = [
                                 <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Analisi Budget — Capitoli</p>
                                 <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">Nessuna voce ancora</div>
                                 <div v-else class="space-y-3">
-                                    <div v-for="impact in budgetImpacts" :key="impact.nome" class="space-y-1.5">
+                                    <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
                                         <div class="flex justify-between items-start">
                                             <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
                                             <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
                                                 {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
                                             </span>
                                         </div>
+                                        
                                         <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
                                             <div class="h-full rounded-full transition-all duration-500"
                                                 :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
                                                 :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
                                             </div>
                                         </div>
-                                        <div class="flex justify-between text-[9px] text-slate-600">
+                                        
+                                        <div class="flex justify-between text-[9px] text-slate-500 font-medium">
                                             <span>Usato: {{ euro(impact.speso_cents) }}</span>
                                             <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                        </div>
+
+                                        <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">
+                                            <button type="button" @click="toggleHistory(impact.id)" class="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-blue-400 transition-colors w-full">
+                                                <History class="w-3 h-3" />
+                                                <span>{{ impact.ultimi_movimenti.length }} Moviment{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'o' }} recent{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'e' }}</span>
+                                                <ChevronDown class="w-3 h-3 ml-auto transition-transform" :class="expandedHistory[impact.id] ? 'rotate-180' : ''" />
+                                            </button>
+
+                                            <div v-if="expandedHistory[impact.id]" class="mt-2 space-y-1.5">
+                                                <div v-for="(storico, sIdx) in impact.ultimi_movimenti" :key="sIdx" 
+                                                    class="flex items-center justify-between bg-slate-900/50 p-1.5 rounded text-[10px] border border-slate-800">
+                                                    <div class="flex flex-col truncate pr-2">
+                                                        <span class="text-slate-300 font-semibold truncate">{{ storico.fornitore }}</span>
+                                                        <div class="flex items-center gap-1.5">
+                                                            <span class="text-slate-500">{{ storico.data }} · {{ storico.documento }}</span>
+                                                            <span v-if="storico.is_pregresso" class="text-[8px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">Pregresso</span>
+                                                        </div>
+                                                    </div>
+                                                    <span class="font-bold text-slate-400 shrink-0">{{ euro(storico.importo) }}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             <div class="p-5">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione Cassa</p>
+                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione cassa</p>
                                 <div v-if="bankForecast" class="space-y-3">
                                     <div class="space-y-2">
                                         <div class="flex justify-between text-xs">
@@ -719,7 +830,7 @@ const pageGuides = [
                             <ShieldAlert class="w-6 h-6 text-rose-600" />
                         </div>
                         <div>
-                            <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">Sforamento Budget</h3>
+                            <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">Sforamento budget</h3>
                             <p class="text-xs text-rose-700/70 mt-1">Eccesso: <span class="font-black">{{ euro(sforoBudgetTotaleCents) }}</span></p>
                         </div>
                     </div>

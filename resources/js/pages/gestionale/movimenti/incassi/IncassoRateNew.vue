@@ -9,14 +9,16 @@ import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock } from 'lucide-vue-next';
+import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet, Search } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata'; 
+import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
 const props = defineProps<{
     condominio: any;
@@ -28,6 +30,33 @@ const props = defineProps<{
 
 const { euro } = useCurrencyFormatter({ fromCents: false }); 
 const { generateRoute } = usePermission();
+
+const breadcrumbs = computed<Breadcrumb[]>(() => [
+    { title: 'Dashboard', href: route('admin.gestionale.index', { condominio: props.condominio.id }) },
+    { title: 'Incassi', href: route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }) },
+    { title: 'Nuovo incasso' },
+]);
+
+const pageGuides = [
+    { 
+        title: 'Modalità auto/manuale', 
+        description: 'In modalità automatica il sistema distribuisce l\'importo versato sulle rate più urgenti. Passa in manuale per personalizzare riga per riga.', 
+        icon: ArrowRightLeft, 
+        colorVariant: 'blue' as const 
+    },
+    { 
+        title: 'Credito pregresso', 
+        description: 'Se il condomino ha un saldo a credito ("salvadanaio"), puoi usarlo per compensare le rate aperte. Clicca "Usa credito" sulla riga del saldo iniziale.', 
+        icon: Wallet, 
+        colorVariant: 'amber' as const 
+    },
+    { 
+        title: 'Ricerca flessibile', 
+        description: 'Cerca i debiti per anagrafica (persona) o per unità immobiliare. In modalità immobile puoi specificare un intestatario diverso per la ricevuta.', 
+        icon: Search, 
+        colorVariant: 'emerald' as const 
+    },
+];
 
 const moneyOptions = ref({
     prefix: '€ ',              
@@ -389,16 +418,19 @@ onMounted(async () => {
     <Head title="Registra Incasso" />
   
     <GestionaleLayout>
-        <div class="space-y-4 w-full mx-auto px-4 py-4 h-[calc(100vh-100px)] flex flex-col">
-            
-            <div class="flex items-center justify-between shrink-0">
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900 tracking-tight">Nuovo incasso rate</h1>
-                    <p class="text-sm text-muted-foreground">Registrazione incasso per il pagamento delle rate condominiali</p>
-                </div>
-                <Badge variant="outline" class="bg-white">{{ new Date().toLocaleDateString() }}</Badge>
-            </div>
+        <div class="px-6 py-8 space-y-6">
 
+            <div class="shrink-0">
+                <PageHeaderGuide
+                    page-title="Nuovo incasso rate"
+                    page-subtitle="Registra il pagamento delle rate condominiali con distribuzione automatica o manuale."
+                    :guides="pageGuides"
+                    :breadcrumbs="(breadcrumbs as any)"
+                    :back-url="route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id })"
+                    back-text="Indietro"
+                />
+            </div> 
+            
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
                 
                 <div class="lg:col-span-4 h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">

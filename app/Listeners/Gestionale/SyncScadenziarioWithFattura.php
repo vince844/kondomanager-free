@@ -4,6 +4,7 @@ namespace App\Listeners\Gestionale;
 
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\FatturaRegistrata;
+use App\Helpers\MoneyHelper;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -21,12 +22,9 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         $condominio = $fattura->condominio;
         $fornitore  = $fattura->fornitore;
 
-        $catAdmin = CategoriaEvento::firstOrCreate(
-            ['name' => 'scadenze_amministrative'],
-            ['description' => 'Scadenze fornitori e fiscali', 'color' => '#ef4444']
-        );
+        $catAdmin = CategoriaEvento::where('name', 'Scadenze amministrative')->firstOrFail();
 
-        $urlAzione = route('gestionale/movimenti/fatture/FatturaRegisterList', [
+        $urlAzione = route('admin.gestionale.fatture.index', [
             'condominio' => $condominio->id,
             'search'     => $fattura->numero_documento,
         ]);
@@ -44,8 +42,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                 'start_time'  => $start,
                 'end_time'    => $start->copy()->addHour(),
                 'created_by'  => $userId,
-                'description' => "Scadenza fattura n. {$fattura->numero_documento}.\nNetto: "
-                                 . number_format($fattura->netto_a_pagare / 100, 2, ',', '.') . ' €',
+                'description' => "Scadenza fattura n. {$fattura->numero_documento}.\n Importo netto: ". MoneyHelper::format($fattura->netto_a_pagare),
                 'category_id' => $catAdmin->id,
                 'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
                 'is_approved' => true,
@@ -57,7 +54,7 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                     'importo'          => $fattura->netto_a_pagare,
                     'fornitore'        => $fornitore->ragione_sociale,
                     'numero_documento' => $fattura->numero_documento,
-                    'titolo_azione'    => 'Registra Pagamento',
+                    'titolo_azione'    => 'Registra pagamento',
                     'action_url'       => $urlAzione,
                     'context'          => [
                         'fattura_id'   => $fattura->id,
@@ -103,7 +100,8 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         }
 
         // --- EVENTO RITENUTA (solo se presente) ---
-        if ($fattura->importo_ritenuta > 0) {
+        // Lo sposteremo nel futuro listener FatturaPagata che creeremo nel modulo Tesoreria (V 1.11), così il sistema genererà l'evento dell'F24 solo nel momento in cui c'è l'effettivo esborso finanziario
+     /*    if ($fattura->importo_ritenuta > 0) {
             $scadenzaRitenuta = $fattura->data_documento->copy()
                 ->addMonth()
                 ->day(16)
@@ -142,6 +140,6 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                     ],
                 ]
             )->condomini()->syncWithoutDetaching([$condominio->id]);
-        }
+        } */
     }
 }

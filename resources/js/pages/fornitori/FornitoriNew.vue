@@ -29,8 +29,6 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
-/* const page = usePage(); 
-const backUrl = route('fornitori.index');  */
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -303,29 +301,51 @@ const submit = () => {
                         <InputError :message="form.errors.iban_principale" />
                     </div>
                     
-                    <div class="sm:col-span-4">
-                        <Label>Modalità di pagamento</Label>
-                        <v-select
-                            class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
-                            :options="[
-                                { label: 'Bonifico bancario', value: 'bonifico' },
-                                { label: 'MAV', value: 'mav' },
-                                { label: 'Ri.Ba.', value: 'ri.ba' },
-                                { label: 'Contanti', value: 'contanti' }
-                            ]"
-                            v-model="form.modalita_pagamento_default"
-                            :reduce="(option: any) => option.value"
-                            label="label"
-                            placeholder="Seleziona modalità..."
-                            :clearable="false"
-                        />
-                        <InputError :message="form.errors.modalita_pagamento_default" />
-                    </div>
-                    <div class="sm:col-span-2">
-                        <Label>Scadenza (Giorni)</Label>
-                        <div class="relative mt-1">
-                            <Input v-model="form.giorni_scadenza" class="pr-8 text-right font-medium bg-white" />
-                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">gg</span>
+                                        <!-- Modalità pagamento + Scadenza giorni allineati al fondo -->
+                    <div class="sm:col-span-6 grid grid-cols-6 gap-4 items-end">
+                        <div class="col-span-4">
+                            <Label>Modalità di pagamento</Label>
+                            <v-select
+                                class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
+                                :options="[
+                                    { label: 'Bonifico bancario', value: 'bonifico' },
+                                    { label: 'MAV', value: 'mav' },
+                                    { label: 'Ri.Ba.', value: 'ri.ba' },
+                                    { label: 'Contanti', value: 'contanti' }
+                                ]"
+                                v-model="form.modalita_pagamento_default"
+                                :reduce="(option: any) => option.value"
+                                label="label"
+                                placeholder="Seleziona modalità..."
+                                :clearable="false"
+                            />
+                            <InputError :message="form.errors.modalita_pagamento_default" />
+                        </div>
+ 
+                        <div class="col-span-2">
+                            <div class="flex items-center gap-2">
+                                <Label>Scadenza (Giorni)</Label>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-72 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <h4 class="text-sm font-bold mb-2">Calcolo automatico scadenza</h4>
+                                        <p class="text-xs text-slate-500 leading-relaxed">
+                                            Quando registri una fattura per questo fornitore, la <strong>data di scadenza</strong> viene calcolata automaticamente aggiungendo questi giorni alla data del documento.
+                                        </p>
+                                        <p class="text-xs text-slate-400 mt-2 italic">
+                                            Es. fattura del 01/03 con 30 giorni → scadenza il 31/03.
+                                        </p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                            <div class="relative mt-1">
+                                <Input v-model="form.giorni_scadenza" class="pr-8 text-right font-medium bg-white" />
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">gg</span>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -4,13 +4,11 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import DropdownAction from '@/components/gestionale/casse/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/gestionale/casse/DataTableColumnHeader.vue'
 import { Badge } from '@/components/ui/badge'
-
-import { Star } from 'lucide-vue-next'
+import { Star, Banknote, PiggyBank, Wallet, Box } from 'lucide-vue-next'
 
 import type { Cassa } from '@/types/gestionale/casse'
 import type { Building } from '@/types/buildings'
 
-// Helper per formattare il tipo di conto
 const formatTipoConto = (tipo: string | null | undefined) => {
   if (!tipo) return ''
   const labels: Record<string, string> = {
@@ -24,154 +22,142 @@ const formatTipoConto = (tipo: string | null | undefined) => {
   return labels[tipo] || tipo
 }
 
+// Config badge per tipo cassa
+const tipoConfig: Record<string, { label: string; class: string; icon: any }> = {
+  banca:     { label: 'Conto corrente', class: 'bg-blue-50 text-blue-700 border-blue-200',   icon: Banknote },
+  contanti:  { label: 'Cassa contanti', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: Wallet },
+  fondo:     { label: 'Fondo riserva',  class: 'bg-amber-50 text-amber-700 border-amber-200', icon: PiggyBank },
+  virtuale:  { label: 'Cassa virtuale', class: 'bg-slate-50 text-slate-600 border-slate-200', icon: Box },
+}
+
 export function getColumns(condominio: Building): ColumnDef<Cassa>[] {
   return [
+    // ─── TIPO ───────────────────────────────────────────────────
     {
       accessorKey: 'tipo',
-      header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Tipo' }),
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Tipo' }),
+      size: 150,
       cell: ({ row }) => {
-        const cassa = row.original
-        const type = cassa.tipo
-        const isPredefinito = Boolean(cassa.banca_predefinito)
+        const tipo = row.original.tipo
+        const config = tipoConfig[tipo] ?? { label: tipo, class: 'bg-slate-50 text-slate-600 border-slate-200', icon: Box }
 
-        let label = 'Altro'
-        if (type === 'banca') label = 'Conto corrente'
-        if (type === 'contanti') label = 'Cassa contanti'
-        if (type === 'fondo') label = 'Fondo riserva'
-
-        return h(
-          Badge,
-          {
-            variant: 'outline',
-            class:
-              'inline-flex items-center gap-1 font-medium px-1.5 py-0.5 rounded-md whitespace-nowrap',
-          },
-          () => [
-            type === 'banca' && isPredefinito
-              ? h(Star, {
-                  class: 'w-3 h-3 fill-amber-400 text-amber-400 shrink-0', 
-                  'aria-label': 'Conto Principale',
-                })
-              : null,
-            label,
-          ],
-        )
+        return h('span', {
+          class: `inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider border ${config.class}`
+        }, [
+          h(config.icon, { class: 'w-3 h-3 shrink-0' }),
+          config.label
+        ])
       },
-      size: 140,
     },
+
+    // ─── NOME / DETTAGLI ────────────────────────────────────────
     {
       accessorKey: 'nome',
-      header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Dettagli Risorsa' }),
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Dettagli Risorsa' }),
       cell: ({ row }) => {
         const cassa = row.original
         const isBanca = cassa.tipo === 'banca'
+        const isPredefinito = Boolean(cassa.banca_predefinito)
 
-        return h('div', { class: 'flex flex-col space-y-1' }, [
-          h(
-            'span',
-            { class: 'font-semibold text-gray-900 dark:text-gray-100 text-sm md:text-base' },
-            cassa.nome,
+        return h('div', { class: 'flex flex-col gap-0.5' }, [
+          // Riga 1: Nome + badge Principale
+          h('div', { class: 'flex items-center gap-2' }, [
+            h('span', { class: 'font-semibold text-sm text-gray-900 dark:text-gray-100' }, cassa.nome),
+            isPredefinito && isBanca
+              ? h('span', { class: 'inline-flex items-center gap-1 text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200' }, [
+                  h(Star, { class: 'w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0' }),
+                  'Principale'
+                ])
+              : null
+          ]),
+
+          // Riga 2: tipo conto o descrizione
+          h('span', { class: 'text-[11px] text-muted-foreground' },
+            isBanca
+              ? (formatTipoConto(cassa.banca_tipo_conto) || '—')
+              : (cassa.descrizione || '—')
           ),
-          h(
-            'span',
-            { class: 'text-xs text-muted-foreground' },
-            isBanca ? formatTipoConto(cassa.banca_tipo_conto) : cassa.descrizione || '-',
-          ),
+
+          // Riga 3: IBAN (solo banca)
           isBanca && cassa.banca_iban
-            ? h('div', { class: 'flex items-center gap-1 mt-1' }, [
-                h('span', { class: 'text-[10px] uppercase text-muted-foreground font-bold' }, 'IBAN:'),
-                h('span', { class: 'text-xs text-gray-600 dark:text-gray-400 tracking-wide' }, cassa.banca_iban),
+            ? h('div', { class: 'flex items-center gap-1 mt-0.5' }, [
+                h('span', { class: 'text-[9px] uppercase font-bold text-muted-foreground' }, 'IBAN'),
+                h('span', { class: 'text-[10px] font-mono text-gray-500 dark:text-gray-400 truncate max-w-[180px]' }, cassa.banca_iban),
               ])
             : null,
         ])
       },
     },
 
-    // ─────────────────────────────────────────────────────────────
-    // NUOVA COLONNA: SALDO INIZIALE
-    // ─────────────────────────────────────────────────────────────
+    // ─── SALDO INIZIALE ─────────────────────────────────────────
     {
-      accessorKey: 'saldo_iniziale_raw', 
-      header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Saldo Iniziale' }),
+      accessorKey: 'saldo_iniziale_raw',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Saldo Iniziale' }),
+      size: 120,
       cell: ({ row }) => {
-        const amount = row.getValue('saldo_iniziale_raw') as number
-        const formattedLabel = row.original.saldo_iniziale_formatted
-
-        // Per il saldo iniziale usiamo un grigio neutro o slate, 
-        // è un dato storico, non deve "urlare" come il saldo attuale.
-        return h(
-            'div', 
-            { class: 'text-xs text-slate-500 dark:text-slate-400 font-medium' }, 
-            formattedLabel
-        )
+          return h('div', { class: 'flex flex-col gap-0.5' }, [
+              h('span', { class: 'text-sm text-slate-500 font-medium' }, row.original.saldo_iniziale_formatted),
+              h('span', { class: 'text-[9px] text-slate-400 uppercase font-bold tracking-wide' }, 'apertura'),
+          ])
       },
     },
 
-    // ─────────────────────────────────────────────────────────────
-    // COLONNA: SALDO ATTUALE (Esistente)
-    // ─────────────────────────────────────────────────────────────
+    // ─── SALDO ATTUALE ──────────────────────────────────────────
     {
-      accessorKey: 'saldo_raw', 
-      header: ({ column }) =>
-        h(DataTableColumnHeader, { column, title: 'Saldo Attuale' }),
+      accessorKey: 'saldo_raw',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Saldo Attuale' }),
+      size: 130,
       cell: ({ row }) => {
-        const amount = row.getValue('saldo_raw') as number
-        const formattedLabel = row.original.saldo_formatted
+          const amount = row.getValue('saldo_raw') as number
 
-        let colorClass = 'text-gray-500'
-        if (amount > 0.01) colorClass = 'text-emerald-600 dark:text-emerald-400'
-        if (amount < -0.01) colorClass = 'text-red-600 dark:text-red-400'
-
-        // Aggiunto uno sfondo leggerissimo per far risaltare il saldo attuale
-        let bgClass = ''
-        if (amount > 0.01) bgClass = 'bg-emerald-50 dark:bg-emerald-950/30'
-        if (amount < -0.01) bgClass = 'bg-red-50 dark:bg-red-950/30'
-
-        return h(
-            'div', 
-            { class: `inline-flex px-2 py-1 rounded-md font-bold text-sm ${colorClass} ${bgClass}` }, 
-            formattedLabel 
-        )
+          return h('span', {
+            class: [
+              'inline-flex px-2 py-1 rounded-md font-bold text-sm',
+              amount > 0.01  ? 'text-emerald-600 dark:text-emerald-400 dark:bg-emerald-950/30' : '',
+              amount < -0.01 ? 'text-red-600 dark:text-red-400 dark:bg-red-950/30' : '',
+              Math.abs(amount) <= 0.01 ? 'text-slate-500 bg-slate-50' : '',
+            ]
+          }, row.original.saldo_formatted)
       },
     },
+
+    // ─── STATO ──────────────────────────────────────────────────
     {
       accessorKey: 'attiva',
-      header: 'Stato',
+      header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Stato' }),
+      size: 100,
       cell: ({ row }) => {
         const isActive = row.getValue('attiva')
 
-        return h('div', { class: 'flex items-center gap-2' }, [
+        return h('span', {
+          class: [
+            'inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider border',
+            isActive
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-slate-50 text-slate-500 border-slate-200'
+          ]
+        }, [
           h('span', {
-            class: `flex h-2 w-2 rounded-full ${
-              isActive
-                ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]'
-                : 'bg-gray-300'
-            }`,
+            class: [
+              'flex h-1.5 w-1.5 rounded-full',
+              isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'
+            ]
           }),
-          h(
-            'span',
-            { class: 'text-xs font-medium text-gray-600 dark:text-gray-400' },
-            isActive ? 'Attiva' : 'Archiviata',
-          ),
+          isActive ? 'Attiva' : 'Archiviata'
         ])
       },
-      size: 100,
     },
+
+    // ─── AZIONI ─────────────────────────────────────────────────
     {
       id: 'actions',
       enableHiding: false,
-      cell: ({ row }) => {
-        const cassa = row.original
-        return h(
-          'div',
-          { class: 'relative text-right' },
-          h(DropdownAction, { cassa, condominio }),
-        )
-      },
       size: 50,
+      cell: ({ row }) => h(
+        'div',
+        { class: 'relative text-right' },
+        h(DropdownAction, { cassa: row.original, condominio }),
+      ),
     },
   ]
 }

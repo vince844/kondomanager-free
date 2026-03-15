@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, ArrowLeft, ReceiptEuro, Save, Power, Landmark, ShieldCheck } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Power, Landmark, ShieldCheck } from 'lucide-vue-next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
