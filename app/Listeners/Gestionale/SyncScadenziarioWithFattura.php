@@ -7,6 +7,7 @@ use App\Events\Gestionale\FatturaRegistrata;
 use App\Helpers\MoneyHelper;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
+use App\Models\Saldo;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 
@@ -65,8 +66,36 @@ class SyncScadenziarioWithFattura implements ShouldQueue
         )->condomini()->syncWithoutDetaching([$condominio->id]);
 
         // --- EVENTO RATIFICA SFORO (solo se la fattura è in sforo_motivato) ---
-        // Ricorda all'amministratore che deve portare lo sforamento in assemblea.
+        // --- EVENTO 1: CONVOCAZIONE IMMEDIATA (Obbligo Legale Art. 1135) ---
         if ($fattura->stato_approvazione === 'sforo_motivato') {
+            $scadenzaConvocazione = now()->addDays(7)->setTime(9, 0);
+
+            Evento::updateOrCreate(
+                [
+                    'meta->context->fattura_id' => $fattura->id,
+                    'meta->type'                => 'convocazione_urgenza',
+                ],
+                [
+                    'title'       => "Convocare Assemblea - Sforo Urgente ({$condominio->nome})",
+                    'start_time'  => $scadenzaConvocazione,
+                    'end_time'    => $scadenzaConvocazione->copy()->addHour(),
+                    'created_by'  => $userId,
+                    'description' => "Inviare convocazione per ratifica spesa urgente Art. 1135 c.c.\nFattura: {$fattura->numero_documento} - {$fornitore->ragione_sociale}",
+                    'category_id' => $catAdmin->id,
+                    'visibility'  => VisibilityStatus::HIDDEN->value,
+                    'is_approved' => true,
+                    'meta'        => [
+                        'type'            => 'convocazione_urgenza',
+                        'requires_action' => true,
+                        'priority'        => 'high', // Priorità alta per l'invio
+                        'titolo_azione'   => 'Prepara Convocazione',
+                        'action_url'      => $urlAzione,
+                        'context'         => ['fattura_id' => $fattura->id]
+                    ],
+                ]
+            )->condomini()->syncWithoutDetaching([$condominio->id]);
+
+            // --- EVENTO 2: RATIFICA IN ASSEMBLEA (Obiettivo Finale) ---
             $scadenzaRatifica = now()->addDays(30)->setTime(9, 0);
 
             Evento::updateOrCreate(
@@ -75,28 +104,110 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                     'meta->type'                => 'ratifica_sforo',
                 ],
                 [
-                    'title'       => "Ratifica assemblea - Sforo budget ({$condominio->nome})",
+                    'title'       => "Ratifica Assemblea - Sforo budget ({$condominio->nome})",
                     'start_time'  => $scadenzaRatifica,
                     'end_time'    => $scadenzaRatifica->copy()->addHour(),
                     'created_by'  => $userId,
-                    'description' => "Portare in assemblea la ratifica dello sforamento budget.\nFattura: {$fattura->numero_documento} - {$fornitore->ragione_sociale}",
+                    'description' => "Verificare che la ratifica della fattura {$fattura->numero_documento} sia stata messa a verbale.",
                     'category_id' => $catAdmin->id,
-                    'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
+                    'visibility'  => VisibilityStatus::HIDDEN->value,
                     'is_approved' => true,
                     'meta'        => [
                         'type'            => 'ratifica_sforo',
                         'requires_action' => true,
-                        'condominio_nome' => $condominio->nome,
-                        'importo'         => $fattura->netto_a_pagare,
-                        'titolo_azione'   => 'Vedi Fattura',
+                        'titolo_azione'   => 'Vedi Dettaglio',
                         'action_url'      => $urlAzione,
+                        'context'         => ['fattura_id' => $fattura->id]
+                    ],
+                ]
+            )->condomini()->syncWithoutDetaching([$condominio->id]);
+        }
+
+        // --- 1. EVENTO EMISSIONE RATA PER SOPRAVVENIENZA ---
+        // Se l'utente ha usato lo "Split" in Spesa Corrente, DEVE emettere le rate!
+        $haSopravvenienza = $fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists();
+        
+        if ($haSopravvenienza) {
+            $scadenzaRate = now()->addDays(7)->setTime(9, 0); // Promemoria tra 1 settimana
+
+            Evento::updateOrCreate(
+                [
+                    'meta->context->fattura_id' => $fattura->id,
+                    'meta->type'                => 'emissione_rata_sopravvenienza',
+                ],
+                [
+                    'title'       => "Emettere Rate: Sopravvenienza Passiva ({$condominio->nome})",
+                    'start_time'  => $scadenzaRate,
+                    'end_time'    => $scadenzaRate->copy()->addHour(),
+                    'created_by'  => $userId,
+                    'description' => "Hai registrato una spesa imprevista (Sopravvenienza) per la fattura n. {$fattura->numero_documento} di {$fornitore->ragione_sociale}. Devi emettere un piano rate per riscuotere l'importo dai condòmini.",
+                    'category_id' => $catAdmin->id,
+                    'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden', // Mostrato solo nell'Inbox
+                    'is_approved' => true,
+                    'meta'        => [
+                        'type'            => 'emissione_rata_sopravvenienza',
+                        'requires_action' => true,
+                        'condominio_nome' => $condominio->nome,
+                        'fornitore'       => $fornitore->ragione_sociale,
+                        'titolo_azione'   => 'Crea Piano Rate',
+                        'action_url' => route('admin.gestionale.esercizi.piani-rate.create', [
+                            'condominio' => $condominio->id,
+                            'esercizio'  => $fattura->esercizio_id
+                        ]),
                         'context'         => [
                             'fattura_id' => $fattura->id,
-                            'is_ratifica' => true,
                         ],
                     ],
                 ]
             )->condomini()->syncWithoutDetaching([$condominio->id]);
+        }
+
+        // --- 2. EVENTO TAMPONE DEFICIT RATA 0 ---
+        // Scatta SOLO se la fattura è pregressa E non abbiamo già creato una Sopravvenienza per coprire il buco
+        if ($fattura->is_pregresso && $fattura->saldo_patrimoniale_id && !$haSopravvenienza) {
+            
+            $debitoIniziale = abs(Saldo::find($fattura->saldo_patrimoniale_id)->saldo_iniziale ?? 0);
+            
+            $rataZeroRichiesta = Saldo::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $fattura->esercizio_id)
+                ->whereNotNull('anagrafica_id')
+                ->where('saldo_iniziale', '>', 0)
+                ->sum('saldo_iniziale');
+
+            $bucoCents = max(0, $debitoIniziale - $rataZeroRichiesta);
+
+            if ($bucoCents > 0) {
+                $scadenzaDeficit = now()->addDays(15)->setTime(9, 0);
+
+                Evento::updateOrCreate(
+                    [
+                        'meta->context->saldo_id' => $fattura->saldo_patrimoniale_id,
+                        'meta->type'              => 'pianifica_ripianamento_deficit',
+                    ],
+                    [
+                        'title'       => "Deficit Cassa Ereditato: {$fornitore->ragione_sociale}",
+                        'start_time'  => $scadenzaDeficit,
+                        'end_time'    => $scadenzaDeficit->copy()->addHour(),
+                        'created_by'  => $userId,
+                        // FORMATTAZIONE CORRETTA: Passiamo i centesimi al MoneyHelper
+                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ". Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Valutare azione di recupero morosità pregresse.",
+                        'category_id' => $catAdmin->id,
+                        'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
+                        'is_approved' => true,
+                        'meta'        => [
+                            'type'            => 'pianifica_ripianamento_deficit',
+                            'requires_action' => true,
+                            'condominio_nome' => $condominio->nome,
+                            'importo_buco'    => $bucoCents, // Salviamo sempre in centesimi
+                            'titolo_azione'   => 'Gestisci Morosità',
+                            'action_url'      => $urlAzione,
+                            'context'         => [
+                                'saldo_id' => $fattura->saldo_patrimoniale_id,
+                            ],
+                        ],
+                    ]
+                )->condomini()->syncWithoutDetaching([$condominio->id]);
+            }
         }
 
         // --- EVENTO RITENUTA (solo se presente) ---

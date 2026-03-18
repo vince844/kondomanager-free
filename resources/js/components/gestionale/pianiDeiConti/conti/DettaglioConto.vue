@@ -33,11 +33,9 @@ const eliminaConto = () => { if (props.conto) emit('elimina', props.conto) }
 const modificaConto = () => { if (props.conto) emit('modifica', props.conto) }
 const selectSottoconto = (sottoconto: Conto) => { emit('select', sottoconto) }
 
-// Helpers
 const isCapitolo = (conto: Conto) => {
   const importoZero = ['€ 0,00', '0,00', '€0,00', '0,00€'].some(v => conto.importo.includes(v))
-  const haSottoconti = conto.sottoconti && conto.sottoconti.length > 0
-  return importoZero && haSottoconti
+  return conto.parent_id === null && importoZero
 }
 
 const getTabelleAssociate = () => props.conto?.tabelle_millesimali?.map(tm => ({

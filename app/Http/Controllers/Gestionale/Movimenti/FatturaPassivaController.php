@@ -11,6 +11,7 @@ use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Services\Gestionale\FatturaPassivaService;
@@ -88,6 +89,7 @@ class FatturaPassivaController extends Controller
         $spesePerConto = collect(); // La nostra mappa dei costi reali
 
         if ($esercizio) {
+
             $ultimeSpese = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
@@ -121,7 +123,6 @@ class FatturaPassivaController extends Controller
         // --- DATI PER IL WIDGET DOUBLE LOCK (DEBITI PREGRESSI E FONDI) ---
 
         // 1. Calcoliamo la Rata 0 Globale (Crediti vs Condòmini) GIA' EROSA e INCASSATA
-        
         // A. Il monte debiti totale iniziale richiesto ai condòmini (La Delibera)
         $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
             ->where('esercizio_id', $esercizio->id)
@@ -130,7 +131,7 @@ class FatturaPassivaController extends Controller
             ->sum('saldo_iniziale');
 
         // B. Quanto è già stato incassato in cassa di questa Rata 0?
-        $incassiCorrenti = \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+        $incassiCorrenti = ScritturaContabile::where('condominio_id', $condominio->id)
             ->where('esercizio_id', $esercizio->id)
             ->where('tipo_movimento', 'incasso_rata')
             ->with('quotePagate.rata') // <--- Carichiamo anche i dati della Rata padre
@@ -155,7 +156,7 @@ class FatturaPassivaController extends Controller
             ->where('condominio_id', $condominio->id)
             ->where('esercizio_id', $esercizio->id)
             ->where('is_pregresso', true)
-            ->sum(\Illuminate\Support\Facades\DB::raw('importo_imponibile + importo_iva'));
+            ->sum(DB::raw('importo_imponibile + importo_iva'));
 
         $capienzaRataZeroResidua = max(0, $totaleRataZeroInizialeCents - $totalePregressoGiaUsatoCents);
 
@@ -220,6 +221,25 @@ class FatturaPassivaController extends Controller
                 ];
             });
 
+        // 3. TUTTE le fatture pregresse già registrate in questo esercizio (Il Radar Anti-Duplicati)
+        $fatturePregresseRegistrate = collect();
+        if ($esercizio) {
+            $fatturePregresseRegistrate = FatturaPassiva::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->where('is_pregresso', true)
+                ->get()
+                ->map(function($f) {
+                    $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
+                    return [
+                        'id'               => $f->id,
+                        'fornitore_id'     => $f->fornitore_id, // Fondamentale per il filtro
+                        'numero_documento' => $f->numero_documento ?? 'S/N',
+                        'data_documento'   => $f->data_documento ? \Carbon\Carbon::parse($f->data_documento)->format('d/m/Y') : '',
+                        'importo_usato'    => round($lordoEuro, 2)
+                    ];
+                });
+        }
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterNew', [
             'condominio' => $condominio,
             'fornitori'  => Fornitore::all(),
@@ -229,6 +249,7 @@ class FatturaPassivaController extends Controller
             'condomini'  => $listaCondomini, 
 
             'debiti_patrimoniali' => $debitiPatrimoniali,
+            'fatture_pregresse_registrate' => $fatturePregresseRegistrate,
             'fondi_riserva'       => $fondiRiserva,
             'capienza_rata_zero'  => (int) $capienzaRataZeroResidua,
             'incassato_rata_zero' => (int) $totaleRataZeroIncassataCents,

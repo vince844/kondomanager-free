@@ -24,6 +24,7 @@ const props = defineProps<{
     incassatoRataZero: number;
     totaleFatturaLordo: number; 
     bankForecast: { attuale_cents: number, post_cents: number, isRed: boolean } | null; 
+    fatturePregresseRegistrate: any[];
 }>();
 
 // --- COMPUTED ---
@@ -36,9 +37,13 @@ const debitoSelezionato = computed(() => {
     return debitiFiltrati.value.find(d => d.id === props.form.saldo_patrimoniale_id);
 });
 
+const fatturePregresseFornitore = computed(() => {
+    if (!props.fornitoreId || !props.fatturePregresseRegistrate) return [];
+    return props.fatturePregresseRegistrate.filter((f: any) => f.fornitore_id === props.fornitoreId);
+});
+
 const fatturaCents = computed(() => Math.round(props.totaleFatturaLordo * 100));
 
-// Calcolo Scarto Partita Doppia (Lo Scontrino)
 const scopertoAttualeEuro = computed(() => {
     const disponibileCents = debitoSelezionato.value?.importo_disponibile || 0;
     
@@ -53,16 +58,24 @@ const scopertoAttualeEuro = computed(() => {
     return Math.max(0, scopertoCents / 100);
 });
 
-// Calcolo Salute Rata 0 (Il Termometro)
 const bucoRataZeroCents = computed(() => {
     const debitoCents = debitoSelezionato.value?.importo_disponibile || 0;
     return Math.max(0, debitoCents - props.capienzaRataZero);
 });
 
+// --- L'INTELLIGENZA DEL SEMAFORO AGGIORNATA ---
 const semaforoContabile = computed(() => {
     if (!props.form.saldo_patrimoniale_id) return 'WAITING';
     if (scopertoAttualeEuro.value > 0) return 'ORANGE'; 
-    if (bucoRataZeroCents.value > 0) return 'RED'; 
+    
+    if (bucoRataZeroCents.value > 0) {
+        // Se il conto addebito selezionato ha i soldi per coprire la fattura, 
+        // l'amministratore ha "tamponato" il problema di liquidità. Declassiamo a Giallo!
+        if (props.bankForecast && !props.bankForecast.isRed) {
+            return 'YELLOW';
+        }
+        return 'RED'; 
+    }
     return 'GREEN'; 
 });
 
@@ -79,19 +92,41 @@ const fiscalAssistant = computed(() => {
     }
 
     if (semaforoContabile.value === 'ORANGE') {
+        const hasCopertureAttive = props.form.coperture && props.form.coperture.length > 0;
+        let descrizioneDinamica = `La fattura è superiore al debito storico. Restano fuori esattamente ${euro(scopertoAttualeEuro.value * 100)} da giustificare. `;
+        
+        if (hasCopertureAttive) {
+            descrizioneDinamica += `Modifica gli importi nei campi che hai aperto qui sopra finché lo scarto non si azzera. Se serve, usa i pulsanti per aggiungere un'ulteriore voce.`;
+        } else {
+            descrizioneDinamica += `Per poter salvare, devi dire al sistema dove prendere questi soldi extra:\n\n` +
+                                   `👉 Usa il pulsante "+ Converti in spesa corrente" (qui sopra) se vuoi farli pagare ai condòmini.\n` +
+                                   `👉 Usa il pulsante "+ Storna da fondo riserva" (qui sopra) se vuoi usare un fondo cassa esistente.`;
+        }
+
         return {
-            title: 'Partita doppia sbilanciata (Azione Richiesta)',
-            desc: `Lo scontrino mostra uno scarto di ${euro(scopertoAttualeEuro.value * 100)}. Usa i pulsanti di Split per convertire questa differenza in Spesa dell'Anno o prelevarla da un Fondo. Senza questa azione non puoi registrare.`,
+            title: 'Bilancio da far quadrare (Azione Richiesta)',
+            desc: descrizioneDinamica,
             icon: Scale,
             colorClass: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800/50',
             iconColor: 'text-amber-600 dark:text-amber-400'
         };
     }
 
+    // IL NUOVO SEMAFORO GIALLO (Deficit Tamponato)
+    if (semaforoContabile.value === 'YELLOW') {
+        return {
+            title: 'Deficit Storico Tamponato (Avviso)',
+            desc: `Il bilancio quadra e il conto di addebito che hai selezionato ha fondi sufficienti per pagare questa fattura.\n\nTuttavia, ti ricordiamo che i condòmini non hanno versato abbastanza Rata 0 per coprire l'intero debito storico (mancano all'appello ${euro(bucoRataZeroCents.value)}). Assicurati che i soldi che stai per usare non siano destinati alla gestione ordinaria.`,
+            icon: AlertTriangle,
+            colorClass: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800/50',
+            iconColor: 'text-yellow-600 dark:text-yellow-400'
+        };
+    }
+
     if (semaforoContabile.value === 'RED') {
         return {
-            title: '🚨 Allarme Strutturale: Proiettile Vagante',
-            desc: `Hai bilanciato la spesa, ma i condòmini non hanno versato sufficiente Rata 0. C'è un buco strutturale di ${euro(bucoRataZeroCents.value)}. Se paghi questa fattura, userai soldi destinati ad altro. Si consiglia emissione Rata Integrativa post-registrazione.`,
+            title: 'Deficit Copertura Arretrati (Attenzione)',
+            desc: `Il bilancio quadra, ma i condòmini non hanno versato abbastanza arretrati (Rata 0) per coprire interamente questo debito storico. Manca all'appello una provvista di ${euro(bucoRataZeroCents.value)}.\n\nPuoi registrare regolarmente la fattura, ma tieni presente che il suo pagamento assorbirà liquidità destinata alla gestione ordinaria. Sarà necessario un futuro riparto per recuperare questo deficit.`,
             icon: AlertOctagon,
             colorClass: 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-900/20 dark:border-rose-800/50',
             iconColor: 'text-rose-600 dark:text-rose-400'
@@ -100,8 +135,8 @@ const fiscalAssistant = computed(() => {
 
     if (props.bankForecast?.isRed) {
         return {
-            title: '⚠️ Crisi di Liquidità (Semaforo Giallo)',
-            desc: `Contabilmente sei perfetto, ma la banca andrà in rosso. Registra la fattura e avvia il Wizard Solleciti verso i morosi prima di bonificare.`,
+            title: 'Allerta liquidità: Rischio scoperto bancario',
+            desc: `Contabilmente l'operazione è corretta, ma il pagamento di questa fattura porterebbe il conto corrente selezionato in negativo.\nPuoi registrare tranquillamente il documento a bilancio ora, ma ti suggeriamo di attendere nuovi incassi o sollecitare i morosi prima di disporre il bonifico in banca.`,
             icon: AlertTriangle,
             colorClass: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800/50',
             iconColor: 'text-yellow-600 dark:text-yellow-400'
@@ -109,15 +144,14 @@ const fiscalAssistant = computed(() => {
     }
 
     return {
-        title: '✅ Scenario Ideale (Copertura Totale)',
-        desc: 'Tutto perfetto. Il debito è interamente coperto dalla Rata 0 e il conto corrente ha i fondi materiali. Nessun impatto sul preventivo di quest\'anno.',
+        title: 'Copertura Verificata (Nessun impatto corrente)',
+        desc: 'Operazione perfetta. Il debito è correttamente assorbito dai saldi dell\'esercizio precedente e il conto corrente ha liquidità sufficiente per il pagamento. Questa spesa non altererà il preventivo dell\'anno in corso.',
         icon: CheckCircle,
         colorClass: 'bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-900/20 dark:border-emerald-800/50',
         iconColor: 'text-emerald-600 dark:text-emerald-400'
     };
 });
 
-// --- ACTIONS FORZATE PER VUE 3 + INERTIA ---
 const addCopertura = (tipo: string) => {
     const newArr = [...(props.form.coperture || [])];
     newArr.push({ tipo_copertura: tipo, importo: scopertoAttualeEuro.value, fonte_id: null });
@@ -182,20 +216,25 @@ const rischioPrescrizione = computed(() => {
                         </template>
                     </v-select>
 
-                    <div v-if="debitoSelezionato && debitoSelezionato.fatture_collegate?.length" class="mt-3 p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-lg">
-                        <div class="flex items-center gap-2 mb-2">
-                            <History class="w-3.5 h-3.5 text-slate-400" />
-                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Già eroso da {{ debitoSelezionato.fatture_collegate.length }} fatture</span>
+                    <div v-if="fatturePregresseFornitore.length > 0" 
+                        class="mt-4 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+                        <div class="flex items-center gap-2 mb-2 text-slate-500">
+                            <History class="w-4 h-4" />
+                            <span class="text-[10px] font-bold uppercase tracking-widest">Fatture pregresse già registrate</span>
                         </div>
-                        <div class="space-y-1.5">
-                            <div v-for="fat in debitoSelezionato.fatture_collegate" :key="fat.id" class="flex justify-between items-center text-xs bg-white dark:bg-slate-800 px-2 py-1.5 rounded border border-slate-100 dark:border-slate-700">
-                                <div class="flex gap-2 text-slate-600 dark:text-slate-400">
-                                    <FileText class="w-3.5 h-3.5" />
-                                    <span>Fattura n° <strong>{{ fat.numero_documento }}</strong> ({{ fat.data_documento }})</span>
+                        <ul class="space-y-1.5">
+                            <li v-for="fat in fatturePregresseFornitore" :key="fat.id" 
+                                class="text-xs flex justify-between items-center bg-white dark:bg-slate-900 p-2 rounded border border-slate-100 dark:border-slate-800">
+                                <div>
+                                    <span class="font-semibold text-slate-700 dark:text-slate-300">Doc. {{ fat.numero_documento }}</span>
+                                    <span class="text-slate-400 ml-2">{{ fat.data_documento }}</span>
                                 </div>
-                                <span class="font-bold text-rose-500">- {{ euro(fat.importo_usato * 100) }}</span>
-                            </div>
-                        </div>
+                                <span class="font-bold text-slate-600 dark:text-slate-400">{{ euro(fat.importo_usato, { fromCents: false }) }}</span>
+                            </li>
+                        </ul>
+                        <p class="text-[9px] text-amber-600 mt-2 flex items-center gap-1">
+                            <AlertTriangle class="w-3 h-3" /> Verifica di non star inserendo un duplicato.
+                        </p>
                     </div>
                 </div>
 
@@ -236,15 +275,16 @@ const rischioPrescrizione = computed(() => {
                             <div>
                                 <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest mb-3 border-b pb-2"
                                     :class="bucoRataZeroCents > 0 ? 'text-rose-600 border-rose-200' : 'text-emerald-600 border-emerald-200'">
-                                    <Activity class="w-3.5 h-3.5" /> Copertura Condòmini
+                                    <Activity class="w-3.5 h-3.5" /> Copertura condòmini
                                 </div>
+                                
                                 <div class="flex justify-between text-[11px] mb-1">
-                                    <span class="text-slate-600">Rata 0 Globale:</span>
+                                    <span class="text-slate-600">Plafond Residuo Rata 0:</span>
                                     <span class="font-bold">{{ euro(capienzaRataZero) }}</span>
                                 </div>
-                                <div class="flex justify-between text-[10px] mb-2 text-slate-500">
-                                    <span>↳ di cui incassati:</span>
-                                    <span>{{ euro(incassatoRataZero) }}</span>
+                                <div class="flex justify-between text-[10px] mb-2 text-emerald-600 font-medium">
+                                    <span>↳ Cassa reale incassata:</span>
+                                    <span class="font-bold">{{ euro(incassatoRataZero) }}</span>
                                 </div>
                                 
                                 <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -254,8 +294,15 @@ const rischioPrescrizione = computed(() => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="bucoRataZeroCents > 0" class="text-[10px] font-bold text-rose-600 mt-3 leading-tight">
-                                ⚠️ Mancano {{ euro(bucoRataZeroCents) }}. Suggerita rata integrativa.
+
+                            <div v-if="bucoRataZeroCents > 0" class="mt-3 p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded border border-rose-200/50 dark:border-rose-800/50">
+                                <p class="text-[9px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-0.5">
+                                    ⚠️ Deficit Pregresso Rilevato
+                                </p>
+                                <p class="text-[10px] text-rose-600 dark:text-rose-300 leading-tight">
+                                    Il debito ({{ euro(debitoSelezionato.importo_disponibile) }}) supera il totale della Rata 0 richiesta ai condòmini ({{ euro(capienzaRataZero) }}). 
+                                    <strong>Scoperto: {{ euro(bucoRataZeroCents) }}</strong>.
+                                </p>
                             </div>
                             <div v-else class="text-[10px] font-bold text-emerald-600 mt-3">
                                 ✅ Rata 0 sufficiente.
@@ -265,7 +312,7 @@ const rischioPrescrizione = computed(() => {
                         <div class="p-4 rounded-xl border bg-slate-800 border-slate-700 text-white flex flex-col justify-between">
                             <div>
                                 <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest mb-3 border-b border-slate-700 pb-2 text-blue-400">
-                                    <Zap class="w-3.5 h-3.5" /> Impatto Cassa
+                                    <Zap class="w-3.5 h-3.5" /> Impatto cassa
                                 </div>
                                 <div v-if="bankForecast">
                                     <div class="flex justify-between text-[11px] mb-1 text-slate-300">
@@ -294,10 +341,10 @@ const rischioPrescrizione = computed(() => {
                         
                         <div class="flex gap-2">
                             <Button type="button" size="sm" variant="outline" class="text-xs" @click="addCopertura('sopravvenienza')" :disabled="scopertoAttualeEuro === 0">
-                                + Converti in Spesa Corrente
+                                + Converti in spesa corrente
                             </Button>
                             <Button type="button" size="sm" variant="outline" class="text-xs" @click="addCopertura('fondo_riserva')" :disabled="scopertoAttualeEuro === 0">
-                                + Storna da Fondo Riserva
+                                + Storna da fondo riserva
                             </Button>
                         </div>
 
@@ -309,7 +356,7 @@ const rischioPrescrizione = computed(() => {
                                     </Label>
                                     
                                     <div v-if="cop.tipo_copertura === 'sopravvenienza'" class="h-9 border border-slate-200 rounded-md bg-amber-50 flex items-center px-3 text-sm text-slate-600 font-medium">
-                                        Integrazione Straordinaria (Verrà chiesta la causale)
+                                        Integrazione straordinaria (Verrà chiesta la causale)
                                     </div>
                                     <v-select v-else v-model="cop.fonte_id" :options="fondiRiserva" label="nome" :reduce="(f: any) => f.id" class="style-chooser text-xs bg-white" append-to-body />
                                     
@@ -334,7 +381,7 @@ const rischioPrescrizione = computed(() => {
                 <component :is="fiscalAssistant.icon" class="w-6 h-6 shrink-0 mt-0.5" :class="fiscalAssistant.iconColor" />
                 <div>
                     <h4 class="font-bold text-base mb-1" :class="fiscalAssistant.iconColor">{{ fiscalAssistant.title }}</h4>
-                    <p class="text-sm leading-relaxed opacity-90">{{ fiscalAssistant.desc }}</p>
+                    <p class="text-sm leading-relaxed opacity-90 whitespace-pre-line">{{ fiscalAssistant.desc }}</p>
                 </div>
             </div>
         </div>

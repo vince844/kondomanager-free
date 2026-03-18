@@ -23,9 +23,11 @@ class StoreFatturaRequest extends FormRequest
             'imponibile_pregresso'       => 'nullable|numeric|required_if:is_pregresso,1,true|min:0',
             'aliquota_iva_pregressa'     => 'nullable|numeric|required_if:is_pregresso,1,true|min:0|max:100',
             'data_competenza_originaria' => 'nullable|date|required_if:is_pregresso,1,true',
+
+            'saldo_patrimoniale_id'      => 'nullable|integer|exists:saldi,id',
             
             // VALIDAZIONE COPERTURE (Il Double Lock)
-            'coperture'                       => 'nullable|array|required_if:is_pregresso,1,true',
+            'coperture'                       => 'nullable|array',
             'coperture.*.tipo_copertura'      => 'required_with:coperture|in:rata_0,sopravvenienza,fondo_riserva',
             'coperture.*.importo'             => 'required_with:coperture|numeric|min:0.01',
             'coperture.*.fonte_id'            => 'nullable|integer',

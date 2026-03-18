@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Folder, FolderOpen, FileText, Lock } from 'lucide-vue-next'
+import { computed } from 'vue' // [AGGIUNTO] Import per l'ordinamento
+import { Folder, FolderOpen, FileText, Lock, Plus } from 'lucide-vue-next'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { Conto } from '@/types/gestionale/conti'
@@ -25,21 +26,31 @@ const hasSottoconti = (conto: Conto) => {
 }
 
 const isCapitolo = (conto: Conto) => {
-  return (conto.importo === '€ 0,00' || conto.importo === '0,00') && hasSottoconti(conto)
+  return conto.parent_id === null && (conto.importo === '€ 0,00' || conto.importo === '0,00');
 }
 
-// ─── NUOVA LOGICA COLORI SINCRONIZZATA CON IL DETTAGLIO ───
+// ─── LOGICA DI ORDINAMENTO [NUOVA] ───
+const contiOrdinati = computed(() => {
+  return [...props.conti].sort((a, b) => {
+    const aIsCap = isCapitolo(a)
+    const bIsCap = isCapitolo(b)
 
-// 1. Colore della barra (Background)
+    // Se uno è capitolo e l'altro no, il capitolo va sopra (-1)
+    if (aIsCap && !bIsCap) return -1
+    if (!aIsCap && bIsCap) return 1
+    
+    // Se sono dello stesso tipo, ordiniamo per nome (alfabetico)
+    return a.nome.localeCompare(b.nome)
+  })
+})
+
+// ─── LOGICA COLORI ───
 const getBarColor = (conto: Conto) => {
   const status = conto.stato_copertura
-  
   if (status === 'over') {
-    // Se c'è uno spostamento, è "Extra Budget" (Viola), altrimenti è Eccedenza (Rosso)
     const hasShift = conto.dettaglio_copertura?.some(d => d.is_shifted)
     return hasShift ? 'bg-purple-500' : 'bg-red-500'
   }
-
   switch (status) {
     case 'full': return 'bg-emerald-500'
     case 'partial': return 'bg-blue-500'
@@ -47,15 +58,12 @@ const getBarColor = (conto: Conto) => {
   }
 }
 
-// 2. Colore del testo (Text)
 const getTextColor = (conto: Conto) => {
   const status = conto.stato_copertura
-  
   if (status === 'over') {
     const hasShift = conto.dettaglio_copertura?.some(d => d.is_shifted)
     return hasShift ? 'text-purple-600 font-bold' : 'text-red-600 font-bold'
   }
-
   switch (status) {
     case 'full': return 'text-emerald-600 font-bold'
     case 'partial': return 'text-blue-600 font-bold'
@@ -82,7 +90,7 @@ const getTextColor = (conto: Conto) => {
     
     <div v-else class="space-y-0">
       <div
-        v-for="conto in props.conti"
+        v-for="conto in contiOrdinati" 
         :key="conto.id"
         class="conto-item"
       >
@@ -115,7 +123,6 @@ const getTextColor = (conto: Conto) => {
           </div>
 
           <div v-if="!isCapitolo(conto) && conto.percentuale_copertura !== undefined" class="mt-1 pl-6 pr-2">
-              
               <div class="flex items-center">
                 <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-200">
                   <div 
@@ -131,34 +138,34 @@ const getTextColor = (conto: Conto) => {
                   Copertura
                 </span>
                 <div class="flex items-center gap-0.5 text-[10px]">
-                  
-                  <span :class="getTextColor(conto)">
-                     {{ euro(conto.impegnato || 0) }}
-                  </span>
-                  
+                  <span :class="getTextColor(conto)">{{ euro(conto.impegnato || 0) }}</span>
                   <span class="text-gray-400">/</span>
-                  
-                  <span class="text-gray-600 font-medium">
-                      {{ conto.importo }}
-                  </span>
+                  <span class="text-gray-600 font-medium">{{ conto.importo }}</span>
                 </div>
               </div>
-
-              <div v-if="conto.stato_copertura === 'partial' && (conto.impegnato || 0) == 0" class="text-[9px] text-amber-600 mt-0.5">
-                ⚠ Nessun fondo diretto. Verifica capitolo padre.
-              </div>
-
           </div>
         </div>
 
-        <div 
-          v-if="hasSottoconti(conto)" 
-          class="sottoconti border-l-2 border-muted ml-4 border-b"
-        >
-          <AlberoDeiConti 
-            :conti="conto.sottoconti || []" 
-            @seleziona="selezionaConto"
-          />
+        <div v-if="isCapitolo(conto)">
+          <div 
+            v-if="hasSottoconti(conto)" 
+            class="sottoconti border-l-2 border-muted ml-4 border-b"
+          >
+            <AlberoDeiConti 
+              :conti="conto.sottoconti || []" 
+              @seleziona="selezionaConto"
+            />
+          </div>
+
+          <div 
+            v-else 
+            class="ml-8 py-2 pr-4 border-l border-dashed border-slate-200"
+          >
+            <p class="text-[10px] text-slate-400 italic flex items-center gap-1.5">
+              <Plus class="w-3 h-3" /> 
+              Nessun sottoconto registrato. Clicca "Aggiungi voce" per creare una nuova voce di spesa.
+            </p>
+          </div>
         </div>
       </div>
     </div>
