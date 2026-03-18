@@ -5,8 +5,10 @@ namespace App\Models\Gestionale;
 use App\Models\Condominio;
 use App\Models\Documento;
 use App\Models\Fornitore;
+use App\Models\Saldo;
 use App\Traits\HasProtocolNumber;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 class FatturaPassiva extends Model
 {
@@ -21,18 +23,19 @@ class FatturaPassiva extends Model
     //   contestata     → il condominio ha sollevato obiezioni
     //   sforo_motivato → registrata con override budget, ratifica assembleare pendente
     protected $casts = [
-        'data_documento'      => 'date',
-        'data_scadenza'       => 'date',
-        'is_pregresso'        => 'boolean',
-        'dati_extra'          => 'array',
-        // Cast espliciti per i BigInt: senza questi Laravel li restituisce
-        // come stringa in alcuni contesti, causando errori nei calcoli frontend
-        'importo_imponibile'  => 'integer',
-        'importo_iva'         => 'integer',
-        'importo_ritenuta'    => 'integer',
-        'totale_documento'    => 'integer',
-        'netto_a_pagare'      => 'integer',
+        'data_documento'             => 'date',
+        'data_scadenza'              => 'date',
+        'is_pregresso'               => 'boolean',
+        'data_competenza_originaria' => 'date', // NUOVO: Cast della data origine
+        'dati_extra'                 => 'array',
+        'importo_imponibile'         => 'integer',
+        'importo_iva'                => 'integer',
+        'importo_ritenuta'           => 'integer',
+        'totale_documento'           => 'integer',
+        'netto_a_pagare'             => 'integer',
     ];
+
+    // ── RELAZIONI ORIGINALI (Ripristinate) ───────────────────────────────────
 
     public function righe()
     {
@@ -61,9 +64,63 @@ class FatturaPassiva extends Model
         return $this->morphMany(Documento::class, 'documentable');
     }
 
-    // Scope utile per la dashboard "Da ratificare"
+
+    // ── NUOVE RELAZIONI PER DEBITI PREGRESSI ─────────────────────────────────
+
+    /**
+     * Il debito verso il fornitore nello Stato Patrimoniale Iniziale
+     * (Valorizzato solo se is_pregresso = true)
+     */
+    public function debitoPatrimonialeIniziale()
+    {
+        return $this->belongsTo(Saldo::class, 'saldo_patrimoniale_id');
+    }
+
+    /**
+     * Le fonti di copertura per questa fattura (Il Double Lock)
+     */
+    public function coperture()
+    {
+        return $this->hasMany(FatturaCopertura::class, 'fattura_passiva_id');
+    }
+
+
+    // ── SCOPES & METODI HELPER (Per il Widget e le Analisi) ──────────────────
+
     public function scopeSforiPendenti($query)
     {
         return $query->where('stato_approvazione', 'sforo_motivato');
+    }
+
+    public function scopePregresse($query)
+    {
+        return $query->where('is_pregresso', true);
+    }
+
+    /**
+     * La Sentinella: Cerca le fatture pregresse a rischio prescrizione (> 5 anni)
+     */
+    public function scopeInPrescrizione($query)
+    {
+        return $query->pregresse()
+                     ->whereNotNull('data_competenza_originaria')
+                     ->where('data_competenza_originaria', '<=', Carbon::now()->subYears(5));
+    }
+
+    /**
+     * Calcola quanto di questa fattura è già stato "coperto"
+     * (Somma in centesimi)
+     */
+    public function getImportoCopertoAttribute(): int
+    {
+        return $this->coperture()->sum('importo');
+    }
+
+    /**
+     * Restituisce l'eventuale scoperto (es. per la Copertura Mista)
+     */
+    public function getScopertoAttribute(): int
+    {
+        return $this->totale_documento - $this->importo_coperto;
     }
 }

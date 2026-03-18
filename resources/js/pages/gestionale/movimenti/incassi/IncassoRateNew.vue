@@ -418,7 +418,7 @@ onMounted(async () => {
     <Head title="Registra Incasso" />
   
     <GestionaleLayout>
-        <div class="px-6 py-8 space-y-6">
+        <div class="px-6 py-6 w-full flex flex-col gap-4 h-[calc(100vh-40px)] min-h-[950px]">
 
             <div class="shrink-0">
                 <PageHeaderGuide
@@ -434,7 +434,7 @@ onMounted(async () => {
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
                 
                 <div class="lg:col-span-4 h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">
-                    <div class="p-4 flex-1 overflow-y-auto space-y-4">
+                    <div class="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
                         
                         <div class="space-y-2">
                             <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Cerca debiti per anagrafica o immobile</Label>
@@ -713,30 +713,6 @@ onMounted(async () => {
                                                     </span>
                                                 </div>
 
-                                               <!--  <div class="mt-1 flex flex-col gap-1">
-                                                    
-                                                    <span v-if="r.is_emitted === false" 
-                                                        class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
-                                                        title="Questa rata non ha ancora generato una scrittura contabile">
-                                                        <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
-                                                    </span>
-
-                                                    <span v-else-if="r.is_published === false" 
-                                                        class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
-                                                        title="Rata emessa contabilmente ma attualmente nascosta ai condòmini">
-                                                        <Lock class="w-2.5 h-2.5 mr-1" /> Silenziosa
-                                                    </span>
-
-                                                    <span v-else 
-                                                        class="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter">
-                                                        <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Emessa
-                                                    </span>
-
-                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" 
-                                                        class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
-                                                        <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
-                                                    </span>
-                                                </div> -->
                                             </div>
                                         </td>
                                         <td class="p-3 align-top">

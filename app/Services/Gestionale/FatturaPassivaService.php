@@ -7,9 +7,11 @@ use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
 
 class FatturaPassivaService
 {
@@ -17,35 +19,47 @@ class FatturaPassivaService
     {
         return DB::transaction(function () use ($data, $condominioId, $file) {
 
-            // FIX 1: Carichiamo la relazione corretta 'referenti'
             $fornitore      = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
             $isNotaCredito  = ($data['tipo_documento'] === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
             
-            // FIX 2: Assicuriamoci che is_pregresso sia trattato come un vero booleano
             $isPregresso    = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN); 
 
-            // 1. Elaborazione Righe (calcoli in centesimi)
             $imponibileTotale = 0;
             $ivaTotale        = 0;
             $righeProcessate  = [];
+            $aliquotaPregressaSalvata = 22; // Default per il DB
 
-            foreach ($data['righe'] as $rigaInput) {
-                $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
-                $aliq    = (float) $rigaInput['aliquota_iva'];
-                $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+            // 1. Calcolo Imponibile e IVA (Bivio Logico: Pregresso vs Corrente)
+            if ($isPregresso) {
+                // MODIFICA 1: Lettura dai campi diretti per i debiti storici
+                $impPregresso = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
+                $aliqPregressa = (float) ($data['aliquota_iva_pregressa'] ?? 22);
+                $ivaPregressa = (int) round(($impPregresso * $aliqPregressa) / 100);
 
-                $imponibileTotale += $impRiga;
-                $ivaTotale        += $ivaRiga;
+                $imponibileTotale = $impPregresso;
+                $ivaTotale        = $ivaPregressa;
+                $aliquotaPregressaSalvata = $aliqPregressa;
 
-                $righeProcessate[] = [
-                    'descrizione'        => $rigaInput['descrizione'],
-                    'importo_imponibile' => $impRiga * $moltiplicatore,
-                    'aliquota_iva'       => $aliq,
-                    'importo_iva'        => $ivaRiga * $moltiplicatore,
-                    'conto_id'           => $rigaInput['conto_id'],
-                    'immobile_id'        => $rigaInput['immobile_id'] ?? null,
-                ];
+            } else {
+                // Lettura standard dalle righe di dettaglio
+                foreach ($data['righe'] as $rigaInput) {
+                    $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
+                    $aliq    = (float) $rigaInput['aliquota_iva'];
+                    $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+
+                    $imponibileTotale += $impRiga;
+                    $ivaTotale        += $ivaRiga;
+
+                    $righeProcessate[] = [
+                        'descrizione'        => $rigaInput['descrizione'],
+                        'importo_imponibile' => $impRiga * $moltiplicatore,
+                        'aliquota_iva'       => $aliq,
+                        'importo_iva'        => $ivaRiga * $moltiplicatore,
+                        'conto_id'           => $rigaInput['conto_id'],
+                        'immobile_id'        => $rigaInput['immobile_id'] ?? null,
+                    ];
+                }
             }
 
             // 2. Calcolo Ritenuta
@@ -65,7 +79,7 @@ class FatturaPassivaService
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
             // 3. Determinazione stato_approvazione (Override Budget)
-            $statoApprovazione = $data['stato_approvazione'];
+            $statoApprovazione = $data['stato_approvazione'] ?? 'approvata';
             if (!empty($data['dati_extra']['override_budget'])) {
                 $statoApprovazione = 'sforo_motivato';
             }
@@ -81,6 +95,13 @@ class FatturaPassivaService
                 'data_documento'     => $data['data_documento'],
                 'data_scadenza'      => $data['data_scadenza'],
                 'is_pregresso'       => $isPregresso,
+                'data_competenza_originaria' => $data['data_competenza_originaria'] ?? null,
+                'saldo_patrimoniale_id'      => $data['saldo_patrimoniale_id'] ?? null,
+                
+                // MODIFICA 2: Salviamo i campi che nutrono il widget
+                'imponibile_pregresso'   => $isPregresso ? $imponibileTotale : 0,
+                'aliquota_iva_pregressa' => $isPregresso ? $aliquotaPregressaSalvata : 0,
+
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva'        => $ivaTotale * $moltiplicatore,
                 'importo_ritenuta'   => $ritenuta,
@@ -100,9 +121,107 @@ class FatturaPassivaService
                 ],
             ]);
 
-            $fattura->righe()->createMany($righeProcessate);
+            // Creiamo le righe solo se non è pregresso
+            if (!$isPregresso && !empty($righeProcessate)) {
+                $fattura->righe()->createMany($righeProcessate);
+            }
 
-            // 5. Upload Documento
+            // 4.5. SALVATAGGIO COPERTURE E CREAZIONE AUTOMATICA VOCE CON TABELLE (Allineato a Migrazioni)
+            if ($isPregresso && !empty($data['coperture'])) {
+                foreach ($data['coperture'] as $index => &$copertura) {
+                    
+                    if ($copertura['tipo_copertura'] === 'sopravvenienza' && empty($copertura['fonte_id'])) {
+                        $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
+                        
+                        if ($logLegale) {
+                            $pianoConto = PianoConto::where('gestione_id', $data['gestione_id'])->first();
+                            if (!$pianoConto) throw new \Exception("Nessun Piano dei Conti trovato per la gestione ID: " . $data['gestione_id']);
+
+                            // Calcoliamo l'importo in centesimi
+                            $importoCent = (int) round($copertura['importo'] * 100);
+
+                            // 1. CAPITOLO PADRE (Restano sempre a 0 nel DB, il frontend calcola i totali)
+                            $capitoloPadre = Conto::firstOrCreate(
+                                [
+                                    'piano_conto_id' => $pianoConto->id,
+                                    'nome'           => "Integrazioni Straordinarie (Scudo Legale)",
+                                    'parent_id'      => null
+                                ],
+                                [
+                                    'tipo'           => 'spesa',
+                                    'importo'        => 0, 
+                                    'descrizione'    => 'Capitolo generato automaticamente per urgenze Art. 1135 c.c.'
+                                ]
+                            );
+
+                            // 2. NUOVA VOCE DI SPESA (I 110 Euro stanno qui, e il Widget li leggerà!)
+                            $nuovoConto = Conto::create([
+                                'piano_conto_id'       => $pianoConto->id,
+                                'parent_id'            => $capitoloPadre->id,
+                                'default_fornitore_id' => $data['fornitore_id'], 
+                                'nome'                 => $logLegale['nome_voce'],
+                                'tipo'                 => 'spesa',
+                                'importo'              => $importoCent, 
+                                'note'                 => "Aut. " . strtoupper($logLegale['autorizzazione']) . " | " . ($logLegale['note'] ?? ''),
+                            ]);
+
+                            // 3. ASSOCIAZIONE TABELLA E RIPARTIZIONI MILLESIMALI
+                            if (!empty($logLegale['tabella_millesimale_id'])) {
+                                $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
+                                    'conto_id'     => $nuovoConto->id,
+                                    'tabella_id'   => $logLegale['tabella_millesimale_id'],
+                                    'coefficiente' => 100.00,
+                                    'created_at'   => now(),
+                                    'updated_at'   => now(),
+                                ]);
+
+                                $ripartizioni = [
+                                    ['soggetto' => 'proprietario',  'percentuale' => $logLegale['percentuale_proprietario'] ?? 0],
+                                    ['soggetto' => 'inquilino',     'percentuale' => $logLegale['percentuale_inquilino'] ?? 0],
+                                    ['soggetto' => 'usufruttuario', 'percentuale' => $logLegale['percentuale_usufruttuario'] ?? 0]
+                                ];
+
+                                // Sicurezza: se non fa 100%, imputiamo tutto al proprietario
+                                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
+                                    $ripartizioni = [
+                                        ['soggetto' => 'proprietario', 'percentuale' => 100],
+                                        ['soggetto' => 'inquilino', 'percentuale' => 0],
+                                        ['soggetto' => 'usufruttuario', 'percentuale' => 0]
+                                    ];
+                                }
+
+                                foreach ($ripartizioni as $rip) {
+                                    if ($rip['percentuale'] > 0) {
+                                        DB::table('conto_tabella_ripartizioni')->insert([
+                                            'conto_tabella_millesimale_id' => $contoTabellaId,
+                                            'soggetto'                     => $rip['soggetto'],
+                                            'percentuale'                  => $rip['percentuale'],
+                                            'created_at'                   => now(),
+                                            'updated_at'                   => now(),
+                                        ]);
+                                    }
+                                }
+                            }
+
+                            // Passiamo l'ID generato per il collegamento della fattura e della Partita Doppia
+                            $copertura['fonte_id'] = $nuovoConto->id;
+                            $data['coperture'][$index]['fonte_id'] = $nuovoConto->id;
+                        }
+                    }
+
+                    $fattura->coperture()->create([
+                        'tipo_copertura'      => $copertura['tipo_copertura'],
+                        'importo'             => (int) round($copertura['importo'] * 100),
+                        'stato'               => 'pianificata',
+                        'saldo_id'            => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
+                        'conto_id'            => $copertura['tipo_copertura'] === 'sopravvenienza' ? $copertura['fonte_id'] : null,
+                        'fondo_id'            => $copertura['tipo_copertura'] === 'fondo_riserva' ? $copertura['fonte_id'] : null,
+                        'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
+                    ]);
+                }
+            }
+
+            // 5. Upload Documento (Invariato)
             if ($file) {
                 $path = $file->store('fatture/' . $condominioId, 'public');
                 $fattura->documenti()->create([
@@ -111,7 +230,7 @@ class FatturaPassivaService
                     'path'         => $path,
                     'mime_type'    => $file->getMimeType(),
                     'file_size'    => $file->getSize(),
-                    'created_by'   => auth()->id() ?? 1,
+                    'created_by'   => Auth::id() ?? 1,
                     'is_published' => true,
                     'is_approved'  => true,
                 ]);
@@ -120,12 +239,16 @@ class FatturaPassivaService
             // 6. Contabilità (Partita Doppia)
             $contoDebiti = ContoContabile::where('condominio_id', $condominioId)
                 ->where('ruolo', 'debiti_fornitori')
-                ->firstOrFail();
+                ->first();
+
+            if (!$contoDebiti) {
+                throw new \Exception("Errore Piano dei Conti: Manca il Conto Contabile Mastro con ruolo 'debiti_fornitori' per questo condominio.");
+            }
 
             $scrittura = ScritturaContabile::create([
                 'condominio_id'      => $condominioId,
                 'esercizio_id'       => $data['esercizio_id'],
-                'gestione_id'        => $data['gestione_id'],
+                'gestione_id'        => $data['gestione_id'] ?? null,
                 'data_registrazione' => now(),
                 'data_competenza'    => $fattura->data_documento,
                 'numero_protocollo'  => $fattura->numero_protocollo,
@@ -134,27 +257,79 @@ class FatturaPassivaService
                 'stato'              => 'registrata',
             ]);
 
-            // LA MAGIA DEL DEBITO PREGRESSO
+            // LA MAGIA DELLA PARTITA DOPPIA (Bilanciata!)
             if ($isPregresso) {
-                // Se è pregressa, NON tocchiamo i conti di spesa del budget!
-                // Proviamo a recuperare il conto "passate_gestioni"
-                $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
-                    ->where('ruolo', 'passate_gestioni') 
-                    ->first();
                 
-                // Alert di sicurezza se manca il conto passate gestioni
-                if (!$contoPassateGestioni) {
-                    throw new \Exception("Manca il conto 'Passate Gestioni' nel piano dei conti. Impossibile registrare il debito pregresso.");
+                if (!empty($data['coperture'])) {
+                    // Scenario A: Split Dettagliato (Il Double Lock in azione)
+                    foreach ($data['coperture'] as $copertura) {
+                        $importoCopertura = (int) round($copertura['importo'] * 100);
+                        
+                        if ($copertura['tipo_copertura'] === 'sopravvenienza') {
+                            $contoBudget = Conto::find($copertura['fonte_id']);
+                            
+                            // IL PARACADUTE PATRIMONIALE CORRETTO:
+                            // Cerchiamo un conto dell'Attivo (es. "Crediti v/Condomini" o "Passate Gestioni")
+                            // per bilanciare il debito imprevisto verso il fornitore.
+                            $contoPatrimoniale = ContoContabile::where('condominio_id', $condominioId)
+                                ->where(function($q) {
+                                    $q->where('ruolo', 'passate_gestioni')
+                                      ->orWhere('ruolo', 'crediti_condomini')
+                                      ->orWhere('categoria', 'crediti');
+                                })
+                                ->where('tipo', 'attivo')
+                                ->first();
+
+                            if (!$contoPatrimoniale) {
+                                throw new \Exception("Errore Contabilità: Impossibile trovare un conto patrimoniale di tipo 'Attivo' (es. Crediti v/Condomini o Passate Gestioni) per registrare lo specchio della Sopravvenienza.");
+                            }
+
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $contoPatrimoniale->id, // Usa il conto patrimoniale corretto!
+                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'importo'            => $importoCopertura,
+                                'voce_spesa_id'      => $contoBudget->id ?? null, // Questo fa il link al Piano dei Conti delle Spese (tabella conti)
+                                'note'               => 'Sopravvenienza passiva da fattura pregressa',
+                            ]);
+                        }
+
+                        elseif ($copertura['tipo_copertura'] === 'fondo_riserva') {
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $copertura['fonte_id'],
+                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'importo'            => $importoCopertura,
+                                'note'               => 'Utilizzo fondo per debito pregresso',
+                            ]);
+                        }
+                        elseif ($copertura['tipo_copertura'] === 'rata_0') {
+                            // MODIFICA 3: Puntiamo al conto transitorio "Passate Gestioni" che fa da specchio patrimoniale
+                            $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
+                                ->where('ruolo', 'passate_gestioni')->firstOrFail();
+
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $contoPassateGestioni->id,
+                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'importo'            => $importoCopertura,
+                                'note'               => 'Copertura da saldi pregressi (Rata 0)',
+                            ]);
+                        }
+                    }
+                } else {
+                    // Scenario B: Fallback di Sicurezza 
+                    $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
+                        ->where('ruolo', 'passate_gestioni') 
+                        ->firstOrFail();
+
+                    $scrittura->righe()->create([
+                        'conto_contabile_id' => $contoPassateGestioni->id,
+                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                        'importo'            => abs($totaleDoc * $moltiplicatore),
+                        'note'               => 'Caricamento debito pregresso senza copertura esplicita',
+                    ]);
                 }
 
-                $scrittura->righe()->create([
-                    'conto_contabile_id' => $contoPassateGestioni->id,
-                    'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                    'importo'            => abs($totaleDoc * $moltiplicatore),
-                    'note'               => 'Caricamento debito pregresso da fattura',
-                ]);
             } else {
-                // DARE — Costi Normali (La fattura intacca il budget corrente)
+                // Scenario C: DARE — Costi Normali Correnti
                 foreach ($righeProcessate as $riga) {
                     if ($riga['conto_id']) {
                         $contoBudget = Conto::find($riga['conto_id']);
@@ -171,10 +346,9 @@ class FatturaPassivaService
                 }
             }
 
-            // FIX 3: Metodo relation ->referenti()->first() invece della collection
             $anagraficaPrincipale = $fornitore->referenti()->first();
 
-            // AVERE — Debito v/Fornitore (Uguale per entrambi i casi)
+            // AVERE — Debito v/Fornitore (Sempre uguale, bilancia le righe sopra)
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
@@ -189,7 +363,7 @@ class FatturaPassivaService
             ]);
 
             // 7. Fire Evento
-            event(new FatturaRegistrata($fattura, auth()->id() ?? 1));
+            event(new FatturaRegistrata($fattura, Auth::id() ?? 1));
 
             return $fattura;
         });

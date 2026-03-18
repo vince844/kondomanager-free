@@ -31,6 +31,7 @@ class Conto extends Model
         'destinazione_id',
         'destinazione_type',
         'note',
+        'is_visibile',
     ];
     
     /** RELAZIONI */

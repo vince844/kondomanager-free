@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { UsersRound, Folders, TextSearch } from 'lucide-vue-next';
+import { UsersRound, Folders, TextSearch, Wallet } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Fornitore } from '@/types/fornitori';
 
@@ -27,6 +27,12 @@ const topbarNavItems: LinkItem[] = [
     icon: UsersRound,
     title: 'Referenti',
     href:  generatePath('fornitori/:fornitore/anagrafiche', { fornitore: fornitore.value.id }),
+  },
+  {
+    type: 'link',
+    icon: Wallet,
+    title: 'Situazione Debitoria',
+    href:  generatePath('fornitori/:fornitore/situazione-debitoria', { fornitore: fornitore.value.id }),
   },
   {   
     type: 'link',

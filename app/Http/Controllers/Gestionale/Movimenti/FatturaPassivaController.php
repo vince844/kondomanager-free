@@ -9,14 +9,18 @@ use App\Models\Condominio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Immobile;
+use App\Models\Saldo;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class FatturaPassivaController extends Controller
@@ -84,7 +88,7 @@ class FatturaPassivaController extends Controller
         $spesePerConto = collect(); // La nostra mappa dei costi reali
 
         if ($esercizio) {
-            $ultimeSpese = \Illuminate\Support\Facades\DB::table('righe_fattura')
+            $ultimeSpese = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
                 ->where('fatture_passive.condominio_id', $condominio->id)
@@ -104,7 +108,7 @@ class FatturaPassivaController extends Controller
 
             // --- CALCOLO SPESA REALE (CONSUNTIVATO) DALLE FATTURE ---
             // Interroghiamo direttamente le righe delle fatture per la massima precisione
-            $spesePerConto = \Illuminate\Support\Facades\DB::table('righe_fattura')
+            $spesePerConto = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.condominio_id', $condominio->id)
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
@@ -114,6 +118,108 @@ class FatturaPassivaController extends Controller
                 ->pluck('totale_spesa', 'righe_fattura.conto_id');
         }
 
+        // --- DATI PER IL WIDGET DOUBLE LOCK (DEBITI PREGRESSI E FONDI) ---
+
+        // 1. Calcoliamo la Rata 0 Globale (Crediti vs Condòmini) GIA' EROSA e INCASSATA
+        
+        // A. Il monte debiti totale iniziale richiesto ai condòmini (La Delibera)
+        $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
+            ->where('esercizio_id', $esercizio->id)
+            ->whereNotNull('anagrafica_id')
+            ->where('saldo_iniziale', '>', 0)
+            ->sum('saldo_iniziale');
+
+        // B. Quanto è già stato incassato in cassa di questa Rata 0?
+        $incassiCorrenti = \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+            ->where('esercizio_id', $esercizio->id)
+            ->where('tipo_movimento', 'incasso_rata')
+            ->with('quotePagate.rata') // <--- Carichiamo anche i dati della Rata padre
+            ->get();
+
+        $totaleRataZeroIncassataCents = $incassiCorrenti->sum(function ($movimento) {
+            return $movimento->quotePagate
+                ->filter(function ($quota) {
+                    // LA MAGIA: Controlliamo che il pagamento appartenga alla Rata 0
+                    return $quota->rata && (
+                        $quota->rata->numero_rata === 0 || 
+                        $quota->rata->numero_rata === '0'
+                    );
+                })
+                ->sum(function ($quota) {
+                    return $quota->pivot->importo_pagato ?? 0;
+                });
+        });
+
+        // C. Calcoliamo il costo LORDO di tutte le fatture pregresse già registrate
+        $totalePregressoGiaUsatoCents = \Illuminate\Support\Facades\DB::table('fatture_passive')
+            ->where('condominio_id', $condominio->id)
+            ->where('esercizio_id', $esercizio->id)
+            ->where('is_pregresso', true)
+            ->sum(\Illuminate\Support\Facades\DB::raw('importo_imponibile + importo_iva'));
+
+        $capienzaRataZeroResidua = max(0, $totaleRataZeroInizialeCents - $totalePregressoGiaUsatoCents);
+
+        // 2. Estraiamo i Debiti verso Fornitori e calcoliamo il loro residuo individuale
+        $debitiPatrimoniali = collect();
+        if ($esercizio) {
+            $debitiPatrimoniali = Saldo::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->whereNull('anagrafica_id') // Solo i debiti verso terzi
+                ->where('saldo_iniziale', '<', 0) // Solo le passività
+                ->get()
+                ->map(function($saldo) {
+                    $importoInizialeCents = abs($saldo->saldo_iniziale);
+
+                    // Troviamo le fatture pregresse GIA' collegate a questo specifico saldo
+                    $fattureCollegate = FatturaPassiva::where('saldo_patrimoniale_id', $saldo->id)
+                        ->where('is_pregresso', true)
+                        ->get()
+                        ->map(function($f) {
+                            // Convertiamo in Euro per la visualizzazione nel widget
+                            $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
+                            return [
+                                'id'               => $f->id,
+                                'numero_documento' => $f->numero_documento ?? 'S/N',
+                                'data_documento'   => $f->data_documento ? \Carbon\Carbon::parse($f->data_documento)->format('d/m/Y') : '',
+                                'importo_usato'    => round($lordoEuro, 2)
+                            ];
+                        });
+
+                    // Sottraiamo il lordo delle fatture collegate dal debito iniziale
+                    $importoUsatoCents = $fattureCollegate->sum(fn($f) => $f['importo_usato'] * 100);
+                    $importoDisponibileCents = max(0, $importoInizialeCents - $importoUsatoCents);
+
+                    return [
+                        'id'                  => $saldo->id,
+                        'fornitore_id'        => $saldo->fornitore_id,
+                        'descrizione'         => $saldo->descrizione ?? 'Debito pregresso senza descrizione',
+                        'importo_iniziale'    => $importoInizialeCents,
+                        'importo_disponibile' => (int) $importoDisponibileCents,
+                        'fatture_collegate'   => $fattureCollegate->toArray(),
+                    ];
+                })->values();
+        }
+
+        // 2. I Fondi di Riserva disponibili
+        $fondiRiserva = ContoContabile::where('condominio_id', $condominio->id)
+            ->where('ruolo', 'fondo_riserva') // o categoria = 'fondi'
+            ->withSum(['movimenti as totale_dare' => function ($q) {
+                $q->where('tipo_riga', 'dare');
+            }], 'importo')
+            ->withSum(['movimenti as totale_avere' => function ($q) {
+                $q->where('tipo_riga', 'avere');
+            }], 'importo')
+            ->get()
+            ->map(function($fondo) {
+                // Essendo una passività (Fondo), il saldo aumenta in AVERE e diminuisce in DARE
+                $saldo = ($fondo->totale_avere ?? 0) - ($fondo->totale_dare ?? 0);
+                return [
+                    'id'            => $fondo->id,
+                    'nome'          => $fondo->nome,
+                    'saldo_attuale' => max(0, $saldo), // Evitiamo saldi negativi nel frontend
+                ];
+            });
+
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterNew', [
             'condominio' => $condominio,
             'fornitori'  => Fornitore::all(),
@@ -121,6 +227,11 @@ class FatturaPassivaController extends Controller
 
             'esercizio'  => $esercizio,
             'condomini'  => $listaCondomini, 
+
+            'debiti_patrimoniali' => $debitiPatrimoniali,
+            'fondi_riserva'       => $fondiRiserva,
+            'capienza_rata_zero'  => (int) $capienzaRataZeroResidua,
+            'incassato_rata_zero' => (int) $totaleRataZeroIncassataCents,
 
             'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)
@@ -217,22 +328,35 @@ class FatturaPassivaController extends Controller
     public function store(StoreFatturaRequest $request, Condominio $condominio)
     {
         try {
+            // Esecuzione del Service
             $this->service->registraFattura(
                 $request->validated(),
                 $condominio->id,
                 $request->file('file')
             );
 
-            return redirect()
-                ->route('admin.gestionale.fatture.index', $condominio->id) 
-                ->with('success', 'Fattura registrata con successo.');
+            // Verifica se è stato attivato lo Scudo Legale
+            $coperture = collect($request->input('coperture', []));
+            $sopravvenienze = $coperture->where('tipo_copertura', 'sopravvenienza');
+
+            if ($sopravvenienze->isNotEmpty()) {
+                // Ritorna sulla stessa pagina (back) per permettere inserimenti multipli
+                return back()->with('success', 'Fattura e Scudo Legale registrati con successo!');
+            }
+
+            // Ritorna sulla stessa pagina per inserimenti multipli standard
+            return back()->with('success', 'Fattura registrata con successo.');
 
         } catch (ModelNotFoundException $e) {
-            return back()->withErrors([
-                'error' => 'Risorsa non trovata. Verifica fornitore, conto e gestione selezionati.',
-            ]);
+            // Log solo in caso di errore
+            Log::error("❌ ERRORE 404: " . $e->getMessage());
+            return back()->withErrors(['error' => 'Risorsa non trovata. Verifica fornitore, conto e gestione.']);
 
         } catch (\Exception $e) {
+            // Log spietato per catturare problemi al database
+            Log::error("❌ FATAL ERROR NEL SERVICE: " . $e->getMessage());
+            Log::error("Traccia: " . $e->getTraceAsString());
+            
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }

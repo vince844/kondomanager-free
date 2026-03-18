@@ -1,7 +1,6 @@
 <script setup lang="ts">
-
 import { ref, computed, watch } from 'vue';
-import { useForm, Head } from '@inertiajs/vue3';
+import { useForm, Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
@@ -11,10 +10,13 @@ import { Badge } from '@/components/ui/badge';
 import {
     FileText, Plus, Trash2, AlertTriangle, User,
     ShieldAlert, Save, AlertOctagon,
-    TriangleAlert, Receipt, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown
+    TriangleAlert, Receipt, TrendingDown, Zap, ArrowRightLeft, 
+    Briefcase, History, ChevronDown, CheckCircle,
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
+import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
+import ModalSopravvenienza from '@/components/gestionale/movimenti/fatture/ModalSopravvenienza.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -55,14 +57,14 @@ interface Condominio {
     nome: string; 
 }
 
-interface Esercizio  { 
+interface Esercizio { 
     id: number; 
     nome: string; 
     stato: string; 
     data_inizio?: string;
 }
 
-interface Gestione   { 
+interface Gestione { 
     id: number; 
     nome: string; 
     tipo: string; 
@@ -84,22 +86,46 @@ interface Conto {
     }[]
 }
 
-interface Banca      { 
+interface Banca { 
     id: number; 
     nome: string; 
     saldo_attuale?: number; 
 }
 
-interface Immobile   { 
+interface Immobile { 
     id: number; 
     label: string; 
 }
 
+interface DebitoPatrimoniale {
+    id: number;
+    fornitore_id: number;
+    descrizione: string;
+    importo_iniziale: number;
+    importo_disponibile: number; // in centesimi!
+    fatture_collegate?: any[];
+}
+
+interface FondoRiserva {
+    id: number;
+    nome: string;
+    saldo_attuale: number; // in centesimi!
+}
+
 const props = defineProps<{
-    condominio: Condominio; condomini: Condominio[];
-    esercizio: Esercizio; esercizi: Esercizio[];
-    gestioni: Gestione[]; fornitori: Fornitore[];
-    conti: Conto[]; banche: Banca[]; immobili: Immobile[];
+    condominio: Condominio; 
+    condomini: Condominio[];
+    esercizio: Esercizio;
+    esercizi: Esercizio[];
+    gestioni: Gestione[]; 
+    fornitori: Fornitore[];
+    conti: Conto[]; 
+    banche: Banca[]; 
+    immobili: Immobile[];
+    debiti_patrimoniali: DebitoPatrimoniale[];
+    fondi_riserva: FondoRiserva[];
+    capienza_rata_zero: number;
+    incassato_rata_zero: number;
 }>();
 
 // ---------------------------------------------------------------------------
@@ -108,6 +134,7 @@ const props = defineProps<{
 const fileInput = ref<HTMLInputElement | null>(null);
 const showOverrideModal   = ref(false);
 const overrideMotivazione = ref('');
+const showSuccessModal = ref(false);
 
 const form = useForm({
     fornitore_id:       null as number | null,
@@ -115,13 +142,28 @@ const form = useForm({
     gestione_id:        null as number | null,
     tipo_documento:     'fattura',
     is_pregresso:       false,
+    data_competenza_originaria: '',
+    saldo_patrimoniale_id: null as number | null,
+    coperture: [] as { tipo_copertura: string; importo: number; fonte_id: number | null; nota_amministratore?: string }[],
+    
+    // NUOVI CAMPI PER FATTURA PREGRESSA
+    imponibile_pregresso: 0,
+    aliquota_iva_pregressa: 22,
+
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
     conto_corrente_id:  null as number | null,
     modalita_pagamento: 'bonifico',
     iban_fornitore:     '',
-    dati_extra: { fiscal: { cig: '', cup: '' }, competenza: { dal: '', al: '' }, override_budget: null as any },
+    
+    dati_extra: { 
+        fiscal: { cig: '', cup: '' }, 
+        competenza: { dal: '', al: '' }, 
+        override_budget: null as any,
+        log_legale_sopravvenienza: null as any 
+    },
+    
     stato_approvazione: 'approvata',
     righe: [{ descrizione: '', conto_id: null as number | null, immobile_id: null as number | null, importo_imponibile: 0, aliquota_iva: 22 }],
     file: null as File | null,
@@ -132,13 +174,21 @@ const form = useForm({
 // ---------------------------------------------------------------------------
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
-// NOTA: I totali calcolati dal form sono in EURO (perché l'utente digita in Euro)
 const totali = computed(() => {
     let imponibile = 0, iva = 0;
-    form.righe.forEach(r => {
-        imponibile += Number(r.importo_imponibile) || 0;
-        iva        += (Number(r.importo_imponibile) * (Number(r.aliquota_iva) || 0) / 100);
-    });
+    
+    if (form.is_pregresso) {
+        // Calcolo per Fattura Pregressa (usa i campi diretti)
+        imponibile = Number(form.imponibile_pregresso) || 0;
+        iva = imponibile * (Number(form.aliquota_iva_pregressa) || 0) / 100;
+    } else {
+        // Calcolo per Fattura Normale (somma le righe)
+        form.righe.forEach(r => {
+            imponibile += Number(r.importo_imponibile) || 0;
+            iva        += (Number(r.importo_imponibile) * (Number(r.aliquota_iva) || 0) / 100);
+        });
+    }
+
     let ritenuta = 0;
     if (selectedFornitore.value?.soggetto_ritenuta && form.tipo_documento !== 'nota_credito') {
         const base = imponibile * (Number(selectedFornitore.value.perc_imponibile_ritenuta) || 100) / 100;
@@ -153,11 +203,13 @@ const totali = computed(() => {
     };
 });
 
+const totaleDocLordoEuro = computed(() => {
+    return totali.value.imponibile + totali.value.iva;
+});
+
 // Tiene traccia di quali conti hanno lo storico espanso
 const expandedHistory = ref<Record<number, boolean>>({});
-const toggleHistory = (contoId: number) => {
-    expandedHistory.value[contoId] = !expandedHistory.value[contoId];
-};
+const toggleHistory = (contoId: number) => { expandedHistory.value[contoId] = !expandedHistory.value[contoId]; };
 
 // Calcoli Budget INTERAMENTE IN CENTESIMI
 const budgetImpacts = computed(() => {
@@ -212,25 +264,18 @@ const bankForecast = computed(() => {
     };
 });
 
-// NUOVO: Smart Date Check
+// Smart Date Check
 watch(() => form.data_documento, (newDate) => {
     if (newDate && props.esercizio?.data_inizio) {
-        // Tagliamo la data di inizio a YYYY-MM-DD per fare un confronto testuale pulito
         const inizioEsercizio = props.esercizio.data_inizio.substring(0, 10);
-        
-        if (newDate < inizioEsercizio) {
-            form.is_pregresso = true;
-        } else {
-            form.is_pregresso = false;
-        }
+        form.is_pregresso = newDate < inizioEsercizio;
     }
 }, { immediate: true });
 
 const transactionStatus = computed(() => {
     // Se la fattura è un Debito Pregresso, IGNORA il controllo budget!
     if (!form.is_pregresso && budgetImpacts.value.some(i => !i.isOk)) return 'CRITICAL_BUDGET';
-    
-    if (bankForecast.value?.isRed) return 'WARNING_CASH';
+    if (!form.is_pregresso && bankForecast.value?.isRed) return 'WARNING_CASH';
     return 'SAFE';
 });
 
@@ -274,9 +319,28 @@ watch(() => form.esercizio_id, (v) => {
 // ---------------------------------------------------------------------------
 const addRiga    = () => form.righe.push({ descrizione: '', conto_id: null, immobile_id: null, importo_imponibile: 0, aliquota_iva: 22 });
 const removeRiga = (idx: number) => { if (form.righe.length > 1) form.righe.splice(idx, 1); };
+const showSopravvenienzaModal = ref(false);
 
 const handleSubmit = () => {
-    if (transactionStatus.value === 'CRITICAL_BUDGET') { showOverrideModal.value = true; return; }
+    // 1. Controllo Sforo Budget
+    if (transactionStatus.value === 'CRITICAL_BUDGET') { 
+        showOverrideModal.value = true; 
+        return; 
+    }
+
+    // 2. Controllo Sopravvenienza (Scudo Legale)
+    const hasSopravvenienza = form.coperture?.some(c => c.tipo_copertura === 'sopravvenienza');
+    if (form.is_pregresso && hasSopravvenienza) {
+        showSopravvenienzaModal.value = true;
+        return;
+    }
+
+    // Se tutto ok, procedi.
+    doSubmit();
+};
+
+const handleSopravvenienzaConfirm = (payload: any) => {
+    form.dati_extra.log_legale_sopravvenienza = payload;
     doSubmit();
 };
 
@@ -288,7 +352,7 @@ const confirmOverride = () => {
         budget_residuo_al_momento: -sforoBudgetTotaleCents.value,
         timestamp: new Date().toISOString(),
     };
-    showOverrideModal.value   = false;
+    showOverrideModal.value = false;
     overrideMotivazione.value = '';
     doSubmit();
 };
@@ -298,7 +362,12 @@ const cancelOverride = () => { showOverrideModal.value = false; overrideMotivazi
 const doSubmit = () => {
     form.post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
         forceFormData: true,
-        onSuccess: () => { form.reset(); overrideMotivazione.value = ''; },
+        preserveScroll: true, // Mantiene la posizione della pagina
+        onSuccess: () => { 
+            form.reset(); 
+            overrideMotivazione.value = ''; 
+            showSuccessModal.value = true; // Accende la modale di successo!
+        },
     });
 };
 
@@ -334,7 +403,7 @@ const pageGuides = [
             />
 
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
-                <div v-if="transactionStatus !== 'SAFE'"
+                <div v-if="!form.is_pregresso && transactionStatus !== 'SAFE'"
                     class="rounded-xl p-4 flex items-center gap-4 border"
                     :class="transactionStatus === 'CRITICAL_BUDGET' ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-amber-50 border-amber-200 text-amber-900'">
                     <AlertOctagon v-if="transactionStatus === 'CRITICAL_BUDGET'" class="w-5 h-5 shrink-0" />
@@ -347,7 +416,7 @@ const pageGuides = [
                 </div>
             </Transition>
 
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start relative z-10">
 
                 <div class="lg:col-span-4 h-full flex flex-col bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
                     <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 shrink-0">
@@ -398,15 +467,12 @@ const pageGuides = [
                                         <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
                                             <Briefcase class="w-4 h-4 text-slate-400" />
                                         </div>
-                                        
                                         <div class="flex flex-col overflow-hidden">
                                             <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ ragione_sociale }}</span>
                                             <div class="flex items-center gap-2 mt-0.5">
-                                                
                                                 <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
                                                 <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
-                                                
                                                 <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
                                                     Ritenuta
                                                 </span>
@@ -419,7 +485,6 @@ const pageGuides = [
                                     <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                         <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                         <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
-                                        
                                         <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none shrink-0">
                                             Ritenuta
                                         </span>
@@ -473,6 +538,28 @@ const pageGuides = [
                                 <p v-if="form.is_pregresso" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium leading-tight">
                                     Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello Stato Patrimoniale.
                                 </p>
+                            </div>
+                        </div>
+
+                        <div v-if="form.is_pregresso" class="grid grid-cols-3 gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 border border-amber-100 dark:border-amber-800/30 rounded-lg mt-3">
+                            <div class="col-span-2 space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Imponibile Lordo</Label>
+                                <MoneyInput
+                                    id="importo_pregresso"
+                                    v-model="form.imponibile_pregresso"
+                                    :money-options="moneyOptions"
+                                    :lazy="false"
+                                    class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3 focus:border-amber-400 focus:ring-amber-400/20"
+                                    placeholder="0,00"
+                                />
+                            </div>
+                            <div class="col-span-1 space-y-1.5 relative">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IVA</Label>
+                                <div class="relative">
+                                    <Input min="0" max="100" type="number" v-model="form.aliquota_iva_pregressa" 
+                                        class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm focus:border-amber-400 focus:ring-amber-400/20" />
+                                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
+                                </div>
                             </div>
                         </div>
 
@@ -544,280 +631,285 @@ const pageGuides = [
                     </div>
                 </div>
 
-                <div class="lg:col-span-8 flex flex-col gap-5">
+                <div class="lg:col-span-8 flex flex-col gap-5 relative z-0">
 
-                    <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        
-                        <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between rounded-t-xl">
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <Receipt class="w-5 h-5 text-slate-400" />
-                                    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Registro voci di spesa</h3>
-                                </div>
-                                <p class="text-[11px] text-slate-500 mt-1">Aggiungi una o più righe per ripartire il documento sui capitoli corretti.</p>
-                            </div>
-                            
-                            <div class="flex items-center gap-4">
-                                <Badge variant="secondary" class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
-                                    {{ form.righe.length }} {{ form.righe.length === 1 ? 'Voce' : 'Voci' }}
-                                </Badge>
-                                <Button variant="outline" size="sm" type="button" @click="addRiga" 
-                                    class="h-9 text-[11px] font-bold uppercase border-primary/20 text-primary hover:bg-primary/5 hover:text-primary transition-colors gap-1.5 shadow-sm">
-                                    <Plus class="w-3.5 h-3.5" /> Aggiungi riga
-                                </Button>
-                            </div>
-                        </div>
-
-                        <div class="divide-y divide-slate-100 dark:divide-slate-800/80">
-                            <div v-for="(riga, idx) in form.righe" :key="idx" class="p-6 hover:bg-slate-50/30 group transition-colors flex flex-col gap-4">
-
-                                <div class="grid grid-cols-12 gap-4">
-                                    <div class="col-span-12 md:col-span-8 relative z-50">
-                                        <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Capitolo di spesa</Label>
-                                        <v-select 
-                                            v-model="riga.conto_id" 
-                                            :options="conti" 
-                                            label="nome"
-                                            :reduce="(c: Conto) => c.id" 
-                                            placeholder="Cerca capitolo..." 
-                                            class="style-chooser w-full"
-                                            append-to-body
-                                        >
-                                            <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
-                                                <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
-                                                    <div class="flex flex-col">
-                                                        <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
-                                                            {{ parent_nome }}
-                                                        </span>
-                                                        <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
-                                                            {{ nome }}
-                                                        </span>
-                                                    </div>
-                                                    <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
-                                                        :class="is_capiente ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/50' : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'">
-                                                        {{ euro(residuo_budget) }}
-                                                    </span>
-                                                </div>
-                                            </template>
-                                            <template #selected-option="{ nome, parent_nome, is_capiente }">
-                                                <div class="flex items-center gap-2 text-sm w-full overflow-hidden">
-                                                    <span class="font-medium truncate" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">{{ nome }}</span>
-                                                    <span class="text-xs text-slate-400 truncate" v-if="parent_nome">– {{ parent_nome }}</span>
-                                                </div>
-                                            </template>
-                                        </v-select>
-                                    </div>
-
-                                    <div class="col-span-12 md:col-span-4 relative z-40">
-                                        <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Unità (Opzionale)</Label>
-                                        <v-select 
-                                            v-model="riga.immobile_id" 
-                                            :options="immobili" 
-                                            label="label" 
-                                            :reduce="(i: Immobile) => i.id" 
-                                            placeholder="Tutti (Spesa Comune)" 
-                                            class="style-chooser text-xs"
-                                            append-to-body
-                                        >
-                                            <template #option="{ label }">
-                                                <div class="flex items-center gap-1.5 py-0.5">
-                                                    <User class="w-3 h-3 text-blue-400 shrink-0" />
-                                                    <span class="text-xs">{{ label }}</span>
-                                                </div>
-                                            </template>
-                                        </v-select>
-                                    </div>
-                                </div>
-
-                         <div class="grid grid-cols-12 gap-4 items-start">
-                                    
-                                    <div class="col-span-12 md:col-span-4 lg:col-span-5">
-                                        <Input v-model="riga.descrizione" 
-                                            placeholder="Causale riga..." 
-                                            class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
-                                            :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }" 
-                                            @input="form.clearErrors(`righe.${idx}.descrizione`)"
-                                        />
-                                        <p v-if="form.errors[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
-                                            {{ form.errors[`righe.${idx}.descrizione`] }}
-                                        </p>
-                                    </div>
-
-                                    <div class="col-span-4 md:col-span-3 relative z-30">
-                                        <MoneyInput
-                                            :id="'importo_' + idx"
-                                            v-model="riga.importo_imponibile"
-                                            :money-options="moneyOptions"
-                                            :lazy="false"
-                                            class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
-                                            placeholder="0,00"
-                                        />
-                                        <div v-if="!form.is_pregresso && riga.conto_id && (() => {
-                                            const c = conti.find(c => c.id === riga.conto_id);
-                                            if (!c || c.residuo_budget === undefined) return false;
-                                            return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
-                                        })()" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
-                                            <TrendingDown class="w-3 h-3" />
-                                            <span class="text-[9px] font-black uppercase">Sforo budget</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-span-3 md:col-span-2 lg:col-span-1 relative z-30">
-                                        <div class="relative">
-                                            <Input min="0" max="100" v-model="riga.aliquota_iva" 
-                                                class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
-                                            <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-span-5 md:col-span-3 flex items-center justify-end gap-3 h-10">
-                                        <div class="text-right">
-                                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
-                                            <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
-                                                {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
-                                            </span>
-                                        </div>
-                                        
-                                        <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)" 
-                                            class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
-                                            <Trash2 class="w-4 h-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex justify-end">
-                            <div class="flex items-center gap-8 pr-[60px]"> 
-                                
-                                <div class="text-right">
-                                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Imponibile</span>
-                                    <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.imponibile, { fromCents: false }) }}</span>
-                                </div>
-                                
-                                <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
-                                
-                                <div class="text-right">
-                                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">IVA</span>
-                                    <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.iva, { fromCents: false }) }}</span>
-                                </div>
-
-                                <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
-
-                                <div class="text-right">
-                                    <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">Totale</span>
-                                    <span class="font-black text-primary text-xl">{{ euro(totali.imponibile + totali.iva, { fromCents: false }) }}</span>
-                                </div>
-
-                            </div>
-                        </div>
+                    <div v-if="form.is_pregresso">
+                        <WidgetDoubleLock
+                            :form="form"
+                            :fornitore-id="form.fornitore_id"
+                            :debiti-patrimoniali="debiti_patrimoniali as any"
+                            :conti-spesa="conti as any"
+                            :fondi-riserva="fondi_riserva as any"
+                            :capienza-rata-zero="capienza_rata_zero"
+                            :incassato-rata-zero="incassato_rata_zero" :totale-fattura-lordo="totaleDocLordoEuro"
+                            :bank-forecast="bankForecast"
+                        />
                     </div>
 
-                    <div class="bg-slate-900 dark:bg-slate-950 text-white rounded-xl border shadow-lg overflow-hidden transition-all duration-300"
-                        :class="transactionStatus === 'CRITICAL_BUDGET' ? 'border-rose-500 shadow-rose-500/10' : transactionStatus === 'WARNING_CASH' ? 'border-amber-500/30' : 'border-slate-700'">
-
-                        <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/40">
-                            <div class="flex items-center gap-2">
-                                <Zap class="w-4 h-4 text-blue-400" :class="transactionStatus === 'CRITICAL_BUDGET' ? 'text-rose-400 animate-pulse' : ''" />
-                                <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Simulazione Impatto Finanziario</span>
+                    <div v-else class="flex flex-col gap-5">
+                        <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                            <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between rounded-t-xl">
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <Receipt class="w-5 h-5 text-slate-400" />
+                                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Registro voci di spesa</h3>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-1">Aggiungi una o più righe per ripartire il documento sui capitoli corretti.</p>
+                                </div>
+                                <div class="flex items-center gap-4">
+                                    <Badge variant="secondary" class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
+                                        {{ form.righe.length }} {{ form.righe.length === 1 ? 'Voce' : 'Voci' }}
+                                    </Badge>
+                                    <Button variant="outline" size="sm" type="button" @click="addRiga" 
+                                        class="h-9 text-[11px] font-bold uppercase border-primary/20 text-primary hover:bg-primary/5 hover:text-primary transition-colors gap-1.5 shadow-sm">
+                                        <Plus class="w-3.5 h-3.5" /> Aggiungi riga
+                                    </Button>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase"
-                                :class="{
-                                    'bg-rose-500/20 text-rose-400':    transactionStatus === 'CRITICAL_BUDGET',
-                                    'bg-amber-500/20 text-amber-400':  transactionStatus === 'WARNING_CASH',
-                                    'bg-emerald-500/20 text-emerald-400': transactionStatus === 'SAFE',
-                                }">
-                                <span class="w-1.5 h-1.5 rounded-full mr-1"
-                                    :class="{
-                                        'bg-rose-500 animate-pulse':  transactionStatus === 'CRITICAL_BUDGET',
-                                        'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
-                                        'bg-emerald-500':             transactionStatus === 'SAFE',
-                                    }"></span>
-                                {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
-                            </div>
-                        </div>
 
-                        <div class="grid grid-cols-2 divide-x divide-slate-700/50">
-                            <div class="p-5">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Analisi Budget — Capitoli</p>
-                                <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">Nessuna voce ancora</div>
-                                <div v-else class="space-y-3">
-                                    <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
-                                        <div class="flex justify-between items-start">
-                                            <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
-                                            <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
-                                                {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
-                                            </span>
-                                        </div>
-                                        
-                                        <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                            <div class="h-full rounded-full transition-all duration-500"
-                                                :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
-                                                :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="flex justify-between text-[9px] text-slate-500 font-medium">
-                                            <span>Usato: {{ euro(impact.speso_cents) }}</span>
-                                            <span>Budget: {{ euro(impact.residuo_cents) }}</span>
-                                        </div>
-
-                                        <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">
-                                            <button type="button" @click="toggleHistory(impact.id)" class="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-blue-400 transition-colors w-full">
-                                                <History class="w-3 h-3" />
-                                                <span>{{ impact.ultimi_movimenti.length }} Moviment{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'o' }} recent{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'e' }}</span>
-                                                <ChevronDown class="w-3 h-3 ml-auto transition-transform" :class="expandedHistory[impact.id] ? 'rotate-180' : ''" />
-                                            </button>
-
-                                            <div v-if="expandedHistory[impact.id]" class="mt-2 space-y-1.5">
-                                                <div v-for="(storico, sIdx) in impact.ultimi_movimenti" :key="sIdx" 
-                                                    class="flex items-center justify-between bg-slate-900/50 p-1.5 rounded text-[10px] border border-slate-800">
-                                                    <div class="flex flex-col truncate pr-2">
-                                                        <span class="text-slate-300 font-semibold truncate">{{ storico.fornitore }}</span>
-                                                        <div class="flex items-center gap-1.5">
-                                                            <span class="text-slate-500">{{ storico.data }} · {{ storico.documento }}</span>
-                                                            <span v-if="storico.is_pregresso" class="text-[8px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">Pregresso</span>
+                            <div class="divide-y divide-slate-100 dark:divide-slate-800/80">
+                                <div v-for="(riga, idx) in form.righe" :key="idx" class="p-6 hover:bg-slate-50/30 group transition-colors flex flex-col gap-4">
+                                    <div class="grid grid-cols-12 gap-4">
+                                        <div class="col-span-12 md:col-span-8 relative">
+                                            <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Capitolo di spesa</Label>
+                                            <v-select 
+                                                v-model="riga.conto_id" 
+                                                :options="conti" 
+                                                label="nome"
+                                                :reduce="(c: Conto) => c.id" 
+                                                placeholder="Cerca capitolo..." 
+                                                class="style-chooser w-full"
+                                                append-to-body
+                                            >
+                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
+                                                    <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
+                                                        <div class="flex flex-col">
+                                                            <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
+                                                                {{ parent_nome }}
+                                                            </span>
+                                                            <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
+                                                                {{ nome }}
+                                                            </span>
                                                         </div>
+                                                        <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
+                                                            :class="is_capiente ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/50' : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'">
+                                                            {{ euro(residuo_budget) }}
+                                                        </span>
                                                     </div>
-                                                    <span class="font-bold text-slate-400 shrink-0">{{ euro(storico.importo) }}</span>
+                                                </template>
+                                                <template #selected-option="{ nome, parent_nome, is_capiente }">
+                                                    <div class="flex items-center gap-2 text-sm w-full overflow-hidden">
+                                                        <span class="font-medium truncate" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">{{ nome }}</span>
+                                                        <span class="text-xs text-slate-400 truncate" v-if="parent_nome">– {{ parent_nome }}</span>
+                                                    </div>
+                                                </template>
+                                            </v-select>
+                                        </div>
+
+                                        <div class="col-span-12 md:col-span-4 relative">
+                                            <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">Unità (Opzionale)</Label>
+                                            <v-select 
+                                                v-model="riga.immobile_id" 
+                                                :options="immobili" 
+                                                label="label" 
+                                                :reduce="(i: Immobile) => i.id" 
+                                                placeholder="Tutti (Spesa Comune)" 
+                                                class="style-chooser text-xs"
+                                                append-to-body
+                                            >
+                                                <template #option="{ label }">
+                                                    <div class="flex items-center gap-1.5 py-0.5">
+                                                        <User class="w-3 h-3 text-blue-400 shrink-0" />
+                                                        <span class="text-xs">{{ label }}</span>
+                                                    </div>
+                                                </template>
+                                            </v-select>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-12 gap-4 items-start">
+                                        <div class="col-span-12 md:col-span-4 lg:col-span-5">
+                                            <Input v-model="riga.descrizione" 
+                                                placeholder="Causale riga..." 
+                                                class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
+                                                :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }" 
+                                                @input="form.clearErrors(`righe.${idx}.descrizione`)"
+                                            />
+                                            <p v-if="form.errors[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ form.errors[`righe.${idx}.descrizione`] }}
+                                            </p>
+                                        </div>
+
+                                        <div class="col-span-4 md:col-span-3 relative">
+                                            <MoneyInput
+                                                :id="'importo_' + idx"
+                                                v-model="riga.importo_imponibile"
+                                                :money-options="moneyOptions"
+                                                :lazy="false"
+                                                class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
+                                                placeholder="0,00"
+                                            />
+                                            <div v-if="riga.conto_id && (() => {
+                                                const c = conti.find(c => c.id === riga.conto_id);
+                                                if (!c || c.residuo_budget === undefined) return false;
+                                                return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
+                                            })()" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                                <TrendingDown class="w-3 h-3" />
+                                                <span class="text-[9px] font-black uppercase">Sforo budget</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-span-3 md:col-span-2 lg:col-span-1 relative">
+                                            <div class="relative">
+                                                <Input min="0" max="100" v-model="riga.aliquota_iva" 
+                                                    class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
+                                                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-span-5 md:col-span-3 flex items-center justify-end gap-3 h-10">
+                                            <div class="text-right">
+                                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
+                                                <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
+                                                    {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
+                                                </span>
+                                            </div>
+                                            <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)" 
+                                                class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
+                                                <Trash2 class="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex justify-end">
+                                <div class="flex items-center gap-8 pr-[60px]"> 
+                                    <div class="text-right">
+                                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Imponibile</span>
+                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.imponibile, { fromCents: false }) }}</span>
+                                    </div>
+                                    <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
+                                    <div class="text-right">
+                                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">IVA</span>
+                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.iva, { fromCents: false }) }}</span>
+                                    </div>
+                                    <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
+                                    <div class="text-right">
+                                        <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">Totale</span>
+                                        <span class="font-black text-primary text-xl">{{ euro(totali.imponibile + totali.iva, { fromCents: false }) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-900 dark:bg-slate-950 text-white rounded-xl border shadow-lg overflow-hidden transition-all duration-300"
+                            :class="transactionStatus === 'CRITICAL_BUDGET' ? 'border-rose-500 shadow-rose-500/10' : transactionStatus === 'WARNING_CASH' ? 'border-amber-500/30' : 'border-slate-700'">
+
+                            <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/40">
+                                <div class="flex items-center gap-2">
+                                    <Zap class="w-4 h-4 text-blue-400" :class="transactionStatus === 'CRITICAL_BUDGET' ? 'text-rose-400 animate-pulse' : ''" />
+                                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Simulazione Impatto Finanziario</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase"
+                                    :class="{
+                                        'bg-rose-500/20 text-rose-400':    transactionStatus === 'CRITICAL_BUDGET',
+                                        'bg-amber-500/20 text-amber-400':  transactionStatus === 'WARNING_CASH',
+                                        'bg-emerald-500/20 text-emerald-400': transactionStatus === 'SAFE',
+                                    }">
+                                    <span class="w-1.5 h-1.5 rounded-full mr-1"
+                                        :class="{
+                                            'bg-rose-500 animate-pulse':  transactionStatus === 'CRITICAL_BUDGET',
+                                            'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
+                                            'bg-emerald-500':             transactionStatus === 'SAFE',
+                                        }"></span>
+                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 divide-x divide-slate-700/50">
+                                <div class="p-5">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Analisi Budget — Capitoli</p>
+                                    <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">Nessuna voce ancora</div>
+                                    <div v-else class="space-y-3">
+                                        <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
+                                            <div class="flex justify-between items-start">
+                                                <span class="text-xs font-bold truncate max-w-[60%]">{{ impact.nome }}</span>
+                                                <span class="text-xs font-black shrink-0" :class="impact.isOk ? 'text-emerald-400' : 'text-rose-400'">
+                                                    {{ impact.isOk ? '+' : '' }}{{ euro(impact.delta_cents) }}
+                                                </span>
+                                            </div>
+                                            
+                                            <div class="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                                <div class="h-full rounded-full transition-all duration-500"
+                                                    :class="impact.isOk ? 'bg-emerald-500' : 'bg-rose-500'"
+                                                    :style="{ width: Math.min((impact.speso_cents / Math.max(impact.residuo_cents, 1)) * 100, 100) + '%' }">
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="flex justify-between text-[9px] text-slate-500 font-medium">
+                                                <span>Usato: {{ euro(impact.speso_cents) }}</span>
+                                                <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                            </div>
+                                            
+                                            <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">
+                                                <button type="button" @click="toggleHistory(impact.id)" class="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-blue-400 transition-colors w-full">
+                                                    <History class="w-3 h-3" />
+                                                    <span>{{ impact.ultimi_movimenti.length }} Moviment{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'o' }} recent{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'e' }}</span>
+                                                    <ChevronDown class="w-3 h-3 ml-auto transition-transform" :class="expandedHistory[impact.id] ? 'rotate-180' : ''" />
+                                                </button>
+
+                                                <div v-if="expandedHistory[impact.id]" class="mt-2 space-y-1.5">
+                                                    <div v-for="(storico, sIdx) in impact.ultimi_movimenti" :key="sIdx" 
+                                                        class="flex items-center justify-between bg-slate-900/50 p-1.5 rounded text-[10px] border border-slate-800">
+                                                        <div class="flex flex-col truncate pr-2">
+                                                            <span class="text-slate-300 font-semibold truncate">{{ storico.fornitore }}</span>
+                                                            <div class="flex items-center gap-1.5">
+                                                                <span class="text-slate-500">{{ storico.data }} · {{ storico.documento }}</span>
+                                                                <span v-if="storico.is_pregresso" class="text-[8px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded">Pregresso</span>
+                                                            </div>
+                                                        </div>
+                                                        <span class="font-bold text-slate-400 shrink-0">{{ euro(storico.importo) }}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="p-5">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione cassa</p>
-                                <div v-if="bankForecast" class="space-y-3">
-                                    <div class="space-y-2">
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-slate-400">Saldo attuale</span>
-                                            <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
+                                <div class="p-5">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione cassa</p>
+                                    <div v-if="bankForecast" class="space-y-3">
+                                        <div class="space-y-2">
+                                            <div class="flex justify-between text-xs">
+                                                <span class="text-slate-400">Saldo attuale</span>
+                                                <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
+                                            </div>
+                                            <div class="flex justify-between text-xs">
+                                                <span class="text-slate-400">Uscita prevista</span>
+                                                <span class="text-rose-400">- {{ euro(totali.netto, { fromCents: false }) }}</span>
+                                            </div>
                                         </div>
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-slate-400">Uscita prevista</span>
-                                            <span class="text-rose-400">- {{ euro(totali.netto, { fromCents: false }) }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="pt-3 border-t border-slate-700 space-y-1">
-                                        <p class="text-[9px] text-slate-500 uppercase font-bold">Saldo post-pagamento</p>
-                                        <p class="font-black text-2xl" :class="bankForecast.isRed ? 'text-rose-500' : 'text-emerald-400'">
-                                            {{ euro(bankForecast.post_cents) }}
-                                        </p>
-                                        <div class="h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
-                                            <div class="h-full rounded-full transition-all"
-                                                :class="bankForecast.isRed ? 'bg-rose-500' : 'bg-emerald-500'"
-                                                :style="{ width: Math.min(Math.max((bankForecast.post_cents / Math.max(bankForecast.attuale_cents, 1)) * 100, 0), 100) + '%' }">
+                                        <div class="pt-3 border-t border-slate-700 space-y-1">
+                                            <p class="text-[9px] text-slate-500 uppercase font-bold">Saldo post-pagamento</p>
+                                            <p class="font-black text-2xl" :class="bankForecast.isRed ? 'text-rose-500' : 'text-emerald-400'">
+                                                {{ euro(bankForecast.post_cents) }}
+                                            </p>
+                                            <div class="h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
+                                                <div class="h-full rounded-full transition-all"
+                                                    :class="bankForecast.isRed ? 'bg-rose-500' : 'bg-emerald-500'"
+                                                    :style="{ width: Math.min(Math.max((bankForecast.post_cents / Math.max(bankForecast.attuale_cents, 1)) * 100, 0), 100) + '%' }">
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                                <div v-else class="py-6 text-center text-slate-600 text-xs">
-                                    Seleziona un conto nel pannello sinistro
+                                    <div v-else class="py-6 text-center text-slate-600 text-xs">
+                                        Seleziona un conto nel pannello sinistro
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -854,7 +946,68 @@ const pageGuides = [
                 </div>
             </div>
         </Teleport>
+
+        <ModalSopravvenienza
+            v-model:show="showSopravvenienzaModal"
+            :condominio-id="props.condominio.id"
+            :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
+            @confirm="handleSopravvenienzaConfirm"
+        />
+
+        <Teleport to="body">
+            <div v-if="showSuccessModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-all">
+                <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden text-center p-8 border border-slate-200 dark:border-slate-800 transform scale-100">
+                    
+                    <div class="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-5 border-4 border-emerald-100 dark:border-emerald-900/50">
+                        <CheckCircle class="w-10 h-10 text-emerald-500" />
+                    </div>
+                    
+                    <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-2">Operazione completata</h3>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
+                        Il documento e le coperture contabili sono stati registrati e bilanciati correttamente.
+                    </p>
+                    
+                    <div class="flex flex-col gap-3">
+                        <Button @click="showSuccessModal = false" class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 transition-all">
+                            Registra un'altra fattura
+                        </Button>
+                        
+                        <Button variant="ghost" @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }))" class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
+                            Torna all'elenco fatture
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
     </GestionaleLayout>
 </template>
 
-  <style src="vue-select/dist/vue-select.css"></style>
+<style src="vue-select/dist/vue-select.css"></style>
+
+<style>
+/* 1. Forza il dropdown sopra a tutto */
+.vs__dropdown-menu {
+    z-index: 9999 !important;
+    position: absolute !important;
+    background: white !important;
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1) !important;
+}
+
+.dark .vs__dropdown-menu {
+    background: #1e293b !important; /* slate-800 */
+    border: 1px solid #334155;
+}
+
+/* 2. Assicurati che il contenitore della simulazione non crei un nuovo contesto di stacking */
+.lg\:col-span-8 {
+    position: relative;
+    z-index: 1; /* Più basso del dropdown */
+}
+
+/* 3. Padding extra per le righe se necessario per far respirare il dropdown */
+.style-chooser .vs__dropdown-toggle {
+    border-radius: 0.75rem;
+    min-height: 40px;
+}
+</style>

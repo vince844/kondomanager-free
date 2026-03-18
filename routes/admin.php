@@ -16,6 +16,7 @@ use App\Http\Controllers\Eventi\FetchCategorieController as EventiFetchCategorie
 use App\Http\Controllers\Fornitori\Anagrafiche\FornitoreAnagraficaController;
 use App\Http\Controllers\Fornitori\Documenti\FornitoreDocumentoController;
 use App\Http\Controllers\Fornitori\FornitoreController;
+use App\Http\Controllers\Fornitori\FornitoreSituazioneDebitoriaController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
@@ -71,6 +72,18 @@ Route::prefix('admin')->as('admin.')
             'documenti' => 'documento'
             
         ]);
+    
+    /*
+    |--------------------------------------------------------------------------
+    | Situazione Debitoria Fornitori (Double Lock Engine)
+    |--------------------------------------------------------------------------
+    */
+    Route::resource('fornitori.situazione-debitoria', FornitoreSituazioneDebitoriaController::class)
+        ->parameters([
+            'fornitori' => 'fornitore',
+            'situazione-debitoria' => 'saldo' // Questo mappa l'ID dell'URL alla variabile $saldo nel controller
+        ])
+        ->only(['index', 'store', 'destroy']);
 
     Route::resource('categorie', CategoriaDocumentoController::class)
         ->parameters([

@@ -30,6 +30,8 @@ class Saldo extends Model
         'saldo_finale',   // Saldo risultante a fine esercizio
         'origine',        // 'manuale', 'importato', 'automatico'
         'is_applicato',   // Se true, il saldo è bloccato perché già inserito in un piano rate (Novità v1.9)
+        'fornitore_id',
+        'descrizione'
     ];
 
     /**

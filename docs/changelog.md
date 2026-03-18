@@ -23,6 +23,16 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 - Il ricalcolo dello stato ora si affida **interamente ai dati registrati nella tabella pivot**
 - Garantisce **massime performance e integrità dei dati** attraverso un'architettura semplificata
 
+### Gestione Debiti Pregressi e Double Lock (Input Fatture 2.0)
+- **Implementata l'architettura logica e contabile** per la gestione dei "Debiti Pregressi" (fatture ereditate da esercizi precedenti).
+- **Meccanismo Double Lock:** Garantisce la perfetta quadratura tra competenza economica (conto economico), situazione patrimoniale e liquidità reale (cassa).
+- **Gestione automatizzata di 5 scenari reali:**
+    1.  **Copertura Totale:** Fattura pregressa coperta interamente da Rata 0.
+    2.  **Crisi di Liquidità:** Fattura coperta a bilancio, ma con cassa insufficiente (Semaforo Giallo/Alert Cassa).
+    3.  **Proiettile Vagante (Sopravvenienza):** Fattura senza copertura convertita automaticamente in nuova spesa corrente (Sopravvenienza), con assegnazione guidata della Tabella Millesimale e Fornitore.
+    4.  **Copertura Mista (Split):** Fattura coperta parzialmente dai saldi pregressi e parzialmente inserita come spesa corrente (Sopravvenienza).
+    5.  **Fondo di Riserva:** Utilizzo di accantonamenti pregressi (es. TFR) per estinguere il debito senza gravare sul bilancio corrente.
+
 ### Correzioni di Bug
 
 #### Fix Race Condition "NON PAGATA"
