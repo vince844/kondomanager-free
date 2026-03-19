@@ -80,7 +80,7 @@ class FatturaPassivaService
                 $statoApprovazione = 'sforo_motivato';
             }
 
-            // 4. Creazione Fattura
+            // 3. Creazione Fattura
             $fattura = FatturaPassiva::create([
                 'condominio_id'      => $condominioId,
                 'fornitore_id'       => $fornitore->id,
@@ -118,7 +118,7 @@ class FatturaPassivaService
                 $fattura->righe()->createMany($righeProcessate);
             }
 
-            // 4.5. SALVATAGGIO COPERTURE E CREAZIONE AUTOMATICA VOCE CON TABELLE
+            // 4. SALVATAGGIO COPERTURE E CREAZIONE AUTOMATICA VOCE CON TABELLE (FIX 1)
             if ($isPregresso && !empty($data['coperture'])) {
                 foreach ($data['coperture'] as $index => &$copertura) {
                     
@@ -130,6 +130,23 @@ class FatturaPassivaService
                             if (!$pianoConto) throw new \Exception("Nessun Piano dei Conti trovato per la gestione ID: " . $data['gestione_id']);
 
                             $importoCent = (int) round($copertura['importo'] * 100);
+
+                            // Creazione/Recupero del Mastro Contabile Sopravvenienze (Retrocompatibilità)
+                            $contoContabileSopravvenienza = ContoContabile::firstOrCreate(
+                                [
+                                    'condominio_id' => $condominioId,
+                                    'ruolo'         => 'sopravvenienze_passive',
+                                ],
+                                [
+                                    'nome'        => 'Sopravvenienze Passive',
+                                    'tipo'        => 'costo',
+                                    'categoria'   => 'straordinario',
+                                    'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati. Art. 1130-bis c.c.',
+                                    'di_sistema'  => true,
+                                    'attivo'      => true,
+                                    'livello'     => 1
+                                ]
+                            );
 
                             $capitoloPadre = Conto::firstOrCreate(
                                 [
@@ -152,6 +169,7 @@ class FatturaPassivaService
                                 'tipo'                 => 'spesa',
                                 'importo'              => $importoCent, 
                                 'note'                 => "Aut. " . strtoupper($logLegale['autorizzazione']) . " | " . ($logLegale['note'] ?? ''),
+                                'conto_contabile_id'   => $contoContabileSopravvenienza->id, // COLLEGAMENTO AL MASTRO CORRETTO
                             ]);
 
                             if (!empty($logLegale['tabella_millesimale_id'])) {
@@ -207,6 +225,7 @@ class FatturaPassivaService
                 }
             }
 
+            // 5. Salvataggio File
             if ($file) {
                 $path = $file->store('fatture/' . $condominioId, 'public');
                 $fattura->documenti()->create([
@@ -242,33 +261,33 @@ class FatturaPassivaService
                 'stato'              => 'registrata',
             ]);
 
+            // FIX 3: Estrazione della query fuori dal loop
             if ($isPregresso) {
+                $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
+                    ->where('ruolo', 'passate_gestioni')
+                    ->firstOrFail();
+
                 if (!empty($data['coperture'])) {
                     foreach ($data['coperture'] as $copertura) {
                         $importoCopertura = (int) round($copertura['importo'] * 100);
                         
+                        // FIX 2: La corretta Partita Doppia per le Sopravvenienze
                         if ($copertura['tipo_copertura'] === 'sopravvenienza') {
                             $contoBudget = Conto::find($copertura['fonte_id']);
                             
-                            $contoPatrimoniale = ContoContabile::where('condominio_id', $condominioId)
-                                ->where(function($q) {
-                                    $q->where('ruolo', 'passate_gestioni')
-                                      ->orWhere('ruolo', 'crediti_condomini')
-                                      ->orWhere('categoria', 'crediti');
-                                })
-                                ->where('tipo', 'attivo')
-                                ->first();
-
-                            if (!$contoPatrimoniale) {
-                                throw new \Exception("Errore Contabilità: Impossibile trovare un conto patrimoniale di tipo 'Attivo' per registrare la Sopravvenienza.");
+                            if (!$contoBudget || !$contoBudget->conto_contabile_id) {
+                                throw new \Exception(
+                                    "Errore Contabilità: Il conto di sopravvenienza (ID: {$copertura['fonte_id']}) " .
+                                    "non ha un conto contabile mastro collegato. Impossibile generare la scrittura."
+                                );
                             }
 
                             $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoPatrimoniale->id,
+                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
                                 'importo'            => $importoCopertura,
                                 'voce_spesa_id'      => $contoBudget->id ?? null,
-                                'note'               => 'Sopravvenienza passiva da fattura pregressa',
+                                'note'               => 'Sopravvenienza passiva — spesa pregressa non contabilizzata',
                             ]);
                         }
                         elseif ($copertura['tipo_copertura'] === 'fondo_riserva') {
@@ -280,9 +299,6 @@ class FatturaPassivaService
                             ]);
                         }
                         elseif ($copertura['tipo_copertura'] === 'rata_0') {
-                            $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
-                                ->where('ruolo', 'passate_gestioni')->firstOrFail();
-
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoPassateGestioni->id,
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
@@ -292,10 +308,6 @@ class FatturaPassivaService
                         }
                     }
                 } else {
-                    $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
-                        ->where('ruolo', 'passate_gestioni') 
-                        ->firstOrFail();
-
                     $importoTotaleCents = abs($totaleDoc * $moltiplicatore);
 
                     $scrittura->righe()->create([

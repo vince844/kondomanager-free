@@ -255,6 +255,22 @@ class CondominioService
             ]
         );
 
+        // G. Sopravvenienze Passive (Conto Economico > Costi Straordinari)
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'sopravvenienze_passive'],
+            [
+                'parent_id'   => null, // Nessun parent patrimoniale, è un conto economico
+                'codice'      => '4001', 
+                'nome'        => 'Sopravvenienze Passive',
+                'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati (Art. 1130-bis c.c.)',
+                'tipo'        => 'costo', // Conto economico, non patrimoniale
+                'categoria'   => 'straordinario',
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1
+            ]
+        );
+
         Log::info("Piano Conti creato correttamente per '{$condominio->nome}'");
     }
 }
