@@ -69,6 +69,7 @@ return [
     'success_update_conto'              => "La voce di spesa è stata aggiornata con successo.",
     'error_update_conto'                => "Si è verificato un errore durante l'aggiornamento della voce di spesa.",
     'error_conto_has_sottoconti'        => "Impossibile eliminare la voce di spesa perché contiene sottoconti. Elimina prima i sottoconti.",
+    'error_conto_locked_by_rate_plan'   => "Impossibile eliminare: la voce è associata a un piano rate approvato, emesso o chiuso.",
     'error_conto_used_in_active_plans'  => "Impossibile eliminare: la voce è utilizzata nei piani rate attivi: :plans.",
     'error_conto_inherited_lock'        => "Impossibile eliminare: questa voce fa parte del gruppo ':parent' che è ancorato a: :plans.",
     // Piano rate

@@ -195,12 +195,14 @@ class ContoController extends Controller
             return back()->with($this->flashError(__('gestionale.error_conto_has_sottoconti')));
         }
         
-        // Prevenzione 2: Non puoi eliminare un conto se è già stato inserito in un piano rate attivo
-        $lock = $conto->pianiRate()->where('piani_rate.attivo', true)->exists() || 
-                ($conto->parent && $conto->parent->pianiRate()->where('piani_rate.attivo', true)->exists());
+        // Prevenzione 2: Non puoi eliminare un conto se è agganciato a piani rate in stato bloccante
+        // (bozza non blocca l'eliminazione)
+        $statiBloccanti = ['approvato', 'emesso', 'chiuso'];
+        $lock = $conto->pianiRate()->whereIn('stato', $statiBloccanti)->exists() ||
+                ($conto->parent && $conto->parent->pianiRate()->whereIn('stato', $statiBloccanti)->exists());
 
         if ($lock) {
-            return back()->with($this->flashError("Impossibile eliminare: la voce è ancorata a un piano rate attivo."));
+            return back()->with($this->flashError(__('gestionale.error_conto_locked_by_rate_plan')));
         }
 
         try {
