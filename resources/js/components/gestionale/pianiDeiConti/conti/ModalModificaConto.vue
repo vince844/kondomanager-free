@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import InputError from '@/components/InputError.vue'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -105,6 +106,10 @@ const isContoCapitolo = computed(() => {
 const isImportoLocked = computed(() => {
   // @ts-ignore
   return props.conto?.has_rate_emesse === true;
+})
+
+const hasSottoconti = computed(() => {
+  return (props.conto?.sottoconti?.length ?? 0) > 0
 })
 
 watch(() => props.conto, (newConto) => {
@@ -258,6 +263,25 @@ const submit = () => {
               <div class="flex items-center gap-2">
                 <input type="radio" id="entrata" value="entrata" v-model="form.tipo" />
                 <Label for="entrata">Entrata</Label>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-3 border-y border-gray-100 py-3">
+              <div class="flex items-center justify-between">
+                <Label for="editIsCapitolo" class="cursor-pointer">
+                  {{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.is_expense_chapter') }}
+                </Label>
+                <Switch
+                  id="editIsCapitolo"
+                  v-model="isCapitolo"
+                  :disabled="isSottoConto || hasSottoconti"
+                />
+              </div>
+              <div class="flex items-center justify-between">
+                <Label for="editIsSottoConto" class="cursor-pointer">
+                  {{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.is_expense_subaccount') }}
+                </Label>
+                <Switch id="editIsSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
               </div>
             </div>
 
