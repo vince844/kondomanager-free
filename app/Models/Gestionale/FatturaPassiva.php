@@ -26,7 +26,7 @@ class FatturaPassiva extends Model
         'data_documento'             => 'date',
         'data_scadenza'              => 'date',
         'is_pregresso'               => 'boolean',
-        'data_competenza_originaria' => 'date', // NUOVO: Cast della data origine
+        'data_competenza_originaria' => 'date',
         'dati_extra'                 => 'array',
         'importo_imponibile'         => 'integer',
         'importo_iva'                => 'integer',

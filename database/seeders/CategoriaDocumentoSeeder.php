@@ -17,7 +17,8 @@ class CategoriaDocumentoSeeder extends Seeder
             ['name' => 'Bilanci', 'description' => 'Documenti relativi ai bilanci economici'],
             ['name' => 'Verbali', 'description' => 'Verbali delle assemblee e riunioni'],
             ['name' => 'Avvisi', 'description' => 'Comunicazioni e avvisi generali'],
-            ['name' => 'Contratti', 'description' => 'Contratti stipulati con fornitori o terzi']
+            ['name' => 'Contratti', 'description' => 'Contratti stipulati con fornitori o terzi'],
+            ['name' => 'Fatture', 'description' => 'Fatture passive e note di credito dei fornitori']
         ];
 
         foreach ($categorie as $categoria) {

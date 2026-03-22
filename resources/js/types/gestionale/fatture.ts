@@ -5,6 +5,15 @@ export interface FornitoreFattura {
     codice_fiscale?: string | null;
 }
 
+// 1. Nuova interfaccia minima per i Documenti allegati
+export interface DocumentoFattura {
+    id: number;
+    name: string;
+    path: string;
+    mime_type?: string;
+    file_size?: number;
+}
+
 export interface FatturaPassiva {
     id: number;
     condominio_id: number;
@@ -28,7 +37,7 @@ export interface FatturaPassiva {
     netto_a_pagare: number;
 
     // Stati (Ciclo di vita)
-    stato_pagamento: 'aperta' | 'parziale' | 'pagata';
+    stato_pagamento: 'aperta' | 'parziale' | 'pagata' | 'stornata'; // FIX: Aggiunto 'stornata'
     stato_approvazione: 'da_approvare' | 'approvata' | 'contestata' | 'sforo_motivato';
 
     // Pagamento
@@ -52,6 +61,10 @@ export interface FatturaPassiva {
             budget_residuo_al_momento: number;
             timestamp: string;
         };
+        // FIX: Aggiunti i campi per la logica dello Storno Contabile
+        is_stornata?: boolean;
+        stornata_da_id?: number;
+        nota_storno?: string;
     } | null;
 
     // Timestamps
@@ -60,4 +73,5 @@ export interface FatturaPassiva {
 
     // Relazioni precaricate dal Backend (Eager Loading)
     fornitore?: FornitoreFattura;
+    documenti?: DocumentoFattura[]; // FIX: Aggiunta la relazione dei documenti
 }

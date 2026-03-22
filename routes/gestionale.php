@@ -11,6 +11,7 @@ use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
+use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
@@ -182,4 +183,13 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('/fatture/{fattura}', [FatturaPassivaController::class, 'show'])
         ->name('fatture.show');
+
+    Route::delete('/fatture/{fattura}', [FatturaPassivaController::class, 'destroy'])
+        ->name('fatture.destroy');
+
+    Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
+        ->name('fatture.storno');
+    
+    Route::get('/fatture/{fattura}/download/{documento}', [FatturaPassivaController::class, 'download'])
+        ->name('fatture.download');
 });
