@@ -43,6 +43,13 @@ class PianoRateResource extends JsonResource
             'giorno_scadenza' => $this->giorno_scadenza,
             'metodo_distribuzione'  => $this->metodo_distribuzione,
             'data_inizio'     => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
+            // --- NUOVI CAMPI DELIBERA E AUDIT ---
+            'data_delibera_assemblea' => $this->data_delibera_assemblea?->format('Y-m-d'),
+            'numero_verbale'          => $this->numero_verbale,
+            'nota_approvazione'       => $this->nota_approvazione,
+            'approvato_da_user_id'    => $this->approvato_da_user_id,
+            'approvato_il'            => $this->approvato_il?->format('Y-m-d H:i:s'),
+            // ------------------------------------
             // FIX: Usiamo il totale calcolato dalla pivot
             'totale_capitoli' => (int) $totaleReale,
             // Totale rate generate (controllo incrociato)

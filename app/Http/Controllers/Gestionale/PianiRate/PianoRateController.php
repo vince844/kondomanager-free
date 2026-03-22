@@ -39,8 +39,7 @@ class PianoRateController extends Controller
 
     /**
      * Costruttore del controller.
-     * Inietta i servizi necessari per l'estrazione delle quote, la creazione dei piani 
-     * e la verifica dei saldi pregressi.
+     * Inietta i servizi necessari per l'estrazione delle quote, la creazione dei piani e la verifica dei saldi pregressi.
      *
      * @param PianoRateQuoteService $pianoRateQuoteService
      * @param PianoRateCreatorService $pianoRateCreatorService
@@ -92,8 +91,7 @@ class PianoRateController extends Controller
 
     /**
      * Mostra la pagina di creazione per un nuovo Piano Rate.
-     * Recupera e prepara tutte le dipendenze necessarie (gestioni attive, saldi pregressi vuoti 
-     * e anagrafiche) per alimentare il form frontend.
+     * Recupera e prepara tutte le dipendenze necessarie (gestioni attive, saldi pregressi vuoti e anagrafiche) per alimentare il form frontend.
      *
      * @param Condominio $condominio Il condominio corrente
      * @param Esercizio $esercizio L'esercizio contabile corrente
@@ -296,7 +294,10 @@ class PianoRateController extends Controller
             $orfaniRaw = $pianoRate->gestione->pianoConto->conti()
                 ->whereNull('parent_id')
                 ->whereDoesntHave('pianiRate', fn($q) => $q->where('piani_rate.attivo', true))
-                ->where('id', '!=', $pianoRate->capitoli->pluck('id')->toArray()) 
+                // FIX: Sostituito where('id', '!=', array) con whereNotIn
+                ->whereNotIn('id', $pianoRate->capitoli->pluck('id')->toArray()) 
+                // FIX: Escludi le voci a 0€ dal conteggio degli orfani
+                ->where('importo', '>', 0) 
                 ->get();
             
             $orfani = $orfaniRaw->map(fn($c) => [
@@ -347,10 +348,10 @@ class PianoRateController extends Controller
         $sources = $pianoRate->capitoli->map(function ($conto) {
             $importoReale = $conto->pivot->importo ?? $conto->importo; 
             return [
-                'id' => $conto->id,
-                'nome' => $conto->nome,
-                'importo_residuo' => $importoReale,
-                'formatted_residuo' => number_format($importoReale / 100, 2, ',', '.')
+                'id'                => $conto->id,
+                'nome'              => $conto->nome,
+                'importo_residuo'   => $importoReale,
+                'formatted_residuo' => MoneyHelper::format($importoReale, false)
             ];
         });
 
@@ -391,8 +392,7 @@ class PianoRateController extends Controller
     /**
      * Aggiorna lo stato di approvazione del Piano Rate.
      * Cambiare lo stato dispatcha l'evento 'PianoRateStatusUpdated', che viene 
-     * intercettato dai Listener per aggiungere (se approvato) o rimuovere (se in bozza) 
-     * gli eventi nello scadenziario generale.
+     * intercettato dai Listener per aggiungere (se approvato) o rimuovere (se in bozza) gli eventi nello scadenziario generale.
      *
      * @param Request $request Richiesta contenente il booleano 'approvato'
      * @param Condominio $condominio Il condominio corrente
@@ -400,14 +400,47 @@ class PianoRateController extends Controller
      * @param PianoRate $pianoRate Il piano rate da aggiornare
      * @return RedirectResponse Risposta con messaggio flash di successo
      */
+    /**
+     * Aggiorna lo stato di approvazione del Piano Rate e salva i dati della delibera.
+     * Cambiare lo stato dispatcha l'evento 'PianoRateStatusUpdated', che viene 
+     * intercettato dai Listener per aggiungere o rimuovere gli eventi nello scadenziario.
+     *
+     * @param Request $request
+     * @param Condominio $condominio
+     * @param Esercizio $esercizio
+     * @param PianoRate $pianoRate
+     * @return RedirectResponse
+     */
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
-        $validated = $request->validate([ 'approvato' => 'required|boolean' ]);
+        $validated = $request->validate([
+            'approvato'               => 'required|boolean',
+            'data_delibera_assemblea' => 'required_if:approvato,true|nullable|date',
+            'numero_verbale'          => 'nullable|string|max:50',
+            'nota_approvazione'       => 'nullable|string|max:500',
+        ]);
         
-        $vecchioStato = $pianoRate->stato;
+        $vecchioStato = $pianoRate->stato; // È già un oggetto Enum
         $nuovoStato = $validated['approvato'] ? StatoPianoRate::APPROVATO : StatoPianoRate::BOZZA;
         
-        $pianoRate->update(['stato' => $nuovoStato]);
+        $updateData = ['stato' => $nuovoStato];
+
+        if ($validated['approvato']) {
+            $updateData['data_delibera_assemblea'] = $validated['data_delibera_assemblea'];
+            $updateData['numero_verbale']          = $validated['numero_verbale'] ?? null;
+            $updateData['nota_approvazione']       = $validated['nota_approvazione'] ?? null;
+            $updateData['approvato_da_user_id']    = Auth::id();
+            $updateData['approvato_il']            = now();
+        } else {
+            // Torna in bozza: azzera i dati legali e l'audit
+            $updateData['data_delibera_assemblea'] = null;
+            $updateData['numero_verbale']          = null;
+            $updateData['nota_approvazione']       = null;
+            $updateData['approvato_da_user_id']    = null;
+            $updateData['approvato_il']            = null;
+        }
+
+        $pianoRate->update($updateData);
         
         PianoRateStatusUpdated::dispatch(
             $condominio, 
@@ -418,7 +451,11 @@ class PianoRateController extends Controller
             $nuovoStato
         );
         
-        return back()->with($this->flashSuccess('Stato aggiornato con successo.'));
+        $messaggio = $validated['approvato'] 
+            ? 'Piano approvato e delibera registrata con successo.' 
+            : 'Piano riportato in bozza. Dati di delibera rimossi.';
+
+        return back()->with($this->flashSuccess($messaggio));
     }
 
     /**
@@ -581,8 +618,7 @@ class PianoRateController extends Controller
     /**
      * Rimuove uno specifico capitolo di spesa da un Piano Rate esistente.
      * Elimina e ricalcola le rate basandosi sui capitoli rimanenti, verificando
-     * che il capitolo da eliminare non sia vincolato da incassi, emissioni 
-     * o spostamenti manuali di budget (BudgetMovement).
+     * che il capitolo da eliminare non sia vincolato da incassi, emissioni o spostamenti manuali di budget (BudgetMovement).
      *
      * @param Condominio $condominio Il condominio corrente
      * @param Esercizio $esercizio L'esercizio contabile corrente
@@ -634,8 +670,7 @@ class PianoRateController extends Controller
 
     /**
      * Helper di redirezione centralizzato.
-     * Restituisce un feedback all'utente a seconda che il piano rate sia stato
-     * solo creato in bozza o anche popolato fisicamente di rate.
+     * Restituisce un feedback all'utente a seconda che il piano rate sia stato solo creato in bozza o anche popolato fisicamente di rate.
      *
      * @param Condominio $condominio
      * @param Esercizio $esercizio

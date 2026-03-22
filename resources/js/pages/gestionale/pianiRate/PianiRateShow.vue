@@ -16,10 +16,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
-import { BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle,Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft } from "lucide-vue-next";
+import { BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import Alert from "@/components/Alert.vue"; 
+import Alert from "@/components/Alert.vue";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,15 +49,21 @@ const { generatePath, generateRoute } = usePermission();
 const { toItalian } = useDateConverter();
 const { euro } = useCurrencyFormatter();
 
-// --- STATO LOCALE SWITCH ---
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
+const showApprovazioneModal = ref(false);
+
+const formApprovazione = ref({
+    data_delibera_assemblea: new Date().toISOString().split('T')[0],
+    numero_verbale: '',
+    nota_approvazione: '',
+});
+
 const orphanCheckboxes = reactive<Record<number, boolean>>({});
 
-// --- LOGICA DETACH / RIMozione VOCE ---
 const itemToDelete = ref<{ id: number, nome: string, is_parent: boolean, importo: number } | null>(null);
 const isDeleteItemModalOpen = ref(false);
 const isCapitoliExpanded = ref(false);
@@ -66,17 +72,12 @@ const isSpostaSpesaOpen = ref(false);
 
 const isDisallineato = computed(() => {
     if (!props.pianoRate.capitoli || !aggregates.value) return false;
-
     const totaleVoci = props.pianoRate.capitoli.reduce((acc: number, cap: any) => acc + (cap.importo || 0), 0);
-
     if (aggregates.value.totaleTeorico === 0) return false;
-
     const saldiPregressi = (props.quotePerAnagrafica || []).reduce((sum, item) => {
         return sum + (item.saldo_iniziale || 0);
     }, 0);
-
     const totaleRatePuro = aggregates.value.totaleTeorico - saldiPregressi;
-
     return Math.abs(totaleVoci - totaleRatePuro) > 200;
 });
 
@@ -85,26 +86,18 @@ const confirmDetachItem = (capitolo: any) => {
         showFeedback('Azione bloccata', 'Non puoi rimuovere voci se ci sono incassi registrati.', true);
         return;
     }
-
     const movimenti = props.pianoRate.budget_movements || [];
     const capId = Number(capitolo.id); 
-
     const isDestination = movimenti.some((m: any) => Number(m.destination_conto_id) === capId);
     const isSource = movimenti.some((m: any) => Number(m.source_conto_id) === capId);
-
     if (isDestination || isSource) {
         let msg = `Il capitolo "${capitolo.nome}" è vincolato. `;
-        if (isDestination) {
-            msg += `Ha RICEVUTO fondi extra da altre voci. `;
-        } else {
-            msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
-        }
+        if (isDestination) msg += `Ha RICEVUTO fondi extra da altre voci. `;
+        else msg += `Ha FINANZIATO altre voci (Sposta Spesa). `;
         msg += `Per mantenere la coerenza contabile, devi annullare questi movimenti (restituendo i fondi) prima di eliminare la voce.`;
-
         showFeedback('Voce bloccata da movimenti', msg, true);
         return; 
     }
-
     itemToDelete.value = capitolo;
     isDeleteItemModalOpen.value = true;
 };
@@ -129,7 +122,6 @@ const toggleCapitoli = () => {
 
 const executeDetachItem = () => {
     if (!itemToDelete.value) return;
-
     router.delete(route('admin.gestionale.piani-rate.capitoli.detach', {
         condominio: props.condominio.id,
         esercizio: props.esercizio.id,
@@ -168,16 +160,7 @@ const feedbackDialog = ref({
 });
 
 const showFeedback = (title: string, message: string, isError: boolean = false) => {
-    feedbackDialog.value = {
-        open: true,
-        title,
-        message,
-        isError
-    };
-    
-    // Eliminiamo il messaggio flash globale di Inertia!
-    // Così l'Alert in background (in alto alla pagina) scompare istantaneamente 
-    // e l'utente vede solo ed esclusivamente la Modale.
+    feedbackDialog.value = { open: true, title, message, isError };
     if (page.props.flash) {
         (page.props.flash as any).message = undefined;
     }
@@ -209,26 +192,46 @@ const isRecalculateAlertOpen = ref(false);
 
 const toggleStatoPiano = (newValue: boolean) => {
     if (isProcessingStatus.value) return;
-    isProcessingStatus.value = true;
+    if (!newValue) {
+        eseguiCambioStato(false, {});
+        return;
+    }
+    formApprovazione.value = {
+        data_delibera_assemblea: new Date().toISOString().split('T')[0],
+        numero_verbale: '',
+        nota_approvazione: '',
+    };
+    showApprovazioneModal.value = true;
+};
 
+const confermaApprovazione = () => {
+    if (!formApprovazione.value.data_delibera_assemblea) return;
+    showApprovazioneModal.value = false;
+    eseguiCambioStato(true, formApprovazione.value);
+};
+
+const annullaApprovazione = () => {
+    showApprovazioneModal.value = false;
+    switchState.value = props.pianoRate.stato === 'approvato'; 
+};
+
+const eseguiCambioStato = (newValue: boolean, extra: object) => {
+    isProcessingStatus.value = true;
     router.put(
         route('admin.gestionale.piani-rate.update-stato', {
             condominio: props.condominio.id,
             esercizio: props.esercizio.id, 
             pianoRate: props.pianoRate.id,
         }),
-        { approvato: newValue },
+        { approvato: newValue, ...extra },
         {
             preserveScroll: true,
-            onSuccess: () => {},
             onError: (err) => {
                 console.error("Errore cambio stato:", err);
                 switchState.value = !newValue;
                 showFeedback('Errore', 'Impossibile cambiare lo stato del piano. Controlla che non ci siano rate emesse.', true);
             },
-            onFinish: () => {
-                isProcessingStatus.value = false;
-            }
+            onFinish: () => { isProcessingStatus.value = false; }
         }
     );
 };
@@ -251,9 +254,7 @@ const toggleSelectAll = (checked: boolean) => {
 
 const toggleSelection = (id: number, checked: boolean) => {
   if (checked) {
-      if (!selectedRateIds.value.includes(id)) {
-          selectedRateIds.value.push(id);
-      }
+      if (!selectedRateIds.value.includes(id)) selectedRateIds.value.push(id);
   } else {
       selectedRateIds.value = selectedRateIds.value.filter(itemId => itemId !== id);
   }
@@ -298,7 +299,6 @@ const confirmAnnullamento = (rataId: number) => {
 
 const executeAnnullamento = () => {
     if (!rataToAnnullareId.value) return;
-    
     router.delete(route('admin.gestionale.piani-rate.annulla-emissione', {
         condominio: props.condominio.id,
         pianoRate: props.pianoRate.id,
@@ -308,20 +308,14 @@ const executeAnnullamento = () => {
         onSuccess: (page) => {
             isAlertOpen.value = false;
             rataToAnnullareId.value = null;
-            
-            // FIX: Controlliamo se c'è un flash message di ERRORE dal backend
-            // (Inertia tratta i redirect con errors/flash come un 'success' HTTP)
             const flash = (page.props.flash as any).message;
             if (flash && flash.type === 'error') {
                 showFeedback('Impossibile annullare', flash.message, true);
-                return; // Fermiamo l'esecuzione per non mostrare il messaggio verde!
+                return; 
             }
-
-            // Altrimenti, mostriamo il vero successo
             showFeedback('Emissione annullata', 'La rata è tornata in stato di bozza.', false);
         },
         onError: (errors) => {
-            // Qui entra solo se c'è un VERO errore HTTP (es. 500 Server Error)
             isAlertOpen.value = false;
             const msg = Object.values(errors)[0] || 'Si è verificato un errore tecnico.';
             showFeedback('Errore di sistema', msg, true);
@@ -331,26 +325,14 @@ const executeAnnullamento = () => {
 
 const confirmRecalculate = () => {
     const haRateEmesse = props.ratePure?.some(r => r.is_emessa);
-
     if (haRateEmesse) {
-        showFeedback(
-            'Impossibile ricalcolare', 
-            'Ci sono rate già emesse in contabilità. Per sicurezza, devi prima annullare le emissioni usando il tasto "Annulla" nella tabella.', 
-            true 
-        );
+        showFeedback('Impossibile ricalcolare', 'Ci sono rate già emesse in contabilità. Per sicurezza, devi prima annullare le emissioni usando il tasto "Annulla" nella tabella.', true);
         return; 
     }
-    
-    for (const key in orphanCheckboxes) {
-        delete orphanCheckboxes[key];
-    }
-    
+    for (const key in orphanCheckboxes) delete orphanCheckboxes[key];
     if (props.copertura?.orfani) {
-        props.copertura.orfani.forEach(o => {
-            orphanCheckboxes[Number(o.id)] = true; 
-        });
+        props.copertura.orfani.forEach(o => { orphanCheckboxes[Number(o.id)] = true; });
     }
-
     isRecalculateAlertOpen.value = true;
 };
 
@@ -359,9 +341,7 @@ const executeRecalculate = () => {
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
         pianoRate: props.pianoRate.id 
-    }), {
-        orphan_ids: selectedOrphanIds.value 
-    }, { 
+    }), { orphan_ids: selectedOrphanIds.value }, { 
         preserveScroll: true,
         onSuccess: () => {
             isRecalculateAlertOpen.value = false;
@@ -409,12 +389,10 @@ const isReady = computed(() => props.pianoRate?.numero_rate > 0 && (Array.isArra
 const rateColumns = computed(() => {
   if (!isReady.value || !props.ratePure) return [];
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
-  
   return props.ratePure.map(rataPura => {
     const numero = rataPura.numero_rata;
     const sample = Array.isArray(src) ? src.find((item: any) => item.rate?.some((r: any) => r.numero === numero)) : null;
     const scadenza = sample?.rate?.find((r: any) => r.numero === numero)?.scadenza;
-    
     return { 
         numero, 
         scadenza: scadenza ? new Date(scadenza) : null,
@@ -433,34 +411,21 @@ const dataWithMap = computed(() => {
     const rate = item.rate || [];
     const rateMap = Object.fromEntries(rate.map((r: any) => [r.numero, r]));
     let scadute = 0; let versato = 0;
-    
     rate.forEach((r: any) => {
       const importo = r.importo ?? 0;
       const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
       const isScaduta = scadenzaTime <= today.getTime();
-      
       if (r.stato === "pagata") versato += importo;
       else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
-      
       if (isScaduta && r.stato !== 'pagata' && r.stato !== 'annullata' && r.stato !== 'credito') {
         if(r.stato === 'parzialmente_pagata') scadute += (importo - (r.importo_pagato ?? 0));
         else scadute += importo;
       }
     });
-
     const creditiRiga = rate.filter((r: any) => r.importo < 0).reduce((sum: number, r: any) => sum + Math.abs(r.importo), 0);
     const totaleRate = rate.reduce((sum: number, r: any) => sum + (r.importo ?? 0), 0);
     const saldoNetto = totaleRate - versato; 
-
-    return { 
-        ...item, 
-        rateMap, 
-        scaduteRiga: scadute, 
-        versatoRiga: versato, 
-        creditiRiga, 
-        totaleRate, 
-        totale: saldoNetto 
-    };
+    return { ...item, rateMap, scaduteRiga: scadute, versatoRiga: versato, creditiRiga, totaleRate, totale: saldoNetto };
   });
 });
 
@@ -472,18 +437,14 @@ const currentData = computed(() => {
 const aggregates = computed(() => {
   if (!isReady.value) return { totaleGenerale: 0, totaliPerRata: {}, totaleRateScadute: 0, totaleVersato: 0, creditiTotali: 0, totaleTeorico: 0, daIncassareTotale: 0 };
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
-  
   const perRata: Record<number, number> = {};
   let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
-  
   (src || []).forEach((item: any) => {
     (item.rate || []).forEach((r: any) => {
       const importo = r.importo ?? 0;
       const scadenzaTime = new Date(r.scadenza).setHours(0, 0, 0, 0);
       const isScaduta = scadenzaTime <= today.getTime();
-      
       perRata[r.numero] = (perRata[r.numero] || 0) + importo;
-      
       totaleTeorico += importo;
       if (r.stato === "pagata") versato += importo;
       else if (r.stato === "parzialmente_pagata") versato += (r.importo_pagato ?? 0);
@@ -498,6 +459,18 @@ const aggregates = computed(() => {
   return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
 });
 
+const isRecalculateBlocked = computed(() => {
+    const haIncassi = aggregates.value.totaleVersato > 0;
+    const haEmissioni = props.ratePure?.some(r => r.is_emessa);
+    return haIncassi || haEmissioni;
+});
+
+const recalculateBlockReason = computed(() => {
+    if (aggregates.value.totaleVersato > 0) return "Disabilitato: annulla prima gli incassi registrati.";
+    if (props.ratePure?.some(r => r.is_emessa)) return "Disabilitato: annulla prima le emissioni in contabilità.";
+    return "";
+});
+
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: props.condominio.nome, href: '#' },
@@ -505,7 +478,6 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Dettaglio', href: '#' },
 ]);
 
-// --- HELPER ESTRAZIONE SALDI PER UI V1.9 ---
 interface DettaglioStats {
     spesa: number;
     saldo: number;
@@ -520,25 +492,19 @@ const getRateStats = (dettaglioQuote: any[]): DettaglioStats => {
     if (!dettaglioQuote || !Array.isArray(dettaglioQuote)) {
         return { spesa: 0, saldo: 0, totale_debiti: 0, totale_crediti: 0, saldo_netto: 0, hasDebito: false, hasCredito: false };
     }
-    
-    // Ora TypeScript sa esattamente cosa sono "acc" e "q"
     return dettaglioQuote.reduce((acc: DettaglioStats, q: any) => {
         const s = q.componente_saldo || 0;
         const spesa = q.componente_spesa || 0;
-        
         acc.spesa += spesa;
         acc.saldo += s;
         acc.totale_debiti += (s > 0 ? s : 0);
         acc.totale_crediti += (s < 0 ? s : 0);
         acc.saldo_netto += s;
-        
         if (s > 0) acc.hasDebito = true;
         if (s < 0) acc.hasCredito = true;
-        
         return acc;
     }, { spesa: 0, saldo: 0, totale_debiti: 0, totale_crediti: 0, saldo_netto: 0, hasDebito: false, hasCredito: false });
 };
-// -------------------------------------------
 
 const executePublishSilent = () => {
     router.post(route(generateRoute('gestionale.piani-rate.publish-silent'), {
@@ -568,6 +534,18 @@ const executePublishSilent = () => {
             :title="`Piano rate: ${props.pianoRate.nome}`" 
             description="Situazione aggiornata delle rate e dei pagamenti."
           />
+
+          <div 
+              v-if="props.pianoRate.stato === 'approvato' && props.pianoRate.data_delibera_assemblea" 
+              class="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[11px] font-medium shadow-sm animate-in fade-in zoom-in duration-300"
+          >
+              <Gavel class="w-3.5 h-3.5" />
+              <span>Delibera del <strong>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</strong></span>
+              <span v-if="props.pianoRate.numero_verbale" class="pl-2 ml-1 border-l border-emerald-300 font-bold uppercase tracking-wider">
+                  {{ props.pianoRate.numero_verbale }}
+              </span>
+          </div>
+
           <div v-if="flashMessage" class="animate-in fade-in slide-in-from-top-4 duration-300">
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
@@ -580,7 +558,7 @@ const executePublishSilent = () => {
               <div class="ml-3 flex-1 md:flex md:justify-between">
                 <p class="text-sm text-amber-800">
                   <strong>Stato Bozza:</strong> Il piano è attualmente modificabile e non ha generato movimenti contabili.
-                  <span class="block sm:inline mt-1 sm:mt-0">Controlla i dati, poi passa allo stato <strong>Approvato</strong> per rendere esecutive le rate ed emetterle.</span>
+                  <span class="block sm:inline mt-1 sm:mt-0">Controlla i dati, poi passa allo stato <strong>Approvato</strong> per registrare la delibera ed emettere le rate.</span>
                 </p>
               </div>
             </div>
@@ -588,269 +566,271 @@ const executePublishSilent = () => {
 
           <Tabs v-model="tab" class="space-y-6">
 
-            <div class="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 w-full">
-              
-                <TabsList class="grid w-full xl:w-[350px] grid-cols-2 bg-muted p-1 rounded-lg shrink-0">
+            <!-- ============================================================ -->
+            <!-- ACTION BAR UNIFICATA                                         -->
+            <!-- ============================================================ -->
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 p-2 bg-gray-50/50 border rounded-lg w-full">
+
+                <!-- TAB: Per anagrafica / Per immobile -->
+                <TabsList class="grid w-full sm:w-[280px] grid-cols-2 bg-muted p-1 rounded-md shrink-0">
                     <TabsTrigger value="anagrafica">Per anagrafica</TabsTrigger>
                     <TabsTrigger value="immobile">Per immobile</TabsTrigger>
                 </TabsList>
 
-                <div class="flex flex-wrap items-center justify-start xl:justify-end gap-3 w-full">
-                  
-                  <div class="flex flex-wrap items-center gap-2 p-1.5 bg-gray-50/50 border rounded-lg">
-                      <HoverCard :open-delay="200">
-                          <HoverCardTrigger as-child>
-                              <div class="flex items-center space-x-2 px-2">
-                                  <button 
-                                      type="button" 
-                                      class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
-                                      :class="[
-                                          switchState ? 'bg-emerald-600' : 'bg-gray-200',
-                                          (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
-                                      ]"
-                                      :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
-                                      @click="toggleStatoPiano(!switchState)"
-                                      role="switch"
-                                      :aria-checked="switchState"
-                                  >
-                                      <span class="sr-only">Cambia stato piano</span>
-                                      <span 
-                                          aria-hidden="true" 
-                                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                                          :class="switchState ? 'translate-x-5' : 'translate-x-0'"
-                                      >
-                                          <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
-                                              :class="switchState ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in'"
-                                          >
-                                              <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 12 12"><path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                                          </span>
-                                          <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
-                                              :class="switchState ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out'"
-                                          >
-                                              <svg class="h-3 w-3 text-emerald-600" fill="currentColor" viewBox="0 0 12 12"><path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" /></svg>
-                                          </span>
-                                      </span>
-                                  </button>
+                <div class="w-px h-5 bg-gray-300 hidden sm:block shrink-0"></div>
 
-                                  <Label 
-                                      class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
-                                      :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
-                                      @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
-                                  >
-                                      {{ switchState ? 'Approvato' : 'Bozza' }}
-                                  </Label>
-                              </div>
-                          </HoverCardTrigger>
-                          <HoverCardContent class="w-80 z-50">
-                              
-                              <div v-if="switchState && props.ratePure.some(r => r.is_emessa)" class="space-y-3">
-                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700">
-                                      <Lock class="w-4 h-4 text-amber-600" /> Azione Bloccata
-                                  </h4>
-                                  <div class="text-sm space-y-2 text-slate-600">
-                                      <p>
-                                          Non puoi tornare in stato <strong>Bozza</strong> perché ci sono rate già emesse in contabilità.
-                                      </p>
-                                      <p class="text-[11px] text-slate-500">
-                                          Per sbloccare l'interruttore, annulla prima le emissioni usando il tasto con la freccia circolare nella tabella qui sotto.
-                                      </p>
-                                  </div>
-                              </div>
+                <!-- PULSANTI — scroll orizzontale su mobile -->
+                <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5">
 
-                              <div v-else-if="switchState" class="space-y-3">
-                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-700">
-                                      <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Stato: Approvato
-                                  </h4>
-                                  <div class="text-sm space-y-2 text-slate-600">
-                                      <p>
-                                          Il piano rate è protetto da modifiche strutturali (es. aggiunta/rimozione capitoli).
-                                      </p>
-                                      <p class="text-[11px] text-slate-500">
-                                          Puoi procedere con l'emissione delle rate, oppure tornare in Bozza se devi ricalcolare gli importi.
-                                      </p>
-                                  </div>
-                              </div>
+                    <!-- SWITCH APPROVATO/BOZZA -->
+                    <HoverCard :open-delay="200">
+                        <HoverCardTrigger as-child>
+                            <div class="flex items-center space-x-2 px-1 h-8 shrink-0">
+                                <button 
+                                    type="button" 
+                                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:ring-offset-2"
+                                    :class="[
+                                        switchState ? 'bg-emerald-600' : 'bg-gray-200',
+                                        (isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) ? 'opacity-50 cursor-not-allowed' : ''
+                                    ]"
+                                    :disabled="isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))"
+                                    @click="toggleStatoPiano(!switchState)"
+                                    role="switch"
+                                    :aria-checked="switchState"
+                                >
+                                    <span class="sr-only">Cambia stato piano</span>
+                                    <span 
+                                        aria-hidden="true" 
+                                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                                        :class="switchState ? 'translate-x-5' : 'translate-x-0'"
+                                    >
+                                        <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                            :class="switchState ? 'opacity-0 duration-100 ease-out' : 'opacity-100 duration-200 ease-in'"
+                                        >
+                                            <svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 12 12"><path d="M4 8l2-2m0 0l2-2M6 6L4 4m2 2l2 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                                        </span>
+                                        <span class="absolute inset-0 flex h-full w-full items-center justify-center transition-opacity"
+                                            :class="switchState ? 'opacity-100 duration-200 ease-in' : 'opacity-0 duration-100 ease-out'"
+                                        >
+                                            <svg class="h-3 w-3 text-emerald-600" fill="currentColor" viewBox="0 0 12 12"><path d="M3.707 5.293a1 1 0 00-1.414 1.414l1.414-1.414zM5 8l-.707.707a1 1 0 001.414 0L5 8zm4.707-3.293a1 1 0 00-1.414-1.414l1.414 1.414zm-7.414 2l2 2 1.414-1.414-2-2-1.414 1.414zm3.414 2l4-4-1.414-1.414-4 4 1.414 1.414z" /></svg>
+                                        </span>
+                                    </span>
+                                </button>
+                                <Label 
+                                    class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
+                                    :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
+                                    @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
+                                >
+                                    {{ switchState ? 'Approvato' : 'Bozza' }}
+                                </Label>
+                            </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div v-if="switchState && props.ratePure.some(r => r.is_emessa)" class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700">
+                                    <Lock class="w-4 h-4 text-amber-600" /> Azione bloccata
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Non puoi tornare in stato <strong>Bozza</strong> perché ci sono rate già emesse in contabilità.</p>
+                                    <p class="text-[11px] text-slate-500">Per sbloccare l'interruttore, annulla prima le emissioni usando il tasto con la freccia circolare nella tabella qui sotto.</p>
+                                </div>
+                            </div>
+                            <div v-else-if="switchState" class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-700">
+                                    <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Stato: Approvato
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Il piano rate è protetto da modifiche e la delibera assembleare è stata registrata a sistema.</p>
+                                    <p class="text-[11px] text-slate-500">Puoi procedere con l'emissione delle rate, oppure tornare in Bozza se devi modificare i capitoli (la delibera andrà registrata nuovamente).</p>
+                                </div>
+                            </div>
+                            <div v-else class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700">
+                                    <History class="w-4 h-4 text-slate-500" /> Stato: Bozza
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel Libro Giornale.</p>
+                                    <p class="text-[11px] text-slate-500 font-medium">Clicca l'interruttore per inserire i dati della delibera e passare allo stato Approvato.</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                              <div v-else class="space-y-3">
-                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700">
-                                      <History class="w-4 h-4 text-slate-500" /> Stato: Bozza
-                                  </h4>
-                                  <div class="text-sm space-y-2 text-slate-600">
-                                      <p>
-                                          Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel Libro Giornale.
-                                      </p>
-                                      <p class="text-[11px] text-slate-500 font-medium">
-                                          Clicca l'interruttore per passare ad Approvato e sbloccare i tasti di emissione.
-                                      </p>
-                                  </div>
-                              </div>
+                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
 
-                          </HoverCardContent>
-                      </HoverCard>
+                    <!-- SELEZIONA TUTTE -->
+                    <HoverCard v-if="switchState">
+                        <HoverCardTrigger as-child>
+                            <Button
+                                variant="outline"
+                                class="h-8 px-3 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 bg-white shrink-0"
+                                @click="toggleSelectAll(!isAllSelected)"
+                            >
+                                <CheckCircle2 v-if="!isAllSelected" class="w-4 h-4 sm:mr-2" />
+                                <XCircle v-else class="w-4 h-4 sm:mr-2" />
+                                <span class="hidden sm:inline">{{ isAllSelected ? 'Deseleziona' : 'Seleziona tutte' }}</span>
+                            </Button>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
+                                    <CheckCircle2 class="w-4 h-4 text-emerald-600" /> Selezione rate
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p v-if="!isAllSelected">Seleziona tutte le <strong>{{ emettibili.length }}</strong> rate non ancora emesse per procedere all'emissione in blocco.</p>
+                                    <p v-else>Deseleziona tutte le rate selezionate.</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                      <div class="w-px h-6 bg-gray-200 mx-1 hidden sm:block"></div>
+                    <!-- EMETTI -->
+                    <HoverCard v-if="switchState">
+                        <HoverCardTrigger as-child>
+                            <span class="inline-block shrink-0" :tabindex="selectedRateIds.length === 0 ? 0 : -1">
+                                <Button 
+                                    :disabled="selectedRateIds.length === 0" 
+                                    variant="default" 
+                                    class="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 border shadow-sm"
+                                    :class="{'pointer-events-none': selectedRateIds.length === 0}"
+                                    @click="openEmissionModal"
+                                >
+                                    <Wallet class="w-4 h-4 sm:mr-2" />
+                                    <span class="hidden sm:inline">Emetti ({{ selectedRateIds.length }})</span>
+                                    <span class="sm:hidden text-xs">{{ selectedRateIds.length }}</span>
+                                </Button>
+                            </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
+                                    <Wallet class="w-4 h-4 text-emerald-600" /> Emissione rate
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p v-if="selectedRateIds.length === 0">Usa <strong>Seleziona tutte</strong> o le spunte nella tabella per selezionare le rate da emettere.</p>
+                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in Prima Nota.</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                      <div class="flex items-center gap-2">
-                          <HoverCard v-if="switchState">
-                              <HoverCardTrigger as-child>
-                                  <span class="inline-block" :tabindex="selectedRateIds.length === 0 ? 0 : -1">
-                                      <Button 
-                                          :disabled="selectedRateIds.length === 0" 
-                                          variant="default" 
-                                          class="bg-emerald-600 hover:bg-emerald-700 h-8 px-3 w-full" 
-                                          :class="{'pointer-events-none': selectedRateIds.length === 0}"
-                                          @click="openEmissionModal"
-                                      >
-                                          <Wallet class="w-4 h-4 mr-2" /> Emetti ({{ selectedRateIds.length }})
-                                      </Button>
-                                  </span>
-                              </HoverCardTrigger>
-                              <HoverCardContent class="w-80 z-50">
-                                  <div class="space-y-3">
-                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
-                                          <Wallet class="w-4 h-4 text-emerald-600" /> Emissione rate
-                                      </h4>
-                                      <div class="text-sm space-y-2 text-slate-600">
-                                          <p v-if="selectedRateIds.length === 0">
-                                              Usa le <strong>spunte nella tabella</strong> qui sotto per selezionare le rate che vuoi emettere in contabilità.
-                                          </p>
-                                          <p v-else>
-                                              Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in Prima Nota.
-                                          </p>
-                                      </div>
-                                  </div>
-                              </HoverCardContent>
-                          </HoverCard>
+                    <HoverCard v-else>
+                        <HoverCardTrigger as-child>
+                            <span class="inline-block shrink-0" tabindex="0">
+                                <Button disabled variant="secondary" class="h-8 px-3 opacity-70 pointer-events-none border shadow-sm">
+                                    <Lock class="w-4 h-4 sm:mr-2" />
+                                    <span class="hidden sm:inline">Approva per emettere</span>
+                                </Button>
+                            </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                    <Lock class="w-4 h-4 text-slate-500" /> Emissione bloccata
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Il piano rate è attualmente in stato <strong>Bozza</strong>.</p>
+                                    <p>Usa l'interruttore a sinistra per passare allo stato <strong>Approvato</strong> inserendo i dati dell'assemblea.</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                          <HoverCard v-else>
-                              <HoverCardTrigger as-child>
-                                  <span class="inline-block" tabindex="0">
-                                      <Button disabled variant="secondary" class="h-8 px-3 opacity-70 w-full pointer-events-none">
-                                          <Lock class="w-4 h-4 mr-2" /> Approva per emettere
-                                      </Button>
-                                  </span>
-                              </HoverCardTrigger>
-                              <HoverCardContent class="w-80 z-50">
-                                  <div class="space-y-3">
-                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
-                                          <Lock class="w-4 h-4 text-slate-500" /> Emissione bloccata
-                                      </h4>
-                                      <div class="text-sm space-y-2 text-slate-600">
-                                          <p>
-                                              Il piano rate è attualmente in stato <strong>Bozza</strong>.
-                                          </p>
-                                          <p>
-                                              Usa l'interruttore a sinistra per passare allo stato <strong>Approvato</strong>. Solo in quel momento potrai procedere con l'emissione.
-                                          </p>
-                                      </div>
-                                  </div>
-                              </HoverCardContent>
-                          </HoverCard>
+                    <!-- PUBBLICA NASCOSTE -->
+                    <HoverCard v-if="props.has_unpublished_rates">
+                        <HoverCardTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all shrink-0" @click="executePublishSilent">
+                                <BellRing class="w-4 h-4 sm:mr-2" />
+                                <span class="hidden sm:inline">Pubblica nascoste</span>
+                            </Button>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Ci sono rate emesse contabilmente ma attualmente <strong>nascoste</strong> ai condòmini.</p>
+                                    <p>Clicca questo pulsante per sbloccarne la visibilità nell'App e <strong>inviare le notifiche</strong> (Push/Email).</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                          <HoverCard v-if="props.has_unpublished_rates">
-                              <HoverCardTrigger as-child>
-                                  <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all" @click="executePublishSilent">
-                                      <BellRing class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Pubblica nascoste</span>
-                                  </Button>
-                              </HoverCardTrigger>
-                              <HoverCardContent class="w-80 z-50">
-                                  <div class="space-y-3">
-                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-amber-700"><BellRing class="w-4 h-4" /> Rate in Sospeso</h4>
-                                      <div class="text-sm space-y-2 text-slate-600">
-                                          <p>Ci sono rate emesse contabilmente ma attualmente <strong>nascoste</strong> ai condòmini.</p>
-                                          <p>Clicca questo pulsante per sbloccarne la visibilità nell'App e <strong>inviare le notifiche</strong> (Push/Email).</p>
-                                      </div>
-                                  </div>
-                              </HoverCardContent>
-                          </HoverCard>
-                      </div>
-                  </div>
+                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
 
-                  <div class="flex flex-wrap items-center gap-2">
-                      
-                      <HoverCard>
-                          <HoverCardTrigger as-child>
-                              <Button 
-                                  @click="confirmRecalculate"
-                                  :disabled="aggregates.totaleVersato > 0"
-                                  class="inline-flex items-center justify-center gap-2 rounded-md border border-gray-200 bg-white h-9 px-3 text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                                  :class="aggregates.totaleVersato > 0 ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400' : 'text-gray-700 hover:bg-gray-50 hover:text-primary'"
-                              >
-                                  <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0}" />
-                                  <span :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0}">
-                                      {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
-                                  </span>
-                              </Button>
-                          </HoverCardTrigger>
-                          <HoverCardContent class="w-80 z-50">
-                              <div class="space-y-3">
-                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
-                                      <RotateCw class="w-4 h-4 text-primary" /> Ricalcolo piano rate
-                                  </h4>
-                                  <div class="text-sm space-y-2 text-slate-600">
-                                      <p>
-                                          Rigenera le quote del piano rate in base ai millesimi attuali e ai preventivi di spesa aggiornati.
-                                      </p>
-                                      <div v-if="(copertura?.scoperto_count ?? 0) > 0" class="p-2 bg-amber-50 rounded-md border border-amber-200 text-amber-800 text-xs">
-                                          <strong>Sincronizzazione necessaria:</strong> Ci sono voci di spesa scoperte che possono essere incluse in questo piano.
-                                      </div>
-                                      <p v-if="aggregates.totaleVersato > 0" class="text-red-500 font-medium text-xs mt-1">
-                                          <Lock class="w-3 h-3 inline mr-1"/> Disabilitato: ci sono incassi registrati.
-                                      </p>
-                                  </div>
-                              </div>
-                          </HoverCardContent>
-                      </HoverCard>
+                    <!-- RICALCOLA / SINCRONIZZA -->
+                    <HoverCard>
+                        <HoverCardTrigger as-child>
+                            <span class="inline-block shrink-0" :tabindex="isRecalculateBlocked ? 0 : -1">
+                                <Button 
+                                    @click="confirmRecalculate"
+                                    :disabled="isRecalculateBlocked"
+                                    class="inline-flex items-center justify-center gap-2 rounded-md border bg-white h-8 px-3 text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                                    :class="isRecalculateBlocked 
+                                        ? 'border-gray-200 opacity-60 cursor-not-allowed bg-gray-50 text-gray-500' 
+                                        : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary'"
+                                >
+                                    <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}" />
+                                    <span class="hidden sm:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}">
+                                        {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
+                                    </span>
+                                </Button>
+                            </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-800">
+                                    <RotateCw class="w-4 h-4" :class="isRecalculateBlocked ? 'text-slate-500' : 'text-primary'" /> 
+                                    {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza e ricalcola' : 'Ricalcolo piano rate' }}
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p v-if="(copertura?.scoperto_count ?? 0) > 0">Include le nuove voci di spesa scoperte e rigenera le quote in base ai preventivi aggiornati.</p>
+                                    <p v-else>Rigenera le quote del piano rate in base ai millesimi attuali e ai preventivi di spesa aggiornati.</p>
+                                    <div v-if="(copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked" class="p-2 bg-amber-50 rounded-md border border-amber-200 text-amber-800 text-xs">
+                                        <strong>Sincronizzazione necessaria:</strong> Ci sono voci di spesa scoperte che possono essere incluse in questo piano.
+                                    </div>
+                                    <p v-if="isRecalculateBlocked" class="text-red-500 font-medium text-xs mt-2 p-2 bg-red-50 border border-red-100 rounded-md flex items-start gap-1.5">
+                                        <span>{{ recalculateBlockReason }}</span>
+                                    </p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                      <HoverCard>
-                          <HoverCardTrigger as-child>
-                              <Button variant="outline" class="h-9 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white" @click="isSpostaSpesaOpen = true">
-                                  <ArrowRightLeft class="w-4 h-4 sm:mr-2" /> <span class="hidden sm:inline">Sposta spesa</span>
-                              </Button>
-                          </HoverCardTrigger>
-                          <HoverCardContent class="w-80 z-50">
-                              <div class="space-y-3">
-                                  <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800">
-                                      <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta spesa
-                                  </h4>
-                                  <div class="text-sm space-y-2 text-slate-600">
-                                      <p>
-                                          Trasferisci fondi da un capitolo di spesa all'altro all'interno di questo piano rate, o verso altri capitoli della gestione.
-                                      </p>
-                                      <p class="text-xs italic text-slate-500">
-                                          Utile per compensare spese impreviste senza dover ricalcolare l'intero piano o emettere nuove rate.
-                                      </p>
-                                  </div>
-                              </div>
-                          </HoverCardContent>
-                      </HoverCard>
+                    <!-- SPOSTA SPESA -->
+                    <HoverCard>
+                        <HoverCardTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white shrink-0" @click="isSpostaSpesaOpen = true">
+                                <ArrowRightLeft class="w-4 h-4 sm:mr-2" />
+                                <span class="hidden sm:inline">Sposta spesa</span>
+                            </Button>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-indigo-800">
+                                    <ArrowRightLeft class="w-4 h-4 text-indigo-500" /> Sposta spesa
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <p>Trasferisci fondi da un capitolo di spesa all'altro all'interno di questo piano rate, o verso altri capitoli della gestione.</p>
+                                    <p class="text-xs italic text-slate-500">Utile per compensare spese impreviste senza dover ricalcolare l'intero piano o emettere nuove rate.</p>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
 
-                      <Link 
-                          :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })" 
-                          class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white h-9 px-3 hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
-                      >
-                          <List class="w-4 h-4 sm:mr-1" />
-                          <span class="hidden sm:inline">Lista</span>
-                      </Link>
-                  </div>
+                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
+
+                    <!-- LISTA -->
+                    <Link 
+                        :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })" 
+                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white h-8 px-3 hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap shrink-0"
+                    >
+                        <List class="w-4 h-4 sm:mr-1" />
+                        <span class="hidden sm:inline">Lista</span>
+                    </Link>
+
                 </div>
             </div>
-
-            <div v-if="switchState" class="flex items-center space-x-2 px-1 ml-1">
-                <input
-                  id="select-all"
-                  type="checkbox"
-                  :checked="isAllSelected"
-                  @change="(e) => toggleSelectAll((e.target as HTMLInputElement).checked)"
-                  class="h-4 w-4 cursor-pointer accent-emerald-600 rounded-sm"
-                />
-                <Label
-                  for="select-all"
-                  class="text-xs cursor-pointer text-muted-foreground uppercase font-semibold tracking-wider select-none"
-                >
-                  Seleziona tutte le rate non emesse per l'emissione
-                </Label>
-            </div>
+            <!-- ============================================================ -->
 
             <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 <Card class="bg-white shadow-sm border"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
@@ -861,7 +841,6 @@ const executePublishSilent = () => {
             </div>
 
             <div v-if="isReady" class="mt-6 border rounded-lg bg-white shadow-sm transition-all duration-200">
-
                 <button 
                     @click="toggleCapitoli" 
                     class="w-full flex justify-between items-center px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg"
@@ -871,19 +850,13 @@ const executePublishSilent = () => {
                         <div class="bg-white p-1.5 rounded-md border shadow-sm">
                             <Wallet class="w-4 h-4 text-emerald-600" />
                         </div>
-                    <div class="text-left">
+                        <div class="text-left">
                             <h3 class="text-sm font-bold text-gray-700 flex items-center gap-2">
                                 Copertura spese
-                                
-                                <Badge 
-                                    v-if="isDisallineato" 
-                                    variant="destructive" 
-                                    class="text-[10px] py-0 px-1.5"
-                                >
+                                <Badge v-if="isDisallineato" variant="destructive" class="text-[10px] py-0 px-1.5">
                                     <AlertTriangle class="w-3 h-3 mr-1" /> Disallineato: ricalcola!
                                 </Badge>
                             </h3>
-                            
                             <p class="text-[10px] text-gray-500">
                                 {{ props.pianoRate.capitoli?.length ?? 0 }} voci incluse • 
                                 <span :class="{'text-red-600 font-bold': isDisallineato}">
@@ -892,7 +865,6 @@ const executePublishSilent = () => {
                             </p>
                         </div>
                     </div>
-                    
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-primary font-medium" v-if="!isCapitoliExpanded">
                             {{ isProcessingStatus ? 'Aggiornamento...' : 'Mostra dettagli' }}
@@ -904,22 +876,15 @@ const executePublishSilent = () => {
                 <div v-if="isCapitoliExpanded" class="border-t divide-y divide-gray-100 max-h-60 overflow-y-auto bg-white">
                     <div v-if="props.pianoRate.capitoli?.length" class="divide-y divide-gray-100">
                         <div v-for="capitolo in props.pianoRate.capitoli" :key="capitolo.id" class="flex items-start justify-between px-4 py-3 hover:bg-slate-50 group transition-colors">
-                            
-                            <div class="flex flex-col gap-1"> <div class="flex items-center gap-2 flex-wrap">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-sm font-semibold text-gray-800">{{ capitolo.nome }}</span>
-                                    
                                     <span v-if="capitolo.is_parent" class="text-[9px] bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
                                         <Layers class="w-3 h-3" /> Gruppo
                                     </span>
-
-                                    <span 
-                                        v-if="isVoceRicevente(capitolo.id)" 
-                                        class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
-                                        title="Questa voce ha ricevuto budget da un altro capitolo"
-                                    >
+                                    <span v-if="isVoceRicevente(capitolo.id)" class="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1" title="Questa voce ha ricevuto budget da un altro capitolo">
                                         <ArrowRightLeft class="w-3 h-3" /> Integra
                                     </span>
-
                                     <TooltipProvider v-if="capitolo.is_frazionato && !isVoceRicevente(capitolo.id)">
                                         <Tooltip :delayDuration="300">
                                             <TooltipTrigger as-child>
@@ -930,43 +895,27 @@ const executePublishSilent = () => {
                                             <TooltipContent class="bg-slate-900 text-white border-slate-800 text-xs">
                                                 <p v-if="capitolo.is_parent">Questo gruppo è incluso parzialmente.</p>
                                                 <p v-else>Importo ridotto rispetto al preventivo originale.</p>
-                                                <p class="font-mono mt-1 opacity-80">
-                                                    Totale originale: {{ euro(capitolo.importo_originale) }}
-                                                </p>
+                                                <p class="font-mono mt-1 opacity-80">Totale originale: {{ euro(capitolo.importo_originale) }}</p>
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
-
-                                    <span 
-                                        v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" 
-                                        class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1"
-                                    >
+                                    <span v-if="!capitolo.is_parent && !capitolo.is_frazionato && !isVoceRicevente(capitolo.id)" class="text-[9px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider flex items-center gap-1">
                                         <CheckCircle2 class="w-3 h-3" /> Standard
                                     </span>
                                 </div>
-                                
-                                <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">
-                                    Include: {{ capitolo.figli_names }}
-                                </p>
-                                
+                                <p v-if="capitolo.is_parent" class="text-[10px] text-gray-400 leading-tight max-w-md">Include: {{ capitolo.figli_names }}</p>
                                 <p v-if="isVoceRicevente(capitolo.id)" class="text-[10px] text-amber-600 leading-tight flex items-center gap-1">
                                     Include fondi spostati da altre voci 
-                                    <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">
-                                        (vedi storico <History class="w-2.5 h-2.5" />)
-                                    </span>
+                                    <span class="inline-flex items-center gap-0.5 whitespace-nowrap opacity-80">(vedi storico <History class="w-2.5 h-2.5" />)</span>
                                 </p>
                             </div>
-
                             <div class="flex items-center gap-4">
-
                                 <BudgetHistoryPopover 
                                     :capitolo-id="capitolo.id"
                                     :current-amount="capitolo.importo"
                                     :movements="props.pianoRate.budget_movements || []"
                                 />
-                    
                                 <span class="text-xs font-medium text-gray-700">{{ euro(capitolo.importo) }}</span>
-                                
                                 <button 
                                     @click="confirmDetachItem(capitolo)"
                                     :disabled="switchState || aggregates.totaleVersato > 0"
@@ -997,7 +946,6 @@ const executePublishSilent = () => {
                         
                         <th v-for="col in rateColumns" :key="col.numero" class="text-center px-4 py-3 min-w-[100px] relative group/header">
                           <div class="flex items-center justify-center gap-2">
-                              
                               <div v-if="switchState && !col.is_emessa && col.id" class="z-10 cursor-pointer flex items-center justify-center">
                                 <input 
                                     type="checkbox"
@@ -1009,11 +957,9 @@ const executePublishSilent = () => {
                                     class="h-4 w-4 cursor-pointer accent-emerald-600 z-50 relative"
                                 />
                               </div>
-
                               <div class="flex flex-col items-center relative z-20 pointer-events-none">
                                   <div class="font-semibold text-gray-700 flex items-center gap-1">
                                        {{ col.numero === 0 ? 'Saldi Iniziali' : 'Rata ' + col.numero }}
-                                      
                                        <TooltipProvider v-if="col.is_emessa" :delayDuration="100">
                                             <Tooltip>
                                                 <TooltipTrigger class="pointer-events-auto cursor-help">
@@ -1034,11 +980,9 @@ const executePublishSilent = () => {
                                                 </TooltipContent>
                                             </Tooltip>
                                        </TooltipProvider>
-
                                   </div>
                                   <div class="text-[10px] opacity-75 font-normal">{{ col.scadenza ? toItalian(col.scadenza) : "—" }}</div>
                               </div>
-
                               <TooltipProvider v-if="switchState && col.is_emessa" :delayDuration="150">
                                   <Tooltip>
                                       <TooltipTrigger as-child>
@@ -1054,7 +998,6 @@ const executePublishSilent = () => {
                                       </TooltipContent>
                                   </Tooltip>
                               </TooltipProvider>
-
                           </div>
                         </th>
 
@@ -1105,7 +1048,6 @@ const executePublishSilent = () => {
                                                 <component :is="getRataStyle(item.rateMap[col.numero]).icon" v-if="getRataStyle(item.rateMap[col.numero]).icon" class="w-3 h-3 opacity-60" />
                                                 <span class="text-xs">{{ euro(item.rateMap[col.numero].importo) }}</span>
                                             </div>
-                                            
                                             <div class="mt-0.5 w-full flex justify-center">
                                                 <div v-if="!col.is_emessa" class="text-[9px] font-bold text-gray-400 uppercase tracking-wide bg-gray-100 px-1.5 rounded-sm inline-block">
                                                     BOZZA
@@ -1114,19 +1056,15 @@ const executePublishSilent = () => {
                                                     {{ toItalian(item.rateMap[col.numero].scadenza) }}
                                                 </div>
                                             </div>
-                                            
                                             <div v-if="item.rateMap[col.numero].stato === 'parzialmente_pagata'" class="absolute -top-1.5 right-0 bg-amber-100 text-[8px] px-1 rounded-sm text-amber-700 font-bold border border-amber-200 shadow-sm z-20">
                                                 PARZ.
                                             </div>
-                                            
                                             <div v-if="item.rateMap[col.numero].dettaglio_quote" 
                                                 v-for="stats in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" 
                                                 :key="'dots-' + col.numero" class="z-20"
                                             >
                                                 <div v-if="stats.hasDebito && !stats.hasCredito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
-                                                
                                                 <div v-if="stats.hasCredito && !stats.hasDebito" class="absolute -top-1 -right-1 rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
-                                                
                                                 <div v-if="stats.hasDebito && stats.hasCredito" class="absolute -top-1 -right-1 flex gap-0.5">
                                                     <div class="rounded-full w-2.5 h-2.5 bg-blue-500 shadow-sm ring-1 ring-white"></div>
                                                     <div class="rounded-full w-2.5 h-2.5 bg-red-500 shadow-sm ring-1 ring-white"></div>
@@ -1134,20 +1072,15 @@ const executePublishSilent = () => {
                                             </div>
                                         </div>
                                     </TooltipTrigger>
-                                    
                                     <TooltipContent side="top" class="bg-slate-900 text-white border-slate-800 shadow-xl">
                                         <div class="text-xs text-center">
                                             <p class="font-bold mb-1">{{ getRataStyle(item.rateMap[col.numero]).label }}</p>
-                                            
                                             <div v-if="item.rateMap[col.numero].dettaglio_quote && item.rateMap[col.numero].dettaglio_quote.length > 0" class="mb-2 pb-1.5 border-b border-white/20 text-left space-y-1">
-    
                                                 <div v-for="dettaglio in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" :key="'dettaglio-' + col.numero" class="space-y-1">
-                                                
                                                     <div v-if="dettaglio.spesa !== 0" class="flex justify-between gap-4 text-slate-300">
                                                         <span>Quota ordinaria:</span>
                                                         <span class="font-mono">{{ euro(dettaglio.spesa) }}</span>
                                                     </div>
-                                                    
                                                     <template v-if="dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0">
                                                         <div v-if="dettaglio.totale_debiti > 0" class="flex justify-between gap-4 text-red-300">
                                                             <span>Debiti pregressi:</span>
@@ -1157,22 +1090,18 @@ const executePublishSilent = () => {
                                                             <span>Crediti pregressi:</span>
                                                             <span class="font-mono">{{ euro(Math.abs(dettaglio.totale_crediti)) }}</span>
                                                         </div>
-
                                                         <div v-if="dettaglio.totale_debiti > 0 && dettaglio.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium pt-1">
                                                             <span v-if="dettaglio.saldo_netto === 0" class="text-emerald-300">Compensazione totale (0€)</span>
                                                             <span v-else-if="dettaglio.saldo_netto > 0" class="text-red-200">Residuo debito: {{ euro(dettaglio.saldo_netto) }}</span>
                                                             <span v-else class="text-blue-200">Residuo credito: {{ euro(Math.abs(dettaglio.saldo_netto)) }}</span>
                                                         </div>
                                                     </template>
-                                                    
                                                     <div v-if="dettaglio.spesa !== 0 && (dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0)" class="flex justify-between gap-4 text-[10px] font-bold pt-1 border-t border-white/10 mt-1">
                                                         <span>Totale rata:</span>
                                                         <span class="font-mono">{{ euro(dettaglio.spesa + dettaglio.saldo_netto) }}</span>
                                                     </div>
-
                                                 </div>
                                             </div>
-
                                             <p v-if="getResiduoTooltip(item.rateMap[col.numero])">{{ getResiduoTooltip(item.rateMap[col.numero]) }}</p>
                                             <p class="text-[10px] text-gray-400 mt-1">Scadenza: {{ toItalian(item.rateMap[col.numero].scadenza) }}</p>
                                         </div>
@@ -1187,7 +1116,6 @@ const executePublishSilent = () => {
                         <td class="px-4 py-2 text-right text-emerald-600 font-medium text-xs bg-emerald-50/10 border-l border-emerald-50">{{ euro(item.versatoRiga) }}</td>
                         <td class="px-4 py-2 text-right text-blue-600 font-medium text-xs">{{ item.creditiRiga > 0 ? euro(item.creditiRiga) : "—" }}</td>
                         <td class="px-4 py-2 text-right font-medium text-xs text-gray-700">{{ euro(item.totaleRate) }}</td>
-                        
                         <td class="px-6 py-4 text-right font-bold sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
                             :class="{
                                 'text-red-600': item.totale > 0.01,
@@ -1215,7 +1143,6 @@ const executePublishSilent = () => {
                         <td class="px-4 py-3 text-right text-emerald-600 bg-emerald-50/20 border-l border-emerald-100">{{ euro(aggregates.totaleVersato) }}</td>
                         <td class="px-4 py-3 text-right text-blue-600">{{ euro(aggregates.creditiTotali) }}</td>
                         <td class="px-4 py-3 text-right text-gray-700">{{ euro(aggregates.totaleTeorico) }}</td>
-                        
                         <td class="px-6 py-3 text-right sticky right-0 bg-gray-50 z-40 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
                             :class="{
                                 'text-red-600': aggregates.totaleGenerale > 0.01,
@@ -1246,6 +1173,62 @@ const executePublishSilent = () => {
       </div>
     </div>
 
+    <!-- MODALE APPROVAZIONE -->
+    <Teleport to="body">
+        <div v-if="showApprovazioneModal" 
+             class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800">
+                <div class="bg-emerald-50 p-6 border-b border-emerald-100 flex items-start gap-4">
+                    <div class="bg-emerald-100 p-2.5 rounded-xl shrink-0">
+                        <Gavel class="w-6 h-6 text-emerald-600" />
+                    </div>
+                    <div>
+                        <h3 class="font-black text-emerald-900 text-lg">Approvazione piano rate</h3>
+                        <p class="text-xs text-emerald-700/70 mt-1">Registra i dati della delibera assembleare prima di rendere esecutivo il piano (Art. 1135 c.c.).</p>
+                    </div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="space-y-1.5">
+                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Data delibera assembleare *</Label>
+                        <Input type="date" v-model="formApprovazione.data_delibera_assemblea" class="h-10" />
+                        <p class="text-[10px] text-slate-400 leading-tight">Data in cui l'assemblea ha approvato questo piano rate. Sarà riportata nell'audit trail contabile.</p>
+                    </div>
+                    <div class="space-y-1.5">
+                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">N. Verbale (opzionale)</Label>
+                        <Input type="text" v-model="formApprovazione.numero_verbale" placeholder="Es. Verbale n. 3/2026" class="h-10" />
+                    </div>
+                    <div class="space-y-1.5">
+                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Note o Riferimenti (opzionale)</Label>
+                        <textarea 
+                            v-model="formApprovazione.nota_approvazione"
+                            rows="2"
+                            placeholder="Es. Approvato con 8 voti favorevoli su 10 millesimi presenti..."
+                            class="w-full border border-slate-200 rounded-xl p-3 text-sm bg-slate-50 outline-none resize-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all"
+                        />
+                    </div>
+                    <div v-if="props.pianoRate.data_delibera_assemblea" class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 space-y-1 mt-2">
+                        <p class="font-bold text-slate-700">Ultima delibera registrata:</p>
+                        <p>Data: <span class="font-mono">{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span></p>
+                        <p v-if="props.pianoRate.numero_verbale">Verbale: {{ props.pianoRate.numero_verbale }}</p>
+                    </div>
+                    <div class="flex gap-3 pt-2 mt-4">
+                        <Button variant="outline" class="flex-1 h-11 rounded-xl font-bold" @click="annullaApprovazione">Annulla</Button>
+                        <Button 
+                            class="flex-1 h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black"
+                            :disabled="!formApprovazione.data_delibera_assemblea || isProcessingStatus"
+                            @click="confermaApprovazione"
+                        >
+                            <span v-if="isProcessingStatus" class="flex items-center gap-2">
+                                <RotateCw class="w-4 h-4 animate-spin" /> Registrazione...
+                            </span>
+                            <span v-else>Approva e registra</span>
+                        </Button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </Teleport>
+
     <ConfirmDialog 
         v-model="isEmissionModalOpen"
         title="Conferma emissione"
@@ -1258,33 +1241,20 @@ const executePublishSilent = () => {
             <DialogDescription>
                 Stai per emettere <strong>{{ selectedRateIds.length }} rate</strong>.
             </DialogDescription>
-
             <div class="grid gap-2 mb-2">
                 <Label>Data registrazione</Label>
                 <Input type="date" v-model="formEmissione.data_emissione" />
             </div>
-
             <div class="grid gap-2 mb-3">
                 <Label>Causale contabile (Opzionale)</Label>
                 <Input type="text" v-model="formEmissione.descrizione_personalizzata" placeholder="Es. Emissione rata conguaglio..." />
-                <p class="text-[10px] text-slate-500 leading-tight">
-                    Se lasciato vuoto, il sistema userà la dicitura standard (es. "Emissione Rata 1").
-                </p>
+                <p class="text-[10px] text-slate-500 leading-tight">Se lasciato vuoto, il sistema userà la dicitura standard (es. "Emissione Rata 1").</p>
             </div>
-
             <div class="flex items-start space-x-3 p-3 rounded-lg border bg-slate-50/50">
-                <Checkbox 
-                    id="invia-notifiche" 
-                    v-model="formEmissione.invia_notifiche" 
-                    class="mt-1"
-                />
+                <Checkbox id="invia-notifiche" v-model="formEmissione.invia_notifiche" class="mt-1" />
                 <div class="grid gap-1.5 leading-none flex-1">
-                    <label
-                        for="invia-notifiche"
-                        class="text-sm font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2"
-                    >
+                    <label for="invia-notifiche" class="text-sm font-semibold leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center gap-2">
                         Rendi visibile e invia notifiche
-                        
                         <HoverCard>
                             <HoverCardTrigger as-child>
                                 <button type="button" class="cursor-pointer flex items-center" @click.stop>
@@ -1297,27 +1267,19 @@ const executePublishSilent = () => {
                                         <Info class="w-4 h-4 text-indigo-500" /> Emissione silenziosa
                                     </h4>
                                     <div class="text-sm space-y-2 text-slate-600">
-                                        <p>
-                                            Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).
-                                        </p>
-                                        <p>
-                                            Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nella loro area privata.
-                                        </p>
+                                        <p>Disabilita questa opzione se devi prima <strong>caricare manualmente dei pagamenti pregressi</strong> (es. allineamento da Excel).</p>
+                                        <p>Le rate verranno generate contabilmente, ma i condòmini <strong>non riceveranno notifiche</strong> e non le vedranno nella loro area privata.</p>
                                         <Separator class="my-2"/>
-                                        <div class="text-xs text-amber-600 italic font-medium">
-                                            Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.
-                                        </div>
+                                        <div class="text-xs text-amber-600 italic font-medium">Ricordati di pubblicarle successivamente usando il tasto "Pubblica" in tabella.</div>
                                     </div>
                                 </div>
                             </HoverCardContent>
                         </HoverCard>
                     </label>
-                    <p class="text-xs text-muted-foreground">
-                        Se disattivato, i condòmini non vedranno la scadenza finché non la pubblichi manualmente.
-                    </p>
+                    <p class="text-xs text-muted-foreground">Se disattivato, i condòmini non vedranno la scadenza finché non la pubblichi manualmente.</p>
                 </div>
             </div>
-            </div>
+        </div>
     </ConfirmDialog>
 
     <ConfirmDialog 
@@ -1328,8 +1290,7 @@ const executePublishSilent = () => {
         variant="destructive"
         @confirm="executeAnnullamento"
     >
-        Stai per annullare l'emissione contabile di questa rata. 
-        Questa azione cancellerà la scrittura contabile associata.
+        Stai per annullare l'emissione contabile di questa rata. Questa azione cancellerà la scrittura contabile associata.
         <br><br>
         <strong>Nota:</strong> Se sono già presenti incassi, l'operazione verrà bloccata.
     </ConfirmDialog>
@@ -1373,13 +1334,8 @@ const executePublishSilent = () => {
             <div class="flex items-center gap-2 text-amber-600 font-bold">
                 <AlertTriangle class="h-5 w-5" /> Attenzione
             </div>
-            <p>
-                Abbiamo rilevato che questo Piano Rate è stato generato con una versione precedente.
-                Per garantire la <strong>tracciabilità contabile</strong> e abilitare l'emissione, è necessario rigenerare i calcoli.
-            </p>
-            <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block">
-                Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.
-            </span>
+            <p>Abbiamo rilevato che questo Piano Rate è stato generato con una versione precedente. Per garantire la <strong>tracciabilità contabile</strong> e abilitare l'emissione, è necessario rigenerare i calcoli.</p>
+            <span class="text-xs text-gray-500 bg-gray-100 p-2 rounded block">Nessun importo verrà modificato, verranno solo aggiunti i dettagli per la trasparenza.</span>
         </div>
     </ConfirmDialog>
     
@@ -1393,30 +1349,21 @@ const executePublishSilent = () => {
         <div v-if="(copertura?.scoperto_count ?? 0) > 0" class="space-y-4">
             <div class="bg-amber-50 p-3 border border-amber-200 rounded-lg text-amber-800 text-sm">
                 <p class="font-bold flex items-center gap-2">
-                    <AlertTriangle class="w-4 h-4" /> 
-                    Attenzione: Voci scoperte rilevate
+                    <AlertTriangle class="w-4 h-4" /> Attenzione: Voci scoperte rilevate
                 </p>
                 <p class="mt-1 mb-2">Seleziona le voci da includere in questo piano:</p>
-                
                 <div class="space-y-2 max-h-40 overflow-y-auto pr-1">
                     <div v-for="o in copertura?.orfani" :key="o.id" class="flex items-start space-x-2">
-                        <Checkbox 
-                            :id="`orphan-${o.id}`" 
-                            v-model="orphanCheckboxes[o.id]"
-                        />
+                        <Checkbox :id="`orphan-${o.id}`" v-model="orphanCheckboxes[o.id]" />
                         <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
                             {{ o.nome }} <span class="font-mono text-amber-700">({{ euro(o.importo) }})</span>
                         </label>
                     </div>
                 </div>
             </div>
-            <p class="text-[11px] text-slate-500 italic">
-                Se queste voci appartengono a un altro piano (es. Piano Scale), deseleziona la casella sopra.
-            </p>
+            <p class="text-[11px] text-slate-500 italic">Se queste voci appartengono a un altro piano (es. Piano Scale), deseleziona la casella sopra.</p>
         </div>
-        <div v-else>
-            Il piano verrà ricalcolato in base ai millesimi attuali. Le rate non emesse saranno rigenerate.
-        </div>
+        <div v-else>Il piano verrà ricalcolato in base ai millesimi attuali. Le rate non emesse saranno rigenerate.</div>
     </ConfirmDialog>
 
     <ConfirmDialog 
@@ -1435,7 +1382,6 @@ const executePublishSilent = () => {
                 Questa azione <strong>eliminerà anche tutti i sottoconti</strong> collegati.
             </p>
         </div>
-
         <div v-else class="text-sm text-gray-700">
             Stai per eliminare la voce di spesa:
             <div class="mt-2 p-2 bg-slate-50 border rounded font-medium flex justify-between items-center">
@@ -1443,7 +1389,6 @@ const executePublishSilent = () => {
                 <span class="font-bold text-slate-900">{{ itemToDelete?.importo ? euro(itemToDelete.importo) : '' }}</span>
             </div>
         </div>
-
         <div class="mt-4 space-y-3">
             <div class="flex items-start gap-2 text-xs text-slate-600">
                 <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0" />
@@ -1473,7 +1418,6 @@ const executePublishSilent = () => {
 </template>
 
 <style scoped>
-/* Scrollbar più sottile e moderna */
 .overflow-x-auto::-webkit-scrollbar {
     height: 8px;
 }
@@ -1489,12 +1433,20 @@ const executePublishSilent = () => {
     background: #94a3b8;
 }
 
+/* Nasconde la scrollbar orizzontale della action bar su mobile */
+.scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+    display: none;
+}
+
 table {
   border-collapse: separate; 
   border-spacing: 0;
 }
 
-/* Assicura che le colonne sticky siano totalmente coprenti */
 .sticky {
   background-clip: padding-box; 
 }

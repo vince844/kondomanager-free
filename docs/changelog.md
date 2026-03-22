@@ -2,6 +2,26 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.17] - Legal Guardian & UI Precision (Latest)
+
+### Conformità Legale (Gate Legale Art. 1135 c.c.)
+* **Workflow di Approvazione Blindato:** Implementato un blocco normativo che impedisce di rendere esecutivo un Piano Rate (e di emettere le scadenze) senza una delibera formale.
+* **Modale Delibera Assembleare:** La transizione da "Bozza" ad "Approvato" attiva ora una modale dedicata per registrare la Data della Delibera, il Numero del Verbale e le Note esplicative.
+* **Audit Trail Integrato:** Il database ora traccia automaticamente in background quale utente amministratore ha approvato il piano e il timestamp esatto dell'operazione (`approvato_il`, `approvato_da_user_id`).
+* **Badge Legale Visivo:** Aggiunto un indicatore semantico (con icona a martelletto) nell'intestazione del Piano Rate. Mostra a colpo d'occhio i dati della delibera, garantendo la trasparenza e lo "scudo legale" della ripartizione.
+* **Ripristino Sicuro (Bozza):** Il ritorno allo stato "Bozza" cancella in automatico i dati della delibera e l'audit trail, obbligando a una nuova registrazione in caso di modifiche strutturali al piano.
+
+### Smart Sync & Backend Optimization
+* **Filtro Zero-Importo (Backend):** Ottimizzato il calcolo delle voci di spesa "Orfane" (`FatturaPassivaService` / `PianoRateController`). Il sistema ora esclude automaticamente i capitoli a 0,00€, prevenendo falsi allarmi di sincronizzazione nel frontend.
+* **Fix Query Builder:** Sostituito l'operatore array instabile con l'istruzione nativa `whereNotIn` per il calcolo delle coperture, garantendo precisione assoluta nell'identificazione delle spese scoperte.
+* **Pulsante Azione Dinamico:** Il tasto di manutenzione del piano rate si trasforma intelligentemente. Diventa un tasto arancione "Sincronizza" se ci sono nuove voci scoperte, o un tasto standard "Ricalcola" se è solo necessario aggiornare le quote in base a nuovi millesimi o preventivi.
+
+### UX & Bugfixes (Tooltips e Radix UI)
+* **HoverCard Context-Aware:** I tooltip di sistema ora "parlano" con l'utente. Il testo e il titolo del fumetto cambiano dinamicamente spiegando esattamente cosa farà il bottone ("Sincronizza e ricalcola" vs "Ricalcolo piano rate").
+* **Spiegazione Blocchi Dinamica:** Se il ricalcolo è bloccato, il tooltip non si limita a disattivare il bottone, ma avvisa proattivamente l'amministratore dell'ostacolo esatto (es. *"Disabilitato: annulla prima gli incassi registrati"* oppure *"annulla prima le emissioni"*).
+* **Fix Posizionamento Radix UI:** Risolto un fastidioso bug di "salto" dei tooltip (HoverCard che comparivano in alto a sinistra a coordinate `0,0`). Rimossi i conflitti con `pointer-events-none` sui bottoni disabilitati e forzato l'ancoraggio con `side="bottom"`, garantendo un posizionamento fluttuante perfetto e solido in ogni condizione.
+* **Sincronizzazione Stato UI:** Risolto un potenziale glitch visivo sulla levetta di approvazione. Se l'utente annulla l'inserimento della delibera, lo switch Vue torna istantaneamente e fedelmente allo stato reale letto dal database.
+
 # [1.9.16] - Accounting Intelligence & Precision (Latest)
 
 ## Potenziamento del Motore Finanziario
