@@ -29,6 +29,7 @@ const props = defineProps<{
   pianoConti: PianoDeiConti
   conti: Conto[]
   fornitori: Array<{ id: number, ragione_sociale: string }>
+  tabelle: Array<{ id: number, nome: string }>
   totalePreventivo: number
 }>()
 
@@ -251,6 +252,7 @@ const rimuoviTabella = () => {
       :condominio-id="props.condominio.id"
       :esercizio-id="props.esercizio.id"
       :piano-conto-id="props.pianoConti.id"
+      :tabelle="props.tabelle"
       :fornitori="props.fornitori"  @update:show="showModalEdit = $event"
       @success="onModificaSuccess"
     />

@@ -12,6 +12,7 @@ use App\Http\Resources\Gestionale\PianiDeiConti\PianoDeiContiResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Fornitore;
+use App\Models\Tabella;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestione;
@@ -195,6 +196,10 @@ class PianoContiController extends Controller
             'pianoConti' => new PianoDeiContiResource($pianoConto),
             'conti'      => ContoResource::collection($conti),
             'fornitori'  => $fornitori,
+            'tabelle'    => Tabella::query()
+                ->where('condominio_id', $condominio->id)
+                ->orderBy('nome')
+                ->get(['id', 'nome']),
             'totalePreventivo' => $totalePreventivo, 
         ]);
     }
