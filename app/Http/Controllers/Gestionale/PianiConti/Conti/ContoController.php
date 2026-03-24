@@ -57,12 +57,10 @@ class ContoController extends Controller
             // Se NON è un capitolo (quindi è una voce di spesa effettiva), gestiamo le tabelle millesimali
             if (!$isCapitolo) {
                 // 1. Validazione e recupero della tabella millesimale associata
-                if (!empty($data['tabella_millesimale_id'])) {
-                    $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
-                                      ->where('condominio_id', $condominio->id)
-                                      ->first();
-                    if (!$tabella) throw new \Exception('Tabella millesimale non trovata');
-                } 
+                $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
+                                  ->where('condominio_id', $condominio->id)
+                                  ->first();
+                if (!$tabella) throw new \Exception('Tabella millesimale non trovata');
 
                 // 2. Associazione della tabella al conto (pivot)
                 $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
@@ -123,6 +121,13 @@ class ContoController extends Controller
             $isSottoConto = $data['isSottoConto'] ?? false;
             $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
 
+            // Guard strutturale: un capitolo con sottoconti non può diventare una voce normale
+            if ($isCapitolo === false && $conto->sottoconti()->exists()) {
+                throw ValidationException::withMessages([
+                    'isCapitolo' => 'Cannot convert to expense: this chapter has subaccounts attached. Please remove or reassign them first.'
+                ]);
+            }
+
             // CONTROLLI DI SICUREZZA: Scattano solo se l'utente tenta di modificare l'importo di una spesa
             if (!$isCapitolo && $nuovoImporto != $conto->importo) {
                 
@@ -167,6 +172,73 @@ class ContoController extends Controller
                 'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, 
                 'note'                  => $data['note'] ?? null,
             ]);
+
+            // Coerenza dati contabili:
+            // - Capitolo => nessuna tabella/ripartizione associata
+            // - Voce spesa => almeno una tabella e relative ripartizioni
+            if ($isCapitolo) {
+                $contoTabellaIds = DB::table('conto_tabella_millesimale')
+                    ->where('conto_id', $conto->id)
+                    ->pluck('id');
+
+                if ($contoTabellaIds->isNotEmpty()) {
+                    DB::table('conto_tabella_ripartizioni')
+                        ->whereIn('conto_tabella_millesimale_id', $contoTabellaIds)
+                        ->delete();
+
+                    DB::table('conto_tabella_millesimale')
+                        ->where('conto_id', $conto->id)
+                        ->delete();
+                }
+            } else {
+                $tabella = Tabella::query()
+                    ->where('id', $data['tabella_millesimale_id'])
+                    ->where('condominio_id', $condominio->id)
+                    ->first();
+
+                if (!$tabella) {
+                    throw ValidationException::withMessages([
+                        'tabella_millesimale_id' => 'La tabella millesimale selezionata non è valida'
+                    ]);
+                }
+
+                $contoTabellaId = DB::table('conto_tabella_millesimale')
+                    ->where('conto_id', $conto->id)
+                    ->where('tabella_id', $tabella->id)
+                    ->value('id');
+
+                if (!$contoTabellaId) {
+                    $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
+                        'conto_id' => $conto->id,
+                        'tabella_id' => $tabella->id,
+                        'coefficiente' => 100.00,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                DB::table('conto_tabella_ripartizioni')
+                    ->where('conto_tabella_millesimale_id', $contoTabellaId)
+                    ->delete();
+
+                $ripartizioni = [
+                    ['soggetto' => 'proprietario', 'percentuale' => $data['percentuale_proprietario'] ?? 0],
+                    ['soggetto' => 'inquilino', 'percentuale' => $data['percentuale_inquilino'] ?? 0],
+                    ['soggetto' => 'usufruttuario', 'percentuale' => $data['percentuale_usufruttuario'] ?? 0],
+                ];
+
+                foreach ($ripartizioni as $rip) {
+                    if ((float) $rip['percentuale'] > 0) {
+                        DB::table('conto_tabella_ripartizioni')->insert([
+                            'conto_tabella_millesimale_id' => $contoTabellaId,
+                            'soggetto' => $rip['soggetto'],
+                            'percentuale' => $rip['percentuale'],
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    }
+                }
+            }
 
             DB::commit();
             return to_route('admin.gestionale.esercizi.piani-conti.show', [$condominio->id, $esercizio->id, $pianoConto->id])

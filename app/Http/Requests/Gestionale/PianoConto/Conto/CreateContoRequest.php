@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Cknow\Money\Money;
 
 /**
  * @method bool merge(string $key)
@@ -17,6 +16,14 @@ use Cknow\Money\Money;
  */
 class CreateContoRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'isCapitolo' => $this->boolean('isCapitolo'),
+            'isSottoConto' => $this->boolean('isSottoConto'),
+        ]);
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
