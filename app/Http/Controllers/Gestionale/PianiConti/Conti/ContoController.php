@@ -202,25 +202,6 @@ class ContoController extends Controller
                     ]);
                 }
 
-                // --- INIZIO FIX: PULIZIA DELLE VECCHIE TABELLE ORFANE ---
-                $vecchieAssociazioni = DB::table('conto_tabella_millesimale')
-                    ->where('conto_id', $conto->id)
-                    ->where('tabella_id', '!=', $tabella->id)
-                    ->pluck('id');
-
-                if ($vecchieAssociazioni->isNotEmpty()) {
-                    // Elimina prima i figli (ripartizioni)
-                    DB::table('conto_tabella_ripartizioni')
-                        ->whereIn('conto_tabella_millesimale_id', $vecchieAssociazioni)
-                        ->delete();
-                    
-                    // Poi elimina i padri orfani (l'associazione alla vecchia tabella)
-                    DB::table('conto_tabella_millesimale')
-                        ->whereIn('id', $vecchieAssociazioni)
-                        ->delete();
-                }
-                // --- FINE FIX ---
-
                 $contoTabellaId = DB::table('conto_tabella_millesimale')
                     ->where('conto_id', $conto->id)
                     ->where('tabella_id', $tabella->id)
