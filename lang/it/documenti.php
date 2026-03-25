@@ -9,12 +9,12 @@ return [
     'no_file_uploaded'               => 'Nessun file caricato. Per favore riprova.',
     'file_not_found'                 => 'Nessun file trovato nel server.',
     'success_delete_document'        => 'Il documento è stato eliminato con successo.',
-    'success_update_document'        => 'Il documento è stato aggiornato con successo',
+    'success_update_document'        => 'Il documento è stato aggiornato con successo.',
     'error_update_document'          => 'Si è verificato un errore durante l\'aggiornamento del documento.',
     'error_delete_document'          => 'Si è verificato un errore durante l\'eliminazione del documento.',
     'error_downloading_document'     => 'Si è verificato un errore durante il download del documento.',
     'success_approve_document'       => 'Il documento è stato approvato con successo.',
-    'error_approve_document'         => 'Si è verificato un errore durante l\'approvazione del documento',
+    'error_approve_document'         => 'Si è verificato un errore durante l\'approvazione del documento.',
     'error_notify_new_document'      => 'Il documento è stato creato, ma si è verificato un errore nell\'invio della notifica.',
     'error_notify_approved_document' => 'Il documento è stato approvato, ma si è verificato un errore nell\'invio della notifica.',
     'category_has_documents'         => 'Questa categoria contiene dei documenti. Spostali o eliminali prima di eliminare la categoria.',
@@ -22,11 +22,11 @@ return [
     'error_delete_category'          => 'Si è verificato un errore durante l\'eliminazione della categoria documento.',
     'success_create_category'        => 'La categoria documenti è stata creata con successo.',
     'error_create_category'          => 'Si è verificato un errore durante la creazione della categoria documento.',
-    'success_update_category'        => 'La categoria documenti è stata aggiornata con successo',
+    'success_update_category'        => 'La categoria documenti è stata aggiornata con successo.',
     'error_update_category'          => 'Si è verificato un errore durante l\'aggiornamento della categoria documenti.',
 
     /* ------------------------------------------------------------------
-     | Front‑end strings (headings, titles, descriptions)
+     | Front-end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
         'list_documents_head'           => 'Elenco archivio documenti',
@@ -50,6 +50,29 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | Form Sections (Cards)
+     | ------------------------------------------------------------------ */
+    'section' => [
+        'content_title'    => 'File e descrizione',
+        'content_desc'     => 'Allega il documento e inserisci i metadati principali.',
+        'settings_title'   => 'Classificazione',
+        'settings_desc'    => 'Organizza il documento in archivio selezionando una categoria e definiscine la visibilità.',
+        'recipients_title' => 'Destinatari del documento',
+        'recipients_desc'  => 'Collega il file a specifici condomini e residenti (Anagrafiche).',
+    ],
+
+    /* ------------------------------------------------------------------
+     | View Details (Sidebar)
+     | ------------------------------------------------------------------ */
+    'details' => [
+        'card_title'        => 'Dettagli classificazione',
+        'current_status'    => 'Stato File',
+        'visibility_status' => 'Stato Visibilità',
+        'published'         => 'Pubblico',
+        'draft'             => 'Privato (Solo Admin)',
+    ],
+
+    /* ------------------------------------------------------------------
      | Table
      | ------------------------------------------------------------------ */
     'table' => [
@@ -65,7 +88,9 @@ return [
         'actions'               => 'Azioni',
         'selected'              => 'selezionati',
         'loading'               => 'Caricamento...',
-        'clear_all_filters' => 'Resetta tutti i filtri',
+        'clear_all_filters'     => 'Resetta tutti i filtri',
+        'sort_asc'              => 'Ascendente',
+        'sort_desc'             => 'Discendente',
         'categories' => [
             'name'        => 'Nome categoria',
             'description' => 'Descrizione categoria',
@@ -135,6 +160,17 @@ return [
     ],
 
     /* ------------------------------------------------------------------
+     | Toast
+     | ------------------------------------------------------------------ */
+
+    'toast' => [
+        'success_title'   => 'Successo',
+        'success_message' => 'Categoria creata con successo.',
+        'error_title'     => 'Errore',
+        'error_message'   => 'Impossibile creare la categoria. Riprova più tardi.',
+    ],
+
+    /* ------------------------------------------------------------------
      | Stats
      | ------------------------------------------------------------------ */
     'stats' => [
@@ -167,32 +203,99 @@ return [
      | Actions
      | ------------------------------------------------------------------ */
     'actions' => [
-        'new_document'       => 'Crea',
+        'new_document'       => 'Crea documento',
         'list_categories'    => 'Categorie',
         'edit_document'      => 'Modifica',
         'delete_document'    => 'Elimina',
         'save_document'      => 'Salva',
         'list_documents'     => 'Elenco',
         'cancel'             => 'Annulla',
+        'back'               => 'Indietro',
+        'back_to_list'       => 'Torna all\'elenco',
         'show_more'          => 'Mostra tutto',
         'show_less'          => 'Mostra meno',
         'categories' => [
-            'new_category'    => 'Crea',
-            'list_documents'  => 'Documenti',
-            'save_category'   => 'Salva',
-            'edit_category'   => 'Modifica',
-            'delete_category' => 'Elimina',
+            'new_category'      => 'Crea categoria',
+            'list_documents'    => 'Documenti',
+            'save_category'     => 'Salva',
+            'edit_category'     => 'Modifica',
+            'delete_category'   => 'Elimina',
+            'back_to_documents' => 'Torna ai documenti',
         ],
     ],
+
+    /* ------------------------------------------------------------------
+     | Default Categories
+     | ------------------------------------------------------------------ */
+    'categories' => [
+        'bilanci'   => 'Bilanci',
+        'verbali'   => 'Verbali',
+        'avvisi'    => 'Avvisi',
+        'contratti' => 'Contratti',
+    ],
+
+    /* ------------------------------------------------------------------
+     | User Dashboard (Frontend)
+     | ------------------------------------------------------------------ */
+    'user' => [
+        'latest_documents_title'       => 'Ultimi documenti caricati',
+        'latest_documents_description' => 'Elenco degli ultimi documenti in archivio.',
+        'pdf_only'                     => 'Sono ammessi solo file PDF.',
+        'selected_file'                => 'File selezionato',
+        'private_document_label'       => 'Crea documento privato',
+        'private_document_title'       => 'Crea documento privato',
+        'private_document_description' => 'Quando questa opzione è selezionata, il documento sarà privato e visibile solo agli amministratori.',
+    ],
+
+    /* ------------------------------------------------------------------
+     | User Document List
+     | ------------------------------------------------------------------ */
+    'user_list' => [
+        'category_title'             => 'Documenti: :category',
+        'category_description'       => 'Gestione dei documenti digitali relativi a questa categoria del condominio.',
+        'search_placeholder'         => 'Cerca per titolo...',
+        'loading'                    => 'Aggiornamento...',
+        'load_error'                 => 'Errore di caricamento.',
+        'try_again'                  => 'Riprova',
+        'no_results_title'           => 'Nessun risultato trovato',
+        'no_results_description'     => 'Prova a modificare i termini di ricerca.',
+        'empty_category_title'       => 'Categoria vuota',
+        'empty_category_description' => 'Nessun documento è stato ancora caricato in questa categoria.',
+        'clear_search'               => 'Cancella ricerca',
+        'upload_document'            => 'Carica documento',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Breadcrumbs
+     | ------------------------------------------------------------------ */
+    'breadcrumbs' => [
+        'list' => 'Documenti',
+        'new'  => 'Nuovo documento',
+        'edit' => 'Modifica documento',
+        'view' => 'Dettaglio documento',
+    ],
+
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */
     'guides' => [
-        'storage_title'      => 'Archivio Centralizzato',
-        'storage_desc'       => 'Conserva fatture, contratti e verbali in un unico spazio cloud sempre accessibile.',
-        'organization_title' => 'Organizzazione Veloce',
-        'organization_desc'  => 'Usa cartelle e tag per ritrovare immediatamente i documenti importanti durante le assemblee.',
-        'privacy_title'      => 'Privacy e Permessi',
-        'privacy_desc'       => 'Gestisci chi può visualizzare i documenti impostando livelli di visibilità pubblici o privati.',
+        'storage_title'             => 'Archivio Centralizzato',
+        'storage_desc'              => 'Conserva fatture, contratti e verbali in un unico spazio cloud sempre accessibile.',
+        'organization_title'        => 'Organizzazione Veloce',
+        'organization_desc'         => 'Usa cartelle e tag per ritrovare immediatamente i documenti importanti durante le assemblee.',
+        'privacy_title'             => 'Privacy e Permessi',
+        'privacy_desc'              => 'Gestisci chi può visualizzare i documenti impostando livelli di visibilità pubblici o privati.',
+        'upload_title'              => 'Caricamento',
+        'upload_desc'               => 'Allega il file e definisci nome e descrizione per identificarlo rapidamente nell\'archivio.',
+        'category_title'            => 'Classificazione',
+        'category_desc'             => 'Assegna una categoria organizzativa e stabilisci il livello di visibilità del documento.',
+        'audience_title'            => 'Destinatari',
+        'audience_desc'             => 'Associa il file a specifici condomini e residenti per renderlo visibile solo agli interessati.',
+        'categories_org_title'      => 'Organizzazione',
+        'categories_org_desc'       => 'Usa le categorie per creare faldoni digitali (es. "Fatture", "Verbali", "Contratti").',
+        'categories_assoc_title'    => 'Associazione',
+        'categories_assoc_desc'     => 'Ogni documento che carichi in archivio potrà essere assegnato a una di queste categorie.',
+        'categories_search_title'   => 'Ricerca Veloce',
+        'categories_search_desc'    => 'Filtrare l\'archivio per categoria ti permette di trovare istantaneamente i file durante le assemblee.',
     ]
 ];

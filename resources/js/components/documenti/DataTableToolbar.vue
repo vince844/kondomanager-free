@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, Link } from '@inertiajs/vue3';
@@ -25,7 +26,7 @@ const { table } = defineProps<{
 
 // Read current filters from column state
 const categoriaColumn = table.getColumn('categoria');
-const condominioColumn = table.getColumn('condomini'); // Assicurati che l'accessorKey in columns.ts sia 'condomini'
+const condominioColumn = table.getColumn('condomini'); 
 
 // LOGICA DROPDOWN CONDOMINI
 const { condomini, isLoading: isLoadingCondomini, loadCondomini } = useCondomini();
@@ -90,7 +91,7 @@ const clearAllFilters = () => {
 </script>
 
 <template>
-<div class="flex flex-col gap-2 w-full mb-3 mt-4 lg:flex-row lg:items-center lg:justify-between">
+<div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
   
   <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
     <Input
@@ -130,7 +131,7 @@ const clearAllFilters = () => {
         class="h-8 px-2 lg:px-3 text-slate-500 hover:bg-slate-100"
       >
         <X class="w-4 h-4 mr-2" />
-        Svuota filtri
+        {{ trans('documenti.table.clear_all_filters') }}
       </Button>
     </div>
   </div>
@@ -140,18 +141,18 @@ const clearAllFilters = () => {
       as="button"
       v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
       :href="route(generateRoute('documenti.create'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 h-8"
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-4 h-4" />
+      <Plus class="w-3.5 h-3.5" />
       <span>{{ trans('documenti.actions.new_document') }}</span>
     </Link>
 
     <Link 
       as="button"
       :href="route(generateRoute('categorie.index'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 h-8"
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <List class="w-4 h-4" />
+      <List class="w-3.5 h-3.5" />
       <span>{{ trans('documenti.actions.list_categories') }}</span>
     </Link>
   </div>

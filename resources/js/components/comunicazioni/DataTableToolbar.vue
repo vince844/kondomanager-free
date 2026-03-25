@@ -1,8 +1,8 @@
 <script setup lang="ts">
+
 import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
-import { router } from '@inertiajs/vue3';
-import { Button } from '@/components/ui/button';
+import { router, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
@@ -74,7 +74,7 @@ watchDebounced(
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
+  <div class="flex items-center justify-between w-full mb-3">
     <div class="flex items-center space-x-2">
 
       <Input
@@ -97,7 +97,7 @@ watchDebounced(
         <DataTableFacetedFilter
           v-if="condominioColumn"
           :column="condominioColumn"
-          title="Condominio"
+          :title="trans('comunicazioni.table.buildings')"
           :options="condomini"
           :isLoading="isLoadingCondomini"
           @open="handleOpenCondomini"
@@ -108,14 +108,15 @@ watchDebounced(
         
     </div>
 
-    <Button
+    <Link 
+      as="button"
       v-if="hasPermission([Permission.CREATE_COMUNICAZIONI])"
-      as="a"
-      :href="route(generateRoute('comunicazioni.create'))"
-      class="hidden h-8 lg:flex ml-auto items-center gap-2"
+      :href="route(generateRoute('comunicazioni.create'))" 
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-4 h-4" />
+      <Plus class="w-3.5 h-3.5" />
       <span>{{ trans('comunicazioni.actions.new_communication') }}</span>
-    </Button>
+    </Link>
+
   </div>
 </template>

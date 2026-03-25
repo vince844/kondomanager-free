@@ -16,8 +16,9 @@ return [
     'error_approve_communication'                 => "Si è verificato un errore durante l'approvazione della comunicazione.",
     'error_notify_new_communication'              => "La comunicazione è stata creata, ma si è verificato un errore nell'invio della notifica.",
     'error_notify_approved_communication'         => "La comunicazione è stata approvata, ma si è verificato un errore nell'invio della notifica.",
+    
     /* ------------------------------------------------------------------
-     | Front‑end strings (headings, titles, descriptions)
+     | Front-end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
         'list_communications_head'          => "Elenco comunicazioni bacheca",
@@ -30,9 +31,24 @@ return [
         'edit_communication_title'          => "Modifica comunicazione",
         'edit_communication_description'    => "Compila il seguente modulo per modificare la comunicazione per la bacheca del condominio",
         'view_communication_head'           => "Visualizza comunicazione",
+        'view_communication_title'          => "Dettaglio comunicazione",
+        'view_communication_description'    => "Visualizza il contenuto e le informazioni di recapito del messaggio.",
         'widget_communications_title'       => "Comunicazioni recenti registrate",
         'widget_communications_description' => "Elenco delle ultime comunicazioni pubblicate in bacheca",                   
     ],
+
+    /* ------------------------------------------------------------------
+     | Form Sections (Cards)
+     | ------------------------------------------------------------------ */
+    'section' => [
+        'content_title'    => "Contenuto della comunicazione",
+        'content_desc'     => "Dettagli principali del messaggio.",
+        'recipients_title' => "Destinatari",
+        'recipients_desc'  => "Seleziona i condomini e le anagrafiche a cui inviare la comunicazione.",
+        'settings_title'   => "Impostazioni di pubblicazione",
+        'settings_desc'    => "Gestisci lo stato, la priorità e i permessi del comunicato.",
+    ],
+
     /* ------------------------------------------------------------------
      | Dialogs
      | ------------------------------------------------------------------ */
@@ -49,6 +65,7 @@ return [
         'loading'                          => "Caricamento in corso...",
         'try_again'                        => "Riprova",
     ],
+
     /* ------------------------------------------------------------------
      | Table
      | ------------------------------------------------------------------ */
@@ -63,10 +80,13 @@ return [
         'loading'            => 'Caricamento...',
         'no_results'         => 'Nessun risultato trovato.',
         'clear_all_filters'  => 'Resetta tutti i filtri',
+        'sort_asc'           => 'Ascendente',
+        'sort_desc'          => 'Discendente',
         'approved_tooltip'   => 'Approvata - clicca per rimuovere approvazione',
         'unapproved_tooltip' => 'Non approvata - clicca per approvare',
         'actions'            => 'Azioni',
     ],
+
     /* ------------------------------------------------------------------
      | Stats
      | ------------------------------------------------------------------ */
@@ -77,20 +97,29 @@ return [
         'urgent_priority' => "Priorità urgente",
         'open_tickets'    => "Segnalazioni aperte",
     ],
+
     /* ------------------------------------------------------------------
      | Labels
      | ------------------------------------------------------------------ */
     'label' => [
-        'subject'      => 'Oggetto comunicazione',
-        'description'  => 'Descrizione comunicazione',
-        'visibility'   => 'Visibilità comunicazione',
-        'priority'     => 'Priorità comunicazione',
-        'buildings'    => 'Condomini',
-        'residents'    => 'Anagrafiche',
-        'comments'     => 'Consenti commenti',
-        'featured'     => 'Comunicazione in evidenza',
-        'private'      => 'Crea comunicazione come privata',
+        'subject'           => 'Oggetto comunicazione',
+        'description'       => 'Descrizione comunicazione',
+        'visibility'        => 'Visibilità comunicazione',
+        'priority'          => 'Priorità comunicazione',
+        'buildings'         => 'Condomini',
+        'residents'         => 'Anagrafiche',
+        'comments'          => 'Consenti commenti',
+        'featured'          => 'Comunicazione in evidenza',
+        'private'           => 'Crea comunicazione come privata',
+        'administrator'     => 'Amministratore',
+        'none'              => 'Nessuna',
+        'published'         => 'Pubblicato in bacheca',
+        'draft_hidden'      => 'Bozza / Nascosta',
+        'interactions'      => 'Interazioni',
+        'comments_enabled'  => 'Commenti abilitati',
+        'comments_disabled' => 'Commenti disabilitati',
     ],
+
     /* ------------------------------------------------------------------
      | Placeholders
      | ------------------------------------------------------------------ */
@@ -102,6 +131,7 @@ return [
         'buildings'    => 'Seleziona condomini',
         'residents'    => 'Seleziona anagrafiche',
     ],
+
     /* ------------------------------------------------------------------
      | Priority
      | ------------------------------------------------------------------ */
@@ -111,6 +141,7 @@ return [
         'high'   => 'Alta',
         'urgent' => 'Urgente',
     ],
+
     /* ------------------------------------------------------------------
      | Visibility
      | ------------------------------------------------------------------ */
@@ -120,11 +151,12 @@ return [
         'created_on' => 'Creata il',
         'sent_on_by' => 'Inviata :date da :name',
     ],
+
     /* ------------------------------------------------------------------
      | Actions
      | ------------------------------------------------------------------ */
     'actions' => [
-        'new_communication'       => 'Crea',
+        'new_communication'       => 'Crea comunicazione',
         'edit_communication'      => 'Modifica',
         'delete_communication'    => 'Elimina',
         'save_communication'      => 'Salva',
@@ -132,7 +164,11 @@ return [
         'show_more'               => 'Mostra tutto',
         'show_less'               => 'Mostra meno',
         'view_all_communications' => 'Visualizza tutte',
+        'cancel'                  => 'Annulla',
+        'back'                    => 'Indietro',
+        'back_to_list'            => "Torna all'elenco",
     ],
+
     /* ------------------------------------------------------------------
      | Tooltips
      | ------------------------------------------------------------------ */
@@ -143,16 +179,42 @@ return [
         'featured'    => 'Le comunicazioni in evidenza sono evidenziate nella bacheca per attirare maggiore attenzione.',
         'private'     => 'Le comunicazioni private possono essere visualizzate solo dagli amministratori e da te.',
     ],
+
+    /* ------------------------------------------------------------------
+     | Breadcrumbs
+     | ------------------------------------------------------------------ */
+    'breadcrumbs' => [
+        'list' => 'Comunicazioni',
+        'new'  => 'Nuova comunicazione',
+        'edit' => 'Modifica comunicazione',
+        'view' => 'Dettaglio comunicazione',
+    ],
+
     /* ------------------------------------------------------------------
      | Guides
      | ------------------------------------------------------------------ */
     'guides' => [
-        'tracking_title' => 'Tracciamento Invii',
-        'tracking_desc'  => 'Monitora lo stato di consegna e lettura di ogni comunicazione inviata ai condomini.',
-        'priority_title' => 'Gestione Priorità',
-        'priority_desc'  => 'Assegna livelli di urgenza per evidenziare i messaggi più importanti nella bacheca.',
-        'history_title'  => 'Storico Completo',
-        'history_desc'   => 'Consulta l\'archivio di tutte le comunicazioni passate con i relativi allegati e commenti.',
+        'board_title'       => 'Bacheca centralizzata',
+        'board_desc'        => 'Tieni traccia di tutte le comunicazioni pubblicate e mantieni lo storico organizzato per priorità e stato.',
+        'target_title'      => 'Segmentazione',
+        'target_desc'       => 'Definisci condomini e anagrafiche target per garantire che ogni comunicazione raggiunga il pubblico giusto.',
+        'delivery_title'    => 'Consegna e approvazione',
+        'delivery_desc'     => 'Controlla il flusso di approvazione e pubblicazione per mantenere la comunicazione coerente e sicura.',
+        'message_title'     => 'Stesura del Messaggio',
+        'message_desc'      => 'Redigi il contenuto della comunicazione definendo un oggetto chiaro e un testo esplicativo completo. Assicurati che le informazioni siano strutturate per garantirne la massima leggibilità.',
+        'audience_title'    => 'Selezione dei Destinatari',
+        'audience_desc'     => 'Individua con precisione il target della tua comunicazione. Puoi inviare il messaggio a interi condomini o filtrare specifiche anagrafiche per comunicazioni mirate e strettamente riservate.',
+        'priority_title'    => 'Impostazioni e Priorità',
+        'priority_desc'     => 'Configura il livello di urgenza del messaggio, decidi se fissare il comunicato in evidenza sulla bacheca e gestisci i permessi di interazione abilitando o disabilitando i commenti.',
+        'tracking_title'    => 'Tracciamento Invii',
+        'tracking_desc'     => 'Monitora lo stato di consegna e lettura di ogni comunicazione inviata ai condomini.',
+        'history_title'     => 'Storico Completo',
+        'history_desc'      => 'Consulta l\'archivio di tutte le comunicazioni passate con i relativi allegati e commenti.',
+        'visibility_title'  => 'Visibilità',
+        'visibility_desc'   => 'Verifica lo stato di pubblicazione e a chi è rivolto il messaggio.',
+        'read_title'        => 'Lettura',
+        'read_desc'         => 'Consulta i dettagli e il contenuto completo della comunicazione inviata.',
+        'urgency_title'     => 'Urgenza',
+        'urgency_desc'      => 'Il livello di priorità indica quanto tempestivamente deve essere recepita.',
     ]
-
 ];

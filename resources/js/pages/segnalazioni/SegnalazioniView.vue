@@ -1,23 +1,26 @@
 <script setup lang="ts">
 
-import { Head, Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import Heading from '@/components/Heading.vue';
-import { List, Lock, LockOpen, ListCheck, ListX } from 'lucide-vue-next';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Lock, LockOpen, User, CalendarDays, AlertTriangle, Building2, SlidersHorizontal, MessageSquare } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { priorityConstants, statoConstants } from '@/lib/segnalazioni/constants';
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
+import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
 
 const props = defineProps<{
-  segnalazione: Segnalazione;
+  segnalazione: Segnalazione | any;
 }>();  
 
 const { hasPermission, generateRoute } = usePermission();
 
+// Estrazione sicura dei metadati da visualizzare nella sidebar
 const priorityItem = computed(() => {
   return priorityConstants.find(p => p.value === props.segnalazione.priority);
 });
@@ -26,31 +29,64 @@ const statusItem = computed(() => {
   return statoConstants.find(p => p.value === props.segnalazione.stato);
 });
 
+const breadcrumbs: BreadcrumbItem[] = [
+  {
+      title: trans('segnalazioni.breadcrumbs.list'), 
+      href: route(generateRoute('segnalazioni.index'))
+  },
+  {
+      title: trans('segnalazioni.breadcrumbs.view'),
+      href: '#',
+  }
+];
+
+const pageGuides = computed(() => [
+  {
+    title: trans('segnalazioni.guides.issue_title'),
+    description: trans('segnalazioni.guides.issue_desc'),
+    icon: AlertTriangle,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('segnalazioni.guides.location_title'),
+    description: trans('segnalazioni.guides.location_desc'),
+    icon: Building2,
+    colorVariant: 'amber' as const
+  },
+  {
+    title: trans('segnalazioni.guides.settings_title'),
+    description: trans('segnalazioni.guides.settings_desc'),
+    icon: SlidersHorizontal,
+    colorVariant: 'emerald' as const
+  }
+]);
 </script>
 
 <template>
-
-    <Head :title="trans('segnalazioni.header.view_ticket_head')" />
+  <Head :title="trans('segnalazioni.header.view_ticket_head')" />
   
-    <AppLayout >
-  
-      <div class="px-4 py-6">
+  <AppLayout>
+    <div class="px-6 py-8 space-y-6">
         
-        <Heading 
-            :title="trans('segnalazioni.header.view_ticket_title')" 
-            :description="trans('segnalazioni.header.view_ticket_description')" 
-        />
-
-            <div class="flex flex-wrap flex-col lg:flex-row lg:justify-end gap-2 items-start lg:items-center">
+        <PageHeaderGuide
+            :page-title="trans('segnalazioni.header.view_ticket_title')"
+            :page-subtitle="trans('segnalazioni.header.view_ticket_description')"
+            :guides="pageGuides"
+            :breadcrumbs="breadcrumbs"
+            :video-url="null"
+            :back-url="route(generateRoute('segnalazioni.index'))"
+            :back-text="trans('segnalazioni.actions.back_to_list')"
+        >
+            <template #actions>
                 <Link 
                     as="button"
                     method="post"
                     v-if="hasPermission([Permission.EDIT_SEGNALAZIONI])"
                     :href="route(generateRoute('segnalazioni.toggleResolve'), { id: props.segnalazione.id })" 
-                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
+                    class="inline-flex items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-sm font-medium text-slate-700 dark:text-slate-300 px-3 py-1.5 h-8 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
-                    <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4" />
-                    <Lock v-else class="w-4 h-4" />
+                    <LockOpen v-if="props.segnalazione.is_locked" class="w-4 h-4 text-emerald-500" />
+                    <Lock v-else class="w-4 h-4 text-amber-500" />
                     <span>
                         {{ 
                             props.segnalazione.is_locked 
@@ -59,162 +95,151 @@ const statusItem = computed(() => {
                         }}
                     </span>
                 </Link>
+            </template>
+        </PageHeaderGuide>
 
-                <Link 
-                    as="button"
-                    v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])"
-                    :href="route(generateRoute('segnalazioni.index'))" 
-                    class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white px-3 py-1.5 h-8 w-full lg:w-auto hover:bg-primary/90"
-                >
-                    <List class="w-4 h-4" />
-                    <span>{{ trans('segnalazioni.actions.list_tickets') }}</span>
-                </Link>
-            </div>
-
-            <div class="bg-card mb-6 grid grid-cols-1 gap-x-8 gap-y-4 rounded-lg border p-6 text-sm md:grid-cols-2 mt-4">
-                <!-- Left Column -->
-                <div class="space-y-4">
-
-                    <!-- Priority (dynamic) -->
-                    <div class="flex items-center gap-2">
-                        <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.priority') }}:</span>
-
-                        <div
-                            class="flex items-center gap-1"
-                            v-if="priorityItem"
-                        >
-                            <div
-                                class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
-                                :class="priorityItem.colorClass"
-                                >
-                                <component
-                                    :is="priorityItem.icon"
-                                    class="h-3 w-3 mr-2"
-                                    :class="priorityItem.colorClass"
-                                />
-                                {{ trans(priorityItem.label) }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Created -->
-                    <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.visibility.created_on') }}:</span>
-                    <div class="flex items-center gap-1">
-                        <svg class="tabler-icon tabler-icon-calendar text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z" />
-                        <path d="M16 3v4" />
-                        <path d="M8 3v4" />
-                        <path d="M4 11h16" />
-                        <path d="M11 15h1" />
-                        <path d="M12 15v3" />
-                        </svg>
-                        <span>{{ segnalazione.created_at }}</span>
-                    </div>
-                    </div>
-
-                    <!-- Project -->
-                    <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.label.building') }}:</span>
-                    <span class="capitalize font-medium">{{ segnalazione.condominio.full.nome }}</span>
-                    </div>
-                </div>
-
-                <!-- Right Column -->
-                <div class="space-y-4">
-                    
-                       <div class="flex items-center gap-2">
-                        <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.status') }}:</span>
-
-                        <div
-                            class="flex items-center gap-1"
-                            v-if="statusItem"
-                        >
-                        
-                            <div
-                                class="inline-flex items-center rounded-md border px-2.5 py-0.5 font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent shadow-sm text-xs"
-                                :class="statusItem.colorClass"
-                            >
-                                <component
-                                    :is="statusItem.icon"
-                                    class="h-3 w-3 mr-2"
-                                    :class="statusItem.colorClass"
-                                />
-                                {{ trans(statusItem.label) }}
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Sprint -->
-                    <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground font-semibold w-24">{{ trans('segnalazioni.table.visibility') }}:</span>
-                    <component 
-                        :is="segnalazione.is_published ? ListCheck : ListX" 
-                        :class="[
-                        'text-muted-foreground',
-                        segnalazione.is_published ? 'w-3.5 h-3.5' : 'w-3.5 h-3.5'
-                        ]" 
-                    />
-                    {{ 
-                        segnalazione.is_published 
-                        ? trans('segnalazioni.visibility.public') 
-                        : trans('segnalazioni.visibility.private') 
-                    }}
-                   <!--  <span>Sprint 24 (May 2024)</span> -->
-                    </div>
-
-                    <!-- Estimated Time -->
-             <!--        <div class="flex items-center gap-2">
-                    <span class="text-muted-foreground w-24">Est. Time</span>
-                    <div class="flex items-center gap-1">
-                        <svg class="tabler-icon tabler-icon-clock-hour-4 text-muted-foreground h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
-                        <path d="M12 12l3 2" />
-                        <path d="M12 7v5" />
-                        </svg>
-                        <span>1 week</span>
-                    </div>
-                    </div> -->
-
-                </div>
-
-            </div>
-
-            <!-- Two-column layout (3:1 ratio) -->
-          <!--   <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 "> -->
-            <div class="">
-               
-                <!-- Main Card (3/4 width) -->
-                <div class="col-span-1 lg:col-span-3 mt-3">
-                    
-                    <div class="bg-white dark:bg-muted rounded shadow-sm p-6 space-y-4 border">
-                        <div class="mb-1 space-y-0.5">
-                            <h2 class="text-xl font-semibold tracking-tight">
-                                {{ props.segnalazione.subject }}
-                            </h2>
-                            <p class="text-sm text-muted-foreground">
-                                {{ 
-                                    trans('segnalazioni.visibility.sent_on_by', { 
-                                        date: props.segnalazione.created_at, 
-                                        name: props.segnalazione.created_by.user.name 
-                                    }) 
-                                }}
-                            </p>
-                        </div>
-                        
-                        <div class="mt-4 text-muted-foreground text-justify">
-
-                            {{props.segnalazione.description }}
-
-                        </div>
-                        
-                    </div>
-                </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
             
+            <div class="lg:col-span-2 space-y-6">
+                <Card class="border-dashed shadow-sm bg-white dark:bg-slate-950">
+                    <CardHeader class="pb-4 border-b border-slate-100 dark:border-slate-800">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="space-y-1">
+                                <div class="flex items-center gap-3">
+                                    <AlertTriangle class="w-6 h-6 text-slate-400" />
+                                    <CardTitle class="text-2xl font-bold leading-tight text-slate-900 dark:text-white">
+                                        {{ props.segnalazione.subject }}
+                                    </CardTitle>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-500 dark:text-slate-400 pt-3">
+                                    <div class="flex items-center gap-2">
+                                        <User class="w-4 h-4 text-slate-400" />
+                                        <span class="font-medium">
+                                            {{ props.segnalazione.created_by?.user?.name || trans('segnalazioni.details.admin_sender') }}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <CalendarDays class="w-4 h-4 text-slate-400" />
+                                        <span>
+                                            {{ 
+                                                trans('segnalazioni.visibility.sent_on_by', { 
+                                                    date: props.segnalazione.created_at, 
+                                                    name: props.segnalazione.created_by?.user?.name || trans('segnalazioni.details.admin_sender') 
+                                                }) 
+                                            }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </CardHeader>
+                    <CardContent class="pt-6">
+                        <div class="prose prose-slate dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                            {{ props.segnalazione.description }}
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
+
+            <div class="lg:col-span-1 space-y-6">
+                <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+                    <CardContent class="space-y-6 pt-5 p-3">
+                        <div class="grid grid-cols-[1.2fr_0.8fr] gap-6 border-b border-dashed pb-4">
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    {{ trans('segnalazioni.details.current_status') }}
+                                </p>
+                                <div v-if="statusItem" class="flex items-center gap-2">
+                                    <component :is="statusItem.icon" class="w-4 h-4 shrink-0" :class="statusItem.colorClass" />
+                                    <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate" :title="trans(statusItem.label)">
+                                        {{ trans(statusItem.label) }}
+                                    </span>
+                                </div>
+                                <div v-else class="text-sm font-semibold text-slate-400">
+                                    {{ trans('segnalazioni.label.no_status') }}
+                                </div>
+                            </div>
+                            
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    {{ trans('segnalazioni.details.priority_level') }}
+                                </p>
+                                <div v-if="priorityItem" class="flex items-center gap-2">
+                                    <component :is="priorityItem.icon" class="w-4 h-4 shrink-0" :class="priorityItem.colorClass" />
+                                    <span class="text-sm font-bold text-slate-900 dark:text-slate-100 capitalize truncate" :title="trans(priorityItem.label)">
+                                        {{ trans(priorityItem.label) }}
+                                    </span>
+                                </div>
+                                <div v-else class="text-sm font-semibold text-slate-400">
+                                    {{ trans('segnalazioni.label.no_priority') }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-[1.2fr_0.8fr] gap-6 border-b border-dashed pb-4">
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    {{ trans('segnalazioni.label.building') }}
+                                </p>
+                                <div class="flex items-center gap-2 group cursor-help">
+                                    <Building2 class="w-4 h-4 text-slate-400 shrink-0" />
+                                    <span 
+                                        class="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate block"
+                                        :title="segnalazione.condominio?.full?.nome || segnalazione.condominio?.nome"
+                                    >
+                                        {{ segnalazione.condominio?.full?.nome || segnalazione.condominio?.nome }}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1.5">
+                                    {{ trans('segnalazioni.details.visibility_status') }}
+                                </p>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <div class="w-2 h-2 rounded-full shrink-0" :class="props.segnalazione.is_published ? 'bg-emerald-500' : 'bg-amber-500'"></div>
+                                    <span class="text-sm font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                                        {{ props.segnalazione.is_published ? trans('segnalazioni.visibility.public') : trans('segnalazioni.visibility.private') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-3">
+                                {{ trans('segnalazioni.details.interactions') }}
+                            </p>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded border border-dashed shadow-xs">
+                                    <component 
+                                        :is="props.segnalazione.is_locked ? Lock : LockOpen" 
+                                        class="w-3.5 h-3.5 shrink-0"
+                                        :class="props.segnalazione.is_locked ? 'text-amber-500' : 'text-emerald-500'"
+                                    />
+                                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
+                                        {{ props.segnalazione.is_locked ? trans('segnalazioni.details.locked') : trans('segnalazioni.details.unlocked') }}
+                                    </span>
+                                </div>
+
+                                <div v-if="props.segnalazione.can_comment !== undefined" 
+                                    class="flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded border border-dashed shadow-xs">
+                                    <MessageSquare 
+                                        class="w-3.5 h-3.5 shrink-0"
+                                        :class="props.segnalazione.can_comment ? 'text-emerald-500' : 'text-slate-400'"
+                                    />
+                                    <span class="text-xs font-bold text-slate-700 dark:text-slate-300 truncate">
+                                        {{ props.segnalazione.can_comment ? trans('segnalazioni.details.comments_enabled') : trans('segnalazioni.details.comments_disabled') }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+        </div>
       </div>
     </AppLayout> 
-  
-  </template>
+</template>
 
 <style src="vue-select/dist/vue-select.css"></style>
