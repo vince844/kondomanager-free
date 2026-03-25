@@ -81,7 +81,7 @@ const rightNavItems = computed(() =>
             href: '/impostazioni', 
             icon: Settings, 
             permissions: [Permission.MANAGE_GENERAL_SETTINGS], 
-            hasBadge: updateAvailable.value // ✅ AGGIUNTO
+            hasBadge: updateAvailable.value 
         },
     ].filter(item => canAccess(item))
 );

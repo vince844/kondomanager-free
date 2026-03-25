@@ -134,36 +134,41 @@ class ContoResource extends JsonResource
         }
 
         // ---------------------------------------------------------
+        // 3.5 STATO HARD LOCK (Lucchetto Infallibile)
+        // ---------------------------------------------------------
+        $hasHardLock = $this->pianiRate->contains(function ($piano) {
+            $statoPuro = $piano->stato instanceof \App\Enums\StatoPianoRate 
+                ? $piano->stato->value 
+                : $piano->stato;
+            return strtolower(trim((string)$statoPuro)) === 'approvato';
+        });
+
+        // ---------------------------------------------------------
         // 4. RETURN
         // ---------------------------------------------------------
         return [
-            'id'             => $this->id,
-            'piano_conto_id' => $this->piano_conto_id,
-            'parent_id'      => $this->parent_id,
-            'importo'        => MoneyHelper::format($this->importo),
-            'importo_raw'    => $this->importo,
-            'nome'           => $this->nome,
-            'descrizione'    => $this->descrizione,
-            'tipo'           => $this->tipo,
-            'note'           => $this->note,
-            'codice'         => $this->codice,
-
-            'default_fornitore_id' => $this->default_fornitore_id,
-            'fornitore_nome'       => $this->fornitore ? $this->fornitore->ragione_sociale : null,
-            'tipo_spesa'           => $this->tipo_spesa,
-
+            'id'                    => $this->id,
+            'piano_conto_id'        => $this->piano_conto_id,
+            'parent_id'             => $this->parent_id,
+            'importo'               => MoneyHelper::format($this->importo),
+            'importo_raw'           => $this->importo,
+            'nome'                  => $this->nome,
+            'descrizione'           => $this->descrizione,
+            'tipo'                  => $this->tipo,
+            'note'                  => $this->note,
+            'codice'                => $this->codice,
+            'default_fornitore_id'  => $this->default_fornitore_id,
+            'fornitore_nome'        => $this->fornitore ? $this->fornitore->ragione_sociale : null,
+            'tipo_spesa'            => $this->tipo_spesa,
             'impegnato'             => $impegnato,
             'percentuale_copertura' => $percentualeCopertura,
             'stato_copertura'       => $statoCopertura,
             'piani_collegati'       => $this->pianiRate->pluck('nome'),
             'dettaglio_copertura'   => $dettaglioPiani,
-
-            'has_rate_emesse' => $this->has_rate_emesse,
-
+            'has_rate_emesse'       => $hasHardLock,
             'sottoconti' => $this->whenLoaded('sottoconti', function () {
                 return ContoResource::collection($this->sottoconti);
             }),
-
             'tabelle_millesimali' => $this->whenLoaded('tabelleMillesimali', function () {
                 return $this->tabelleMillesimali->map(function ($tm) {
                     return [

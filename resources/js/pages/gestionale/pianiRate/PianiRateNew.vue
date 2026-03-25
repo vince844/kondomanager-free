@@ -16,6 +16,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import MoneyInput from '@/components/MoneyInput.vue'
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
@@ -101,6 +103,17 @@ const pageGuides = computed(() => [
   }
 ]);
 
+const moneyOptions = ref({
+  prefix: '',              
+  suffix: '',              
+  thousands: '.',          
+  decimal: ',',          
+  precision: 2,            
+  allowBlank: true, 
+  masked: true,
+  disableNegative: true
+})
+
 // --- STATO REATTIVO ---
 const showRecurrence = ref(false)
 const capitoliDisponibili = ref<Capitolo[]>([]);
@@ -109,6 +122,7 @@ const capitoliDettaglio = ref<CapitoloDettaglio[]>([]);
 const saldiDettaglio = ref<SaldoDettaglio[]>([]);
 const isLoadingSaldi = ref(false);
 const isModaleSaldiAperta = ref(false);
+const { euro } = useCurrencyFormatter({ fromCents: false });
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -144,9 +158,13 @@ const form = useForm({
   capitoli_config: [] as any[],
 })
 
-const formatMoney = (val: number) => {
-  return new Intl.NumberFormat('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
-}
+// Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN)
+const parseMoney = (val: any): number => {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  // Trasforma "1.250,50" in 1250.50
+  return Number(val.toString().replace(/\./g, '').replace(',', '.'));
+};
 
 const rimuoviCapitolo = (id: number) => {
   form.capitoli_ids = form.capitoli_ids.filter(cid => cid !== id);
@@ -154,10 +172,9 @@ const rimuoviCapitolo = (id: number) => {
 
 const totaleSelezionatoFormatted = computed(() => {
   const tot = capitoliDettaglio.value.reduce((acc, curr) => {
-    const val = curr.importo_da_usare || 0;
-    return acc + Number(val);
+    return acc + parseMoney(curr.importo_da_usare);
   }, 0);
-  return formatMoney(tot);
+  return euro(tot); // Sostituito formatMoney con euro
 });
 
 const mostraDistribuzioneSaldo = computed(() => {
@@ -326,8 +343,12 @@ const submit = () => {
     { condominio: props.condominio.id, esercizio: props.esercizio.id }
   )), {
     preserveScroll: true,
+    onSuccess: () => {
+      router.flushAll()
+    },
   })
 }
+
 </script>
 
 <template>
@@ -455,7 +476,7 @@ const submit = () => {
                       </template>
                       Totale netto:
                       <strong :class="saldoGestioneCorrente.totale > 0 ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldoGestioneCorrente.totale > 0 ? '' : '+ ' }}€ {{ formatMoney(Math.abs(saldoGestioneCorrente.totale) / 100) }}
+                        {{ saldoGestioneCorrente.totale > 0 ? '' : '+ ' }}{{ euro(Math.abs(saldoGestioneCorrente.totale) / 100) }}
                       </strong>
                     </p>
                   </div>
@@ -618,11 +639,11 @@ const submit = () => {
                   <div :class="{ 'opacity-50 grayscale': option.disabled }" class="flex justify-between w-full items-center py-1">
                     <div class="flex flex-col">
                       <span :class="{ 'font-bold text-slate-800': option.nome.startsWith('[') }">{{ option.nome }}</span>
-                      <span class="text-[10px] text-slate-500">Totale: € {{ formatMoney(option.importo_totale || 0) }}</span>
+                      <span class="text-[10px] text-slate-500">Totale: {{ euro(option.importo_totale || 0) }}</span>
                     </div>
                     <div class="flex items-center">
                       <span v-if="option.disabled" class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200"><Ban class="w-3 h-3" /> Esaurito</span>
-                      <span v-else class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200"><Wallet class="w-3 h-3" /> Disp: € {{ formatMoney(option.residuo || 0) }}</span>
+                      <span v-else class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200"><Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo || 0) }}</span>
                     </div>
                   </div>
                 </template>
@@ -632,7 +653,7 @@ const submit = () => {
             <div v-if="capitoliDettaglio.length > 0" class="border border-slate-200 rounded-lg overflow-hidden bg-white shadow-sm">
               <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
                 <span class="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2"><List class="w-4 h-4" /> Ripartizione manuale voci</span>
-                <span class="text-sm font-mono font-bold text-primary bg-white px-3 py-1 rounded border shadow-sm">Totale richiesto: € {{ totaleSelezionatoFormatted }}</span>
+                <span class="text-sm font-bold text-primary bg-white px-3 py-1 rounded border shadow-sm">Totale richiesto: {{ totaleSelezionatoFormatted }}</span>
               </div>
               <div class="divide-y divide-slate-100 max-h-[350px] overflow-y-auto">
                 <div v-for="(cap) in capitoliDettaglio" :key="cap.id" class="p-3 hover:bg-slate-50 transition-colors group">
@@ -640,21 +661,29 @@ const submit = () => {
                     <div class="flex-1 min-w-0">
                       <div class="font-medium text-sm text-slate-900 truncate">{{ cap.nome }}</div>
                       <div class="text-xs text-slate-500 mt-1 flex items-center gap-2">
-                        <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">Budget: € {{ formatMoney(cap.importo_totale) }}</span>
+                        <span class="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">Budget totale: {{ euro(cap.importo_totale) }}</span>
                         <span class="text-slate-300">|</span>
-                        <span :class="{ 'text-green-700 bg-green-50': cap.residuo > 0, 'text-red-600 bg-red-50': cap.residuo <= 0 }" class="px-1.5 py-0.5 rounded font-medium">Residuo: € {{ formatMoney(cap.residuo) }}</span>
+                        <span :class="{ 'text-green-700 bg-green-50': (cap.residuo - parseMoney(cap.importo_da_usare)) >= 0, 'text-red-600 bg-red-50': (cap.residuo - parseMoney(cap.importo_da_usare)) < 0 }" class="px-1.5 py-0.5 rounded font-medium transition-colors">
+                            Residuo: {{ euro(cap.residuo - parseMoney(cap.importo_da_usare)) }}
+                        </span>
                       </div>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
                       <div class="w-32 relative">
                         <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
-                        <Input type="number" step="0.01" v-model="cap.importo_da_usare" class="pl-6 h-9 text-right text-sm font-mono font-bold" :class="{ 'border-red-500 bg-red-50 text-red-700': (cap.importo_da_usare || 0) > cap.residuo }" />
+                        <MoneyInput 
+                          v-model="cap.importo_da_usare" 
+                          :money-options="moneyOptions"
+                          :lazy="true"
+                          class="pl-6 h-9 text-right text-sm font-bold" 
+                          :class="{ 'border-red-500 bg-red-50 text-red-700': parseMoney(cap.importo_da_usare) > cap.residuo }" 
+                        />
                       </div>
                       <div class="w-40 sm:w-56"><Input v-model="cap.note" placeholder="Note (es. Acconto invernale)..." class="h-9 text-xs" /></div>
                       <button @click="rimuoviCapitolo(cap.id)" type="button" class="text-slate-400 hover:text-red-500 p-2"><Trash2 class="w-4 h-4" /></button>
                     </div>
                   </div>
-                  <div v-if="(cap.importo_da_usare || 0) > cap.residuo" class="text-[11px] text-red-600 mt-2 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded animate-pulse">
+                  <div v-if="parseMoney(cap.importo_da_usare) > cap.residuo" class="text-[11px] text-red-600 mt-2 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded">
                     <AlertTriangle class="w-3 h-3" /> Attenzione: L'importo richiesto supera il residuo disponibile a bilancio.
                   </div>
                 </div>
@@ -674,12 +703,12 @@ const submit = () => {
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
               <div>
                 <Label for="numero_rate">Numero Rate *</Label>
-                <Input id="numero_rate" v-model.number="form.numero_rate" class="mt-1 bg-white dark:bg-slate-950 font-mono" />
+                <Input id="numero_rate" v-model.number="form.numero_rate" class="mt-1 bg-white dark:bg-slate-950" />
                 <InputError :message="form.errors.numero_rate" />
               </div>
               <div v-if="!usingByDay">
                 <Label for="giorno_scadenza">Giorno del mese</Label>
-                <Input id="giorno_scadenza" v-model.number="form.giorno_scadenza" class="mt-1 bg-white dark:bg-slate-950 font-mono" />
+                <Input id="giorno_scadenza" v-model.number="form.giorno_scadenza" class="mt-1 bg-white dark:bg-slate-950" />
               </div>
               <div class="flex items-center pt-6">
                  <div class="flex items-center gap-2">
@@ -705,7 +734,7 @@ const submit = () => {
                   </div>
                   <div>
                     <Label>Intervallo (es. ogni 2 mesi)</Label>
-                    <Input v-model="form.recurrence_interval" class="mt-1 bg-white font-mono" />
+                    <Input v-model="form.recurrence_interval" class="mt-1 bg-white" />
                   </div>
                 </div>
                 <div>
@@ -784,8 +813,8 @@ const submit = () => {
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                   <span class="text-xs text-slate-400 font-semibold">Totale</span>
-                  <span class="font-mono font-bold text-sm px-2.5 py-1 rounded-lg" :class="gruppo.totale_soggetto > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'">
-                    {{ gruppo.totale_soggetto > 0 ? '' : '+ ' }}€ {{ formatMoney(Math.abs(gruppo.totale_soggetto) / 100) }}
+                  <span class="font-bold text-sm px-2.5 py-1 rounded-lg" :class="gruppo.totale_soggetto > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'">
+                    {{ gruppo.totale_soggetto > 0 ? '' : '+ ' }}{{ euro(Math.abs(gruppo.totale_soggetto) / 100) }}
                   </span>
                 </div>
               </div>
@@ -803,8 +832,8 @@ const submit = () => {
                       </span>
                     </div>
                     <div class="text-right shrink-0">
-                      <div class="font-mono font-bold text-base" :class="saldo.is_debito ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldo.is_debito ? '' : '+ ' }}€ {{ formatMoney(Math.abs(saldo.importo) / 100) }}
+                      <div class="font-bold text-base" :class="saldo.is_debito ? 'text-red-700' : 'text-emerald-700'">
+                        {{ saldo.is_debito ? '' : '+ ' }}{{ euro(Math.abs(saldo.importo) / 100) }}
                       </div>
                     </div>
                   </div>
@@ -820,20 +849,24 @@ const submit = () => {
                     </div>
 
                     <div v-if="saldo.ripartizione_mode === 'manuale'" class="bg-indigo-50/40 border-2 border-dashed border-indigo-200 rounded-xl p-4 space-y-3">
-                      <p class="text-[11px] text-indigo-600 font-bold uppercase tracking-wide">Da distribuire: € {{ formatMoney(Math.abs(saldo.importo) / 100) }}</p>
-                      
+                      <p class="text-[11px] text-indigo-600 font-bold uppercase tracking-wide">Da distribuire: {{ euro(Math.abs(saldo.importo) / 100) }}</p>
                       <div v-for="(rip, rIndex) in saldo.ripartizioni_custom" :key="rIndex" class="flex items-center gap-3">
                         <v-select :options="anagraficheDisponibili" label="nome" v-model="rip.anagrafica_id" :reduce="(a: any) => a.id" class="flex-1 text-xs bg-white" placeholder="Seleziona soggetto..." />
                         <div class="relative w-32 shrink-0">
                           <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
-                          <Input v-model="rip.importo" class="h-8 pl-7 text-right font-mono text-sm" />
+                          <MoneyInput 
+                              v-model="rip.importo" 
+                              :money-options="moneyOptions"
+                              :lazy="true"
+                              class="h-8 pl-7 text-right text-sm" 
+                          />
                         </div>
                         <Button type="button" variant="ghost" size="icon" class="h-8 w-8 text-slate-400 hover:text-red-500" @click="saldo.ripartizioni_custom.splice(rIndex, 1)"><Trash2 class="w-4 h-4" /></Button>
                       </div>
 
                       <div v-if="saldo.ripartizioni_custom.length > 0">
-                        <div v-if="Math.abs(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + Number(r.importo || 0), 0) - Math.abs(saldo.importo) / 100) > 0.01" class="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                          <AlertTriangle class="w-3.5 h-3.5" /> La somma ripartita ({{ formatMoney(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + Number(r.importo || 0), 0)) }}) non combacia.
+                        <div v-if="Math.abs(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0) - Math.abs(saldo.importo) / 100) > 0.01" class="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                          <AlertTriangle class="w-3.5 h-3.5" /> La somma ripartita ({{ euro(saldo.ripartizioni_custom.reduce((acc: number, r: any) => acc + parseMoney(r.importo), 0)) }}) non combacia.
                         </div>
                       </div>
 

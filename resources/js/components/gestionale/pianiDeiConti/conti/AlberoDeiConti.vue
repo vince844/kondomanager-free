@@ -1,19 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue' // [AGGIUNTO] Import per l'ordinamento
+import { computed } from 'vue' 
 import { Folder, FolderOpen, FileText, Lock, Plus } from 'lucide-vue-next'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { Conto } from '@/types/gestionale/conti'
 
+// 1. UNICA definizione delle Props
 interface Props {
   conti: Conto[]
+  isParentLocked?: boolean 
 }
+
+// 2. UNICA dichiarazione di props con i valori di default
+const props = withDefaults(defineProps<Props>(), {
+  isParentLocked: false
+})
 
 interface Emits {
   (e: 'seleziona', conto: Conto): void
 }
 
-const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 const { euro } = useCurrencyFormatter()
 
@@ -26,20 +32,18 @@ const hasSottoconti = (conto: Conto) => {
 }
 
 const isCapitolo = (conto: Conto) => {
-  return conto.parent_id === null && (conto.importo === '€ 0,00' || conto.importo === '0,00');
+  return conto.parent_id === null && (conto.importo === '€ 0,00' || conto.importo === '0,00' || conto.importo_raw === 0);
 }
 
-// ─── LOGICA DI ORDINAMENTO [NUOVA] ───
+// ─── LOGICA DI ORDINAMENTO ───
 const contiOrdinati = computed(() => {
   return [...props.conti].sort((a, b) => {
     const aIsCap = isCapitolo(a)
     const bIsCap = isCapitolo(b)
 
-    // Se uno è capitolo e l'altro no, il capitolo va sopra (-1)
     if (aIsCap && !bIsCap) return -1
     if (!aIsCap && bIsCap) return 1
     
-    // Se sono dello stesso tipo, ordiniamo per nome (alfabetico)
     return a.nome.localeCompare(b.nome)
   })
 })
@@ -110,7 +114,7 @@ const getTextColor = (conto: Conto) => {
             </div>
 
             <div class="flex items-center gap-1.5">
-              <Lock v-if="conto.has_rate_emesse" class="w-3 h-3 text-amber-500" title="Bloccato da rate emesse" />
+              <Lock v-if="conto.has_rate_emesse || props.isParentLocked" class="w-3 h-3 text-amber-500" title="Bloccato da rate emesse" />
               
               <span 
                 v-if="!isCapitolo(conto)" 
@@ -153,6 +157,7 @@ const getTextColor = (conto: Conto) => {
           >
             <AlberoDeiConti 
               :conti="conto.sottoconti || []" 
+              :is-parent-locked="conto.has_rate_emesse || props.isParentLocked"
               @seleziona="selezionaConto"
             />
           </div>

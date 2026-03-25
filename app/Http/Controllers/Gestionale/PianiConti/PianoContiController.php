@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\PianiConti;
 
+use App\Enums\StatoPianoRate;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\PianoConto\CreatePianoContoRequest;
 use App\Http\Requests\Gestionale\PianoConto\PianoContoIndexRequest;
@@ -136,17 +137,20 @@ class PianoContiController extends Controller
      */
     public function show(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): Response
     {
-        // 1. Carica i conti — aggiunta 'pianiRate' e 'sottoconti.pianiRate'
-        //    necessari al Service per il calcolo dei deficit
+
+        // 1. Carica i conti — aggiunta 'withExists' per il lucchetto in tempo reale
         $conti = Conto::with([
-            'sottoconti.tabelleMillesimali.tabella',
-            'sottoconti.tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
-            'sottoconti.pianiRate',         // ← AGGIUNTO
+            'sottoconti' => function ($query) {
+                $query->with([
+                    'tabelleMillesimali.tabella',
+                    'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
+                    'pianiRate' // Serve al BudgetCoverageService
+                ]);
+            },
             'tabelleMillesimali.tabella',
             'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
-            'pianiRate',                    // ← AGGIUNTO
-        ])
-        ->where('piano_conto_id', $pianoConto->id)
+            'pianiRate', // Serve al BudgetCoverageService
+        ])->where('piano_conto_id', $pianoConto->id)
         ->whereNull('parent_id')
         ->orderBy('nome')
         ->get();

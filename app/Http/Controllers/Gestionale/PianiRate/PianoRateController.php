@@ -20,6 +20,7 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use App\Models\Saldo;
+use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SaldoEsercizioService;
 use App\Services\PianoRateCreatorService;
 use App\Services\PianoRateQuoteService;
@@ -237,15 +238,28 @@ class PianoRateController extends Controller
                 $this->pianoRateCreatorService->creaRicorrenza($pianoRate, $validated);
             }
 
+            // --- INIZIO FIX: Conversione importi saldi_config in centesimi ---
+            $saldiConfigCents = $validated['saldi_config'] ?? [];
+            foreach ($saldiConfigCents as &$configSaldo) {
+                if (isset($configSaldo['ripartizioni']) && is_array($configSaldo['ripartizioni'])) {
+                    foreach ($configSaldo['ripartizioni'] as &$rip) {
+                        if (isset($rip['importo']) && $rip['importo'] !== '') {
+                            // Traduciamo la stringa "1.000,50" nel numero di centesimi 100050
+                            $rip['importo'] = MoneyHelper::toCents($rip['importo']);
+                        }
+                    }
+                }
+            }
+            unset($configSaldo, $rip); // Rompiamo le reference di PHP per sicurezza
+            // --- FINE FIX ---
+
             // 6. Generazione Rate fisiche tramite Action (PRIMA DEL LOCK!)
             $statistiche = [];
             if (!empty($validated['genera_subito'])) {
-                // Passiamo l'array originale del form. 
-                // Se è vuoto, GenerateSaldiAction pescherà automaticamente i saldi "is_applicato = false"
                 $statistiche = app(GeneratePianoRateAction::class)->execute(
                     $pianoRate, 
                     $applicareSaldi, 
-                    $validated['saldi_config'] ?? []
+                    $saldiConfigCents // Passiamo l'array pulito e convertito in centesimi!
                 );
             }
 
@@ -290,21 +304,26 @@ class PianoRateController extends Controller
         
         // Calcolo voci di bilancio non coperte da questo (o altri) piani rate attivi
         $orfani = [];
-        if ($pianoRate->gestione && $pianoRate->gestione->pianoConto) {
-            $orfaniRaw = $pianoRate->gestione->pianoConto->conti()
-                ->whereNull('parent_id')
-                ->whereDoesntHave('pianiRate', fn($q) => $q->where('piani_rate.attivo', true))
-                // FIX: Sostituito where('id', '!=', array) con whereNotIn
-                ->whereNotIn('id', $pianoRate->capitoli->pluck('id')->toArray()) 
-                // FIX: Escludi le voci a 0€ dal conteggio degli orfani
-                ->where('importo', '>', 0) 
-                ->get();
+        if ($pianoRate->gestione) {
+            // 1. Chiamiamo il Service che conosce l'ereditarietà padre-figlio
+            $coverageService = app(\App\Services\Gestionale\BudgetCoverageService::class);
+            $report = $coverageService->analyze($pianoRate->gestione);
             
-            $orfani = $orfaniRaw->map(fn($c) => [
-                'id' => $c->id, 
-                'nome' => $c->nome, 
-                'importo' => $c->importo
-            ])->values()->toArray();
+            // 2. Filtriamo gli orfani reali dal report
+            // Un "orfano" è una voce con budget > 0 che ha pianificato 0
+            $orfani = collect($report['items'] ?? [])
+                ->filter(fn($item) => 
+                    $item['budget'] > 0 &&        
+                    $item['pianificato'] === 0
+                )
+                ->map(fn($item) => [
+                    'id'      => $item['id'],
+                    // Aggiungiamo un trattino se è un sottoconto per chiarezza visiva
+                    'nome'    => $item['parent_id'] ? "— " . $item['nome'] : $item['nome'],
+                    'importo' => $item['budget'], 
+                ])
+                ->values()
+                ->toArray();
         }
         
         $coperturaData = [
@@ -591,6 +610,9 @@ class PianoRateController extends Controller
                     ->where('is_applicato', true)
                     ->update(['is_applicato' => false]);
             }
+
+            // Sganciamo i capitoli
+            $pianoRate->capitoli()->detach();
 
             // Elimina fisicamente il piano rate
             $pianoRate->delete();

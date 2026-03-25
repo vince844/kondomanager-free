@@ -25,8 +25,8 @@ import type { Flash } from '@/types/flash';
 const props = defineProps<{
   condominio: Building
   esercizio: Esercizio
-  esercizi?: Esercizio[] // Aggiunto per il PageHeaderGuide
-  condomini?: Building[] // Aggiunto per il PageHeaderGuide
+  esercizi?: Esercizio[] 
+  condomini?: Building[] 
   pianoConti: PianoDeiConti
   conti: Conto[]
   fornitori: Array<{ id: number, ragione_sociale: string }>

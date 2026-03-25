@@ -125,8 +125,8 @@ class BudgetCoverageService
         //   Piano B → Capitolo padre (conto 97): importo pivot = 20.000¢
         //   Compenso: deficit 20.000¢ | Pulizia: deficit 10.000¢
         //   Quota uguale = 20.000 / 2 = 10.000¢ ciascuno
-        //   Compenso prende: min(20.000, 10.000) = 10.000¢ → totale 20.000¢ (200€) ✅
-        //   Pulizia prende:  min(10.000, 10.000) = 10.000¢ → totale 52.300¢ (523€) ✅
+        //   Compenso prende: min(20.000, 10.000) = 10.000¢ → totale 20.000¢ (200€) 
+        //   Pulizia prende:  min(10.000, 10.000) = 10.000¢ → totale 52.300¢ (523€) 
         // ----------------------------------------------------------------
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
@@ -136,12 +136,13 @@ class BudgetCoverageService
 
                     // Importo disponibile dal padre per il push-down
                     if (is_null($capitolo->pivot->importo)) {
-                        $residuoPiano = PHP_INT_MAX; // copre tutto il fabbisogno dei figli
+                        // Sostituisci PHP_INT_MAX con l'importo effettivo del capitolo
+                        $residuoPiano = (int) $capitolo->importo; 
                     } else {
                         $residuoPiano = (int) $capitolo->pivot->importo;
                     }
 
-                    // Salva il valore reale del padre nella mappa (non PHP_INT_MAX)
+                    // Salva il valore reale del padre nella mappa 
                     $importoRealeDelPadre = is_null($capitolo->pivot->importo)
                         ? (int) $capitolo->importo
                         : (int) $capitolo->pivot->importo;

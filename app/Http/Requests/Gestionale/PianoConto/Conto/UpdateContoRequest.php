@@ -25,19 +25,11 @@ class UpdateContoRequest extends FormRequest
         ]);
     }
 
-    /**
-     * Determine if the user is authorized to make this request.
-     */
     public function authorize(): bool
     {
         return true;
     }
 
-    /**
-     * Get the validation rules that apply to the request.
-     *
-     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
-     */
     public function rules(): array
     {
         $contoId = optional($this->route('conto'))->id;
@@ -63,20 +55,17 @@ class UpdateContoRequest extends FormRequest
             'percentuale_usufruttuario' => 'nullable|numeric|min:0|max:100',
         ];
 
-        // Importo e tabelle obbligatori solo se non è un capitolo
-        if (!$this->isCapitolo) {
+        if (!$this->boolean('isCapitolo')) {
             $rules['importo'] = 'required|string';
             $rules['tabella_millesimale_id'] = 'required|exists:tabelle,id';
             $rules['percentuale_proprietario'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_inquilino'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_usufruttuario'] = 'required|numeric|min:0|max:100';
         } else {
-            // Se è un capitolo, accettiamo il numero (0) dal frontend
-            $rules['importo'] = 'nullable|numeric';
+            $rules['importo'] = 'nullable';
         }
 
-        // Parent_id obbligatorio solo se è un sottoconto
-        if ($this->isSottoConto) {
+        if ($this->boolean('isSottoConto')) {
             $rules['parent_id'] = 'required|exists:conti,id';
         }
 
@@ -102,7 +91,6 @@ class UpdateContoRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
-            // Verifica che non si stia cercando di rendere un capitolo con sottoconti un conto normale
             $conto = $this->route('conto');
 
             if ($conto && $this->filled('parent_id') && (int) $this->parent_id === (int) $conto->id) {
@@ -112,14 +100,14 @@ class UpdateContoRequest extends FormRequest
                 );
             }
 
-            if ($conto && $conto->sottoconti && $conto->sottoconti->count() > 0 && !$this->isCapitolo) {
+            if ($conto && $conto->sottoconti && $conto->sottoconti->count() > 0 && !$this->boolean('isCapitolo')) {
                 $validator->errors()->add(
                     'isCapitolo',
                     'Non è possibile trasformare un capitolo con sottoconti in una voce di spesa normale'
                 );
             }
 
-            if (!$this->isCapitolo) {
+            if (!$this->boolean('isCapitolo')) {
                 $somma = $this->percentuale_proprietario +
                     $this->percentuale_inquilino +
                     $this->percentuale_usufruttuario;

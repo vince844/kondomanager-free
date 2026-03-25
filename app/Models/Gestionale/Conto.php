@@ -15,7 +15,7 @@ class Conto extends Model
 
     protected $table = 'conti';
 
-    protected $appends = ['has_rate_emesse'];
+    protected $appends = [];
 
     protected $fillable = [
         'piano_conto_id',

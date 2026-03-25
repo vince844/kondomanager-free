@@ -226,10 +226,16 @@ const eseguiCambioStato = (newValue: boolean, extra: object) => {
         { approvato: newValue, ...extra },
         {
             preserveScroll: true,
+            replace: true,
+            onSuccess: () => {
+                // Inertia v2: invalida la cache della pagina piano dei conti
+                // in modo che il back button non serva dati stantii
+                router.flushAll()
+            },
             onError: (err) => {
                 console.error("Errore cambio stato:", err);
                 switchState.value = !newValue;
-                showFeedback('Errore', 'Impossibile cambiare lo stato del piano. Controlla che non ci siano rate emesse.', true);
+                showFeedback('Errore', 'Impossibile cambiare lo stato del piano.', true);
             },
             onFinish: () => { isProcessingStatus.value = false; }
         }

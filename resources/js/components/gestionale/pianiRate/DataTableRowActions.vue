@@ -46,6 +46,7 @@ function deletePianoRate() {
   router.delete(route(generateRoute('gestionale.esercizi.piani-rate.destroy'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: props.pianoRate.id }), {
     preserveScroll: true,
     onSuccess: () => {
+      router.flushAll()
       closeModal()
     },
     onError: () => {
@@ -67,17 +68,6 @@ function deletePianoRate() {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
-
-      <!-- <DropdownMenuItem>
-        <Link
-          :href="route(generateRoute('gestionale.esercizi.piani-rate.edit'), { condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: props.pianoRate.id })"
-          preserve-state
-          class="flex items-center gap-2"
-        >
-          <FilePenLine class="w-4 h-4 text-xs" />
-          Modifica
-        </Link>
-      </DropdownMenuItem> -->
 
       <DropdownMenuItem
         @click="handleDelete(pianoRate)"
