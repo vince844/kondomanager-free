@@ -14,6 +14,7 @@ import DettaglioConto from '@/components/gestionale/pianiDeiConti/conti/Dettagli
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalAssociaTabella from '@/components/gestionale/pianiDeiConti/conti/ModalAssociaTabella.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
