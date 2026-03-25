@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException; 
 
 /**
- * Controller per la gestione delle voci di spesa/entrata (Conti) all'interno del Piano dei Conti.
+ * Controller per la gestione delle voci di spesa/entrata (Conti) all'interno del piano dei conti.
  * Gestisce la creazione, l'aggiornamento e l'eliminazione dei conti, inclusa la logica
  * complessa per capitoli, sottoconti e blocchi contabili.
  */
