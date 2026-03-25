@@ -32,7 +32,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     </div>
     <div class="flex flex-col gap-2 w-full sm:flex-row sm:justify-end">
       <!-- Right Section: Button (force it to the right) -->
-      <Button class="hidden h-8 lg:flex ml-auto">
+      <Button class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors">
         <ShieldPlus class="w-4 h-4" />
         <Link :href="route('ruoli.create')">Nuovo ruolo</Link>
       </Button>
@@ -40,7 +40,7 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
       <Link
           as="button"
           :href="'/impostazioni'"
-          class="h-8 w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
+          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
         >
           <Settings class="w-4 h-4" />
           <span>Impostazioni</span>

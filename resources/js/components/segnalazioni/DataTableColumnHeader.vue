@@ -1,16 +1,11 @@
 <script setup lang="ts">
+
 import type { Column } from '@tanstack/vue-table'
 import type { Segnalazione } from '@/types/segnalazioni';
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-
+import { trans } from 'laravel-vue-i18n';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { ArrowDown, ChevronsUpDown, ArrowUp } from 'lucide-vue-next'
 
 interface DataTableColumnHeaderProps {
@@ -45,11 +40,11 @@ export default {
       <DropdownMenuContent align="start">
         <DropdownMenuItem @click="column.toggleSorting(false)">
           <ArrowUp class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Asc
+          {{ trans('segnalazioni.table.sort_asc') }}
         </DropdownMenuItem>
         <DropdownMenuItem @click="column.toggleSorting(true)">
           <ArrowDown class="mr-2 h-3.5 w-3.5 text-muted-foreground/70" />
-          Desc
+          {{ trans('comunicazioni.table.sort_desc') }}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -317,13 +317,17 @@ class DocumentoController extends Controller
 
         try {
             
-            if (!Storage::exists($documento->path)) {
+            // Specifichiamo il disco 'local' per coerenza con il metodo store()
+            if (!Storage::disk('local')->exists($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found'))
                 );
             }
 
-            return Storage::download($documento->path, $documento->name);
+            // Otteniamo il percorso assoluto e usiamo l'helper nativo per il download
+            $percorsoAssoluto = Storage::disk('local')->path($documento->path);
+
+            return response()->download($percorsoAssoluto, $documento->name);
 
         } catch (\Exception $e) {
 

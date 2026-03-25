@@ -72,8 +72,10 @@ watchDebounced(
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3">
-    <div class="flex items-center space-x-2">
+  
+  <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
+  
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
       <!-- Subject Filter -->
       <Input
         :placeholder="trans('documenti.table.categories.filter_by')"
@@ -88,20 +90,12 @@ watchDebounced(
       <button
         type="button"
         @click="handleNewCategory"
-        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
       >
-        <Plus class="w-4 h-4" />
+        <Plus class="w-3.5 h-3.5" />
         <span>{{ trans('documenti.actions.categories.new_category') }}</span>
       </button>
 
-      <Link 
-        as="button"
-        :href="route(generateRoute('documenti.index'))" 
-        class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
-      >
-        <List class="w-4 h-4" />
-        <span>{{ trans('documenti.actions.categories.list_documents') }}</span>
-      </Link>
     </div>
 
   </div>

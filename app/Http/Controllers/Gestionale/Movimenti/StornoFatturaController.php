@@ -1,0 +1,133 @@
+<?php
+
+namespace App\Http\Controllers\Gestionale\Movimenti;
+
+use App\Http\Controllers\Controller;
+use App\Models\Condominio;
+use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\FatturaPassivaService;
+use App\Traits\HandleFlashMessages;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+class StornoFatturaController extends Controller
+{
+    use HandleFlashMessages;
+
+    public function __invoke(Request $request, Condominio $condominio, FatturaPassiva $fattura, FatturaPassivaService $service)
+    {
+        if ($fattura->dati_extra['is_stornata'] ?? false) {
+            return back()->with($this->flashError('Questa fattura è già stata stornata in precedenza.'));
+        }
+
+        if ($fattura->netto_a_pagare < 0) {
+            return back()->with($this->flashError('Operazione negata: Non puoi stornare una Nota di Credito.'));
+        }
+
+        $gestioneId = null;
+        $primaScrittura = $fattura->scritture->first();
+        if ($primaScrittura) {
+            $gestioneId = $primaScrittura->gestione_id;
+        } else {
+            $gestioneId = DB::table('gestioni')
+                ->where('condominio_id', $condominio->id)
+                ->where('attiva', true)
+                ->value('id');
+        }
+
+        // --- AUTOGENERAZIONE SICURA PROTOCOLLO (Es. NC-2026-0001) ---
+        $annoInCorso = date('Y');
+        $ultimoProtocollo = DB::table('scritture_contabili')
+            ->where('condominio_id', $condominio->id)
+            ->where('numero_protocollo', 'like', "NC-{$annoInCorso}-%")
+            ->orderBy('id', 'desc')
+            ->value('numero_protocollo');
+
+        if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
+            $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
+            $protocolloNC = "NC-{$annoInCorso}-{$nextNum}";
+        } else {
+            $protocolloNC = "NC-{$annoInCorso}-0001";
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // FIX 1: LO SVUOTA-CESTINO
+            // Eliminiamo fisicamente le vecchie scritture "soft-deleted" che bloccano la chiave univoca
+            ScritturaContabile::onlyTrashed()
+                ->where('condominio_id', $condominio->id)
+                ->forceDelete();
+
+            $stornoData = [
+                'fornitore_id'               => $fattura->fornitore_id,
+                'esercizio_id'               => $fattura->esercizio_id,
+                'conto_corrente_id'          => $fattura->conto_corrente_id,
+                'tipo_documento'             => 'nota_credito',
+                'numero_documento'           => 'STORNO-' . ($fattura->numero_documento ?? $fattura->id),
+                'numero_protocollo'          => $protocolloNC, 
+                'data_documento'             => now()->format('Y-m-d'),
+                'data_scadenza'              => now()->format('Y-m-d'),
+                'importo_imponibile'         => abs($fattura->importo_imponibile / 100),
+                'importo_iva'                => abs($fattura->importo_iva / 100),
+                'importo_ritenuta'           => abs($fattura->importo_ritenuta / 100),
+                'totale_documento'           => abs($fattura->totale_documento / 100),
+                'netto_a_pagare'             => abs($fattura->netto_a_pagare / 100),
+                'is_pregresso'               => $fattura->is_pregresso,
+                'imponibile_pregresso'       => abs((float) $fattura->imponibile_pregresso / 100),
+                'aliquota_iva_pregressa'     => $fattura->aliquota_iva_pregressa,
+                'modalita_pagamento'         => $fattura->modalita_pagamento,
+                'gestione_id'                => $gestioneId,
+                'stato_approvazione'         => 'approvata',
+                'righe' => $fattura->righe->map(fn($r) => [
+                    'descrizione'        => '[STORNO] ' . $r->descrizione,
+                    'importo_imponibile' => abs((float) $r->importo_imponibile / 100),
+                    'aliquota_iva'       => (float) $r->aliquota_iva,
+                    'importo_iva'        => abs((float) $r->importo_iva / 100),
+                    'conto_id'           => $r->conto_id,
+                    'immobile_id'        => $r->immobile_id
+                ])->toArray(),
+                'coperture' => [], 
+                'dati_extra' => [
+                    'nota_storno' => "Storno automatico a compensazione della fattura ID: {$fattura->id}"
+                ]
+            ];
+
+            // GENERIAMO IL CLONE TRAMITE IL SERVICE
+            $notaCredito = $service->registraFattura($stornoData, $condominio->id);
+
+            // FIX 2: IL POST-PROCESSING CHIRURGICO
+            // Il Service forza 'fattura_acquisto' e 'FTP-'. Noi li correggiamo all'istante.
+            $scritturaNC = $notaCredito->scritture()->first();
+            if ($scritturaNC) {
+                $scritturaNC->update([
+                    'tipo_movimento'    => 'storno_fattura', // Valore che hai aggiunto nella migration!
+                    'numero_protocollo' => $protocolloNC,
+                    'causale'           => 'Storno Fattura n. ' . ($fattura->numero_documento ?? $fattura->id)
+                ]);
+            }
+            
+            $notaCredito->update(['numero_protocollo' => $protocolloNC]);
+
+            // CONGELAMENTO FATTURA ORIGINALE
+            $datiExtra = $fattura->dati_extra ?? [];
+            $datiExtra['is_stornata'] = true;
+            $datiExtra['stornata_da_id'] = $notaCredito->id;
+            
+            $fattura->update([
+                'dati_extra'      => $datiExtra,
+                'stato_pagamento' => 'stornata'
+            ]);
+
+            DB::commit();
+            return back()->with($this->flashSuccess("Storno eseguito! Nota di Credito n. {$protocolloNC} generata."));
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("Errore Storno Fattura ID {$fattura->id}: " . $e->getMessage());
+            return back()->with($this->flashError("Impossibile stornare il documento: " . $e->getMessage()));
+        }
+    }
+}

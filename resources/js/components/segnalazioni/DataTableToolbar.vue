@@ -95,7 +95,7 @@ const clearAllFilters = () => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 w-full mb-3 mt-4 lg:flex-row lg:items-center lg:justify-between">
+  <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
     <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
       
       <Input
@@ -154,9 +154,9 @@ const clearAllFilters = () => {
       as="button"
       v-if="hasPermission([Permission.CREATE_SEGNALAZIONI])"
       :href="route(generateRoute('segnalazioni.create'))" 
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto h-8"
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-4 h-4" />
+      <Plus class="w-3.5 h-3.5" />
       <span>{{ trans('segnalazioni.actions.new_ticket') }}</span>
     </Link>
 

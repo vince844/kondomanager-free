@@ -3,6 +3,7 @@
 namespace App\Services\Gestionale;
 
 use App\Events\Gestionale\FatturaRegistrata;
+use App\Models\CategoriaDocumento;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
@@ -227,16 +228,22 @@ class FatturaPassivaService
 
             // 5. Salvataggio File
             if ($file) {
-                $path = $file->store('fatture/' . $condominioId, 'public');
+                // Salvataggio nel disco 'local' (privato) dentro la cartella 'documenti'
+                $path = $file->storeAs('documenti/' . $condominioId, $file->hashName(), 'local');
+                
+                // Cerchiamo la categoria 'Fatture' (creata dal seeder)
+                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
+
                 $fattura->documenti()->create([
                     'name'         => $file->getClientOriginalName(),
-                    'description'  => 'Fattura Passiva n.' . $data['numero_documento'],
+                    'description'  => 'Fattura passiva n. ' . $data['numero_documento'],
                     'path'         => $path,
                     'mime_type'    => $file->getMimeType(),
                     'file_size'    => $file->getSize(),
                     'created_by'   => Auth::id() ?? 1,
-                    'is_published' => true,
+                    'is_published' => false, // Manteniamo la fattura privata per sicurezza
                     'is_approved'  => true,
+                    'category_id'  => $categoriaFatture ? $categoriaFatture->id : null,
                 ]);
             }
 
