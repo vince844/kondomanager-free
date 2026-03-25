@@ -37,7 +37,6 @@ class CreateContoRequest extends FormRequest
      *
      * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
-
     public function rules(): array
     {
         $rules = [
@@ -48,20 +47,22 @@ class CreateContoRequest extends FormRequest
             'isCapitolo'             => 'required|boolean',
             'isSottoConto'           => 'required|boolean', 
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
-            'importo'                => 'required|string',
             'parent_id'              => 'nullable|exists:conti,id',
             'codice'                 => ['nullable', 'string', 'max:20'],
             'default_fornitore_id'   => ['nullable', 'exists:fornitori,id'],
             'tipo_spesa'             => ['nullable', 'string', 'in:standard,professionista,lavori,utenza'],
         ];
 
-        // Importo obbligatorio solo se non è un capitolo
+        // Importo e tabelle obbligatori solo se non è un capitolo
         if (!$this->isCapitolo) {
-            // Se è una voce di spesa reale (anche sottoconto), DEVE avere una tabella
+            $rules['importo'] = 'required|string';
             $rules['tabella_millesimale_id'] = 'required|exists:tabelle,id';
             $rules['percentuale_proprietario'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_inquilino'] = 'required|numeric|min:0|max:100';
             $rules['percentuale_usufruttuario'] = 'required|numeric|min:0|max:100';
+        } else {
+            // Se è un capitolo, accettiamo il numero (0) dal frontend
+            $rules['importo'] = 'nullable|numeric';
         }
 
         // Parent_id obbligatorio solo se è un sottoconto
@@ -105,5 +106,4 @@ class CreateContoRequest extends FormRequest
             }
         });
     }
-    
 }
