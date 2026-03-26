@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue'
-import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge } from 'lucide-vue-next'
+import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, Check, Clock } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { Conto } from '@/types/gestionale/conti'
 
 interface Props {
@@ -225,7 +226,7 @@ const statusColorClass = computed(() => {
              <Table>
               <TableHeader>
                 <TableRow class="hover:bg-transparent">
-                  <TableHead class="h-9">Piano Rate</TableHead>
+                  <TableHead class="h-9">Piano rate</TableHead>
                   <TableHead class="h-9">Fonte</TableHead>
                   <TableHead class="h-9 text-right">Quota</TableHead>
                 </TableRow>
@@ -233,10 +234,40 @@ const statusColorClass = computed(() => {
               <TableBody>
                 <TableRow v-for="(item, idx) in props.conto.dettaglio_copertura" :key="idx">
                   <TableCell class="font-medium py-3">
-                    {{ item.piano }}
-                    <p v-if="item.is_shifted" class="text-[10px] text-muted-foreground font-normal mt-0.5 max-w-[200px] truncate" :title="item.note || ''">
-                      {{ item.note }}
-                    </p>
+                    <div class="flex flex-col gap-1">
+                      <div class="flex items-center gap-3 group">
+                        <TooltipProvider :delay-duration="100">
+                          <Tooltip>
+                            <TooltipTrigger as-child>
+                              <div class="relative flex items-center justify-center shrink-0 w-2 h-2 cursor-help">
+                                <span 
+                                  v-if="item.stato !== 'approvato'"
+                                  class="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-20"
+                                ></span>
+                                
+                                <span 
+                                  class="relative inline-flex rounded-full h-2 w-2 border shadow-sm"
+                                  :class="item.stato === 'approvato' 
+                                    ? 'bg-emerald-500 border-emerald-600' 
+                                    : 'bg-amber-400 border-amber-500'"
+                                ></span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" class="text-[10px] font-bold uppercase tracking-wider px-2 py-1">
+                              Piano {{ item.stato === 'approvato' ? 'Approvato' : 'in Bozza' }}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+
+                        <span class="truncate max-w-[200px] text-sm text-indigo-950 dark:text-slate-100 font-bold tracking-tight group-hover:text-primary transition-colors">
+                          {{ item.piano }}
+                        </span>
+                      </div>
+                      
+                      <p v-if="item.is_shifted" class="text-[10px] text-muted-foreground font-normal pl-5.5 max-w-[220px] truncate italic" :title="item.note || ''">
+                        {{ item.note }}
+                      </p>
+                    </div>
                   </TableCell>
                   <TableCell class="py-3">
                     <Badge v-if="item.is_shifted" variant="outline" class="bg-purple-50 text-purple-700 border-purple-200 rounded-md gap-1">

@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Gestionale\PianoRate;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreatePianoRateRequest extends FormRequest
 {
@@ -15,7 +16,14 @@ class CreatePianoRateRequest extends FormRequest
     {
         return [
             'gestione_id'          => ['required', 'exists:gestioni,id'],
-            'nome'                 => ['required', 'string', 'max:255'],
+            'nome' => [
+                'required', 
+                'string', 
+                'max:255',
+                Rule::unique('piani_rate')->where(function ($query) {
+                    return $query->where('gestione_id', $this->gestione_id);
+                }),
+            ],
             'descrizione'          => ['nullable', 'string'],
             'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate,rata_zero'],
             'numero_rate'          => ['required', 'integer'],

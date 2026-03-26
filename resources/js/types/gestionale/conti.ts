@@ -4,6 +4,7 @@ export interface DettaglioCopertura {
   piano: string;
   importo: number; // in centesimi
   fonte: 'diretta' | 'indiretta' | 'mista';
+  stato: 'bozza' | 'approvato';
   is_shifted?: boolean; // Per identificare gli spostamenti
   is_auto?: boolean;    // Per identificare i Jolly/NULL
   is_bozza?: boolean;

@@ -518,7 +518,7 @@ onMounted(async () => {
                                 v-model="form.importo_totale" 
                                 :money-options="moneyOptions"
                                 :lazy="false"
-                                class="h-10 text-lg font-bold font-mono shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2" 
+                                class="h-10 text-lg font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2" 
                                 placeholder="0,00" 
                             />
                         </div>
@@ -541,7 +541,7 @@ onMounted(async () => {
                                                 <span class="font-bold text-sm text-slate-800">{{ nome }}</span>
                                                 <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ tipo }}</span>
                                             </div>
-                                            <span v-if="conto_corrente?.iban" class="text-[10px] text-slate-400 font-mono mt-0.5">{{ conto_corrente.iban }}</span>
+                                            <span v-if="conto_corrente?.iban" class="text-[10px] text-slate-400 mt-0.5">{{ conto_corrente.iban }}</span>
                                         </div>
                                     </template>
                                 </v-select>
@@ -678,7 +678,7 @@ onMounted(async () => {
                                     <tr v-for="r in rateList" :key="r.id" class="transition-colors group" :class="[r.da_pagare > 0 ? 'bg-emerald-50/20' : 'hover:bg-gray-50', parseResiduoQuota(r.residuo) < 0 ? 'bg-blue-50/30' : '']">
                                        <td class="p-3 pl-4 align-top">
                                             <div class="flex flex-col">
-                                                <span class="font-mono text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
+                                                <span class="text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
 
                                                 <div class="mt-1 flex flex-col gap-1">
     
@@ -758,11 +758,11 @@ onMounted(async () => {
                                                                         <div>
                                                                             <div class="flex justify-between items-center pl-2 mb-1">
                                                                                 <span class="text-slate-400">Quota rata:</span>
-                                                                                <span class="font-mono font-medium text-slate-200">+ {{ euro(Math.abs(dett.componente_spesa)) }}</span>
+                                                                                <span class="font-medium text-slate-200">+ {{ euro(Math.abs(dett.componente_spesa)) }}</span>
                                                                             </div>
                                                                             <div class="flex justify-between items-center pl-2 pt-1 border-t border-slate-800">
                                                                                 <span class="text-[10px] text-slate-500 font-bold uppercase">Totale:</span>
-                                                                                <span class="font-mono font-bold" :class="parseResiduoQuota(dett.residuo) < 0 ? 'text-emerald-500' : 'text-orange-400'">{{ euro(parseResiduoQuota(dett.residuo)) }}</span>
+                                                                                <span class="font-bold" :class="parseResiduoQuota(dett.residuo) < 0 ? 'text-emerald-500' : 'text-orange-400'">{{ euro(parseResiduoQuota(dett.residuo)) }}</span>
                                                                             </div>
                                                                         </div>
                                                                     </li>
@@ -770,7 +770,7 @@ onMounted(async () => {
                                                                 <div class="border-t-2 border-slate-600 pt-2 mt-3 flex justify-between items-center bg-slate-800/50 p-2 rounded -mx-2">
                                                                     <span class="text-xs font-bold text-white uppercase tracking-wide">Netto Rata:</span>
                                                                     <div class="text-right">
-                                                                        <span class="font-mono font-bold text-sm" :class="parseResiduoQuota(r.residuo) < 0 ? 'text-emerald-400' : 'text-white'">
+                                                                        <span class="font-bold text-sm" :class="parseResiduoQuota(r.residuo) < 0 ? 'text-emerald-400' : 'text-white'">
                                                                             {{ euro(r.residuo) }}
                                                                         </span>
                                                                     </div>
@@ -786,7 +786,7 @@ onMounted(async () => {
                                         <td class="p-3 text-right align-top">
                                             <template v-if="hasSaldoMisto(r)">
                                                 <div class="flex flex-col items-end">
-                                                    <span class="font-mono text-sm font-bold text-red-600">{{ euro(r.residuo) }}</span>
+                                                    <span class="text-sm font-bold text-red-600">{{ euro(r.residuo) }}</span>
                                                     <div class="mt-1 flex flex-col items-end gap-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 shadow-sm" title="Attenzione: questa voce contiene un debito e un credito che si annullano a vicenda.">
                                                             <AlertCircle class="w-3 h-3 mr-1" /> SALDO MISTO
@@ -798,14 +798,14 @@ onMounted(async () => {
                                             
                                             <template v-else>
                                                 <div v-if="parseResiduoQuota(r.residuo) < 0" class="flex flex-col items-end pt-1">
-                                                    <span class="font-mono text-sm font-bold text-emerald-600">{{ euro(r.residuo) }}</span>
+                                                    <span class="text-sm font-bold text-emerald-600">{{ euro(r.residuo) }}</span>
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 mt-1 uppercase">
                                                         {{ isRataZero(r) ? 'CREDITO PREGRESSO' : 'CREDITO' }}
                                                     </span>
                                                 </div>
                                                 
                                                 <div v-else class="flex flex-col items-end pt-1">
-                                                    <span class="font-mono text-sm" :class="isRataZero(r) ? 'font-bold text-red-600' : 'font-semibold text-slate-700'">
+                                                    <span class="text-sm" :class="isRataZero(r) ? 'font-bold text-red-600' : 'font-semibold text-slate-700'">
                                                         {{ euro(r.residuo) }}
                                                     </span>
                                                     
@@ -833,7 +833,7 @@ onMounted(async () => {
                                                 :disabled="mode === 'auto'" 
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
-                                                class="text-right font-bold h-8 text-sm font-mono transition-all rounded-md border px-2 py-1 w-full outline-none focus:ring-2 focus:ring-primary/20" 
+                                                class="text-right font-bold h-8 text-sm transition-all rounded-md border px-2 py-1 w-full outline-none focus:ring-2 focus:ring-primary/20" 
                                                 :class="[
                                                     r.da_pagare > 0 ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700' : 'border-slate-200 bg-transparent hover:border-slate-300 text-slate-800',
                                                     mode === 'auto' ? 'opacity-70 cursor-not-allowed bg-slate-50' : 'bg-white'
@@ -902,7 +902,7 @@ onMounted(async () => {
                                     </div>
                                     
                                     <div class="text-right shrink-0">
-                                        <div class="font-mono font-bold" :class="riga.isCredito ? 'text-blue-400' : 'text-white'">
+                                        <div class="font-bold" :class="riga.isCredito ? 'text-blue-400' : 'text-white'">
                                             {{ euro(riga.pagato) }}
                                         </div>
                                         
@@ -915,7 +915,7 @@ onMounted(async () => {
 
                                 <div v-if="previewContabile.anticipo > 0" class="flex justify-between items-center pt-2 text-xs border-t border-slate-700 mt-2">
                                     <div class="text-blue-400 font-medium">Anticipo / Eccedenza</div>
-                                    <div class="font-mono font-bold text-blue-400">+ {{ euro(previewContabile.anticipo) }}</div>
+                                    <div class="font-bold text-blue-400">+ {{ euro(previewContabile.anticipo) }}</div>
                                 </div>
                             </div>
 

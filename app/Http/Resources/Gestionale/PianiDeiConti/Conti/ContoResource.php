@@ -58,6 +58,11 @@ class ContoResource extends JsonResource
             $nota          = $piano->pivot->note ?? '';
             $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') ||
                              str_contains(strtolower($nota), 'spostamento');
+            
+            // Helper per estrarre lo stato in formato stringa (Enum friendly)
+            $statoPiano = $piano->stato instanceof \App\Enums\StatoPianoRate 
+                ? $piano->stato->value 
+                : $piano->stato;
 
             if (is_null($piano->pivot->importo)) {
                 // NULL = "A Saldo": mostra quanto copre visivamente
@@ -66,6 +71,7 @@ class ContoResource extends JsonResource
                 if ($valore > 0) {
                     $dettaglioPiani[] = [
                         'piano'      => $piano->nome,
+                        'stato'      => $statoPiano,
                         'importo'    => $valore,
                         'fonte'      => 'diretta',
                         'is_shifted' => false,
@@ -79,6 +85,7 @@ class ContoResource extends JsonResource
                 if ($valore > 0) {
                     $dettaglioPiani[] = [
                         'piano'      => $piano->nome,
+                        'stato'      => $statoPiano,
                         'importo'    => $valore,
                         'fonte'      => 'diretta',
                         'is_shifted' => $isSpostamento,
@@ -101,6 +108,7 @@ class ContoResource extends JsonResource
                 if (!is_null($pianoPadre->pivot->importo) && (int) $pianoPadre->pivot->importo > 0) {
                     $dettaglioPiani[] = [
                         'piano'      => $pianoPadre->nome,
+                        'stato'      => $pianoPadre->stato instanceof \App\Enums\StatoPianoRate ? $pianoPadre->stato->value : $pianoPadre->stato,
                         'importo'    => $quotaIndirettaVisiva,
                         'fonte'      => 'indiretta',
                         'is_shifted' => false,
