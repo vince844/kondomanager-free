@@ -1,14 +1,18 @@
 <script setup lang="ts">
-
 import { ref, computed, watch } from 'vue';
-import { useForm, Head, router } from '@inertiajs/vue3';
+import { useForm, Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle } from 'lucide-vue-next';
+import {
+    FileText, Plus, Trash2, AlertTriangle, User,
+    ShieldAlert, Save, AlertOctagon,
+    TriangleAlert, Receipt, TrendingDown, Zap, ArrowRightLeft, 
+    Briefcase, History, ChevronDown, CheckCircle,
+} from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
@@ -16,13 +20,35 @@ import ModalSopravvenienza from '@/components/gestionale/movimenti/fatture/Modal
 import MoneyInput from '@/components/MoneyInput.vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
+import { enUS, it, pt } from 'date-fns/locale';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { trans } from 'laravel-vue-i18n';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
 // ---------------------------------------------------------------------------
 const { euro } = useCurrencyFormatter();
 const { generateRoute } = usePermission();
+const page = usePage<{ locale?: string }>();
+
+const localeCode = computed(() => {
+    const raw = String(page.props.locale ?? 'pt').toLowerCase();
+    return raw.replace('_', '-').split('-')[0];
+});
+
+const defaultVatRate = computed(() => (localeCode.value === 'pt' ? 23 : 22));
+const supplierIbanPlaceholder = computed(() => {
+    if (localeCode.value === 'pt') return 'PT50 0000...';
+    if (localeCode.value === 'en') return 'IBAN...';
+    return 'IT00 0000...';
+});
+const datePickerLocale = computed(() => {
+    if (localeCode.value === 'it') return it;
+    if (localeCode.value === 'en') return enUS;
+    return pt;
+});
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -145,7 +171,7 @@ const form = useForm({
     
     // NUOVI CAMPI PER FATTURA PREGRESSA
     imponibile_pregresso: 0,
-    aliquota_iva_pregressa: 22,
+    aliquota_iva_pregressa: defaultVatRate.value,
 
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
@@ -162,14 +188,7 @@ const form = useForm({
     },
     
     stato_approvazione: 'approvata',
-    righe: [{
-        descrizione: '',
-        conto_id: null as number | null,
-        immobile_id: null as number | null,
-        importo_imponibile: 0,
-        aliquota_iva: 22,
-        is_sopravvenienza: false 
-    }],
+    righe: [{ descrizione: '', conto_id: null as number | null, immobile_id: null as number | null, importo_imponibile: 0, aliquota_iva: defaultVatRate.value }],
     file: null as File | null,
 });
 
@@ -180,31 +199,16 @@ const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form
 
 const totali = computed(() => {
     let imponibile = 0, iva = 0;
-    let imponibile_ordinario = 0, iva_ordinaria = 0;
-    let imponibile_sopravvenienza = 0, iva_sopravvenienza = 0;
     
     if (form.is_pregresso) {
-        // Le fatture pregresse sono un blocco unico
+        // Calcolo per Fattura Pregressa (usa i campi diretti)
         imponibile = Number(form.imponibile_pregresso) || 0;
         iva = imponibile * (Number(form.aliquota_iva_pregressa) || 0) / 100;
-        imponibile_ordinario = imponibile;
-        iva_ordinaria = iva;
     } else {
-        // Somma e smista le righe nei due secchielli
+        // Calcolo per Fattura Normale (somma le righe)
         form.righe.forEach(r => {
-            const imp = Number(r.importo_imponibile) || 0;
-            const rIva = imp * (Number(r.aliquota_iva) || 0) / 100;
-            
-            imponibile += imp;
-            iva += rIva;
-            
-            if (r.is_sopravvenienza) {
-                imponibile_sopravvenienza += imp;
-                iva_sopravvenienza += rIva;
-            } else {
-                imponibile_ordinario += imp;
-                iva_ordinaria += rIva;
-            }
+            imponibile += Number(r.importo_imponibile) || 0;
+            iva        += (Number(r.importo_imponibile) * (Number(r.aliquota_iva) || 0) / 100);
         });
     }
 
@@ -217,14 +221,8 @@ const totali = computed(() => {
     return { 
         imponibile: Math.round(imponibile * 100) / 100, 
         iva: Math.round(iva * 100) / 100, 
-        imponibile_ordinario: Math.round(imponibile_ordinario * 100) / 100,
-        iva_ordinaria: Math.round(iva_ordinaria * 100) / 100,
-        imponibile_sopravvenienza: Math.round(imponibile_sopravvenienza * 100) / 100,
-        iva_sopravvenienza: Math.round(iva_sopravvenienza * 100) / 100,
         ritenuta: Math.round(ritenuta * 100) / 100, 
-        netto: Math.round((imponibile + iva - ritenuta) * 100) / 100,
-        // Flag comodo per mostrare/nascondere la grafica nel template
-        ha_sopravvenienze: imponibile_sopravvenienza > 0 
+        netto: Math.round((imponibile + iva - ritenuta) * 100) / 100 
     };
 });
 
@@ -311,30 +309,16 @@ const sforoBudgetTotaleCents = computed(() =>
 // ---------------------------------------------------------------------------
 // Watchers
 // ---------------------------------------------------------------------------
-
-// Smart Date Check & Gestione Fornitore
-watch([() => form.fornitore_id, () => form.data_documento], ([newFornitoreId, newDataDoc], [oldFornitoreId, oldDataDoc]) => {
-    
-    // 1. Controllo base: se manca la data documento o il fornitore, non possiamo calcolare la scadenza
-    if (!newFornitoreId || !newDataDoc) return;
-    
-    const f = props.fornitori.find(x => x.id === newFornitoreId);
+watch(() => form.fornitore_id, (v) => {
+    const f = props.fornitori.find(x => x.id === v);
     if (!f) return;
-
-    // 2. Ricalcoliamo la scadenza SE l'utente ha cambiato fornitore OPPURE ha cambiato la data del documento
-    if (newFornitoreId !== oldFornitoreId || newDataDoc !== oldDataDoc) {
-        const d = new Date(newDataDoc);
-        // Aggiungiamo i giorni di scadenza (default 30 se il fornitore non li ha impostati)
+    if (!form.data_scadenza) {
+        const d = new Date(form.data_documento);
         d.setDate(d.getDate() + (f.giorni_scadenza || 30));
         form.data_scadenza = d.toISOString().substring(0, 10);
     }
-
-    // 3. Aggiorniamo IBAN e Modalità di pagamento SOLO se è cambiato il fornitore (non la data)
-    // Usiamo l'operatore di coalescenza (||) per non sovrascrivere con stringhe vuote se l'utente aveva già scritto qualcosa
-    if (newFornitoreId !== oldFornitoreId) {
-        form.iban_fornitore     = f.iban_principale || form.iban_fornitore;
-        form.modalita_pagamento = f.modalita_pagamento_default || form.modalita_pagamento;
-    }
+    form.iban_fornitore     = f.iban_principale            || '';
+    form.modalita_pagamento = f.modalita_pagamento_default || 'bonifico';
 });
 
 const gestioniFiltrate = computed(() => {
@@ -353,17 +337,24 @@ watch(() => form.esercizio_id, (v) => {
     form.gestione_id = props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id;
 }, { immediate: true });
 
+watch(localeCode, (newLocale) => {
+    const nextDefaultVat = newLocale === 'pt' ? 23 : 22;
+
+    if (form.aliquota_iva_pregressa === 22 || form.aliquota_iva_pregressa === 23) {
+        form.aliquota_iva_pregressa = nextDefaultVat;
+    }
+
+    form.righe.forEach((riga) => {
+        if ((riga.aliquota_iva === 22 || riga.aliquota_iva === 23) && !riga.importo_imponibile) {
+            riga.aliquota_iva = nextDefaultVat;
+        }
+    });
+});
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
-const addRiga = () => form.righe.push({
-    descrizione: '',
-    conto_id: null,
-    immobile_id: null,
-    importo_imponibile: 0,
-    aliquota_iva: 22,
-    is_sopravvenienza: false
-});
+const addRiga    = () => form.righe.push({ descrizione: '', conto_id: null, immobile_id: null, importo_imponibile: 0, aliquota_iva: defaultVatRate.value });
 const removeRiga = (idx: number) => { if (form.righe.length > 1) form.righe.splice(idx, 1); };
 const showSopravvenienzaModal = ref(false);
 
@@ -421,31 +412,31 @@ const doSubmit = () => {
 // UI
 // ---------------------------------------------------------------------------
 const breadcrumbs = computed<Breadcrumb[]>(() => [
-    { title: 'Dashboard', href: route(generateRoute('gestionale.index'), { condominio: props.condominio.id }) },
-    { title: 'Fatture',   href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
-    { title: 'Registrazione' },
+    { title: trans('gestionale.fatture.create.breadcrumbs.dashboard'), href: route(generateRoute('gestionale.index'), { condominio: props.condominio.id }) },
+    { title: trans('gestionale.fatture.create.breadcrumbs.invoices'),   href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
+    { title: trans('gestionale.fatture.create.breadcrumbs.new_registration') },
 ]);
 
 const pageGuides = [
-    { title: 'Panel + Ledger',   description: 'I dati principali a sinistra, le voci a destra come un registro contabile. Tutto visibile in un\'unica schermata.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
-    { title: 'Controllo Budget', description: 'Il sistema verifica il residuo per ogni capitolo di spesa in tempo reale, riga per riga.', icon: Zap, colorVariant: 'amber' as const },
-    { title: 'Audit Trail',      description: 'Ogni sforamento deve essere giustificato con motivazione legale prima della registrazione.', icon: ShieldAlert, colorVariant: 'emerald' as const },
+    { title: trans('gestionale.fatture.create.guides.panel_ledger_title'),   description: trans('gestionale.fatture.create.guides.panel_ledger_description'), icon: ArrowRightLeft, colorVariant: 'blue' as const },
+    { title: trans('gestionale.fatture.create.guides.budget_control_title'), description: trans('gestionale.fatture.create.guides.budget_control_description'), icon: Zap, colorVariant: 'amber' as const },
+    { title: trans('gestionale.fatture.create.guides.audit_trail_title'),      description: trans('gestionale.fatture.create.guides.audit_trail_description'), icon: ShieldAlert, colorVariant: 'emerald' as const },
 ];
 </script>
 
 <template>
-    <Head title="Registrazione fattura" />
+    <Head :title="trans('gestionale.fatture.create.head_title')" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
-                page-title="Registrazione fattura passiva"
-                page-subtitle="Inserisci i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
+                :page-title="trans('gestionale.fatture.create.page_title')"
+                :page-subtitle="trans('gestionale.fatture.create.page_subtitle')"
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :video-url="null"
                 :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
-                back-text="Indietro"
+                :back-text="trans('gestionale.fatture.create.actions.back')"
             />
 
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -456,8 +447,8 @@ const pageGuides = [
                     <TriangleAlert v-else class="w-5 h-5 shrink-0" />
                     <p class="text-sm font-medium">
                         {{ transactionStatus === 'CRITICAL_BUDGET'
-                            ? 'Sforamento budget rilevato — sarà necessaria una motivazione al momento della registrazione.'
-                            : 'Liquidità insufficiente sul conto selezionato.' }}
+                            ? trans('gestionale.fatture.create.alerts.budget_overrun')
+                            : trans('gestionale.fatture.create.alerts.insufficient_liquidity') }}
                     </p>
                 </div>
             </Transition>
@@ -471,41 +462,41 @@ const pageGuides = [
                                 <button type="button" @click="form.tipo_documento = 'fattura'"
                                     class="flex-1 py-2 text-[11px] font-black uppercase tracking-wider rounded-md transition-all flex items-center justify-center gap-1.5"
                                     :class="form.tipo_documento === 'fattura' ? 'bg-white dark:bg-slate-700 text-primary shadow-sm' : 'text-slate-400'">
-                                    <FileText class="w-3.5 h-3.5" /> Fattura
+                                    <FileText class="w-3.5 h-3.5" /> {{ trans('gestionale.fatture.create.document_type.invoice') }}
                                 </button>
                                 <button type="button" @click="form.tipo_documento = 'nota_credito'"
                                     class="flex-1 py-2 text-[11px] font-black uppercase tracking-wider rounded-md transition-all"
                                     :class="form.tipo_documento === 'nota_credito' ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-400'">
-                                    Nota Credito
+                                    {{ trans('gestionale.fatture.create.document_type.credit_note') }}
                                 </button>
                             </div>
                             <Transition mode="out-in">
                                 <div v-if="form.tipo_documento === 'fattura'" key="ft" class="flex items-start gap-2 px-2.5 py-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/30">
                                     <FileText class="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />
                                     <p class="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
-                                        <strong>Fattura passiva</strong> — documento ricevuto dal fornitore per beni o servizi acquistati.
+                                        {{ trans('gestionale.fatture.create.document_type.invoice_help') }}
                                     </p>
                                 </div>
                                 <div v-else key="nc" class="flex items-start gap-2 px-2.5 py-2 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-100 dark:border-rose-900/30">
                                     <AlertTriangle class="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
                                     <p class="text-[10px] text-rose-700 dark:text-rose-400 leading-relaxed">
-                                        <strong>Nota di credito</strong> — documento emesso dal fornitore per rettificare una fattura.
+                                        {{ trans('gestionale.fatture.create.document_type.credit_note_help') }}
                                     </p>
                                 </div>
                             </Transition>
                         </div>
-                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Dati Principali</h3>
+                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">{{ trans('gestionale.fatture.create.sections.main_data') }}</h3>
                     </div>
 
                     <div class="p-5 flex-1 overflow-y-auto space-y-5">
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore</Label>
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.supplier') }}</Label>
                             <v-select 
                                 v-model="form.fornitore_id" 
                                 :options="fornitori" 
                                 label="ragione_sociale" 
                                 :reduce="(f: Fornitore) => f.id" 
-                                placeholder="Cerca fornitore o P.IVA..." 
+                                :placeholder="trans('gestionale.fatture.create.placeholders.search_supplier')" 
                                 class="style-chooser w-full"
                             >
                                 <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
@@ -518,7 +509,7 @@ const pageGuides = [
                                             <div class="flex items-center gap-2 mt-0.5">
                                                 <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
-                                                <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
+                                                <span v-else class="text-[10px] text-slate-400 italic">{{ trans('gestionale.fatture.create.labels.no_vat_tax_code') }}</span>
                                                 <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
                                                     Ritenuta
                                                 </span>
@@ -542,17 +533,17 @@ const pageGuides = [
                         <hr class="border-slate-100 dark:border-slate-800">
 
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Gestione</Label>
-                            <v-select v-model="form.gestione_id" :options="gestioni" label="nome" :reduce="(g: Gestione) => g.id" placeholder="Seleziona..." class="style-chooser" />
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.management') }}</Label>
+                            <v-select v-model="form.gestione_id" :options="gestioni" label="nome" :reduce="(g: Gestione) => g.id" :placeholder="trans('gestionale.form_common.placeholders.select_one')" class="style-chooser" />
                         </div>
 
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento</Label>
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.document_number') }}</Label>
                             <Input v-model="form.numero_documento" 
                                 class="h-9 uppercase text-base tracking-widest"
                                 :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors.numero_documento }"
                                 @input="form.clearErrors('numero_documento')"
-                                placeholder="Es. 123/A" />
+                                :placeholder="trans('gestionale.fatture.create.placeholders.document_number')" />
                             <p v-if="form.errors.numero_documento" class="text-[11px] text-red-600 font-medium">
                                 {{ form.errors.numero_documento }}
                             </p>
@@ -560,15 +551,31 @@ const pageGuides = [
 
                         <div class="grid grid-cols-2 gap-3">
                             <div class="space-y-1.5">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data *</Label>
-                                <Input type="date" v-model="form.data_documento" class="h-9 text-sm" />
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.document_date') }}</Label>
+                                <VueDatePicker :teleport="true"
+                                    v-model="form.data_documento"
+                                    class="w-full"
+                                    model-type="yyyy-MM-dd"
+                                    format="dd/MM/yyyy"
+                                    :locale="datePickerLocale"
+                                    :enable-time-picker="false"
+                                    auto-apply
+                                    :clear-button-label="localeCode === 'pt' ? 'Limpar' : (localeCode === 'it' ? 'Cancella' : 'Clear')"
+                                    :today-button-label="localeCode === 'pt' ? 'Hoje' : (localeCode === 'it' ? 'Oggi' : 'Today')"
+                                />
                             </div>
                             <div class="space-y-1.5">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">Scadenza *</Label>
-                                <Input 
-                                    type="date" 
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">{{ trans('gestionale.fatture.create.labels.due_date') }}</Label>
+                                <VueDatePicker :teleport="true"
                                     v-model="form.data_scadenza"
-                                    class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" 
+                                    class="w-full"
+                                    model-type="yyyy-MM-dd"
+                                    format="dd/MM/yyyy"
+                                    :locale="datePickerLocale"
+                                    :enable-time-picker="false"
+                                    auto-apply
+                                    :clear-button-label="localeCode === 'pt' ? 'Limpar' : (localeCode === 'it' ? 'Cancella' : 'Clear')"
+                                    :today-button-label="localeCode === 'pt' ? 'Hoje' : (localeCode === 'it' ? 'Oggi' : 'Today')"
                                 />
                             </div>
                         </div>
@@ -579,17 +586,17 @@ const pageGuides = [
                             </div>
                             <div class="flex flex-col">
                                 <label for="is_pregresso" class="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer">
-                                    Debito Esercizio Precedente
+                                    {{ trans('gestionale.fatture.create.labels.previous_year_debt') }}
                                 </label>
                                 <p v-if="form.is_pregresso" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium leading-tight">
-                                    Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello Stato Patrimoniale.
+                                    {{ trans('gestionale.fatture.create.hints.previous_year_debt') }}
                                 </p>
                             </div>
                         </div>
 
                         <div v-if="form.is_pregresso" class="grid grid-cols-3 gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 border border-amber-100 dark:border-amber-800/30 rounded-lg mt-3">
                             <div class="col-span-2 space-y-1.5">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Imponibile Lordo</Label>
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.gross_taxable') }}</Label>
                                 <MoneyInput
                                     id="importo_pregresso"
                                     v-model="form.imponibile_pregresso"
@@ -612,8 +619,8 @@ const pageGuides = [
                         <hr class="border-slate-100 dark:border-slate-800">
 
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conto Addebito</Label>
-                            <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca..." class="style-chooser">
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.debit_account') }}</Label>
+                            <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" :placeholder="trans('gestionale.fatture.create.placeholders.select_bank')" class="style-chooser">
                                 <template #option="{ nome, saldo_attuale_cents }">
                                     <div class="flex justify-between items-center py-0.5">
                                         <span class="font-bold text-sm">{{ nome }}</span>
@@ -630,13 +637,13 @@ const pageGuides = [
                         </div>
 
                         <div class="space-y-1.5">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IBAN Fornitore</Label>
-                            <Input v-model="form.iban_fornitore" class="h-9 text-sm" placeholder="IT00 0000..." />
+                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">{{ trans('gestionale.fatture.create.labels.supplier_iban') }}</Label>
+                            <Input v-model="form.iban_fornitore" class="h-9 text-sm" :placeholder="supplierIbanPlaceholder" />
                         </div>
 
                         <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 transition-colors" @click="fileInput?.click()">
                             <FileText class="w-5 h-5 text-slate-300 mx-auto mb-1" />
-                            <p class="text-[11px] text-slate-400 font-medium">{{ form.file ? form.file.name : 'Allega documento (PDF, XML, P7M)' }}</p>
+                            <p class="text-[11px] text-slate-400 font-medium">{{ form.file ? form.file.name : trans('gestionale.fatture.create.labels.attach_document') }}</p>
                             <input type="file" ref="fileInput" class="hidden" accept=".pdf,.xml,.p7m,.jpg,.jpeg,.png" @change="(e: any) => form.file = e.target.files[0]" />
                         </div>
                     </div>
@@ -644,33 +651,25 @@ const pageGuides = [
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Imponibile lordo</span>
+                                <span class="text-slate-400">{{ trans('gestionale.fatture.create.totals.taxable') }}</span>
                                 <span>{{ euro(totali.imponibile, { fromCents: false }) }}</span>
                             </div>
-                            
-                            <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0">
-                                <div v-if="totali.ha_sopravvenienze" class="flex justify-between text-[10px] pl-2 border-l-2 border-amber-500/50 ml-1 mt-1 mb-1">
-                                    <span class="text-amber-400/80">Di cui imprevisto</span>
-                                    <span class="text-amber-400/80">{{ euro(totali.imponibile_sopravvenienza, { fromCents: false }) }}</span>
-                                </div>
-                            </Transition>
-
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">IVA</span>
                                 <span>{{ euro(totali.iva, { fromCents: false }) }}</span>
                             </div>
                             
                             <div v-if="totali.ritenuta > 0" class="flex justify-between text-xs pt-1 border-t border-slate-800">
-                                <span class="text-amber-400">Ritenuta d'Acconto</span>
+                                <span class="text-amber-400">{{ trans('gestionale.fatture.create.totals.withholding_tax') }}</span>
                                 <span class="text-amber-400">- {{ euro(totali.ritenuta, { fromCents: false }) }}</span>
                             </div>
                             <div v-else class="flex justify-between text-xs pt-1 border-t border-slate-800">
-                                <span class="text-slate-500 italic">Nessuna Ritenuta</span>
+                                <span class="text-slate-500 italic">{{ trans('gestionale.fatture.create.totals.no_withholding') }}</span>
                                 <span class="text-slate-500">€ 0,00</span>
                             </div>
                             
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
-                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Netto da pagare</span>
+                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">{{ trans('gestionale.fatture.create.totals.net_to_pay') }}</span>
                                 <span class="font-black text-2xl" :class="totali.netto > 0 ? 'text-emerald-400' : 'text-white'">
                                     {{ euro(totali.netto, { fromCents: false }) }}
                                 </span>
@@ -680,7 +679,7 @@ const pageGuides = [
                         <Button type="button" :disabled="form.processing" @click="handleSubmit" class="w-full h-12 font-black text-sm uppercase tracking-wider rounded-xl gap-2" :class="transactionStatus === 'CRITICAL_BUDGET' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'">
                             <ShieldAlert v-if="transactionStatus === 'CRITICAL_BUDGET'" class="w-5 h-5" />
                             <Save v-else class="w-5 h-5" />
-                            {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Autorizza e Registra' : 'Registra Documento' }}
+                            {{ transactionStatus === 'CRITICAL_BUDGET' ? trans('gestionale.fatture.create.actions.authorize_register') : trans('gestionale.fatture.create.actions.register_document') }}
                         </Button>
                     </div>
                 </div>
@@ -706,17 +705,18 @@ const pageGuides = [
                             <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between rounded-t-xl">
                                 <div>
                                     <div class="flex items-center gap-2">
-                                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Registro voci di spesa</h3>
+                                        <Receipt class="w-5 h-5 text-slate-400" />
+                                        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">{{ trans('gestionale.fatture.create.entries.title') }}</h3>
                                     </div>
-                                    <p class="text-[11px] text-slate-500 mt-1">Aggiungi una o più righe per ripartire il documento sui capitoli corretti.</p>
+                                    <p class="text-[11px] text-slate-500 mt-1">{{ trans('gestionale.fatture.create.entries.subtitle') }}</p>
                                 </div>
                                 <div class="flex items-center gap-4">
                                     <Badge variant="secondary" class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
-                                        {{ form.righe.length }} {{ form.righe.length === 1 ? 'Voce' : 'Voci' }}
+                                        {{ form.righe.length }} {{ form.righe.length === 1 ? trans('gestionale.fatture.create.entries.entry_singular') : trans('gestionale.fatture.create.entries.entry_plural') }}
                                     </Badge>
                                     <Button variant="outline" size="sm" type="button" @click="addRiga" 
                                         class="h-9 text-[11px] font-bold uppercase border-primary/20 text-primary hover:bg-primary/5 hover:text-primary transition-colors gap-1.5 shadow-sm">
-                                        <Plus class="w-3.5 h-3.5" /> Aggiungi riga
+                                        <Plus class="w-3.5 h-3.5" /> {{ trans('gestionale.fatture.create.entries.add_row') }}
                                     </Button>
                                 </div>
                             </div>
@@ -724,87 +724,67 @@ const pageGuides = [
                             <div class="divide-y divide-slate-100 dark:divide-slate-800/80">
                                 <div v-for="(riga, idx) in form.righe" :key="idx" class="p-6 hover:bg-slate-50/30 group transition-colors flex flex-col gap-4">
                                     <div class="grid grid-cols-12 gap-4">
-
-                                    <div class="col-span-12 md:col-span-8 relative">
-                                        <div class="flex items-center justify-between mb-1.5 min-h-[28px]">
-                                            <Label class="text-[10px] font-bold uppercase text-slate-400">Capitolo di spesa</Label>
-                                            
-                                            <button 
-                                                type="button"
-                                                @click="riga.is_sopravvenienza = !riga.is_sopravvenienza; riga.is_sopravvenienza && (riga.conto_id = null)"
-                                                class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
-                                                :class="riga.is_sopravvenienza 
-                                                    ? 'bg-amber-50 border-amber-200 text-amber-600 shadow-sm dark:bg-amber-900/30 dark:border-amber-700/50 dark:text-amber-400' 
-                                                    : 'bg-transparent border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-500 dark:border-slate-700 dark:hover:bg-slate-800'"
+                                        <div class="col-span-12 md:col-span-8 relative">
+                                            <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">{{ trans('gestionale.fatture.create.entries.expense_chapter') }}</Label>
+                                            <v-select 
+                                                v-model="riga.conto_id" 
+                                                :options="conti" 
+                                                label="nome"
+                                                :reduce="(c: Conto) => c.id" 
+                                                :placeholder="trans('gestionale.fatture.create.entries.search_chapter')"
+                                                class="style-chooser w-full"
+                                                append-to-body
                                             >
-                                                <Zap class="w-3 h-3" :class="riga.is_sopravvenienza ? 'text-amber-500' : 'text-slate-400'" />
-                                                <span>{{ riga.is_sopravvenienza ? 'Imprevista (Attiva)' : 'Fuori Preventivo' }}</span>
-                                            </button>
-                                        </div>
-
-                                        <v-select 
-                                            v-model="riga.conto_id" 
-                                            :options="conti" 
-                                            :disabled="riga.is_sopravvenienza"
-                                            label="nome"
-                                            :reduce="(c: Conto) => c.id" 
-                                            placeholder="Cerca capitolo..." 
-                                            class="style-chooser w-full"
-                                            append-to-body
-                                        >
-                                            <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
-                                                <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
-                                                    <div class="flex flex-col">
-                                                        <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
-                                                            {{ parent_nome }}
-                                                        </span>
-                                                        <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
-                                                            {{ nome }}
+                                                <template #option="{ nome, parent_nome, residuo_budget, is_capiente }">
+                                                    <div class="flex items-center justify-between py-1.5 border-b border-transparent hover:border-slate-100 dark:hover:border-slate-800">
+                                                        <div class="flex flex-col">
+                                                            <span v-if="parent_nome" class="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider font-semibold mb-0.5">
+                                                                {{ parent_nome }}
+                                                            </span>
+                                                            <span class="font-medium text-sm text-slate-800 dark:text-slate-200" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">
+                                                                {{ nome }}
+                                                            </span>
+                                                        </div>
+                                                        <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
+                                                            :class="is_capiente ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/50' : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'">
+                                                            {{ euro(residuo_budget) }}
                                                         </span>
                                                     </div>
-                                                    <span class="text-[10px] px-2 py-1 rounded-md font-semibold whitespace-nowrap ml-4 border"
-                                                        :class="is_capiente ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:border-emerald-900/50' : 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:border-rose-900/50'">
-                                                        {{ euro(residuo_budget) }}
-                                                    </span>
-                                                </div>
-                                            </template>
-                                            <template #selected-option="{ nome, parent_nome, is_capiente }">
-                                                <div class="flex items-center gap-2 text-sm w-full overflow-hidden">
-                                                    <span class="font-medium truncate" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">{{ nome }}</span>
-                                                    <span class="text-xs text-slate-400 truncate" v-if="parent_nome">– {{ parent_nome }}</span>
-                                                </div>
-                                            </template>
-                                        </v-select>
-                                    </div>
-
-                                    <div class="col-span-12 md:col-span-4 relative">
-                                        <div class="flex items-center mb-1.5 min-h-[28px]">
-                                            <Label class="text-[10px] font-bold uppercase text-slate-400">Unità (Opzionale)</Label>
+                                                </template>
+                                                <template #selected-option="{ nome, parent_nome, is_capiente }">
+                                                    <div class="flex items-center gap-2 text-sm w-full overflow-hidden">
+                                                        <span class="font-medium truncate" :class="{ 'text-rose-600 dark:text-rose-400': !is_capiente }">{{ nome }}</span>
+                                                        <span class="text-xs text-slate-400 truncate" v-if="parent_nome">– {{ parent_nome }}</span>
+                                                    </div>
+                                                </template>
+                                            </v-select>
                                         </div>
-                                        <v-select 
-                                            v-model="riga.immobile_id" 
-                                            :options="immobili" 
-                                            label="label" 
-                                            :reduce="(i: Immobile) => i.id" 
-                                            placeholder="Tutti (Spesa Comune)" 
-                                            class="style-chooser text-xs"
-                                            append-to-body
-                                        >
-                                            <template #option="{ label }">
-                                                <div class="flex items-center gap-1.5 py-0.5">
-                                                    <User class="w-3 h-3 text-blue-400 shrink-0" />
-                                                    <span class="text-xs">{{ label }}</span>
-                                                </div>
-                                            </template>
-                                        </v-select>
-                                    </div>
 
-                                </div>
+                                        <div class="col-span-12 md:col-span-4 relative">
+                                            <Label class="text-[10px] font-bold uppercase text-slate-400 mb-1.5 block">{{ trans('gestionale.fatture.create.entries.unit_optional') }}</Label>
+                                            <v-select 
+                                                v-model="riga.immobile_id" 
+                                                :options="immobili" 
+                                                label="label" 
+                                                :reduce="(i: Immobile) => i.id" 
+                                                :placeholder="trans('gestionale.fatture.create.entries.all_units_common_expense')"
+                                                class="style-chooser text-xs"
+                                                append-to-body
+                                            >
+                                                <template #option="{ label }">
+                                                    <div class="flex items-center gap-1.5 py-0.5">
+                                                        <User class="w-3 h-3 text-blue-400 shrink-0" />
+                                                        <span class="text-xs">{{ label }}</span>
+                                                    </div>
+                                                </template>
+                                            </v-select>
+                                        </div>
+                                    </div>
 
                                     <div class="grid grid-cols-12 gap-4 items-start">
                                         <div class="col-span-12 md:col-span-4 lg:col-span-5">
                                             <Input v-model="riga.descrizione" 
-                                                placeholder="Causale riga..." 
+                                                :placeholder="trans('gestionale.fatture.create.entries.row_reason')"
                                                 class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
                                                 :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }" 
                                                 @input="form.clearErrors(`righe.${idx}.descrizione`)"
@@ -829,7 +809,7 @@ const pageGuides = [
                                                 return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
                                             })()" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
-                                                <span class="text-[9px] font-black uppercase">Sforo budget</span>
+                                                <span class="text-[9px] font-black uppercase">{{ trans('gestionale.fatture.create.entries.budget_overrun') }}</span>
                                             </div>
                                         </div>
 
@@ -843,7 +823,7 @@ const pageGuides = [
 
                                         <div class="col-span-5 md:col-span-3 flex items-center justify-end gap-3 h-10">
                                             <div class="text-right">
-                                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
+                                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">{{ trans('gestionale.fatture.create.entries.row_total') }}</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
                                                     {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
                                                 </span>
@@ -857,23 +837,10 @@ const pageGuides = [
                                 </div>
                             </div>
 
-                            <div class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex flex-col sm:flex-row items-end sm:items-center justify-between px-6">
-                                <div>
-                                    <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-x-4" enter-to-class="opacity-100 translate-x-0">
-                                        <div v-if="totali.ha_sopravvenienze" class="flex items-center gap-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2 rounded-lg shadow-sm">
-                                            <div class="bg-amber-100 dark:bg-amber-800/50 p-1 rounded-md">
-                                                <Zap class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                            </div>
-                                            <div class="text-[11px] text-amber-800 dark:text-amber-300 leading-tight">
-                                                Di cui <strong class="font-black text-amber-900 dark:text-amber-100">{{ euro(totali.imponibile_sopravvenienza + totali.iva_sopravvenienza, { fromCents: false }) }}</strong><span class="opacity-80"> fuori preventivo</span>
-                                            </div>
-                                        </div>
-                                    </Transition>
-                                </div>
-
-                                <div class="flex items-center gap-8 pr-2 mt-4 sm:mt-0"> 
+                            <div class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex justify-end">
+                                <div class="flex items-center gap-8 pr-[60px]"> 
                                     <div class="text-right">
-                                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Imponibile</span>
+                                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">{{ trans('gestionale.fatture.create.totals.taxable') }}</span>
                                         <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.imponibile, { fromCents: false }) }}</span>
                                     </div>
                                     <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
@@ -883,12 +850,11 @@ const pageGuides = [
                                     </div>
                                     <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div> 
                                     <div class="text-right">
-                                        <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">Totale Doc.</span>
+                                        <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">{{ trans('gestionale.fatture.create.totals.total') }}</span>
                                         <span class="font-black text-primary text-xl">{{ euro(totali.imponibile + totali.iva, { fromCents: false }) }}</span>
                                     </div>
                                 </div>
                             </div>
-
                         </div>
 
                         <div class="bg-slate-900 dark:bg-slate-950 text-white rounded-xl border shadow-lg overflow-hidden transition-all duration-300"
@@ -897,7 +863,7 @@ const pageGuides = [
                             <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/40">
                                 <div class="flex items-center gap-2">
                                     <Zap class="w-4 h-4 text-blue-400" :class="transactionStatus === 'CRITICAL_BUDGET' ? 'text-rose-400 animate-pulse' : ''" />
-                                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Simulazione Impatto Finanziario</span>
+                                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">{{ trans('gestionale.fatture.create.simulation.title') }}</span>
                                 </div>
                                 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase"
                                     :class="{
@@ -911,14 +877,14 @@ const pageGuides = [
                                             'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
                                             'bg-emerald-500':             transactionStatus === 'SAFE',
                                         }"></span>
-                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Sforo Budget' : transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
+                                    {{ transactionStatus === 'CRITICAL_BUDGET' ? trans('gestionale.fatture.create.simulation.status_budget_overrun') : transactionStatus === 'WARNING_CASH' ? trans('gestionale.fatture.create.simulation.status_cash_warning') : trans('gestionale.fatture.create.simulation.status_ok') }}
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-2 divide-x divide-slate-700/50">
                                 <div class="p-5">
-                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Analisi Budget — Capitoli</p>
-                                    <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">Nessuna voce ancora</div>
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">{{ trans('gestionale.fatture.create.simulation.budget_analysis') }}</p>
+                                    <div v-if="budgetImpacts.length === 0" class="py-6 text-center text-slate-600 text-xs">{{ trans('gestionale.fatture.create.simulation.no_entries_yet') }}</div>
                                     <div v-else class="space-y-3">
                                         <div v-for="impact in budgetImpacts" :key="impact.id" class="space-y-1.5 bg-slate-800/20 rounded-lg p-2.5 border border-slate-700/50">
                                             <div class="flex justify-between items-start">
@@ -936,14 +902,14 @@ const pageGuides = [
                                             </div>
                                             
                                             <div class="flex justify-between text-[9px] text-slate-500 font-medium">
-                                                <span>Usato: {{ euro(impact.speso_cents) }}</span>
-                                                <span>Budget: {{ euro(impact.residuo_cents) }}</span>
+                                                <span>{{ trans('gestionale.fatture.create.simulation.used') }}: {{ euro(impact.speso_cents) }}</span>
+                                                <span>{{ trans('gestionale.fatture.create.simulation.budget') }}: {{ euro(impact.residuo_cents) }}</span>
                                             </div>
                                             
                                             <div v-if="impact.ultimi_movimenti && impact.ultimi_movimenti.length > 0" class="mt-2 pt-2 border-t border-slate-700/50">
                                                 <button type="button" @click="toggleHistory(impact.id)" class="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 hover:text-blue-400 transition-colors w-full">
                                                     <History class="w-3 h-3" />
-                                                    <span>{{ impact.ultimi_movimenti.length }} Moviment{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'o' }} recent{{ impact.ultimi_movimenti.length > 1 ? 'i' : 'e' }}</span>
+                                                    <span>{{ trans('gestionale.fatture.create.simulation.recent_movements', { count: impact.ultimi_movimenti.length }) }}</span>
                                                     <ChevronDown class="w-3 h-3 ml-auto transition-transform" :class="expandedHistory[impact.id] ? 'rotate-180' : ''" />
                                                 </button>
 
@@ -965,20 +931,20 @@ const pageGuides = [
                                     </div>
                                 </div>
                                 <div class="p-5">
-                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione cassa</p>
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">{{ trans('gestionale.fatture.create.simulation.cash_forecast') }}</p>
                                     <div v-if="bankForecast" class="space-y-3">
                                         <div class="space-y-2">
                                             <div class="flex justify-between text-xs">
-                                                <span class="text-slate-400">Saldo attuale</span>
+                                                <span class="text-slate-400">{{ trans('gestionale.fatture.create.simulation.current_balance') }}</span>
                                                 <span class="text-white">{{ euro(bankForecast.attuale_cents) }}</span>
                                             </div>
                                             <div class="flex justify-between text-xs">
-                                                <span class="text-slate-400">Uscita prevista</span>
+                                                <span class="text-slate-400">{{ trans('gestionale.fatture.create.simulation.expected_outflow') }}</span>
                                                 <span class="text-rose-400">- {{ euro(totali.netto, { fromCents: false }) }}</span>
                                             </div>
                                         </div>
                                         <div class="pt-3 border-t border-slate-700 space-y-1">
-                                            <p class="text-[9px] text-slate-500 uppercase font-bold">Saldo post-pagamento</p>
+                                            <p class="text-[9px] text-slate-500 uppercase font-bold">{{ trans('gestionale.fatture.create.simulation.post_payment_balance') }}</p>
                                             <p class="font-black text-2xl" :class="bankForecast.isRed ? 'text-rose-500' : 'text-emerald-400'">
                                                 {{ euro(bankForecast.post_cents) }}
                                             </p>
@@ -991,7 +957,7 @@ const pageGuides = [
                                         </div>
                                     </div>
                                     <div v-else class="py-6 text-center text-slate-600 text-xs">
-                                        Seleziona un conto nel pannello sinistro
+                                        {{ trans('gestionale.fatture.create.simulation.select_account_left_panel') }}
                                     </div>
                                 </div>
                             </div>
@@ -1010,8 +976,8 @@ const pageGuides = [
                             <ShieldAlert class="w-6 h-6 text-rose-600" />
                         </div>
                         <div>
-                            <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">Sforamento budget</h3>
-                            <p class="text-xs text-rose-700/70 mt-1">Eccesso: <span class="font-black">{{ euro(sforoBudgetTotaleCents) }}</span></p>
+                            <h3 class="font-black text-rose-900 dark:text-rose-100 text-lg">{{ trans('gestionale.fatture.create.override_modal.title') }}</h3>
+                            <p class="text-xs text-rose-700/70 mt-1">{{ trans('gestionale.fatture.create.override_modal.excess') }}: <span class="font-black">{{ euro(sforoBudgetTotaleCents) }}</span></p>
                         </div>
                     </div>
                     <div class="p-7 space-y-5">
@@ -1019,16 +985,16 @@ const pageGuides = [
                             "L'amministratore non può ordinare lavori di manutenzione straordinaria, salvo carattere urgente..." — Art. 1135 c.c.
                         </p>
                         <div>
-                            <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 block">Motivazione *</Label>
-                            <textarea v-model="overrideMotivazione" rows="4" class="w-full border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm bg-slate-50 dark:bg-slate-800 outline-none resize-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 transition-all" placeholder="Es: Intervento urgente per rottura colonna..." />
+                            <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 block">{{ trans('gestionale.fatture.create.override_modal.reason') }}</Label>
+                            <textarea v-model="overrideMotivazione" rows="4" class="w-full border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm bg-slate-50 dark:bg-slate-800 outline-none resize-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 transition-all" :placeholder="trans('gestionale.fatture.create.override_modal.reason_placeholder')" />
                             <div class="flex justify-between mt-1">
-                                <p class="text-[10px] text-slate-400">Minimo 10 caratteri</p>
+                                <p class="text-[10px] text-slate-400">{{ trans('gestionale.fatture.create.override_modal.minimum_characters') }}</p>
                                 <p class="text-[10px]" :class="overrideMotivazione.length >= 10 ? 'text-emerald-500' : 'text-slate-400'">{{ overrideMotivazione.length }}</p>
                             </div>
                         </div>
                         <div class="flex gap-3">
-                            <Button variant="outline" class="flex-1 h-11 rounded-xl font-bold" @click="cancelOverride">Annulla</Button>
-                            <Button class="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black" :disabled="overrideMotivazione.length < 10" @click="confirmOverride">Conferma e Registra</Button>
+                            <Button variant="outline" class="flex-1 h-11 rounded-xl font-bold" @click="cancelOverride">{{ trans('gestionale.form_common.actions.cancel') }}</Button>
+                            <Button class="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black" :disabled="overrideMotivazione.length < 10" @click="confirmOverride">{{ trans('gestionale.fatture.create.override_modal.confirm_register') }}</Button>
                         </div>
                     </div>
                 </div>
@@ -1038,7 +1004,7 @@ const pageGuides = [
         <ModalSopravvenienza
             v-model:show="showSopravvenienzaModal"
             :condominio-id="props.condominio.id"
-            :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
+            :fornitore-nome="selectedFornitore?.ragione_sociale || trans('gestionale.fatture.create.labels.supplier')"
             @confirm="handleSopravvenienzaConfirm"
         />
 
@@ -1050,18 +1016,18 @@ const pageGuides = [
                         <CheckCircle class="w-10 h-10 text-emerald-500" />
                     </div>
                     
-                    <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-2">Operazione completata</h3>
+                    <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-2">{{ trans('gestionale.fatture.create.success_modal.title') }}</h3>
                     <p class="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">
-                        Il documento e le coperture contabili sono stati registrati e bilanciati correttamente.
+                        {{ trans('gestionale.fatture.create.success_modal.description') }}
                     </p>
                     
                     <div class="flex flex-col gap-3">
                         <Button @click="showSuccessModal = false" class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 transition-all">
-                            Registra un'altra fattura
+                            {{ trans('gestionale.fatture.create.success_modal.register_another') }}
                         </Button>
                         
                         <Button variant="ghost" @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }))" class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                            Torna all'elenco fatture
+                            {{ trans('gestionale.fatture.create.success_modal.back_to_list') }}
                         </Button>
                     </div>
                 </div>
