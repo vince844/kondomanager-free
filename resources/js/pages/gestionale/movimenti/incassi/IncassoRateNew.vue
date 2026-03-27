@@ -19,6 +19,7 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Rata } from '@/types/gestionale/rata'; 
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
+import { trans } from 'laravel-vue-i18n';
 
 const props = defineProps<{
     condominio: any;
@@ -32,27 +33,27 @@ const { euro } = useCurrencyFormatter({ fromCents: false });
 const { generateRoute } = usePermission();
 
 const breadcrumbs = computed<Breadcrumb[]>(() => [
-    { title: 'Dashboard', href: route('admin.gestionale.index', { condominio: props.condominio.id }) },
-    { title: 'Incassi', href: route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }) },
-    { title: 'Nuovo incasso' },
+    { title: trans('gestionale.movimenti_rate.create.breadcrumbs.dashboard'), href: route('admin.gestionale.index', { condominio: props.condominio.id }) },
+    { title: trans('gestionale.movimenti_rate.create.breadcrumbs.receipts'), href: route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }) },
+    { title: trans('gestionale.movimenti_rate.create.breadcrumbs.new_receipt') },
 ]);
 
 const pageGuides = [
     { 
-        title: 'Modalità auto/manuale', 
-        description: 'In modalità automatica il sistema distribuisce l\'importo versato sulle rate più urgenti. Passa in manuale per personalizzare riga per riga.', 
+        title: trans('gestionale.movimenti_rate.create.guides.auto_manual_title'), 
+        description: trans('gestionale.movimenti_rate.create.guides.auto_manual_description'), 
         icon: ArrowRightLeft, 
         colorVariant: 'blue' as const 
     },
     { 
-        title: 'Credito pregresso', 
-        description: 'Se il condomino ha un saldo a credito ("salvadanaio"), puoi usarlo per compensare le rate aperte. Clicca "Usa credito" sulla riga del saldo iniziale.', 
+        title: trans('gestionale.movimenti_rate.create.guides.previous_credit_title'), 
+        description: trans('gestionale.movimenti_rate.create.guides.previous_credit_description'), 
         icon: Wallet, 
         colorVariant: 'amber' as const 
     },
     { 
-        title: 'Ricerca flessibile', 
-        description: 'Cerca i debiti per anagrafica (persona) o per unità immobiliare. In modalità immobile puoi specificare un intestatario diverso per la ricevuta.', 
+        title: trans('gestionale.movimenti_rate.create.guides.flexible_search_title'), 
+        description: trans('gestionale.movimenti_rate.create.guides.flexible_search_description'), 
         icon: Search, 
         colorVariant: 'emerald' as const 
     },
@@ -415,19 +416,19 @@ onMounted(async () => {
 </script>
 
 <template>
-    <Head title="Registra Incasso" />
+    <Head :title="trans('gestionale.movimenti_rate.create.head_title')" />
   
     <GestionaleLayout>
         <div class="px-6 py-6 w-full flex flex-col gap-4 h-[calc(100vh-40px)] min-h-[950px]">
 
             <div class="shrink-0">
                 <PageHeaderGuide
-                    page-title="Nuovo incasso rate"
-                    page-subtitle="Registra il pagamento delle rate condominiali con distribuzione automatica o manuale."
+                    :page-title="trans('gestionale.movimenti_rate.create.page_title')"
+                    :page-subtitle="trans('gestionale.movimenti_rate.create.page_subtitle')"
                     :guides="pageGuides"
                     :breadcrumbs="(breadcrumbs as any)"
                     :back-url="route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id })"
-                    back-text="Indietro"
+                    :back-text="trans('gestionale.movimenti_rate.create.actions.back')"
                 />
             </div> 
             
@@ -437,19 +438,19 @@ onMounted(async () => {
                     <div class="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
                         
                         <div class="space-y-2">
-                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Cerca debiti per anagrafica o immobile</Label>
+                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.search_debts') }}</Label>
                             <div class="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
                                 <button @click="toggleSearchMode('persona')" class="flex items-center justify-center py-1 text-xs font-medium rounded-md transition-all" :class="searchMode === 'persona' ? 'bg-white text-primary shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700'">
-                                    <User class="w-3.5 h-3.5 mr-1.5"/> Persona
+                                    <User class="w-3.5 h-3.5 mr-1.5"/> {{ trans('gestionale.movimenti_rate.create.search_modes.person') }}
                                 </button>
                                 <button @click="toggleSearchMode('immobile')" class="flex items-center justify-center py-1 text-xs font-medium rounded-md transition-all" :class="searchMode === 'immobile' ? 'bg-white text-primary shadow-sm font-bold' : 'text-slate-500 hover:text-slate-700'">
-                                    <Building class="w-3.5 h-3.5 mr-1.5"/> Immobile
+                                    <Building class="w-3.5 h-3.5 mr-1.5"/> {{ trans('gestionale.movimenti_rate.create.search_modes.property') }}
                                 </button>
                             </div>
 
                             <div class="mt-3">
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">
-                                    {{ searchMode === 'persona' ? 'Seleziona anagrafica' : 'Seleziona unità immobiliare' }}
+                                    {{ searchMode === 'persona' ? trans('gestionale.movimenti_rate.create.labels.select_resident') : trans('gestionale.movimenti_rate.create.labels.select_property') }}
                                 </Label>
 
                                 <v-select 
@@ -459,12 +460,12 @@ onMounted(async () => {
                                     label="nome" 
                                     :reduce="(c: any) => c.id" 
                                     class="w-full bg-white text-sm" 
-                                    placeholder="Cerca per nome o cognome..."
+                                    :placeholder="trans('gestionale.movimenti_rate.create.placeholders.search_resident')"
                                 >
                                     <template #option="{ nome, indirizzo, codice_fiscale }">
                                         <div class="flex flex-col py-0.5">
                                             <span class="font-medium text-sm text-slate-800">{{ nome }}</span>
-                                            <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || 'Nessun dettaglio aggiuntivo' }}</span>
+                                            <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || trans('gestionale.movimenti_rate.create.placeholders.no_additional_details') }}</span>
                                         </div>
                                     </template>
                                 </v-select>
@@ -476,33 +477,33 @@ onMounted(async () => {
                                         :getOptionLabel="(i: any) => `Int. ${i.interno}${i.descrizione ? ' - ' + i.descrizione : ''}`"
                                         :reduce="(i: any) => i.id" 
                                         class="w-full bg-white text-sm" 
-                                        placeholder="Cerca per interno o descrizione..."
+                                        :placeholder="trans('gestionale.movimenti_rate.create.placeholders.search_property')"
                                     >
                                         <template #option="{ interno, descrizione, nome }">
                                             <div class="flex flex-col py-0.5">
                                                 <span class="font-medium text-sm text-slate-800">
-                                                    Interno {{ interno }} 
+                                                    {{ trans('gestionale.movimenti_rate.create.labels.unit_prefix') }} {{ interno }} 
                                                     <span v-if="descrizione" class="text-slate-500 font-normal">- {{ descrizione }}</span>
                                                 </span>
-                                                <span class="text-[11px] text-slate-400 truncate">{{ nome || 'Unità immobiliare' }}</span>
+                                                <span class="text-[11px] text-slate-400 truncate">{{ nome || trans('gestionale.movimenti_rate.create.labels.property_unit') }}</span>
                                             </div>
                                         </template>
                                     </v-select>
 
                                     <div>
-                                        <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Intestatario della ricevuta</Label>
+                                        <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.receipt_holder') }}</Label>
                                         <v-select 
                                             :options="condomini" 
                                             v-model="form.pagante_id" 
                                             label="nome" 
                                             :reduce="(c: any) => c.id" 
                                             class="w-full bg-white text-sm" 
-                                            placeholder="A chi intesterai il pagamento?"
+                                            :placeholder="trans('gestionale.movimenti_rate.create.placeholders.receipt_holder')"
                                         >
                                             <template #option="{ nome, indirizzo, codice_fiscale }">
                                                 <div class="flex flex-col py-0.5">
                                                     <span class="font-medium text-sm text-slate-800">{{ nome }}</span>
-                                                    <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || 'Nessun dettaglio aggiuntivo' }}</span>
+                                                    <span class="text-[11px] text-slate-400 truncate">{{ indirizzo || codice_fiscale || trans('gestionale.movimenti_rate.create.placeholders.no_additional_details') }}</span>
                                                 </div>
                                             </template>
                                         </v-select>
@@ -512,20 +513,20 @@ onMounted(async () => {
                         </div>
 
                         <div class="space-y-3">
-                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Importo versato</Label>
+                            <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.paid_amount') }}</Label>
                             <MoneyInput 
                                 id="importo_totale"
                                 v-model="form.importo_totale" 
                                 :money-options="moneyOptions"
                                 :lazy="false"
                                 class="h-10 text-lg font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2" 
-                                placeholder="0,00" 
+                                :placeholder="trans('gestionale.movimenti_rate.create.placeholders.amount')" 
                             />
                         </div>
 
                         <div class="space-y-3">
                             <div>
-                                <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Risorsa finanziaria</Label>
+                                <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.financial_resource') }}</Label>
                                 <v-select 
                                     :options="risorse" 
                                     v-model="form.cassa_id" 
@@ -533,7 +534,7 @@ onMounted(async () => {
                                     :reduce="(c: any) => c.id" 
                                     class="w-full bg-white text-sm shadow-sm" 
                                     @update:modelValue="form.clearErrors('cassa_id')" 
-                                    placeholder="Dove versi i soldi?"
+                                    :placeholder="trans('gestionale.movimenti_rate.create.placeholders.financial_resource')"
                                 >
                                     <template #option="{ nome, tipo, conto_corrente }">
                                         <div class="flex flex-col py-0.5">
@@ -550,28 +551,28 @@ onMounted(async () => {
                             
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
-                                    <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Data versamento</Label>
+                                    <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.payment_date') }}</Label>
                                     <Input type="date" v-model="form.data_pagamento" class="h-9 text-sm border-slate-200 shadow-sm"/>
                                     <InputError :message="form.errors.data_pagamento" class="mt-1" />
                                 </div>         
                                 <div>
-                                    <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Causale</Label>
+                                    <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.reason') }}</Label>
                                     <div class="relative">
                                         <FileText class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"/>
-                                        <Input placeholder="Es. Bonifico" v-model="form.descrizione" class="pl-8 h-9 text-sm shadow-sm border-slate-200"/>
+                                        <Input :placeholder="trans('gestionale.movimenti_rate.create.placeholders.reason')" v-model="form.descrizione" class="pl-8 h-9 text-sm shadow-sm border-slate-200"/>
                                     </div>
                                 </div>
                             </div>
                             
                             <div>
-                                <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Gestione (filtro)</Label>
+                                <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">{{ trans('gestionale.movimenti_rate.create.labels.management_filter') }}</Label>
                                 <v-select 
                                     :options="gestioni" 
                                     v-model="form.gestione_id" 
                                     label="nome" 
                                     :reduce="(g: any) => g.id" 
                                     class="w-full bg-slate-50 text-sm focus-within:bg-white transition-colors" 
-                                    placeholder="Tutte (automatica)"
+                                    :placeholder="trans('gestionale.movimenti_rate.create.placeholders.management_filter')"
                                 >
                                     <template #option="{ nome, tipo }">
                                         <div class="flex items-center justify-between py-0.5">
@@ -586,7 +587,7 @@ onMounted(async () => {
 
                     <div class="p-4 bg-slate-50 border-t border-slate-200 shrink-0">
                         <div class="flex justify-between items-center text-xs mb-3 px-1">
-                            <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
+                            <span class="text-slate-500 uppercase tracking-wider font-semibold">{{ trans('gestionale.movimenti_rate.create.summary.total_allocated') }}</span>
                             <span class="font-bold text-slate-800 text-sm">{{ euro(totalAllocato) }}</span>
                         </div>
                         <Button 
@@ -594,7 +595,7 @@ onMounted(async () => {
                             :disabled="form.processing || !previewContabile.hasData || !form.pagante_id" 
                             class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md shadow-emerald-600/20 transition-all text-sm"
                         >
-                            <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
+                            <CheckCircle2 class="w-4 h-4 mr-2" /> {{ trans('gestionale.movimenti_rate.create.actions.confirm_receipt') }}
                         </Button>
                     </div>
                 </div>
@@ -604,11 +605,11 @@ onMounted(async () => {
                     <div class="bg-white rounded-xl border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
                         <div class="p-3 border-b bg-gray-50 flex justify-between items-center shrink-0">
                             <div class="flex items-center gap-3">
-                                <h3 class="font-semibold text-gray-900 text-sm">Ripartizione debito</h3>
-                                <Badge v-if="rateList.length" variant="secondary" class="bg-white border text-gray-600 text-[10px]">{{ rateList.length }} Rate</Badge>
+                                <h3 class="font-semibold text-gray-900 text-sm">{{ trans('gestionale.movimenti_rate.create.sections.debt_distribution') }}</h3>
+                                <Badge v-if="rateList.length" variant="secondary" class="bg-white border text-gray-600 text-[10px]">{{ rateList.length }} {{ trans('gestionale.movimenti_rate.create.sections.installments') }}</Badge>
                             </div>
                             <div v-if="rateList.length" class="flex items-center gap-2 text-xs">
-                                <span class="text-gray-500">Debito Totale:</span>
+                                <span class="text-gray-500">{{ trans('gestionale.movimenti_rate.create.summary.total_debt') }}</span>
                                 <span class="font-bold text-gray-900 mr-2">{{ euro(totaleDebito) }}</span>
                                 <ArrowRight class="w-3 h-3 text-gray-300" />
                                 <div class="flex items-center gap-1 px-2 py-0.5 rounded border transition-colors shadow-sm" :class="bilancioFinale.class">
@@ -621,8 +622,8 @@ onMounted(async () => {
                         <div class="px-3 py-2 border-b bg-gray-50/50 flex justify-between items-center shrink-0">
                             <div class="flex items-center gap-4">
                                 <div class="flex items-center bg-white border rounded-md px-1 py-0.5 h-7 shadow-sm cursor-pointer select-none" @click="toggleMode">
-                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'auto' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">Automatico</div>
-                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'manual' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">Manuale</div>
+                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'auto' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">{{ trans('gestionale.movimenti_rate.create.modes.auto') }}</div>
+                                    <div class="px-2 py-0.5 rounded text-[10px] font-bold transition-all uppercase" :class="mode === 'manual' ? 'bg-primary text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'">{{ trans('gestionale.movimenti_rate.create.modes.manual') }}</div>
                                 </div>
 
                                 <div class="flex items-center gap-2 ml-2 border-l pl-4">
@@ -633,15 +634,15 @@ onMounted(async () => {
                                         class="w-3.5 h-3.5 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
                                     >
                                     <label for="toggle-scadute" class="text-[10px] font-bold uppercase text-slate-500 cursor-pointer select-none">
-                                        Mostra scadute
+                                        {{ trans('gestionale.movimenti_rate.create.actions.show_overdue') }}
                                     </label>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2" v-if="rateList.length">
-                                <Button size="sm" variant="ghost" @click="resetAllocation" class="h-7 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 px-2"><RotateCcw class="w-3 h-3 mr-1"/> Resetta</Button>
+                                <Button size="sm" variant="ghost" @click="resetAllocation" class="h-7 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 px-2"><RotateCcw class="w-3 h-3 mr-1"/> {{ trans('gestionale.movimenti_rate.create.actions.reset') }}</Button>
                                 <div class="h-3 w-px bg-gray-300 mx-1"></div>
-                                <Button size="sm" variant="outline" @click="pagaScadute" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga scadute</Button>
-                                <Button size="sm" variant="outline" @click="pagaTutto" class="h-7 text-xs bg-white border-gray-200 text-gray-600">Paga tutto</Button>
+                                <Button size="sm" variant="outline" @click="pagaScadute" class="h-7 text-xs bg-white border-gray-200 text-gray-600">{{ trans('gestionale.movimenti_rate.create.actions.pay_overdue') }}</Button>
+                                <Button size="sm" variant="outline" @click="pagaTutto" class="h-7 text-xs bg-white border-gray-200 text-gray-600">{{ trans('gestionale.movimenti_rate.create.actions.pay_all') }}</Button>
                             </div>
                         </div>
 
@@ -652,26 +653,25 @@ onMounted(async () => {
                                     <AlertCircle class="w-4 h-4 text-amber-600" />
                                 </div>
                                 <div>
-                                    <span class="text-xs font-bold block mb-0.5">Richiesta di compensazione</span>
+                                    <span class="text-xs font-bold block mb-0.5">{{ trans('gestionale.movimenti_rate.create.alerts.compensation_request_title') }}</span>
                                     <span class="text-[11px] leading-snug block opacity-90">
-                                        Il condomino ha chiesto di saldare questo importo usando il suo credito pregresso.
-                                        Clicca sul tasto <strong>"usa credito"</strong> nella riga del saldo iniziale per confermare l'operazione.
+                                        {{ trans('gestionale.movimenti_rate.create.alerts.compensation_request_description') }}
                                     </span>
                                 </div>
                             </div>
 
                             <div v-if="rateList.length > 0 && !hasSaldoPregressoInLista" class="bg-emerald-50/80 border-b border-emerald-100 px-3 py-2 flex items-center text-emerald-700 shrink-0">
                                 <CheckCircle2 class="w-4 h-4 mr-2 text-emerald-500" />
-                                <span class="text-[11px] font-medium">Situazione pregressa regolare. Procedi con l'incasso delle rate ordinarie.</span>
+                                <span class="text-[11px] font-medium">{{ trans('gestionale.movimenti_rate.create.alerts.previous_balances_ok') }}</span>
                             </div>
 
                             <table v-if="rateList.length" class="w-full text-sm border-collapse">
                                 <thead class="bg-white sticky top-0 z-10 shadow-sm text-[10px] uppercase text-gray-400 font-bold tracking-wider">
                                     <tr>
-                                        <th class="p-3 pl-4 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">Scadenza</th>
-                                        <th class="p-3 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">Rata / Intestatario</th>
-                                        <th class="p-3 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100">Residuo</th>
-                                        <th class="p-3 pr-4 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100 w-[140px]">Importo</th>
+                                        <th class="p-3 pl-4 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">{{ trans('gestionale.movimenti_rate.create.table.due_date') }}</th>
+                                        <th class="p-3 text-left bg-gray-50/95 backdrop-blur border-b border-gray-100">{{ trans('gestionale.movimenti_rate.create.table.installment_holder') }}</th>
+                                        <th class="p-3 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100">{{ trans('gestionale.movimenti_rate.create.table.residual') }}</th>
+                                        <th class="p-3 pr-4 text-right bg-gray-50/95 backdrop-blur border-b border-gray-100 w-[140px]">{{ trans('gestionale.movimenti_rate.create.table.amount') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
@@ -684,32 +684,32 @@ onMounted(async () => {
     
                                                     <span v-if="parseResiduoQuota(r.residuo) < 0" 
                                                         class="inline-flex items-center text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
-                                                        title="I crediti sono automaticamente attivi e pronti per la compensazione">
-                                                        <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Credito Attivo
+                                                        :title="trans('gestionale.movimenti_rate.create.badges.active_credit_title')">
+                                                        <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.active_credit') }}
                                                     </span>
 
                                                     <template v-else>
                                                         <span v-if="!r.is_emitted || Number(r.is_emitted) === 0" 
                                                             class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
-                                                            title="Questa rata non ha ancora generato una scrittura contabile">
-                                                            <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
+                                                            :title="trans('gestionale.movimenti_rate.create.badges.no_emission_title')">
+                                                            <AlertCircle class="w-2.5 h-2.5 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.no_emission') }}
                                                         </span>
 
                                                         <span v-else-if="!r.is_published || Number(r.is_published) === 0" 
                                                             class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
-                                                            title="Rata emessa contabilmente ma attualmente nascosta ai condòmini">
-                                                            <Lock class="w-2.5 h-2.5 mr-1" /> Silenziosa
+                                                            :title="trans('gestionale.movimenti_rate.create.badges.silent_title')">
+                                                            <Lock class="w-2.5 h-2.5 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.silent') }}
                                                         </span>
 
                                                         <span v-else 
                                                             class="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter">
-                                                            <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Emessa
+                                                            <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.emitted') }}
                                                         </span>
                                                     </template>
 
                                                     <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" 
                                                         class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
-                                                        <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
+                                                        <AlertCircle class="w-2.5 h-2.5 mr-1"/> {{ trans('gestionale.movimenti_rate.create.badges.overdue') }}
                                                     </span>
                                                 </div>
 
@@ -734,8 +734,8 @@ onMounted(async () => {
                                                             
                                                             <TooltipContent side="bottom" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-2xl rounded-lg z-[100]">
                                                                 <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 text-center">
-                                                                    <span v-if="parseResiduoQuota(r.residuo) < 0">Dettaglio Credito</span>
-                                                                    <span v-else>Analisi Debito</span>
+                                                                    <span v-if="parseResiduoQuota(r.residuo) < 0">{{ trans('gestionale.movimenti_rate.create.tooltip.credit_details') }}</span>
+                                                                    <span v-else>{{ trans('gestionale.movimenti_rate.create.tooltip.debt_analysis') }}</span>
                                                                 </div>
                                                                 <ul class="space-y-4">
                                                                     <li v-for="(dett, idx) in r.dettaglio_quote" :key="idx" class="text-[11px]">
@@ -749,7 +749,7 @@ onMounted(async () => {
                                                                                 <User class="w-2.5 h-2.5 opacity-70 shrink-0"/> 
                                                                                 <span class="truncate">{{ dett.anagrafica }}</span>
                                                                                 
-                                                                                <span v-if="dett.ruolo" class="ml-0.5 bg-blue-950 text-blue-200 text-[8px] font-black px-1.5 py-0.5 rounded border border-blue-800 leading-none shrink-0" :title="dett.ruolo === 'P' ? 'Proprietario' : (dett.ruolo === 'I' ? 'Inquilino' : 'Usufruttuario')">
+                                                                                <span v-if="dett.ruolo" class="ml-0.5 bg-blue-950 text-blue-200 text-[8px] font-black px-1.5 py-0.5 rounded border border-blue-800 leading-none shrink-0" :title="dett.ruolo === 'P' ? trans('gestionale.movimenti_rate.create.roles.owner') : (dett.ruolo === 'I' ? trans('gestionale.movimenti_rate.create.roles.tenant') : trans('gestionale.movimenti_rate.create.roles.usufructuary'))">
                                                                                     {{ dett.ruolo }}
                                                                                 </span>
                                                                             </div>
@@ -757,18 +757,18 @@ onMounted(async () => {
                                                                         
                                                                         <div>
                                                                             <div class="flex justify-between items-center pl-2 mb-1">
-                                                                                <span class="text-slate-400">Quota rata:</span>
+                                                                                <span class="text-slate-400">{{ trans('gestionale.movimenti_rate.create.tooltip.installment_share') }}</span>
                                                                                 <span class="font-medium text-slate-200">+ {{ euro(Math.abs(dett.componente_spesa)) }}</span>
                                                                             </div>
                                                                             <div class="flex justify-between items-center pl-2 pt-1 border-t border-slate-800">
-                                                                                <span class="text-[10px] text-slate-500 font-bold uppercase">Totale:</span>
+                                                                                <span class="text-[10px] text-slate-500 font-bold uppercase">{{ trans('gestionale.movimenti_rate.create.tooltip.total') }}</span>
                                                                                 <span class="font-bold" :class="parseResiduoQuota(dett.residuo) < 0 ? 'text-emerald-500' : 'text-orange-400'">{{ euro(parseResiduoQuota(dett.residuo)) }}</span>
                                                                             </div>
                                                                         </div>
                                                                     </li>
                                                                 </ul>
                                                                 <div class="border-t-2 border-slate-600 pt-2 mt-3 flex justify-between items-center bg-slate-800/50 p-2 rounded -mx-2">
-                                                                    <span class="text-xs font-bold text-white uppercase tracking-wide">Netto Rata:</span>
+                                                                    <span class="text-xs font-bold text-white uppercase tracking-wide">{{ trans('gestionale.movimenti_rate.create.tooltip.net_installment') }}</span>
                                                                     <div class="text-right">
                                                                         <span class="font-bold text-sm" :class="parseResiduoQuota(r.residuo) < 0 ? 'text-emerald-400' : 'text-white'">
                                                                             {{ euro(r.residuo) }}
@@ -788,10 +788,10 @@ onMounted(async () => {
                                                 <div class="flex flex-col items-end">
                                                     <span class="text-sm font-bold text-red-600">{{ euro(r.residuo) }}</span>
                                                     <div class="mt-1 flex flex-col items-end gap-1">
-                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 shadow-sm" title="Attenzione: questa voce contiene un debito e un credito che si annullano a vicenda.">
-                                                            <AlertCircle class="w-3 h-3 mr-1" /> SALDO MISTO
+                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 shadow-sm" :title="trans('gestionale.movimenti_rate.create.badges.mixed_balance_title')">
+                                                            <AlertCircle class="w-3 h-3 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.mixed_balance') }}
                                                         </span>
-                                                        <span class="text-[9px] text-slate-500 font-medium">Seleziona l'anagrafica</span>
+                                                        <span class="text-[9px] text-slate-500 font-medium">{{ trans('gestionale.movimenti_rate.create.badges.select_resident') }}</span>
                                                     </div>
                                                 </div>
                                             </template>
@@ -800,7 +800,7 @@ onMounted(async () => {
                                                 <div v-if="parseResiduoQuota(r.residuo) < 0" class="flex flex-col items-end pt-1">
                                                     <span class="text-sm font-bold text-emerald-600">{{ euro(r.residuo) }}</span>
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200 mt-1 uppercase">
-                                                        {{ isRataZero(r) ? 'CREDITO PREGRESSO' : 'CREDITO' }}
+                                                        {{ isRataZero(r) ? trans('gestionale.movimenti_rate.create.badges.previous_credit') : trans('gestionale.movimenti_rate.create.badges.credit') }}
                                                     </span>
                                                 </div>
                                                 
@@ -811,13 +811,13 @@ onMounted(async () => {
                                                     
                                                     <div v-if="isRataZero(r) && parseResiduoQuota(r.residuo) > 0" class="mt-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200">
-                                                            DEBITO PREGRESSO
+                                                            {{ trans('gestionale.movimenti_rate.create.badges.previous_debt') }}
                                                         </span>
                                                     </div>
                                                     
                                                     <div v-if="parseResiduoQuota(r.residuo) > 0 && parseResiduoQuota(r.residuo) < r.importo_totale && !isRataZero(r)" class="mt-1">
-                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" :title="'Importo originale: ' + euro(r.importo_totale)">
-                                                            <RotateCcw class="w-2.5 h-2.5 mr-1" /> PARZIALE
+                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" :title="trans('gestionale.movimenti_rate.create.badges.original_amount') + ': ' + euro(r.importo_totale)">
+                                                            <RotateCcw class="w-2.5 h-2.5 mr-1" /> {{ trans('gestionale.movimenti_rate.create.badges.partial') }}
                                                         </span>
                                                     </div>
                                                 </div>
@@ -851,11 +851,11 @@ onMounted(async () => {
                                                 >
                                                     <CheckCircle2 v-if="r.selezionata" class="w-3.5 h-3.5 mr-1" />
                                                     <ArrowRightLeft v-else class="w-3.5 h-3.5 mr-1" />
-                                                    {{ r.selezionata ? 'Credito applicato' : 'Usa credito' }}
+                                                    {{ r.selezionata ? trans('gestionale.movimenti_rate.create.actions.credit_applied') : trans('gestionale.movimenti_rate.create.actions.use_credit') }}
                                                 </Button>
                                             </div>
 
-                                            <div v-else class="text-xs text-slate-400 italic flex items-center justify-end h-8 opacity-80 pr-2">N/D</div>
+                                            <div v-else class="text-xs text-slate-400 italic flex items-center justify-end h-8 opacity-80 pr-2">{{ trans('gestionale.movimenti_rate.create.table.na') }}</div>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -863,8 +863,8 @@ onMounted(async () => {
                             <div v-else class="flex flex-col items-center justify-center h-full text-slate-400 space-y-4 py-12 bg-slate-50/30">
                                 <div class="p-4 bg-white rounded-full shadow-sm border border-slate-100"><ArrowRightLeft class="w-8 h-8 opacity-20" /></div>
                                 <div class="text-center">
-                                    <p class="font-medium text-sm text-slate-500">Nessuna rata visualizzata</p>
-                                    <p class="text-xs text-slate-400 mt-1">Seleziona un condomino o un immobile per iniziare</p>
+                                    <p class="font-medium text-sm text-slate-500">{{ trans('gestionale.movimenti_rate.create.empty.no_installments_shown') }}</p>
+                                    <p class="text-xs text-slate-400 mt-1">{{ trans('gestionale.movimenti_rate.create.empty.select_to_start') }}</p>
                                 </div>
                             </div>
                         </div>
@@ -873,15 +873,15 @@ onMounted(async () => {
                     <div class="bg-slate-900 text-white rounded-xl border border-slate-700 shadow-sm flex flex-col h-[200px] shrink-0 overflow-hidden">
                         <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50 shrink-0">
                             <h3 class="font-semibold text-sm flex items-center">
-                                <Receipt class="w-4 h-4 mr-2 text-emerald-400"/> Anteprima registrazione
+                                <Receipt class="w-4 h-4 mr-2 text-emerald-400"/> {{ trans('gestionale.movimenti_rate.create.preview.title') }}
                             </h3>
                             <div class="flex gap-4 text-xs">
                                 <div class="flex items-center gap-1.5">
-                                    <span class="text-slate-400">Allocato:</span>
+                                    <span class="text-slate-400">{{ trans('gestionale.movimenti_rate.create.preview.allocated') }}</span>
                                     <span class="font-bold text-emerald-400">{{ euro(totalAllocato) }}</span>
                                 </div>
                                 <div v-if="form.eccedenza > 0" class="flex items-center gap-1.5">
-                                    <span class="text-slate-400">Eccedenza:</span>
+                                    <span class="text-slate-400">{{ trans('gestionale.movimenti_rate.create.preview.excess') }}</span>
                                     <span class="font-bold text-blue-400">{{ euro(form.eccedenza) }}</span>
                                 </div>
                             </div>
@@ -894,10 +894,10 @@ onMounted(async () => {
                                         <div class="font-medium text-slate-200">{{ riga.descrizione }}</div>
                                         
                                         <div v-if="riga.status === 'PARZIALE'" class="mt-0.5 text-amber-500 text-[10px] font-bold">
-                                            Resta da pagare: {{ euro(riga.residuo_futuro) }}
+                                            {{ trans('gestionale.movimenti_rate.create.preview.remaining_to_pay') }}: {{ euro(riga.residuo_futuro) }}
                                         </div>
                                         <div v-else-if="riga.status === 'CREDITO_USATO'" class="mt-0.5 text-blue-400 text-[10px] font-bold">
-                                            Credito rimanente nel salvadanaio: {{ euro(riga.residuo_futuro) }}
+                                            {{ trans('gestionale.movimenti_rate.create.preview.remaining_credit') }}: {{ euro(riga.residuo_futuro) }}
                                         </div>
                                     </div>
                                     
@@ -906,22 +906,22 @@ onMounted(async () => {
                                             {{ euro(riga.pagato) }}
                                         </div>
                                         
-                                        <span v-if="riga.status === 'SALDATA'" class="text-[9px] text-emerald-500 uppercase font-bold tracking-wider">Saldata</span>
-                                        <span v-else-if="riga.status === 'ESAURITO'" class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Esaurito</span>
-                                        <span v-else-if="riga.status === 'CREDITO_USATO'" class="text-[9px] text-blue-400 uppercase font-bold tracking-wider">Usato parzialmente</span>
-                                        <span v-else class="text-[9px] text-amber-500 uppercase font-bold tracking-wider">Parziale</span>
+                                        <span v-if="riga.status === 'SALDATA'" class="text-[9px] text-emerald-500 uppercase font-bold tracking-wider">{{ trans('gestionale.movimenti_rate.create.preview.status_paid') }}</span>
+                                        <span v-else-if="riga.status === 'ESAURITO'" class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">{{ trans('gestionale.movimenti_rate.create.preview.status_exhausted') }}</span>
+                                        <span v-else-if="riga.status === 'CREDITO_USATO'" class="text-[9px] text-blue-400 uppercase font-bold tracking-wider">{{ trans('gestionale.movimenti_rate.create.preview.status_credit_partially_used') }}</span>
+                                        <span v-else class="text-[9px] text-amber-500 uppercase font-bold tracking-wider">{{ trans('gestionale.movimenti_rate.create.preview.status_partial') }}</span>
                                     </div>
                                 </div>
 
                                 <div v-if="previewContabile.anticipo > 0" class="flex justify-between items-center pt-2 text-xs border-t border-slate-700 mt-2">
-                                    <div class="text-blue-400 font-medium">Anticipo / Eccedenza</div>
+                                    <div class="text-blue-400 font-medium">{{ trans('gestionale.movimenti_rate.create.preview.advance_excess') }}</div>
                                     <div class="font-bold text-blue-400">+ {{ euro(previewContabile.anticipo) }}</div>
                                 </div>
                             </div>
 
                             <div v-else class="flex flex-col items-center justify-center h-full text-slate-600 text-xs gap-2">
                                 <Receipt class="w-8 h-8 opacity-20" />
-                                <p>Inserisci un importo per vedere l'anteprima</p>
+                                <p>{{ trans('gestionale.movimenti_rate.create.preview.enter_amount') }}</p>
                             </div>
                         </div>
                     </div>
