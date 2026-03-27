@@ -2,6 +2,23 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.18] - Mixed Allocation & Dynamic Ledger (Latest)
+
+### Ripartizione Mista e Addebiti Personali
+* **Spaccatura Fattura (Line-Level Splitting):** Rivoluzionato il motore di registrazione delle fatture passive. È ora possibile suddividere un singolo documento fiscale in infinite righe di dettaglio, assegnando a ciascuna una logica di ripartizione indipendente.
+* **Addebito Diretto su Unità (`immobile_id`):** Risolto definitivamente il problema dei "lavori privati" (es. rifacimento balcone esclusivo all'interno di una fattura condominiale). L'amministratore può ora assegnare una specifica riga di spesa a una singola unità immobiliare. Il motore ignorerà i millesimi per quella riga, addebitando il 100% dell'importo al proprietario interessato sul prossimo piano rate.
+* **Fine delle Tabelle Fittizie:** Eliminata la necessità di creare "tabelle millesimali finte" (es. 1000/1000 su un singolo condomino) o di registrare fatture fittizie per gestire le spese ad personam.
+
+### Sopravvenienze Passive (Spese Fuori Preventivo)
+* **Gestione Imprevisti "On-the-Fly":** Aggiunto un interruttore dinamico "⚡ Spesa imprevista (non in preventivo)" su ogni singola riga durante la registrazione della fattura.
+* **Auto-Routing Contabile:** Spuntando la casella, il sistema disabilita la selezione dal preventivo ordinario e dirotta automaticamente l'importo sul conto istituzionale "Sopravvenienze Passive" nel Libro Giornale (Partita Doppia). 
+* **Bilanci Trasparenti (Art. 1130-bis c.c.):** Le spese d'emergenza non inquinano più il budget dei capitoli ordinari (es. "Manutenzione Varie"). Nel consuntivo di fine anno, l'assemblea vedrà una voce chiara e separata per tutti gli imprevisti, garantendo massima trasparenza e zero sforzi mnemonici per l'amministratore.
+
+### Database Fortification & UI Safety
+* **Filtro "Fortezza" sul Piano dei Conti:** Implementato un blocco di sicurezza bidirezionale (Frontend + Backend) che impedisce la registrazione di spese su "Macro-Capitoli" (nodi padre) o su voci orfane.
+* **Smart Dropdown:** Il menu a tendina in Vue.js ora valuta in tempo reale la validità contabile della voce (`conto_contabile_id !== null`), ingrigendo le opzioni non valide e guidando l'utente verso una compilazione sempre corretta.
+* **Backend Hard-Lock:** Il `FatturaPassivaService` lancia ora un'eccezione bloccante se rileva un tentativo di forzatura su un conto privo di Mastro in Partita Doppia, garantendo la quadratura matematica del database in ogni scenario.
+
 ## [1.9.17] - Legal Guardian & UI Precision (Latest)
 
 ### Conformità Legale (Gate Legale Art. 1135 c.c.)

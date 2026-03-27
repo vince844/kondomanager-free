@@ -2,6 +2,8 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\ContoContabileCategoria;
+use App\Enums\ContoContabileTipo;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Models\CategoriaDocumento;
 use App\Models\Fornitore;
@@ -45,6 +47,7 @@ class FatturaPassivaService
                     $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
                     $aliq    = (float) $rigaInput['aliquota_iva'];
                     $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+                    $isSopravvenienza = filter_var($rigaInput['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                     $imponibileTotale += $impRiga;
                     $ivaTotale        += $ivaRiga;
@@ -54,8 +57,10 @@ class FatturaPassivaService
                         'importo_imponibile' => $impRiga * $moltiplicatore,
                         'aliquota_iva'       => $aliq,
                         'importo_iva'        => $ivaRiga * $moltiplicatore,
-                        'conto_id'           => $rigaInput['conto_id'],
+                        // Se è sopravvenienza, forza a NULL lato server ignorando il payload
+                        'conto_id'           => $isSopravvenienza ? null : $rigaInput['conto_id'], 
                         'immobile_id'        => $rigaInput['immobile_id'] ?? null,
+                        'is_sopravvenienza'  => $isSopravvenienza,
                     ];
                 }
             }
@@ -139,13 +144,14 @@ class FatturaPassivaService
                                     'ruolo'         => 'sopravvenienze_passive',
                                 ],
                                 [
-                                    'nome'        => 'Sopravvenienze Passive',
-                                    'tipo'        => 'costo',
-                                    'categoria'   => 'straordinario',
+                                    'codice'      => 'SOP-' . $condominioId,
+                                    'nome'        => 'Sopravvenienze passive',
+                                    'tipo'        => ContoContabileTipo::COSTO->value,
+                                    'categoria'   => ContoContabileCategoria::COSTI->value,
                                     'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati. Art. 1130-bis c.c.',
                                     'di_sistema'  => true,
                                     'attivo'      => true,
-                                    'livello'     => 1
+                                    'livello'     => 1,
                                 ]
                             );
 
@@ -318,27 +324,62 @@ class FatturaPassivaService
                     $importoTotaleCents = abs($totaleDoc * $moltiplicatore);
 
                     $scrittura->righe()->create([
-                        'conto_contabile_id' => $contoPassateGestioni->id,
-                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                        'importo'            => $importoTotaleCents,
-                        'note'               => 'Caricamento debito pregresso senza copertura esplicita',
-                    ]);
-                }
-            } else {
-                foreach ($righeProcessate as $riga) {
-                    if ($riga['conto_id']) {
-                        $contoBudget = Conto::find($riga['conto_id']);
-                        if ($contoBudget && $contoBudget->conto_contabile_id) {
+                            'conto_contabile_id' => $contoPassateGestioni->id,
+                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'importo'            => $importoTotaleCents,
+                            'note'               => 'Caricamento debito pregresso senza copertura esplicita',
+                        ]);
+                    }
+                } else {
+                    
+                    // Recuperiamo una volta sola il conto sopravvenienze (se serve)
+                    $contoSopravvenienza = null;
+
+                    foreach ($righeProcessate as $riga) {
+
+                        if ($riga['is_sopravvenienza']) {
+                            // Lazy load: creiamo il conto solo se almeno una riga lo richiede
+                            if (!$contoSopravvenienza) {
+                                $contoSopravvenienza = ContoContabile::firstOrCreate(
+                                    [
+                                        'condominio_id' => $condominioId,
+                                        'ruolo'         => 'sopravvenienze_passive',
+                                    ],
+                                    [
+                                        'codice'      => 'SOP-' . $condominioId,
+                                        'nome'        => 'Sopravvenienze passive',
+                                        'tipo'        => ContoContabileTipo::COSTO->value,
+                                        'categoria'   => ContoContabileCategoria::COSTI->value,
+                                        'descrizione' => 'Spese impreviste non preventivate. Art. 1130-bis c.c.',
+                                        'di_sistema'  => true,
+                                        'attivo'      => true,
+                                        'livello'     => 1,
+                                    ]
+                                );
+                            }
+
                             $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                                'conto_contabile_id' => $contoSopravvenienza->id,
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
                                 'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
-                                'voce_spesa_id'      => $riga['conto_id'],
-                                'immobile_id'        => $riga['immobile_id'] ?? null,
+                                'note'               => 'Sopravvenienza passiva — spesa non preventivata',
                             ]);
+
+                        } else {
+                            if ($riga['conto_id']) {
+                                $contoBudget = Conto::find($riga['conto_id']);
+                                if ($contoBudget && $contoBudget->conto_contabile_id) {
+                                    $scrittura->righe()->create([
+                                        'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                        'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
+                                        'voce_spesa_id'      => $riga['conto_id'],
+                                        'immobile_id'        => $riga['immobile_id'] ?? null,
+                                    ]);
+                                }
+                            }
                         }
                     }
-                }
             }
 
             $anagraficaPrincipale = $fornitore->referenti()->first();

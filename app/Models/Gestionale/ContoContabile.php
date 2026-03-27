@@ -2,6 +2,8 @@
 
 namespace App\Models\Gestionale;
 
+use App\Enums\ContoContabileCategoria;
+use App\Enums\ContoContabileTipo;
 use App\Models\Condominio;
 use App\Models\Gestionale\Conto; 
 use App\Models\Gestionale\RigaScrittura; 
@@ -34,10 +36,12 @@ class ContoContabile extends Model
     ];
 
     protected $casts = [
-        'di_sistema' => 'boolean',
-        'attivo' => 'boolean',
-        'livello' => 'integer',
-        'ordine' => 'integer',
+        'di_sistema'    => 'boolean',
+        'attivo'        => 'boolean',
+        'livello'       => 'integer',
+        'ordine'        => 'integer',
+        'tipo'          => ContoContabileTipo::class,
+        'categoria'     => ContoContabileCategoria::class,
     ];
 
     public function condominio(): BelongsTo

@@ -207,6 +207,7 @@ const rimuoviTabella = () => {
               <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto"> 
                 <AlberoDeiConti
                   :conti="props.conti" 
+                  :selected-id="contoSelezionato?.id"
                   @seleziona="selezionaConto"
                 />
               </div>

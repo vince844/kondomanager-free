@@ -39,7 +39,8 @@ class StoreFatturaRequest extends FormRequest
             'righe.*.descrizione'        => 'exclude_if:is_pregresso,1,true,"1","true"|required|string',
             'righe.*.importo_imponibile' => 'exclude_if:is_pregresso,1,true,"1","true"|required|numeric',
             'righe.*.aliquota_iva'       => 'exclude_if:is_pregresso,1,true,"1","true"|required|numeric',
-            'righe.*.conto_id'           => 'exclude_if:is_pregresso,1,true,"1","true"|required|exists:conti,id',
+            'righe.*.conto_id'           => 'exclude_if:is_pregresso,1,true|nullable|exists:conti,id',
+            'righe.*.is_sopravvenienza'  => 'exclude_if:is_pregresso,1,true|nullable|boolean',
             'righe.*.immobile_id'        => 'exclude_if:is_pregresso,1,true,"1","true"|nullable|exists:immobili,id',
 
             // ── CAMPI COMUNI ──
@@ -97,14 +98,20 @@ class StoreFatturaRequest extends FormRequest
         ];
     }
 
-    /**
-     * Catturiamo gli errori di validazione e li stampiamo nel log prima di bloccare l'utente.
-     */
-    protected function failedValidation(\Illuminate\Contracts\Validation\Validator $validator)
+    public function withValidator($validator): void
     {
-        \Illuminate\Support\Facades\Log::error('❌ VALIDAZIONE FALLITA IN STORE_FATTURA_REQUEST:');
-        \Illuminate\Support\Facades\Log::error($validator->errors()->toArray());
-        
-        parent::failedValidation($validator);
+        $validator->after(function ($validator) {
+            $righe = $this->input('righe', []);
+            foreach ($righe as $idx => $riga) {
+                $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                if (!$isSopravvenienza && empty($riga['conto_id'])) {
+                    $validator->errors()->add(
+                        "righe.{$idx}.conto_id",
+                        'Il capitolo di spesa è obbligatorio per righe non contrassegnate come impreviste.'
+                    );
+                }
+            }
+        });
     }
+
 }
