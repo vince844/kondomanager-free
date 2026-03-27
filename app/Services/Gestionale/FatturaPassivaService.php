@@ -383,14 +383,36 @@ class FatturaPassivaService
             }
 
             $anagraficaPrincipale = $fornitore->referenti()->first();
-
+            
+            // AVERE 1: Debito verso Fornitore (Solo il netto a pagare)
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
-                'importo'            => abs($totaleDoc * $moltiplicatore),
+                'importo'            => abs($netto), // <-- USIAMO IL NETTO
                 'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
+            // AVERE 2: Debito verso Erario (Solo se c'è ritenuta)
+            if ($ritenuta > 0) {
+                // Recuperiamo il mastro erario
+                $contoErario = ContoContabile::where('condominio_id', $condominioId)
+                    ->where('ruolo', 'debiti_erario_ritenute')
+                    ->first();
+
+                if (!$contoErario) {
+                    throw new \Exception("Errore Piano dei Conti: Manca il Conto Mastro con ruolo 'debiti_erario_ritenute'.");
+                }
+
+                $scrittura->righe()->create([
+                    'conto_contabile_id' => $contoErario->id,
+                    'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
+                    'importo'            => abs($ritenuta), // <-- USIAMO LA RITENUTA
+                    'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
+                    'note'               => "Ritenuta d'acconto 4% fattura fornitore"
+                ]);
+            }
+
+            // Pivot Fattura-Scrittura (Qui va bene lasciare il totale documento come riferimento)
             $fattura->scritture()->attach($scrittura->id, [
                 'importo_allocato' => abs($totaleDoc * $moltiplicatore),
                 'tipo'             => 'competenza',

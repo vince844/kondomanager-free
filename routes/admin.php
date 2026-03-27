@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Anagrafiche\AnagraficaController;
 use App\Http\Controllers\Anagrafiche\FetchAnagraficheController;
+use App\Http\Controllers\Api\TestContabilitaController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneApprovalController;
 use App\Http\Controllers\Comunicazioni\ComunicazioneController;
 use App\Http\Controllers\Dashboard\ActionInboxController;
@@ -145,6 +146,10 @@ Route::prefix('admin')->as('admin.')
     
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
+
+
+    // Rotta di TEST per sviluppatori: Verifica Quadratura Partita Doppia
+    Route::get('/test-quadratura/{condominio}', [TestContabilitaController::class, 'checkQuadratura']);
 
     require __DIR__.'/gestionale.php';
 });

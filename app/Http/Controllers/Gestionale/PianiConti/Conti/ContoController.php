@@ -9,6 +9,7 @@ use App\Http\Requests\Gestionale\PianoConto\Conto\UpdateContoRequest;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
@@ -42,12 +43,12 @@ class ContoController extends Controller
             $nuovoConto = Conto::create([
                 'piano_conto_id'        => $pianoConto->id,
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'), 
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
                 'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
-                // Se è un capitolo, forziamo l'importo a 0. Altrimenti convertiamo in centesimi.
                 'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0), 
                 'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
@@ -163,6 +164,7 @@ class ContoController extends Controller
             // Procediamo con l'aggiornamento dei dati
             $conto->update([
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
                 'codice'                => $data['codice'] ?? null, 
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
@@ -310,5 +312,17 @@ class ContoController extends Controller
             DB::rollBack();
             return back()->with($this->flashError($e->getMessage()));
         }
+    }
+
+    private function resolveContoContabileId(int $condominioId, string $tipoSpesa): ?int
+    {
+        $ruolo = match($tipoSpesa) {
+            'professionista' => 'compensi_professionisti',
+            default          => 'costi_servizi',
+        };
+
+        return ContoContabile::where('condominio_id', $condominioId)
+            ->where('ruolo', $ruolo)
+            ->value('id');
     }
 }

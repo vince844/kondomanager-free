@@ -223,6 +223,22 @@ class CondominioService
             ]
         );
 
+        // D-Bis. Debiti v/Erario per Ritenute (Passività > Debiti)
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'debiti_erario_ritenute'],
+            [
+                'parent_id'   => $passivoRoot->id,
+                'codice'      => '2202',
+                'nome'        => 'Debiti v/Erario per Ritenute',
+                'descrizione' => 'Trattenute operate da versare allo Stato tramite F24',
+                'tipo'        => 'passivo',
+                'categoria'   => 'debiti',      
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1
+            ]
+        );
+
         // E. Gestione Rate (Passività > Fondi/Ricavi)
         ContoContabile::firstOrCreate(
             ['condominio_id' => $condominio->id, 'ruolo' => 'gestione_rate'],
@@ -268,6 +284,38 @@ class CondominioService
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
+            ]
+        );
+
+        // H. Costi per Servizi (Conto Economico > Costi Operativi)
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'costi_servizi'],
+            [
+                'parent_id'   => null,
+                'codice'      => '6001',
+                'nome'        => 'Costi per Servizi',
+                'descrizione' => 'Manutenzioni, pulizie, utenze e servizi generali del condominio',
+                'tipo'        => 'costo',
+                'categoria'   => 'costi',
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
+            ]
+        );
+
+        // I. Compensi Professionisti (Conto Economico > Costi Operativi)
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'compensi_professionisti'],
+            [
+                'parent_id'   => null,
+                'codice'      => '6002',
+                'nome'        => 'Compensi Professionisti',
+                'descrizione' => 'Amministratore, avvocati, tecnici e consulenti',
+                'tipo'        => 'costo',
+                'categoria'   => 'costi',
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
             ]
         );
 
