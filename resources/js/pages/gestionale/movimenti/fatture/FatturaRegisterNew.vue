@@ -38,7 +38,7 @@ const localeCode = computed(() => {
     return raw.replace('_', '-').split('-')[0];
 });
 
-const defaultVatRate = computed(() => (localeCode.value === 'pt' ? 23 : 22));
+const defaultVatRate = 22;
 const supplierIbanPlaceholder = computed(() => {
     if (localeCode.value === 'pt') return 'PT50 0000...';
     if (localeCode.value === 'en') return 'IBAN...';
@@ -171,7 +171,7 @@ const form = useForm({
     
     // NUOVI CAMPI PER FATTURA PREGRESSA
     imponibile_pregresso: 0,
-    aliquota_iva_pregressa: defaultVatRate.value,
+    aliquota_iva_pregressa: defaultVatRate,
 
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
@@ -188,7 +188,7 @@ const form = useForm({
     },
     
     stato_approvazione: 'approvata',
-    righe: [{ descrizione: '', conto_id: null as number | null, immobile_id: null as number | null, importo_imponibile: 0, aliquota_iva: defaultVatRate.value }],
+    righe: [{ descrizione: '', conto_id: null as number | null, immobile_id: null as number | null, importo_imponibile: 0, aliquota_iva: defaultVatRate }],
     file: null as File | null,
 });
 
@@ -337,24 +337,10 @@ watch(() => form.esercizio_id, (v) => {
     form.gestione_id = props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id;
 }, { immediate: true });
 
-watch(localeCode, (newLocale) => {
-    const nextDefaultVat = newLocale === 'pt' ? 23 : 22;
-
-    if (form.aliquota_iva_pregressa === 22 || form.aliquota_iva_pregressa === 23) {
-        form.aliquota_iva_pregressa = nextDefaultVat;
-    }
-
-    form.righe.forEach((riga) => {
-        if ((riga.aliquota_iva === 22 || riga.aliquota_iva === 23) && !riga.importo_imponibile) {
-            riga.aliquota_iva = nextDefaultVat;
-        }
-    });
-});
-
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
-const addRiga    = () => form.righe.push({ descrizione: '', conto_id: null, immobile_id: null, importo_imponibile: 0, aliquota_iva: defaultVatRate.value });
+const addRiga    = () => form.righe.push({ descrizione: '', conto_id: null, immobile_id: null, importo_imponibile: 0, aliquota_iva: defaultVatRate });
 const removeRiga = (idx: number) => { if (form.righe.length > 1) form.righe.splice(idx, 1); };
 const showSopravvenienzaModal = ref(false);
 
