@@ -132,6 +132,13 @@ return [
         'previously_direct' => 'atribuído anteriormente',
     ],
 
+    'roles' => [
+        'admin' => 'Administrador',
+        'collaborator' => 'Colaborador',
+        'supplier' => 'Fornecedor',
+        'user' => 'Utilizador',
+    ],
+
     /* ------------------------------------------------------------------
      | Layout
      | ------------------------------------------------------------------ */

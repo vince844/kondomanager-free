@@ -11,6 +11,30 @@ import { trans } from 'laravel-vue-i18n'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
 
+const ROLE_I18N_KEY_BY_NAME: Record<string, string> = {
+  amministratore: 'admin',
+  collaboratore: 'collaborator',
+  fornitore: 'supplier',
+  utente: 'user',
+}
+
+function getTranslatedRoleLabel(roleValue: unknown): string {
+  const rawRoleName =
+    typeof roleValue === 'string'
+      ? roleValue
+      : (roleValue as { name?: string } | null | undefined)?.name ?? ''
+
+  const normalizedRoleName = rawRoleName.toLowerCase().trim()
+  const keySuffix =
+    ROLE_I18N_KEY_BY_NAME[normalizedRoleName] ??
+    normalizedRoleName.replace(/\s+/g, '_')
+
+  const key = `users.roles.${keySuffix}`
+  const translated = trans(key)
+
+  return translated === key ? rawRoleName : translated
+}
+
 // Dialog per visualizzare i permessi dell'utente
 const UserPermissionsDialog = {
   props: ['user'],
@@ -80,16 +104,23 @@ export const columns: ColumnDef<User>[] = [
     accessorKey: 'roles',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.role')  }), 
     cell: ({ getValue }) => {
-      const roles = getValue() as string[]
+      const rawRoles = getValue()
+      const roles = Array.isArray(rawRoles) ? rawRoles : []
       return h(
         "div",
         { class: "flex gap-2" }, 
-        roles.map((role) =>
+        roles.map((role) => {
+          const rawRoleName =
+            typeof role === 'string'
+              ? role
+              : (role as { name?: string } | null | undefined)?.name ?? ''
+
+          return (
           h("span", { 
-            key: role,
-            class: `px-2 py-1 rounded text-xs font-medium capitalize ${roleClasses[role.toLowerCase()] || defaultRoleClass}` 
-          }, role)
-        )
+            key: rawRoleName,
+            class: `px-2 py-1 rounded text-xs font-medium capitalize ${roleClasses[rawRoleName.toLowerCase()] || defaultRoleClass}` 
+          }, getTranslatedRoleLabel(role))
+        )})
       )
     }
   },
