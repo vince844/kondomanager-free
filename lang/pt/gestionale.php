@@ -347,7 +347,7 @@ return [
                 'minutes_number_label' => 'N.º de ata (opcional)',
                 'minutes_number_placeholder' => 'Ex.: Ata n.º 3/2026',
                 'notes_label' => 'Notas ou referências (opcional)',
-                'notes_placeholder' => 'Ex.: Aprovado com 8 votos favoráveis sobre 10 condóminos presentes...',
+                'notes_placeholder' => 'Ex.: Aprovado com 8 votos favoráveis sobre 10 dos votos presentes...',
                 'last_deliberation_title' => 'Última deliberação registada:',
                 'last_deliberation_date' => 'Data:',
                 'last_deliberation_minutes' => 'Ata:',
