@@ -4,6 +4,7 @@ import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Link, router } from '@inertiajs/vue3';
 import { LogOut, UserRound } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { User } from '@/types';
 
 interface Props {
