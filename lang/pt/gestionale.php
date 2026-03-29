@@ -320,7 +320,7 @@ return [
             'draft_state' => [
                 'title' => 'Estado rascunho:',
                 'description' => 'o plano está atualmente editável e não gerou movimentos contabilísticos.',
-                'cta' => 'Revise os dados e depois passe para o estado Aprovado para tornar as prestações executáveis e emitir.',
+                'cta' => 'Reveja os dados e depois passe para o estado Aprovado para tornar as prestações executáveis e emitir.',
             ],
             'tabs' => [
                 'by_registry' => 'Por ficha',
@@ -431,7 +431,7 @@ return [
                 'hidden_installments_description' => 'Existem prestações emitidas contabilisticamente mas atualmente ocultas aos condóminos.',
                 'publish_and_notify' => 'Clique neste botão para tornar visível na App e enviar notificações (Push/Email).',
                 'recalculate_title' => 'Recalcular plano de prestações',
-                'recalculate_description' => 'Regera as quotas do plano com base nas permilagens atuais e no orçamento atualizado.',
+                'recalculate_description' => 'Recalcula as quotas do plano com base nas permilagens atuais e no orçamento atualizado.',
                 'sync_required_title' => 'Sincronização necessária:',
                 'sync_required_description' => 'existem rubricas sem cobertura que podem ser incluídas neste plano.',
                 'disabled_with_collections' => 'Desativado: existem cobranças registadas.',
@@ -1379,7 +1379,7 @@ return [
                     'update_title' => 'Atualização de dados',
                     'update_description' => 'Edite informações gerais, tipologia e localização da unidade.',
                     'consistency_title' => 'Consistência',
-                    'consistency_description' => 'Revise área e divisões, essenciais para os cálculos de permilagem.',
+                    'consistency_description' => 'Reveja área e divisões, essenciais para os cálculos de permilagem.',
                     'land_title' => 'Referências cadastrais',
                     'land_description' => 'Atualize os identificadores oficiais para manter conformidade cadastral.',
                 ],
