@@ -23,6 +23,9 @@ import Alert from "@/components/Alert.vue";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import VueDatePicker from '@vuepic/vue-datepicker';
+import '@vuepic/vue-datepicker/dist/main.css';
+import { enUS, it, pt } from 'date-fns/locale';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
@@ -53,7 +56,16 @@ const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-
+const localeCode = computed(() => {
+    const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
+    return raw.replace('_', '-').split('-')[0];
+});
+const approvalDatePickerLocale = computed(() => {
+    if (localeCode.value === 'it') return it;
+    if (localeCode.value === 'en') return enUS;
+    return pt;
+});
+const approvalDateFormat = computed(() => (localeCode.value === 'pt' ? 'dd/MM/yyyy' : 'yyyy-MM-dd'));
 const showApprovazioneModal = ref(false);
 
 const formApprovazione = ref({
@@ -1195,9 +1207,19 @@ const executePublishSilent = () => {
                 </div>
                 <div class="p-6 space-y-4">
                     <div class="space-y-1.5">
-                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">Data delibera assembleare *</Label>
-                        <Input type="date" v-model="formApprovazione.data_delibera_assemblea" class="h-10" />
-                        <p class="text-[10px] text-slate-400 leading-tight">Data in cui l'assemblea ha approvato questo piano rate. Sarà riportata nell'audit trail contabile.</p>
+                        <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">{{ trans('gestionale.piani_rate.show.approval_modal.deliberation_date_label') }}</Label>
+                        <VueDatePicker :teleport="true"
+                            v-model="formApprovazione.data_delibera_assemblea"
+                            class="w-full"
+                            model-type="yyyy-MM-dd"
+                            :format="approvalDateFormat"
+                            :locale="approvalDatePickerLocale"
+                            :enable-time-picker="false"
+                            auto-apply
+                            :clear-button-label="localeCode === 'pt' ? 'Limpar' : (localeCode === 'it' ? 'Cancella' : 'Clear')"
+                            :today-button-label="localeCode === 'pt' ? 'Hoje' : (localeCode === 'it' ? 'Oggi' : 'Today')"
+                        />
+                        <p class="text-[10px] text-slate-400 leading-tight">{{ trans('gestionale.piani_rate.show.approval_modal.deliberation_date_help') }}</p>
                     </div>
                     <div class="space-y-1.5">
                         <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500">N. Verbale (opzionale)</Label>
