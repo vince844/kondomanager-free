@@ -122,6 +122,14 @@ return [
     'badge' => [
         'previously_direct' => 'in precedenza assegnato',
     ],
+
+    'roles' => [
+        'admin' => 'Amministratore',
+        'collaborator' => 'Collaboratore',
+        'supplier' => 'Fornitore',
+        'user' => 'Utente',
+    ],
+
     /* ------------------------------------------------------------------
      | Layout 
      | ------------------------------------------------------------------ */

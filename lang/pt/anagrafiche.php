@@ -41,6 +41,8 @@ return [
         'buildings' => 'Condomínios',
         'actions'   => 'Ações',
         'filter'    => 'Filtrar por nome...',
+        'click_to_view' => 'Clique para visualizar',
+        'no_contacts'  => 'Sem contacto',
     ],
 
     /* ------------------------------------------------------------------

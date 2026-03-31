@@ -29,10 +29,10 @@ const translationsLoaded = ref(false)
 /* -------------------------------------------------
  * Breadcrumbs
  * ------------------------------------------------- */
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Impostazioni', href: '/impostazioni' },
-  { title: 'Generali', href: '/impostazioni/generali' },
-]
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+  { title: trans('impostazioni.label.settings'), href: '/impostazioni' },
+  { title: trans('impostazioni.header.general_settings_title'), href: '/impostazioni/generali' },
+])
 
 /* -------------------------------------------------
  * i18n labels

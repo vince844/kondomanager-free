@@ -4,6 +4,7 @@ import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Link, router } from '@inertiajs/vue3';
 import { LogOut, UserRound } from 'lucide-vue-next';
+import { trans } from 'laravel-vue-i18n';
 import type { User } from '@/types';
 
 interface Props {
@@ -33,7 +34,7 @@ function handleLogout() {
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full" :href="route('profile.edit')" as="button">
                 <UserRound class="mr-2 h-4 w-4" />
-                Profilo
+                {{ trans('settings.layout.nav.profile') }}
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>
@@ -41,7 +42,7 @@ function handleLogout() {
     <DropdownMenuItem :as-child="true">
         <button class="block w-full" @click="handleLogout">
             <LogOut class="mr-2 h-4 w-4" />
-            Log out
+            {{ trans('auth.button.logout') }}
         </button>
     </DropdownMenuItem>
 </template>

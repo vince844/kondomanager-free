@@ -26,10 +26,10 @@ const page = usePage<{ flash: { message?: Flash } }>();
 
 const flashMessage = computed(() => page.props.flash.message);
 
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Impostazioni', href: '/impostazioni' },
-  { title: 'utenti', href: '#' },
-];
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+  { title: trans('impostazioni.label.settings'), href: '/impostazioni' },
+  { title: trans('users.header.list_users_head'), href: '#' },
+]);
 
 </script>
 

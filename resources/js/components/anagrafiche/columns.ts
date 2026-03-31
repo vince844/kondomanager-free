@@ -66,7 +66,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
       const emailPrincipale = a.email || a.pec;
 
       if (!emailPrincipale && !recapitoTelefonico) {
-        return h('span', { class: 'text-xs text-slate-400 italic' }, 'Nessun contatto');
+        return h('span', { class: 'text-xs text-slate-400 italic' }, trans('anagrafiche.table.no_contacts'));
       }
 
       return h('div', { class: 'flex flex-col gap-1.5 text-sm text-slate-600 dark:text-slate-400' }, [
