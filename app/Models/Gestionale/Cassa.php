@@ -23,9 +23,16 @@ class Cassa extends Model
         'note'
     ];
 
-    public function movimenti(): HasMany
+   /*  public function movimenti(): HasMany
     {
         return $this->hasMany(RigaScrittura::class, 'cassa_id');
+    } */
+
+    public function movimenti(): HasMany
+    {
+        // Cambiamo la chiave esterna da 'cassa_id' a 'conto_contabile_id'
+        // e la chiave locale a 'conto_contabile_id'
+        return $this->hasMany(RigaScrittura::class, 'conto_contabile_id', 'conto_contabile_id');
     }
 
     public function contoCorrente(): MorphOne

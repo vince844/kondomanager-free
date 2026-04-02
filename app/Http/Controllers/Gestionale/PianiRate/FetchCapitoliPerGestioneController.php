@@ -16,8 +16,14 @@ class FetchCapitoliPerGestioneController extends Controller
     public function __invoke(Condominio $condominio, Request $request): JsonResponse
     {
         try {
-            $request->validate(['gestione_id' => 'required|integer|exists:gestioni,id']);
+            // Aggiunta la validazione per l'esercizio_id
+            $request->validate([
+                'gestione_id' => 'required|integer|exists:gestioni,id',
+                'esercizio_id' => 'required|integer|exists:esercizi,id'
+            ]);
+            
             $gestioneId = $request->input('gestione_id');
+            $esercizioId = $request->input('esercizio_id'); // Raccogliamo l'esercizio dal frontend
             $currentPlanId = $request->input('piano_rate_id');
 
             $gestione = Gestione::with('pianoConto')->findOrFail($gestioneId);
@@ -27,117 +33,117 @@ class FetchCapitoliPerGestioneController extends Controller
 
             if (!$gestione->pianoConto) return response()->json([]);
 
-            // 1. Recuperiamo tutti i conti con i figli
+            // 1. Recuperiamo tutti i conti con gerarchia
             $conti = $gestione->pianoConto->conti()
                 ->with(['parent', 'sottoconti'])
                 ->get();
             
             $contiById = $conti->keyBy('id');
+            $allContiIds = $conti->pluck('id')->toArray();
 
-            // 2. Mappiamo TUTTI gli impegni esistenti tramite query diretta (Sicura e veloce)
+            // 2. RECUPERO FATTURATO REALE
+            $rawFatturato = DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->where('fatture_passive.esercizio_id', $esercizioId) // <--- IL FIX: Usiamo la variabile esplicita!
+                ->whereIn('righe_fattura.conto_id', $allContiIds)
+                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                ->select(
+                    'righe_fattura.conto_id', 
+                    DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
+                )
+                ->groupBy('righe_fattura.conto_id')
+                ->get();
+
+            // Mappa sicura del fatturato
+            $fatturatoMap = [];
+            foreach ($rawFatturato as $row) {
+                $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
+            }
+
+            // 3. RECUPERO IMPEGNI ESISTENTI (Rate già emesse)
             $rawImpegni = DB::table('piano_rate_capitoli')
                 ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
                 ->where('piani_rate.gestione_id', $gestioneId)
-                ->where('piani_rate.attivo', true)
+                ->whereIn('piani_rate.stato', ['bozza', 'approvato'])
                 ->when($currentPlanId, fn($q) => $q->where('piani_rate.id', '!=', $currentPlanId))
                 ->select('piano_rate_capitoli.conto_id', 'piano_rate_capitoli.importo')
                 ->get();
 
-            // 3. MOTORE "PUSH-DOWN" (Lo stesso della Dashboard)
-            $map = [];
-
-            // STEP 3.A: Assegnazione diretta alle Foglie
+            // 4. MAPPA IMPEGNI CON PROPAGAZIONE
+            $mapImpegnato = [];
             foreach ($rawImpegni as $row) {
-                $contoModel = $contiById[$row->conto_id] ?? null;
-                if ($contoModel && $contoModel->sottoconti->isEmpty()) {
-                    $impegnato = is_null($row->importo) ? (int) $contoModel->importo : (int) $row->importo;
-                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $impegnato;
-                }
+                $c = $contiById[$row->conto_id] ?? null;
+                if (!$c) continue;
+
+                $valoreImpegno = is_null($row->importo) ? (int)$c->importo : (int)$row->importo;
+                $this->propagaImpegno($c, $valoreImpegno, $mapImpegnato);
             }
 
-            // STEP 3.B: Push-down dai Padri ai Figli
-            foreach ($rawImpegni as $row) {
-                $contoModel = $contiById[$row->conto_id] ?? null;
-                if ($contoModel && $contoModel->sottoconti->isNotEmpty()) {
-                    
-                    $residuoPiano = is_null($row->importo) ? PHP_INT_MAX : (int) $row->importo;
-                    $importoRealeDelPadre = is_null($row->importo) ? (int) $contoModel->importo : (int) $row->importo;
-                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $importoRealeDelPadre;
-
-                    $figliConDeficit = [];
-                    foreach ($contoModel->sottoconti as $figlio) {
-                        $copertoAttuale = $map[$figlio->id] ?? 0;
-                        $deficit = (int) $figlio->importo - $copertoAttuale;
-                        if ($deficit > 0) {
-                            $figliConDeficit[] = ['id' => $figlio->id, 'deficit' => $deficit];
-                        }
-                    }
-
-                    if (empty($figliConDeficit) || $residuoPiano <= 0) continue;
-
-                    $figliFonte = $figliConDeficit;
-                    while ($residuoPiano > 0 && !empty($figliFonte)) {
-                        $n = count($figliFonte);
-                        $quotaBase = (int) floor($residuoPiano / $n);
-                        
-                        if ($quotaBase === 0) {
-                            foreach ($figliFonte as $f) {
-                                if ($residuoPiano <= 0) break;
-                                $map[$f['id']] = ($map[$f['id']] ?? 0) + 1;
-                                $residuoPiano -= 1;
-                            }
-                            break;
-                        }
-                        
-                        $nuoviFigli = [];
-                        foreach ($figliFonte as $f) {
-                            $daAssegnare = min($f['deficit'], $quotaBase);
-                            $map[$f['id']] = ($map[$f['id']] ?? 0) + $daAssegnare;
-                            $residuoPiano -= $daAssegnare;
-                            $f['deficit'] -= $daAssegnare;
-                            if ($f['deficit'] > 0) $nuoviFigli[] = $f;
-                        }
-                        $figliFonte = $nuoviFigli;
-                    }
-                }
-            }
-
-            // 4. ELABORAZIONE OUTPUT PER IL DROPDOWN
-            $capitoli = $conti->map(function($c) use ($map) {
+            // 5. ELABORAZIONE FINALE
+            $capitoli = $conti->map(function($c) use ($mapImpegnato, $fatturatoMap) {
                 
-                $importoTotale = (int) $c->importo;
-                // Se è un padre vuoto, sommiamo i figli
-                if ($importoTotale == 0 && $c->sottoconti->isNotEmpty()) {
-                    $importoTotale = (int) $c->sottoconti->sum('importo');
+                $budgetTeorico = (int) $c->importo;
+                if ($budgetTeorico === 0 && $c->sottoconti->isNotEmpty()) {
+                    $budgetTeorico = (int) $c->sottoconti->sum('importo');
                 }
 
-                $impegnato = (int) ($map[$c->id] ?? 0);
+                // Calcolo della spesa reale sommando il fatturato (che ora non sarà più 0!)
+                $spesoReale = $this->getSpesoRealeRicorsivo($c, $fatturatoMap);
+                $giaChiesto = (int) ($mapImpegnato[$c->id] ?? 0);
                 
-                // Sicurezza: non possiamo mostrare residui negativi nel dropdown
-                $impegnato = min($impegnato, $importoTotale); 
-                $residuo = max(0, $importoTotale - $impegnato);
+                $targetFinanziario = max($budgetTeorico, $spesoReale);
+                $residuo = max(0, $targetFinanziario - $giaChiesto);
                 
-                // Disabilitato se non c'è budget o se è completamente coperto
-                $isDisabled = ($importoTotale == 0) || ($residuo <= 0);
+                $isSforo = ($spesoReale > $budgetTeorico) && ($residuo > 0);
+                $isDisabled = ($residuo <= 0) || ($targetFinanziario <= 0);
 
                 $nome = $c->parent_id ? "{$c->parent->nome} > {$c->nome}" : "[CAPITOLO] {$c->nome}";
 
+                $nota = "Disp: € " . MoneyHelper::format($residuo);
+                if ($isSforo) {
+                    $nota = "Sforo da recuperare: € " . MoneyHelper::format($residuo);
+                } elseif ($isDisabled && $targetFinanziario > 0) {
+                    $nota = "Interamente finanziato/Esaurito";
+                } elseif ($targetFinanziario === 0) {
+                    $nota = "Nessun budget o spesa";
+                }
+
                 return [
-                    'id' => $c->id,
-                    'nome' => $nome,
-                    'importo_totale' => MoneyHelper::fromCents($importoTotale),
-                    'impegnato' => MoneyHelper::fromCents($impegnato),
-                    'residuo' => MoneyHelper::fromCents($residuo),
-                    'disabled' => $isDisabled,
-                    'note' => $isDisabled ? "Budget esaurito/coperto" : "Disp: € " . MoneyHelper::format($residuo)
+                    'id'             => $c->id,
+                    'nome'           => $nome,
+                    'importo_totale' => MoneyHelper::fromCents($budgetTeorico),
+                    'speso_reale'    => MoneyHelper::fromCents($spesoReale),
+                    'residuo'        => MoneyHelper::fromCents($residuo),
+                    'disabled'       => $isDisabled,
+                    'is_sforo'       => $isSforo,
+                    'note'           => $nota
                 ];
             });
 
             return response()->json($capitoli->values());
 
         } catch (\Exception $e) {
-            Log::error('Errore fetch capitoli: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            Log::error('Errore residui finanziari: ' . $e->getMessage());
             return response()->json(['error' => 'Errore interno'], 500);
         }
+    }
+
+    private function propagaImpegno($conto, $valore, &$map)
+    {
+        $map[$conto->id] = ($map[$conto->id] ?? 0) + $valore;
+        if ($conto->sottoconti->isNotEmpty()) {
+            foreach ($conto->sottoconti as $figlio) {
+                $this->propagaImpegno($figlio, (int)$figlio->importo, $map);
+            }
+        }
+    }
+
+    private function getSpesoRealeRicorsivo($conto, $fatturatoMap)
+    {
+        $totale = $fatturatoMap[$conto->id] ?? 0;
+        foreach ($conto->sottoconti as $figlio) {
+            $totale += $this->getSpesoRealeRicorsivo($figlio, $fatturatoMap);
+        }
+        return $totale;
     }
 }

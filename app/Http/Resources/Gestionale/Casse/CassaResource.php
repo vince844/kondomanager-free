@@ -10,17 +10,17 @@ class CassaResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        // Relazione Conto Corrente
         $cc = $this->whenLoaded('contoCorrente');
 
-        // --- CALCOLO SALDO ---
-        // Recuperiamo i dati calcolati da withSum nel controller
-        // Se non esistono (es. chiamata singola senza withSum), fallback a 0
-        $saldoIniziale = $this->saldo_iniziale ?? 0;
-        $entrate = $this->totale_entrate ?? 0;
-        $uscite = $this->totale_uscite ?? 0;
+        $saldoIniziale = (int) ($this->saldo_iniziale ?? 0);
+        
+        // ATTENZIONE: Questi nomi devono corrispondere a quelli definiti nel withSum del Controller
+        $dare  = (int) ($this->totale_entrate ?? 0); 
+        $avere = (int) ($this->totale_uscite ?? 0);
 
-        $saldoCentesimi = $saldoIniziale + $entrate - $uscite;
+        // Calcolo Saldo per conti di ATTIVO (Liquidità/Fondi attivi):
+        // I soldi aumentano in DARE e diminuiscono in AVERE.
+        $saldoCentesimi = $saldoIniziale + $dare - $avere;
 
         return [
             'id'          => $this->id,
@@ -36,17 +36,16 @@ class CassaResource extends JsonResource
             'banca_predefinito' => $cc ? (bool) $cc->predefinito : false,
             'banca_tipo_conto'  => $cc ? $cc->tipo : null, 
 
-            // SALDO INIZIALE (Nuove chiavi)
+            // SALDO INIZIALE
             'saldo_iniziale_raw'       => MoneyHelper::fromCents($saldoIniziale), 
             'saldo_iniziale_formatted' => MoneyHelper::format($saldoIniziale),
 
-            // SALDO ATTUALE
+            // SALDO ATTUALE (Finalmente dinamico!)
             'saldo_raw'       => MoneyHelper::fromCents($saldoCentesimi), 
             'saldo_formatted' => MoneyHelper::format($saldoCentesimi),
 
-            // Per comodità se in futuro vogliamo mostrare i totali
-            'totale_entrate_formatted' => MoneyHelper::format($entrate),
-            'totale_uscite_formatted'  => MoneyHelper::format($uscite),
+            'totale_entrate_formatted' => MoneyHelper::format($dare),
+            'totale_uscite_formatted'  => MoneyHelper::format($avere),
 
             'note'            => $this->note,
         ];

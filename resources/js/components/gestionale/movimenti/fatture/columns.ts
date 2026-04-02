@@ -17,12 +17,9 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         const fattura = row.original;
         const fornitoreNome = fattura.fornitore?.ragione_sociale || 'N/D';
         
-        // Riga 1: nome fornitore
-        // Riga 2: numero documento + dot ritenuta (discreto)
-        // Riga 3: badge tipo documento + badge pregresso (solo se presenti)
-
         const badgeRow = [];
 
+        // Badge Nota di Credito
         if (fattura.tipo_documento === 'nota_credito') {
             badgeRow.push(
                 h('span', { 
@@ -31,6 +28,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             );
         }
 
+        // Badge Pregresso
         if (fattura.is_pregresso) {
             badgeRow.push(
                 h('span', { 
@@ -39,38 +37,46 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             );
         }
 
-        return h('div', { class: 'flex flex-col gap-0.5 overflow-hidden' }, [
+        // Array degli elementi della seconda riga (Numero, Ritenuta, Download)
+        const documentMetaElements = [];
+        
+        // 1. Numero Documento
+        documentMetaElements.push(h('span', `n. ${fattura.numero_documento || 'S/N'}`));
+
+        // 2. Dot Ritenuta (se presente)
+        if (fattura.importo_ritenuta && fattura.importo_ritenuta > 0) {
+            documentMetaElements.push(
+                h('span', { 
+                    class: 'w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 cursor-help ml-1.5',
+                    title: 'Soggetto a ritenuta d\'acconto'
+                })
+            );
+        }
+
+        // 3. Link Download (se c'è un documento allegato)
+        if (fattura.documenti && fattura.documenti.length > 0) {
+            documentMetaElements.push(
+                h('a', {
+                    href: route('admin.gestionale.fatture.download', { 
+                        condominio: condominioId, 
+                        fattura: fattura.id, 
+                        documento: fattura.documenti[0].id 
+                    }),
+                    class: 'text-slate-400 hover:text-indigo-600 transition-colors ml-2 flex items-center',
+                    title: 'Scarica PDF fattura',
+                    onClick: (e: Event) => e.stopPropagation() 
+                }, [
+                    h(Paperclip, { class: 'w-3.5 h-3.5' })
+                ])
+            );
+        }
+
+        return h('div', { class: 'flex flex-col gap-1 overflow-hidden' }, [
             // Riga 1: Ragione sociale
             h('span', { class: 'font-bold text-sm text-slate-900 truncate' }, fornitoreNome),
 
-            // Riga 2: Numero documento + dot ritenuta
-            h('span', { class: 'text-xs text-slate-400 font-mono flex items-center gap-1.5' }, [
-                `n. ${fattura.numero_documento}`,
-
-                fattura.importo_ritenuta && fattura.importo_ritenuta > 0
-                    ? h('span', { 
-                        class: 'w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0 cursor-help',
-                        title: 'Soggetto a ritenuta d\'acconto'
-                      })
-                    : null,
-
-                // LINK DIRETTO AL DOWNLOAD (Graffetta)
-                fattura.documenti && fattura.documenti.length > 0
-                    ? h('a', {
-                        href: route('admin.gestionale.fatture.download', { 
-                            condominio: condominioId, 
-                            fattura: fattura.id, 
-                            documento: fattura.documenti[0].id 
-                        }),
-                        class: 'text-slate-400 hover:text-indigo-600 transition-colors ml-1',
-                        title: 'Scarica PDF fattura',
-                        // Previene che il click sulla graffetta scateni il click sull'intera riga (se la riga è cliccabile)
-                        onClick: (e: Event) => e.stopPropagation() 
-                    }, [
-                        h(Paperclip, { class: 'w-3.5 h-3.5' })
-                    ])
-                    : null
-            ]),
+            // Riga 2: Numero e Metadati (raggruppati correttamente in un div flex)
+            h('div', { class: 'text-xs text-slate-400 font-mono flex items-center' }, documentMetaElements),
 
             // Riga 3: Badge (solo se presenti)
             badgeRow.length > 0
@@ -86,9 +92,19 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
     size: 130,
     cell: ({ row }) => {
         const fattura = row.original;
-        const dataDoc  = new Date(fattura.data_documento).toLocaleDateString('it-IT');
-        const dataScad = new Date(fattura.data_scadenza).toLocaleDateString('it-IT');
-        const isScaduta = new Date(fattura.data_scadenza) < new Date() && fattura.stato_pagamento !== 'pagata';
+        
+        // Protezione se mancano le date
+        const dataDoc = fattura.data_documento 
+            ? new Date(fattura.data_documento).toLocaleDateString('it-IT') 
+            : '-';
+        
+        const dataScad = fattura.data_scadenza 
+            ? new Date(fattura.data_scadenza).toLocaleDateString('it-IT') 
+            : '-';
+            
+        const isScaduta = fattura.data_scadenza 
+            ? new Date(fattura.data_scadenza) < new Date() && fattura.stato_pagamento !== 'pagata'
+            : false;
 
         return h('div', { class: 'flex flex-col gap-0.5' }, [
             h('span', { class: 'text-xs text-slate-600 font-medium whitespace-nowrap' }, `Doc: ${dataDoc}`),
@@ -121,7 +137,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             },
             sforo_motivato: { 
                 label: 'Sforo motivato', 
-                class: 'bg-orange-50 text-orange-700 border border-orange-200', 
+                class: 'bg-indigo-50 text-indigo-700 border border-indigo-200', 
                 icon: AlertTriangle 
             },
         };
@@ -163,7 +179,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             },
             stornata: { 
                 label: 'Stornata', 
-                class: 'bg-slate-100 text-slate-500 border border-slate-200 decoration-slate-400', 
+                class: 'bg-slate-100 text-slate-500 border border-slate-200 decoration-slate-400 line-through', 
                 icon: RotateCcw 
             },
         };
@@ -182,32 +198,58 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
     }
   },
   {
-    accessorKey: 'netto_a_pagare', 
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importo' }),
-    size: 120,
+    accessorKey: 'totale_documento', // Cambiamo in totale_documento come dato principale
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Importi' }),
+    size: 130,
     cell: ({ row }) => {
         const fattura = row.original;
-        const importoRaw = fattura.netto_a_pagare;
-        const isNota = importoRaw < 0;
+        
+        const imponibile = fattura.importo_imponibile;
+        const iva = fattura.importo_iva;
+        const totaleDoc = fattura.totale_documento;
+        const ritenuta = fattura.importo_ritenuta || 0;
+        const netto = fattura.netto_a_pagare;
+
+        const isNota = totaleDoc < 0;
         const isStornata = fattura.dati_extra?.is_stornata === true;
 
-        return h('div', { class: 'flex flex-col items-end' }, [
+        // Creiamo il testo dello "Scontrino" per il tooltip
+        const scontrino = 
+            `DETTAGLIO IMPORTI\n\n` +
+            `Imponibile: ${euro(imponibile)}\n` +
+            `IVA: ${euro(iva)}\n` +
+            `Totale Lordo: ${euro(totaleDoc)}\n` +
+            (ritenuta > 0 ? `Ritenuta Acconto: -${euro(ritenuta)}\n` : '') +
+            `----------------------\n` +
+            `Da bonificare: ${euro(netto)}`;
+
+        return h('div', { 
+            // Aggiungiamo 'group' e 'cursor-help' per indicare che c'è un tooltip
+            class: 'flex flex-col items-end group cursor-help',
+            title: scontrino // Tooltip nativo super pulito
+        }, [
+            // 1. IL LORDO (In grande, per la coerenza del Budget)
             h('span', { 
-                class: `font-black text-sm whitespace-nowrap ${
+                class: `font-black text-sm whitespace-nowrap transition-colors ${
                     isStornata 
-                        ? 'text-slate-400 decoration-slate-400' 
-                        : (isNota ? 'text-emerald-600' : 'text-slate-900')
+                        ? 'text-slate-400 line-through' 
+                        : (isNota ? 'text-emerald-600' : 'text-slate-900 group-hover:text-indigo-600')
                 }` 
-            }, euro(importoRaw)),
+            }, euro(totaleDoc)),
             
-            // Etichetta "Accredito" (solo per note di credito vere, non per fatture stornate)
-            isNota && !isStornata
-                ? h('span', { class: 'text-[9px] text-emerald-500 font-bold uppercase tracking-wide' }, 'Accredito')
+            // 2. IL NETTO / BONIFICO (In piccolo, ma SOLO se c'è ritenuta, altrimenti è uguale al lordo e sporca la UI)
+            ritenuta > 0 && !isStornata
+                ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100' }, `Bonifico: ${euro(netto)}`)
                 : null,
             
-            // Etichetta "Annullato"
+            // Etichetta "Accredito" (solo per note di credito)
+            isNota && !isStornata
+                ? h('span', { class: 'text-[9px] text-emerald-500 font-bold uppercase tracking-wide mt-0.5' }, 'Accredito')
+                : null,
+            
+            // Etichetta "Annullato" (per gli storni)
             isStornata
-                ? h('span', { class: 'text-[9px] text-slate-400 font-bold uppercase tracking-wide' }, 'Annullato')
+                ? h('span', { class: 'text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-0.5' }, 'Annullato')
                 : null
         ]);
     },

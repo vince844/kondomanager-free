@@ -18,39 +18,39 @@ trait HasProtocolNumber
 
     protected static function generateProtocolNumber($model): string
     {
-        // 1. Decidiamo il prefisso
-        if ($model instanceof FatturaPassiva) {
-            $prefix = 'FTP';
-        } else {
-            $prefix = match($model->tipo_movimento ?? '') {
-                'incasso_rata'        => 'INC',
-                'pagamento_fornitore' => 'PAG',
-                'giroconto'           => 'GIR',
-                'rettifica'           => 'RET',
-                'fattura_acquisto'    => 'FTP', 
-                default               => 'SCR'
-            };
-        }
+        $prefix = ($model instanceof FatturaPassiva) ? 'FTP' : match($model->tipo_movimento ?? '') {
+            'incasso_rata'        => 'INC',
+            'pagamento_fornitore' => 'PAG',
+            'giroconto'           => 'GIR',
+            'rettifica'           => 'RET',
+            'fattura_acquisto'    => 'FTP', 
+            default               => 'SCR'
+        };
 
         $year = now()->format('Y');
 
-        // 2. Transazione Atomica (Concorrenza sicura)
         return DB::transaction(function () use ($model, $prefix, $year) {
+            // 1. Cerchiamo il numero massimo in ENTRAMBE le tabelle per quel prefisso
             
-            $lastRecord = static::where('condominio_id', $model->condominio_id)
+            $maxInFatture = DB::table('fatture_passive')
+                ->where('condominio_id', $model->condominio_id)
                 ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
-                ->lockForUpdate()
-                ->orderByRaw('LENGTH(numero_protocollo) DESC')
-                ->orderBy('numero_protocollo', 'DESC')
-                ->first();
+                ->max('numero_protocollo');
 
+            $maxInScritture = DB::table('scritture_contabili')
+                ->where('condominio_id', $model->condominio_id)
+                ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
+                ->max('numero_protocollo');
+
+            // 2. Prendiamo il più alto tra i due
+            $lastProtocol = max($maxInFatture, $maxInScritture);
+            
             $lastNumber = 0;
-            if ($lastRecord) {
-                $parts = explode('-', $lastRecord->numero_protocollo);
+            if ($lastProtocol) {
+                $parts = explode('-', $lastProtocol);
                 $lastNumber = (int) end($parts);
             }
 
-            // 3. Formatta: Es. FTP-2026-00001 (usiamo 5 cifre per standard)
             return sprintf('%s-%s-%05d', $prefix, $year, $lastNumber + 1);
         });
     }

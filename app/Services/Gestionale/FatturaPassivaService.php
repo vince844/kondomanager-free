@@ -33,6 +33,30 @@ class FatturaPassivaService
             $righeProcessate  = [];
             $aliquotaPregressaSalvata = 22; // Default per il DB
 
+            // =====================================================================
+            // FIX ARCHITETTURALE: Creazione Conto Dinamico per Imprevisti Correnti
+            // =====================================================================
+            $dynamicContoId = null;
+            if (!$isPregresso) {
+                // Controlliamo se ci sono righe fuori preventivo
+                $hasSopravvenienzaCorrente = collect($data['righe'] ?? [])->contains(function ($r) {
+                    return filter_var($r['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                });
+
+                if ($hasSopravvenienzaCorrente) {
+                    $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
+                    if ($logLegale) {
+                        // Creiamo il cassetto dinamico prima di salvare le righe!
+                        $dynamicContoId = $this->creaContoDinamicoSopravvenienza(
+                            $condominioId, 
+                            $data['gestione_id'], 
+                            $data['fornitore_id'], 
+                            $logLegale
+                        );
+                    }
+                }
+            }
+
             // 1. Calcolo Imponibile e IVA
             if ($isPregresso) {
                 $impPregresso = (int) round(($data['imponibile_pregresso'] ?? 0) * 100);
@@ -57,8 +81,8 @@ class FatturaPassivaService
                         'importo_imponibile' => $impRiga * $moltiplicatore,
                         'aliquota_iva'       => $aliq,
                         'importo_iva'        => $ivaRiga * $moltiplicatore,
-                        // Se è sopravvenienza, forza a NULL lato server ignorando il payload
-                        'conto_id'           => $isSopravvenienza ? null : $rigaInput['conto_id'], 
+                        // IL MAGICO FIX: Se è sopravvenienza, gli agganciamo il Conto Dinamico appena creato!
+                        'conto_id'           => $isSopravvenienza ? $dynamicContoId : $rigaInput['conto_id'], 
                         'immobile_id'        => $rigaInput['immobile_id'] ?? null,
                         'is_sopravvenienza'  => $isSopravvenienza,
                     ];
@@ -124,7 +148,22 @@ class FatturaPassivaService
                 $fattura->righe()->createMany($righeProcessate);
             }
 
-            // 4. SALVATAGGIO COPERTURE E CREAZIONE AUTOMATICA VOCE CON TABELLE (FIX 1)
+            // =====================================================================
+            // FIX TRIDENTE: Creazione Copertura se usa Fondo Riserva per sforo
+            // =====================================================================
+            $overrideData = $data['dati_extra']['override_budget'] ?? null;
+            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
+                $fattura->coperture()->create([
+                    'tipo_copertura'      => 'fondo_riserva',
+                    'importo'             => (int) ($overrideData['importo_sforo'] ?? 0),
+                    'stato'               => 'pianificata',
+                    'fondo_id'            => $overrideData['fondo_patrimoniale_id'],
+                    'nota_amministratore' => "Copertura sforo budget (Art. 1135 c.c.): " . ($overrideData['motivazione'] ?? ''),
+                ]);
+            }
+            // =====================================================================
+
+            // 4. SALVATAGGIO COPERTURE (Pregresso)
             if ($isPregresso && !empty($data['coperture'])) {
                 foreach ($data['coperture'] as $index => &$copertura) {
                     
@@ -132,91 +171,19 @@ class FatturaPassivaService
                         $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
                         
                         if ($logLegale) {
-                            $pianoConto = PianoConto::where('gestione_id', $data['gestione_id'])->first();
-                            if (!$pianoConto) throw new \Exception("Nessun Piano dei Conti trovato per la gestione ID: " . $data['gestione_id']);
-
                             $importoCent = (int) round($copertura['importo'] * 100);
-
-                            // Creazione/Recupero del Mastro Contabile Sopravvenienze (Retrocompatibilità)
-                            $contoContabileSopravvenienza = ContoContabile::firstOrCreate(
-                                [
-                                    'condominio_id' => $condominioId,
-                                    'ruolo'         => 'sopravvenienze_passive',
-                                ],
-                                [
-                                    'codice'      => 'SOP-' . $condominioId,
-                                    'nome'        => 'Sopravvenienze passive',
-                                    'tipo'        => ContoContabileTipo::COSTO->value,
-                                    'categoria'   => ContoContabileCategoria::COSTI->value,
-                                    'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati. Art. 1130-bis c.c.',
-                                    'di_sistema'  => true,
-                                    'attivo'      => true,
-                                    'livello'     => 1,
-                                ]
+                            
+                            // Usiamo l'helper per mantenere il codice DRY!
+                            $nuovoContoId = $this->creaContoDinamicoSopravvenienza(
+                                $condominioId, 
+                                $data['gestione_id'], 
+                                $data['fornitore_id'], 
+                                $logLegale, 
+                                $importoCent
                             );
 
-                            $capitoloPadre = Conto::firstOrCreate(
-                                [
-                                    'piano_conto_id' => $pianoConto->id,
-                                    'nome'           => "Integrazioni Straordinarie (Scudo Legale)",
-                                    'parent_id'      => null
-                                ],
-                                [
-                                    'tipo'           => 'spesa',
-                                    'importo'        => 0, 
-                                    'descrizione'    => 'Capitolo generato automaticamente per urgenze Art. 1135 c.c.'
-                                ]
-                            );
-
-                            $nuovoConto = Conto::create([
-                                'piano_conto_id'       => $pianoConto->id,
-                                'parent_id'            => $capitoloPadre->id,
-                                'default_fornitore_id' => $data['fornitore_id'], 
-                                'nome'                 => $logLegale['nome_voce'],
-                                'tipo'                 => 'spesa',
-                                'importo'              => $importoCent, 
-                                'note'                 => "Aut. " . strtoupper($logLegale['autorizzazione']) . " | " . ($logLegale['note'] ?? ''),
-                                'conto_contabile_id'   => $contoContabileSopravvenienza->id, // COLLEGAMENTO AL MASTRO CORRETTO
-                            ]);
-
-                            if (!empty($logLegale['tabella_millesimale_id'])) {
-                                $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                                    'conto_id'     => $nuovoConto->id,
-                                    'tabella_id'   => $logLegale['tabella_millesimale_id'],
-                                    'coefficiente' => 100.00,
-                                    'created_at'   => now(),
-                                    'updated_at'   => now(),
-                                ]);
-
-                                $ripartizioni = [
-                                    ['soggetto' => 'proprietario',  'percentuale' => $logLegale['percentuale_proprietario'] ?? 0],
-                                    ['soggetto' => 'inquilino',     'percentuale' => $logLegale['percentuale_inquilino'] ?? 0],
-                                    ['soggetto' => 'usufruttuario', 'percentuale' => $logLegale['percentuale_usufruttuario'] ?? 0]
-                                ];
-
-                                if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
-                                    $ripartizioni = [
-                                        ['soggetto' => 'proprietario', 'percentuale' => 100],
-                                        ['soggetto' => 'inquilino', 'percentuale' => 0],
-                                        ['soggetto' => 'usufruttuario', 'percentuale' => 0]
-                                    ];
-                                }
-
-                                foreach ($ripartizioni as $rip) {
-                                    if ($rip['percentuale'] > 0) {
-                                        DB::table('conto_tabella_ripartizioni')->insert([
-                                            'conto_tabella_millesimale_id' => $contoTabellaId,
-                                            'soggetto'                     => $rip['soggetto'],
-                                            'percentuale'                  => $rip['percentuale'],
-                                            'created_at'                   => now(),
-                                            'updated_at'                   => now(),
-                                        ]);
-                                    }
-                                }
-                            }
-
-                            $copertura['fonte_id'] = $nuovoConto->id;
-                            $data['coperture'][$index]['fonte_id'] = $nuovoConto->id;
+                            $copertura['fonte_id'] = $nuovoContoId;
+                            $data['coperture'][$index]['fonte_id'] = $nuovoContoId;
                         }
                     }
 
@@ -234,10 +201,7 @@ class FatturaPassivaService
 
             // 5. Salvataggio File
             if ($file) {
-                // Salvataggio nel disco 'local' (privato) dentro la cartella 'documenti'
                 $path = $file->storeAs('documenti/' . $condominioId, $file->hashName(), 'local');
-                
-                // Cerchiamo la categoria 'Fatture' (creata dal seeder)
                 $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
 
                 $fattura->documenti()->create([
@@ -247,7 +211,7 @@ class FatturaPassivaService
                     'mime_type'    => $file->getMimeType(),
                     'file_size'    => $file->getSize(),
                     'created_by'   => Auth::id() ?? 1,
-                    'is_published' => false, // Manteniamo la fattura privata per sicurezza
+                    'is_published' => false,
                     'is_approved'  => true,
                     'category_id'  => $categoriaFatture ? $categoriaFatture->id : null,
                 ]);
@@ -274,7 +238,6 @@ class FatturaPassivaService
                 'stato'              => 'registrata',
             ]);
 
-            // FIX 3: Estrazione della query fuori dal loop
             if ($isPregresso) {
                 $contoPassateGestioni = ContoContabile::where('condominio_id', $condominioId)
                     ->where('ruolo', 'passate_gestioni')
@@ -284,17 +247,9 @@ class FatturaPassivaService
                     foreach ($data['coperture'] as $copertura) {
                         $importoCopertura = (int) round($copertura['importo'] * 100);
                         
-                        // FIX 2: La corretta Partita Doppia per le Sopravvenienze
                         if ($copertura['tipo_copertura'] === 'sopravvenienza') {
                             $contoBudget = Conto::find($copertura['fonte_id']);
                             
-                            if (!$contoBudget || !$contoBudget->conto_contabile_id) {
-                                throw new \Exception(
-                                    "Errore Contabilità: Il conto di sopravvenienza (ID: {$copertura['fonte_id']}) " .
-                                    "non ha un conto contabile mastro collegato. Impossibile generare la scrittura."
-                                );
-                            }
-
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoBudget->conto_contabile_id,
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
@@ -322,97 +277,94 @@ class FatturaPassivaService
                     }
                 } else {
                     $importoTotaleCents = abs($totaleDoc * $moltiplicatore);
-
                     $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoPassateGestioni->id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                            'importo'            => $importoTotaleCents,
-                            'note'               => 'Caricamento debito pregresso senza copertura esplicita',
-                        ]);
-                    }
-                } else {
-                    
-                    // Recuperiamo una volta sola il conto sopravvenienze (se serve)
-                    $contoSopravvenienza = null;
-
-                    foreach ($righeProcessate as $riga) {
-
-                        if ($riga['is_sopravvenienza']) {
-                            // Lazy load: creiamo il conto solo se almeno una riga lo richiede
-                            if (!$contoSopravvenienza) {
-                                $contoSopravvenienza = ContoContabile::firstOrCreate(
-                                    [
-                                        'condominio_id' => $condominioId,
-                                        'ruolo'         => 'sopravvenienze_passive',
-                                    ],
-                                    [
-                                        'codice'      => 'SOP-' . $condominioId,
-                                        'nome'        => 'Sopravvenienze passive',
-                                        'tipo'        => ContoContabileTipo::COSTO->value,
-                                        'categoria'   => ContoContabileCategoria::COSTI->value,
-                                        'descrizione' => 'Spese impreviste non preventivate. Art. 1130-bis c.c.',
-                                        'di_sistema'  => true,
-                                        'attivo'      => true,
-                                        'livello'     => 1,
-                                    ]
-                                );
-                            }
-
+                        'conto_contabile_id' => $contoPassateGestioni->id,
+                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                        'importo'            => $importoTotaleCents,
+                        'note'               => 'Caricamento debito pregresso senza copertura esplicita',
+                    ]);
+                }
+            } else {
+                // Essendo che TUTTE le righe ora hanno un conto_id (grazie al fix del dynamicContoId), 
+                // la partita doppia è elegantissima e non serve più if(is_sopravvenienza)!
+                foreach ($righeProcessate as $riga) {
+                    if ($riga['conto_id']) {
+                        $contoBudget = Conto::find($riga['conto_id']);
+                        if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoSopravvenienza->id,
+                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
                                 'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
-                                'note'               => 'Sopravvenienza passiva — spesa non preventivata',
+                                'voce_spesa_id'      => $riga['conto_id'],
+                                'immobile_id'        => $riga['immobile_id'] ?? null,
                             ]);
-
-                        } else {
-                            if ($riga['conto_id']) {
-                                $contoBudget = Conto::find($riga['conto_id']);
-                                if ($contoBudget && $contoBudget->conto_contabile_id) {
-                                    $scrittura->righe()->create([
-                                        'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                        'importo'            => abs($riga['importo_imponibile'] + $riga['importo_iva']),
-                                        'voce_spesa_id'      => $riga['conto_id'],
-                                        'immobile_id'        => $riga['immobile_id'] ?? null,
-                                    ]);
-                                }
-                            }
                         }
                     }
+                }
             }
 
             $anagraficaPrincipale = $fornitore->referenti()->first();
             
-            // AVERE 1: Debito verso Fornitore (Solo il netto a pagare)
+            // AVERE 1: Debito verso Fornitore
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
                 'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
-                'importo'            => abs($netto), // <-- USIAMO IL NETTO
+                'importo'            => abs($netto),
                 'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
-            // AVERE 2: Debito verso Erario (Solo se c'è ritenuta)
+            // AVERE 2: Debito verso Erario
             if ($ritenuta > 0) {
-                // Recuperiamo il mastro erario
                 $contoErario = ContoContabile::where('condominio_id', $condominioId)
                     ->where('ruolo', 'debiti_erario_ritenute')
                     ->first();
 
-                if (!$contoErario) {
-                    throw new \Exception("Errore Piano dei Conti: Manca il Conto Mastro con ruolo 'debiti_erario_ritenute'.");
-                }
+                if (!$contoErario) throw new \Exception("Errore Piano dei Conti: Manca il Conto Mastro Ritenute.");
 
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoErario->id,
                     'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
-                    'importo'            => abs($ritenuta), // <-- USIAMO LA RITENUTA
+                    'importo'            => abs($ritenuta),
                     'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
                     'note'               => "Ritenuta d'acconto 4% fattura fornitore"
                 ]);
             }
+            
+            // =====================================================================
+            // FIX FINALE: Registrazione Contabile Sforo Budget (Movimento C)
+            // =====================================================================
+            $overrideData = $data['dati_extra']['override_budget'] ?? null;
+            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
+                
+                $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
+                
+                if ($importoSforo > 0) {
+                    // 1. SCARICO DAL FONDO (AVERE): I soldi escono dalla riserva
+                    $scrittura->righe()->create([
+                        'conto_contabile_id' => $overrideData['fondo_patrimoniale_id'],
+                        'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
+                        'importo'            => $importoSforo,
+                        'note'               => 'Utilizzo fondo riserva per sforo budget: ' . ($overrideData['motivazione'] ?? ''),
+                    ]);
 
-            // Pivot Fattura-Scrittura (Qui va bene lasciare il totale documento come riferimento)
+                    // 2. CONTROPARTITA TECNICA (DARE): Pareggia il fondo nel bilancio di verifica
+                    // Usiamo il mastro delle sopravvenienze come "Cuscino" per neutralizzare il costo
+                    $contoSopravvenienza = ContoContabile::where('condominio_id', $condominioId)
+                        ->where('ruolo', 'sopravvenienze_passive')
+                        ->first();
+
+                    if ($contoSopravvenienza) {
+                        $scrittura->righe()->create([
+                            'conto_contabile_id' => $contoSopravvenienza->id,
+                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'importo'            => $importoSforo,
+                            'note'               => 'Giroconto copertura sforo budget da fondo riserva',
+                        ]);
+                    }
+                }
+            }
+            // =====================================================================
+            
             $fattura->scritture()->attach($scrittura->id, [
                 'importo_allocato' => abs($totaleDoc * $moltiplicatore),
                 'tipo'             => 'competenza',
@@ -422,5 +374,84 @@ class FatturaPassivaService
 
             return $fattura;
         });
+    }
+
+    /**
+     * Metodo Helper: Crea un Capitolo (Conto) al volo per gestire le Sopravvenienze.
+     * Garantisce l'integrità del Piano dei Conti e il corretto collegamento alle Tabelle Millesimali.
+     */
+    private function creaContoDinamicoSopravvenienza(int $condominioId, int $gestioneId, int $fornitoreId, array $logLegale, int $importoCent = 0): int
+    {
+        $pianoConto = PianoConto::where('gestione_id', $gestioneId)->first();
+        if (!$pianoConto) throw new \Exception("Nessun Piano dei Conti trovato per la gestione ID: " . $gestioneId);
+
+        // 1. Assicuriamoci che esista il Mastro Contabile "Sopravvenienze passive"
+        $contoContabileSopravvenienza = ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominioId, 'ruolo' => 'sopravvenienze_passive'],
+            [
+                'codice'      => 'SOP-' . $condominioId,
+                'nome'        => 'Sopravvenienze passive',
+                'tipo'        => ContoContabileTipo::COSTO->value,
+                'categoria'   => ContoContabileCategoria::COSTI->value,
+                'descrizione' => 'Costi imprevisti o relativi a esercizi precedenti. Art. 1130-bis c.c.',
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
+            ]
+        );
+
+        // 2. Assicuriamoci che esista il Capitolo Padre nel Preventivo (Per raggruppamento)
+        $capitoloPadre = Conto::firstOrCreate(
+            ['piano_conto_id' => $pianoConto->id, 'nome' => "Integrazioni Straordinarie (Scudo Legale)", 'parent_id' => null],
+            ['tipo' => 'spesa', 'importo' => 0, 'descrizione' => 'Capitolo generato automaticamente per imprevisti.']
+        );
+
+        // 3. Creiamo il Capitolo Figlio specifico per questa fattura
+        $nuovoConto = Conto::create([
+            'piano_conto_id'       => $pianoConto->id,
+            'parent_id'            => $capitoloPadre->id,
+            'default_fornitore_id' => $fornitoreId, 
+            'nome'                 => $logLegale['nome_voce'] ?? 'Spesa Imprevista', // Il nome arriva dalla Modale
+            'tipo'                 => 'spesa',
+            'importo'              => $importoCent, 
+            'note'                 => isset($logLegale['autorizzazione']) ? "Aut. " . strtoupper($logLegale['autorizzazione']) . " | " . ($logLegale['note'] ?? '') : 'Generato da fattura imprevista',
+            'conto_contabile_id'   => $contoContabileSopravvenienza->id,
+        ]);
+
+        // 4. Colleghiamo la Tabella Millesimale e le Ripartizioni scelte nella Modale
+        if (!empty($logLegale['tabella_millesimale_id'])) {
+            $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
+                'conto_id'     => $nuovoConto->id,
+                'tabella_id'   => $logLegale['tabella_millesimale_id'],
+                'coefficiente' => 100.00,
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+
+            $ripartizioni = [
+                ['soggetto' => 'proprietario',  'percentuale' => $logLegale['percentuale_proprietario'] ?? 0],
+                ['soggetto' => 'inquilino',     'percentuale' => $logLegale['percentuale_inquilino'] ?? 0],
+                ['soggetto' => 'usufruttuario', 'percentuale' => $logLegale['percentuale_usufruttuario'] ?? 0]
+            ];
+
+            // Safety check: se la somma non fa 100, addebitiamo tutto al proprietario
+            if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
+                $ripartizioni = [['soggetto' => 'proprietario', 'percentuale' => 100]];
+            }
+
+            foreach ($ripartizioni as $rip) {
+                if ($rip['percentuale'] > 0) {
+                    DB::table('conto_tabella_ripartizioni')->insert([
+                        'conto_tabella_millesimale_id' => $contoTabellaId,
+                        'soggetto'                     => $rip['soggetto'],
+                        'percentuale'                  => $rip['percentuale'],
+                        'created_at'                   => now(),
+                        'updated_at'                   => now(),
+                    ]);
+                }
+            }
+        }
+
+        return $nuovoConto->id;
     }
 }

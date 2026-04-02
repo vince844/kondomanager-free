@@ -7,7 +7,7 @@ use Illuminate\Support\Collection;
 
 class BudgetCoverageService
 {
-    public function analyze(Gestione $gestione): array
+    public function analyze(Gestione $gestione, array $fatturatoMap = [], array $coperturaVirtualeMap = []): array
     {
         $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli']);
         
@@ -15,16 +15,14 @@ class BudgetCoverageService
             return [
                 'status' => 'empty', 
                 'items'  => [],
-                'totali' => [
-                    'budget'      => 0, 
-                    'pianificato' => 0
-                ]
+                'totali' => ['budget' => 0, 'pianificato' => 0]
             ];
         }
 
         $contiRadice     = $gestione->pianoConto->conti->whereNull('parent_id');
         $pianiRateAttivi = $gestione->pianiRate->where('attivo', true);
         
+        // Calcolo della copertura Reale con Push Down bilanciato
         $coperturaRealeMap = $this->calcolaCoperturaReale($contiRadice, $pianiRateAttivi);
 
         $report = [];
@@ -32,9 +30,16 @@ class BudgetCoverageService
         foreach ($this->appiattisciConti($contiRadice) as $conto) {
             $isLeaf = $conto->sottoconti->isEmpty();
             
-            $budget      = (int) $conto->importo;
+            $budgetTeorico   = (int) $conto->importo;
+            $spesoReale      = $fatturatoMap[$conto->id] ?? 0;
+            $fabbisognoReale = max($budgetTeorico, $spesoReale);
+
             $pianificato = (int) ($coperturaRealeMap[$conto->id] ?? 0);
-            $delta       = $pianificato - $budget;
+            
+            // Limitiamo il virtuale a quanto effettivamente manca
+            $virtuale = min((int) ($coperturaVirtualeMap[$conto->id] ?? 0), max(0, $fabbisognoReale - $pianificato));
+            
+            $delta = ($pianificato + $virtuale) - $fabbisognoReale;
 
             $status   = 'ok';
             $severity = 'success';
@@ -43,7 +48,7 @@ class BudgetCoverageService
             if ($delta < -100) {
                 $status   = 'deficit';
                 $severity = 'danger';
-                $percent  = $budget > 0 ? round(($pianificato / $budget) * 100) : 0;
+                $percent  = $fabbisognoReale > 0 ? round(($pianificato / $fabbisognoReale) * 100) : 0;
                 $message  = "Deficit: coperto al {$percent}%.";
             } elseif ($delta > 100) {
                 $status   = 'surplus';
@@ -53,19 +58,20 @@ class BudgetCoverageService
             }
 
             $report[] = [
-                'id'              => $conto->id,
-                'parent_id'       => $conto->parent_id,
-                'nome'            => $conto->nome,
-                'padre'           => $conto->parent?->nome,
-                'is_leaf'         => $isLeaf,
-                'budget'          => $budget,
-                'pianificato'     => $pianificato,
-                'delta'           => $delta,
-                'status'          => $status,
-                'severity'        => $severity,
-                'message'         => $message,
-                'gestione'        => $gestione->nome,
-                'piani_coinvolti' => $this->trovaPianiCoinvolti($conto->id, $pianiRateAttivi),
+                'id'                 => $conto->id,
+                'parent_id'          => $conto->parent_id,
+                'nome'               => $conto->nome,
+                'padre'              => $conto->parent?->nome,
+                'is_leaf'            => $isLeaf,
+                'budget'             => $fabbisognoReale,
+                'pianificato'        => $pianificato,
+                'copertura_virtuale' => $virtuale, 
+                'delta'              => $delta,
+                'status'             => $status,
+                'severity'           => $severity,
+                'message'            => $message,
+                'gestione'           => $gestione->nome,
+                'piani_coinvolti'    => $this->trovaPianiCoinvolti($conto->id, $pianiRateAttivi),
             ];
         }
 
@@ -92,11 +98,7 @@ class BudgetCoverageService
         $tuttiContiFlat = $this->appiattisciConti($contiRadice);
         $contiById      = $tuttiContiFlat->keyBy('id');
 
-        // ----------------------------------------------------------------
-        // STEP 1: ASSEGNAZIONE DIRETTA (foglie con importo esplicito)
-        // Ogni riga pivot che punta a una FOGLIA viene sommata direttamente.
-        // NULL su una foglia = copre tutto il preventivo della foglia.
-        // ----------------------------------------------------------------
+        // STEP 1: ASSEGNAZIONE DIRETTA
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
                 $contoModel = $contiById[$capitolo->id] ?? null;
@@ -111,100 +113,68 @@ class BudgetCoverageService
             }
         }
 
-        // ----------------------------------------------------------------
-        // STEP 2: PUSH-DOWN DAI PADRI (distribuzione equa tra figli con deficit)
-        //
-        // LOGICA:
-        // Il fondo del padre viene diviso IN PARTI UGUALI tra i figli che
-        // hanno ancora un deficit dopo lo STEP 1.
-        // Ogni figlio prende: min(suo_deficit, quota_uguale)
-        // Se un figlio aveva deficit minore della quota, il suo surplus
-        // viene redistribuito agli altri figli ancora in deficit.
-        //
-        // Esempio con i tuoi dati reali:
-        //   Piano B → Capitolo padre (conto 97): importo pivot = 20.000¢
-        //   Compenso: deficit 20.000¢ | Pulizia: deficit 10.000¢
-        //   Quota uguale = 20.000 / 2 = 10.000¢ ciascuno
-        //   Compenso prende: min(20.000, 10.000) = 10.000¢ → totale 20.000¢ (200€) 
-        //   Pulizia prende:  min(10.000, 10.000) = 10.000¢ → totale 52.300¢ (523€) 
-        // ----------------------------------------------------------------
+        // STEP 2: PUSH-DOWN DAI PADRI CON LIMITE BUDGET (Nessun furto)
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
                 $contoModel = $contiById[$capitolo->id] ?? null;
 
                 if ($contoModel && $contoModel->sottoconti->isNotEmpty()) {
 
-                    // Importo disponibile dal padre per il push-down
-                    if (is_null($capitolo->pivot->importo)) {
-                        // Sostituisci PHP_INT_MAX con l'importo effettivo del capitolo
-                        $residuoPiano = (int) $capitolo->importo; 
-                    } else {
-                        $residuoPiano = (int) $capitolo->pivot->importo;
-                    }
-
-                    // Salva il valore reale del padre nella mappa 
-                    $importoRealeDelPadre = is_null($capitolo->pivot->importo)
+                    $residuoPiano = is_null($capitolo->pivot->importo)
                         ? (int) $capitolo->importo
                         : (int) $capitolo->pivot->importo;
 
-                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $importoRealeDelPadre;
+                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;
 
-                    // Calcola i deficit attuali di tutti i figli
-                    $figliConDeficit = [];
+                    // Primo passaggio: cerchiamo di soddisfare il budget teorico di tutti i figli (senza sfori)
+                    $figliDaSoddisfare = [];
                     foreach ($contoModel->sottoconti as $figlio) {
+                        $budgetTeorico = (int) $figlio->importo;
                         $copertoAttuale = $map[$figlio->id] ?? 0;
-                        $deficit        = (int) $figlio->importo - $copertoAttuale;
+                        
+                        // Il deficit è calcolato SOLO sul budget teorico, ignora i fatturati per evitare furti
+                        $deficit = $budgetTeorico - $copertoAttuale;
 
                         if ($deficit > 0) {
-                            $figliConDeficit[] = [
+                            $figliDaSoddisfare[] = [
                                 'id'      => $figlio->id,
                                 'deficit' => $deficit,
                             ];
                         }
                     }
 
-                    if (empty($figliConDeficit) || $residuoPiano <= 0) {
-                        continue;
-                    }
+                    // Pushdown logico
+                    if (!empty($figliDaSoddisfare) && $residuoPiano > 0) {
+                        $figliFonte = $figliDaSoddisfare;
 
-                    // Distribuzione equa iterativa:
-                    // Ripetiamo finché ci sono fondi e figli con deficit.
-                    // Ad ogni round, dividiamo il residuo equamente tra i figli rimasti.
-                    $figliFonte = $figliConDeficit; // copia modificabile
+                        while ($residuoPiano > 0 && !empty($figliFonte)) {
+                            $n = count($figliFonte);
+                            $quotaBase = (int) floor($residuoPiano / $n);
 
-                    while ($residuoPiano > 0 && !empty($figliFonte)) {
-                        $n = count($figliFonte);
-                        $quotaBase = (int) floor($residuoPiano / $n);
+                            if ($quotaBase === 0) {
+                                foreach ($figliFonte as $f) {
+                                    if ($residuoPiano <= 0) break;
+                                    $map[$f['id']] = ($map[$f['id']] ?? 0) + 1;
+                                    $residuoPiano -= 1;
+                                }
+                                break; 
+                            }
 
-                        // Gestione del resto distribuito in modo equo (Round-Robin)
-                        if ($quotaBase === 0) {
+                            $nuoviFigli = [];
                             foreach ($figliFonte as $f) {
-                                if ($residuoPiano <= 0) break;
-                                
-                                $map[$f['id']] = ($map[$f['id']] ?? 0) + 1;
-                                $residuoPiano -= 1;
+                                $daAssegnare = min($f['deficit'], $quotaBase);
+
+                                $map[$f['id']]  = ($map[$f['id']] ?? 0) + $daAssegnare;
+                                $residuoPiano  -= $daAssegnare;
+                                $f['deficit']  -= $daAssegnare;
+
+                                if ($f['deficit'] > 0) {
+                                    $nuoviFigli[] = $f;
+                                }
                             }
-                            break; // Residuo esaurito in un solo passaggio, usciamo dal ciclo.
+                            $figliFonte = $nuoviFigli;
                         }
-
-                        $nuoviFigli = [];
-                        foreach ($figliFonte as $f) {
-                            $daAssegnare = min($f['deficit'], $quotaBase);
-
-                            $map[$f['id']]  = ($map[$f['id']] ?? 0) + $daAssegnare;
-                            $residuoPiano  -= $daAssegnare;
-                            $f['deficit']  -= $daAssegnare;
-
-                            // Se ha ancora deficit, rimane nel prossimo round
-                            if ($f['deficit'] > 0) {
-                                $nuoviFigli[] = $f;
-                            }
-                        }
-
-                        // Se abbiamo soddisfatto tutti i figli o non ci sono più soldi, il ciclo si fermerà naturalmente
-                        $figliFonte = $nuoviFigli;
                     }
-
                 }
             }
         }

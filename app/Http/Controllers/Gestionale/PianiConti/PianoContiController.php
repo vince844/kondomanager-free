@@ -22,6 +22,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB; // <-- Aggiunto
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -125,67 +126,73 @@ class PianoContiController extends Controller
         }
     }
 
-    /**
-     * -----------------------------------------------------------------------
-     * METODO SHOW — MODIFICATO
-     * Unica differenza rispetto all'originale:
-     *   1. Eager-load pianiRate sui conti (necessario al BudgetCoverageService)
-     *   2. Chiama BudgetCoverageService::analyze() per calcolare la copertura
-     *      una volta sola per tutti i conti insieme
-     *   3. Inietta la mappa risultante in ContoResource::$coverageMap
-     * -----------------------------------------------------------------------
-     */
     public function show(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): Response
     {
-
-        // 1. Carica i conti — aggiunta 'withExists' per il lucchetto in tempo reale
         $conti = Conto::with([
             'sottoconti' => function ($query) {
                 $query->with([
                     'tabelleMillesimali.tabella',
                     'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
-                    'pianiRate' // Serve al BudgetCoverageService
+                    'pianiRate' 
                 ]);
             },
             'tabelleMillesimali.tabella',
             'tabelleMillesimali.ripartizioni' => fn($q) => $q->orderBy('soggetto'),
-            'pianiRate', // Serve al BudgetCoverageService
+            'pianiRate', 
         ])->where('piano_conto_id', $pianoConto->id)
         ->whereNull('parent_id')
         ->orderBy('nome')
         ->get();
 
-        // 2. Precalcola la copertura UNA VOLTA SOLA per tutti i conti
-        //    usando il BudgetCoverageService esistente.
-        //
-        //    Il Service implementa correttamente:
-        //    - Fondi diretti fissi (importo > 0)
-        //    - NULL = "A Saldo" (copre l'intero preventivo residuo)
-        //    - Push-down dal padre distribuito sui figli con deficit
-        //    - Spostamenti in entrata (accumulano sopra il preventivo → over)
-        $coverageMap = [];
+        // --- INIZIO FIX SFORO BUDGET ---
+        $rawFatturato = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->where('fatture_passive.esercizio_id', $esercizio->id)
+            ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+            ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
+            ->groupBy('righe_fattura.conto_id')
+            ->get();
 
+        $fatturatoMap = [];
+        foreach ($rawFatturato as $row) {
+            $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
+        }
+
+        // Iniettiamo chirurgicamente il Fabbisogno Reale nel modello
+        // così la Resource e il Vue lavoreranno sui valori reali senza modifiche al front-end
+        foreach ($conti as $conto) {
+            $speso = $fatturatoMap[$conto->id] ?? 0;
+            if ($speso > $conto->importo) {
+                $conto->importo = $speso;
+            }
+            foreach ($conto->sottoconti as $sottoconto) {
+                $spesoSotto = $fatturatoMap[$sottoconto->id] ?? 0;
+                if ($spesoSotto > $sottoconto->importo) {
+                    $sottoconto->importo = $spesoSotto;
+                }
+            }
+        }
+        // --- FINE FIX ---
+
+        $coverageMap = [];
         $gestione = $pianoConto->gestione;
 
         if ($gestione) {
             $service = new BudgetCoverageService();
-            $report  = $service->analyze($gestione);
+            // Passiamo la mappa al service per far agire l'algoritmo di push-down sui deficit reali
+            $report  = $service->analyze($gestione, $fatturatoMap); 
 
-            // Trasforma il report in mappa [conto_id => centesimi_pianificati]
             foreach ($report['items'] ?? [] as $item) {
                 $coverageMap[(int) $item['id']] = (int) $item['pianificato'];
             }
         }
 
-        // 3. Inietta la mappa nella Resource (static property condivisa)
-        //    La Resource leggerà da qui invece di ricalcolare in autonomia
         ContoResource::$coverageMap = $coverageMap;
 
         $fornitori = Fornitore::attivi()
             ->orderBy('ragione_sociale')
             ->get(['id', 'ragione_sociale']);
         
-        // Cast a (int) per forzare il tipo numerico ed evitare il warning di Vue
         $totalePreventivo = (int) Conto::where('piano_conto_id', $pianoConto->id)->sum('importo');
 
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [

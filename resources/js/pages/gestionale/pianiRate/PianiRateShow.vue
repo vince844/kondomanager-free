@@ -25,7 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import VueDatePicker from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
-import { enUS, it, pt } from 'date-fns/locale';
+import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Building } from "@/types/buildings";
 import type { Esercizio } from "@/types/gestionale/esercizi";
@@ -56,15 +56,19 @@ const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
+
 const localeCode = computed(() => {
     const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
     return raw.replace('_', '-').split('-')[0];
 });
+
 const approvalDatePickerLocale = computed(() => {
-    if (localeCode.value === 'it') return it;
-    if (localeCode.value === 'en') return enUS;
-    return pt;
+    // Restituiamo stringhe, non oggetti
+    if (localeCode.value === 'it') return 'it';
+    if (localeCode.value === 'en') return 'en-US';
+    return 'pt'; // Default per portoghese
 });
+
 const approvalDateFormat = computed(() => (localeCode.value === 'pt' ? 'dd/MM/yyyy' : 'yyyy-MM-dd'));
 const showApprovazioneModal = ref(false);
 

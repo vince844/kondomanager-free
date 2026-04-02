@@ -18,7 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays, TrendingDown } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -29,6 +29,7 @@ interface Capitolo {
   id: number;
   nome: string;
   disabled: boolean;
+  is_sforo: boolean;
   importo_totale: number;
   residuo: number;
   note?: string;
@@ -236,10 +237,16 @@ watch(() => form.gestione_id, async (newId) => {
 // Helper aggiornato
 const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSaldi: boolean) => {
   try {
-    // 1. CARICHIAMO SEMPRE I CAPITOLI DI SPESA (Anche se i saldi sono bloccati)
+
+    // 1. CARICHIAMO SEMPRE I CAPITOLI DI SPESA
     const resCap = await axios.get(route('admin.gestionale.fetch-capitoli-gestione', {
       condominio: props.condominio.id
-    }), { params: { gestione_id: idGestione } });
+    }), { 
+      params: { 
+        gestione_id: idGestione,
+        esercizio_id: props.esercizio.id 
+      } 
+    });
     
     capitoliDisponibili.value = resCap.data;
 
@@ -639,11 +646,23 @@ const submit = () => {
                   <div :class="{ 'opacity-50 grayscale': option.disabled }" class="flex justify-between w-full items-center py-1">
                     <div class="flex flex-col">
                       <span :class="{ 'font-bold text-slate-800': option.nome.startsWith('[') }">{{ option.nome }}</span>
-                      <span class="text-[10px] text-slate-500">Totale: {{ euro(option.importo_totale || 0) }}</span>
+                      <span class="text-[10px] text-slate-500">Budget: {{ euro(option.importo_totale) }}</span>
                     </div>
                     <div class="flex items-center">
-                      <span v-if="option.disabled" class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200"><Ban class="w-3 h-3" /> Esaurito</span>
-                      <span v-else class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200"><Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo || 0) }}</span>
+                      <span v-if="option.is_sforo" 
+                            class="flex items-center gap-1 text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-rose-200">
+                        <TrendingDown class="w-3 h-3" /> Sforo: {{ euro(option.residuo) }}
+                      </span>
+                      
+                      <span v-else-if="option.disabled" 
+                            class="flex items-center gap-1 text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold uppercase ml-2 border border-red-200">
+                        <Ban class="w-3 h-3" /> Esaurito
+                      </span>
+                      
+                      <span v-else 
+                            class="flex items-center gap-1 text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold ml-2 border border-green-200">
+                        <Wallet class="w-3 h-3" /> Disp: {{ euro(option.residuo) }}
+                      </span>
                     </div>
                   </div>
                 </template>

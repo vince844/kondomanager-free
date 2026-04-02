@@ -67,6 +67,11 @@ class StoreFatturaRequest extends FormRequest
             'dati_extra.override_budget.motivazione'        => 'required_with:dati_extra.override_budget|string|min:10',
             'dati_extra.override_budget.importo_sforo'      => 'required_with:dati_extra.override_budget|integer',
 
+            // --- INIZIO FIX TRIDENTE ---
+            'dati_extra.override_budget.strategia_rientro'     => 'required_with:dati_extra.override_budget|in:conguaglio_fine_anno,rata_integrativa,fondo_riserva',
+            'dati_extra.override_budget.fondo_patrimoniale_id' => 'nullable|integer|exists:conti_contabili,id',
+            // --- FINE FIX TRIDENTE ---
+
             // Validazione Scudo Legale (Sopravvenienza)
             'dati_extra.log_legale_sopravvenienza'                           => 'nullable|array',
             'dati_extra.log_legale_sopravvenienza.nome_voce'                 => 'required_with:dati_extra.log_legale_sopravvenienza|string|min:5',
@@ -87,6 +92,10 @@ class StoreFatturaRequest extends FormRequest
         return [
             'dati_extra.override_budget.motivazione.min' => 'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
             'dati_extra.override_budget.motivazione.required_with' => 'La motivazione è obbligatoria quando si supera il budget.',
+            // --- INIZIO FIX TRIDENTE ---
+            'dati_extra.override_budget.strategia_rientro.required_with' => 'Devi selezionare una strategia di rientro per lo sforo.',
+            'dati_extra.override_budget.fondo_patrimoniale_id.exists' => 'Il fondo di riserva selezionato non è valido.',
+            // --- FINE FIX TRIDENTE ---
             'data_competenza_originaria.required_if' => 'La data di origine è obbligatoria per i debiti pregressi (verifica prescrizione).',
             'coperture.required_if' => 'Devi specificare come coprire questo debito pregresso.',
             'imponibile_pregresso.required_if' => 'L\'importo della fattura pregressa è obbligatorio.',

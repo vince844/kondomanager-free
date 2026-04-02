@@ -45,7 +45,7 @@ class CassaController extends Controller
                 $query->where('nome', 'like', "%{$name}%");
             })
             // --- CALCOLO SALDO DINAMICO ---
-            // Sommiamo le entrate (Dare) e le uscite (Avere) direttamente via SQL
+            // Usiamo "totale_entrate" e "totale_uscite" perché la CassaResource cerca questi!
             ->withSum(['movimenti as totale_entrate' => function ($q) {
                 $q->where('tipo_riga', 'dare');
             }], 'importo')
@@ -53,29 +53,20 @@ class CassaController extends Controller
                 $q->where('tipo_riga', 'avere');
             }], 'importo');
 
-        // Eseguiamo la paginazione
         $casse = $query->paginate($validated['per_page'] ?? config('pagination.default_per_page'));
 
-        $condomini = $this->getCondomini();
-        $esercizio = $this->getEsercizioCorrente($condominio);
-            
         return Inertia::render('gestionale/casse/CasseList', [
             'condominio' => $condominio,
-            'esercizio'  => $esercizio,
-            'condomini'  => $condomini,
-            
-            // 🔥 USIAMO LA RESOURCE COLLECTION
-            // Laravel passerà automaticamente i campi calcolati (totale_entrate, totale_uscite) alla resource
-            'casse' => CassaResource::collection($casse)->resolve(),
-            
-            'meta' => [
+            'esercizio'  => $this->getEsercizioCorrente($condominio),
+            'condomini'  => $this->getCondomini(),
+            // La Resource ora troverà i dati corretti
+            'casse'      => CassaResource::collection($casse)->resolve(),
+            'meta'       => [
                 'current_page' => $casse->currentPage(),
                 'last_page'    => $casse->lastPage(),
-                'per_page'     => $casse->perPage(),
                 'total'        => $casse->total(),
             ],
-            
-            'filters' => $request->only(['nome']), 
+            'filters'    => $request->only(['nome']), 
         ]);
     }
 

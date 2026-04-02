@@ -18,37 +18,44 @@ class GeneratePianoRateAction
         private GenerateRateQuotesAction $rateQuotesAction,
     ) {}
 
-    /**
-     * @param PianoRate $pianoRate
-     * @param bool|null $forzaApplicazioneSaldi 
-     */
     public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null, array $saldiConfig = []): array
     {
         Log::info("=== GENERAZIONE PIANO RATE ===");
+        Log::info("▶ Tipo Piano: " . strtoupper($pianoRate->tipo));
 
-        $pianoRate->load(['ricorrenza']);
+        $pianoRate->load(['ricorrenza', 'fatture']); // Carichiamo la pivot delle fatture
 
         if (!$pianoRate->relationLoaded('gestione')) {
             $pianoRate->load('gestione');
         }
         $gestione = $pianoRate->gestione;
 
-        // 2. Calcolo Spese (Quote pure ordinarie)
-        $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
+        // =========================================================================
+        // IL BIVIO ARCHITETTURALE (Rule Engine Routing)
+        // =========================================================================
+        if ($pianoRate->tipo === 'straordinario') {
+            // FEATURE 2: Legge direttamente dalle righe fattura collegate, applicando l'Override
+            $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate);
+        } else {
+            // FEATURE 1 (Standard): Legge dal Budget/Preventivo tramite tabelle millesimali
+            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
+        }
+        // =========================================================================
 
         // 3. GESTIONE SALDI
         $flagDb = $gestione->fresh()->saldo_applicato; 
         
-        $applicare = false;
+        $applicare = $forzaApplicazioneSaldi !== null ? $forzaApplicazioneSaldi : $flagDb;
 
-        if ($forzaApplicazioneSaldi !== null) {
-            $applicare = $forzaApplicazioneSaldi;
-        } else {
-            $applicare = $flagDb;
+        // Se è un piano straordinario (es. fattura muratore urgente), di solito non si applicano i saldi pregressi.
+        // Lasciamo comunque la facoltà all'amministratore, ma forziamo false se non esplicitamente richiesto.
+        if ($pianoRate->tipo === 'straordinario') {
+            Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
+            // Se nel tuo front-end non passi il flag per gli straordinari, possiamo forzarlo a false.
+            // $applicare = false; 
         }
 
         if ($applicare) {
-            // Passiamo $saldiConfig alla action dei saldi!
             $saldi = $this->saldiAction->execute($pianoRate, $gestione, $saldiConfig);
             Log::info("Generazione: Saldi INCLUSI (" . count($saldi) . " anagrafiche)");
         } else {
@@ -56,9 +63,7 @@ class GeneratePianoRateAction
             Log::info("Generazione: Saldi ESCLUSI (Array vuoto)");
         }
 
-        // 4. Generazione Date (NON TOCCHIAMO, ma diamo l'informazione alla action successiva)
-        // Se è 'rata_zero', la logica delle date standard viene mantenuta, 
-        // e la GenerateRateQuotesAction inietterà una scadenza immediata per la Rata 0.
+        // 4. Generazione Date
         $dateRate = $this->dateRateAction->execute($pianoRate, $gestione);
 
         // 5. Creazione Rate Fisiche
@@ -70,56 +75,50 @@ class GeneratePianoRateAction
         );
 
         // =========================================================================
-        // NUOVO BLOCCO: AUTO-CHIUSURA TASK "EMISSIONE RATA SOPRAVVENIENZA"
+        // AUTO-CHIUSURA TASK "EMISSIONE RATA SOPRAVVENIENZA"
         // =========================================================================
         try {
             Log::info("▶ START AUTO-CHIUSURA INBOX per Piano Rate ID: {$pianoRate->id}");
 
-            if (!$pianoRate->relationLoaded('capitoli')) {
-                $pianoRate->load('capitoli');
-            }
+            // Se è un piano straordinario, chiudiamo i task basandoci direttamente sulle fatture collegate!
+            if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture->isNotEmpty()) {
+                $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
+            } else {
+                // Vecchia logica per i piani ordinari (basata sui capitoli)
+                if (!$pianoRate->relationLoaded('capitoli')) {
+                    $pianoRate->load('capitoli');
+                }
+                $capitoliIds = $pianoRate->capitoli->pluck('id')->toArray();
 
-            $capitoliIds = $pianoRate->capitoli->pluck('id')->toArray();
-            Log::info("▶ Capitoli inclusi nel piano rate: ", $capitoliIds);
-
-            if (!empty($capitoliIds)) {
-                
-                // LA QUERY PERFETTA: Grazie alla tua migrazione sappiamo esattamente dove guardare!
-                // Cerchiamo le coperture di tipo 'sopravvenienza' che puntano ai conti usati nel piano rate.
-                $fattureIds = \Illuminate\Support\Facades\DB::table('fattura_coperture')
+                $fattureIds = DB::table('fattura_coperture')
                     ->where('tipo_copertura', 'sopravvenienza')
                     ->whereIn('conto_id', $capitoliIds)
                     ->pluck('fattura_passiva_id')
                     ->unique()
                     ->toArray();
+            }
 
-                Log::info("▶ Fatture (Sopravvenienze) collegate trovate: ", $fattureIds);
+            if (!empty($fattureIds)) {
+                $eventiChiusi = 0;
+                
+                foreach ($fattureIds as $fattId) {
+                    $evento = Evento::where('meta->type', 'emissione_rata_sopravvenienza')
+                        ->where('meta->context->fattura_id', $fattId)
+                        ->where('meta->requires_action', true)
+                        ->first();
 
-                if (!empty($fattureIds)) {
-                    $eventiChiusi = 0;
-                    
-                    foreach ($fattureIds as $fattId) {
-                        $evento = \App\Models\Evento::where('meta->type', 'emissione_rata_sopravvenienza')
-                            ->where('meta->context->fattura_id', $fattId)
-                            ->where('meta->requires_action', true)
-                            ->first();
-
-                        if ($evento) {
-                            // Spegniamo il task!
-                            $meta = $evento->meta;
-                            $meta['requires_action'] = false;
-                            $meta['is_completed']    = true;
-                            
-                            $evento->meta = $meta;
-                            $evento->save();
-                            
-                            $eventiChiusi++;
-                        }
+                    if ($evento) {
+                        $meta = $evento->meta;
+                        $meta['requires_action'] = false;
+                        $meta['is_completed']    = true;
+                        
+                        $evento->meta = $meta;
+                        $evento->save();
+                        
+                        $eventiChiusi++;
                     }
-                    Log::info("✅ AUTO-CHIUSURA INBOX completata. Task risolti in automatico: {$eventiChiusi}");
-                } else {
-                    Log::info("▶ Nessuna Sopravvenienza pendente trovata per questi capitoli.");
                 }
+                Log::info("✅ AUTO-CHIUSURA INBOX completata. Task risolti: {$eventiChiusi}");
             }
         } catch (\Exception $e) {
             Log::error("❌ Errore Auto-chiusura Inbox: " . $e->getMessage());

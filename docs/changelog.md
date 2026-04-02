@@ -2,6 +2,30 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.19] - The Triple Recovery Strategy & Reserve Fund Engine (Latest)
+
+### Gestione Intelligente Sforamenti (Il Tridente)
+* **Neutralizzazione Finanziaria:** Introdotta la possibilità di gestire gli sforamenti di budget (Audit Trail) attraverso tre strategie distinte e mutualmente esclusive, garantendo la flessibilità necessaria per ogni urgenza (Art. 1135 c.c.):
+    1.  **Attesa Conguaglio:** Lo sforo viene registrato come debito "silenzioso" che verrà richiesto automaticamente ai condòmini solo a chiusura esercizio.
+    2.  **Rata Integrativa:** Il sistema mantiene l'allerta attiva per guidare l'amministratore verso l'emissione immediata di un piano rate straordinario per recuperare liquidità.
+    3.  **Fondo di Riserva:** La strategia più avanzata. Permette di "assorbire" istantaneamente lo sforo attingendo a un fondo patrimoniale preesistente (es. Fondo Morosità, Riserva o TFR), evitando di generare nuovi debiti per i condòmini.
+
+### Integrazione Contabile Fondi (Deep Ledger)
+* **Automazione Partita Doppia:** L'utilizzo del Fondo Riserva non è più solo una scelta gestionale, ma genera ora scritture contabili reali e bilanciate nel Libro Giornale. 
+* **Giroconto Tecnico:** Il `FatturaPassivaService` è stato istruito per generare automaticamente una coppia di righe extra: **AVERE** sul mastro della Cassa/Fondo (per scaricare la disponibilità) e **DARE** sul mastro delle Sopravvenienze (per pareggiare la spesa fuori preventivo).
+* **Deep Scan Ready:** Grazie a questa integrazione, il modulo di "Audit Integrità" ora rileva e visualizza correttamente la movimentazione dei fondi patrimoniali, garantendo che il bilancio di verifica quadri al centesimo.
+
+### Dashboard & Visual Intelligence 2.0
+* **Badge Semantici Avanzati:** La modale "Audit Spese Scoperte" è stata dotata di un nuovo set di indicatori cromatici:
+    * 🟢 **Verde Smeraldo [Coperto da Fondo]:** Indica una spesa fuori budget che è stata già neutralizzata finanziariamente.
+    * 🟣 **Indaco [Sforo Autorizzato]:** Indica uno sforo destinato al conguaglio di fine anno.
+    * 🟠 **Ambra [Emetti Rate]:** Indica una spesa che richiede azione immediata sul piano rate.
+* **Stato "Bilancio Integrato":** Il widget principale di copertura ora riconosce gli sfori "scudati" (Fondi o Conguaglio). Se tutte le spese scoperte hanno una strategia assegnata, il widget assume lo stato **INTEGRATO**, segnalando all'amministratore che la situazione è sotto controllo.
+
+### Risorse e Cassa (Real-Time Balancing)
+* **Calcolo Saldo Dinamico (Iniziale + DARE - AVERE):** Rivoluzionata la visualizzazione della tabella "Risorse e Fondi". Il saldo mostrato non è più un dato statico preso dalla tabella `casse`, ma viene ricalcolato in tempo reale interrogando l'intero Libro Giornale.
+* **Sincronizzazione Mastri:** La tabella Risorse ora funge da "specchio" fedele dei mastri contabili. Ogni spesa pagata tramite Fondo Riserva decrementa istantaneamente il saldo visibile nella pagina delle risorse, eliminando discrepanze tra gestione e contabilità pura.
+
 ## [1.9.18] - Mixed Allocation & Dynamic Ledger (Latest)
 
 ### Ripartizione Mista e Addebiti Personali

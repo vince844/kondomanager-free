@@ -237,22 +237,27 @@ class FatturaPassivaController extends Controller
                 })->values();
         }
 
-        // 3. I Fondi di Riserva disponibili
-        $fondiRiserva = ContoContabile::where('condominio_id', $condominio->id)
-            ->where('ruolo', 'fondo_riserva')
-            ->withSum(['movimenti as totale_dare' => function ($q) {
-                $q->where('tipo_riga', 'dare');
-            }], 'importo')
-            ->withSum(['movimenti as totale_avere' => function ($q) {
-                $q->where('tipo_riga', 'avere');
-            }], 'importo')
+        // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
+        $fondiRiserva = \App\Models\Gestionale\Cassa::where('condominio_id', $condominio->id)
+            ->where('tipo', 'fondo')
+            ->where('attiva', true)
             ->get()
-            ->map(function($fondo) {
-                $saldo = ($fondo->totale_avere ?? 0) - ($fondo->totale_dare ?? 0);
+            ->map(function($cassa) {
+                // Per ogni fondo, recuperiamo i movimenti DARE/AVERE dal suo conto contabile associato
+                $movimenti = DB::table('righe_scritture')
+                    ->where('conto_contabile_id', $cassa->conto_contabile_id)
+                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
+                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
+                    ->first();
+
+                // Calcolo: Saldo Iniziale (della tabella casse) + Entrate - Uscite
+                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
+                $saldoAttuale = $saldoIniziale + ($movimenti->avere ?? 0) - ($movimenti->dare ?? 0);
+
                 return [
-                    'id'            => $fondo->id,
-                    'nome'          => $fondo->nome,
-                    'saldo_attuale' => max(0, $saldo),
+                    'id'            => $cassa->conto_contabile_id, // L'ID del conto serve per la registrazione contabile
+                    'nome'          => $cassa->nome,
+                    'saldo_attuale' => (int) max(0, $saldoAttuale),
                 ];
             });
 

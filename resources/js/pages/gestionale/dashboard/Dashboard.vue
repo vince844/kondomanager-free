@@ -9,7 +9,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -23,15 +23,28 @@ const props = defineProps<{
   copertura: {
     preventivo: number;
     pianificato: number;
+    virtuale: number;
     scoperto: number;
     delta: number; 
     percentuale: number;
     is_completo: boolean;
-    orfani: Array<{ id: number; nome: string; importo: number; gestione: string }>;
+    has_sforo: boolean;
+    orfani: Array<{ 
+        id: number; 
+        nome: string; 
+        importo: number; 
+        is_sforo?: boolean;
+        strategia?: string;
+        gestione: string 
+    }>;
     scoperto_count: number;
   } | null;
-  // --- NUOVA PROP PER I PIANI DISALLINEATI ---
-  pianiDisallineati?: Array<{ id: number; nome: string; gestione: string; delta: number }>;
+  pianiDisallineati?: Array<{ 
+    id: number; 
+    nome: string; 
+    gestione: string; 
+    delta: number 
+  }>;
   inboxTasks?: {
     total: number;
     data: Array<{
@@ -56,27 +69,35 @@ const pageGuides = [
   { title: 'Inbox Condominiale', description: 'Gestisci le richieste e i task specifici di questo fabbricato. Le azioni rapide ti permettono di rispondere subito ai condòmini.', icon: Inbox, colorVariant: 'emerald' as const }
 ];
 
-const statoCopertura = computed(() => {
+// Dichiariamo esplicitamente tutti i tipi possibili che la computed può restituire
+type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'surplus' | 'integrated' | 'aligned';
+
+const statoCopertura = computed<StatoCopertura>(() => {
     if (!props.copertura) return 'loading';
-    
-    // PRIORITÀ ASSOLUTA: Se c'è un piano disallineato
-    if (props.pianiDisallineati && props.pianiDisallineati.length > 0) {
-        return 'misaligned';
-    }
+    if (props.pianiDisallineati && props.pianiDisallineati.length > 0) return 'misaligned';
 
     const delta = props.copertura.delta;
-    if (delta > 5) return 'deficit';
-    if (delta < -5) return 'surplus';
-    return 'aligned';
+
+    // Caso 1: Mancano soldi reali
+    if (delta > 500) return 'deficit';   
+    
+    // Caso 2: Abbiamo sfori che abbiamo deciso di posticipare a consuntivo
+    if (props.copertura.orfani.some(o => o.strategia === 'conguaglio')) return 'integrated';
+    
+    // Caso 3: Eccedenza rate (per sicurezza e per far felice TS, lasciamo il controllo)
+    if (delta < -500) return 'surplus';  
+    
+    return 'aligned'; 
 });
 
 const tooltipStato = computed(() => {
     switch (statoCopertura.value) {
         case 'misaligned': return "URGENTE: Uno o più piani rate non sono più allineati con il preventivo.";
-        case 'deficit': return "Attenzione: Le rate emesse non coprono tutte le spese previste. Rischio buco di bilancio.";
-        case 'surplus': return "Nota: L'importo richiesto ai condomini supera il preventivo spese.";
-        case 'aligned': return "Ottimo! Le rate coprono perfettamente il preventivo di spesa.";
-        default: return "Stato calcolo copertura.";
+        case 'deficit': return "Attenzione: Le rate emesse non coprono il fabbisogno reale. Rischio mancanza liquidità.";
+        case 'surplus': return "Stai incassando più del fabbisogno reale (preventivo + fatture). Verifica arrotondamenti.";
+        case 'integrated': return "Ottimo lavoro. Hai emesso rate integrative sufficienti a coprire gli sforamenti di budget registrati.";
+        case 'aligned': return "Il piano rate copre esattamente il preventivo di spesa originale.";
+        default: return "";
     }
 });
 
@@ -94,37 +115,36 @@ const suggerimentoOperativo = computed(() => {
     return null;
 });
 
-// Calcolo intelligente della percentuale testuale
 const percentualeFormattata = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
 
-    // Ricalcoliamo con i decimali esatti
-    const rawPct = (props.copertura.pianificato / props.copertura.preventivo) * 100;
+    // FIX: Aggiunto fallback || 0 per massima sicurezza
+    const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
+    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
 
-    // SCENARIO 1 & 2: Deficit (Non deve MAI mostrare 100.0)
     if (statoCopertura.value === 'deficit' || statoCopertura.value === 'misaligned') {
-        if (rawPct >= 99.9) return '99.9'; // Forza a 99.9 se manca anche solo 1 centesimo
+        if (rawPct >= 99.9) return '99.9'; 
         return rawPct.toFixed(1);
     }
 
-    // SCENARIO 4: Surplus (Può superare il 100%)
     if (statoCopertura.value === 'surplus') {
         return rawPct.toFixed(1); 
     }
 
-    // SCENARIO 3: Allineato perfetto
     return '100.0';
 });
 
-// Calcolo larghezza grafica della barra (massimo 100%)
 const larghezzaBarra = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0%';
-    const rawPct = (props.copertura.pianificato / props.copertura.preventivo) * 100;
+    
+    // FIX: Aggiunto fallback || 0 per massima sicurezza
+    const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
+    const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
+    
     return Math.min(rawPct, 100) + '%';
 });
 
 const completeTask = (taskId: number) => {
-    // FIX: Passiamo taskId all'interno di un oggetto { task: taskId }
     router.patch(route('admin.inbox.complete', { task: taskId }), {}, {
         preserveScroll: true,
         onSuccess: () => {
@@ -133,7 +153,6 @@ const completeTask = (taskId: number) => {
     });
 };
 
-// NUOVA LOGICA: Rifiuto segnalazioni pagamento
 const isRejectModalOpen = ref(false);
 const taskToReject = ref<any>(null);
 
@@ -206,13 +225,15 @@ const confirmReject = () => {
                                                     'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',
                                                     'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100': statoCopertura === 'surplus',
+                                                    'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100': statoCopertura === 'integrated',
                                                     'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100': statoCopertura === 'aligned'
                                                 }">
                                                 <span class="flex h-1.5 w-1.5 rounded-full" 
-                                                    :class="{'bg-red-500 animate-pulse': statoCopertura === 'misaligned', 'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
+                                                    :class="{'bg-red-500 animate-pulse': statoCopertura === 'misaligned', 'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
                                                 <span v-if="statoCopertura === 'misaligned'">DISALLINEATO</span>
-                                                <span v-else-if="statoCopertura === 'deficit'">INCOMPLETO</span>
+                                                <span v-else-if="statoCopertura === 'deficit'">SOTTO COPERTURA</span>
                                                 <span v-else-if="statoCopertura === 'surplus'">ECCEDENZA</span>
+                                                <span v-else-if="statoCopertura === 'integrated'">INTEGRATO</span>
                                                 <span v-else>ALLINEATO</span>
                                             </div>
                                         </TooltipTrigger>
@@ -223,7 +244,15 @@ const confirmReject = () => {
 
                             <div class="grid grid-cols-2 gap-4 mb-4">
                                 <div>
-                                    <p class="text-[10px] text-slate-400 uppercase font-semibold">Totale preventivo</p>
+                                    <div class="flex items-center gap-1.5 mb-0.5">
+                                        <p class="text-[10px] text-slate-400 uppercase font-semibold">Fabbisogno reale</p>
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
+                                                <TooltipContent><p class="text-xs">Include il preventivo e gli eventuali sfori di budget fatturati.</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
                                     <p class="text-lg font-black text-slate-700 dark:text-slate-200">{{ euro(copertura.preventivo) }}</p>
                                 </div>
                                 <div class="text-right">
@@ -232,19 +261,27 @@ const confirmReject = () => {
                                 </div>
                             </div>
 
+                            <div v-if="copertura.virtuale > 0" class="flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-lg border border-emerald-100 dark:border-emerald-800 mb-4 -mt-2">
+                                <div class="flex items-center gap-1.5">
+                                    <Wallet class="w-3.5 h-3.5 text-emerald-500" />
+                                    <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">A Consuntivo / Fondi</span>
+                                </div>
+                                <span class="text-sm font-black text-emerald-600">+ {{ euro(copertura.virtuale) }}</span>
+                            </div>
+
                             <div class="mb-4">
                                 <div class="flex justify-between items-center mb-1">
                                     <span class="text-[9px] font-semibold uppercase text-slate-400">Copertura</span>
                                     
                                     <span class="text-[10px] font-bold tabular-nums"
-                                        :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-emerald-600': statoCopertura === 'aligned'}">
+                                        :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-indigo-600': statoCopertura === 'integrated', 'text-emerald-600': statoCopertura === 'aligned'}">
                                         {{ percentualeFormattata }}%
                                     </span>
                                 </div>
                                 <div class="relative h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                                     
                                     <div class="h-full transition-all duration-1000 ease-in-out"
-                                        :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-emerald-500': statoCopertura === 'aligned'}"
+                                        :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"
                                         :style="{ width: larghezzaBarra }">
                                     </div>
                                 </div>
@@ -289,20 +326,25 @@ const confirmReject = () => {
                                     {{ suggerimentoOperativo }}
                                 </div>
                                 <div v-if="copertura.orfani.length > 0" class="space-y-1 mt-2 pt-2 border-t border-amber-200/50">
-                                    <div v-for="item in copertura.orfani.slice(0, 2)" :key="item.id" class="flex justify-between items-center text-[10px] text-slate-600 dark:text-slate-400">
+                                    <div v-for="item in copertura.orfani.filter(o => o.strategia === 'nessuna').slice(0, 2)" :key="item.id" class="flex justify-between items-center text-[10px] text-slate-600 dark:text-slate-400">
                                         <span class="truncate max-w-[120px]">{{ item.nome }}</span>
-                                        <span class="font-mono">{{ euro(item.importo) }}</span>
+                                        <span class="font-mono font-bold">{{ euro(item.importo) }}</span>
                                     </div>
                                 </div>
                             </div>
 
                             <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700">
-                                <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Suggerimento</span></div>
-                                <p class="text-[10px] opacity-90 leading-tight">{{ suggerimentoOperativo }}</p>
+                                <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Verifica Eccedenza</span></div>
+                                <p class="text-[10px] opacity-90 leading-tight">Stai incassando più del fabbisogno reale. Se non è voluto (es. arrotondamenti), verifica i piani rate.</p>
+                            </div>
+
+                            <div v-else-if="statoCopertura === 'integrated'" class="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-lg p-3 flex flex-col justify-center text-indigo-700">
+                                <div class="flex items-center gap-2 mb-1"><CheckCircle2 class="w-4 h-4" /><span class="text-xs font-bold uppercase">Sforo Recuperato</span></div>
+                                <p class="text-[10px] opacity-90 leading-tight">Ottimo lavoro. Hai integrato il piano rate coprendo con successo gli extra costi registrati in contabilità.</p>
                             </div>
 
                             <div v-else class="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg p-3 flex items-center justify-center gap-2 text-emerald-700 font-bold text-xs">
-                                <CheckCircle2 class="w-4 h-4" /> Bilancio perfettamente bilanciato
+                                <CheckCircle2 class="w-4 h-4" /> Bilancio perfettamente allineato
                             </div>
                         </div>
 
@@ -324,8 +366,8 @@ const confirmReject = () => {
                             <Button
                                 size="sm"
                                 class="h-7 text-[10px] font-bold uppercase gap-1.5"
-                                :variant="statoCopertura === 'surplus' ? 'outline' : 'default'"
-                                :class="{'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300': statoCopertura === 'surplus', 'bg-red-600 hover:bg-red-700 text-white': statoCopertura === 'misaligned'}"
+                                :variant="statoCopertura === 'surplus' || statoCopertura === 'integrated' ? 'outline' : 'default'"
+                                :class="{'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300': statoCopertura === 'surplus', 'border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300': statoCopertura === 'integrated', 'bg-red-600 hover:bg-red-700 text-white': statoCopertura === 'misaligned'}"
                             >
                                 {{ statoCopertura === 'deficit' || statoCopertura === 'misaligned' ? 'Gestisci piani rate' : 'Vai ai piani rate' }}
                                 <ArrowRight class="w-3 h-3" />
@@ -449,7 +491,7 @@ const confirmReject = () => {
                     <div class="flex items-center justify-between border-b p-6">
                         <div>
                             <h3 class="text-lg font-black text-slate-900 dark:text-white">Audit spese scoperte</h3>
-                            <p class="text-xs text-slate-500 uppercase font-bold tracking-tight">Elenco voci del preventivo non coperte o parzialmente scoperte</p>
+                            <p class="text-xs text-slate-500 uppercase font-bold tracking-tight">Elenco voci non coperte o con budget sforato</p>
                         </div>
                         <button @click="showOrphansModal = false" class="rounded-full p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                             <X class="w-5 h-5" />
@@ -458,20 +500,58 @@ const confirmReject = () => {
                     <div class="p-6">
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
                             <strong class="font-bold block mb-1">Cosa fare?</strong>
-                            Queste voci esistono nel piano dei conti ma non sono state assegnate a nessun piano rate.
-                            Vai nella sezione <strong>piani rate</strong>, entra in un piano (o creane uno nuovo) e usa la funzione <strong>"Sincronizza"</strong> o <strong>"Aggiungi voce"</strong>.
+                            Queste voci non sono interamente coperte dalle rate attuali (potrebbero essere nuovi capitoli o fatture che hanno sforato il budget).
+                            Vai nella sezione <strong>piani rate</strong> e crea un piano integrativo.
                         </div>
                         <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                            <div v-for="orfano in copertura?.orfani" :key="orfano.id" class="group flex justify-between items-center p-4 border rounded-xl bg-slate-50 dark:bg-slate-800/50 hover:border-amber-200 dark:hover:border-amber-900/50 transition-all">
-                                <div class="flex items-center gap-3">
-                                    <div class="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg text-amber-600"><Wallet class="w-4 h-4" /></div>
-                                    <div>
-                                        <p class="text-sm font-black text-slate-800 dark:text-slate-200">{{ orfano.nome }}</p>
-                                        <p class="text-[10px] font-bold uppercase text-slate-400">{{ orfano.gestione }}</p>
-                                    </div>
+                            <div v-for="orfano in copertura?.orfani" :key="orfano.id" 
+                            class="group flex justify-between items-center p-4 border rounded-xl transition-all mb-3"
+                            :class="orfano.strategia === 'conguaglio' 
+                                ? 'bg-indigo-50/30 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-800/50' 
+                                : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-amber-200 shadow-sm'">
+                            
+                            <div class="flex items-center gap-3">
+                                <div class="p-2 rounded-lg" 
+                                    :class="orfano.strategia === 'conguaglio' ? 'bg-indigo-100 text-indigo-600' : 'bg-rose-50 text-rose-600'">
+                                    <TrendingDown v-if="orfano.is_sforo" class="w-4 h-4" />
+                                    <Wallet v-else class="w-4 h-4" />
                                 </div>
-                                <span class="text-sm font-mono font-black">{{ euro(orfano.importo) }}</span>
+                                <div>
+                                    <div class="flex items-center gap-2">
+    <p class="text-sm font-black text-slate-800 dark:text-slate-200">{{ orfano.nome }}</p>
+    
+    <span v-if="orfano.strategia === 'fondo_riserva'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-600 text-white uppercase shadow-sm">
+        Coperto da Fondo
+    </span>
+    <span v-else-if="orfano.strategia === 'conguaglio'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-indigo-600 text-white uppercase">
+        Sforo autorizzato
+    </span>
+    <span v-else-if="orfano.strategia === 'rata_integrativa'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-600 text-white uppercase">
+        Emetti piano rate
+    </span>
+    <span v-else class="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-600 text-white uppercase shadow-sm">
+        Mancano rate
+    </span>
+</div>
+                                    <p class="text-[10px] font-bold uppercase text-slate-400">{{ orfano.gestione }}</p>
+                                </div>
                             </div>
+                            <div class="text-right">
+    <span class="text-sm font-mono font-black block" 
+        :class="{
+            'text-emerald-600': orfano.strategia === 'fondo_riserva',
+            'text-indigo-600': orfano.strategia === 'conguaglio',
+            'text-rose-600': orfano.strategia === 'nessuna' || orfano.strategia === 'rata_integrativa'
+        }">
+        {{ euro(orfano.importo) }}
+    </span>
+    <span class="text-[8px] font-bold uppercase text-slate-400">
+        <template v-if="orfano.strategia === 'fondo_riserva'">Utilizzo Fondo</template>
+        <template v-else-if="orfano.strategia === 'conguaglio'">A consuntivo</template>
+        <template v-else>Da finanziare</template>
+    </span>
+</div>
+                        </div>
                         </div>
                         <div class="mt-8 flex gap-3">
                             <Button variant="outline" class="flex-1 font-bold text-xs uppercase h-10" @click="showOrphansModal = false">Chiudi</Button>
