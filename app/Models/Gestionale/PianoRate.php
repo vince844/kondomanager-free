@@ -153,6 +153,16 @@ class PianoRate extends Model
         return $this->belongsToMany(FatturaPassiva::class, 'piano_rate_fatture');
     }
 
+    /**
+     * Le fatture impreviste o ad personam associate a questo piano rate straordinario.
+     */
+    public function fattureStraordinarie(): BelongsToMany
+    {
+        return $this->belongsToMany(FatturaPassiva::class, 'piano_rate_fatture')
+                    ->withPivot('importo_collegato')
+                    ->withTimestamps();
+    }
+
     /*
     |--------------------------------------------------------------------------
     | FACTORIES

@@ -23,6 +23,7 @@ use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
 use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
+use App\Http\Controllers\Gestionale\PianiRate\FetchFattureStraordinarieController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController;
@@ -57,6 +58,11 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('fetch-capitoli-gestione', FetchCapitoliPerGestioneController::class)
         ->name('fetch-capitoli-gestione');
+
+    // --- INIZIO FIX: NUOVA ROUTE CARRELLO STRAORDINARIO ---
+    Route::get('fetch-fatture-straordinarie', FetchFattureStraordinarieController::class)
+        ->name('fetch-fatture-straordinarie');
+    // --- FINE FIX ---
     
     Route::resource('palazzine', PalazzinaController::class)
         ->parameters(['palazzine' => 'palazzina']);

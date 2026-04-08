@@ -11,6 +11,7 @@ use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class StornoFatturaController extends Controller
 {
@@ -81,6 +82,7 @@ class StornoFatturaController extends Controller
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
+
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
                     'importo_imponibile' => abs((float) $r->importo_imponibile / 100),
@@ -89,9 +91,27 @@ class StornoFatturaController extends Controller
                     'conto_id'           => $r->conto_id,
                     'immobile_id'        => $r->immobile_id
                 ])->toArray(),
-                'coperture' => [], 
+                
+                // --- INIZIO FIX: RIMBORSO FONDO E COPERTURE ---
+                // Passiamo le stesse coperture. Il Service, essendo una Nota di Credito, 
+                // invertirà il DARE/AVERE rimborsando automaticamente il Fondo Riserva!
+                'coperture' => $fattura->coperture->map(fn($c) => [
+                    'tipo_copertura' => $c->tipo_copertura,
+                    'importo'        => abs($c->importo / 100),
+                    'fonte_id'       => $c->fonte_id
+                ])->toArray(),
+                // --- FINE FIX ---
+
+                // --- INIZIO FIX: AUDIT TRAIL ---
                 'dati_extra' => [
-                    'nota_storno' => "Storno automatico a compensazione della fattura ID: {$fattura->id}"
+                    'nota_storno' => "Storno automatico a compensazione della fattura ID: {$fattura->id}",
+                    'audit_trail' => [
+                        'evento' => 'storno_fattura',
+                        'fattura_originale_id' => $fattura->id,
+                        'utente_id' => Auth::id(),
+                        'data' => now()->toIso8601String(),
+                        'azioni_generate' => ['storno_scritture', 'ricalcolo_budget', 'ripristino_coperture']
+                    ]
                 ]
             ];
 

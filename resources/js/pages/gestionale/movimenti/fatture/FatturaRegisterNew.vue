@@ -182,6 +182,23 @@ const form = useForm({
 // ---------------------------------------------------------------------------
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
+// --- INIZIO FIX SCUDO PATRIMONIALE (UI) ---
+const hasSpesePrivate = computed(() => {
+    if (!form.righe || !Array.isArray(form.righe)) return false;
+    
+    // Rimuoviamo il confronto con la stringa vuota, basta controllare che non sia nullo
+    return form.righe.some(riga => riga.immobile_id !== null);
+});
+
+watch(hasSpesePrivate, (newVal) => {
+    // Se aggiungo un immobile privato mentre avevo scelto "Fondo Riserva", resetta la scelta
+    if (newVal && overrideStrategia.value === 'fondo_riserva') {
+        overrideStrategia.value = 'conguaglio_fine_anno';
+        overrideFondoId.value = null;
+    }
+});
+// --- FINE FIX SCUDO PATRIMONIALE (UI) ---
+
 const totali = computed(() => {
     let imponibile = 0, iva = 0;
     let imponibile_ordinario = 0, iva_ordinaria = 0;
@@ -378,11 +395,12 @@ const handleSubmit = () => {
         return; 
     }
 
-    // 2. Controllo Sopravvenienza (Scudo Legale e Creazione Cassetto)
-    // Controlla se c'è una copertura "sopravvenienza" (per le pregresse) 
-    // OPPURE se c'è almeno una riga "is_sopravvenienza" (per gli imprevisti correnti)
+    // 2. Controllo Sopravvenienza (Scenario 2 e 3)
     const hasSopravvenienzaPregressa = form.coperture?.some(c => c.tipo_copertura === 'sopravvenienza');
-    const hasSopravvenienzaCorrente = form.righe.some(r => r.is_sopravvenienza);
+    
+    // INIZIO MODIFICA: Considera "Sopravvenienza" solo le righe COMUNI
+    const hasSopravvenienzaCorrente = form.righe.some(r => r.is_sopravvenienza && !r.immobile_id);
+    // FINE MODIFICA
     
     if ((form.is_pregresso && hasSopravvenienzaPregressa) || (!form.is_pregresso && hasSopravvenienzaCorrente)) {
         showSopravvenienzaModal.value = true;
@@ -397,19 +415,6 @@ const handleSopravvenienzaConfirm = (payload: any) => {
     form.dati_extra.log_legale_sopravvenienza = payload;
     doSubmit();
 };
-
-/* const confirmOverride = () => {
-    if (overrideMotivazione.value.length < 10) return;
-    form.dati_extra.override_budget = {
-        motivazione: overrideMotivazione.value,
-        importo_sforo: sforoBudgetTotaleCents.value,
-        budget_residuo_al_momento: -sforoBudgetTotaleCents.value,
-        timestamp: new Date().toISOString(),
-    };
-    showOverrideModal.value = false;
-    overrideMotivazione.value = '';
-    doSubmit();
-}; */
 
 const confirmOverride = () => {
     if (overrideMotivazione.value.length < 10) return;
@@ -443,17 +448,6 @@ const cancelOverride = () => {
     overrideFondoId.value = null;                     // Reset
 };
 
-/* const doSubmit = () => {
-    form.post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
-        forceFormData: true,
-        preserveScroll: true, // Mantiene la posizione della pagina
-        onSuccess: () => { 
-            form.reset(); 
-            overrideMotivazione.value = ''; 
-            showSuccessModal.value = true; // Accende la modale di successo!
-        },
-    });
-}; */
 const doSubmit = () => {
     form.post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
         forceFormData: true,
@@ -1099,13 +1093,30 @@ const pageGuides = [
                                     <p class="text-[11px] leading-relaxed flex-1" :class="overrideStrategia === 'rata_integrativa' ? 'text-amber-700/80 dark:text-amber-400/80' : 'text-slate-500'">L'allarme rimarrà acceso in dashboard per ricordarti di emettere in seguito un Piano Rate straordinario per incassare la liquidità.</p>
                                 </label>
 
-                                <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative h-full"
+                             <!--    <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative h-full"
                                     :class="overrideStrategia === 'fondo_riserva' ? 'bg-emerald-50 border-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-600 shadow-md ring-1 ring-emerald-400' : 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'">
                                     <div class="flex items-start justify-between w-full mb-3">
                                         <div class="font-black text-sm" :class="overrideStrategia === 'fondo_riserva' ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'">3. Fondo di riserva</div>
                                         <input type="radio" v-model="overrideStrategia" value="fondo_riserva" class="w-4 h-4 mt-0.5 text-emerald-600 border-slate-300 focus:ring-emerald-600 shrink-0" />
                                     </div>
                                     <p class="text-[11px] leading-relaxed flex-1" :class="overrideStrategia === 'fondo_riserva' ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-slate-500'">Neutralizza lo sforo attingendo al portafoglio di un fondo patrimoniale preesistente.</p>
+                                </label> -->
+                                <label class="flex flex-col p-5 rounded-xl border transition-all relative h-full"
+                                    :class="[
+                                        hasSpesePrivate ? 'opacity-50 cursor-not-allowed bg-slate-50 border-slate-200 dark:bg-slate-900 dark:border-slate-800' : 'cursor-pointer',
+                                        !hasSpesePrivate && overrideStrategia === 'fondo_riserva' ? 'bg-emerald-50 border-emerald-400 dark:bg-emerald-900/20 dark:border-emerald-600 shadow-md ring-1 ring-emerald-400' : '',
+                                        !hasSpesePrivate && overrideStrategia !== 'fondo_riserva' ? 'border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800' : ''
+                                    ]">
+                                    <div class="flex items-start justify-between w-full mb-3">
+                                        <div class="font-black text-sm" :class="overrideStrategia === 'fondo_riserva' && !hasSpesePrivate ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-300'">
+                                            3. Fondo di riserva
+                                        </div>
+                                        <input type="radio" v-model="overrideStrategia" value="fondo_riserva" :disabled="hasSpesePrivate" class="w-4 h-4 mt-0.5 text-emerald-600 border-slate-300 focus:ring-emerald-600 shrink-0 disabled:opacity-50" />
+                                    </div>
+                                    <p class="text-[11px] leading-relaxed flex-1" :class="overrideStrategia === 'fondo_riserva' && !hasSpesePrivate ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-slate-500'">
+                                        <span v-if="hasSpesePrivate" class="font-bold text-rose-500 block mb-1">Bloccato: presenti spese private (ad personam). Non è possibile usare il fondo riserva del condominio</span>
+                                        <span v-else>Neutralizza lo sforo attingendo al portafoglio di un fondo patrimoniale preesistente.</span>
+                                    </p>
                                 </label>
                             </div>
                         </div>

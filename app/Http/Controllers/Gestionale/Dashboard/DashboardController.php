@@ -33,11 +33,12 @@ class DashboardController extends Controller
             $totBudgetPuro = 0;
             $vociScoperte = [];
 
-            // --- 1. Recupero Fatturato Reale dell'esercizio ---
+            // --- 1. Recupero Fatturato Reale dell'esercizio (SOLO SPESE COMUNI) ---
             $rawFatturato = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                ->whereNull('righe_fattura.immobile_id') // <--- AGGIUNTO: Esclude le spese ad personam
                 ->select(
                     'righe_fattura.conto_id', 
                     DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
@@ -50,11 +51,12 @@ class DashboardController extends Controller
                 $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
             }
 
-            // --- 2. Recupero di TUTTE le strategie di sforo ---
+            // --- 2. Recupero di TUTTE le strategie di sforo (SOLO SPESE COMUNI) ---
             $fattureSforo = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.stato_approvazione', 'sforo_motivato')
+                ->whereNull('righe_fattura.immobile_id') // <--- AGGIUNTO: Esclude le spese ad personam
                 ->select(
                     'righe_fattura.conto_id', 
                     'fatture_passive.dati_extra', 
@@ -76,8 +78,10 @@ class DashboardController extends Controller
                     $coperturaVirtualeMap[(int)$row->conto_id] = ($coperturaVirtualeMap[(int)$row->conto_id] ?? 0) + $importoRiga;
                 }
                 
-                // Mappiamo la strategia per l'etichetta in Modale
-                $strategieMap[(int)$row->conto_id] = $strat;
+                // Se il capitolo ha già un allarme 'rata_integrativa', non sovrascriverlo con 'conguaglio' o 'fondo'
+                if (!isset($strategieMap[(int)$row->conto_id]) || $strategieMap[(int)$row->conto_id] !== 'rata_integrativa') {
+                    $strategieMap[(int)$row->conto_id] = $strat;
+                }
             }
 
             foreach ($esercizio->gestioni as $gestione) {
@@ -145,9 +149,13 @@ class DashboardController extends Controller
 
                 // ... [Logica Piani Disallineati Invariata] ...
                 $pianiRate = PianoRate::where('gestione_id', $gestione->id)
-                    ->with(['capitoli' => function($q) {
-                        $q->select('conti.id', 'conti.importo');
-                    }, 'rate.rateQuote']) 
+                    ->with([
+                        'capitoli' => function($q) {
+                            $q->select('conti.id', 'conti.importo');
+                        }, 
+                        'fattureStraordinarie', // <--- AGGIUNTO QUESTO
+                        'rate.rateQuote'
+                    ]) 
                     ->get();
                 
                 foreach ($pianiRate as $piano) {
@@ -167,8 +175,14 @@ class DashboardController extends Controller
                         }
 
                         $totaleAtteso = 0;
-                        foreach ($piano->capitoli as $capitolo) {
-                            $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
+                        if ($piano->tipo === 'straordinario') {
+                            foreach ($piano->fattureStraordinarie as $fattura) {
+                                $totaleAtteso += $fattura->pivot->importo_collegato;
+                            }
+                        } else {
+                            foreach ($piano->capitoli as $capitolo) {
+                                $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
+                            }
                         }
 
                         if ($totaleAtteso !== $totalePuroGenerato) {

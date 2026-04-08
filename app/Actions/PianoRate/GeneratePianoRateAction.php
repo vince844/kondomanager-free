@@ -20,6 +20,8 @@ class GeneratePianoRateAction
 
     public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null, array $saldiConfig = []): array
     {
+        $pianoRate->refresh();
+        
         Log::info("=== GENERAZIONE PIANO RATE ===");
         Log::info("▶ Tipo Piano: " . strtoupper($pianoRate->tipo));
 

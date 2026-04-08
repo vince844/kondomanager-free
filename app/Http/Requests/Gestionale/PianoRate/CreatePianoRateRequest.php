@@ -15,6 +15,28 @@ class CreatePianoRateRequest extends FormRequest
     public function rules(): array
     {
         return [
+
+            // --- [INIZIO FIX BIVIO ORDINARIO/STRAORDINARIO] ---
+            'tipo' => ['required', 'string', 'in:ordinario,straordinario'],
+            
+            // Regole specifiche per il Carrello Fatture (Straordinario)
+            'fatture_config' => [
+                'required_if:tipo,straordinario', 
+                'array',
+                function ($attribute, $value, $fail) {
+                    if ($this->tipo === 'straordinario' && (empty($value) || count($value) === 0)) {
+                        $fail('Devi selezionare almeno una fattura per creare un piano straordinario.');
+                    }
+                },
+            ],
+            'fatture_config.*.id'      => ['required_with:fatture_config', 'exists:fatture_passive,id'],
+            'fatture_config.*.importo' => ['required_with:fatture_config'],
+            
+            // Scudo Legale (Obbligatorio per Art. 1135 c.c. se straordinario)
+            'tipo_autorizzazione'        => ['nullable', 'required_if:tipo,straordinario', 'in:delibera,urgenza'],
+            'motivazione_autorizzazione' => ['nullable', 'required_if:tipo,straordinario', 'string', 'min:5'],
+            // --- [FINE FIX BIVIO] ---
+
             'gestione_id'          => ['required', 'exists:gestioni,id'],
             'nome' => [
                 'required', 

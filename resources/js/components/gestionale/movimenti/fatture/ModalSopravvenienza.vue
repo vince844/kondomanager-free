@@ -4,7 +4,7 @@ import { ref, watch } from 'vue';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Scale, Zap } from 'lucide-vue-next';
+import { Scale, Zap, Info } from 'lucide-vue-next';
 import vSelect from 'vue-select';
 import { useTabelle } from '@/composables/useTabelle';
 
@@ -91,6 +91,21 @@ const handleConfirm = () => {
                             {{ mode === 'corrente' 
                                ? 'Stai creando un cassetto per una spesa fuori preventivo.' 
                                : 'Stai convertendo un vecchio debito in una spesa da riscuotere.' }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mx-7 mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl flex gap-3">
+                    <Info class="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                    <div class="text-[11px] text-blue-800 dark:text-blue-200 leading-relaxed">
+                        <p class="font-bold mb-1 text-blue-900 dark:text-blue-100">Cosa succede ora?</p>
+                        <p v-if="mode === 'corrente'">
+                            Il sistema creerà una voce "Sopravvenienza" per isolare questa spesa dal preventivo ordinario. 
+                            <strong>Nota:</strong> il salvataggio non genera rate. Dovrai emettere un <strong>Piano rate straordinario</strong> in seguito per riscuotere l'importo.
+                        </p>
+                        <p v-else>
+                            Stai creando il capitolo di spesa necessario per ricaricare un debito degli anni passati. 
+                            Potrai chiedere le quote ai condòmini creando un <strong>Piano rate straordinario</strong> dedicato a questa voce.
                         </p>
                     </div>
                 </div>

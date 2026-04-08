@@ -4,12 +4,14 @@ namespace App\Services\Gestionale;
 
 use App\Models\Gestione;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class BudgetCoverageService
 {
     public function analyze(Gestione $gestione, array $fatturatoMap = [], array $coperturaVirtualeMap = []): array
     {
-        $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli']);
+        // --- AGGIUNTO: 'pianiRate.fattureStraordinarie' ---
+        $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli', 'pianiRate.fattureStraordinarie']);
         
         if (!$gestione->pianoConto) {
             return [
@@ -19,10 +21,16 @@ class BudgetCoverageService
             ];
         }
 
-        $contiRadice     = $gestione->pianoConto->conti->whereNull('parent_id');
-        $pianiRateAttivi = $gestione->pianiRate->where('attivo', true);
+        $contiRadice = $gestione->pianoConto->conti->whereNull('parent_id');
         
-        // Calcolo della copertura Reale con Push Down bilanciato
+        // --- INIZIO FIX: Usiamo lo 'stato' (bozza/approvato) e non il vecchio 'attivo' ---
+        $pianiRateAttivi = $gestione->pianiRate->filter(function ($piano) {
+            // Estraiamo il valore sia se è un Enum di PHP 8.1, sia se è una stringa
+            $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
+            return in_array($stato, ['bozza', 'approvato']);
+        });
+        // --- FINE FIX ---
+        
         $coperturaRealeMap = $this->calcolaCoperturaReale($contiRadice, $pianiRateAttivi);
 
         $report = [];
@@ -36,7 +44,6 @@ class BudgetCoverageService
 
             $pianificato = (int) ($coperturaRealeMap[$conto->id] ?? 0);
             
-            // Limitiamo il virtuale a quanto effettivamente manca
             $virtuale = min((int) ($coperturaVirtualeMap[$conto->id] ?? 0), max(0, $fabbisognoReale - $pianificato));
             
             $delta = ($pianificato + $virtuale) - $fabbisognoReale;
@@ -98,22 +105,8 @@ class BudgetCoverageService
         $tuttiContiFlat = $this->appiattisciConti($contiRadice);
         $contiById      = $tuttiContiFlat->keyBy('id');
 
-        // STEP 1: ASSEGNAZIONE DIRETTA
-        foreach ($pianiRate as $piano) {
-            foreach ($piano->capitoli as $capitolo) {
-                $contoModel = $contiById[$capitolo->id] ?? null;
-
-                if ($contoModel && $contoModel->sottoconti->isEmpty()) {
-                    $impegnato = !is_null($capitolo->pivot->importo)
-                        ? (int) $capitolo->pivot->importo
-                        : (int) $capitolo->importo;
-
-                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $impegnato;
-                }
-            }
-        }
-
-        // STEP 2: PUSH-DOWN DAI PADRI CON LIMITE BUDGET (Nessun furto)
+        // NUOVO ORDINE - STEP 1: PUSH-DOWN DAI PADRI CON LIMITE BUDGET
+        // (I Piani Ordinari Globali distribuiscono il budget teorico ai figli)
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
                 $contoModel = $contiById[$capitolo->id] ?? null;
@@ -126,13 +119,11 @@ class BudgetCoverageService
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;
 
-                    // Primo passaggio: cerchiamo di soddisfare il budget teorico di tutti i figli (senza sfori)
                     $figliDaSoddisfare = [];
                     foreach ($contoModel->sottoconti as $figlio) {
                         $budgetTeorico = (int) $figlio->importo;
                         $copertoAttuale = $map[$figlio->id] ?? 0;
                         
-                        // Il deficit è calcolato SOLO sul budget teorico, ignora i fatturati per evitare furti
                         $deficit = $budgetTeorico - $copertoAttuale;
 
                         if ($deficit > 0) {
@@ -143,7 +134,6 @@ class BudgetCoverageService
                         }
                     }
 
-                    // Pushdown logico
                     if (!empty($figliDaSoddisfare) && $residuoPiano > 0) {
                         $figliFonte = $figliDaSoddisfare;
 
@@ -179,11 +169,68 @@ class BudgetCoverageService
             }
         }
 
+        // NUOVO ORDINE - STEP 2: ASSEGNAZIONE DIRETTA SULLE FOGLIE 
+        // (I Piani Integrativi si applicano ORA, sommandosi sopra al budget già distribuito)
+        foreach ($pianiRate as $piano) {
+            foreach ($piano->capitoli as $capitolo) {
+                $contoModel = $contiById[$capitolo->id] ?? null;
+
+                if ($contoModel && $contoModel->sottoconti->isEmpty()) {
+                    $impegnato = !is_null($capitolo->pivot->importo)
+                        ? (int) $capitolo->pivot->importo
+                        : (int) $capitolo->importo;
+
+                    $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $impegnato;
+                }
+            }
+        }
+
+        // NUOVO ORDINE - STEP 3: COPERTURA DA FATTURE STRAORDINARIE
+        // Andiamo a leggere le righe delle fatture finanziate e spingiamo
+        // la copertura sui conti originali (es. conto "Imprevisto").
+        $straordinari = $pianiRate->filter(fn($p) => $p->tipo === 'straordinario');
+        
+        if ($straordinari->isNotEmpty()) {
+            $fattureIds = $straordinari->flatMap->fattureStraordinarie->pluck('id')->unique()->toArray();
+            
+            if (!empty($fattureIds)) {
+                // Recuperiamo tutte le righe contabili di queste fatture
+                $righe = DB::table('righe_fattura')
+                    ->whereIn('fattura_passiva_id', $fattureIds)
+                    ->get()
+                    ->groupBy('fattura_passiva_id');
+
+                foreach ($straordinari as $piano) {
+                    foreach ($piano->fattureStraordinarie as $fattura) {
+                        $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
+                        if ($importoFinanziato <= 0) continue;
+
+                        $righeFattura = $righe->get($fattura->id, collect());
+                        if ($righeFattura->isEmpty()) continue;
+
+                        $totaleFattura = $righeFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
+
+                        // Distribuiamo l'importo finanziato proporzionalmente sui conti della fattura
+                        foreach ($righeFattura as $riga) {
+                            $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
+                            if ($totaleFattura > 0) {
+                                $quota = (int) round(($importoRiga / $totaleFattura) * $importoFinanziato);
+                                if (isset($contiById[$riga->conto_id])) {
+                                    $map[$riga->conto_id] = ($map[$riga->conto_id] ?? 0) + $quota;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return $map;
     }
 
     private function appiattisciConti($conti)
     {
+        // ... (existing appiattisciConti method logic remains unchanged)
         $flat = collect();
         foreach ($conti as $c) {
             $flat->push($c);
@@ -196,6 +243,7 @@ class BudgetCoverageService
 
     private function trovaPianiCoinvolti($contoId, $piani)
     {
+        // ... (existing trovaPianiCoinvolti method logic remains unchanged)
         $names = [];
         foreach ($piani as $p) {
             $coinvolto = $p->capitoli->contains(function ($c) use ($contoId) {
@@ -206,5 +254,54 @@ class BudgetCoverageService
             }
         }
         return $names;
+    }
+
+    /**
+     * Estrae i capitoli che necessitano di finanziamento tramite Piano Rate Ordinario/Integrativo.
+     * Esclude i capitoli scudati da Fondi o Conguaglio.
+     */
+    public function getCapitoliFinanziabili(array $analysisReport): array
+    {
+        $capitoliFinanziabili = [];
+
+        foreach ($analysisReport['items'] as $item) {
+            // Lavoriamo solo sulle foglie (sottoconti o conti senza figli)
+            if (!($item['is_leaf'] ?? false)) {
+                continue;
+            }
+
+            $daFinanziare = 0;
+            
+            // Se il delta è negativo, significa che Fabbisogno > (Pianificato + Virtuale)
+            if (isset($item['delta']) && $item['delta'] < 0) {
+                $daFinanziare = abs($item['delta']);
+            }
+
+            // Includiamo solo se c'è un deficit reale da coprire con le rate
+            if ($daFinanziare > 0) {
+                $capitoliFinanziabili[] = [
+                    'id'                => $item['id'],
+                    'nome'              => $item['nome'],
+                    'padre'             => $item['padre'],
+                    'importo_suggerito' => $daFinanziare, // Centesimi esatti
+                    'dettagli_calcolo'  => [
+                        'fabbisogno_reale'   => $item['budget'],
+                        'gia_pianificato'    => $item['pianificato'],
+                        'copertura_virtuale' => $item['copertura_virtuale']
+                    ]
+                ];
+            }
+        }
+
+        // Ordiniamo alfabeticamente raggruppando per padre
+        usort($capitoliFinanziabili, function ($a, $b) {
+            $padreCmp = strcmp($a['padre'] ?? '', $b['padre'] ?? '');
+            if ($padreCmp === 0) {
+                return strcmp($a['nome'], $b['nome']);
+            }
+            return $padreCmp;
+        });
+
+        return $capitoliFinanziabili;
     }
 }

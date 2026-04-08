@@ -2,6 +2,24 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.20] - The Extraordinary Engine & Polymorphic UI (Latest)
+
+### Piani Rate Straordinari (Il Bivio & Art. 1135 c.c.)
+* **Architettura a Doppio Binario (Il Bivio):** Rivoluzionata la creazione dei piani rate. Il sistema ora gestisce nativamente due scenari diametralmente opposti:
+    1.  **Ordinario:** Basato sul bilancio preventivo e sui capitoli di spesa.
+    2.  **Straordinario (Novità):** Slegato dal preventivo, si alimenta direttamente dal "Carrello Fatture" per finanziare spese impreviste o lavori urgenti.
+* **Carrello Fatture Dinamico:** Nuova interfaccia per la selezione delle sopravvenienze passive. L'amministratore può selezionare singole fatture fuori budget e stabilire l'importo esatto da finanziare per ciascuna.
+* **Scudo Legale Obbligatorio:** Inserita una barriera di validazione (`CreatePianoRateRequest`) che impedisce la creazione di rate straordinarie senza i requisiti normativi. Richiede obbligatoriamente di specificare se l'azione è coperta da "Delibera Assembleare" o dettata da "Urgenza", includendo gli estremi a tutela dell'amministratore.
+
+### Polimorfismo Contabile & Dashboard Intelligence
+* **Polimorfismo delle Risorse (Single Source of Truth):** Implementato un trucco architetturale nella `PianoRateResource`. Le fatture straordinarie vengono "mascherate" e formattate dinamicamente come se fossero capitoli di spesa. Questo garantisce che tutto l'ecosistema frontend (grafici, tabelle, dettagli) continui a funzionare perfettamente senza dover duplicare o riscrivere il codice Javascript.
+* **Widget "Sforo Recuperato" (100% Integrato):** La Dashboard è ora consapevole dei piani straordinari. Se una spesa imprevista viene finanziata tramite un piano straordinario, il widget del fabbisogno reale riconosce la quadratura matematica, elimina l'allarme di disallineamento e fa comparire il badge blu **"INTEGRATO - Sforo Recuperato"**.
+* **Smart Push-Down Straordinario:** Il motore `BudgetCoverageService` è stato potenziato (Step 3). Intercetta i soldi incassati dai piani straordinari, risale alle righe contabili delle singole fatture collegate, e "inietta" la copertura direttamente nel nodo dell'Albero dei Conti corrispondente (es. "Imprevisto Mario Rossi"), colorando la barra di avanzamento al 100% (Smeraldo).
+
+### Motore "Penny-Perfect" & Ripartizione Mista
+* **Supporto Fatture Miste (Condominio + Ad Personam):** Il motore di calcolo quote elabora perfettamente fatture che contengono sia spese comuni (da ripartire per millesimi) sia addebiti personali diretti a specifici immobili (`immobile_id`).
+* **Quadratura Frazionale Assoluta:** L'algoritmo distribuisce il debito gestendo i resti decimali sulle prime rate (es. 3 rate da 6,62€ e 9 rate da 6,60€). Garantisce che il totale richiesto ai condòmini corrisponda spaccato al centesimo al totale del documento fiscale lordo, senza generare micro-sbilanciamenti a fine anno.
+
 ## [1.9.19] - The Triple Recovery Strategy & Reserve Fund Engine (Latest)
 
 ### Gestione Intelligente Sforamenti (Il Tridente)

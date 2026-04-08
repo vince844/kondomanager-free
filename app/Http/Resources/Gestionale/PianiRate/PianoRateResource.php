@@ -11,89 +11,105 @@ class PianoRateResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        // Carichiamo la relazione se non presente
-        if (!$this->relationLoaded('capitoli')) {
-            $this->load(['capitoli' => function($q) {
-                // Fondamentale: carichiamo i dati extra della pivot
-                $q->withPivot(['importo', 'note']);
-            }]);
-        }
+        $isStraordinario = $this->tipo === 'straordinario';
 
-        // CALCOLO TOTALE REALE (FIX 200€ vs 823€)
-        // Se nella pivot c'è un importo (override), usiamo quello.
-        // Altrimenti usiamo l'importo standard del conto.
-        $totaleReale = $this->capitoli->sum(function ($capitolo) {
-            return !is_null($capitolo->pivot->importo) 
-                ? $capitolo->pivot->importo 
-                : $capitolo->importo;
-        });
+        // 1. CARICAMENTO RELAZIONI E CALCOLO TOTALE REALE
+        if ($isStraordinario) {
+            // SCENARIO 2: Leggiamo le fatture
+            if (!$this->relationLoaded('fattureStraordinarie')) {
+                $this->load('fattureStraordinarie.fornitore');
+            }
+            $totaleReale = $this->fattureStraordinarie->sum('pivot.importo_collegato');
+        } else {
+            // SCENARIO 1: Leggiamo i capitoli (Vecchia logica invariata)
+            if (!$this->relationLoaded('capitoli')) {
+                $this->load(['capitoli' => function($q) {
+                    $q->withPivot(['importo', 'note']);
+                }]);
+            }
+            $totaleReale = $this->capitoli->sum(function ($capitolo) {
+                return !is_null($capitolo->pivot->importo) 
+                    ? $capitolo->pivot->importo 
+                    : $capitolo->importo;
+            });
+        }
 
         // Gestione Stato
-        $statoValue = $this->stato;
-        if ($this->stato instanceof \UnitEnum) {
-            $statoValue = $this->stato->value;
-        }
+        $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
 
         return [
             'id'              => $this->id,
+            'tipo'            => $this->tipo ?? 'ordinario', // Esposto per sicurezza
             'nome'            => $this->nome,
             'descrizione'     => $this->descrizione,
             'numero_rate'     => $this->numero_rate,
             'stato'           => $statoValue,
             'giorno_scadenza' => $this->giorno_scadenza,
-            'metodo_distribuzione'  => $this->metodo_distribuzione,
-            'data_inizio'     => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
-            // --- NUOVI CAMPI DELIBERA E AUDIT ---
+            'metodo_distribuzione'    => $this->metodo_distribuzione,
+            'data_inizio'             => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
+            
+            // Scudo Legale e Audit
             'data_delibera_assemblea' => $this->data_delibera_assemblea?->format('Y-m-d'),
             'numero_verbale'          => $this->numero_verbale,
             'nota_approvazione'       => $this->nota_approvazione,
+            'tipo_autorizzazione'     => $this->tipo_autorizzazione,
+            'motivazione_autorizzazione' => $this->motivazione_autorizzazione,
             'approvato_da_user_id'    => $this->approvato_da_user_id,
             'approvato_il'            => $this->approvato_il?->format('Y-m-d H:i:s'),
-            // ------------------------------------
-            // FIX: Usiamo il totale calcolato dalla pivot
+            
+            // --- FIX: IL TOTALE ORA SARÀ 183€ E NON PIÙ 0€ ---
             'totale_capitoli' => (int) $totaleReale,
-            // Totale rate generate (controllo incrociato)
             'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
+            // -------------------------------------------------
+
             'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
             'budget_movements' => $this->whenLoaded('budgetMovements'),
+            
             'has_saldi' => DB::table('rate_quote') 
                 ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
                 ->where('rate.piano_rate_id', $this->id)
                 ->where(function($q) {
-                    // Fallback V1.8
                     $q->where('rate_quote.tipo', 'saldo_iniziale')
-                      // Controllo V1.9 (Guarda se c'è un valore nel JSON)
                       ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != '0' AND JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) IS NOT NULL");
                 })
                 ->exists(),
-            'capitoli' => $this->whenLoaded('capitoli', function() {
-                return $this->capitoli->map(function ($c) {
-                    $isParent = $c->sottoconti()->exists();
-                    
-                    $importoEffettivo = !is_null($c->pivot->importo) 
-                        ? $c->pivot->importo 
-                        : $c->importo;
+            
+            // --- IL TRUCCO DI MAGIA: MASCHERIAMO LE FATTURE DA CAPITOLI ---
+            'capitoli' => $isStraordinario 
+                ? $this->whenLoaded('fattureStraordinarie', function() {
+                    return $this->fattureStraordinarie->map(function ($f) {
+                        $fornitore = $f->fornitore ? $f->fornitore->ragione_sociale : 'Fornitore Sconosciuto';
+                        return [
+                            'id'                => $f->id, // <--- RIMOSSO "clone" QUI!
+                            'nome'              => "Fattura " . ($f->numero_documento ?? 'S/N') . " - " . $fornitore,
+                            'importo'           => (int) $f->pivot->importo_collegato,
+                            'importo_originale' => (int) ($f->importo_imponibile + $f->importo_iva),
+                            'is_frazionato'     => false,
+                            'note'              => 'Spesa straordinaria (Art. 1135 c.c.)',
+                            'is_parent'         => false,
+                            'figli_names'       => '',
+                        ];
+                    });
+                })
+                : $this->whenLoaded('capitoli', function() {
+                    return $this->capitoli->map(function ($c) {
+                        $isParent = $c->sottoconti()->exists();
+                        $importoEffettivo = !is_null($c->pivot->importo) ? $c->pivot->importo : $c->importo;
+                        $importoOriginale = $isParent ? $c->sottoconti->sum('importo') : $c->importo;
+                        $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
 
-                    // FIX: Se è un padre, l'importo originale è la somma dei sottoconti
-                    // Se è una voce singola, è il suo importo standard
-                    $importoOriginale = $isParent 
-                        ? $c->sottoconti->sum('importo') 
-                        : $c->importo;
-
-                    $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
-
-                    return [
-                        'id'                => $c->id,
-                        'nome'              => $c->nome,
-                        'importo'           => (int) $importoEffettivo,
-                        'importo_originale' => (int) $importoOriginale,
-                        'is_frazionato'     => $isFrazionato,
-                        'note'              => $c->pivot->note,
-                        'is_parent'         => $isParent,
-                        'figli_names'       => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
-                    ];
-                });
-            }),
+                        return [
+                            'id'                => $c->id,
+                            'nome'              => $c->nome,
+                            'importo'           => (int) $importoEffettivo,
+                            'importo_originale' => (int) $importoOriginale,
+                            'is_frazionato'     => $isFrazionato,
+                            'note'              => $c->pivot->note,
+                            'is_parent'         => $isParent,
+                            'figli_names'       => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                        ];
+                    });
+                }),
         ];
     }
 }

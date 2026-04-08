@@ -111,7 +111,15 @@ class StoreFatturaRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $righe = $this->input('righe', []);
+            $haLavoriPrivati = false;
+
             foreach ($righe as $idx => $riga) {
+                // Controllo 1: Se c'è un immobile, attiviamo il flag "lavori privati"
+                if (!empty($riga['immobile_id'])) {
+                    $haLavoriPrivati = true;
+                }
+
+                // Controllo 2 (Pre-esistente): Obbligo capitolo di spesa
                 $isSopravvenienza = filter_var($riga['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
                 if (!$isSopravvenienza && empty($riga['conto_id'])) {
                     $validator->errors()->add(
@@ -120,6 +128,18 @@ class StoreFatturaRequest extends FormRequest
                     );
                 }
             }
+
+            // --- INIZIO FIX SCUDO PATRIMONIALE ---
+            $strategia = $this->input('dati_extra.override_budget.strategia_rientro');
+            $usaFondo = ($strategia === 'fondo_riserva');
+
+            if ($usaFondo && $haLavoriPrivati) {
+                $validator->errors()->add(
+                    'dati_extra.override_budget.strategia_rientro',
+                    'SCUDO PATRIMONIALE: Non puoi utilizzare il Fondo Riserva condominiale per coprire spese private.'
+                );
+            }
+            // --- FINE FIX SCUDO PATRIMONIALE ---
         });
     }
 

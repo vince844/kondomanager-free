@@ -142,6 +142,7 @@ const weekdays = [
 ]
 
 const form = useForm({
+  tipo: 'ordinario',
   gestione_id: '',
   nome: '',
   descrizione: '',
@@ -157,6 +158,20 @@ const form = useForm({
   recurrence_by_day: [] as string[],
   capitoli_ids: [] as number[],
   capitoli_config: [] as any[],
+  fatture_config: [] as any[], 
+  tipo_autorizzazione: '',
+  motivazione_autorizzazione: ''
+})
+
+// --- BIVIO ORDINARIO/STRAORDINARIO ---
+/* const tipoPiano = ref<'ordinario' | 'straordinario'>('ordinario') */
+const isLoadingFatture = ref(false)
+const fattureStraordinarie = ref<any[]>([])
+
+// Nuovi campi form necessari per lo straordinario (aggiungili anche all'interfaccia nel backend)
+const autorizzazioneStraordinaria = ref({
+  tipo_autorizzazione: '',
+  motivazione_autorizzazione: ''
 })
 
 // Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN)
@@ -250,6 +265,19 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
     
     capitoliDisponibili.value = resCap.data;
 
+    // --- NUOVO: CARICHIAMO LE FATTURE STRAORDINARIE ---
+    isLoadingFatture.value = true;
+    const resFatture = await axios.get(route('admin.gestionale.fetch-fatture-straordinarie', {
+      condominio: props.condominio.id
+    }), {
+      params: {
+        gestione_id: idGestione,
+        esercizio_id: props.esercizio.id
+      }
+    });
+    fattureStraordinarie.value = resFatture.data;
+    isLoadingFatture.value = false;
+
     // 2. CARICHIAMO I SALDI SOLO SE SERVONO
     if (caricaAncheSaldi) {
         const resSaldi = await axios.get(route('admin.gestionale.fetch-saldi-analitici', {
@@ -336,15 +364,43 @@ watch(() => form.capitoli_ids, (newIds) => {
   });
 });
 
+// --- LOGICA CARRELLO STRAORDINARIO ---
+const totaleStraordinarioSelezionatoFormatted = computed(() => {
+  const tot = fattureStraordinarie.value
+    .filter(f => f.selezionata)
+    .reduce((acc, curr) => acc + parseMoney(curr.importo_suggerito), 0);
+  return euro(tot);
+});
+
+// Resetta le selezioni se si cambia tipo piano
+/* watch(tipoPiano, (newType) => {
+  if (newType === 'ordinario') {
+    fattureStraordinarie.value.forEach(f => f.selezionata = false)
+  } else {
+    form.capitoli_ids = []
+    capitoliDettaglio.value = []
+  }
+}) */
+
 const submit = () => {
-  form.capitoli_config = capitoliDettaglio.value.map(c => ({
-    id: c.id, importo: c.importo_da_usare, note: c.note
-  }));
-  
+  // 1. Prepariamo i capitoli solo se siamo in ordinario
+  form.capitoli_config = form.tipo === 'ordinario' 
+    ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
+    : [];
+
+  // 2. Prepariamo le fatture solo se siamo in straordinario
+  if (form.tipo === 'straordinario') {
+    form.fatture_config = fattureStraordinarie.value
+      .filter(f => f.selezionata)
+      .map(f => ({ id: f.id, importo: f.importo_suggerito }));
+  }
+
+  // 3. Saldi config (comune a entrambi)
   form.saldi_config = saldiDettaglio.value
     .filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale')
     .map(s => ({ saldo_id: s.id, ripartizioni: s.ripartizioni_custom }));
 
+  // 4. Invio
   form.post(route(...generateRoute(
     'gestionale.esercizi.piani-rate.store',
     { condominio: props.condominio.id, esercizio: props.esercizio.id }
@@ -353,8 +409,51 @@ const submit = () => {
     onSuccess: () => {
       router.flushAll()
     },
-  })
+  });
 }
+
+/* const submit = () => {
+  // Prepariamo le configurazioni di base che esistono sempre
+  form.capitoli_config = tipoPiano.value === 'ordinario' 
+    ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
+    : [];
+
+  form.saldi_config = saldiDettaglio.value
+    .filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale')
+    .map(s => ({ saldo_id: s.id, ripartizioni: s.ripartizioni_custom }));
+
+  // Usiamo transform() per iniettare i dati dinamici in modo sicuro per Inertia
+  form.transform((data) => {
+    return {
+      ...data,
+      tipo: tipoPiano.value, // 'ordinario' o 'straordinario'
+      
+      // Se è straordinario, iniettiamo le fatture, altrimenti array vuoto
+      fatture_config: tipoPiano.value === 'straordinario'
+        ? fattureStraordinarie.value
+            .filter(f => f.selezionata)
+            .map(f => ({ id: f.id, importo: f.importo_suggerito }))
+        : [],
+        
+      // Se è straordinario, iniettiamo l'autorizzazione, altrimenti null
+      tipo_autorizzazione: tipoPiano.value === 'straordinario' 
+        ? autorizzazioneStraordinaria.value.tipo_autorizzazione 
+        : null,
+      motivazione_autorizzazione: tipoPiano.value === 'straordinario' 
+        ? autorizzazioneStraordinaria.value.motivazione_autorizzazione 
+        : null,
+    };
+
+  }).post(route(...generateRoute(
+    'gestionale.esercizi.piani-rate.store',
+    { condominio: props.condominio.id, esercizio: props.esercizio.id }
+  )), {
+    preserveScroll: true,
+    onSuccess: () => {
+      router.flushAll()
+    },
+  });
+} */
 
 </script>
 
@@ -374,6 +473,25 @@ const submit = () => {
       />
 
       <form id="pianoRateForm" @submit.prevent="submit" class="space-y-6">
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
+              :class="form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+              <div class="flex items-start justify-between w-full mb-3">
+                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">Piano rate ordinario</div>
+                  <input type="radio" v-model="form.tipo" value="ordinario" class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600" />
+              </div>
+              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'ordinario' ? 'text-blue-700/80' : 'text-slate-500'">Finanzia le spese di preventivo approvate a inizio anno (o i loro sforamenti).</p>
+          </label>
+          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
+              :class="form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+              <div class="flex items-start justify-between w-full mb-3">
+                  <div class="font-black text-sm" :class="form.tipo === 'straordinario' ? 'text-amber-800' : 'text-slate-700'">Piano rate straordinario (Art. 1135 c.c.)</div>
+                  <input type="radio" v-model="form.tipo" value="straordinario" class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600" />
+              </div>
+              <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'straordinario' ? 'text-amber-700/80' : 'text-slate-500'">Finanzia fatture per spese impreviste o lavori ad personam non presenti a bilancio.</p>
+          </label>
+        </div>
 
         <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">
@@ -605,7 +723,7 @@ const submit = () => {
           </CardContent>
         </Card>
 
-        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+        <Card v-if="form.tipo === 'ordinario'" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">
             <CardTitle class="text-base font-semibold">Budget e capitoli di spesa</CardTitle>
             <CardDescription>Scegli quali voci di spesa includere nel piano rate e con quali importi.</CardDescription>
@@ -705,6 +823,82 @@ const submit = () => {
                   <div v-if="parseMoney(cap.importo_da_usare) > cap.residuo" class="text-[11px] text-red-600 mt-2 flex items-center gap-1 font-medium bg-red-50 p-1.5 rounded">
                     <AlertTriangle class="w-3 h-3" /> Attenzione: L'importo richiesto supera il residuo disponibile a bilancio.
                   </div>
+                </div>
+              </div>
+            </div>
+
+          </CardContent>
+        </Card>
+
+        <Card v-if="form.tipo === 'straordinario'" class="border-dashed border-amber-200 shadow-sm bg-amber-50/30">
+          <CardHeader class="pb-3 border-b border-amber-200/50 border-dashed mb-4">
+            <CardTitle class="text-base font-semibold text-amber-900 flex items-center gap-2">
+              <AlertTriangle class="w-5 h-5 text-amber-500" /> Il carrello delle fatture
+            </CardTitle>
+            <CardDescription class="text-amber-700">Seleziona le fatture impreviste o ad personam da finanziare con questo piano.</CardDescription>
+          </CardHeader>
+          <CardContent class="space-y-6">
+            
+            <div v-if="isLoadingFatture" class="flex justify-center py-8 text-amber-600 gap-3">
+              <LoaderCircle class="w-5 h-5 animate-spin" /><span>Ricerca fatture impreviste in corso...</span>
+            </div>
+            
+            <div v-else-if="!form.gestione_id" class="text-center py-8 text-slate-500 text-sm">
+              Seleziona prima una gestione contabile.
+            </div>
+
+            <div v-else-if="fattureStraordinarie.length === 0" class="text-center py-8 text-slate-500 text-sm">
+              Nessuna fattura straordinaria da finanziare in questa gestione.
+            </div>
+
+            <div v-else class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
+              <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex justify-between items-center">
+                <span class="text-xs font-bold text-amber-800 uppercase tracking-wider">Fatture disponibili</span>
+                <span class="text-sm font-bold text-amber-700 bg-white px-3 py-1 rounded border border-amber-200 shadow-sm">Totale richiesto: {{ totaleStraordinarioSelezionatoFormatted }}</span>
+              </div>
+              <div class="divide-y divide-amber-100 max-h-[350px] overflow-y-auto">
+                <div v-for="(fat) in fattureStraordinarie" :key="fat.id" class="p-3 hover:bg-amber-50/50 transition-colors" :class="{ 'bg-amber-50': fat.selezionata }">
+                  <div class="flex items-center gap-4">
+                    <Checkbox v-model="fat.selezionata" />
+                    <div class="flex-1 min-w-0">
+                      <div class="font-bold text-sm text-slate-900 truncate">{{ fat.fornitore }} — Doc. {{ fat.numero_documento }}</div>
+                      <div class="text-xs text-slate-500 mt-1">Data: {{ fat.data_documento }} | Già finanziato: {{ euro(fat.gia_finanziato) }}</div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <span class="text-xs font-bold text-amber-600">Da finanziare: {{ euro(fat.residuo_da_finanziare) }}</span>
+                      <div class="w-32 relative" v-if="fat.selezionata">
+                        <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
+                        <MoneyInput 
+                          v-model="fat.importo_suggerito" 
+                          :money-options="moneyOptions"
+                          :lazy="true"
+                          class="pl-6 h-8 text-right text-xs font-bold border-amber-300 focus:ring-amber-500" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white border border-amber-200 rounded-xl p-5 space-y-4">
+              <h4 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Info class="w-4 h-4 text-amber-500" /> Scudo Legale (Obbligatorio)
+              </h4>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-2">
+                  <Label>Tipo Autorizzazione</Label>
+                  <v-select 
+                    v-model="form.tipo_autorizzazione"
+                    :options="[{label: 'Delibera Assembleare', value: 'delibera'}, {label: 'Urgenza (Art. 1135 c.c.)', value: 'urgenza'}]"
+                    :reduce="o => o.value"
+                    class="bg-white text-sm"
+                    placeholder="Seleziona..."
+                  />
+                </div>
+                <div class="space-y-2">
+                  <Label>Motivazione / Estremi Verbale</Label>
+                  <Input v-model="form.motivazione_autorizzazione" placeholder="Es. Verbale del 12/03/2026..." class="bg-white" />
                 </div>
               </div>
             </div>

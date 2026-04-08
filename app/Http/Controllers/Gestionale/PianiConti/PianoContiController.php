@@ -144,11 +144,12 @@ class PianoContiController extends Controller
         ->orderBy('nome')
         ->get();
 
-        // --- INIZIO FIX SFORO BUDGET ---
+        // --- INIZIO FIX SFORO BUDGET & COPERTURA STRAORDINARIA ---
         $rawFatturato = DB::table('righe_fattura')
             ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
             ->where('fatture_passive.esercizio_id', $esercizio->id)
             ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+            // RIMOSSO whereNull('immobile_id') -> Le spese ad personam fanno parte del conto reale!
             ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
             ->groupBy('righe_fattura.conto_id')
             ->get();
@@ -157,9 +158,24 @@ class PianoContiController extends Controller
         foreach ($rawFatturato as $row) {
             $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
         }
+        
+        $fattureSforo = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->where('fatture_passive.esercizio_id', $esercizio->id)
+            ->where('fatture_passive.stato_approvazione', 'sforo_motivato')
+            // RIMOSSO whereNull('immobile_id')
+            ->select('righe_fattura.conto_id', 'fatture_passive.dati_extra', 'righe_fattura.importo_imponibile', 'righe_fattura.importo_iva')
+            ->get();
 
-        // Iniettiamo chirurgicamente il Fabbisogno Reale nel modello
-        // così la Resource e il Vue lavoreranno sui valori reali senza modifiche al front-end
+        $coperturaVirtualeMap = [];
+        foreach ($fattureSforo as $row) {
+            $datiExtra = is_string($row->dati_extra) ? json_decode($row->dati_extra, true) : (array) $row->dati_extra;
+            $strat = $datiExtra['override_budget']['strategia_rientro'] ?? 'conguaglio_fine_anno'; 
+            if (in_array($strat, ['conguaglio_fine_anno', 'fondo_riserva'])) {
+                $coperturaVirtualeMap[(int)$row->conto_id] = ($coperturaVirtualeMap[(int)$row->conto_id] ?? 0) + abs((int)$row->importo_imponibile + (int)$row->importo_iva);
+            }
+        }
+
         foreach ($conti as $conto) {
             $speso = $fatturatoMap[$conto->id] ?? 0;
             if ($speso > $conto->importo) {
@@ -175,19 +191,26 @@ class PianoContiController extends Controller
         // --- FINE FIX ---
 
         $coverageMap = [];
+        $extraPianiNames = [];
         $gestione = $pianoConto->gestione;
 
         if ($gestione) {
             $service = new BudgetCoverageService();
-            // Passiamo la mappa al service per far agire l'algoritmo di push-down sui deficit reali
-            $report  = $service->analyze($gestione, $fatturatoMap); 
+            $report  = $service->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap); 
 
             foreach ($report['items'] ?? [] as $item) {
-                $coverageMap[(int) $item['id']] = (int) $item['pianificato'];
+                $coverageMap[(int) $item['id']] = (int) ($item['pianificato'] ?? 0);
             }
+
+            // Recuperiamo i nomi dei piani straordinari per passarli alla Resource
+            $extraPianiNames = \App\Models\Gestionale\PianoRate::where('gestione_id', $gestione->id)
+                ->where('tipo', 'straordinario')
+                ->pluck('nome')
+                ->toArray();
         }
 
         ContoResource::$coverageMap = $coverageMap;
+        ContoResource::$extraPianiNames = $extraPianiNames; // Passaggio Nome!
 
         $fornitori = Fornitore::attivi()
             ->orderBy('ragione_sociale')
