@@ -2,6 +2,18 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.21] - The Financial X-Ray & Single Source of Truth (Latest)
+
+### Spaccato Finanziario Trasparente (Tenant Wallet UX)
+* **Pannello Laterale "X-Ray" (Sheet):** Aggiunta un'interfaccia a scorrimento laterale nel dettaglio del Piano Rate. L'amministratore può ora aprire lo "scontrino matematico" di ogni singolo condòmino con un solo click.
+* **Scomposizione Dinamica dei Debiti:** Il sistema smonta l'importo totale della rata spiegando matematicamente la provenienza di ogni centesimo. Mostra all'istante quanto deriva dalle quote millesimali ordinarie, quanto da eventuali spese private dirette (Art. 63) e quanto da saldi pregressi.
+* **Raggruppamento per Immobile:** Se un condòmino possiede più unità immobiliari (es. Appartamento 1A e Box 1C), lo spaccato finanziario divide elegantemente i calcoli per ogni singola unità, eliminando la necessità di fare calcoli mentali durante le spiegazioni telefoniche.
+
+### Motore Finanziario e UI/UX
+* **Azioni Contestuali (Dropdown Menu):** Pulita la tabella principale dei Piani Rate. Il bottone per aprire lo spaccato finanziario è stato integrato in un elegante menu a tendina (tre puntini verticali) posizionato direttamente nella colonna fissa del "Saldo". Questa scelta architetturale prepara la UI ad accogliere future azioni rapide (es. Invia Sollecito, Stampa Ricevuta) senza mai "sporcare" o allargare la griglia dati.
+* **Badge "Integrazione" Frazionale:** Il tooltip delle rate nella tabella principale riconosce ora gli importi generati da ripartizioni miste o arrotondamenti per quadratura.
+* **Correzione Penny-Perfect (Fallback Zero-Quota):** Il motore di calcolo quote `CalcoloQuoteService` è stato blindato contro i dati anagrafici incompleti. Se il sistema rileva che i comproprietari di un immobile hanno quote millesimali a zero (o non inserite nel DB), non innesca più il paradosso del Penny-Perfect, ma applica automaticamente una divisione equa e perfetta (es. 50% e 50% per due soggetti), garantendo sempre la corretta distribuzione degli addebiti diretti (Spese Ad Personam).
+
 ## [1.9.20] - The Extraordinary Engine & Polymorphic UI (Latest)
 
 ### Piani Rate Straordinari (Il Bivio & Art. 1135 c.c.)

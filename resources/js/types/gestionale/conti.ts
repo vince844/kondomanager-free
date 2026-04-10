@@ -11,6 +11,19 @@ export interface DettaglioCopertura {
   note?: string | null;
 }
 
+export interface AddebitoPersonale {
+  tipo: 'condominiale' | 'privato';
+  immobile: string;
+  proprietario: string;
+  importo: number; // in centesimi
+}
+
+export interface StrategiaSforo {
+  strategia: 'fondo_riserva' | 'conguaglio_fine_anno' | 'nuovo_piano_rate';
+  motivazione: string;
+  importo: number; // in centesimi
+}
+
 export interface Conto {
   id: number
   piano_conto_id: number
@@ -27,6 +40,10 @@ export interface Conto {
   default_fornitore_id?: number | null
   fornitore_nome?: string | null
   tipo_spesa?: 'standard' | 'professionista' | 'lavori' | 'utenza'
+
+  // Audit & Deviazioni (Tridente)
+  addebiti_personali?: AddebitoPersonale[];
+  strategie_sforo?: StrategiaSforo[];
 
   // Radar Copertura & Lucchetto
   impegnato?: number

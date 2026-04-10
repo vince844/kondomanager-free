@@ -38,7 +38,7 @@ class DashboardController extends Controller
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id') // <--- AGGIUNTO: Esclude le spese ad personam
+                ->whereNull('righe_fattura.immobile_id') // Esclude le spese ad personam
                 ->select(
                     'righe_fattura.conto_id', 
                     DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
@@ -51,12 +51,20 @@ class DashboardController extends Controller
                 $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
             }
 
+            // --- NUOVO: Recupero spese ad personam totali ---
+            $addebitiPersonali = (int) DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->where('fatture_passive.esercizio_id', $esercizio->id)
+                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                ->whereNotNull('righe_fattura.immobile_id') // Solo le spese private
+                ->sum(DB::raw('righe_fattura.importo_imponibile + righe_fattura.importo_iva'));
+
             // --- 2. Recupero di TUTTE le strategie di sforo (SOLO SPESE COMUNI) ---
             $fattureSforo = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.stato_approvazione', 'sforo_motivato')
-                ->whereNull('righe_fattura.immobile_id') // <--- AGGIUNTO: Esclude le spese ad personam
+                ->whereNull('righe_fattura.immobile_id') // Esclude le spese ad personam
                 ->select(
                     'righe_fattura.conto_id', 
                     'fatture_passive.dati_extra', 
@@ -73,12 +81,10 @@ class DashboardController extends Controller
                 $strat = $datiExtra['override_budget']['strategia_rientro'] ?? 'conguaglio_fine_anno'; 
                 $importoRiga = abs((int)$row->importo_imponibile + (int)$row->importo_iva);
 
-                // Solo A (Conguaglio) e C (Fondo Riserva) coprono virtualmente
                 if (in_array($strat, ['conguaglio_fine_anno', 'fondo_riserva'])) {
                     $coperturaVirtualeMap[(int)$row->conto_id] = ($coperturaVirtualeMap[(int)$row->conto_id] ?? 0) + $importoRiga;
                 }
                 
-                // Se il capitolo ha già un allarme 'rata_integrativa', non sovrascriverlo con 'conguaglio' o 'fondo'
                 if (!isset($strategieMap[(int)$row->conto_id]) || $strategieMap[(int)$row->conto_id] !== 'rata_integrativa') {
                     $strategieMap[(int)$row->conto_id] = $strat;
                 }
@@ -111,14 +117,12 @@ class DashboardController extends Controller
                 $totPian += $report['totali']['pianificato'];
                 $totVirtualeGlobale += $virtualeGestione; 
 
-                // --- 3. Analisi Deficit Pura (Senza Push-Down / Travasi) ---
+                // --- 3. Analisi Deficit Pura ---
                 foreach ($report['items'] as $item) {
                     if (!($item['is_leaf'] ?? false)) continue;
 
                     $fabbisognoReale = max($item['budget'], ($fatturatoMap[$item['id']] ?? 0));
                     $pianificato = (int) ($item['pianificato'] ?? 0);
-                    
-                    // Deficit netto e reale su questa singola voce rispetto a quanto richiesto a rate
                     $deficitRispettoRate = $fabbisognoReale - $pianificato;
                     
                     if ($deficitRispettoRate > 100) { 
@@ -127,14 +131,13 @@ class DashboardController extends Controller
 
                         $tipoStrategia = 'nessuna';
                         if ($stratScelta === 'rata_integrativa') {
-                            $tipoStrategia = 'rata_integrativa'; // Caso B (Emetti rate)
+                            $tipoStrategia = 'rata_integrativa'; 
                         } elseif ($stratScelta === 'fondo_riserva') {
-                            $tipoStrategia = 'fondo_riserva';    // Caso C (Coperto da Fondo)
+                            $tipoStrategia = 'fondo_riserva';    
                         } elseif ($stratScelta === 'conguaglio_fine_anno') {
-                            $tipoStrategia = 'conguaglio';       // Caso A (A consuntivo)
+                            $tipoStrategia = 'conguaglio';       
                         }
 
-                        // Aggiungiamo la voce agli orfani
                         $vociScoperte[] = [
                             'id'         => $item['id'],
                             'nome'       => $item['nome'],
@@ -147,13 +150,12 @@ class DashboardController extends Controller
                     }
                 }
 
-                // ... [Logica Piani Disallineati Invariata] ...
                 $pianiRate = PianoRate::where('gestione_id', $gestione->id)
                     ->with([
                         'capitoli' => function($q) {
                             $q->select('conti.id', 'conti.importo');
                         }, 
-                        'fattureStraordinarie', // <--- AGGIUNTO QUESTO
+                        'fattureStraordinarie', 
                         'rate.rateQuote'
                     ]) 
                     ->get();
@@ -197,23 +199,24 @@ class DashboardController extends Controller
                 }
             }
 
-            // Calcolo coperture globali
             $delta = $totPrev - ($totPian + $totVirtualeGlobale);
             $isBilanciato = abs($delta) <= 500; 
 
             $copertura = [
-                'preventivo'     => $totPrev, 
-                'pianificato'    => $totPian, 
-                'virtuale'       => $totVirtualeGlobale, 
-                'delta'          => $delta,
-                'scoperto'       => ($delta > 0 ? $delta : 0),
-                'percentuale'    => $totPrev > 0 ? round((($totPian + $totVirtualeGlobale) / $totPrev) * 100, 1) : 0,
-                'is_completo'    => $isBilanciato,
-                'orfani'         => $vociScoperte, 
-                'scoperto_count' => collect($vociScoperte)
+                'preventivo'         => $totPrev, 
+                'pianificato'        => $totPian, 
+                'virtuale'           => $totVirtualeGlobale, 
+                'addebiti_personali' => $addebitiPersonali, // <--- AGGIUNTO
+                'uscite_totali'      => $totPrev + $addebitiPersonali, // <--- AGGIUNTO
+                'delta'              => $delta,
+                'scoperto'           => ($delta > 0 ? $delta : 0),
+                'percentuale'        => $totPrev > 0 ? round((($totPian + $totVirtualeGlobale) / $totPrev) * 100, 1) : 0,
+                'is_completo'        => $isBilanciato,
+                'orfani'             => $vociScoperte, 
+                'scoperto_count'     => collect($vociScoperte)
                     ->whereNotIn('strategia', ['conguaglio', 'fondo_riserva']) 
                     ->count(),
-                'has_sforo'      => $totPrev > $totBudgetPuro
+                'has_sforo'          => $totPrev > $totBudgetPuro
             ];
         }
 

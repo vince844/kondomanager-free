@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { computed, ref } from 'vue';
 import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -9,21 +8,24 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
 const props = defineProps<{
   condominio: Building;
   condomini: Building[];
-  esercizio: any;
-  esercizi: any[];
+  esercizio: Esercizio;    
+  esercizi: Esercizio[];   
   copertura: {
     preventivo: number;
     pianificato: number;
     virtuale: number;
+    addebiti_personali: number; 
+    uscite_totali: number;      
     scoperto: number;
     delta: number; 
     percentuale: number;
@@ -34,7 +36,7 @@ const props = defineProps<{
         nome: string; 
         importo: number; 
         is_sforo?: boolean;
-        strategia?: string;
+        strategia: string;
         gestione: string 
     }>;
     scoperto_count: number;
@@ -69,7 +71,6 @@ const pageGuides = [
   { title: 'Inbox Condominiale', description: 'Gestisci le richieste e i task specifici di questo fabbricato. Le azioni rapide ti permettono di rispondere subito ai condòmini.', icon: Inbox, colorVariant: 'emerald' as const }
 ];
 
-// Dichiariamo esplicitamente tutti i tipi possibili che la computed può restituire
 type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'surplus' | 'integrated' | 'aligned';
 
 const statoCopertura = computed<StatoCopertura>(() => {
@@ -78,13 +79,8 @@ const statoCopertura = computed<StatoCopertura>(() => {
 
     const delta = props.copertura.delta;
 
-    // Caso 1: Mancano soldi reali
     if (delta > 500) return 'deficit';   
-    
-    // Caso 2: Abbiamo sfori che abbiamo deciso di posticipare a consuntivo
     if (props.copertura.orfani.some(o => o.strategia === 'conguaglio')) return 'integrated';
-    
-    // Caso 3: Eccedenza rate (per sicurezza e per far felice TS, lasciamo il controllo)
     if (delta < -500) return 'surplus';  
     
     return 'aligned'; 
@@ -95,7 +91,7 @@ const tooltipStato = computed(() => {
         case 'misaligned': return "URGENTE: Uno o più piani rate non sono più allineati con il preventivo.";
         case 'deficit': return "Attenzione: Le rate emesse non coprono il fabbisogno reale. Rischio mancanza liquidità.";
         case 'surplus': return "Stai incassando più del fabbisogno reale (preventivo + fatture). Verifica arrotondamenti.";
-        case 'integrated': return "Ottimo lavoro. Hai emesso rate integrative sufficienti a coprire gli sforamenti di budget registrati.";
+        case 'integrated': return "Ottimo lavoro. Hai emesso rate integrative o usato fondi sufficienti a coprire gli sforamenti di budget registrati.";
         case 'aligned': return "Il piano rate copre esattamente il preventivo di spesa originale.";
         default: return "";
     }
@@ -117,8 +113,6 @@ const suggerimentoOperativo = computed(() => {
 
 const percentualeFormattata = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
-
-    // FIX: Aggiunto fallback || 0 per massima sicurezza
     const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
     const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
 
@@ -126,36 +120,23 @@ const percentualeFormattata = computed(() => {
         if (rawPct >= 99.9) return '99.9'; 
         return rawPct.toFixed(1);
     }
-
-    if (statoCopertura.value === 'surplus') {
-        return rawPct.toFixed(1); 
-    }
-
+    if (statoCopertura.value === 'surplus') return rawPct.toFixed(1); 
     return '100.0';
 });
 
 const larghezzaBarra = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0%';
-    
-    // FIX: Aggiunto fallback || 0 per massima sicurezza
     const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
     const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
-    
     return Math.min(rawPct, 100) + '%';
 });
 
 const completeTask = (taskId: number) => {
-    router.patch(route('admin.inbox.complete', { task: taskId }), {}, {
-        preserveScroll: true,
-        onSuccess: () => {
-            // Feedback opzionale
-        }
-    });
+    router.patch(route('admin.inbox.complete', { task: taskId }), {}, { preserveScroll: true });
 };
 
 const isRejectModalOpen = ref(false);
 const taskToReject = ref<any>(null);
-
 const rejectForm = useForm({ reason: '' });
 
 const openRejectModal = (task: any) => {
@@ -177,7 +158,6 @@ const confirmReject = () => {
         onSuccess: () => closeRejectModal(),
     });
 };
-
 </script>
 
 <template>
@@ -206,6 +186,7 @@ const confirmReject = () => {
                             <Wallet class="h-32 w-32 opacity-50" />
                         </div>
                         <div class="p-5 relative z-10">
+                            
                             <div class="flex items-center justify-between mb-4">
                                 <div class="flex items-center gap-1.5">
                                     <LayoutDashboard class="w-4 h-4 text-slate-400" />
@@ -213,7 +194,7 @@ const confirmReject = () => {
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger><Info class="w-3.5 h-3.5 text-slate-300 hover:text-primary cursor-help" /></TooltipTrigger>
-                                            <TooltipContent side="right"><p class="text-xs max-w-[200px]">Confronto tra preventivo e spese allocate nei piani rate (esclusi saldi pregressi).</p></TooltipContent>
+                                            <TooltipContent side="right"><p class="text-xs max-w-[200px]">Rapporto tra il fabbisogno condiviso del condominio e le coperture attive (rate e fondi).</p></TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
                                 </div>
@@ -242,52 +223,110 @@ const confirmReject = () => {
                                 </TooltipProvider>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4 mb-4">
-                                <div>
-                                    <div class="flex items-center gap-1.5 mb-0.5">
-                                        <p class="text-[10px] text-slate-400 uppercase font-semibold">Fabbisogno reale</p>
-                                        <TooltipProvider>
-                                            <Tooltip>
-                                                <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
-                                                <TooltipContent><p class="text-xs">Include il preventivo e gli eventuali sfori di budget fatturati.</p></TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
+                            <div class="mb-5">
+                                <div class="grid grid-cols-2 gap-2 mb-2">
+                                    <div class="bg-slate-50/50 dark:bg-slate-800/30 p-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                                        <div class="flex items-center gap-1.5 mb-1">
+                                            <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Debito Condiviso</p>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
+                                                    <TooltipContent><p class="text-xs max-w-[200px]">Fabbisogno reale condominiale (preventivo + sfori autorizzati). Esclude categoricamente le spese ad personam.</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+                                        <p class="text-md font-black text-slate-700 dark:text-slate-200">{{ euro(copertura.preventivo) }}</p>
                                     </div>
-                                    <p class="text-lg font-black text-slate-700 dark:text-slate-200">{{ euro(copertura.preventivo) }}</p>
-                                </div>
-                                <div class="text-right">
-                                    <p class="text-[10px] text-slate-400 uppercase font-semibold">Pianificato (Rate)</p>
-                                    <p class="text-lg font-black text-slate-900 dark:text-white" :class="{'text-blue-600': statoCopertura === 'surplus', 'text-red-600': statoCopertura === 'misaligned'}">{{ euro(copertura.pianificato) }}</p>
-                                </div>
-                            </div>
-
-                            <div v-if="copertura.virtuale > 0" class="flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 rounded-lg border border-emerald-100 dark:border-emerald-800 mb-4 -mt-2">
-                                <div class="flex items-center gap-1.5">
-                                    <Wallet class="w-3.5 h-3.5 text-emerald-500" />
-                                    <span class="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">A Consuntivo / Fondi</span>
-                                </div>
-                                <span class="text-sm font-black text-emerald-600">+ {{ euro(copertura.virtuale) }}</span>
-                            </div>
-
-                            <div class="mb-4">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-[9px] font-semibold uppercase text-slate-400">Copertura</span>
                                     
-                                    <span class="text-[10px] font-bold tabular-nums"
-                                        :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-indigo-600': statoCopertura === 'integrated', 'text-emerald-600': statoCopertura === 'aligned'}">
-                                        {{ percentualeFormattata }}%
-                                    </span>
+                                    <div class="flex flex-col gap-2 justify-center pl-1 border-l border-slate-100 dark:border-slate-800 w-full overflow-hidden">
+    
+                                        <div class="flex justify-between items-center gap-1.5 w-full">
+                                            <p class="text-[9px] text-slate-400 uppercase font-semibold tracking-wider truncate">Incasso Rate</p>
+                                            <p class="text-xs font-black text-slate-900 dark:text-white shrink-0 whitespace-nowrap" :class="{'text-blue-600': statoCopertura === 'surplus', 'text-red-600': statoCopertura === 'misaligned'}">
+                                                {{ euro(copertura.pianificato) }}
+                                            </p>
+                                        </div>
+                                        
+                                        <div v-if="copertura.virtuale > 0" class="flex justify-between items-center gap-1.5 w-full">
+                                            <div class="flex items-center gap-1 min-w-0">
+                                                <p class="text-[9px] text-emerald-600/70 uppercase font-bold tracking-tight truncate" title="Fondi di Riserva e Consuntivo">
+                                                    Fondi / Extra
+                                                </p>
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger as-child>
+                                                            <Info class="w-3 h-3 text-emerald-500/60 cursor-help outline-none shrink-0" />
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>
+                                                            <p class="text-xs">Importo coperto tramite l'utilizzo di fondi di riserva o spostato alla gestione a consuntivo di fine anno.</p>
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+                                            </div>
+                                            <p class="text-xs font-black text-emerald-600 shrink-0 whitespace-nowrap">
+                                                + {{ euro(copertura.virtuale) }}
+                                            </p>
+                                        </div>
+
+                                    </div>
                                 </div>
-                                <div class="relative h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                                    
-                                    <div class="h-full transition-all duration-1000 ease-in-out"
-                                        :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"
-                                        :style="{ width: larghezzaBarra }">
+
+                                <div class="mt-4">
+                                    <div class="flex justify-between items-center mb-1.5 px-0.5">
+                                        <span class="text-[8px] font-black uppercase text-slate-400 tracking-widest">Avanzamento Coperture Condivise</span>
+                                        <span class="text-[10px] font-bold tabular-nums"
+                                            :class="{'text-red-600': statoCopertura === 'misaligned', 'text-amber-600': statoCopertura === 'deficit', 'text-blue-600': statoCopertura === 'surplus', 'text-indigo-600': statoCopertura === 'integrated', 'text-emerald-600': statoCopertura === 'aligned'}">
+                                            {{ percentualeFormattata }}%
+                                        </span>
+                                    </div>
+                                    <div class="relative h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
+                                        <div class="h-full transition-all duration-1000 ease-in-out"
+                                            :class="{'bg-red-500': statoCopertura === 'misaligned', 'bg-amber-500': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"
+                                            :style="{ width: larghezzaBarra }">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div v-if="statoCopertura === 'misaligned'" class="bg-red-50/80 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg p-3">
+                            <div class="mb-4 pt-4 border-t border-dashed border-slate-200 dark:border-slate-800">
+                                <h4 class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5">Proiezione Uscite (Mastro C/C)</h4>
+                                
+                                <div class="space-y-1">
+                                    <div class="flex justify-between items-center px-1">
+                                        <span class="text-[10px] font-medium text-slate-500">Subtotale Spese Condivise</span>
+                                        <span class="text-[10px] font-bold text-slate-600">{{ euro(copertura.preventivo) }}</span>
+                                    </div>
+                                    
+                                    <div v-if="copertura.addebiti_personali > 0" class="flex justify-between items-center bg-amber-50/50 dark:bg-amber-900/10 px-2 py-1.5 rounded-md border border-amber-100 dark:border-amber-800/50 mt-1.5">
+                                        <div class="flex items-center gap-1.5">
+                                            <User class="w-3 h-3 text-amber-500" />
+                                            <span class="text-[9px] font-bold text-amber-700 dark:text-amber-500 uppercase tracking-wide">Addebiti Diretti (Art. 63)</span>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger><Info class="w-3 h-3 text-amber-600/70" /></TooltipTrigger>
+                                                    <TooltipContent><p class="text-xs">Spese fatturate al condominio ma addebitate esclusivamente ai singoli proprietari.</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+                                        <span class="text-[10px] font-black text-amber-600">+ {{ euro(copertura.addebiti_personali) }}</span>
+                                    </div>
+                                    
+                                    <div class="flex justify-between items-center pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 px-1">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">Totale da pagare (Fornitori)</span>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger><Info class="w-3 h-3 text-slate-300" /></TooltipTrigger>
+                                                    <TooltipContent><p class="text-xs max-w-[200px]">Totale delle uscite lorde attese sul conto corrente. Questo importo corrisponde esattamente al totale indicato nel Piano dei Conti.</p></TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
+                                        <span class="text-sm font-black text-slate-900 dark:text-white">{{ euro(copertura.uscite_totali) }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div v-if="statoCopertura === 'misaligned'" class="bg-red-50/80 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 rounded-lg p-3 mt-4">
                                 <div class="flex items-center gap-2 mb-2 pb-2 border-b border-red-200/50">
                                     <ShieldAlert class="w-4 h-4 text-red-600" />
                                     <span class="text-[10px] font-black text-red-700 uppercase tracking-widest">
@@ -315,7 +354,7 @@ const confirmReject = () => {
                                 </div>
                             </div>
 
-                            <div v-else-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3">
+                            <div v-else-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3 mt-4">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">
                                         <AlertTriangle class="w-3 h-3" /> Mancano {{ euro(copertura.delta) }}
@@ -333,18 +372,14 @@ const confirmReject = () => {
                                 </div>
                             </div>
 
-                            <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700">
+                            <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700 mt-4">
                                 <div class="flex items-center gap-2 mb-1"><Lightbulb class="w-4 h-4" /><span class="text-xs font-bold uppercase">Verifica Eccedenza</span></div>
                                 <p class="text-[10px] opacity-90 leading-tight">Stai incassando più del fabbisogno reale. Se non è voluto (es. arrotondamenti), verifica i piani rate.</p>
                             </div>
 
-                            <div v-else-if="statoCopertura === 'integrated'" class="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-lg p-3 flex flex-col justify-center text-indigo-700">
+                            <div v-else-if="statoCopertura === 'integrated'" class="bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-lg p-3 flex flex-col justify-center text-indigo-700 mt-4">
                                 <div class="flex items-center gap-2 mb-1"><CheckCircle2 class="w-4 h-4" /><span class="text-xs font-bold uppercase">Sforo Recuperato</span></div>
                                 <p class="text-[10px] opacity-90 leading-tight">Ottimo lavoro. Hai integrato il piano rate coprendo con successo gli extra costi registrati in contabilità.</p>
-                            </div>
-
-                            <div v-else class="bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 rounded-lg p-3 flex items-center justify-center gap-2 text-emerald-700 font-bold text-xs">
-                                <CheckCircle2 class="w-4 h-4" /> Bilancio perfettamente allineato
                             </div>
                         </div>
 
@@ -506,51 +541,58 @@ const confirmReject = () => {
                         <div class="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                             <div v-for="orfano in copertura?.orfani" :key="orfano.id" 
                             class="group flex justify-between items-center p-4 border rounded-xl transition-all mb-3"
-                            :class="orfano.strategia === 'conguaglio' 
-                                ? 'bg-indigo-50/30 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-800/50' 
-                                : 'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-amber-200 shadow-sm'">
+                            :class="{
+                                'bg-indigo-50/30 border-indigo-100 dark:bg-indigo-900/10 dark:border-indigo-800/50': orfano.strategia === 'conguaglio',
+                                'bg-emerald-50/30 border-emerald-100 dark:bg-emerald-900/10 dark:border-emerald-800/50': orfano.strategia === 'fondo_riserva',
+                                'bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-amber-200 shadow-sm': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                            }">
                             
                             <div class="flex items-center gap-3">
                                 <div class="p-2 rounded-lg" 
-                                    :class="orfano.strategia === 'conguaglio' ? 'bg-indigo-100 text-indigo-600' : 'bg-rose-50 text-rose-600'">
-                                    <TrendingDown v-if="orfano.is_sforo" class="w-4 h-4" />
+                                    :class="{
+                                        'bg-indigo-100 text-indigo-600': orfano.strategia === 'conguaglio',
+                                        'bg-emerald-100 text-emerald-600': orfano.strategia === 'fondo_riserva',
+                                        'bg-rose-50 text-rose-600': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                                    }">
+                                    <Wallet v-if="orfano.strategia === 'fondo_riserva'" class="w-4 h-4" />
+                                    <TrendingDown v-else-if="orfano.is_sforo" class="w-4 h-4" />
                                     <Wallet v-else class="w-4 h-4" />
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-2">
-    <p class="text-sm font-black text-slate-800 dark:text-slate-200">{{ orfano.nome }}</p>
-    
-    <span v-if="orfano.strategia === 'fondo_riserva'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-600 text-white uppercase shadow-sm">
-        Coperto da Fondo
-    </span>
-    <span v-else-if="orfano.strategia === 'conguaglio'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-indigo-600 text-white uppercase">
-        Sforo autorizzato
-    </span>
-    <span v-else-if="orfano.strategia === 'rata_integrativa'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-600 text-white uppercase">
-        Emetti piano rate
-    </span>
-    <span v-else class="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-600 text-white uppercase shadow-sm">
-        Mancano rate
-    </span>
-</div>
+                                        <p class="text-sm font-black text-slate-800 dark:text-slate-200">{{ orfano.nome }}</p>
+                                        
+                                        <span v-if="orfano.strategia === 'fondo_riserva'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-emerald-600 text-white uppercase shadow-sm">
+                                            Coperto da Fondo
+                                        </span>
+                                        <span v-else-if="orfano.strategia === 'conguaglio'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-indigo-600 text-white uppercase">
+                                            Sforo autorizzato
+                                        </span>
+                                        <span v-else-if="orfano.strategia === 'rata_integrativa'" class="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-600 text-white uppercase">
+                                            Emetti piano rate
+                                        </span>
+                                        <span v-else class="px-1.5 py-0.5 rounded text-[8px] font-black bg-rose-600 text-white uppercase shadow-sm">
+                                            Mancano rate
+                                        </span>
+                                    </div>
                                     <p class="text-[10px] font-bold uppercase text-slate-400">{{ orfano.gestione }}</p>
                                 </div>
                             </div>
                             <div class="text-right">
-    <span class="text-sm font-mono font-black block" 
-        :class="{
-            'text-emerald-600': orfano.strategia === 'fondo_riserva',
-            'text-indigo-600': orfano.strategia === 'conguaglio',
-            'text-rose-600': orfano.strategia === 'nessuna' || orfano.strategia === 'rata_integrativa'
-        }">
-        {{ euro(orfano.importo) }}
-    </span>
-    <span class="text-[8px] font-bold uppercase text-slate-400">
-        <template v-if="orfano.strategia === 'fondo_riserva'">Utilizzo Fondo</template>
-        <template v-else-if="orfano.strategia === 'conguaglio'">A consuntivo</template>
-        <template v-else>Da finanziare</template>
-    </span>
-</div>
+                                <span class="text-sm font-mono font-black block" 
+                                    :class="{
+                                        'text-emerald-600': orfano.strategia === 'fondo_riserva',
+                                        'text-indigo-600': orfano.strategia === 'conguaglio',
+                                        'text-rose-600': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                                    }">
+                                    {{ euro(orfano.importo) }}
+                                </span>
+                                <span class="text-[8px] font-bold uppercase text-slate-400">
+                                    <template v-if="orfano.strategia === 'fondo_riserva'">Utilizzo Fondo</template>
+                                    <template v-else-if="orfano.strategia === 'conguaglio'">A consuntivo</template>
+                                    <template v-else>Da finanziare</template>
+                                </span>
+                            </div>
                         </div>
                         </div>
                         <div class="mt-8 flex gap-3">

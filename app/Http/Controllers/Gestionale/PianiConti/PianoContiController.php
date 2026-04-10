@@ -22,7 +22,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Facades\DB; // <-- Aggiunto
+use Illuminate\Support\Facades\DB; 
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -144,12 +144,19 @@ class PianoContiController extends Controller
         ->orderBy('nome')
         ->get();
 
-        // --- INIZIO FIX SFORO BUDGET & COPERTURA STRAORDINARIA ---
+        // Mappa dei Budget Originali (PRIMA della sovrascrittura)
+        $budgetOriginaliMap = [];
+        foreach ($conti as $c) {
+            $budgetOriginaliMap[$c->id] = $c->importo;
+            foreach ($c->sottoconti as $s) {
+                $budgetOriginaliMap[$s->id] = $s->importo;
+            }
+        }
+
         $rawFatturato = DB::table('righe_fattura')
             ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
             ->where('fatture_passive.esercizio_id', $esercizio->id)
             ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-            // RIMOSSO whereNull('immobile_id') -> Le spese ad personam fanno parte del conto reale!
             ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
             ->groupBy('righe_fattura.conto_id')
             ->get();
@@ -159,23 +166,105 @@ class PianoContiController extends Controller
             $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
         }
         
+        // 4. Addebiti Personali (Widget Audit) - FIX Comproprietà
+        // Leggiamo la riga fattura, raggruppando i nomi dei proprietari con GROUP_CONCAT
+        $addebitiRaw = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->leftJoin('immobili', 'righe_fattura.immobile_id', '=', 'immobili.id')
+            ->leftJoin('anagrafica_immobile', fn($j) => $j->on('immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('anagrafica_immobile.tipologia', 'proprietario'))
+            ->leftJoin('anagrafiche', 'anagrafica_immobile.anagrafica_id', '=', 'anagrafiche.id')
+            ->where('fatture_passive.esercizio_id', $esercizio->id)
+            ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+            ->select(
+                'righe_fattura.id as riga_id', // Group By sulla riga
+                'righe_fattura.conto_id', 
+                'righe_fattura.immobile_id', 
+                'immobili.nome as imm_nome', 
+                'immobili.interno as imm_int', 
+                DB::raw('GROUP_CONCAT(anagrafiche.nome SEPARATOR ", ") as ana_nome'), // Unisce Cecilia e Marta
+                DB::raw('(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as riga_tot')
+            )
+            ->groupBy(
+                'righe_fattura.id',
+                'righe_fattura.conto_id', 
+                'righe_fattura.immobile_id', 
+                'immobili.nome', 
+                'immobili.interno', 
+                'riga_tot'
+            )
+            ->get();
+
+        $addebitiMap = [];
+        // Raccogliamo le spese per CONTO. Attenzione: più righe condominiali nello stesso conto vanno sommate!
+        foreach ($addebitiRaw as $riga) {
+            $contoId = (int)$riga->conto_id;
+            
+            if ($riga->immobile_id) {
+                // È uno spesa privata
+                $addebitiMap[$contoId][] = [
+                    'tipo' => 'privato',
+                    'immobile' => $riga->imm_nome . ' (Int. ' . $riga->imm_int . ')',
+                    'proprietario' => $riga->ana_nome ?? 'N/D',
+                    'importo' => (int) $riga->riga_tot
+                ];
+            } else {
+                // È una spesa condominiale. La accumuliamo se esiste già per questo conto.
+                $found = false;
+                if (isset($addebitiMap[$contoId])) {
+                    foreach ($addebitiMap[$contoId] as &$add) {
+                        if ($add['tipo'] === 'condominiale') {
+                            $add['importo'] += (int) $riga->riga_tot;
+                            $found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!$found) {
+                    $addebitiMap[$contoId][] = [
+                        'tipo' => 'condominiale',
+                        'immobile' => 'Intero Condominio',
+                        'proprietario' => 'Ripartizione Millesimale',
+                        'importo' => (int) $riga->riga_tot
+                    ];
+                }
+            }
+        }
+
         $fattureSforo = DB::table('righe_fattura')
             ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
             ->where('fatture_passive.esercizio_id', $esercizio->id)
             ->where('fatture_passive.stato_approvazione', 'sforo_motivato')
-            // RIMOSSO whereNull('immobile_id')
             ->select('righe_fattura.conto_id', 'fatture_passive.dati_extra', 'righe_fattura.importo_imponibile', 'righe_fattura.importo_iva')
             ->get();
 
         $coperturaVirtualeMap = [];
+        $strategieSforoMap = [];
+
         foreach ($fattureSforo as $row) {
             $datiExtra = is_string($row->dati_extra) ? json_decode($row->dati_extra, true) : (array) $row->dati_extra;
             $strat = $datiExtra['override_budget']['strategia_rientro'] ?? 'conguaglio_fine_anno'; 
+            
+            // Logica intatta per il service
             if (in_array($strat, ['conguaglio_fine_anno', 'fondo_riserva'])) {
                 $coperturaVirtualeMap[(int)$row->conto_id] = ($coperturaVirtualeMap[(int)$row->conto_id] ?? 0) + abs((int)$row->importo_imponibile + (int)$row->importo_iva);
             }
+
+            // Calcolo DELTA per il widget (es. 1952 - 1545 = 407€)
+            $spesoTotale = $fatturatoMap[$row->conto_id] ?? 0;
+            $budgetIniziale = $budgetOriginaliMap[$row->conto_id] ?? 0;
+            $delta = max(0, $spesoTotale - $budgetIniziale);
+
+            if ($delta > 0) {
+                $strategieSforoMap[(int)$row->conto_id][] = [
+                    'strategia'   => $strat,
+                    'importo'     => $delta,
+                    'motivazione' => $datiExtra['override_budget']['motivazione'] ?? 'Nessuna nota specificata'
+                ];
+            }
         }
 
+        // TUA LOGICA ORIGINALE INTATTA PER L'ALBERO VERDE
         foreach ($conti as $conto) {
             $speso = $fatturatoMap[$conto->id] ?? 0;
             if ($speso > $conto->importo) {
@@ -188,7 +277,6 @@ class PianoContiController extends Controller
                 }
             }
         }
-        // --- FINE FIX ---
 
         $coverageMap = [];
         $extraPianiNames = [];
@@ -202,7 +290,6 @@ class PianoContiController extends Controller
                 $coverageMap[(int) $item['id']] = (int) ($item['pianificato'] ?? 0);
             }
 
-            // Recuperiamo i nomi dei piani straordinari per passarli alla Resource
             $extraPianiNames = \App\Models\Gestionale\PianoRate::where('gestione_id', $gestione->id)
                 ->where('tipo', 'straordinario')
                 ->pluck('nome')
@@ -210,45 +297,45 @@ class PianoContiController extends Controller
         }
 
         ContoResource::$coverageMap = $coverageMap;
-        ContoResource::$extraPianiNames = $extraPianiNames; // Passaggio Nome!
+        ContoResource::$extraPianiNames = $extraPianiNames;
+        ContoResource::$addebitiMap = $addebitiMap; // Passata
+        ContoResource::$strategieSforoMap = $strategieSforoMap; // Passata
+        ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
 
-        $fornitori = Fornitore::attivi()
-            ->orderBy('ragione_sociale')
-            ->get(['id', 'ragione_sociale']);
-        
-        $totalePreventivo = (int) Conto::where('piano_conto_id', $pianoConto->id)->sum('importo');
+        // --- FIX: CALCOLO DEL TOTALE VISIVO COERENTE ---
+        // Sommiamo esattamente i valori che abbiamo appena iniettato nell'albero (Fabbisogno Reale Lordo)
+        $totaleVisivoAlbero = 0;
+        foreach ($conti as $conto) {
+            $totaleVisivoAlbero += $conto->importo;
+            foreach ($conto->sottoconti as $sottoconto) {
+                $totaleVisivoAlbero += $sottoconto->importo;
+            }
+        }
+        // -----------------------------------------------
+
+        $fornitori = Fornitore::attivi()->orderBy('ragione_sociale')->get(['id', 'ragione_sociale']);
 
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [
-            'condominio' => [
-                'id'   => $condominio->id,
-                'nome' => $condominio->nome,
-            ],
-            'esercizio' => [
-                'id'   => $esercizio->id,
-                'nome' => $esercizio->nome,
-            ],
+            'condominio' => ['id' => $condominio->id, 'nome' => $condominio->nome],
+            'esercizio' => ['id' => $esercizio->id, 'nome' => $esercizio->nome],
             'pianoConti' => new PianoDeiContiResource($pianoConto),
             'conti'      => ContoResource::collection($conti),
             'fornitori'  => $fornitori,
-            'tabelle'    => Tabella::query()
-                ->where('condominio_id', $condominio->id)
-                ->orderBy('nome')
-                ->get(['id', 'nome']),
-            'totalePreventivo' => $totalePreventivo, 
+            'tabelle'    => Tabella::query()->where('condominio_id', $condominio->id)->orderBy('nome')->get(['id', 'nome']),
+            
+            // Passiamo il totale calcolato dinamicamente
+            'totalePreventivo' => $totaleVisivoAlbero, 
         ]);
     }
 
     public function edit(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): Response
     {
         $pianoConto->loadMissing(['gestione']);
-
         $gestioni = Gestione::whereHas('esercizi', function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
-            })
-            ->with(['esercizi' => function ($query) use ($esercizio) {
+            })->with(['esercizi' => function ($query) use ($esercizio) {
                 $query->where('esercizio_id', $esercizio->id);
-            }])
-            ->get();
+            }])->get();
 
         return Inertia::render('gestionale/pianiDeiConti/PianiDeiContiEdit', [
             'condominio'  => $condominio,
@@ -263,25 +350,13 @@ class PianoContiController extends Controller
         try {
             $data = $request->validated();
             $pianoConto->update($data);
-
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
-                'condominio' => $condominio->id,
-                'esercizio'  => $esercizio->id,
-                'pianoConto' => $pianoConto->id,
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashSuccess(__('gestionale.success_update_piano_conto')));
-
         } catch (\Throwable $e) {
-            Log::error('Error updating piano conti', [
-                'condominio_id'  => $condominio->id,
-                'piano_conto_id' => $pianoConto->id,
-                'message'        => $e->getMessage(),
-                'trace'          => $e->getTraceAsString(),
-            ]);
-
+            Log::error('Error updating piano conti', ['condominio_id' => $condominio->id, 'piano_conto_id' => $pianoConto->id, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
-                'condominio' => $condominio->id,
-                'esercizio'  => $esercizio->id,
-                'pianoConto' => $pianoConto->id,
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashError(__('gestionale.error_update_piano_conto')));
         }
     }
@@ -290,26 +365,13 @@ class PianoContiController extends Controller
     {
         try {
             $pianoConto->delete();
-
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
-                'condominio' => $condominio->id,
-                'esercizio'  => $esercizio->id,
-                'pianoConto' => $pianoConto->id,
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashSuccess(__('gestionale.success_delete_piano_conto')));
-
         } catch (\Throwable $e) {
-            Log::error('Error deleting piano conto', [
-                'condominio_id'  => $condominio->id,
-                'esercizio_id'   => $esercizio->id,
-                'piano_conto_id' => $pianoConto->id,
-                'message'        => $e->getMessage(),
-                'trace'          => $e->getTraceAsString(),
-            ]);
-
+            Log::error('Error deleting piano conto', ['condominio_id' => $condominio->id, 'esercizio_id' => $esercizio->id, 'piano_conto_id' => $pianoConto->id, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
-                'condominio' => $condominio->id,
-                'esercizio'  => $esercizio->id,
-                'pianoConto' => $pianoConto->id,
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashError(__('gestionale.error_delete_piano_conto')));
         }
     }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue'
-import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, Check, Clock } from 'lucide-vue-next'
+import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, ShieldAlert, User, Wallet, Folders } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -53,16 +53,14 @@ const getPercentualeSoggetto = (tabellaId: number, soggetto: string) => {
   return ripartizione ? ripartizione.percentuale : 0
 }
 
-// NUOVA LOGICA COLORE BARRA
 const statusColorClass = computed(() => {
   const stato = props.conto?.stato_copertura
   const dettagli = props.conto?.dettaglio_copertura || []
   
-  // Se è OVER, controlliamo se è colpa di uno spostamento
   if (stato === 'over') {
     const hasShift = dettagli.some(d => d.is_shifted)
-    if (hasShift) return 'bg-purple-600' // Viola: Overbudget "Gestito" (Spostamento)
-    return 'bg-red-600' // Rosso: Overbudget "Allarme" (Errore?)
+    if (hasShift) return 'bg-purple-600'
+    return 'bg-red-600'
   }
 
   switch (stato) {
@@ -145,9 +143,9 @@ const statusColorClass = computed(() => {
       </Card>
 
       <Card>
-        <CardHeader class="p-3">
-          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Info class="w-4 h-4" /> Informazioni
+        <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
+           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+            <Info class="w-4 h-4 text-indigo-600" /> Informazioni
           </CardTitle>
         </CardHeader>
         <CardContent class="grid gap-4 p-3">
@@ -178,47 +176,50 @@ const statusColorClass = computed(() => {
         </CardContent>
       </Card>
 
-      <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw">
-        <CardHeader class="p-3">
-          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <PieChart class="w-4 h-4" /> Analisi copertura
+      <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw" class="mt-3">
+        <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
+           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+            <PieChart class="w-4 h-4 text-indigo-600" /> Analisi copertura
           </CardTitle>
         </CardHeader>
-        <CardContent class="p-2">
+        
+        <CardContent class="p-3 space-y-6">
           
-          <div class="space-y-2 mb-4">
-            <div class="flex justify-between text-sm">
-              <span class="font-medium text-muted-foreground">Impegnato / Preventivato</span>
-              <span class="font-bold">
-                {{ euro(props.conto.impegnato || 0) }} 
-                <span class="text-muted-foreground font-normal">/ {{ props.conto.importo }}</span>
-              </span>
+          <div>
+            <div class="space-y-2 mb-4">
+              <div class="flex justify-between text-sm">
+                <span class="font-medium text-muted-foreground">Impegnato / Preventivato</span>
+                <span class="font-bold">
+                  {{ euro(props.conto.impegnato || 0) }} 
+                  <span class="text-muted-foreground font-normal">/ {{ props.conto.importo }}</span>
+                </span>
+              </div>
+              <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                <div 
+                  class="h-full transition-all duration-500 rounded-full"
+                  :class="statusColorClass"
+                  :style="{ width: `${Math.min(props.conto.percentuale_copertura || 0, 100)}%` }"
+                ></div>
+              </div>
             </div>
-            <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
-              <div 
-                class="h-full transition-all duration-500 rounded-full"
-                :class="statusColorClass"
-                :style="{ width: `${Math.min(props.conto.percentuale_copertura || 0, 100)}%` }"
-              ></div>
-            </div>
-          </div>
 
-          <div class="flex flex-wrap items-center gap-3 mb-6 px-1">
-            <div class="flex items-center gap-1.5">
-              <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Parziale</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Coperto</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <div class="w-2.5 h-2.5 rounded-full bg-purple-600"></div>
-              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Extra Budget (Spostamento)</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <div class="w-2.5 h-2.5 rounded-full bg-red-600"></div>
-              <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Eccedenza</span>
+            <div class="flex flex-wrap items-center gap-3 px-1">
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Parziale</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Coperto</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-purple-600"></div>
+                <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Extra Budget (Spostamento)</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-full bg-red-600"></div>
+                <span class="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Eccedenza</span>
+              </div>
             </div>
           </div>
 
@@ -236,6 +237,7 @@ const statusColorClass = computed(() => {
                   <TableCell class="font-medium py-3">
                     <div class="flex flex-col gap-1">
                       <div class="flex items-center gap-3 group">
+                        
                         <TooltipProvider :delay-duration="100">
                           <Tooltip>
                             <TooltipTrigger as-child>
@@ -244,7 +246,6 @@ const statusColorClass = computed(() => {
                                   v-if="item.stato !== 'approvato'"
                                   class="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-20"
                                 ></span>
-                                
                                 <span 
                                   class="relative inline-flex rounded-full h-2 w-2 border shadow-sm"
                                   :class="item.stato === 'approvato' 
@@ -264,11 +265,12 @@ const statusColorClass = computed(() => {
                         </span>
                       </div>
                       
-                      <p v-if="item.is_shifted" class="text-[10px] text-muted-foreground font-normal pl-5.5 max-w-[220px] truncate italic" :title="item.note || ''">
+                      <p v-if="item.is_shifted || item.note" class="text-[10px] text-muted-foreground font-normal pl-5 max-w-[220px] truncate italic" :title="item.note || ''">
                         {{ item.note }}
                       </p>
                     </div>
                   </TableCell>
+                  
                   <TableCell class="py-3">
                     <Badge v-if="item.is_shifted" variant="outline" class="bg-purple-50 text-purple-700 border-purple-200 rounded-md gap-1">
                       <TrendingUp class="w-3 h-3" /> Spostamento
@@ -283,7 +285,8 @@ const statusColorClass = computed(() => {
                       <Target class="w-3 h-3" /> Diretta
                     </Badge>
                   </TableCell>
-                  <TableCell class="text-right py-3">
+                  
+                  <TableCell class="text-right py-3 font-medium">
                     {{ euro(item.importo) }}
                   </TableCell>
                 </TableRow>
@@ -297,12 +300,97 @@ const statusColorClass = computed(() => {
           </div>
         </CardContent>
       </Card>
+
+      <Card v-if="(props.conto?.addebiti_personali?.length || 0) > 0 || (props.conto?.strategie_sforo?.length || 0) > 0" class="mt-3 overflow-hidden border-indigo-100 dark:border-indigo-900/30">
+        
+        <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
+          <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+            <ShieldAlert class="w-4 h-4 text-indigo-600" /> Audit & Deviazioni 
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent class="p-3 space-y-6 pt-4">
+          
+          <div v-if="(props.conto?.addebiti_personali?.length || 0) > 0">
+            <h4 class="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2.5 flex items-center gap-1.5">
+              <User class="w-3.5 h-3.5 text-slate-400" /> Composizione reale spesa
+            </h4>
+            
+            <div class="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow class="hover:bg-transparent bg-slate-50 dark:bg-slate-900">
+                    <TableHead class="h-9">Destinazione</TableHead>
+                    <TableHead class="h-9">Metodo</TableHead>
+                    <TableHead class="h-9 text-right">Importo</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow v-for="(addebito, index) in props.conto?.addebiti_personali" :key="index" 
+                      :class="addebito.tipo === 'condominiale' ? 'bg-blue-50/30 hover:bg-blue-50/50' : ''">
+                    <TableCell class="py-3 font-medium text-slate-700 dark:text-slate-300">
+                      <div class="flex items-center gap-2">
+                        <Badge v-if="addebito.tipo === 'condominiale'" variant="outline" class="text-[9px] rounded-md bg-blue-100 text-blue-700 border-blue-200">Condominio</Badge>
+                        <Badge v-else variant="outline" class="text-[9px] rounded-md bg-amber-100 text-amber-700 border-amber-200">Privato</Badge>
+                        {{ addebito.immobile }}
+                      </div>
+                    </TableCell>
+                    <TableCell class="py-3 text-slate-600">
+                        <div class="truncate max-w-[110px] xl:max-w-[160px] cursor-help" :title="addebito.proprietario">
+                            {{ addebito.proprietario }}
+                        </div>
+                    </TableCell>
+                    <TableCell class="py-3 text-right font-bold" :class="addebito.tipo === 'condominiale' ? 'text-blue-700' : 'text-slate-900 dark:text-slate-100'">
+                      {{ euro(addebito.importo) }}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <div v-if="(props.conto?.strategie_sforo?.length || 0) > 0">
+            <h4 class="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2.5 flex items-center gap-1.5">
+              <Wallet class="w-3.5 h-3.5 text-slate-400" /> Gestione Sfori Budget
+            </h4>
+            <div class="space-y-2">
+              <div v-for="(sforo, idx) in props.conto?.strategie_sforo" :key="idx" 
+                  class="flex items-start justify-between p-3 border rounded-lg bg-slate-50/50 dark:bg-slate-900/50 shadow-sm border-l-4"
+                  :class="{
+                    'border-l-emerald-500': sforo.strategia === 'fondo_riserva',
+                    'border-l-indigo-500': sforo.strategia === 'conguaglio_fine_anno',
+                    'border-l-amber-500': sforo.strategia !== 'fondo_riserva' && sforo.strategia !== 'conguaglio_fine_anno'
+                  }">
+                
+                <div class="flex-1 min-w-0 pr-3">
+                  <div class="flex items-center gap-2 mb-1.5">
+                    <Badge v-if="sforo.strategia === 'fondo_riserva'" class="text-[9px] rounded-md font-black bg-emerald-600 text-white uppercase border-transparent">Coperto da Fondo</Badge>
+                    <Badge v-else-if="sforo.strategia === 'conguaglio_fine_anno'" class="text-[9px] rounded-md font-black bg-indigo-600 text-white uppercase border-transparent">A Consuntivo</Badge>
+                    <Badge v-else class="text-[9px] font-black bg-amber-600 text-white uppercase rounded-md border-transparent">Richiede Rate</Badge>
+                  </div>
+                  <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                    {{ sforo.motivazione }}
+                  </p>
+                </div>
+                
+                <div class="shrink-0 text-right self-center">
+                  <span class="text-sm font-black" :class="sforo.strategia === 'fondo_riserva' ? 'text-emerald-600' : 'text-indigo-600'">
+                    {{ euro(sforo.importo) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </CardContent>
+      </Card>
+
       <Card v-if="!isCapitolo(props.conto)">
-        <CardHeader class="flex flex-row items-center justify-between space-y-0 p-3">
-          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Percent class="w-4 h-4" />
-            Ripartizione
-            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">
+
+        <CardHeader class="flex flex-row items-center justify-between space-y-0 p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
+          <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+            <Percent class="w-4 h-4 text-indigo-600" /> Ripartizione ordinaria
+            <Badge variant="outline" class="px-2 h-5 rounded-md bg-white dark:bg-slate-900 text-indigo-700 border-indigo-200 dark:border-indigo-800">
               {{ getTabelleAssociate().length }}
             </Badge>
           </CardTitle>
@@ -310,6 +398,7 @@ const statusColorClass = computed(() => {
             <Plus class="w-3.5 h-3.5 mr-1" /> Aggiungi
           </Button>
         </CardHeader>
+
         <CardContent class="p-2">
           <div v-if="getTabelleAssociate().length === 0" class="text-center py-6 text-muted-foreground border border-dashed rounded-md">
             <Link class="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -361,34 +450,43 @@ const statusColorClass = computed(() => {
         </CardContent>
       </Card>
 
-      <Card v-if="props.conto.sottoconti && props.conto.sottoconti.length > 0">
-        <CardHeader class="pb-3">
-          <CardTitle class="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            Sottoconti
-            <Badge variant="secondary" class="ml-2 px-1.5 h-5 rounded-md">{{ props.conto.sottoconti.length }}</Badge>
+      <Card v-if="props.conto.sottoconti && props.conto.sottoconti.length > 0" class="mt-3 overflow-hidden border-indigo-100 dark:border-indigo-900/30">
+        
+        <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50 flex flex-row items-center justify-between space-y-0">
+          <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+            <Folders class="w-4 h-4 text-indigo-600" /> Sottoconti
           </CardTitle>
+          <Badge variant="outline" class="px-2 h-5 rounded-md bg-white dark:bg-slate-900 text-indigo-700 border-indigo-200 dark:border-indigo-800">
+            {{ props.conto.sottoconti.length }}
+          </Badge>
         </CardHeader>
-        <CardContent class="grid gap-2">
+
+        <CardContent class="p-3 pt-4 grid gap-2.5">
           <div
             v-for="sottoconto in props.conto.sottoconti"
             :key="sottoconto.id"
             class="group cursor-pointer"
             @click="selectSottoconto(sottoconto)"
           >
-            <Item class="hover:bg-muted/50 transition-colors border rounded-md">
-              <ItemContent>
-                <ItemTitle class="text-sm font-semibold group-hover:text-primary transition-colors">
+            <Item class="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-xl hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-all duration-200">
+              
+              <ItemContent class="flex-1 min-w-0 pr-4">
+                <ItemTitle class="text-sm font-bold text-slate-700 dark:text-slate-200 group-hover:text-indigo-700 dark:group-hover:text-indigo-400 transition-colors truncate">
                   {{ sottoconto.nome }}
                 </ItemTitle>
-                <ItemDescription v-if="sottoconto.descrizione" class="line-clamp-1 text-xs">
+                <ItemDescription v-if="sottoconto.descrizione" class="line-clamp-1 text-[11px] text-slate-500 mt-0.5">
                   {{ sottoconto.descrizione }}
                 </ItemDescription>
               </ItemContent>
-              <ItemActions>
-                <span :class="sottoconto.tipo === 'spesa' ? 'text-red-600 font-bold' : 'text-emerald-600 font-bold'">
+              
+              <ItemActions class="shrink-0 flex items-center gap-2">
+                <span class="text-sm font-black tabular-nums" 
+                      :class="sottoconto.tipo === 'spesa' ? 'text-slate-900 dark:text-slate-100' : 'text-emerald-600'">
                   {{ sottoconto.importo }}
                 </span>
+                <ArrowRight class="w-4 h-4 text-indigo-400 opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
               </ItemActions>
+
             </Item>
           </div>
         </CardContent>

@@ -76,7 +76,32 @@ class PianoRateQuoteService
                                            ?->data_pagamento;
 
                         // --- FIX V1.9: Rimosso json_decode (Laravel lo casta già in array) ---
+
                         $dettaglioQuote = $q->map(function ($quota) {
+                            $componenteSpesa = $quota->importo;
+                            $componenteSaldo = 0;
+
+                            $meta = $quota->regole_calcolo;
+
+                            if (!empty($meta) && is_array($meta)) {
+                                $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
+                                $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
+                            }
+
+                            // FIX: Esporre immobile e tipo per lo "Spaccato Scontrino" nel frontend
+                            return [
+                                'id'               => $quota->id,
+                                'immobile_id'      => $quota->immobile_id,
+                                'immobile_nome'    => $quota->immobile ? $quota->immobile->nome . ($quota->immobile->interno ? ' (Int. ' . $quota->immobile->interno . ')' : '') : 'Condominio',
+                                'tipo'             => $quota->tipo, // 'ordinaria' o 'saldo_iniziale'
+                                'importo'          => $quota->importo,
+                                'residuo'          => max(0, $quota->importo - $quota->importo_pagato),
+                                'componente_spesa' => $componenteSpesa,
+                                'componente_saldo' => $componenteSaldo,
+                            ];
+                        })->values()->toArray();
+                        
+                 /*        $dettaglioQuote = $q->map(function ($quota) {
                             $componenteSpesa = $quota->importo;
                             $componenteSaldo = 0;
 
@@ -94,7 +119,7 @@ class PianoRateQuoteService
                                 'componente_spesa' => $componenteSpesa,
                                 'componente_saldo' => $componenteSaldo,
                             ];
-                        })->values()->toArray();
+                        })->values()->toArray(); */
 
                         return [
                             'numero'          => $rata->numero_rata,

@@ -16,11 +16,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
-import { BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel } from "lucide-vue-next";
+import PianoRateSpaccatoSheet from '@/components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue';
+import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import VueDatePicker from '@vuepic/vue-datepicker';
@@ -51,6 +53,15 @@ const props = defineProps<{
 const { generatePath, generateRoute } = usePermission();
 const { toItalian } = useDateConverter();
 const { euro } = useCurrencyFormatter();
+
+// 3. Aggiungo queste 3 righe per gestire il pannello laterale
+const isSpaccatoOpen = ref(false);
+const selectedSpaccatoData = ref<any>(null);
+
+const openSpaccato = (item: any) => {
+    selectedSpaccatoData.value = item;
+    isSpaccatoOpen.value = true;
+};
 
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
@@ -917,7 +928,7 @@ const executePublishSilent = () => {
                                             <TooltipContent class="bg-slate-900 text-white border-slate-800 text-xs">
                                                 <p v-if="capitolo.is_parent">Questo gruppo è incluso parzialmente.</p>
                                                 <p v-else>Importo ridotto rispetto al preventivo originale.</p>
-                                                <p class="font-mono mt-1 opacity-80">Totale originale: {{ euro(capitolo.importo_originale) }}</p>
+                                                <p class="mt-1 opacity-80">Totale originale: {{ euro(capitolo.importo_originale) }}</p>
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
@@ -1027,7 +1038,7 @@ const executePublishSilent = () => {
                         <th class="text-right px-4 py-3 bg-emerald-50/20 text-emerald-600 min-w-[100px]">Versato</th>
                         <th class="text-right px-4 py-3 min-w-[100px]">Crediti</th>
                         <th class="text-right px-4 py-3 min-w-[100px] text-xs">Tot. Rate</th>
-                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-40 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)]">Saldo</th>
+                        <th class="text-right px-6 py-3 sticky right-0 bg-gray-50 z-40 text-xs shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.1)] min-w-[140px]">Saldo</th>
                       </tr>
                     </thead>
 
@@ -1037,18 +1048,20 @@ const executePublishSilent = () => {
                           class="hover:bg-gray-50 transition-colors group"
                       >
                         <td class="px-6 py-4 font-medium sticky left-0 bg-white group-hover:bg-gray-50 z-30 border-r border-gray-100 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                          <div v-if="tab === 'anagrafica'">
-                            <Link 
-                              :href="route('admin.gestionale.anagrafiche.estratto-conto', { 
-                                  condominio: props.condominio.id, 
-                                  anagrafica: item.anagrafica.id 
-                              })"
-                              class="font-semibold text-primary hover:text-primary/80 hover:underline cursor-pointer transition-colors block"
-                              title="Vedi estratto conto e storico pagamenti"
-                            >
-                              {{ item.anagrafica.nome }}
-                            </Link>
-                            <div class="text-xs text-muted-foreground mt-0.5">{{ item.anagrafica.indirizzo }}</div>
+                          <div v-if="tab === 'anagrafica'" class="flex items-center justify-between gap-2">
+                            <div>
+                                <Link 
+                                  :href="route('admin.gestionale.anagrafiche.estratto-conto', { 
+                                      condominio: props.condominio.id, 
+                                      anagrafica: item.anagrafica.id 
+                                  })"
+                                  class="font-semibold text-primary hover:text-primary/80 hover:underline cursor-pointer transition-colors block"
+                                  title="Vedi estratto conto e storico pagamenti"
+                                >
+                                  {{ item.anagrafica.nome }}
+                                </Link>
+                                <div class="text-xs text-muted-foreground mt-0.5">{{ item.anagrafica.indirizzo }}</div>
+                            </div>
                           </div>
                           <div v-else>
                             <div class="font-semibold text-gray-900">{{ item.immobile.nome }}</div>
@@ -1101,16 +1114,16 @@ const executePublishSilent = () => {
                                                 <div v-for="dettaglio in [getRateStats(item.rateMap[col.numero].dettaglio_quote)]" :key="'dettaglio-' + col.numero" class="space-y-1">
                                                     <div v-if="dettaglio.spesa !== 0" class="flex justify-between gap-4 text-slate-300">
                                                         <span>Quota ordinaria:</span>
-                                                        <span class="font-mono">{{ euro(dettaglio.spesa) }}</span>
+                                                        <span>{{ euro(dettaglio.spesa) }}</span>
                                                     </div>
                                                     <template v-if="dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0">
                                                         <div v-if="dettaglio.totale_debiti > 0" class="flex justify-between gap-4 text-red-300">
                                                             <span>Debiti pregressi:</span>
-                                                            <span class="font-mono">{{ euro(dettaglio.totale_debiti) }}</span>
+                                                            <span>{{ euro(dettaglio.totale_debiti) }}</span>
                                                         </div>
                                                         <div v-if="dettaglio.totale_crediti < 0" class="flex justify-between gap-4 text-blue-300">
                                                             <span>Crediti pregressi:</span>
-                                                            <span class="font-mono">{{ euro(Math.abs(dettaglio.totale_crediti)) }}</span>
+                                                            <span>{{ euro(Math.abs(dettaglio.totale_crediti)) }}</span>
                                                         </div>
                                                         <div v-if="dettaglio.totale_debiti > 0 && dettaglio.totale_crediti < 0" class="text-[10px] opacity-80 mt-1 text-center font-medium pt-1">
                                                             <span v-if="dettaglio.saldo_netto === 0" class="text-emerald-300">Compensazione totale (0€)</span>
@@ -1120,7 +1133,7 @@ const executePublishSilent = () => {
                                                     </template>
                                                     <div v-if="dettaglio.spesa !== 0 && (dettaglio.totale_debiti > 0 || dettaglio.totale_crediti < 0)" class="flex justify-between gap-4 text-[10px] font-bold pt-1 border-t border-white/10 mt-1">
                                                         <span>Totale rata:</span>
-                                                        <span class="font-mono">{{ euro(dettaglio.spesa + dettaglio.saldo_netto) }}</span>
+                                                        <span>{{ euro(dettaglio.spesa + dettaglio.saldo_netto) }}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1138,20 +1151,50 @@ const executePublishSilent = () => {
                         <td class="px-4 py-2 text-right text-emerald-600 font-medium text-xs bg-emerald-50/10 border-l border-emerald-50">{{ euro(item.versatoRiga) }}</td>
                         <td class="px-4 py-2 text-right text-blue-600 font-medium text-xs">{{ item.creditiRiga > 0 ? euro(item.creditiRiga) : "—" }}</td>
                         <td class="px-4 py-2 text-right font-medium text-xs text-gray-700">{{ euro(item.totaleRate) }}</td>
-                        <td class="px-6 py-4 text-right font-bold sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
-                            :class="{
-                                'text-red-600': item.totale > 0.01,
-                                'text-blue-600': item.totale < -0.01,
-                                'text-emerald-600': Math.abs(item.totale) <= 0.01
-                            }"
-                        >
-                          <div class="flex flex-col items-end">
-                              <span>{{ euro(Math.abs(item.totale)) }}</span>
-                              <span v-if="item.totale > 0.01" class="text-[9px] uppercase opacity-70">Deve</span>
-                              <span v-else-if="item.totale < -0.01" class="text-[9px] uppercase opacity-70">Credito</span>
-                              <span v-else class="text-[9px] uppercase opacity-70">Ok</span>
-                          </div>
+                        <td class="px-4 py-3 sticky right-0 bg-white group-hover:bg-gray-50 z-30 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                            <div class="flex items-center justify-end gap-3">
+                                
+                                <div class="flex flex-col items-end"
+                                    :class="{
+                                        'text-red-600': item.totale > 0.01,
+                                        'text-blue-600': item.totale < -0.01,
+                                        'text-emerald-600': Math.abs(item.totale) <= 0.01
+                                    }"
+                                >
+                                  <span class="font-bold">{{ euro(Math.abs(item.totale)) }}</span>
+                                  <span v-if="item.totale > 0.01" class="text-[9px] uppercase font-bold opacity-70">Deve</span>
+                                  <span v-else-if="item.totale < -0.01" class="text-[9px] uppercase font-bold opacity-70">Credito</span>
+                                  <span v-else class="text-[9px] uppercase font-bold opacity-70">Ok</span>
+                                </div>
+
+                                <DropdownMenu v-if="tab === 'anagrafica'">
+                                    <DropdownMenuTrigger as-child>
+                                        <Button variant="ghost" class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 data-[state=open]:bg-indigo-50 data-[state=open]:text-indigo-600">
+                                            <span class="sr-only">Apri menu azioni</span>
+                                            <MoreVertical class="h-4 w-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" class="w-48 shadow-xl rounded-xl border-slate-100 p-1.5">
+                                        <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                                            Azioni condòmino
+                                        </DropdownMenuLabel>
+                                        <DropdownMenuSeparator class="bg-slate-100" />
+                                        
+                                        <DropdownMenuItem @click="openSpaccato(item)" class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                            <ReceiptText class="h-4 w-4 text-indigo-500" />
+                                            <span class="font-medium text-sm">Spaccato finanziario</span>
+                                        </DropdownMenuItem>
+                                        
+                                       <!--  <DropdownMenuItem disabled class="flex items-center gap-2.5 px-2 py-2 rounded-lg opacity-50 mt-1">
+                                            <Mail class="h-4 w-4 text-slate-400" />
+                                            <span class="font-medium text-sm">Invia Promemoria</span>
+                                        </DropdownMenuItem> -->
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
+
+                            </div>
                         </td>
+
                       </tr>
                     </tbody>
 
@@ -1165,17 +1208,22 @@ const executePublishSilent = () => {
                         <td class="px-4 py-3 text-right text-emerald-600 bg-emerald-50/20 border-l border-emerald-100">{{ euro(aggregates.totaleVersato) }}</td>
                         <td class="px-4 py-3 text-right text-blue-600">{{ euro(aggregates.creditiTotali) }}</td>
                         <td class="px-4 py-3 text-right text-gray-700">{{ euro(aggregates.totaleTeorico) }}</td>
-                        <td class="px-6 py-3 text-right sticky right-0 bg-gray-50 z-40 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]"
-                            :class="{
-                                'text-red-600': aggregates.totaleGenerale > 0.01,
-                                'text-blue-600': aggregates.totaleGenerale < -0.01,
-                                'text-emerald-600': Math.abs(aggregates.totaleGenerale) <= 0.01
-                            }"
-                        >
-                          {{ euro(Math.abs(aggregates.totaleGenerale)) }}
-                          <div class="text-[9px] font-normal opacity-75">
-                              {{ aggregates.totaleGenerale > 0.01 ? 'DEBITO TOT.' : (aggregates.totaleGenerale < -0.01 ? 'CREDITO TOT.' : 'PAREGGIO') }}
-                          </div>
+                        <td class="px-4 py-3 sticky right-0 bg-gray-50 z-40 border-l shadow-[-2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                            <div class="flex items-center justify-end gap-3">
+                                <div class="flex flex-col items-end"
+                                    :class="{
+                                        'text-red-600': aggregates.totaleGenerale > 0.01,
+                                        'text-blue-600': aggregates.totaleGenerale < -0.01,
+                                        'text-emerald-600': Math.abs(aggregates.totaleGenerale) <= 0.01
+                                    }"
+                                >
+                                  <span class="font-bold">{{ euro(Math.abs(aggregates.totaleGenerale)) }}</span>
+                                  <div class="text-[9px] font-bold opacity-75">
+                                      {{ aggregates.totaleGenerale > 0.01 ? 'DEBITO TOT.' : (aggregates.totaleGenerale < -0.01 ? 'CREDITO TOT.' : 'PAREGGIO') }}
+                                  </div>
+                                </div>
+                                <div v-if="tab === 'anagrafica'" class="w-8"></div>
+                            </div>
                         </td>
                       </tr>
                     </tfoot>
@@ -1240,7 +1288,7 @@ const executePublishSilent = () => {
                     </div>
                     <div v-if="props.pianoRate.data_delibera_assemblea" class="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-500 space-y-1 mt-2">
                         <p class="font-bold text-slate-700">Ultima delibera registrata:</p>
-                        <p>Data: <span class="font-mono">{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span></p>
+                        <p>Data: <span>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span></p>
                         <p v-if="props.pianoRate.numero_verbale">Verbale: {{ props.pianoRate.numero_verbale }}</p>
                     </div>
                     <div class="flex gap-3 pt-2 mt-4">
@@ -1388,7 +1436,7 @@ const executePublishSilent = () => {
                     <div v-for="o in copertura?.orfani" :key="o.id" class="flex items-start space-x-2">
                         <Checkbox :id="`orphan-${o.id}`" v-model="orphanCheckboxes[o.id]" />
                         <label :for="`orphan-${o.id}`" class="text-xs font-medium leading-none cursor-pointer pt-0.5 select-none">
-                            {{ o.nome }} <span class="font-mono text-amber-700">({{ euro(o.importo) }})</span>
+                            {{ o.nome }} <span class="text-amber-700">({{ euro(o.importo) }})</span>
                         </label>
                     </div>
                 </div>
@@ -1444,6 +1492,11 @@ const executePublishSilent = () => {
         :sources="props.sources"
         :destinations="props.destinations"
         @success="showFeedback('Budget Spostato', 'Operazione completata con successo. Il residuo è stato aggiornato.', false)"
+    />
+
+    <PianoRateSpaccatoSheet 
+        v-model:open="isSpaccatoOpen"
+        :anagrafica-data="selectedSpaccatoData"
     />
 
   </GestionaleLayout>

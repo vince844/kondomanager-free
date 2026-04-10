@@ -8,33 +8,24 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ContoResource extends JsonResource
 {
-    /**
-     * Mappa precalcolata dal BudgetCoverageService.
-     * Popolata dal PianoContiController::show() prima di chiamare la collection.
-     * Formato: [conto_id => importo_pianificato_centesimi]
-     */
     public static array $coverageMap = [];
     public static array $extraPianiNames = [];
-    
-    // Aggiungiamo la proprietà mancante per evitare errori dal controller
     public static array $pianiCoinvoltiMap = [];
+    
+    // Nuove mappe aggiunte per il widget
+    public static array $addebitiMap = []; 
+    public static array $strategieSforoMap = []; 
+    public static array $budgetOriginaliMap = []; 
 
     public function toArray(Request $request): array
     {
-        // ---------------------------------------------------------
-        // 1. IMPEGNATO — letto dalla mappa precalcolata dal Service
-        // ---------------------------------------------------------
         $impegnato = (int) (self::$coverageMap[$this->id] ?? 0);
 
-        // ---------------------------------------------------------
-        // 2. DETTAGLIO VISIVO per la tabella nel pannello dettaglio
-        // ---------------------------------------------------------
         $fondiDiretti      = $this->pianiRate()->withPivot(['importo', 'note'])->get();
         $dettaglioPiani    = [];
         $hasCoperturaNULL  = false;
         $totaleNonSpostati = 0;
 
-        // Passo 1: identifica NULL e somma fissi non-spostamento
         foreach ($fondiDiretti as $piano) {
             $nota          = $piano->pivot->note ?? '';
             $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') ||
@@ -47,7 +38,6 @@ class ContoResource extends JsonResource
             }
         }
 
-        // Passo 2: costruisci le righe visive
         foreach ($fondiDiretti as $piano) {
             $nota          = $piano->pivot->note ?? '';
             $isSpostamento = str_contains(strtolower($nota), 'sposta spesa') ||
@@ -86,7 +76,6 @@ class ContoResource extends JsonResource
             }
         }
 
-        // Passo 3: aggiunge riga push-down visiva se necessario
         $totaleDirettoVisivo  = array_sum(array_column($dettaglioPiani, 'importo'));
         $quotaIndirettaVisiva = 0;
         $quotaPushDownTarget  = $impegnato - $totaleDirettoVisivo;
@@ -110,16 +99,10 @@ class ContoResource extends JsonResource
             }
         }
 
-        // --- INIZIO FIX: INIEZIONE VISIVA PIANI STRAORDINARI ---
-        // Se il BudgetCoverageService ha trovato soldi (impegnato) ma non ci sono 
-        // righe visive sufficienti dai piani ordinari, il delta è chiaramente lo Straordinario!
-        // --- INIZIO FIX: INIEZIONE VISIVA PIANI STRAORDINARI ---
         $mancanteStraordinario = $impegnato - $totaleDirettoVisivo - $quotaIndirettaVisiva;
         
         if ($mancanteStraordinario > 0) {
-            // Usiamo il nome reale se disponibile, altrimenti testo fallback
             $nomeRiga = !empty(self::$extraPianiNames) ? implode(', ', self::$extraPianiNames) : 'Piano rate straordinario';
-            
             $dettaglioPiani[] = [
                 'piano'      => $nomeRiga, 
                 'stato'      => 'approvato',
@@ -130,11 +113,7 @@ class ContoResource extends JsonResource
                 'note'       => 'Copertura generata dal piano rate straordinario.',
             ];
         }
-        // --- FINE FIX ---
 
-        // ---------------------------------------------------------
-        // 3. STATO COPERTURA
-        // ---------------------------------------------------------
         $percentualeCopertura = 0;
         $statoCopertura       = 'empty';
 
@@ -158,7 +137,6 @@ class ContoResource extends JsonResource
             return strtolower(trim((string)$statoPuro)) === 'approvato';
         });
 
-        // Aggiungiamo i piani straordinari alla lista dei nomi collegati
         $pianiCollegati = $this->pianiRate->pluck('nome')->toArray();
         if ($mancanteStraordinario > 0) {
             $pianiCollegati[] = 'Piano Rate Straordinario';
@@ -170,6 +148,11 @@ class ContoResource extends JsonResource
             'parent_id'             => $this->parent_id,
             'importo'               => MoneyHelper::format($this->importo),
             'importo_raw'           => $this->importo,
+            // Valori aggiunti per il widget Audit:
+            'budget_originale_raw'  => self::$budgetOriginaliMap[$this->id] ?? $this->importo,
+            'addebiti_personali'    => self::$addebitiMap[$this->id] ?? [],
+            'strategie_sforo'       => self::$strategieSforoMap[$this->id] ?? [],
+            // ------------------------------------
             'nome'                  => $this->nome,
             'descrizione'           => $this->descrizione,
             'tipo'                  => $this->tipo,
