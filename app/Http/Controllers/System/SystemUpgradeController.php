@@ -11,11 +11,16 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class SystemUpgradeController extends Controller
 {
     /**
      * Dashboard aggiornamenti
+     * Gestisce la visualizzazione della pagina principale degli aggiornamenti.
+     * Controlla se la funzione di auto-update è abilitata per questa installazione
+     * e recupera le informazioni sull'ultima versione disponibile e sullo stato
+     * di un eventuale aggiornamento già in corso.
      */
     public function index(UpdateService $service)
     {
@@ -36,6 +41,10 @@ class SystemUpgradeController extends Controller
 
     /**
      * Lancio aggiornamento
+     * Inizializza il processo di aggiornamento automatico.
+     * Verifica l'effettiva disponibilità di una nuova release, prepara i file necessari
+     * (come il bridge di aggiornamento) e genera un token di sicurezza. Ritorna la vista
+     * che guiderà l'utente al trigger effettivo del download/installazione.
      */
     public function launch(UpdateService $service)
     {
@@ -73,6 +82,9 @@ class SystemUpgradeController extends Controller
 
     /**
      * Conferma post-aggiornamento
+     * Punto di arrivo dopo che i file fisici sono stati sostituiti dal processo di update.
+     * Confronta la versione registrata nel database con quella attuale dei file di sistema
+     * per determinare se è necessario eseguire il processo di finalizzazione (migrazioni).
      */
     public function confirm(GeneralSettings $settings)
     {
@@ -88,6 +100,10 @@ class SystemUpgradeController extends Controller
 
     /**
      * Finalizzazione aggiornamento
+     * Il cuore del processo post-sostituzione file. Applica le modifiche strutturali
+     * necessarie (migrazioni del database), allinea la versione nel database, pulisce
+     * tutte le cache di sistema per evitare inconsistenze e infine rimuove i file
+     * temporanei creati durante il processo di aggiornamento.
      */
     public function run() 
     {
@@ -96,12 +112,13 @@ class SystemUpgradeController extends Controller
 
             // 1. Migrazioni con retry logic
             $this->runMigrationsWithRetry();
-            
-            // 2. Aggiornamento versione DB
-            $settings = app(GeneralSettings::class);
-            $settings->version = config('app.version');
-            $settings->save();
 
+           // 2. Aggiornamento versione DB (Bypassiamo Spatie Singleton)
+           DB::table('settings')
+                ->where('group', 'general')
+                ->where('name', 'version')
+                ->update(['payload' => json_encode(config('app.version'))]);
+            
             // 3. Cache clearing
             Artisan::call('optimize:clear'); 
             Artisan::call('view:clear');
@@ -143,6 +160,8 @@ class SystemUpgradeController extends Controller
 
     /**
      * Changelog
+     * Mostra le novità introdotte dall'aggiornamento appena installato,
+     * caricando i dati dal file JSON corrispondente alla versione corrente e alla lingua.
      */
     public function showChangelog(GeneralSettings $settings)
     {
@@ -155,6 +174,11 @@ class SystemUpgradeController extends Controller
      * HELPERS
      */
     
+    /**
+     * Esegue le migrazioni del database con una logica di tolleranza agli errori.
+     * Se una migrazione fallisce (es. per un blocco temporaneo del DB), ritenta
+     * l'esecuzione fino a un numero massimo di tentativi specificato.
+     */
     private function runMigrationsWithRetry(int $maxAttempts = 3): void
     {
         $attempts = 0;
@@ -181,6 +205,11 @@ class SystemUpgradeController extends Controller
         }
     }
 
+    /**
+     * Verifica e, se necessario, crea il link simbolico per la cartella di storage pubblico.
+     * Essenziale affinché i file caricati dall'utente siano accessibili via web
+     * anche dopo un aggiornamento che potrebbe aver rimosso la directory `public`.
+     */
     private function ensureStorageLink(): void
     {
         $target = storage_path('app/public');
@@ -195,6 +224,11 @@ class SystemUpgradeController extends Controller
         }
     }
 
+    /**
+     * Rimuove eventuali script "ponte" o file di setup lasciati dal processo di
+     * auto-update nella root del progetto o nella cartella public, controllando il loro
+     * contenuto per non eliminare per sbaglio file legittimi.
+     */
     private function cleanupInstallerJunk(): void
     {
         $paths = [
@@ -214,6 +248,11 @@ class SystemUpgradeController extends Controller
         }
     }
 
+    /**
+     * Recupera il contenuto del changelog associato alla versione corrente.
+     * Cerca prima la versione tradotta in base alla lingua impostata; se non la trova,
+     * tenta un fallback sull'italiano e, in ultima istanza, genera un payload di default.
+     */
     private function getChangelog(GeneralSettings $settings): array
     {
         $version = config('app.version');
@@ -236,6 +275,11 @@ class SystemUpgradeController extends Controller
         return json_decode(file_get_contents($path), true) ?? [];
     }
 
+    /**
+     * Elimina le vecchie directory di backup create durante precedenti processi di
+     * aggiornamento, mantenendo solo quelle più recenti (create da meno di 24 ore)
+     * per evitare di saturare lo spazio su disco.
+     */
     private function cleanupOldBackups(): void
     {
         try {

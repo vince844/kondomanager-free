@@ -1,0 +1,13 @@
+{
+    "features": [
+        "Accounting Intelligence Core: Novo motor contábil 'Penny-Perfect' baseado em centavos, ancoragem atômica de despesas e quadratura matemática absoluta",
+        "Planos de Parcelamento Extraordinários: Gestão de despesas imprevistas fora do orçamento com um 'Carrinho de Faturas' dinâmico e bloqueio legal para deliberações (Art. 1135 c.c.)",
+        "Input de Faturas 2.0 & Despesas Pessoais: Divisão de faturas em múltiplas linhas, débito direto exclusivo para uma única unidade imobiliária e carregamento de dívidas anteriores",
+        "Gestão de Fundos e Excedentes (O Tridente): Neutralização de excessos de orçamento através de ajuste de saldo, parcelas suplementares ou retirada direta do Fundo de Reserva em Partidas Dobradas",
+        "Smart Tenant Wallet: Novo 'Cofrinho' para gerir créditos, declarações de intenção para compensação e nova UI 'Zero-Anxiety' para pagamentos recebidos",
+        "Financial X-Ray & Dashboard Audit: Detalhamento financeiro lateral transparente para cada condômino, emissão de parcelas 'silenciosa' e automação para uma Inbox sempre limpa",
+        "Cloud Scheduler Security (Defense in Depth): Proteção de 5 níveis para cron jobs externos com detecção de Brute-Force, Atomic Lock e Whitelist de IP com autocura (Auto-Healing)",
+        "Motor de E-mail Agnóstico (Double-Bridge): Nova gestão SMTP dinâmica (Database > Env), totalmente compatível tanto com hospedagem compartilhada quanto com configurações VPS/Supervisor",
+        "Otimização de UX: Novos filtros persistentes, reorganização em cascata do Extrato de Conta e redesenho semântico de badges de status e estatísticas"
+    ]
+}

@@ -1,0 +1,13 @@
+{
+    "features": [
+        "Accounting Intelligence Core: New 'Penny-Perfect' accounting engine based on cents, atomic anchoring of expenses, and absolute mathematical balancing",
+        "Extraordinary Installment Plans: Management of unexpected out-of-budget expenses with a dynamic 'Invoice Cart' and legal block for resolutions (Art. 1135 c.c.)",
+        "Invoice Input 2.0 & Personal Expenses: Multi-line invoice splitting, exclusive direct debit to a single property unit, and loading of previous debts",
+        "Funds and Overruns Management (The Trident): Neutralization of over-budgets via balance adjustment, supplementary installments, or direct withdrawal from the Reserve Fund in Double-Entry",
+        "Smart Tenant Wallet: New 'Piggy Bank' to manage credits, statements of intent for compensation, and new 'Zero-Anxiety' UI for received payments",
+        "Financial X-Ray & Dashboard Audit: Transparent lateral financial breakdown for each tenant, 'silent' installment issuance, and automation for an always-clean Inbox",
+        "Cloud Scheduler Security (Defense in Depth): 5-level protection for external cron jobs with Brute-Force detection, Atomic Lock, and self-healing IP Whitelist (Auto-Healing)",
+        "Agnostic Mail Engine (Double-Bridge): New dynamic SMTP management (Database > Env), fully compatible with both shared hosting and VPS/Supervisor configurations",
+        "UX Optimization: New persistent filters, waterfall reorganization of the Account Statement, and semantic redesign of status badges and statistics"
+    ]
+}

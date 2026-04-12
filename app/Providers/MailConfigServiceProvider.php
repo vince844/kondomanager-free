@@ -10,11 +10,11 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Provider centralizzato per la configurazione Mail.
- * 
- * Funzionalità:
+ * * Funzionalità:
  * - Configurazione SMTP da Database con fallback su .env
  * - Sincronizzazione automatica per Queue Jobs
  * - Reset intelligente del Mail Manager
@@ -31,6 +31,14 @@ class MailConfigServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // ================================================================
+        // 0. SAFETY CHECK: BYPASS DURANTE L'INSTALLAZIONE
+        // Se l'app non è ancora configurata o il DB è giù, ci fermiamo qui
+        // ================================================================
+        if (!$this->isDatabaseReady()) {
+            return;
+        }
+
         // Verifica che la tabella settings esista (evita crash durante migrazioni)
         if (!Schema::hasTable('settings')) {
             return;
@@ -62,15 +70,29 @@ class MailConfigServiceProvider extends ServiceProvider
                     $this->syncMailConfig($jobName);
                 }
             } catch (\Throwable $e) {
-                Log::error('Mail Queue Sync Error: ' . $e->getMessage());
+                Log::error('Mail queue sync error: ' . $e->getMessage());
             }
         });
     }
 
     /**
+     * Helper per verificare in modo sicuro se possiamo parlare col DB.
+     */
+    protected function isDatabaseReady(): bool
+    {
+        try {
+            // Controlla se la connessione base risponde (senza lanciare eccezioni fatali)
+            DB::connection()->getPdo();
+            return true;
+        } catch (\Exception $e) {
+            // Il DB non è configurato o irraggiungibile (es. installazione in corso)
+            return false;
+        }
+    }
+
+    /**
      * Sincronizza la configurazione SMTP dal Database al Runtime.
-     * 
-     * @param string|null $jobName Nome del job (solo per logging)
+     * * @param string|null $jobName Nome del job (solo per logging)
      * @return void
      */
     protected function syncMailConfig(?string $jobName = null): void
@@ -133,8 +155,6 @@ class MailConfigServiceProvider extends ServiceProvider
             // ============================================================
             // RESET DEL MAIL MANAGER
             // ============================================================
-            // Forza Laravel a ricreare le istanze dei mailer.
-            // Essenziale per worker persistenti (Supervisor) che restano attivi per ore.
             if (app()->resolved('mail.manager')) {
                 app('mail.manager')->forgetMailers();
             }
@@ -148,8 +168,7 @@ class MailConfigServiceProvider extends ServiceProvider
 
     /**
      * Decripta la password SMTP in modo sicuro.
-     * 
-     * @param string|null $encrypted Password criptata
+     * * @param string|null $encrypted Password criptata
      * @return string|null Password in chiaro
      */
     protected function decryptPassword(?string $encrypted): ?string
@@ -168,18 +187,12 @@ class MailConfigServiceProvider extends ServiceProvider
 
     /**
      * Identifica se un job necessita della configurazione Mail.
-     * 
-     * Pattern riconosciuti:
-     * - Qualsiasi job con "Mail" o "Notification" nel nome
-     * - SendQueuedNotifications (notifiche Laravel)
-     * - SendQueuedMailable (Mail::queue())
-     * 
-     * @param string $jobName Nome completo della classe del job
+     * * @param string $jobName Nome completo della classe del job
      * @return bool
      */
     protected function isMailJob(string $jobName): bool
     {
-        // Controllo generico: se contiene "Mail" o "Notification" è quasi certamente email
+        // Controllo generico
         if (str_contains($jobName, 'Mail') || str_contains($jobName, 'Notification')) {
             return true;
         }
