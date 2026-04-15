@@ -1,39 +1,39 @@
 <?php
 
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Facades\Artisan;
 
 // ============================================================================
 // 1. MANUTENZIONE DATABASE (Garbage Collector)
 // ============================================================================
-// Esegue il pruning dei modelli (es. Eventi vecchi) ogni notte a mezzanotte.
-Schedule::command('model:prune')->daily();
+Schedule::call(function () {
+    Artisan::call('model:prune');
+})->name('system-prune')->daily(); 
 
 // ============================================================================
 // 2. CONTROLLO AGGIORNAMENTI SISTEMA (Notifica Badge)
 // ============================================================================
-// Controlla gli aggiornamenti ogni notte alle 04:00 per non sovrapporsi al backup/prune.
-Schedule::command('system:check-updates')
-    ->dailyAt('04:00')
-    ->withoutOverlapping()
-    ->runInBackground();
+Schedule::call(function () {
+    Artisan::call('system:check-updates');
+})->name('check-updates')->dailyAt('04:00')->withoutOverlapping(); 
 
 // ============================================================================
 // 3. CONTROLLO AGGIORNAMENTI IP CRON-JOB.ORG
 // ============================================================================
-// Aggiornamento automatico IP di cron-job.org
-Schedule::command('cronjob:update-ips')
-    ->dailyAt('05:00')
-    ->withoutOverlapping()
-    ->runInBackground();
+Schedule::call(function () {
+    Artisan::call('cronjob:update-ips');
+})->name('update-cron-ips')->dailyAt('05:00')->withoutOverlapping(); 
 
 // ============================================================================
 // 4. WORKER PER HOSTING CONDIVISI (Logica "Svuota e Spegni")
 // ============================================================================
-// Si attiva SOLO se configurato in config/app.php.
-// Fondamentale per switchare tra Supervisor (false) e Hosting Condiviso (true).
 if (config('app.scheduler_queue_worker')) {
-    Schedule::command('queue:work --stop-when-empty --max-time=55 --tries=3 --backoff=10')
-        ->everyMinute()
-        ->withoutOverlapping()
-        ->runInBackground();
+    Schedule::call(function () {
+        Artisan::call('queue:work', [
+            '--stop-when-empty' => true,
+            '--max-time' => 55,
+            '--tries' => 3,
+            '--backoff' => 10,
+        ]);
+    })->name('sync-queue-worker')->everyMinute()->withoutOverlapping(); // <-- Aggiunto ->name('sync-queue-worker')
 }

@@ -7,6 +7,8 @@ use App\Models\Esercizio;
 use App\Models\Gestionale\ContoContabile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Enums\ContoContabileCategoria;
+use App\Enums\ContoContabileTipo; 
 
 /**
  * Gestisce la logica di business principale per la creazione e l'inizializzazione
@@ -102,7 +104,6 @@ class CondominioService
         }
 
         // Assicuriamoci che questa gestione sia agganciata all'esercizio appena creato.
-        // Se usi una tabella pivot (esercizio_gestione), usa attach():
         if (!$gestione->esercizi()->where('esercizio_id', $esercizio->id)->exists()) {
             $gestione->esercizi()->attach($esercizio->id);
             Log::info("Gestione ordinaria agganciata all'Esercizio ID {$esercizio->id}");
@@ -134,8 +135,8 @@ class CondominioService
                 'parent_id'   => null,
                 'nome'        => 'ATTIVO',
                 'descrizione' => 'Sezione patrimoniale delle attività (liquidità e crediti)',
-                'tipo'        => 'attivo',      
-                'categoria'   => 'liquidita',   
+                'tipo'        => ContoContabileTipo::ATTIVO->value,      
+                'categoria'   => ContoContabileCategoria::LIQUIDITA->value,   
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 0
@@ -149,8 +150,8 @@ class CondominioService
                 'parent_id'   => null,
                 'nome'        => 'PASSIVO',
                 'descrizione' => 'Sezione patrimoniale delle passività (debiti e fondi)',
-                'tipo'        => 'passivo',     
-                'categoria'   => 'fondi',       
+                'tipo'        => ContoContabileTipo::PASSIVO->value,     
+                'categoria'   => ContoContabileCategoria::FONDI->value,       
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 0
@@ -167,8 +168,8 @@ class CondominioService
                 'codice'      => '1101',
                 'nome'        => 'Crediti verso Condomini',
                 'descrizione' => 'Crediti vantati dal condominio per rate emesse e non ancora pagate',
-                'tipo'        => 'attivo',
-                'categoria'   => 'crediti',     
+                'tipo'        => ContoContabileTipo::ATTIVO->value,
+                'categoria'   => ContoContabileCategoria::CREDITI->value,     
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -183,8 +184,8 @@ class CondominioService
                 'codice'      => '1001',
                 'nome'        => 'Cassa Contanti',
                 'descrizione' => 'Fondo liquidità in contanti a disposizione del condominio',
-                'tipo'        => 'attivo',
-                'categoria'   => 'liquidita',   
+                'tipo'        => ContoContabileTipo::ATTIVO->value,
+                'categoria'   => ContoContabileCategoria::LIQUIDITA->value,   
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -199,8 +200,8 @@ class CondominioService
                 'codice'      => '2101',
                 'nome'        => 'Anticipi da Condomini',
                 'descrizione' => 'Somme versate in eccedenza dai condòmini (crediti a loro favore)',
-                'tipo'        => 'passivo',
-                'categoria'   => 'debiti',      
+                'tipo'        => ContoContabileTipo::PASSIVO->value,
+                'categoria'   => ContoContabileCategoria::DEBITI->value,      
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -215,8 +216,8 @@ class CondominioService
                 'codice'      => '2201',
                 'nome'        => 'Debiti v/Fornitori',
                 'descrizione' => 'Debiti verso i fornitori per fatture registrate e non ancora saldate',
-                'tipo'        => 'passivo',
-                'categoria'   => 'debiti',      
+                'tipo'        => ContoContabileTipo::PASSIVO->value,
+                'categoria'   => ContoContabileCategoria::DEBITI->value,      
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -231,8 +232,8 @@ class CondominioService
                 'codice'      => '2202',
                 'nome'        => 'Debiti v/Erario per Ritenute',
                 'descrizione' => 'Trattenute operate da versare allo Stato tramite F24',
-                'tipo'        => 'passivo',
-                'categoria'   => 'debiti',      
+                'tipo'        => ContoContabileTipo::PASSIVO->value,
+                'categoria'   => ContoContabileCategoria::DEBITI->value,      
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -247,8 +248,8 @@ class CondominioService
                 'codice'      => '3001',
                 'nome'        => 'Gestione Rate',
                 'descrizione' => 'Contropartita contabile per l\'emissione delle rate ai condòmini',
-                'tipo'        => 'passivo',     
-                'categoria'   => 'fondi',       
+                'tipo'        => ContoContabileTipo::PASSIVO->value,     
+                'categoria'   => ContoContabileCategoria::FONDI->value,       
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -263,8 +264,8 @@ class CondominioService
                 'codice'      => '2301', 
                 'nome'        => 'Fondo Passate Gestioni',
                 'descrizione' => 'Fondo per debiti e spese di competenza di esercizi precedenti',
-                'tipo'        => 'passivo',
-                'categoria'   => 'fondi',
+                'tipo'        => ContoContabileTipo::PASSIVO->value,
+                'categoria'   => ContoContabileCategoria::FONDI->value,
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -279,8 +280,8 @@ class CondominioService
                 'codice'      => '4001', 
                 'nome'        => 'Sopravvenienze Passive',
                 'descrizione' => 'Costi relativi a esercizi precedenti non contabilizzati (Art. 1130-bis c.c.)',
-                'tipo'        => 'costo', // Conto economico, non patrimoniale
-                'categoria'   => 'straordinario',
+                'tipo'        => ContoContabileTipo::COSTO->value, 
+                'categoria'   => ContoContabileCategoria::COSTI->value,
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1
@@ -295,8 +296,8 @@ class CondominioService
                 'codice'      => '6001',
                 'nome'        => 'Costi per Servizi',
                 'descrizione' => 'Manutenzioni, pulizie, utenze e servizi generali del condominio',
-                'tipo'        => 'costo',
-                'categoria'   => 'costi',
+                'tipo'        => ContoContabileTipo::COSTO->value,
+                'categoria'   => ContoContabileCategoria::COSTI->value,
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1,
@@ -311,8 +312,8 @@ class CondominioService
                 'codice'      => '6002',
                 'nome'        => 'Compensi Professionisti',
                 'descrizione' => 'Amministratore, avvocati, tecnici e consulenti',
-                'tipo'        => 'costo',
-                'categoria'   => 'costi',
+                'tipo'        => ContoContabileTipo::COSTO->value,
+                'categoria'   => ContoContabileCategoria::COSTI->value,
                 'di_sistema'  => true,
                 'attivo'      => true,
                 'livello'     => 1,
