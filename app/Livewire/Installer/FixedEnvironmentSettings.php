@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Livewire\Installer; // <--- NOTA IL CAMBIO DI NAMESPACE
+namespace App\Livewire\Installer; 
 
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Layout;

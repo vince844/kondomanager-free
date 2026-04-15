@@ -16,6 +16,8 @@ use Illuminate\Database\Events\MigrationsEnded;
 use App\Settings\GeneralSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
+use Livewire\Livewire; 
+use App\Livewire\Installer\InstallerWizard; 
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -32,6 +34,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // ====================================================================
+        // OVERRIDE INSTALLER LIBRERIA TERZE PARTI (Fix Spatie Cache)
+        // Agisce SOLO se l'installazione guidata è attiva
+        // ====================================================================
+        if (config('installer.run_installer') && class_exists(Livewire::class) && class_exists(InstallerWizard::class)) {
+            Livewire::component('installer::install.installer-wizard', InstallerWizard::class);
+        }
+
         // ====================================================================
         // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)
         // ====================================================================
@@ -91,6 +101,5 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
-
     }
 }

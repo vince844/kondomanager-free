@@ -27,15 +27,15 @@ class SystemUpgradeController extends Controller
         // GATE: Verifica se auto-update è abilitato
         if (!$service->isAutoUpdateEnabled()) {
             return Inertia::render('system/upgrade/Disabled', [
-                'reason' => 'manual_installation',
+                'reason'  => 'manual_installation',
                 'message' => 'Gli aggiornamenti automatici non sono disponibili per installazioni manuali. Per aggiornare, segui la procedura manuale.'
             ]);
         }
 
         return Inertia::render('system/upgrade/Index', [
-            'currentVersion' => config('app.version'),
-            'availableRelease' => $service->checkRemoteVersion(),
-            'inProgress' => $service->isUpgradeInProgress()
+            'currentVersion'    => config('app.version'),
+            'availableRelease'  => $service->checkRemoteVersion(),
+            'inProgress'        => $service->isUpgradeInProgress()
         ]);
     }
 
@@ -66,14 +66,14 @@ class SystemUpgradeController extends Controller
             
             return Inertia::render('system/upgrade/Launch', [
                 'actionUrl' => url('/index.php'),
-                'token' => $bridge['token'],
-                'version' => $release['version']
+                'token'     => $bridge['token'],
+                'version'   => $release['version']
             ]);
 
         } catch (\Exception $e) {
             Log::error('Upgrade launch failed', [
-                'error' => $e->getMessage(),
-                'version' => $release['version'] ?? 'unknown'
+                'error'     => $e->getMessage(),
+                'version'   => $release['version'] ?? 'unknown'
             ]);
             
             return back()->withErrors(['msg' => $e->getMessage()]);
@@ -92,9 +92,9 @@ class SystemUpgradeController extends Controller
         $fileVersion = config('app.version');
 
         return Inertia::render('system/upgrade/Confirm', [
-            'currentVersion' => $dbVersion,
-            'newVersion' => $fileVersion,
-            'needsUpgrade' => version_compare($fileVersion, $dbVersion, '>'),
+            'currentVersion'    => $dbVersion,
+            'newVersion'        => $fileVersion,
+            'needsUpgrade'      => version_compare($fileVersion, $dbVersion, '>'),
         ]);
     }
 
