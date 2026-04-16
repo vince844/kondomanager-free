@@ -41,6 +41,11 @@ class UpdateCassaAction
                                 ? MoneyHelper::toCents($data['saldo_iniziale']) 
                                 : 0,
                 'note'        => $data['note'] ?? null,
+                // --- CAMPI GOVERNANCE FONDI ---
+                'sottotipo_fondo'         => $data['sottotipo_fondo'] ?? null,
+                'vincolo_descrizione'     => $data['vincolo_descrizione'] ?? null,
+                'is_override_assemblea'   => filter_var($data['is_override_assemblea'] ?? false, FILTER_VALIDATE_BOOLEAN),
+                'motivazione_override'    => $data['motivazione_override'] ?? null,
             ]);
 
             // --- 3. AGGIORNAMENTO CONTO CONTABILE (Nome + Ruolo) ---

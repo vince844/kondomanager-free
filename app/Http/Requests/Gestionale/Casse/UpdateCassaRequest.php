@@ -14,14 +14,12 @@ class UpdateCassaRequest extends FormRequest
 
     public function rules(): array
     {
-        // Recuperiamo la cassa dalla rotta per escluderla dai check unique
         $cassa = $this->route('cassa'); 
         $condominio = $this->route('condominio');
 
         return [
             'nome' => [
                 'required', 'string', 'max:255',
-                // Unique nella tabella casse, ma solo per questo condominio ed escludendo la cassa attuale
                 Rule::unique('casse')->where(function ($query) use ($condominio) {
                     return $query->where('condominio_id', $condominio->id);
                 })->ignore($cassa->id),
@@ -30,16 +28,12 @@ class UpdateCassaRequest extends FormRequest
             'note'        => 'nullable|string',
             'saldo_iniziale' => 'nullable|string',
             
-            // Il TIPO non dovrebbe essere modificabile, ma se lo passi, deve coincidere
-            // Oppure semplicemente lo ignoriamo nel controller.
-            
-            // Dati Bancari (Solo se la cassa è di tipo banca)
             'iban'         => 'nullable|required_if:tipo,banca|size:27',
             'istituto'     => 'nullable|string|max:255',
             'bic'          => 'nullable|string|max:20',
             'intestatario' => 'nullable|string|max:255',
             'tipo_conto'   => ['nullable', Rule::in(['ordinario', 'dedicato', 'estero', 'postale', 'contabilita_speciale', 'altro'])],
-            'tipo' => ['required', Rule::in(['contanti', 'banca', 'fondo', 'virtuale'])],
+            'tipo'         => ['required', Rule::in(['contanti', 'banca', 'fondo', 'virtuale'])],
             
             'predefinito'  => 'boolean',
             
@@ -47,6 +41,34 @@ class UpdateCassaRequest extends FormRequest
             'comune'    => 'nullable|string|max:255',
             'cap'       => 'nullable|string|max:10',
             'provincia' => 'nullable|string|max:5',
+
+            // --- NUOVE REGOLE GOVERNANCE FONDI (Uguali al Create) ---
+            'sottotipo_fondo' => [
+                'nullable',
+                Rule::requiredIf(fn () => $this->input('tipo') === 'fondo'),
+                Rule::in(['generico', 'vincolato_lavori', 'tfr', 'morosita'])
+            ],
+            
+            'vincolo_descrizione'   => 'nullable|string|max:255',
+            'is_override_assemblea' => 'boolean',
+            
+            'motivazione_override'  => [
+                'nullable',
+                'string',
+                Rule::requiredIf(fn () => 
+                    $this->input('tipo') === 'fondo' && 
+                    $this->input('sottotipo_fondo') !== 'generico' && 
+                    $this->input('is_override_assemblea') === true
+                )
+            ],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'sottotipo_fondo.required' => 'Devi specificare la destinazione d\'uso del fondo di riserva.',
+            'motivazione_override.required' => 'Inserisci gli estremi della delibera o la motivazione per sbloccare questo fondo vincolato.',
         ];
     }
 }

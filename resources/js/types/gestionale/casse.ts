@@ -1,7 +1,9 @@
 export type TipoCassa = 'contanti' | 'banca' | 'fondo' | 'virtuale';
 
-// Aggiungo anche questo tipo utile per il form
 export type TipoConto = 'ordinario' | 'dedicato' | 'postale' | 'contabilita_speciale' | 'estero' | 'altro';
+
+// NUOVO TIPO: Garantisce type-safety per la destinazione d'uso
+export type SottotipoFondo = 'generico' | 'vincolato_lavori' | 'tfr' | 'morosita';
 
 export interface Cassa {
     id: number;
@@ -15,12 +17,17 @@ export interface Cassa {
     attiva: boolean;
     note?: string;
 
-    // --- Dati appiattiti dalla CassaResource ---
-    // Questi campi sono popolati solo se tipo === 'banca'
+    // --- Dati appiattiti dalla CassaResource (Popolati se tipo === 'banca') ---
     banca_istituto?: string | null;
     banca_iban?: string | null;
     banca_predefinito?: boolean;
-    banca_tipo_conto?: string | null;
+    banca_tipo_conto?: TipoConto | string | null; // Tipizzato meglio
+
+    // --- NUOVI: Dati Governance Fondi (Popolati se tipo === 'fondo') ---
+    sottotipo_fondo?: SottotipoFondo | string | null;
+    vincolo_descrizione?: string | null;
+    is_override_assemblea?: boolean | null;
+    is_utilizzabile_per_imprevisti?: boolean | null;
 
     // --- Dati Calcolati (Aggiornati con la nuova Resource) ---
     saldo_iniziale_raw?: number;
@@ -42,8 +49,8 @@ export interface CassaOption {
     value: TipoCassa;
 }
 
-// Opzioni per il dropdown Tipo Conto Corrente (nel form di creazione)
+// Opzioni per i dropdown (Banca e Fondo)
 export interface ContoOption {
     label: string;
-    value: string;
+    value: string; // Oppure, se vuoi essere super rigoroso: value: TipoConto | SottotipoFondo
 }

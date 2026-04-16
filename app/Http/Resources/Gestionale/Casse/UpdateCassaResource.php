@@ -2,7 +2,7 @@
 
 namespace App\Http\Resources\Gestionale\Casse;
 
-use App\Helpers\MoneyHelper; // <-- Assicurati che sia importato
+use App\Helpers\MoneyHelper; 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -21,8 +21,13 @@ class UpdateCassaResource extends JsonResource
             'attiva'         => (bool) $this->attiva,
             'has_movements'  => $this->contoContabile?->movimenti()->exists() ?? false,
             
-            // 🔥 LA MAGIA È QUI: 
-            // Formattiamo in "500,00" senza il simbolo dell'Euro!
+            // --- CAMPI GOVERNANCE FONDI ---
+            // Usa 'generico' come fallback di sicurezza per i vecchi fondi creati prima dell'aggiornamento
+            'sottotipo_fondo'         => $this->sottotipo_fondo ?? 'generico', 
+            'vincolo_descrizione'     => $this->vincolo_descrizione,
+            'is_override_assemblea'   => (bool) $this->is_override_assemblea,
+            'motivazione_override'    => $this->motivazione_override,
+
             'saldo_iniziale' => $this->saldo_iniziale 
                                     ? MoneyHelper::format($this->saldo_iniziale, false) 
                                     : '',

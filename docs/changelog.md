@@ -2,6 +2,18 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.22] - Fund Governance & Audit-Ready Resources (Latest)
+
+### Governance Patrimoniale (Legal Compliance)
+* **Motore a Regole Giuridiche:** Rivoluzionata la gestione dei Fondi di Riserva. Il sistema non salva più semplici "etichette testuali", ma mappa la reale natura giuridica del fondo (`sottotipo_fondo`: Generico, Vincolato per Lavori, Accantonamento TFR, Morosità).
+* **Audit Trail e Sblocco in Deroga:** I fondi vincolati nascono bloccati di default per impedire distrazioni di cassa accidentali. È stato introdotto un interruttore di "Sblocco d'emergenza" (`is_override_assemblea`) che richiede obbligatoriamente l'inserimento degli estremi della delibera o della giustificazione legale, blindando l'operato dell'amministratore in caso di revisione contabile.
+* **Single Source of Truth (Flag Derivati):** Eliminata la persistenza di stati incoerenti nel database. L'attributo `is_utilizzabile_per_imprevisti` è ora calcolato dinamicamente in tempo reale dal Modello Eloquent in base alla natura del fondo e all'eventuale sblocco manuale.
+
+### Enterprise Data Table (Risorse e Fondi)
+* **Allineamento Matematico (Tabular Nums):** Riprogettata la colonna dei saldi. L'utilizzo di font `tabular-nums` e allineamento a destra garantisce un incolonnamento perfetto dei decimali, offrendo una leggibilità pari a quella di un estratto conto bancario.
+* **Semantica degli Stati Avanzata:** La tabella riconosce e traduce visivamente gli stati complessi del database in etichette chiare per il revisore: "Libero" (Verde), "Vincolato" (Rosso) e "Sbloccato in deroga" (Viola), aggregando le logiche di override in un'unica vista immediata.
+* **Smart Truncation & Type Hardening:** Introdotto il troncamento intelligente a 40 caratteri per i testi descrittivi lunghi (evitando la rottura del layout su schermi piccoli). Sostituiti i cast generici (`any`) con interfacce TypeScript rigorose (`TipoCassa`, `SottotipoFondo`) per garantire la validazione a compile-time su tutto il frontend.
+
 ## [1.9.21] - The Financial X-Ray & Single Source of Truth (Latest)
 
 ### Spaccato Finanziario Trasparente (Tenant Wallet UX)

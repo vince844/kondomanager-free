@@ -73,11 +73,22 @@ const pageGuides = [
 
 type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'surplus' | 'integrated' | 'aligned';
 
+// FIX: La "Sottrazione Intelligente". Rimuoviamo gli addebiti personali dal monte rate condiviso.
+const pianificatoCondiviso = computed(() => {
+    if (!props.copertura) return 0;
+    return props.copertura.pianificato - props.copertura.addebiti_personali;
+});
+
+const deltaReale = computed(() => {
+    if (!props.copertura) return 0;
+    return props.copertura.preventivo - (pianificatoCondiviso.value + (props.copertura.virtuale || 0));
+});
+
 const statoCopertura = computed<StatoCopertura>(() => {
     if (!props.copertura) return 'loading';
     if (props.pianiDisallineati && props.pianiDisallineati.length > 0) return 'misaligned';
 
-    const delta = props.copertura.delta;
+    const delta = deltaReale.value;
 
     if (delta > 500) return 'deficit';   
     if (props.copertura.orfani.some(o => o.strategia === 'conguaglio')) return 'integrated';
@@ -113,7 +124,7 @@ const suggerimentoOperativo = computed(() => {
 
 const percentualeFormattata = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0.0';
-    const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
+    const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
     const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
 
     if (statoCopertura.value === 'deficit' || statoCopertura.value === 'misaligned') {
@@ -126,7 +137,7 @@ const percentualeFormattata = computed(() => {
 
 const larghezzaBarra = computed(() => {
     if (!props.copertura || props.copertura.preventivo === 0) return '0%';
-    const totaleCoperto = props.copertura.pianificato + (props.copertura.virtuale || 0);
+    const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
     const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
     return Math.min(rawPct, 100) + '%';
 });
@@ -239,11 +250,22 @@ const confirmReject = () => {
                                     </div>
                                     
                                     <div class="flex flex-col gap-2 justify-center pl-1 border-l border-slate-100 dark:border-slate-800 w-full overflow-hidden">
-    
+
                                         <div class="flex justify-between items-center gap-1.5 w-full">
-                                            <p class="text-[9px] text-slate-400 uppercase font-semibold tracking-wider truncate">Incasso Rate</p>
+                                            <p class="text-[9px] text-slate-400 uppercase font-semibold tracking-wider truncate">Rate (Condivise)</p>
                                             <p class="text-xs font-black text-slate-900 dark:text-white shrink-0 whitespace-nowrap" :class="{'text-blue-600': statoCopertura === 'surplus', 'text-red-600': statoCopertura === 'misaligned'}">
-                                                {{ euro(copertura.pianificato) }}
+                                                {{ euro(pianificatoCondiviso) }}
+                                            </p>
+                                        </div>
+
+                                        <div v-if="copertura.addebiti_personali > 0" class="flex justify-between items-center gap-1.5 w-full">
+                                            <div class="flex items-center gap-1 min-w-0">
+                                                <p class="text-[9px] text-amber-600/90 uppercase font-bold tracking-tight truncate" title="Rate emesse per coprire spese private">
+                                                    Rate (Private)
+                                                </p>
+                                            </div>
+                                            <p class="text-xs font-black text-amber-600 shrink-0 whitespace-nowrap">
+                                                + {{ euro(copertura.addebiti_personali) }}
                                             </p>
                                         </div>
                                         

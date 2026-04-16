@@ -1,6 +1,5 @@
 <script setup lang="ts">
-
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
@@ -8,7 +7,7 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import CondominioDropdown from '@/components/CondominioDropdown.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Banknote, Building2, Wallet } from 'lucide-vue-next'; 
+import { Plus, LoaderCircle, Banknote, Building2, Wallet, Info, CheckCircle2, AlertTriangle } from 'lucide-vue-next'; 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
@@ -16,7 +15,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'; 
-import { Info } from 'lucide-vue-next';
 import MoneyInput from '@/components/MoneyInput.vue'; 
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
@@ -93,6 +91,14 @@ const tipiContoCorrente: ContoOption[] = [
     { label: 'Altro', value: 'altro' },
 ];
 
+// --- OPZIONI SOTTOTIPI FONDO ---
+const tipiFondo: ContoOption[] = [
+    { label: 'Fondo cassa generico / Imprevisti', value: 'generico' },
+    { label: 'Fondo straordinario vincolato (es. Lavori)', value: 'vincolato_lavori' },
+    { label: 'Fondo accantonamento TFR', value: 'tfr' },
+    { label: 'Fondo morosità', value: 'morosita' },
+];
+
 const form = useForm({
   nome: '',
   descrizione: '',
@@ -110,6 +116,44 @@ const form = useForm({
   cap: '',
   provincia: '',
   nazione: 'Italia',
+  
+  // --- CAMPI DOMINIO FONDI ---
+  // Rimosso is_utilizzabile_per_imprevisti: non deve essere inviato al backend
+  sottotipo_fondo: 'generico', 
+  vincolo_descrizione: '', 
+  is_override_assemblea: false,
+  motivazione_override: '',
+});
+
+// --- LOGICA DI DOMINIO LATO UI ---
+
+// Memoria di stato per non perdere la scelta se l'utente rimbalza tra le select
+const lastOverrideState = ref(false);
+
+// Derivazione del flag di utilizzabilità (unica fonte di verità per la UI)
+const isUtilizzabilePerImprevisti = computed(() => {
+    return form.sottotipo_fondo === 'generico' || form.is_override_assemblea;
+});
+
+// Aggiorna la memoria locale se l'utente tocca lo switch
+watch(() => form.is_override_assemblea, (val) => {
+    lastOverrideState.value = val;
+});
+
+// Resetta o ripristina i campi dipendenti in base alla scelta del fondo
+watch(() => form.sottotipo_fondo, (nuovoTipo) => {
+    // 1. Se il nuovo tipo NON è vincolato a lavori, pulisci subito l'input text
+    if (nuovoTipo !== 'vincolato_lavori') {
+        form.vincolo_descrizione = '';
+    }
+
+    // 2. Gestione dei lucchetti (Generico pulisce, gli altri recuperano lo stato)
+    if (nuovoTipo === 'generico') {
+        form.is_override_assemblea = false;
+        form.motivazione_override = '';
+    } else {
+        form.is_override_assemblea = lastOverrideState.value;
+    }
 });
 
 onMounted(() => {
@@ -212,7 +256,7 @@ const submit = () => {
                       :money-options="moneyOptions"
                       :lazy="true" 
                       placeholder="0,00"
-                      class="mt-1"
+                      class="mt-1 h-9"
                       @focus="form.clearErrors('saldo_iniziale')"
                     />
                     <InputError :message="form.errors.saldo_iniziale" />
@@ -243,6 +287,83 @@ const submit = () => {
                   </div>
                 </div>
 
+              </CardContent>
+            </Card>
+
+            <Card v-if="form.tipo === 'fondo'" class="border-dashed shadow-sm bg-slate-50/30 dark:bg-slate-900/10">
+              <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <Wallet class="w-4 h-4 text-emerald-600" />
+                  Natura giuridica e vincoli del fondo
+                </CardTitle>
+                <CardDescription>
+                  Definisci le regole di utilizzo di questo fondo per le spese impreviste (ex Art. 1135 c.c.).
+                </CardDescription>
+              </CardHeader>
+              
+              <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                  
+                  <div class="sm:col-span-3">
+                    <Label for="sottotipo_fondo" class="mb-1.5 block font-bold text-xs uppercase tracking-widest text-slate-500">Destinazione d'uso</Label>
+                    <v-select 
+                      id="sottotipo_fondo"
+                      :options="tipiFondo" 
+                      label="label" 
+                      class="mt-1 block w-full bg-white dark:bg-slate-950" 
+                      v-model="form.sottotipo_fondo" 
+                      :reduce="(option: ContoOption) => option.value" 
+                      :clearable="false"
+                    />
+                    
+                    <div class="mt-2 flex items-start gap-1.5">
+                      <div v-if="isUtilizzabilePerImprevisti" class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded uppercase tracking-wide">
+                        <CheckCircle2 class="w-3 h-3" /> Utilizzabile per imprevisti
+                      </div>
+                      <div v-else class="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded uppercase tracking-wide">
+                        <AlertTriangle class="w-3 h-3" /> Fondo bloccato
+                      </div>
+                    </div>
+                    <InputError :message="form.errors.sottotipo_fondo" class="mt-1" />
+                  </div>
+
+                  <div v-if="form.sottotipo_fondo === 'vincolato_lavori'" class="sm:col-span-3">
+                    <Label for="vincolo_descrizione" class="block text-xs font-bold uppercase tracking-widest text-slate-500">Specifica l'opera/lavoro</Label>
+                    <Input 
+                      id="vincolo_descrizione" 
+                      v-model="form.vincolo_descrizione" 
+                      placeholder="Es. Rifacimento facciata, Sostituzione ascensore..." 
+                      class="mt-1 bg-white dark:bg-slate-950" 
+                    />
+                    <InputError :message="form.errors.vincolo_descrizione" />
+                  </div>
+
+                  <div v-if="form.sottotipo_fondo !== 'generico'" class="sm:col-span-6 mt-2 pt-4 border-t border-dashed border-emerald-200/50">
+                    <div class="flex items-start space-x-3 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-100 dark:border-slate-900/30">
+                      <Switch id="is_override_assemblea" v-model="form.is_override_assemblea" class="mt-0.5 data-[state=checked]:bg-amber-500" />
+                      <div class="flex-1">
+                        <Label for="is_override_assemblea" class="cursor-pointer font-bold text-xs uppercase tracking-widest text-slate-500 flex items-center gap-1.5">
+                          Consenti sblocco d'emergenza
+                        </Label>
+                        <p class="text-xs text-slate-500 mt-1 leading-relaxed">
+                          Attivando questa opzione, dichiari che l'assemblea o il regolamento permettono di usare questo fondo vincolato per coprire spese urgenti.
+                        </p>
+                        
+                        <div v-if="form.is_override_assemblea" class="mt-3">
+                          <Input 
+                            id="motivazione_override" 
+                            v-model="form.motivazione_override" 
+                            placeholder="Es. Autorizzazione verbale del 12/04/2026, art. 5 Regolamento..." 
+                            class="bg-slate-50 dark:bg-slate-950 border-amber-200 text-xs" 
+                          />
+                          <p class="text-[10px] text-amber-600 mt-1 italic">Estremi della delibera o motivazione obbligatoria per fini di audit.</p>
+                          <InputError :message="form.errors.motivazione_override" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
               </CardContent>
             </Card>
 

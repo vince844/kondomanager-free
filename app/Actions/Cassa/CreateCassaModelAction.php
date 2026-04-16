@@ -22,6 +22,12 @@ class CreateCassaModelAction
                                 : 0,
             'attiva'             => true,
             'note'               => $data['note'] ?? null,
+            // --- CAMPI GOVERNANCE FONDI ---
+            'sottotipo_fondo'         => $data['sottotipo_fondo'] ?? null,
+            'vincolo_descrizione'     => $data['vincolo_descrizione'] ?? null,
+            // Cast a booleano per sicurezza
+            'is_override_assemblea'   => filter_var($data['is_override_assemblea'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'motivazione_override'    => $data['motivazione_override'] ?? null,
         ]);
     }
 }
