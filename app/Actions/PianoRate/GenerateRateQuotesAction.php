@@ -100,6 +100,10 @@ class GenerateRateQuotesAction
                             'importo_pagato' => 0, 
                             'stato'          => $statoQuota,
                             'tipo'           => 'saldo_iniziale',
+                            // --- NUOVE COLONNE HARDENING LEGALE ---
+                            'origine_tipo'   => 'condominiale', 
+                            'stato_legale'   => 'certo',
+                            // ---------------------------------------
                             'regole_calcolo' => json_encode($snapshot),
                             'data_scadenza'  => $scadenzaRataZero instanceof Carbon ? $scadenzaRataZero->format('Y-m-d') : $scadenzaRataZero,
                             'created_at'     => $now, 
@@ -213,6 +217,18 @@ class GenerateRateQuotesAction
                             }
                         }
 
+                        // --- INIZIO NUOVA LOGICA EURISTICA ---
+                        $origineTipo = 'condominiale';
+                        $statoLegale = 'certo';
+
+                        // Se il piano nasce da fatture (straordinario) e la riga ha un immobile associato,
+                        // significa che è un addebito ad personam (es. Art. 63 per danni privati).
+                        if ($pianoRate->tipo === 'straordinario') {
+                            $origineTipo = ($iid > 0) ? 'ad_personam' : 'condominiale';
+                            $statoLegale = ($iid > 0) ? 'contestabile' : 'certo';
+                        }
+                        // --- FINE NUOVA LOGICA EURISTICA ---
+
                         $quotesToInsert[] = [
                             'rata_id'        => $rata->id,
                             'anagrafica_id'  => $aid,
@@ -221,6 +237,10 @@ class GenerateRateQuotesAction
                             'importo_pagato' => 0, 
                             'stato'          => $statoQuota,
                             'tipo'           => $tipoRiga,
+                            // --- NUOVE COLONNE HARDENING LEGALE ---
+                            'origine_tipo'   => $origineTipo,
+                            'stato_legale'   => $statoLegale,
+                            // ---------------------------------------
                             'regole_calcolo' => json_encode($snapshot),
                             'data_scadenza'  => $dataScadenza instanceof Carbon ? $dataScadenza->format('Y-m-d') : $dataScadenza,
                             'created_at'     => $now, 

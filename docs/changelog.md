@@ -2,6 +2,31 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.23] - Dashboard Intelligence & Clean Ledger (Latest)
+
+### Dashboard & Deficit Operativo (UX Finanziaria)
+* **Disaccoppiamento Delta Globale / Deficit Operativo:** Rivoluzionata la logica del widget di copertura. La barra di avanzamento continua a mostrare la salute globale del bilancio, ma il box di allerta ("Mancano € X") calcola ora lo **Scoperto Operativo Reale**. Il sistema somma al centesimo solo le spese scoperte che richiedono l'emissione di rate, ignorando i fondi avanzati in altri capitoli stagni.
+* **Pulizia Cognitiva:** Rimosso il widget ridondante delle "Fatture in sospeso" dalla vista principale della Dashboard. L'interfaccia torna a essere un macro-indicatore pulito, delegando l'operatività di dettaglio alla modale dedicata.
+
+### Audit Spese Scoperte (Modale "Financial X-Ray")
+* **Separazione Semantica Rigorosa:** La modale di Audit divide ora nettamente le anomalie: da una parte le "Fatture in sospeso" (Imprevisti e Art. 63), dall'altra i normali "Sforamenti Budget Preventivo". Imprevisti e spese ordinarie non vengono più mischiati.
+* **Esploso Fattura (Line-Level Breakdown):** Le fatture miste fuori budget mostrano il dettaglio riga per riga. L'amministratore vede a colpo d'occhio cosa compete al Condominio (Parte comune) e cosa al singolo proprietario (Addebito personale Art. 63, con indicazione dell'unità immobiliare).
+* **Smart Routing (Finanzia Spesa):** Ogni card fattura include un bottone operativo che reindirizza l'utente al wizard del Piano Rate (Straordinario o Integrativo), auto-popolando il "carrello" tramite Deep-Link nell'URL (`?tipo=straordinario&origine=dashboard&gestione_id=...&fatture[]=...`).
+
+### Piano dei Conti (Clean Ledger UI)
+* **Separazione Visiva Albero dei Conti:** Riprogettata l'interfaccia `ContiNew.vue`. Il preventivo ora divide l'albero in due sezioni distinte: "Preventivo deliberato" (modificabile) e "Sopravvenienze e imprevisti" (sola lettura).
+* **Sdoppiamento Totali Intelligente:** Il Controller calcola e separa alla radice il totale del preventivo ordinario da quello degli imprevisti. L'header della pagina mostra due badge distinti (es. *Preventivo: € 5.000* | *Sopravv: € 134*), evitando di gonfiare artificialmente il valore deliberato in assemblea.
+* **Badge Legale Art. 1130-bis c.c.:** Nel dettaglio delle voci tecniche (`DettaglioConto.vue`), compare ora un banner di avviso color ambra. Spiega all'amministratore che la voce è stata generata automaticamente da una fattura imprevista, bloccandone la modifica manuale a tutela della coerenza contabile.
+* **Resource Hardening:** Aggiunto il flag `is_tecnico` direttamente nella `ContoResource` per permettere al frontend di smistare e proteggere le voci di spesa in tempo reale.
+
+### Core Logic & Type Hardening (Bugfixes)
+* **Inertia.js FormData Sanitization:** Risolto un bug critico di perdita dati (es. `immobile_id` che spariva) durante il salvataggio delle fatture passive. Introdotto un `form.transform` che "igienizza" l'array delle righe prima del POST multipart, forzando il casting rigoroso in `Number` o `null`.
+* **TypeScript Hardening:** Risolto conflitto di tipi (`Type 'number' is not assignable to type 'string'`) nell'intercettazione dei Deep-Link URL per la pre-selezione della `gestione_id`.
+* **Prevenzione Falsi Positivi Booleani:** Blindata l'estrazione delle fatture orfane nel Controller. La query SQL ora intercetta correttamente i fallback numerici (`0`) delle colonne booleane (`is_rateizzata`) nativi nei database MySQL/SQLite, garantendo che nessuna spesa venga ignorata dal radar.
+* **Intellisense Fix:** Corretto un falso positivo nel Controller dei Piani Rate (`Undefined method 'rate'`) applicando il Type Hinting rigoroso (`instanceof`) sul modello Eloquent.
+
+---
+
 ## [1.9.22] - Fund Governance & Audit-Ready Resources (Latest)
 
 ### Governance Patrimoniale (Legal Compliance)

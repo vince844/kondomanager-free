@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted } from 'vue';
 import { Head, useForm, Link, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import vSelect from 'vue-select';
@@ -124,6 +124,10 @@ const saldiDettaglio = ref<SaldoDettaglio[]>([]);
 const isLoadingSaldi = ref(false);
 const isModaleSaldiAperta = ref(false);
 const { euro } = useCurrencyFormatter({ fromCents: false });
+// 1. Variabile per mostrare l'avviso di "Automazione"
+const showBannerPreselezione = ref(false);
+// Salva gli ID fatture dal deep-link PRIMA che Inertia sovrascriva l'URL
+const preselectedFattureIds = ref<string[]>([]);
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -143,7 +147,8 @@ const weekdays = [
 
 const form = useForm({
   tipo: 'ordinario',
-  gestione_id: '',
+  origine: '',
+  gestione_id: null as number | null,
   nome: '',
   descrizione: '',
   metodo_distribuzione: 'rata_zero',
@@ -163,8 +168,36 @@ const form = useForm({
   motivazione_autorizzazione: ''
 })
 
+// --- LETTURA DEEP-LINK DA DASHBOARD ---
+onMounted(() => {
+  const urlParams = new URLSearchParams(window.location.search);
+  
+  if (urlParams.get('tipo') === 'straordinario') {
+    form.tipo = 'straordinario';
+  }
+  
+  if (urlParams.get('origine') === 'dashboard') {
+    form.origine = 'dashboard';
+    showBannerPreselezione.value = true;
+  }
+
+  // Salva gli ID PRIMA che il watcher sovrascriva l'URL
+  const collected: string[] = [];
+  
+  urlParams.forEach((value, key) => {
+    if (key === 'fatture[]' || key.startsWith('fatture[')) {
+      collected.push(value);
+    }
+  });
+  preselectedFattureIds.value = collected;
+
+  if (urlParams.has('gestione_id')) {
+    const id = urlParams.get('gestione_id');
+    form.gestione_id = id ? Number(id) : null; 
+  }
+});
+
 // --- BIVIO ORDINARIO/STRAORDINARIO ---
-/* const tipoPiano = ref<'ordinario' | 'straordinario'>('ordinario') */
 const isLoadingFatture = ref(false)
 const fattureStraordinarie = ref<any[]>([])
 
@@ -265,7 +298,8 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
     
     capitoliDisponibili.value = resCap.data;
 
-    // --- NUOVO: CARICHIAMO LE FATTURE STRAORDINARIE ---
+    // --- NUOVO: CARICHIAMO LE FATTURE STRAORDINARIE E PRESELEZIONIAMO ---
+
     isLoadingFatture.value = true;
     const resFatture = await axios.get(route('admin.gestionale.fetch-fatture-straordinarie', {
       condominio: props.condominio.id
@@ -275,7 +309,19 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
         esercizio_id: props.esercizio.id
       }
     });
-    fattureStraordinarie.value = resFatture.data;
+
+    // DOPO (fix — usa la ref salvata in onMounted):
+    fattureStraordinarie.value = resFatture.data.map((f: any) => ({
+      ...f,
+      selezionata: preselectedFattureIds.value.includes(f.id.toString()),
+      importo_suggerito: f.residuo_da_finanziare
+    }));
+
+    // Consuma i pre-selezionati: se l'utente cambia gestione, non si ri-applicano
+    if (preselectedFattureIds.value.length > 0) {
+      preselectedFattureIds.value = [];
+    }
+
     isLoadingFatture.value = false;
 
     // 2. CARICHIAMO I SALDI SOLO SE SERVONO
@@ -372,16 +418,6 @@ const totaleStraordinarioSelezionatoFormatted = computed(() => {
   return euro(tot);
 });
 
-// Resetta le selezioni se si cambia tipo piano
-/* watch(tipoPiano, (newType) => {
-  if (newType === 'ordinario') {
-    fattureStraordinarie.value.forEach(f => f.selezionata = false)
-  } else {
-    form.capitoli_ids = []
-    capitoliDettaglio.value = []
-  }
-}) */
-
 const submit = () => {
   // 1. Prepariamo i capitoli solo se siamo in ordinario
   form.capitoli_config = form.tipo === 'ordinario' 
@@ -412,49 +448,6 @@ const submit = () => {
   });
 }
 
-/* const submit = () => {
-  // Prepariamo le configurazioni di base che esistono sempre
-  form.capitoli_config = tipoPiano.value === 'ordinario' 
-    ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
-    : [];
-
-  form.saldi_config = saldiDettaglio.value
-    .filter(s => s.tipo === 'solidale' && s.ripartizione_mode === 'manuale')
-    .map(s => ({ saldo_id: s.id, ripartizioni: s.ripartizioni_custom }));
-
-  // Usiamo transform() per iniettare i dati dinamici in modo sicuro per Inertia
-  form.transform((data) => {
-    return {
-      ...data,
-      tipo: tipoPiano.value, // 'ordinario' o 'straordinario'
-      
-      // Se è straordinario, iniettiamo le fatture, altrimenti array vuoto
-      fatture_config: tipoPiano.value === 'straordinario'
-        ? fattureStraordinarie.value
-            .filter(f => f.selezionata)
-            .map(f => ({ id: f.id, importo: f.importo_suggerito }))
-        : [],
-        
-      // Se è straordinario, iniettiamo l'autorizzazione, altrimenti null
-      tipo_autorizzazione: tipoPiano.value === 'straordinario' 
-        ? autorizzazioneStraordinaria.value.tipo_autorizzazione 
-        : null,
-      motivazione_autorizzazione: tipoPiano.value === 'straordinario' 
-        ? autorizzazioneStraordinaria.value.motivazione_autorizzazione 
-        : null,
-    };
-
-  }).post(route(...generateRoute(
-    'gestionale.esercizi.piani-rate.store',
-    { condominio: props.condominio.id, esercizio: props.esercizio.id }
-  )), {
-    preserveScroll: true,
-    onSuccess: () => {
-      router.flushAll()
-    },
-  });
-} */
-
 </script>
 
 <template>
@@ -473,6 +466,19 @@ const submit = () => {
       />
 
       <form id="pianoRateForm" @submit.prevent="submit" class="space-y-6">
+
+        <div v-if="showBannerPreselezione" class="bg-amber-100 border border-amber-300 text-amber-900 p-4 rounded-xl shadow-sm flex items-start gap-4">
+          <div class="w-10 h-10 bg-amber-200 text-amber-700 rounded-full flex items-center justify-center shrink-0 mt-0.5">
+            <AlertTriangle class="w-5 h-5" />
+          </div>
+          <div>
+            <h4 class="font-black text-sm uppercase tracking-wide">Risoluzione Scoperto</h4>
+            <p class="text-xs mt-1 text-amber-800/80 leading-relaxed">
+              Il sistema ha precompilato questo piano per finanziare le spese scoperte rilevate nella Dashboard. 
+              Le fatture sono state già inserite nel carrello qui in basso. Inserisci la causale (Scudo Legale) e procedi.
+            </p>
+          </div>
+        </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"

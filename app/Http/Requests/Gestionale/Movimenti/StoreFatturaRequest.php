@@ -62,26 +62,31 @@ class StoreFatturaRequest extends FormRequest
             'stato_approvazione' => 'required|in:da_approvare,approvata,contestata,sforo_motivato',
             'dati_extra'         => 'nullable|array',
 
-            // Validazione override_budget
+            // Validazione override_budget (INTATTA)
             'dati_extra.override_budget'                    => 'nullable|array',
             'dati_extra.override_budget.motivazione'        => 'required_with:dati_extra.override_budget|string|min:10',
             'dati_extra.override_budget.importo_sforo'      => 'required_with:dati_extra.override_budget|integer',
-
-            // --- INIZIO FIX TRIDENTE ---
             'dati_extra.override_budget.strategia_rientro'     => 'required_with:dati_extra.override_budget|in:conguaglio_fine_anno,rata_integrativa,fondo_riserva',
             'dati_extra.override_budget.fondo_patrimoniale_id' => 'nullable|integer|exists:conti_contabili,id',
-            // --- FINE FIX TRIDENTE ---
 
-            // Validazione Scudo Legale (Sopravvenienza)
+            // --- INIZIO FIX: Validazione Scudo Legale (Nuova Modale Spesa Imprevista) ---
             'dati_extra.log_legale_sopravvenienza'                           => 'nullable|array',
             'dati_extra.log_legale_sopravvenienza.nome_voce'                 => 'required_with:dati_extra.log_legale_sopravvenienza|string|min:5',
-            'dati_extra.log_legale_sopravvenienza.autorizzazione'            => 'required_with:dati_extra.log_legale_sopravvenienza|in:urgenza,assemblea',
-            'dati_extra.log_legale_sopravvenienza.data_assemblea'            => 'required_if:dati_extra.log_legale_sopravvenienza.autorizzazione,assemblea|nullable|date',
-            'dati_extra.log_legale_sopravvenienza.tabella_millesimale_id'    => 'required_with:dati_extra.log_legale_sopravvenienza|integer',
-            'dati_extra.log_legale_sopravvenienza.percentuale_proprietario'  => 'required_with:dati_extra.log_legale_sopravvenienza|numeric',
-            'dati_extra.log_legale_sopravvenienza.percentuale_inquilino'     => 'required_with:dati_extra.log_legale_sopravvenienza|numeric',
-            'dati_extra.log_legale_sopravvenienza.percentuale_usufruttuario' => 'required_with:dati_extra.log_legale_sopravvenienza|numeric',
-            'dati_extra.log_legale_sopravvenienza.note'                      => 'nullable|string',
+            'dati_extra.log_legale_sopravvenienza.origine_decisionale'       => 'required_with:dati_extra.log_legale_sopravvenienza|in:gestione_corrente,delibera_assembleare',
+            'dati_extra.log_legale_sopravvenienza.data_assemblea'            => 'nullable|date',
+            
+            // Nuovi Flag di Routing
+            'dati_extra.log_legale_sopravvenienza.tipo_ripartizione'         => 'required_with:dati_extra.log_legale_sopravvenienza|in:millesimale,ad_personam',
+            'dati_extra.log_legale_sopravvenienza.is_ordinario'              => 'required_with:dati_extra.log_legale_sopravvenienza|boolean',
+            'dati_extra.log_legale_sopravvenienza.richiede_copertura'        => 'required_with:dati_extra.log_legale_sopravvenienza|boolean',
+            'dati_extra.log_legale_sopravvenienza.motivazione_sforo'         => 'nullable|string',
+
+            // Ripartizione Millesimale (Obbligatoria SOLO se tipo_ripartizione = 'millesimale')
+            'dati_extra.log_legale_sopravvenienza.tabella_millesimale_id'    => 'nullable|integer|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            'dati_extra.log_legale_sopravvenienza.percentuale_proprietario'  => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            'dati_extra.log_legale_sopravvenienza.percentuale_inquilino'     => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            'dati_extra.log_legale_sopravvenienza.percentuale_usufruttuario' => 'nullable|numeric|required_if:dati_extra.log_legale_sopravvenienza.tipo_ripartizione,millesimale',
+            // --- FINE FIX ---
 
             'file' => 'nullable|file|mimes:pdf,xml,p7m,jpg,png|max:10240',
         ];
@@ -92,10 +97,8 @@ class StoreFatturaRequest extends FormRequest
         return [
             'dati_extra.override_budget.motivazione.min' => 'La motivazione dello sforamento deve essere di almeno 10 caratteri.',
             'dati_extra.override_budget.motivazione.required_with' => 'La motivazione è obbligatoria quando si supera il budget.',
-            // --- INIZIO FIX TRIDENTE ---
             'dati_extra.override_budget.strategia_rientro.required_with' => 'Devi selezionare una strategia di rientro per lo sforo.',
             'dati_extra.override_budget.fondo_patrimoniale_id.exists' => 'Il fondo di riserva selezionato non è valido.',
-            // --- FINE FIX TRIDENTE ---
             'data_competenza_originaria.required_if' => 'La data di origine è obbligatoria per i debiti pregressi (verifica prescrizione).',
             'coperture.required_if' => 'Devi specificare come coprire questo debito pregresso.',
             'imponibile_pregresso.required_if' => 'L\'importo della fattura pregressa è obbligatorio.',
@@ -130,6 +133,9 @@ class StoreFatturaRequest extends FormRequest
             }
 
             // --- INIZIO FIX SCUDO PATRIMONIALE ---
+            // Nota: Questo controllo funziona magicamente sia per gli sfori budget che per 
+            // le nuove spese impreviste, dato che entrambe usano il namespace `override_budget` 
+            // per segnalare la copertura!
             $strategia = $this->input('dati_extra.override_budget.strategia_rientro');
             $usaFondo = ($strategia === 'fondo_riserva');
 
@@ -142,5 +148,4 @@ class StoreFatturaRequest extends FormRequest
             // --- FINE FIX SCUDO PATRIMONIALE ---
         });
     }
-
 }

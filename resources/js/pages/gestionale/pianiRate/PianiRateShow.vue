@@ -679,11 +679,11 @@ const executePublishSilent = () => {
                             </div>
                             <div v-else class="space-y-3">
                                 <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-700">
-                                    <History class="w-4 h-4 text-slate-500" /> Stato: Bozza
+                                    <History class="w-4 h-4 text-slate-500" /> Stato: piano in bozza
                                 </h4>
                                 <div class="text-sm space-y-2 text-slate-600">
-                                    <p>Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel Libro Giornale.</p>
-                                    <p class="text-[11px] text-slate-500 font-medium">Clicca l'interruttore per inserire i dati della delibera e passare allo stato Approvato.</p>
+                                    <p>Il piano rate è in fase di costruzione. Le rate non sono ancora state generate nel libro giornale.</p>
+                                    <p class="text-[11px] text-slate-500 font-medium">Clicca l'interruttore per inserire i dati della delibera e passare allo stato approvato.</p>
                                 </div>
                             </div>
                         </HoverCardContent>
@@ -741,7 +741,7 @@ const executePublishSilent = () => {
                                 </h4>
                                 <div class="text-sm space-y-2 text-slate-600">
                                     <p v-if="selectedRateIds.length === 0">Usa <strong>Seleziona tutte</strong> o le spunte nella tabella per selezionare le rate da emettere.</p>
-                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in Prima Nota.</p>
+                                    <p v-else>Stai per emettere <strong>{{ selectedRateIds.length }}</strong> rate. Verranno generate le scritture contabili in prima nota.</p>
                                 </div>
                             </div>
                         </HoverCardContent>

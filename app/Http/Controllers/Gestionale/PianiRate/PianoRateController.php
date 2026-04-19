@@ -184,6 +184,14 @@ class PianoRateController extends Controller
             $tipoPiano = $validated['tipo'] ?? 'ordinario';
             $pianoRate->tipo = $tipoPiano;
 
+            // 1. Determiniamo la Genesi del Piano (Il Contesto)
+            $pianoRate->contesto_creazione = match(true) {
+                $request->input('origine') === 'dashboard' => 'integrazione_dashboard',
+                !empty($validated['fatture_config']) => 'integrazione_dashboard', // Se ha fatture è sicuramente un'integrazione
+                !empty($validated['capitoli_ids']) => 'libero_manuale', // Se l'utente ha cliccato check specifici
+                default => 'preventivo_iniziale', // Il piano madre di inizio anno
+            };
+
             if ($tipoPiano === 'straordinario') {
                 // Usiamo le colonne dedicate presenti nella tabella piani_rate
                 $pianoRate->tipo_autorizzazione = $validated['tipo_autorizzazione'] ?? null;
@@ -202,13 +210,30 @@ class PianoRateController extends Controller
             if ($tipoPiano === 'straordinario') {
                 // SCENARIO 2/3: Sincronizzazione Fatture Straordinarie
                 $syncFatture = [];
+                $fattureIds = []; // Per tenere traccia di quali fatture aggiornare
+                
                 foreach ($validated['fatture_config'] ?? [] as $fConf) {
                     $importoCents = (isset($fConf['importo']) && $fConf['importo'] !== '') 
                         ? MoneyHelper::toCents($fConf['importo']) 
                         : 0;
                     $syncFatture[$fConf['id']] = ['importo_collegato' => $importoCents];
+                    $fattureIds[] = $fConf['id'];
                 }
+                
                 $pianoRate->fattureStraordinarie()->sync($syncFatture);
+
+                // --- MAGIA DASHBOARD: Spegniamo il semaforo sulle righe di queste fatture ---
+                if (!empty($fattureIds)) {
+                    DB::table('righe_fattura')
+                        ->whereIn('fattura_passiva_id', $fattureIds)
+                        // Spegniamo solo le righe che legittimavano lo sforo o l'ad personam
+                        ->where(function ($query) {
+                            $query->where('is_sopravvenienza', true)
+                                  ->orWhereNotNull('immobile_id');
+                        })
+                        ->update(['is_rateizzata' => true]);
+                }
+                // ----------------------------------------------------------------------------
 
             } else {
                 // SCENARIO 1: Gestione Capitoli (Tua logica esistente preservata al 100%)
@@ -265,11 +290,19 @@ class PianoRateController extends Controller
                             $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Selezione rapida (Smart Budget)'];
                         }
                     } else {
-                        $capitoliOrfani = $gestione->pianoConto->conti()->whereNull('parent_id')->whereDoesntHave('pianiRate', fn($q) => $q->whereIn('stato', ['bozza', 'approvato']))->with('sottoconti')->get();
+
+                        $capitoliOrfani = $gestione->pianoConto->conti()
+                            ->visibili()
+                            ->whereNull('parent_id')
+                            ->whereDoesntHave('pianiRate', fn($q) => $q->whereIn('stato', ['bozza', 'approvato']))
+                            ->with(['sottoconti' => fn($q) => $q->visibili()])
+                            ->get();
+
                         foreach ($capitoliOrfani as $c) {
                             $importoDaFinanziare = $capitoliFinanziabili->has($c->id) ? $capitoliFinanziabili->get($c->id)['importo_suggerito'] : $calcolaVeroTotale($c);
                             $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Inclusione automatica orfani'];
                         }
+
                     }
                 }
                 $pianoRate->capitoli()->sync($syncData);
@@ -455,6 +488,7 @@ class PianoRateController extends Controller
         if ($pianoContoId) {
             $destinations = Conto::where('piano_conto_id', $pianoContoId)
                 ->orderBy('nome')
+                ->visibili()
                 ->get(['id', 'nome'])
                 ->map(fn($c) => [
                     'id' => $c->id,
@@ -686,11 +720,26 @@ class PianoRateController extends Controller
                     ->update(['is_applicato' => false]);
             }
 
-            // Sganciamo le relazioni (Sia per Ordinario che Straordinario)
+           // 1. RIACCENSIONE SEMAFORO DASHBOARD (Per Piani Straordinari)
+            if ($pianoRate->tipo === 'straordinario') {
+                $fattureIds = $pianoRate->fattureStraordinarie()->pluck('fatture_passive.id')->toArray();
+                
+                if (!empty($fattureIds)) {
+                    DB::table('righe_fattura')
+                        ->whereIn('fattura_passiva_id', $fattureIds)
+                        ->where(function ($query) {
+                            $query->where('is_sopravvenienza', true)
+                                  ->orWhereNotNull('immobile_id');
+                        })
+                        ->update(['is_rateizzata' => false]); // Riaccende l'allarme
+                }
+            }
+
+            // 2. Sganciamo le relazioni (Sia per Ordinario che Straordinario)
             $pianoRate->capitoli()->detach();
             $pianoRate->fattureStraordinarie()->detach();
 
-            // Elimina fisicamente il piano rate
+            // 3. Elimina fisicamente il piano rate
             $pianoRate->delete();
             
             DB::commit();

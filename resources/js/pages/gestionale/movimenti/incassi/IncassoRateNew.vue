@@ -592,7 +592,7 @@ onMounted(async () => {
                         <Button 
                             @click="submit" 
                             :disabled="form.processing || !previewContabile.hasData || !form.pagante_id" 
-                            class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md shadow-emerald-600/20 transition-all text-sm"
+                            class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md transition-all text-sm"
                         >
                             <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
                         </Button>

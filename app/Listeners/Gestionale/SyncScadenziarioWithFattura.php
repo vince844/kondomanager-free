@@ -16,6 +16,9 @@ class SyncScadenziarioWithFattura implements ShouldQueue
     
     use InteractsWithQueue;
 
+    // Aggiungi questa proprietà!
+    public bool $afterCommit = true;
+
     public function handle(FatturaRegistrata $event): void
     {
         $fattura    = $event->fattura;

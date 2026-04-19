@@ -36,7 +36,8 @@ class FetchCapitoliContiController extends Controller
 
             // Get all chapters (capitoli) for this condominium, exercise and piano conto
             $capitoli = Conto::where('piano_conto_id', $pianoContoId)
-                ->where('importo', 0) 
+                ->where('importo', 0)
+                ->visibili()  // ← scope: where('is_tecnico', false)
                 ->select('id', 'nome')
                 ->orderBy('nome')
                 ->get();

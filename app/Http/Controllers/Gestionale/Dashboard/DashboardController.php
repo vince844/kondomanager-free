@@ -24,6 +24,7 @@ class DashboardController extends Controller
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;
         $pianiDisallineati = [];
+        $fattureScoperte = [];
 
         if ($esercizio) {
             $esercizio->load('gestioni');
@@ -52,12 +53,84 @@ class DashboardController extends Controller
             }
 
             // --- NUOVO: Recupero spese ad personam totali ---
+            // Nelle righe_fattura il false in MySQL spesso è salvato come 0.
             $addebitiPersonali = (int) DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
                 ->whereNotNull('righe_fattura.immobile_id') // Solo le spese private
+                ->where(function($q) {
+                    $q->where('righe_fattura.is_rateizzata', false)
+                      ->orWhere('righe_fattura.is_rateizzata', 0); // Copertura totale MySQL/Sqlite
+                })
                 ->sum(DB::raw('righe_fattura.importo_imponibile + righe_fattura.importo_iva'));
+
+            // --- STEP 7: LISTA FATTURE SCOPERTE (Sopravvenienze + Ad Personam) ---
+            // Ottimizziamo precaricando SOLO le righe che ci interessano, facendo fare tutto a SQL.
+            $fattureScoperteRaw = \App\Models\Gestionale\FatturaPassiva::with(['fornitore', 'righe' => function ($q) {
+                    $q->with(['immobile', 'conto'])
+                      ->where(function($sq) {
+                          $sq->where('is_rateizzata', false)
+                             ->orWhere('is_rateizzata', 0);
+                      })
+                      ->where(function ($inner) {
+                          $inner->where('is_sopravvenienza', true)
+                                ->orWhereNotNull('immobile_id');
+                      });
+                }])
+                ->where('esercizio_id', $esercizio->id)
+                ->where('stato_approvazione', '!=', 'contestata')
+                ->whereHas('righe', function ($q) {
+                    $q->where(function($sq) {
+                          $sq->where('is_rateizzata', false)
+                             ->orWhere('is_rateizzata', 0);
+                      })
+                      ->where(function ($inner) {
+                          $inner->where('is_sopravvenienza', true)
+                                ->orWhereNotNull('immobile_id');
+                      });
+                })
+                ->get();
+
+            // Ricaviamo l'ID della gestione attiva per passarlo al deep-link
+            $gestionePrincipaleId = $esercizio->gestioni->where('attiva', true)->first()?->id;
+
+            foreach ($fattureScoperteRaw as $fattura) {
+                // Siccome abbiamo filtrato la eager loading ('righe' => function(...)), 
+                // ora l'array $fattura->righe contiene GIA' SOLO E SOLTANTO le righe giuste. Non serve ri-filtrarle in PHP.
+                
+                $totaleFatturaCents = 0;
+                $righeMappate = [];
+
+                foreach ($fattura->righe as $riga) {
+                    $importoRigaCents = (int) round(($riga->importo_imponibile + $riga->importo_iva));
+                    $totaleFatturaCents += $importoRigaCents;
+
+                    $righeMappate[] = [
+                        'id' => $riga->id,
+                        'tipo' => $riga->immobile_id ? 'ad_personam' : 'comune',
+                        'importo' => $importoRigaCents, // Centesimi esatti
+                        'descrizione' => $riga->immobile_id 
+                            ? "Addebito personale (Art. 63)" 
+                            : "Parte comune (millesimale)",
+                        'dettaglio' => $riga->immobile_id
+                            ? "Int. {$riga->immobile->interno}"
+                            : ($riga->conto ? "Voce: {$riga->conto->nome}" : "Imprevisto")
+                    ];
+                }
+
+                if ($totaleFatturaCents > 0) {
+                    $fattureScoperte[] = [
+                        'id' => $fattura->id,
+                        'numero' => $fattura->numero_documento,
+                        'fornitore' => $fattura->fornitore->ragione_sociale ?? 'Sconosciuto',
+                        'totale_scoperto' => $totaleFatturaCents,
+                        'gestione_id' => $gestionePrincipaleId,
+                        'righe' => $righeMappate,
+                    ];
+                }
+            }
+            // ----------------------------------------------------------------------
 
             // --- 2. Recupero di TUTTE le strategie di sforo (SOLO SPESE COMUNI) ---
             $fattureSforo = DB::table('righe_fattura')
@@ -199,24 +272,32 @@ class DashboardController extends Controller
                 }
             }
 
-            $delta = $totPrev - ($totPian + $totVirtualeGlobale);
-            $isBilanciato = abs($delta) <= 500; 
+            // 1. Calcolo Fatturato Reale Condiviso
+            $totFatturatoCondiviso = array_sum($fatturatoMap);
+
+            // 2. Il delta è purissimo (Totale Fabbisogno - Rate Pianificate)
+            $deltaReale = $totPrev - ($totPian + $totVirtualeGlobale);
 
             $copertura = [
                 'preventivo'         => $totPrev, 
                 'pianificato'        => $totPian, 
                 'virtuale'           => $totVirtualeGlobale, 
-                'addebiti_personali' => $addebitiPersonali, // <--- AGGIUNTO
-                'uscite_totali'      => $totPrev + $addebitiPersonali, // <--- AGGIUNTO
-                'delta'              => $delta,
-                'scoperto'           => ($delta > 0 ? $delta : 0),
-                'percentuale'        => $totPrev > 0 ? round((($totPian + $totVirtualeGlobale) / $totPrev) * 100, 1) : 0,
-                'is_completo'        => $isBilanciato,
-                'orfani'             => $vociScoperte, 
+                'addebiti_personali' => $addebitiPersonali,
+                
+                // Uscite totali verso i fornitori (vero debito di oggi!)
+                'uscite_totali'      => $totFatturatoCondiviso + $addebitiPersonali, 
+                
+                'delta'              => $deltaReale,
+                'scoperto'           => max(0, $deltaReale),
+                'percentuale'        => $totPrev > 0 
+                                            ? round((($totPian + $totVirtualeGlobale) / $totPrev) * 100, 1) 
+                                            : 0,
+                'is_completo'        => abs($deltaReale) <= 500,
+                'has_sforo'          => $totPrev > $totBudgetPuro,
+                'orfani'             => $vociScoperte,
                 'scoperto_count'     => collect($vociScoperte)
-                    ->whereNotIn('strategia', ['conguaglio', 'fondo_riserva']) 
-                    ->count(),
-                'has_sforo'          => $totPrev > $totBudgetPuro
+                                            ->whereNotIn('strategia', ['conguaglio', 'fondo_riserva'])
+                                            ->count(),
             ];
         }
 
@@ -252,13 +333,14 @@ class DashboardController extends Controller
             });
 
         return Inertia::render('gestionale/dashboard/Dashboard', [
-            'condominio' => $condominio, 
-            'condomini'  => $this->getCondomini(),
-            'esercizio'  => $esercizio, 
-            'esercizi'   => $condominio->esercizi, 
-            'copertura'  => $copertura,
+            'condominio'        => $condominio, 
+            'condomini'         => $this->getCondomini(),
+            'esercizio'         => $esercizio, 
+            'esercizi'          => $condominio->esercizi, 
+            'copertura'         => $copertura,
+            'fattureScoperte'   => $fattureScoperte,
             'pianiDisallineati' => $pianiDisallineati,
-            'inboxTasks' => Inertia::scroll($inboxTasks)
+            'inboxTasks'        => Inertia::scroll($inboxTasks)
         ]);
     }
 }

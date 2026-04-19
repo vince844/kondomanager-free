@@ -10,7 +10,6 @@ class BudgetCoverageService
 {
     public function analyze(Gestione $gestione, array $fatturatoMap = [], array $coperturaVirtualeMap = []): array
     {
-        // --- AGGIUNTO: 'pianiRate.fattureStraordinarie' ---
         $gestione->load(['pianoConto.conti.sottoconti', 'pianiRate.capitoli', 'pianiRate.fattureStraordinarie']);
         
         if (!$gestione->pianoConto) {
@@ -23,13 +22,10 @@ class BudgetCoverageService
 
         $contiRadice = $gestione->pianoConto->conti->whereNull('parent_id');
         
-        // --- INIZIO FIX: Usiamo lo 'stato' (bozza/approvato) e non il vecchio 'attivo' ---
         $pianiRateAttivi = $gestione->pianiRate->filter(function ($piano) {
-            // Estraiamo il valore sia se è un Enum di PHP 8.1, sia se è una stringa
             $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
             return in_array($stato, ['bozza', 'approvato']);
         });
-        // --- FINE FIX ---
         
         $coperturaRealeMap = $this->calcolaCoperturaReale($contiRadice, $pianiRateAttivi);
 
@@ -105,8 +101,7 @@ class BudgetCoverageService
         $tuttiContiFlat = $this->appiattisciConti($contiRadice);
         $contiById      = $tuttiContiFlat->keyBy('id');
 
-        // NUOVO ORDINE - STEP 1: PUSH-DOWN DAI PADRI CON LIMITE BUDGET
-        // (I Piani Ordinari Globali distribuiscono il budget teorico ai figli)
+        // STEP 1: PUSH-DOWN DAI PADRI CON LIMITE BUDGET
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
                 $contoModel = $contiById[$capitolo->id] ?? null;
@@ -121,10 +116,9 @@ class BudgetCoverageService
 
                     $figliDaSoddisfare = [];
                     foreach ($contoModel->sottoconti as $figlio) {
-                        $budgetTeorico = (int) $figlio->importo;
+                        $budgetTeorico  = (int) $figlio->importo;
                         $copertoAttuale = $map[$figlio->id] ?? 0;
-                        
-                        $deficit = $budgetTeorico - $copertoAttuale;
+                        $deficit        = $budgetTeorico - $copertoAttuale;
 
                         if ($deficit > 0) {
                             $figliDaSoddisfare[] = [
@@ -138,7 +132,7 @@ class BudgetCoverageService
                         $figliFonte = $figliDaSoddisfare;
 
                         while ($residuoPiano > 0 && !empty($figliFonte)) {
-                            $n = count($figliFonte);
+                            $n         = count($figliFonte);
                             $quotaBase = (int) floor($residuoPiano / $n);
 
                             if ($quotaBase === 0) {
@@ -152,11 +146,10 @@ class BudgetCoverageService
 
                             $nuoviFigli = [];
                             foreach ($figliFonte as $f) {
-                                $daAssegnare = min($f['deficit'], $quotaBase);
-
-                                $map[$f['id']]  = ($map[$f['id']] ?? 0) + $daAssegnare;
-                                $residuoPiano  -= $daAssegnare;
-                                $f['deficit']  -= $daAssegnare;
+                                $daAssegnare   = min($f['deficit'], $quotaBase);
+                                $map[$f['id']] = ($map[$f['id']] ?? 0) + $daAssegnare;
+                                $residuoPiano -= $daAssegnare;
+                                $f['deficit'] -= $daAssegnare;
 
                                 if ($f['deficit'] > 0) {
                                     $nuoviFigli[] = $f;
@@ -169,8 +162,7 @@ class BudgetCoverageService
             }
         }
 
-        // NUOVO ORDINE - STEP 2: ASSEGNAZIONE DIRETTA SULLE FOGLIE 
-        // (I Piani Integrativi si applicano ORA, sommandosi sopra al budget già distribuito)
+        // STEP 2: ASSEGNAZIONE DIRETTA SULLE FOGLIE
         foreach ($pianiRate as $piano) {
             foreach ($piano->capitoli as $capitolo) {
                 $contoModel = $contiById[$capitolo->id] ?? null;
@@ -185,16 +177,15 @@ class BudgetCoverageService
             }
         }
 
-        // NUOVO ORDINE - STEP 3: COPERTURA DA FATTURE STRAORDINARIE
-        // Andiamo a leggere le righe delle fatture finanziate e spingiamo
-        // la copertura sui conti originali (es. conto "Imprevisto").
+        // STEP 3: COPERTURA DA FATTURE STRAORDINARIE
+        // FIX: Le righe con conto_id = NULL (spese private ad personam) vengono escluse
+        // sia dal totale della fattura che dalla distribuzione della copertura.
         $straordinari = $pianiRate->filter(fn($p) => $p->tipo === 'straordinario');
         
         if ($straordinari->isNotEmpty()) {
             $fattureIds = $straordinari->flatMap->fattureStraordinarie->pluck('id')->unique()->toArray();
             
             if (!empty($fattureIds)) {
-                // Recuperiamo tutte le righe contabili di queste fatture
                 $righe = DB::table('righe_fattura')
                     ->whereIn('fattura_passiva_id', $fattureIds)
                     ->get()
@@ -208,10 +199,16 @@ class BudgetCoverageService
                         $righeFattura = $righe->get($fattura->id, collect());
                         if ($righeFattura->isEmpty()) continue;
 
-                        $totaleFattura = $righeFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
+                        // FIX: Escludiamo le righe private (conto_id NULL) dal totale
+                        // per evitare che la copertura venga distribuita su un denominatore
+                        // gonfiato, generando un deficit silenzioso sulle righe comuni.
+                        $righeComuniFattura = $righeFattura->filter(fn($r) => !is_null($r->conto_id));
+                        $totaleFattura      = $righeComuniFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
 
-                        // Distribuiamo l'importo finanziato proporzionalmente sui conti della fattura
                         foreach ($righeFattura as $riga) {
+                            // FIX: Salta esplicitamente le righe private
+                            if (is_null($riga->conto_id)) continue;
+
                             $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
                             if ($totaleFattura > 0) {
                                 $quota = (int) round(($importoRiga / $totaleFattura) * $importoFinanziato);
@@ -230,7 +227,6 @@ class BudgetCoverageService
 
     private function appiattisciConti($conti)
     {
-        // ... (existing appiattisciConti method logic remains unchanged)
         $flat = collect();
         foreach ($conti as $c) {
             $flat->push($c);
@@ -243,7 +239,6 @@ class BudgetCoverageService
 
     private function trovaPianiCoinvolti($contoId, $piani)
     {
-        // ... (existing trovaPianiCoinvolti method logic remains unchanged)
         $names = [];
         foreach ($piani as $p) {
             $coinvolto = $p->capitoli->contains(function ($c) use ($contoId) {
@@ -265,25 +260,22 @@ class BudgetCoverageService
         $capitoliFinanziabili = [];
 
         foreach ($analysisReport['items'] as $item) {
-            // Lavoriamo solo sulle foglie (sottoconti o conti senza figli)
             if (!($item['is_leaf'] ?? false)) {
                 continue;
             }
 
             $daFinanziare = 0;
             
-            // Se il delta è negativo, significa che Fabbisogno > (Pianificato + Virtuale)
             if (isset($item['delta']) && $item['delta'] < 0) {
                 $daFinanziare = abs($item['delta']);
             }
 
-            // Includiamo solo se c'è un deficit reale da coprire con le rate
             if ($daFinanziare > 0) {
                 $capitoliFinanziabili[] = [
                     'id'                => $item['id'],
                     'nome'              => $item['nome'],
                     'padre'             => $item['padre'],
-                    'importo_suggerito' => $daFinanziare, // Centesimi esatti
+                    'importo_suggerito' => $daFinanziare,
                     'dettagli_calcolo'  => [
                         'fabbisogno_reale'   => $item['budget'],
                         'gia_pianificato'    => $item['pianificato'],
@@ -293,7 +285,6 @@ class BudgetCoverageService
             }
         }
 
-        // Ordiniamo alfabeticamente raggruppando per padre
         usort($capitoliFinanziabili, function ($a, $b) {
             $padreCmp = strcmp($a['padre'] ?? '', $b['padre'] ?? '');
             if ($padreCmp === 0) {

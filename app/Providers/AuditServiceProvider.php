@@ -28,16 +28,27 @@ class AuditServiceProvider extends ServiceProvider
                 }
 
                 $data = $event->job->payload();
+                $commandObject = null;
+                $recipient = 'Sconosciuto';
+                $subject = '(Oggetto sconosciuto)';
                 
-                // 2. DESERIALIZZAZIONE
-                $commandObject = isset($data['data']['command']) 
-                    ? unserialize($data['data']['command']) 
-                    : null;
+                // 2. DESERIALIZZAZIONE ISOLATA CON GESTIONE DELL'ECCEZIONE (IL FIX È QUI)
+                try {
+                    $commandObject = isset($data['data']['command']) 
+                        ? unserialize($data['data']['command']) 
+                        : null;
+                } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+                    // Catturiamo esplicitamente l'errore del modello mancante (es. se lo hai cancellato)
+                    $subject = 'Email annullata: Modello (es. Fattura) eliminato prima dell\'invio';
+                    Log::info('Tentativo di elaborare un job in coda per un modello eliminato: ' . $e->getModel());
+                } catch (Throwable $e) {
+                    $subject = 'Impossibile deserializzare l\'email';
+                }
 
-                // 3. FILTRO
+                // 3. ESTRAZIONE DATI (solo se la deserializzazione ha avuto successo)
                 if ($commandObject instanceof SendQueuedMailable) {
                     $mailable = $commandObject->mailable;
-                    $recipient = 'Sconosciuto';
+                    $subject = $mailable->subject ?? '(Nessun oggetto)';
 
                     // 4. ESTRAZIONE DESTINATARIO
                     if (property_exists($mailable, 'to')) {
@@ -53,20 +64,21 @@ class AuditServiceProvider extends ServiceProvider
                              }
                          }
                     }
-
-                    // 5. SCRITTURA NEL LOG (DB)
-                    MailLog::create([
-                        'recipient'     => $recipient,
-                        'subject'       => $mailable->subject ?? '(Nessun oggetto)',
-                        'mailer'        => config('mail.default'),
-                        'status'        => 'failed',
-                        'error_message' => substr($event->exception->getMessage(), 0, 1000),
-                        'sent_at'       => now(),
-                    ]);
                 }
+
+                // 5. SCRITTURA NEL LOG (DB) - Ora avverrà SEMPRE!
+                MailLog::create([
+                    'recipient'     => $recipient,
+                    'subject'       => $subject,
+                    'mailer'        => config('mail.default'),
+                    'status'        => 'failed',
+                    'error_message' => substr($event->exception->getMessage(), 0, 1000),
+                    'sent_at'       => now(),
+                ]);
+
             } catch (Throwable $e) {
-                // FAIL SAFELY: Il worker non si ferma, ma noi abbiamo traccia del problema!
-                Log::warning('Impossibile salvare il log di audit mail: ' . $e->getMessage());
+                // FAIL SAFELY EXTREME: Se persino il log fallisce
+                Log::warning('Fallimento critico nell\'AuditServiceProvider: ' . $e->getMessage());
             }
         });
     }

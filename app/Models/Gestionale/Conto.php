@@ -15,8 +15,6 @@ class Conto extends Model
 
     protected $table = 'conti';
 
-    protected $appends = [];
-
     protected $fillable = [
         'piano_conto_id',
         'conto_contabile_id',
@@ -24,17 +22,60 @@ class Conto extends Model
         'parent_id',
         'nome',
         'descrizione',
-        'tipo',                 // 'spesa', 'incasso'
-        'tipo_spesa',           // NUOVO ('standard', 'professionista', etc.)
-        'tipo',
+        'tipo',                 
+        'tipo_spesa',           
+        'tipo_ripartizione',   // NUOVO: millesimale, custom, ad_personam
+        'origine_decisionale', // NUOVO: gestione_corrente, delibera_assembleare
+        'is_tecnico', // true per conti generati on-the-fly (sopravvenienze + padre). Invisibili al preventivo ordinario.
         'importo',
         'destinazione_id',
         'destinazione_type',
         'note',
         'is_visibile',
     ];
+
+    protected $casts = [
+        'is_tecnico' => 'boolean',
+    ];
     
-    /** RELAZIONI */
+    /** * =========================================================================
+     * I BINARI DI ROUTING (La Matrice Decisionale Ordinario vs Straordinario)
+     * =========================================================================
+     */
+
+    /**
+     * SCOPE: Filtra le voci che DEVONO finire nel Piano Rate Ordinario
+     * Regola: Deve essere una spesa collettiva (millesimale) di gestione corrente.
+     */
+    public function scopeForPianoOrdinario($query)
+    {
+        return $query->where('tipo_ripartizione', 'millesimale')
+                     ->where('origine_decisionale', 'gestione_corrente');
+    }
+
+    /**
+     * SCOPE: Filtra le voci che DEVONO finire nel Piano Rate Straordinario (Wallet)
+     * Regola: Se c'è una delibera specifica OPPURE se la ripartizione è privata/non standard.
+     */
+    public function scopeForPianoStraordinario($query)
+    {
+        return $query->where(function ($q) {
+            $q->where('origine_decisionale', 'delibera_assembleare')
+              ->orWhereIn('tipo_ripartizione', ['custom', 'ad_personam']);
+        });
+    }
+
+    /**
+     * SCOPE: Esclude i conti tecnici (sopravvenienze generate on-the-fly).
+     * Usato dal wizard Piano Ordinario e dal PDF preventivo deliberato.
+     */
+    public function scopeVisibili($query)
+    {
+        return $query->where('is_tecnico', false);
+    }
+
+    /** * RELAZIONI 
+     */
     public function pianoConto()
     {
         return $this->belongsTo(PianoConto::class, 'piano_conto_id');
@@ -50,7 +91,6 @@ class Conto extends Model
         return $this->hasMany(self::class, 'parent_id');
     }
 
-    // Collega la voce di budget (es. "Cancelleria") al conto patrimoniale (es. "Debiti v/Fornitori" o cassa specifica)
     public function contoContabile()
     {
         return $this->belongsTo(ContoContabile::class, 'conto_contabile_id');
@@ -66,7 +106,6 @@ class Conto extends Model
         return $this->hasMany(ContoTabellaMillesimale::class);
     }
 
-    // Nel modello Conto
     public function tabelle()
     {
         return $this->belongsToMany(Tabella::class, 'conto_tabella_millesimale')
@@ -89,8 +128,13 @@ class Conto extends Model
         return $this->belongsToMany(PianoRate::class, 'piano_rate_capitoli', 'conto_id', 'piano_rate_id');
     }
 
+    public function fornitore()
+    {
+        return $this->belongsTo(Fornitore::class, 'default_fornitore_id');
+    }
+
     /**
-     * Recupera tutti gli ID dei sottoconti (figli, nipoti, ecc.)
+     * METODI HELPER 
      */
     public function getAllChildrenIds(): array
     {
@@ -102,9 +146,6 @@ class Conto extends Model
         return $ids;
     }
 
-    /**
-     * Recupera tutti gli ID dei padri (parent, grandparent, ecc.)
-     */
     public function getAllAncestorsIds(): array
     {
         $ids = [];
@@ -116,18 +157,8 @@ class Conto extends Model
         return $ids;
     }
 
-    protected static function newFactory()
-    {
-        return ContoFactory::new();
-    }
-
-    /**
-     * Accessor per sapere se il conto è bloccato da rate emesse.
-     * Controlla sia il collegamento diretto che quello ereditato dal padre.
-     */
     public function getHasRateEmesseAttribute(): bool
     {
-        // 1. Controllo DIRETTO: Il conto specifico è nel piano rate?
         $vincoloDiretto = $this->pianiRate()
             ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
             ->exists();
@@ -136,9 +167,6 @@ class Conto extends Model
             return true;
         }
 
-        // 2. Controllo EREDITATO: Il PADRE è nel piano rate?
-        // Se io sono una voce "Cancelleria" dentro il capitolo "Spese Generali",
-        // e "Spese Generali" è rateizzato, allora anch'io sono bloccato.
         if ($this->parent_id && $this->parent) {
              return $this->parent->pianiRate()
                 ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
@@ -148,11 +176,8 @@ class Conto extends Model
         return false;
     }
 
-    /**
-     * Relazione con il fornitore predefinito (Suggerito).
-     */
-    public function fornitore()
+    protected static function newFactory()
     {
-        return $this->belongsTo(Fornitore::class, 'default_fornitore_id');
+        return ContoFactory::new();
     }
 }

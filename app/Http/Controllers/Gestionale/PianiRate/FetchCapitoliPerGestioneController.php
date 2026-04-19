@@ -34,7 +34,10 @@ class FetchCapitoliPerGestioneController extends Controller
             if (!$gestione->pianoConto) return response()->json([]);
 
             $conti = $gestione->pianoConto->conti()
-                ->with(['parent', 'sottoconti'])
+                ->visibili() // <-- Filtro che nasconde sopravvenienze e Ad Personam
+                ->with(['parent', 'sottoconti' => function($query) {
+                    $query->visibili(); // <-- Filtriamo anche i figli per estrema sicurezza
+                }])
                 ->get();
             
             $contiById = $conti->keyBy('id');

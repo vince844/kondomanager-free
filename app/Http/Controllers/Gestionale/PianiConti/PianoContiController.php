@@ -302,29 +302,40 @@ class PianoContiController extends Controller
         ContoResource::$strategieSforoMap = $strategieSforoMap; // Passata
         ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
 
-        // --- FIX: CALCOLO DEL TOTALE VISIVO COERENTE ---
-        // Sommiamo esattamente i valori che abbiamo appena iniettato nell'albero (Fabbisogno Reale Lordo)
-        $totaleVisivoAlbero = 0;
+        // --- FIX v1.9.23: TOTALI SEPARATI (Preventivo vs Sopravvenienze) ---
+        $totalePreventivo = 0;
+        $totaleSopravvenienze = 0;
+
         foreach ($conti as $conto) {
-            $totaleVisivoAlbero += $conto->importo;
-            foreach ($conto->sottoconti as $sottoconto) {
-                $totaleVisivoAlbero += $sottoconto->importo;
+            if ($conto->is_tecnico) {
+                $totaleSopravvenienze += $conto->importo;
+                foreach ($conto->sottoconti as $sottoconto) {
+                    $totaleSopravvenienze += $sottoconto->importo;
+                }
+            } else {
+                $totalePreventivo += $conto->importo;
+                foreach ($conto->sottoconti as $sottoconto) {
+                    if ($sottoconto->is_tecnico) {
+                        $totaleSopravvenienze += $sottoconto->importo;
+                    } else {
+                        $totalePreventivo += $sottoconto->importo;
+                    }
+                }
             }
         }
-        // -----------------------------------------------
+        // -----------------------------------------------------------------
 
         $fornitori = Fornitore::attivi()->orderBy('ragione_sociale')->get(['id', 'ragione_sociale']);
 
         return Inertia::render('gestionale/pianiDeiConti/conti/ContiNew', [
-            'condominio' => ['id' => $condominio->id, 'nome' => $condominio->nome],
-            'esercizio' => ['id' => $esercizio->id, 'nome' => $esercizio->nome],
-            'pianoConti' => new PianoDeiContiResource($pianoConto),
-            'conti'      => ContoResource::collection($conti),
-            'fornitori'  => $fornitori,
-            'tabelle'    => Tabella::query()->where('condominio_id', $condominio->id)->orderBy('nome')->get(['id', 'nome']),
-            
-            // Passiamo il totale calcolato dinamicamente
-            'totalePreventivo' => $totaleVisivoAlbero, 
+            'condominio'            => ['id' => $condominio->id, 'nome' => $condominio->nome],
+            'esercizio'             => ['id' => $esercizio->id, 'nome' => $esercizio->nome],
+            'pianoConti'            => new PianoDeiContiResource($pianoConto),
+            'conti'                 => ContoResource::collection($conti),
+            'fornitori'             => $fornitori,
+            'tabelle'               => Tabella::query()->where('condominio_id', $condominio->id)->orderBy('nome')->get(['id', 'nome']),
+            'totalePreventivo'      => $totalePreventivo,
+            'totaleSopravvenienze'  => $totaleSopravvenienze,
         ]);
     }
 
@@ -348,16 +359,20 @@ class PianoContiController extends Controller
     public function update(UpdatePianoContoRequest $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): RedirectResponse
     {
         try {
+
             $data = $request->validated();
             $pianoConto->update($data);
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
                 'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashSuccess(__('gestionale.success_update_piano_conto')));
+
         } catch (\Throwable $e) {
+
             Log::error('Error updating piano conti', ['condominio_id' => $condominio->id, 'piano_conto_id' => $pianoConto->id, 'message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return to_route('admin.gestionale.esercizi.piani-conti.index', [
                 'condominio' => $condominio->id, 'esercizio'  => $esercizio->id, 'pianoConto' => $pianoConto->id,
             ])->with($this->flashError(__('gestionale.error_update_piano_conto')));
+            
         }
     }
 

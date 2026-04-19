@@ -34,6 +34,7 @@ export interface Conto {
   tipo: 'spesa' | 'entrata'
   importo: string // Stringa formattata ("1.234,56 €")
   note: string | null
+  is_tecnico?: boolean
   
   // Smart Fields (Nuovi)
   importo_raw?: number; // Importo in centesimi (necessario per calcoli JS)

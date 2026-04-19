@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue'
-import { Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, ShieldAlert, User, Wallet, Folders } from 'lucide-vue-next'
+import { AlertTriangle, Percent, Edit, Trash2, FileText, Link, Plus, PieChart, Info, TrendingUp, ArrowRight, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, ShieldAlert, User, Wallet, Folders } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -90,6 +90,19 @@ const statusColorClass = computed(() => {
     </div>
 
     <div v-else class="space-y-3">
+
+      <!-- BANNER VOCE TECNICA (Sopravvenienza) -->
+      <div v-if="props.conto.is_tecnico" 
+          class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+        <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <h4 class="font-bold text-amber-900 text-sm">Voce tecnica — Sopravvenienza passiva</h4>
+          <p class="text-xs text-amber-700/80 mt-1 leading-relaxed">
+            Generata automaticamente dalla registrazione di una fattura fuori preventivo (Art. 1130-bis c.c.). 
+            Non modificabile direttamente. Non finanziabile tramite piano ordinario.
+          </p>
+        </div>
+      </div>
 
       <Card>
         <CardHeader class="flex flex-row items-start justify-between space-y-0">

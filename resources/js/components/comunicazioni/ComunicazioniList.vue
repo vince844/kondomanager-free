@@ -3,7 +3,7 @@
 import { ref } from "vue";
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
-import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert } from 'lucide-vue-next';
+import { CircleArrowDown, CircleArrowRight, CircleArrowUp, CircleAlert, Tags } from 'lucide-vue-next';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
 import { trans } from 'laravel-vue-i18n';
 import type { Comunicazione } from '@/types/comunicazioni';

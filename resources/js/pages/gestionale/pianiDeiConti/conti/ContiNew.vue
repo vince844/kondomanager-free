@@ -1,10 +1,11 @@
 <script setup lang="ts">
+
 import { Head, Link, router, usePage } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { List, Plus, Wallet, FolderTree, Settings2, Calculator } from 'lucide-vue-next'
+import { Plus, LoaderCircle, List, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
@@ -32,6 +33,7 @@ const props = defineProps<{
   fornitori: Array<{ id: number, ragione_sociale: string }>
   tabelle: Array<{ id: number, nome: string }>
   totalePreventivo: number
+  totaleSopravvenienze: number
 }>()
 
 const { generatePath } = usePermission()
@@ -111,6 +113,14 @@ const confermaRimozioneTabella = (payload: { conto: Conto, tabellaId: number }) 
   tabellaDaRimuovere.value = payload.tabellaId
   showModalRimuoviTabella.value = true
 }
+
+const contiPreventivo = computed(() => 
+  props.conti.filter(c => !c.is_tecnico)
+)
+
+const contiTecnici = computed(() => 
+  props.conti.filter(c => c.is_tecnico)
+)
 
 const eliminaConto = () => {
   if (!contoDaEliminare.value) return
@@ -198,18 +208,50 @@ const rimuoviTabella = () => {
               <div class="p-4 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Elenco conti e sottoconti</h3>
                 
-                <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold px-3 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
-                   <Wallet class="w-4 h-4" />
-                   Totale: {{ euro(props.totalePreventivo) }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span v-if="contiTecnici.length > 0" 
+                        class="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+                    <AlertTriangle class="w-3 h-3" />
+                    Sopravvenienze: {{ euro(props.totaleSopravvenienze) }}
+                  </span>
+                  <span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+                    <Wallet class="w-3 h-3" />
+                    Preventivo: {{ euro(props.totalePreventivo) }}
+                  </span>
+                </div>
               </div>
               
-              <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto"> 
-                <AlberoDeiConti
-                  :conti="props.conti" 
-                  :selected-id="contoSelezionato?.id"
-                  @seleziona="selezionaConto"
-                />
+              <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto">
+                <!-- SEZIONE 1: Preventivo Deliberato -->
+                <div class="mb-2">
+                  <div class="flex items-center gap-2 px-3 py-2">
+                    <Lock class="w-3.5 h-3.5 text-indigo-500" />
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Preventivo deliberato</span>
+                  </div>
+                   <div class="bg-indigo-50/30 rounded-lg mx-1 mb-2">
+                    <AlberoDeiConti
+                      :conti="contiPreventivo" 
+                      :selected-id="contoSelezionato?.id"
+                      @seleziona="selezionaConto"
+                    />
+                  </div>
+                </div>
+
+                <!-- SEZIONE 2: Sopravvenienze (solo se esistono) -->
+                <div v-if="contiTecnici.length > 0" class="mt-4 pt-3 border-t border-dashed border-amber-200">
+                  <div class="flex items-center gap-2 px-3 py-2 mb-1">
+                    <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-amber-600">Sopravvenienze e imprevisti</span>
+                    <span class="text-[9px] text-amber-500 font-medium">(fuori preventivo)</span>
+                  </div>
+                  <div class="bg-amber-50/30 rounded-lg mx-1 mb-2">
+                    <AlberoDeiConti
+                      :conti="contiTecnici" 
+                      :selected-id="contoSelezionato?.id"
+                      @seleziona="selezionaConto"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

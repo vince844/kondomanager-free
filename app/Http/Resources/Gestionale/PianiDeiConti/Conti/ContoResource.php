@@ -157,6 +157,7 @@ class ContoResource extends JsonResource
             'descrizione'           => $this->descrizione,
             'tipo'                  => $this->tipo,
             'note'                  => $this->note,
+            'is_tecnico'            => (bool) $this->is_tecnico,
             'codice'                => $this->codice,
             'default_fornitore_id'  => $this->default_fornitore_id,
             'fornitore_nome'        => $this->fornitore ? $this->fornitore->ragione_sociale : null,

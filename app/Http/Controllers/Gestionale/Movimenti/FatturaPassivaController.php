@@ -237,26 +237,30 @@ class FatturaPassivaController extends Controller
         }
 
         // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
+        // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
         $fondiRiserva = Cassa::where('condominio_id', $condominio->id)
             ->where('tipo', 'fondo')
             ->where('attiva', true)
             ->get()
             ->map(function($cassa) {
-                // Per ogni fondo, recuperiamo i movimenti DARE/AVERE dal suo conto contabile associato
                 $movimenti = DB::table('righe_scritture')
                     ->where('conto_contabile_id', $cassa->conto_contabile_id)
                     ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
                     ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
                     ->first();
 
-                // Calcolo: Saldo Iniziale (della tabella casse) + Entrate - Uscite
                 $saldoIniziale = $cassa->saldo_iniziale ?? 0;
                 $saldoAttuale = $saldoIniziale + ($movimenti->avere ?? 0) - ($movimenti->dare ?? 0);
 
                 return [
-                    'id'            => $cassa->conto_contabile_id, // L'ID del conto serve per la registrazione contabile
+                    'id'            => $cassa->conto_contabile_id, 
                     'nome'          => $cassa->nome,
                     'saldo_attuale' => (int) max(0, $saldoAttuale),
+                    
+                    // --- I DATI DI GOVERNANCE MANCANTI CHE SERVONO A VUE ---
+                    'sottotipo_fondo'                => $cassa->sottotipo_fondo,
+                    'is_override_assemblea'          => (bool) $cassa->is_override_assemblea,
+                    'is_utilizzabile_per_imprevisti' => (bool) $cassa->is_utilizzabile_per_imprevisti,
                 ];
             });
 
@@ -436,6 +440,7 @@ class FatturaPassivaController extends Controller
         $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
         
         if ($pivotPlan) {
+            /** @var \App\Models\Gestionale\PianoRate $piano */
             $piano = PianoRate::find($pivotPlan->piano_rate_id);
             
             if ($piano) {

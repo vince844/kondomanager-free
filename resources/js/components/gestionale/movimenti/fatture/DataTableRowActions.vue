@@ -119,7 +119,7 @@ const downloadPdf = () => {
       <ConfirmDialog 
           v-model="isDeleteModalOpen"
           title="Elimina Fattura"
-          confirm-text="Elimina Fisicamente"
+          confirm-text="Elimina fisicamente"
           variant="destructive"
           @confirm="executeDelete"
       >
