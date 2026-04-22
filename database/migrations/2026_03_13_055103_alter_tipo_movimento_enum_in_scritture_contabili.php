@@ -10,25 +10,27 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Enum completo con TUTTI i valori utilizzati dal sistema e dalla roadmap
-        DB::statement("ALTER TABLE scritture_contabili MODIFY COLUMN tipo_movimento ENUM(
-            'fattura_acquisto',
-            'nota_credito_fornitore',
-            'pagamento_fornitore',
-            'storno_fattura',
-            'emissione_rata',
-            'incasso_rata',
-            'storno_credito',
-            'stralcio_credito',
-            'rimborso_condomino',
-            'apertura',
-            'chiusura',
-            'giroconto',
-            'rettifica',
-            'pagamento_f24',
-            'incasso_diverso',
-            'rimborso_assicurativo'
-        ) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            // Enum completo con TUTTI i valori utilizzati dal sistema e dalla roadmap
+            DB::statement("ALTER TABLE scritture_contabili MODIFY COLUMN tipo_movimento ENUM(
+                'fattura_acquisto',
+                'nota_credito_fornitore',
+                'pagamento_fornitore',
+                'storno_fattura',
+                'emissione_rata',
+                'incasso_rata',
+                'storno_credito',
+                'stralcio_credito',
+                'rimborso_condomino',
+                'apertura',
+                'chiusura',
+                'giroconto',
+                'rettifica',
+                'pagamento_f24',
+                'incasso_diverso',
+                'rimborso_assicurativo'
+            ) NOT NULL");
+        }
     }
 
     /**
@@ -39,15 +41,17 @@ return new class extends Migration
         // Rollback alla situazione originale base
         // ATTENZIONE: Il rollback fallirà se nel DB ci sono già record con i nuovi valori (es. storno_credito).
         // È il comportamento standard di MySQL/MariaDB per la sicurezza dei dati.
-        DB::statement("ALTER TABLE scritture_contabili MODIFY COLUMN tipo_movimento ENUM(
-            'incasso_rata', 
-            'pagamento_fornitore', 
-            'giroconto', 
-            'rettifica', 
-            'apertura', 
-            'chiusura', 
-            'emissione_rata',
-            'fattura_acquisto'
-        ) NOT NULL");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("ALTER TABLE scritture_contabili MODIFY COLUMN tipo_movimento ENUM(
+                'incasso_rata', 
+                'pagamento_fornitore', 
+                'giroconto', 
+                'rettifica', 
+                'apertura', 
+                'chiusura', 
+                'emissione_rata',
+                'fattura_acquisto'
+            ) NOT NULL");
+        }
     }
 };

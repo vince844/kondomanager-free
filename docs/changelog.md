@@ -2,6 +2,42 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.25] - ERP Accounting Engine & Reverse Ledger (Latest)
+
+### Architettura ERP (Il Filtro Invertitore)
+* **Single Source of Truth Contabile:** Rifattorizzato interamente il core del `FatturaPassivaService` per l'emissione delle Note di Credito (Storni). Abbandonata la logica ibrida basata su moltiplicatori matematici e ternari condizionali.
+* **Paradigma "Write-Then-Reverse":** Il motore ora elabora le Note di Credito applicando la *Regola d'Oro* dei gestionali Enterprise. La Partita Doppia viene generata sempre come se fosse una fattura passiva standard (valori assoluti positivi, Costi in DARE, Debiti in AVERE). Solo all'ultimo millisecondo, un "Filtro Invertitore" interviene capovolgendo chirurgicamente i segni (DARE diventa AVERE e viceversa), garantendo un determinismo matematico assoluto e zero edge-case.
+
+### Sicurezza e Integrità (Il Guardiano Contabile)
+* **Double-Entry Validator:** Introdotto un sistema di validazione di quadratura insuperabile. Un istante prima di finalizzare il `DB::transaction`, il sistema calcola la somma esatta al centesimo del DARE e dell'AVERE. Qualsiasi sbilancio blocca fisicamente la transazione (Rollback totale), impedendo il salvataggio di scritture corrotte nel database.
+* **Audit Trail & Graceful Degradation:** In caso di sbilancio bloccato dal Validatore, il sistema scrive un log `CRITICAL` con l'impronta esatta dell'errore (User ID, importi, differenza) a uso dei dev. All'amministratore viene restituito un messaggio UI elegante tramite blocco `try/catch`, evitando crash di sistema (schermate 500).
+
+### Compliance Fiscale e Fondi (Critical Fixes)
+* **Storno Ritenute d'Acconto:** Risolto un bug fiscale critico che escludeva il calcolo della ritenuta d'acconto durante la generazione delle Note di Credito. Ora lo storno inverte correttamente il debito verso l'Erario (DARE), garantendo che la fattura annullata non generi falsi obblighi di versamento F24.
+* **Integrità Reportistica Fondi:** Modificata la registrazione delle coperture (`fattura_coperture`). Le Note di Credito ora registrano l'utilizzo dei Fondi di Riserva o delle Sopravvenienze con segno negativo. Questo garantisce che le query di reportistica sommino correttamente `1000€ (Fattura) + (-1000€) (Storno) = 0€`, mantenendo i saldi dei fondi perfettamente intatti.
+* **Pulizia Conti Fantasma (Garbage Collection):** Il controller di eliminazione fisica delle fatture (`FatturaPassivaController@destroy`) ora intercetta e distrugge automaticamente i "Conti Imprevisto" orfani creati dinamicamente dalle sopravvenienze, mantenendo l'Albero dei Conti pulito da voci inutilizzate.
+
+### Testing & Quality Assurance (Enterprise Grade)
+* **Test Suite Alignment (100% Pass Rate):** Aggiornati i test storici (`DashboardFinancialTest` e `BudgetCoverageServiceTest`) per supportare le nuove logiche strutturali introdotte in v1.9 (distribuzione equa Push-Down del budget e lettura parziali su tabelle Pivot `piano_rate_conto`).
+* **Copertura Edge-Case Totale:** Aggiunti test di quadratura granulari. Coperta la casistica "Spesa Imprevista Pura" verificando la corretta genesi del conto dinamico on-the-fly e la corretta registrazione nel Mastro `sopravvenienze_passive` (Art. 1130-bis).
+* **Agnostic Migrations per DB In-Memory:** Rifattorizzati gli script di migrazione storici (`piani_rate`, `saldi`, `scritture_contabili`). Ora tollerano perfettamente le esecuzioni veloci su SQLite (in RAM) per i test Pest, eseguendo le query raw (`ALTER TABLE ... ENUM`, `information_schema`) esclusivamente in ambiente di produzione MySQL/MariaDB.
+
+Per testare run php artisan test --filter="Scenario|fattura|nota di credito|fondo|mista"
+
+## [1.9.24] - Historical Debt Management & Financial UI
+
+### UI Finanziaria Avanzata (Widget Double Lock)
+* **Triplice Spaccato Finanziario:** Ridisegnato il pannello di controllo per la registrazione delle fatture pregresse. L'interfaccia guida ora l'amministratore attraverso tre "Card" analitiche indipendenti:
+    1.  **Quadratura (Scarto Economico):** Calcola la differenza tra il totale della fattura e il debito storico riconosciuto a bilancio, isolando il valore esatto che richiede una giustificazione (Rata Integrativa, Conguaglio o Fondo).
+    2.  **Liquidità Arretrati (Deficit Finanziario):** Confronta il debito storico con la reale capienza della "Rata 0" incassata dai condòmini. Adotta un colore ambra informativo (non bloccante) per avvisare se i morosi stanno costringendo il condominio ad attingere alla liquidità ordinaria.
+    3.  **Impatto Cassa (Netto Bancario):** Mostra la proiezione esatta del saldo di conto corrente post-operazione.
+* **Risoluzione Conflitto Cognitivo:** Separati visivamente gli allarmi. Lo "Scarto Economico" (che blocca il salvataggio) è ora rosso ed evidenziato, mentre il "Deficit Finanziario" (che è un problema di riscossione, non contabile) è stato declassato ad avviso informativo, riducendo drasticamente il carico cognitivo per l'utente.
+
+### Precisione Operativa & Legale
+* **Calcolo Bonifico Netto (UX):** La card "Impatto Cassa" ora scorpora intelligentemente le Ritenute d'Acconto dal totale del documento. Il sistema mostra all'amministratore l'esatto importo del bonifico netto da disporre in banca, evitando confusione tra il costo a bilancio (lordo) e l'uscita reale di cassa.
+* **Filtro Conti Liquidi:** Il menu a tendina "Conto Addebito" è stato blindato. Ora filtra alla radice il database mostrando esclusivamente i conti liquidi (Banche, Poste, Cassa Contanti), impedendo all'utente di selezionare erroneamente un Fondo Patrimoniale come origine del pagamento materiale.
+* **Data di Origine e Prescrizione:** Aggiunto il campo "Data di origine del debito" per le fatture pregresse. L'interfaccia calcola in tempo reale l'anzianità del debito e, se supera i 5 anni, fa scattare un alert rosso di "Rischio Prescrizione" (Art. 2948 c.c.), tutelando legalmente l'operato dell'amministratore.
+
 ## [1.9.23] - Dashboard Intelligence & Clean Ledger (Latest)
 
 ### Dashboard & Deficit Operativo (UX Finanziaria)

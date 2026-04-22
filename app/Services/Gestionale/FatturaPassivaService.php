@@ -96,8 +96,13 @@ class FatturaPassivaService
             // 2. Calcolo Ritenuta
             $ritenuta     = 0;
             $datiRitenuta = null;
-            if ($fornitore->soggetto_ritenuta && !$isNotaCredito) {
-                $base     = $imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100);
+            
+            // FIX: Calcoliamo SEMPRE la ritenuta, anche per le note di credito
+            // La ritenuta si calcola sempre tranne quando esplicitamente disabilitata
+            // (es. storno di fattura con ritenuta già versata all'erario)
+            $applicaRitenuta = $fornitore->soggetto_ritenuta && ($data['applica_ritenuta'] ?? true);
+            if ($applicaRitenuta) {
+                $base = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
                 $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
                 $datiRitenuta = [
                     'imponibile_calcolo' => $base,
@@ -107,6 +112,8 @@ class FatturaPassivaService
             }
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
+            
+            // Il moltiplicatore resta per la testata della fattura a database
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
             $statoApprovazione = $data['stato_approvazione'] ?? 'approvata';
@@ -131,7 +138,7 @@ class FatturaPassivaService
                 'aliquota_iva_pregressa' => $isPregresso ? $aliquotaPregressaSalvata : 0,
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
                 'importo_iva'        => $ivaTotale * $moltiplicatore,
-                'importo_ritenuta'   => $ritenuta,
+                'importo_ritenuta'   => $ritenuta * $moltiplicatore,
                 'totale_documento'   => $totaleDoc * $moltiplicatore,
                 'netto_a_pagare'     => $netto,
                 'stato_pagamento'    => 'aperta',
@@ -154,12 +161,17 @@ class FatturaPassivaService
 
             // =====================================================================
             // TRIDENTE: Creazione Copertura se usa Fondo Riserva per sforo
+            // NOTA: le coperture sono registri informativi (audit trail).
+            // L'effetto contabile reale è esclusivamente nelle righe_scritture.
+            // Non esiste doppio movimento: coperture ≠ contabilità.
             // =====================================================================
             $overrideData = $data['dati_extra']['override_budget'] ?? null;
             if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
+                $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
                 $fattura->coperture()->create([
                     'tipo_copertura'      => 'fondo_riserva',
-                    'importo'             => (int) ($overrideData['importo_sforo'] ?? 0),
+                    // FIX: Moltiplicatore per azzerare i report in caso di storno
+                    'importo'             => $importoSforo * $moltiplicatore, 
                     'stato'               => 'pianificata',
                     'fondo_id'            => $overrideData['fondo_patrimoniale_id'],
                     'nota_amministratore' => "Copertura sforo budget (Art. 1135 c.c.): " . ($overrideData['motivazione'] ?? ''),
@@ -173,11 +185,13 @@ class FatturaPassivaService
             if ($isPregresso && !empty($data['coperture'])) {
                 foreach ($data['coperture'] as $index => &$copertura) {
                     $importoCoperturaCents = (int) round($copertura['importo'] * 100);
-                    $totaleCopertoPregresso += $importoCoperturaCents;
+                    // L'eccedenza interna si calcola sui valori assoluti
+                    $totaleCopertoPregresso += $importoCoperturaCents; 
 
                     $fattura->coperture()->create([
                         'tipo_copertura'      => $copertura['tipo_copertura'],
-                        'importo'             => $importoCoperturaCents,
+                        // FIX: Moltiplicatore per i report del DB
+                        'importo'             => $importoCoperturaCents * $moltiplicatore, 
                         'stato'               => 'pianificata',
                         'saldo_id'            => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
                         'conto_id'            => $copertura['tipo_copertura'] === 'sopravvenienza' ? ($copertura['fonte_id'] ?? null) : null,
@@ -187,12 +201,11 @@ class FatturaPassivaService
                 }
             }
 
-            // CORRETTO — $totaleDoc è già in centesimi
-            $imponibileFatturaCents = abs((int)($totaleDoc * $moltiplicatore));
+            // $totaleDoc è già assoluto
+            $imponibileFatturaCents = abs($totaleDoc);
             $eccedenzaCents = $imponibileFatturaCents - $totaleCopertoPregresso;
 
             if ($isPregresso && $eccedenzaCents > 0 && $logLegale) {
-                // Creiamo la Sopravvenienza Passiva per l'eccedenza
                 $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
                     $condominioId, 
                     $data['gestione_id'], 
@@ -201,10 +214,10 @@ class FatturaPassivaService
                     $eccedenzaCents
                 );
 
-                // Registriamo la copertura come "Sopravvenienza"
                 $fattura->coperture()->create([
                     'tipo_copertura'      => 'sopravvenienza',
-                    'importo'             => $eccedenzaCents,
+                    // FIX: Moltiplicatore per i report del DB
+                    'importo'             => $eccedenzaCents * $moltiplicatore, 
                     'stato'               => 'pianificata',
                     'conto_id'            => $nuovoContoIdPregresso,
                     'nota_amministratore' => "Eccedenza fattura pregressa non coperta dai saldi iniziali",
@@ -261,21 +274,18 @@ class FatturaPassivaService
 
                 $totaleRata0 = 0;
 
-                // 1. Smistiamo il DARE in base alla VERA natura della copertura (Scenario A e B)
                 if (!empty($data['coperture'])) {
                     foreach ($data['coperture'] as $copertura) {
                         $importoCoperturaCents = (int) round($copertura['importo'] * 100);
                         
                         if ($copertura['tipo_copertura'] === 'fondo_riserva') {
-                            // SCENARIO B: DARE sul Fondo specifico (decrementa la passività)
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $copertura['fonte_id'],
-                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                'importo'            => $importoCoperturaCents,
+                                'tipo_riga'          => 'dare',
+                                'importo'            => abs($importoCoperturaCents),
                                 'note'               => 'Utilizzo fondo riserva per debito pregresso',
                             ]);
                         } else {
-                            // SCENARIO A: rata_0 o saldo_patrimoniale -> Vanno su Passate Gestioni
                             $totaleRata0 += $importoCoperturaCents;
                         }
                     }
@@ -283,62 +293,53 @@ class FatturaPassivaService
                     if ($totaleRata0 > 0) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoPassateGestioni->id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                            'importo'            => $totaleRata0,
+                            'tipo_riga'          => 'dare',
+                            'importo'            => abs($totaleRata0),
                             'note'               => 'Chiusura debito patrimoniale pregresso',
                         ]);
                     }
                 }
 
-                // 2. Gestione Eccedenza (Scenario C) o Fallback Totale (Scenario D)
                 if ($eccedenzaCents > 0) {
                     if ($nuovoContoIdPregresso) {
-                        // SCENARIO C: C'è la modale, quindi creiamo la Sopravvenienza
                         $contoSopravv = Conto::find($nuovoContoIdPregresso);
                         if ($contoSopravv && $contoSopravv->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoSopravv->conto_contabile_id,
-                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                'importo'            => $eccedenzaCents,
+                                'tipo_riga'          => 'dare',
+                                'importo'            => abs($eccedenzaCents),
                                 'voce_spesa_id'      => $contoSopravv->id,
                                 'note'               => 'Sopravvenienza passiva: eccedenza fattura pregressa',
                             ]);
                         }
                     } else {
-                        // SCENARIO D (Fallback): Fattura pregressa senza coperture e senza modale. 
-                        // Buttiamo l'intero importo su Passate Gestioni per non sbilanciare il Libro Giornale.
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoPassateGestioni->id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                            'importo'            => $eccedenzaCents,
+                            'tipo_riga'          => 'dare',
+                            'importo'            => abs($eccedenzaCents),
                             'note'               => 'Caricamento debito pregresso senza copertura esplicita',
                         ]);
                     }
                 }
             } else {
-                // =====================================================================
-                // FIX PARTITA DOPPIA: Smistamento tra Conto Economico e Stato Patrimoniale
-                // =====================================================================
                 foreach ($righeProcessate as $riga) {
                     $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
 
                     if (!empty($riga['immobile_id'])) {
-                        // SPESA PRIVATA
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'tipo_riga'          => 'dare',
                             'importo'            => $importoLordoRiga,
                             'voce_spesa_id'      => null,
                             'immobile_id'        => $riga['immobile_id'],
                             'note'               => 'Anticipazione spesa ad personam (Art. 63)',
                         ]);
                     } elseif (!empty($riga['conto_id'])) {
-                        // SPESA COMUNE
                         $contoBudget = Conto::find($riga['conto_id']);
                         if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'tipo_riga'          => 'dare',
                                 'importo'            => $importoLordoRiga,
                                 'voce_spesa_id'      => $riga['conto_id'],
                                 'immobile_id'        => null,
@@ -347,7 +348,6 @@ class FatturaPassivaService
                             throw new \Exception("Integrità compromessa: Manca l'ancoraggio in Partita Doppia per il capitolo di spesa.");
                         }
                     } else {
-                        // FIX: TRAPPOLA ANTI-SBILANCIO
                         throw new \Exception("Integrità compromessa: Impossibile allocare la riga (nessun immobile e nessun conto associato).");
                     }
                 }
@@ -358,12 +358,12 @@ class FatturaPassivaService
             // AVERE 1: Debito verso Fornitore
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
+                'tipo_riga'          => 'avere',
                 'importo'            => abs($netto),
                 'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
-            // AVERE 2: Debito verso Erario
+            // AVERE 2: Debito verso Erario (Ritenute)
             if ($ritenuta > 0) {
                 $contoErario = ContoContabile::where('condominio_id', $condominioId)
                     ->where('ruolo', 'debiti_erario_ritenute')
@@ -373,7 +373,7 @@ class FatturaPassivaService
 
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoErario->id,
-                    'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
+                    'tipo_riga'          => 'avere',
                     'importo'            => abs($ritenuta),
                     'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
                     'note'               => "Ritenuta d'acconto 4% fattura fornitore"
@@ -382,15 +382,13 @@ class FatturaPassivaService
             
             // Registrazione Contabile Sforo Budget
             if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
-                
                 $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
                 
                 if ($importoSforo > 0) {
-                    // FIX: DARE sul Fondo Patrimoniale (diminuzione passività)
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $overrideData['fondo_patrimoniale_id'],
-                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                        'importo'            => $importoSforo,
+                        'tipo_riga'          => 'dare',
+                        'importo'            => abs($importoSforo),
                         'note'               => 'Utilizzo fondo riserva per sforo budget: ' . ($overrideData['motivazione'] ?? ''),
                     ]);
 
@@ -399,19 +397,34 @@ class FatturaPassivaService
                         ->first();
 
                     if ($contoSopravvenienza) {
-                        // FIX: AVERE sul Conto Costi (storno/neutralizzazione del costo)
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoSopravvenienza->id,
-                            'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
-                            'importo'            => $importoSforo,
+                            'tipo_riga'          => 'avere',
+                            'importo'            => abs($importoSforo),
                             'note'               => 'Giroconto copertura sforo budget da fondo riserva',
                         ]);
                     }
                 }
             }
             
+            // =====================================================================
+            // IL FILTRO INVERTITORE
+            // =====================================================================
+            if ($isNotaCredito) {
+                DB::table('righe_scritture')
+                    ->where('scrittura_id', $scrittura->id)
+                    ->update([
+                        'tipo_riga' => DB::raw("CASE WHEN tipo_riga = 'dare' THEN 'avere' ELSE 'dare' END")
+                    ]);
+            }
+
+            // =====================================================================
+            // DOUBLE-ENTRY VALIDATOR (Audit Trail & Rollback)
+            // =====================================================================
+            DoubleEntryValidator::validateOrFail($scrittura->id);
+
             $fattura->scritture()->attach($scrittura->id, [
-                'importo_allocato' => abs($totaleDoc * $moltiplicatore),
+                'importo_allocato' => abs($totaleDoc),
                 'tipo'             => 'competenza',
             ]);
 

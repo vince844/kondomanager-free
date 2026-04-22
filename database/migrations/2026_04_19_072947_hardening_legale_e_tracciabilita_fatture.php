@@ -191,64 +191,66 @@ return new class extends Migration
         // gestite da piani pre-migrazione. Solo piani in stato bozza/approvato
         // (non cancellati o archiviati) contribuiscono.
         // ---------------------------------------------------------------------
-        DB::statement("
-            UPDATE righe_fattura rf
-            JOIN fatture_passive fp ON rf.fattura_passiva_id = fp.id
-            JOIN piano_rate_fatture prf ON prf.fattura_passiva_id = fp.id
-            JOIN piani_rate pr ON prf.piano_rate_id = pr.id
-            SET rf.is_rateizzata = 1
-            WHERE pr.stato IN ('bozza', 'approvato')
-        ");
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement("
+                UPDATE righe_fattura rf
+                JOIN fatture_passive fp ON rf.fattura_passiva_id = fp.id
+                JOIN piano_rate_fatture prf ON prf.fattura_passiva_id = fp.id
+                JOIN piani_rate pr ON prf.piano_rate_id = pr.id
+                SET rf.is_rateizzata = 1
+                WHERE pr.stato IN ('bozza', 'approvato')
+            ");
 
-        // ---------------------------------------------------------------------
-        // D3. Marca come tecnici i conti FIGLI con ruolo sopravvenienze_passive
-        // ---------------------------------------------------------------------
-        // Tutti i conti esistenti collegati al mastro Sopravvenienze Passive
-        // vanno esclusi dal wizard piano ordinario.
-        // ---------------------------------------------------------------------
-        DB::statement("
-            UPDATE conti c
-            JOIN conti_contabili cc ON c.conto_contabile_id = cc.id
-            SET c.is_tecnico = 1
-            WHERE cc.ruolo = 'sopravvenienze_passive'
-        ");
+            // ---------------------------------------------------------------------
+            // D3. Marca come tecnici i conti FIGLI con ruolo sopravvenienze_passive
+            // ---------------------------------------------------------------------
+            // Tutti i conti esistenti collegati al mastro Sopravvenienze Passive
+            // vanno esclusi dal wizard piano ordinario.
+            // ---------------------------------------------------------------------
+            DB::statement("
+                UPDATE conti c
+                JOIN conti_contabili cc ON c.conto_contabile_id = cc.id
+                SET c.is_tecnico = 1
+                WHERE cc.ruolo = 'sopravvenienze_passive'
+            ");
 
-        // ---------------------------------------------------------------------
-        // D4. Marca come tecnici i CAPITOLI PADRE delle sopravvenienze
-        // ---------------------------------------------------------------------
-        // Il capitolo "Integrazioni Straordinarie (Scudo Legale)" è un
-        // contenitore che raggruppa le sopravvenienze. Non ha un ruolo
-        // contabile proprio (ereditato da FatturaPassivaService::creaContoDinamicoSopravvenienza)
-        // ma deve essere anch'esso invisibile al preventivo ordinario.
-        // ---------------------------------------------------------------------
-        DB::statement("
-            UPDATE conti
-            SET is_tecnico = 1
-            WHERE nome = 'Integrazioni Straordinarie (Scudo Legale)'
-              AND parent_id IS NULL
-        ");
+            // ---------------------------------------------------------------------
+            // D4. Marca come tecnici i CAPITOLI PADRE delle sopravvenienze
+            // ---------------------------------------------------------------------
+            // Il capitolo "Integrazioni Straordinarie (Scudo Legale)" è un
+            // contenitore che raggruppa le sopravvenienze. Non ha un ruolo
+            // contabile proprio (ereditato da FatturaPassivaService::creaContoDinamicoSopravvenienza)
+            // ma deve essere anch'esso invisibile al preventivo ordinario.
+            // ---------------------------------------------------------------------
+            DB::statement("
+                UPDATE conti
+                SET is_tecnico = 1
+                WHERE nome = 'Integrazioni Straordinarie (Scudo Legale)'
+                AND parent_id IS NULL
+            ");
 
-        // ---------------------------------------------------------------------
-        // D5. Normalizzazione relitti storici (RELITTO CONTO 138)
-        // ---------------------------------------------------------------------
-        // Prima versioni del FatturaPassivaService avevano un bug nel
-        // firstOrCreate che assegnava erroneamente `conto_contabile_id` al
-        // capitolo padre (es. conto 138 nel DB con ruolo 'costi_servizi').
-        //
-        // Il capitolo padre delle sopravvenienze è un puro raggruppatore
-        // visivo — i costi reali sono sui conti figli. Qui ripuliamo il
-        // capitolo padre impostando conto_contabile_id = NULL.
-        //
-        // Sicuro: nessuna scrittura contabile è mai stata generata sul
-        // capitolo padre direttamente (solo sui figli).
-        // ---------------------------------------------------------------------
-        DB::statement("
-            UPDATE conti
-            SET conto_contabile_id = NULL
-            WHERE nome = 'Integrazioni Straordinarie (Scudo Legale)'
-              AND parent_id IS NULL
-              AND conto_contabile_id IS NOT NULL
-        ");
+            // ---------------------------------------------------------------------
+            // D5. Normalizzazione relitti storici (RELITTO CONTO 138)
+            // ---------------------------------------------------------------------
+            // Prima versioni del FatturaPassivaService avevano un bug nel
+            // firstOrCreate che assegnava erroneamente `conto_contabile_id` al
+            // capitolo padre (es. conto 138 nel DB con ruolo 'costi_servizi').
+            //
+            // Il capitolo padre delle sopravvenienze è un puro raggruppatore
+            // visivo — i costi reali sono sui conti figli. Qui ripuliamo il
+            // capitolo padre impostando conto_contabile_id = NULL.
+            //
+            // Sicuro: nessuna scrittura contabile è mai stata generata sul
+            // capitolo padre direttamente (solo sui figli).
+            // ---------------------------------------------------------------------
+            DB::statement("
+                UPDATE conti
+                SET conto_contabile_id = NULL
+                WHERE nome = 'Integrazioni Straordinarie (Scudo Legale)'
+                AND parent_id IS NULL
+                AND conto_contabile_id IS NOT NULL
+            ");
+        }
     }
 
     public function down(): void

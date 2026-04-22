@@ -73,7 +73,14 @@ test('mantiene saldo_applicato a 0 se la creazione del piano rate fallisce', fun
     });
 
     // Eseguiamo la chiamata
-    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', ...));
+    // OPZIONE A — se non servono parametri
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store'));
+
+    // OPZIONE B — se servono i parametri del condominio/esercizio
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [
+        'condominio' => $condominio->id,
+        'esercizio'  => $esercizio->id,
+    ]));
 
     // Verifichiamo che il valore sia rimasto 0 (Rollback della transazione)
     $valoreDb = DB::table('gestioni')->where('id', $ordinaria->id)->value('saldo_applicato');

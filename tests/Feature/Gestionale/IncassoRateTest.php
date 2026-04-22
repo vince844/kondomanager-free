@@ -147,8 +147,7 @@ class IncassoRateTest extends TestCase
         );
     }
     
-    /** @test */
-    public function registra_incasso_totale_rata_happy_path() {
+    public function test_registra_incasso_totale_rata_happy_path() {
         $data = $this->createIncassoScenario();
         
         $payload = [

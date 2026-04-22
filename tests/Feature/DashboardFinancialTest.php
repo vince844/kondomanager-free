@@ -51,7 +51,10 @@ function setupFinancialScenario($preventivo, $pianificato, $connesso = true) {
     ]);
 
     $pianoRate = PianoRate::factory()->create(['gestione_id' => $gestione->id]);
-    if ($connesso) { $pianoRate->capitoli()->attach($padre->id); }
+    if ($connesso) { 
+        // FIX: Inseriamo l'importo pianificato nella Pivot!
+        $pianoRate->capitoli()->attach($padre->id, ['importo' => $pianificato]); 
+    }
 
     Rata::factory()->create(['piano_rate_id' => $pianoRate->id, 'importo_totale' => $pianificato]);
 
@@ -113,11 +116,13 @@ test('dashboard somma correttamente rate da più piani per la stessa voce (Scena
     ]);
 
     $pianoA = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'descrizione' => 'Rate Ordinarie']);
-    $pianoA->capitoli()->attach($padre->id); 
+    // FIX: Aggiunto ['importo' => 60000]
+    $pianoA->capitoli()->attach($padre->id, ['importo' => 60000]); 
     Rata::factory()->create(['piano_rate_id' => $pianoA->id, 'importo_totale' => 60000]);
 
     $pianoB = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'descrizione' => 'Conguaglio']);
-    $pianoB->capitoli()->attach($padre->id);
+    // FIX: Aggiunto ['importo' => 40000]
+    $pianoB->capitoli()->attach($padre->id, ['importo' => 40000]);
     Rata::factory()->create(['piano_rate_id' => $pianoB->id, 'importo_totale' => 40000]);
 
     $this->actingAs($user)
@@ -168,7 +173,8 @@ test('impedisce la modifica dell\'importo spesa se esistono rate emesse', functi
     $stato = enum_exists(StatoPianoRate::class) ? StatoPianoRate::APPROVATO : 'approvato';
 
     $pianoRate = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'stato' => $stato]); 
-    $pianoRate->capitoli()->attach($conto->id); 
+    // FIX: Anche qui per coerenza, esplicitiamo l'importo 
+    $pianoRate->capitoli()->attach($conto->id, ['importo' => 50000]);
 
     $response = $this->actingAs($user)
         ->patchJson("/admin/gestionale/{$condominio->id}/conti/{$conto->id}", [

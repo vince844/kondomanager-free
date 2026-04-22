@@ -64,6 +64,10 @@ function makePiano(int $id, string $nome, array $capitoli): object
     $piano->nome     = $nome;
     $piano->capitoli = collect($capitoli);
     $piano->attivo   = true;
+    
+    // FIX: Aggiunta del tipo per il nuovo Push-Down
+    $piano->tipo     = 'ordinario'; 
+    
     return $piano;
 }
 
@@ -157,10 +161,14 @@ it('push-down equo dal padre distribuisce correttamente tra figli', function () 
 
     $map = runCopertura([$capitolo], [$pianoA, $pianoB]);
 
-    // Compenso: 10000 (A) + 10000 (push-down) = 20000 (200€)
-    expect($map[1])->toBe(20000);
-    // Pulizia: 42300 (A) + 10000 (push-down) = 52300 (523€)
-    expect($map[2])->toBe(52300);
+    // Compenso: 25000 + 10000 (la sua metà del padre) = 35000
+    expect($map[1])->toBe(35000);
+    
+    // Pulizia: 52300 + 10000 (la sua metà del padre) = 62300
+    expect($map[2])->toBe(62300);
+    
+    // Padre: 20000 (il surplus originale rimane tracciato)
+    expect($map[97])->toBe(20000);
 });
 
 // -----------------------------------------------------------------------
@@ -204,16 +212,18 @@ it('push-down con fondo in eccesso copre tutti i figli e lascia surplus al padre
         makeCapitolo($pulizia,  52300), // deficit = 0
     ]);
     $pianoB = makePiano(2, 'Piano B', [
-        makeCapitolo($capitolo, 20000), // 200€ disponibili, solo 5000 servono
+        makeCapitolo($capitolo, 20000), // 200€ disponibili
     ]);
 
     $map = runCopertura([$capitolo], [$pianoA, $pianoB]);
 
-    // Compenso: 25000 + 5000 = 30000 (full)
-    expect($map[1])->toBe(30000);
-    // Pulizia: già coperta, non riceve nulla
-    expect($map[2])->toBe(52300);
-    // Padre: 20000 (surplus rimane in mappa)
+    // Compenso: 25000 (sua base) + 10000 (metà esatta del padre) = 35000
+    expect($map[1])->toBe(35000);
+    
+    // Pulizia: 52300 (sua base) + 10000 (metà esatta del padre) = 62300
+    expect($map[2])->toBe(62300);
+    
+    // Padre: 20000 (il surplus originale rimane tracciato)
     expect($map[97])->toBe(20000);
 });
 

@@ -458,7 +458,7 @@ class FatturaPassivaController extends Controller
                 $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
                 if ($stato === 'approvato') {
                     return back()->with($this->flashError(
-                        'Operazione negata: La fattura è in un piano Aapprovato. Riporta il piano in bozza per poterla eliminare.'
+                        'Operazione negata: La fattura è in un piano approvato. Riporta il piano in bozza per poterla eliminare.'
                     ));
                 }
 
@@ -474,6 +474,12 @@ class FatturaPassivaController extends Controller
             return back()->with($this->flashError(
                 'Operazione negata: La fattura risulta pagata o parzialmente saldata. ' .
                 'Per mantenere la coerenza del libro giornale, devi usare la funzione "Storna".'
+            ));
+        }
+
+        if ($fattura->scritture()->count() > 1) {
+            return back()->with($this->flashError(
+                'Operazione negata: la fattura è collegata a più scritture contabili.'
             ));
         }
 
@@ -534,19 +540,29 @@ class FatturaPassivaController extends Controller
 
                 $fattura->coperture()->delete();
                 $fattura->righe()->delete();
-                
-                foreach ($fattura->scritture as $scrittura) {
-                    $scrittura->righe()->delete();
-                    $scrittura->forceDelete(); 
-                }
+
+                $scritture = $fattura->scritture;
 
                 $fattura->scritture()->detach();
 
+                foreach ($scritture as $scrittura) {
+                    $scrittura->righe()->delete();
+                    $scrittura->forceDelete();
+                }
+
                 // --- FIX: ELIMINAZIONE CONTI FANTASMA ---
-                if ($contiImprevistiIds->isNotEmpty()) {
-                    // Distruggiamo direttamente i conti.
-                    // Il database (ON DELETE CASCADE) gestirà automaticamente eventuali orfani.
-                    Conto::whereIn('id', $contiImprevistiIds)->delete();
+                $contiDaEliminare = Conto::whereIn('id', $contiImprevistiIds)
+                    ->where('is_tecnico', true) // solo conti generati on-the-fly
+                    ->whereNotIn('id', function($q) {
+                        $q->select('conto_id')->from('righe_fattura')->whereNotNull('conto_id');
+                    })
+                    ->whereNotIn('id', function($q) {
+                        $q->select('conto_id')->from('fattura_coperture')->whereNotNull('conto_id');
+                    })
+                    ->pluck('id');
+
+                if ($contiDaEliminare->isNotEmpty()) {
+                    Conto::whereIn('id', $contiDaEliminare)->delete();
                 }
                 // ----------------------------------------
 

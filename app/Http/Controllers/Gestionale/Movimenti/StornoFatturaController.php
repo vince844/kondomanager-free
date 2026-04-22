@@ -82,6 +82,7 @@ class StornoFatturaController extends Controller
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
+                'applica_ritenuta'           => false,
 
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
@@ -98,7 +99,7 @@ class StornoFatturaController extends Controller
                 'coperture' => $fattura->coperture->map(fn($c) => [
                     'tipo_copertura' => $c->tipo_copertura,
                     'importo'        => abs($c->importo / 100),
-                    'fonte_id'       => $c->fonte_id
+                    'fonte_id'       => $c->saldo_id ?? $c->conto_id ?? $c->fondo_id
                 ])->toArray(),
                 // --- FINE FIX ---
 

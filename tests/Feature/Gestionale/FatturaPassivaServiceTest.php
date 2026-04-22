@@ -1,0 +1,445 @@
+<?php
+
+use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContoContabile;
+use App\Services\Gestionale\FatturaPassivaService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
+
+function setupContabile(): array
+{
+    // Disabilita listener che dipendono da tabelle non rilevanti per questi test
+    Event::fake([\App\Events\Gestionale\FatturaRegistrata::class]);
+
+    $condominio = \App\Models\Condominio::factory()->create();
+
+    $esercizioId = DB::table('esercizi')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'nome'          => 'Esercizio 2026',
+        'stato'         => 'aperto',
+        'data_inizio'   => '2026-01-01',
+        'data_fine'     => '2026-12-31',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    $gestioneId = DB::table('gestioni')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'nome'          => 'Gestione Ordinaria',
+        'tipo'          => 'ordinaria',
+        'attiva'        => true,
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    $fornitoreId = DB::table('fornitori')->insertGetId([
+        'ragione_sociale'            => 'Fornitore Test Srl',
+        'soggetto_ritenuta'          => false,
+        'perc_imponibile_ritenuta'   => 100,
+        'perc_ritenuta'              => 4,
+        'giorni_scadenza'            => 30,
+        'modalita_pagamento_default' => 'bonifico',
+        'created_at'                 => now(),
+        'updated_at'                 => now(),
+    ]);
+
+    foreach (['debiti_fornitori','crediti_condomini','debiti_erario_ritenute','passate_gestioni','sopravvenienze_passive'] as $ruolo) {
+        DB::table('conti_contabili')->insert([
+            'condominio_id' => $condominio->id,
+            'ruolo'         => $ruolo,
+            'codice'        => strtoupper($ruolo),
+            'nome'          => ucfirst(str_replace('_', ' ', $ruolo)),
+            'tipo'          => 'passivo',
+            'categoria'     => 'debiti',
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+    }
+
+    $contoFondoId = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => 'fondo_riserva',
+        'codice'        => 'FONDO',
+        'nome'          => 'Fondo Riserva',
+        'tipo'          => 'passivo',
+        'categoria'     => 'fondi',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    $contoContabileId = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => null,
+        'codice'        => 'COSTO-TEST',
+        'nome'          => 'Conto Costo Test',
+        'tipo'          => 'attivo',
+        'categoria'     => 'crediti',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    $pianoContoId = DB::table('piani_conti')->insertGetId([
+        'gestione_id'   => $gestioneId,
+        'condominio_id' => $condominio->id,
+        'nome'          => 'Piano dei Conti Test',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    $capitoloId = DB::table('conti')->insertGetId([
+        'piano_conto_id'     => $pianoContoId,
+        'conto_contabile_id' => $contoContabileId,
+        'nome'               => 'Manutenzione Test',
+        'tipo'               => 'spesa',
+        'importo'            => 500000,
+        'is_tecnico'         => false,
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
+
+    $immobileId = DB::table('immobili')->insertGetId([
+        'condominio_id'  => $condominio->id,
+        'interno'        => '1',
+        'nome'           => 'Appartamento Test',
+        'descrizione'    => '',
+        'codice_immobile'=> 'APP-TEST-1',
+        'attivo'         => true,
+        'created_at'     => now(),
+        'updated_at'     => now(),
+    ]);
+
+    // Recupera i model — prova i namespace comuni
+    $esercizio = \App\Models\Esercizio::find($esercizioId)
+        ?? \App\Models\Esercizio::find($esercizioId);
+
+    $gestione = \App\Models\Gestione::find($gestioneId)
+        ?? \App\Models\Gestione::find($gestioneId);
+
+    return [
+        $condominio,
+        $esercizio,
+        $gestione,
+        \App\Models\Fornitore::find($fornitoreId),
+        Conto::find($capitoloId),
+        ContoContabile::find($contoFondoId),
+        $immobileId,
+    ];
+}
+
+function assertQuadraturaPerfetta(int $scritturaId): void
+{
+    $dare  = DB::table('righe_scritture')->where('scrittura_id', $scritturaId)->where('tipo_riga', 'dare')->sum('importo');
+    $avere = DB::table('righe_scritture')->where('scrittura_id', $scritturaId)->where('tipo_riga', 'avere')->sum('importo');
+
+    expect((int)$dare)->toBeGreaterThan(0, 'Nessun movimento DARE')
+        ->and((int)$avere)->toBeGreaterThan(0, 'Nessun movimento AVERE')
+        ->and((int)$dare)->toEqual((int)$avere, "Sbilancio! DARE: $dare | AVERE: $avere");
+}
+
+function datiBase(array $ctx, array $extra = []): array
+{
+    [$condominio, $esercizio, $gestione, $fornitore] = $ctx;
+    return array_merge([
+        'fornitore_id'       => $fornitore->id,
+        'esercizio_id'       => $esercizio->id,
+        'gestione_id'        => $gestione->id,
+        'tipo_documento'     => 'fattura',
+        'numero_documento'   => 'FT-' . uniqid(),
+        'data_documento'     => now()->format('Y-m-d'),
+        'data_scadenza'      => now()->addDays(30)->format('Y-m-d'),
+        'modalita_pagamento' => 'bonifico',
+        'dati_extra'         => ['fiscal' => [], 'competenza' => null, 'override_budget' => null],
+    ], $extra);
+}
+
+it('fattura ordinaria: bilancia Costo, Fornitore e Ritenuta', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+    $fornitore->update(['soggetto_ritenuta' => true, 'perc_imponibile_ritenuta' => 100, 'perc_ritenuta' => 4]);
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Pulizie',
+            'importo_imponibile' => 1000,
+            'aliquota_iva'       => 22,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    expect($fattura->netto_a_pagare)->toEqual(118000);
+    assertQuadraturaPerfetta($scrittura->id);
+
+    $contoErario = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'debiti_erario_ritenute')->first();
+    $avereErario = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'avere')
+        ->where('conto_contabile_id', $contoErario->id)
+        ->value('importo');
+    expect((int)$avereErario)->toEqual(4000);
+});
+
+it('nota di credito: inverte DARE/AVERE e quadra', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'tipo_documento'   => 'nota_credito',
+        'applica_ritenuta' => false,
+        'righe' => [[
+            'descrizione'        => 'Storno Pulizie',
+            'importo_imponibile' => 1000,
+            'aliquota_iva'       => 22,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+    ]);
+
+    $nc        = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $nc->scritture->first();
+
+    expect($nc->totale_documento)->toEqual(-122000);
+    assertQuadraturaPerfetta($scrittura->id);
+
+    expect(DB::table('righe_scritture')->where('scrittura_id', $scrittura->id)->where('tipo_riga', 'avere')->where('importo', 122000)->exists())
+        ->toBeTrue('Costo dovrebbe essere in AVERE');
+    expect(DB::table('righe_scritture')->where('scrittura_id', $scrittura->id)->where('tipo_riga', 'dare')->where('importo', 122000)->exists())
+        ->toBeTrue('Fornitore dovrebbe essere in DARE');
+});
+
+it('fattura mista: quota ad personam va su crediti condomini', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo, , $immobileId] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [
+            ['descrizione' => 'Comune',  'importo_imponibile' => 500, 'aliquota_iva' => 10, 'conto_id' => $capitolo->id, 'is_sopravvenienza' => false],
+            ['descrizione' => 'Privato', 'importo_imponibile' => 200, 'aliquota_iva' => 10, 'immobile_id' => $immobileId, 'is_sopravvenienza' => false],
+        ],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+
+    $righeDare = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)->where('tipo_riga', 'dare')
+        ->pluck('importo')->map(fn($i) => (int)$i)->toArray();
+
+    expect($righeDare)->toContain(55000)->and($righeDare)->toContain(22000);
+});
+
+it('fondo di riserva: giroconto DARE fondo + AVERE sopravvenienza', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo, $contoFondo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Tetto',
+            'importo_imponibile' => 2000,
+            'aliquota_iva'       => 10,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+        'dati_extra' => [
+            'fiscal'          => [],
+            'competenza'      => null,
+            'override_budget' => [
+                'strategia_rientro'     => 'fondo_riserva',
+                'fondo_patrimoniale_id' => $contoFondo->id,
+                'importo_sforo'         => 220000,
+                'motivazione'           => 'Test',
+            ],
+        ],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+
+    $dareFondo = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoFondo->id)
+        ->value('importo');
+    expect((int)$dareFondo)->toEqual(220000);
+});
+
+it('Scenario D: pregresso senza coperture → tutto su passate gestioni', function () {
+    [$condominio, $esercizio, $gestione, $fornitore] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'data_documento'         => '2024-12-01',
+        'data_scadenza'          => '2024-12-31',
+        'is_pregresso'           => true,
+        'imponibile_pregresso'   => 819.67,
+        'aliquota_iva_pregressa' => 22,
+        'coperture'              => [],
+        'righe'                  => [],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+    expect($fattura->coperture()->count())->toEqual(0);
+
+    $contoPassate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->first();
+    $darePassate  = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoPassate->id)
+        ->sum('importo');
+
+    expect((int)$darePassate)->toEqual(100000);
+});
+
+it('Scenario A: pregresso con rata_0 → passate gestioni', function () {
+    [$condominio, $esercizio, $gestione, $fornitore] = setupContabile();
+
+    $saldoId = DB::table('saldi')->insertGetId([
+        'condominio_id'  => $condominio->id,
+        'esercizio_id'   => $esercizio->id,
+        'saldo_iniziale' => -100000,
+        'created_at'     => now(),
+        'updated_at'     => now(),
+    ]);
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'data_documento'         => '2024-12-01',
+        'data_scadenza'          => '2024-12-31',
+        'is_pregresso'           => true,
+        'imponibile_pregresso'   => 819.67,
+        'aliquota_iva_pregressa' => 22,
+        'saldo_patrimoniale_id'  => $saldoId,
+        'righe'                  => [],
+        'coperture' => [[
+            'tipo_copertura' => 'rata_0',
+            'importo'        => 1000.00,
+            'fonte_id'       => $saldoId,
+        ]],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+
+    $contoPassate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->first();
+    $darePassate  = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoPassate->id)
+        ->sum('importo');
+
+    expect((int)$darePassate)->toEqual(100000);
+    expect($fattura->coperture()->where('tipo_copertura', 'rata_0')->count())->toEqual(1);
+});
+
+it('Scenario B: pregresso con fondo_riserva → DARE sul fondo', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, , $contoFondo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'data_documento'         => '2024-12-01',
+        'data_scadenza'          => '2024-12-31',
+        'is_pregresso'           => true,
+        'imponibile_pregresso'   => 819.67,
+        'aliquota_iva_pregressa' => 22,
+        'righe'                  => [],
+        'coperture' => [[
+            'tipo_copertura' => 'fondo_riserva',
+            'importo'        => 1000.00,
+            'fonte_id'       => $contoFondo->id,
+        ]],
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+
+    $dareFondo = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoFondo->id)
+        ->value('importo');
+
+    expect((int)$dareFondo)->toEqual(100000);
+    expect($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->count())->toEqual(1);
+});
+
+it('spesa imprevista (fuori preventivo): crea conto dinamico e va in DARE su sopravvenienze', function () {
+    [$condominio, $esercizio, $gestione, $fornitore] = setupContabile();
+    $fornitore->update(['soggetto_ritenuta' => false]);
+
+    // Simuliamo il payload di una spesa imprevista (nessun conto_id a preventivo)
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Rottura Tubo Improvvisa',
+            'importo_imponibile' => 800,
+            'aliquota_iva'       => 10,
+            'conto_id'           => null, // Nessun conto a preventivo!
+            'is_sopravvenienza'  => true,
+        ]],
+        'dati_extra' => [
+            'fiscal' => [],
+            'competenza' => null,
+            'override_budget' => null,
+            // Dati obbligatori per la generazione del conto dinamico
+            'log_legale_sopravvenienza' => [
+                'origine_decisionale' => 'gestione_corrente',
+                'motivazione_sforo'   => 'Tubo rotto in piena notte',
+                'tipo_ripartizione'   => 'millesimale',
+                'nome_voce'           => 'Riparazione Tubo (Emergenza)'
+            ]
+        ]
+    ]);
+
+    $fattura   = (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+    $scrittura = $fattura->scritture->first();
+
+    assertQuadraturaPerfetta($scrittura->id);
+
+    // Verifichiamo che il costo sia finito ESATTAMENTE nel Mastro delle Sopravvenienze
+    $contoSopravvenienza = ContoContabile::where('condominio_id', $condominio->id)
+        ->where('ruolo', 'sopravvenienze_passive')
+        ->first();
+
+    $dareSopravvenienza = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('tipo_riga', 'dare')
+        ->where('conto_contabile_id', $contoSopravvenienza->id)
+        ->value('importo');
+
+    expect((int)$dareSopravvenienza)->toEqual(88000); // 800€ + 10% IVA = 880€
+    
+    // Verifichiamo che il conto dinamico sia stato creato nell'albero
+    $contoDinamicoCreato = Conto::where('nome', 'Riparazione Tubo (Emergenza)')->exists();
+    expect($contoDinamicoCreato)->toBeTrue();
+});
+
+it('il guardiano contabile (DoubleEntryValidator) blocca una scrittura sbilanciata', function () {
+    // 1. Recuperiamo le entità necessarie (condominio, esercizio, gestione)
+    [$condominio, $esercizio, $gestione] = setupContabile();
+    
+    // 2. Creiamo una testata vuota passando TUTTI i campi obbligatori
+    $scrittura = \App\Models\Gestionale\ScritturaContabile::create([
+        'condominio_id'      => $condominio->id,
+        'esercizio_id'       => $esercizio->id,   
+        'gestione_id'        => $gestione->id,    
+        'data_registrazione' => now(),
+        'data_competenza'    => now(),
+        'causale'            => 'Test Sbilancio',
+        'tipo_movimento'     => 'fattura_acquisto',
+        'stato'              => 'registrata',
+    ]);
+
+    // 3. Inseriamo righe SBILANCIATE di proposito (Dare 100€, Avere 90€)
+    $scrittura->righe()->create(['conto_contabile_id' => 1, 'tipo_riga' => 'dare', 'importo' => 10000]);
+    $scrittura->righe()->create(['conto_contabile_id' => 2, 'tipo_riga' => 'avere', 'importo' => 9000]);
+
+    // 4. Ci aspettiamo che il Validatore tiri un'eccezione bloccando tutto
+    expect(fn() => \App\Services\Gestionale\DoubleEntryValidator::validateOrFail($scrittura->id))
+        ->toThrow(Exception::class, 'Errore di integrità contabile');
+});

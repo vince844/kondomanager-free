@@ -64,39 +64,41 @@ return new class extends Migration
         });
 
         // ── STEP 3: Travaso dati ───────────────────────────────────────────────
-        DB::transaction(function () {
-            DB::statement("
-                UPDATE saldi s
-                INNER JOIN (
-                    SELECT condominio_id, MIN(id) AS id
-                    FROM gestioni WHERE tipo = 'ordinaria'
-                    GROUP BY condominio_id
-                ) g ON g.condominio_id = s.condominio_id
-                SET s.gestione_id = g.id, s.is_applicato = 0
-                WHERE s.gestione_id IS NULL
-            ");
+        if (DB::getDriverName() === 'mysql') {
+            DB::transaction(function () {
+                DB::statement("
+                    UPDATE saldi s
+                    INNER JOIN (
+                        SELECT condominio_id, MIN(id) AS id
+                        FROM gestioni WHERE tipo = 'ordinaria'
+                        GROUP BY condominio_id
+                    ) g ON g.condominio_id = s.condominio_id
+                    SET s.gestione_id = g.id, s.is_applicato = 0
+                    WHERE s.gestione_id IS NULL
+                ");
 
-            DB::table('saldi')
-                ->whereNull('gestione_id')
-                ->distinct()
-                ->pluck('condominio_id')
-                ->each(function ($condominioId) {
-                    $gId = DB::table('gestioni')->insertGetId([
-                        'condominio_id' => $condominioId,
-                        'nome'          => 'Gestione Ordinaria',
-                        'tipo'          => 'ordinaria',
-                        'attiva'        => 1,
-                        'data_inizio'   => now()->startOfYear(),
-                        'data_fine'     => now()->endOfYear(),
-                        'created_at'    => now(),
-                        'updated_at'    => now(),
-                    ]);
-                    DB::table('saldi')
-                        ->where('condominio_id', $condominioId)
-                        ->whereNull('gestione_id')
-                        ->update(['gestione_id' => $gId, 'is_applicato' => 0]);
-                });
-        });
+                DB::table('saldi')
+                    ->whereNull('gestione_id')
+                    ->distinct()
+                    ->pluck('condominio_id')
+                    ->each(function ($condominioId) {
+                        $gId = DB::table('gestioni')->insertGetId([
+                            'condominio_id' => $condominioId,
+                            'nome'          => 'Gestione Ordinaria',
+                            'tipo'          => 'ordinaria',
+                            'attiva'        => 1,
+                            'data_inizio'   => now()->startOfYear(),
+                            'data_fine'     => now()->endOfYear(),
+                            'created_at'    => now(),
+                            'updated_at'    => now(),
+                        ]);
+                        DB::table('saldi')
+                            ->where('condominio_id', $condominioId)
+                            ->whereNull('gestione_id')
+                            ->update(['gestione_id' => $gId, 'is_applicato' => 0]);
+                    });
+            });
+        }
 
         // ── STEP 4: Ricrea tutte le FK ─────────────────────────────────────────
         Schema::table('saldi', function (Blueprint $table) {
@@ -152,12 +154,16 @@ return new class extends Migration
 
     private function tryDropIndex(string $tableName, string $indexName): void
     {
+        if (DB::getDriverName() !== 'mysql') {
+            return; // SQLite non supporta information_schema
+        }
+
         $exists = DB::select("
             SELECT COUNT(*) as cnt
             FROM information_schema.STATISTICS
             WHERE table_schema = DATABASE()
-              AND table_name   = ?
-              AND index_name   = ?
+            AND table_name   = ?
+            AND index_name   = ?
         ", [$tableName, $indexName]);
 
         if ($exists[0]->cnt > 0) {
@@ -169,15 +175,19 @@ return new class extends Migration
 
     private function foreignExists(string $tableName, string $column): bool
     {
-        $result = DB::select("
-            SELECT COUNT(*) as cnt
-            FROM information_schema.KEY_COLUMN_USAGE
-            WHERE table_schema          = DATABASE()
-              AND table_name            = ?
-              AND column_name           = ?
-              AND referenced_table_name IS NOT NULL
-        ", [$tableName, $column]);
+        if (DB::getDriverName() === 'mysql') {
+            $result = DB::select("
+                SELECT COUNT(*) as cnt
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE table_schema          = DATABASE()
+                AND table_name            = ?
+                AND column_name           = ?
+                AND referenced_table_name IS NOT NULL
+            ", [$tableName, $column]);
 
-        return $result[0]->cnt > 0;
+            return $result[0]->cnt > 0;
+        }
+        // SQLite non supporta information_schema — assumiamo che la FK non esista
+        return false;
     }
 };

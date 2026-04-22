@@ -86,6 +86,7 @@ class DashboardController extends Controller
                 ])
                 ->where('esercizio_id', $esercizio->id)
                 ->where('stato_approvazione', '!=', 'contestata')
+                ->where('stato_pagamento', '!=', 'stornata')
                 ->where(function ($query) {
                     $query->whereHas('righe', function ($q) {
                         $q->where(function($sq) {
