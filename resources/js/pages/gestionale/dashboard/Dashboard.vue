@@ -37,7 +37,8 @@ const props = defineProps<{
         importo: number; 
         is_sforo?: boolean;
         strategia: string;
-        gestione: string 
+        gestione: string;
+        gestione_id?: number;
     }>;
     scoperto_count: number;
   } | null;
@@ -53,6 +54,7 @@ const props = defineProps<{
     fornitore: string;
     totale_scoperto: number;
     gestione_id: number | null;
+    strategia: string;
     righe: Array<{
         id: number;
         tipo: string;
@@ -415,12 +417,6 @@ const confirmReject = () => {
                                 <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight mb-2 border-l-2 border-amber-300 pl-2">
                                     {{ suggerimentoOperativo }}
                                 </div>
-                                <div v-if="copertura.orfani.length > 0" class="space-y-1 mt-2 pt-2 border-t border-amber-200/50">
-                                    <div v-for="item in copertura.orfani.filter(o => o.strategia === 'nessuna').slice(0, 2)" :key="item.id" class="flex justify-between items-center text-[10px] text-slate-600 dark:text-slate-400">
-                                        <span class="truncate max-w-[120px]">{{ item.nome }}</span>
-                                        <span class="font-mono font-bold">{{ euro(item.importo) }}</span>
-                                    </div>
-                                </div>
                             </div>
 
                             <div v-else-if="statoCopertura === 'surplus'" class="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-3 flex flex-col justify-center text-blue-700 mt-4">
@@ -600,7 +596,21 @@ const confirmReject = () => {
                                     <div class="bg-amber-50/50 dark:bg-amber-900/10 px-5 py-3 border-b border-amber-100 dark:border-amber-900/20 flex justify-between items-center">
                                         <div>
                                             <div class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ fat.fornitore }}</div>
-                                            <div class="text-xs text-slate-500 font-medium">Doc. {{ fat.numero }}</div>
+                                             <div class="flex items-center gap-2 mt-0.5">
+                                                <span class="text-xs text-slate-500 font-medium">Doc. {{ fat.numero }}</span>
+                                                <span v-if="fat.strategia === 'rata_integrativa'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">
+                                                    Rata integrativa
+                                                </span>
+                                                <span v-else-if="fat.strategia === 'conguaglio_fine_anno'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-600 text-white">
+                                                    A conguaglio
+                                                </span>
+                                                <span v-else-if="fat.strategia === 'fondo_riserva'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-600 text-white">
+                                                    Fondo riserva
+                                                </span>
+                                            </div>
                                         </div>
                                         <div class="text-sm font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
                                             {{ euro(fat.totale_scoperto) }}
@@ -624,8 +634,14 @@ const confirmReject = () => {
                                             </div>
                                         </div>
                                         
-                                        <div class="mt-4 flex justify-end">
-                                            <Link :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=straordinario&origine=dashboard&gestione_id=${fat.gestione_id}&fatture[]=${fat.id}`">
+                                        <div class="mt-4 flex justify-end items-center">
+                                            <span v-if="fat.strategia === 'conguaglio_fine_anno' || fat.strategia === 'fondo_riserva'" 
+                                                class="text-[10px] font-bold text-slate-400 mr-auto">
+                                                {{ fat.strategia === 'fondo_riserva' 
+                                                    ? 'Coperta dal fondo patrimoniale — nessuna rata richiesta' 
+                                                    : 'Verrà calcolata automaticamente a fine esercizio' }}
+                                            </span>
+                                            <Link v-else :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=straordinario&origine=dashboard&gestione_id=${fat.gestione_id}&fatture[]=${fat.id}`">
                                                 <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm">
                                                     Finanzia spesa <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
                                                 </Button>
@@ -643,49 +659,73 @@ const confirmReject = () => {
                             
                             <div class="space-y-3">
                                 <div v-for="orfano in copertura.orfani.filter(o => !o.nome.includes('Imprevisto -'))" :key="orfano.id"
-                                class="p-4 border rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-800"
-                                :class="{
-                                    'border-indigo-100 bg-indigo-50/30': orfano.strategia === 'conguaglio',
-                                    'border-emerald-100 bg-emerald-50/30': orfano.strategia === 'fondo_riserva',
-                                    'border-slate-200': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
-                                }">
-                                    <div class="flex items-start gap-3">
-                                        <div class="p-2 rounded-lg"
-                                            :class="{
-                                                'bg-indigo-100 text-indigo-600': orfano.strategia === 'conguaglio',
-                                                'bg-emerald-100 text-emerald-600': orfano.strategia === 'fondo_riserva',
-                                                'bg-rose-50 text-rose-600': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
-                                            }">
-                                            <Wallet v-if="orfano.strategia === 'fondo_riserva'" class="w-4 h-4" />
-                                            <TrendingDown v-else class="w-4 h-4" />
-                                        </div>
+                                    class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm border"
+                                    :class="{
+                                        'border-indigo-200/60': orfano.strategia === 'conguaglio',
+                                        'border-emerald-200/60': orfano.strategia === 'fondo_riserva',
+                                        'border-rose-200/60': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                                    }">
+                                    
+                                    <!-- Header card -->
+                                    <div class="px-5 py-3 border-b flex justify-between items-center"
+                                        :class="{
+                                            'bg-indigo-50/50 border-indigo-100': orfano.strategia === 'conguaglio',
+                                            'bg-emerald-50/50 border-emerald-100': orfano.strategia === 'fondo_riserva',
+                                            'bg-rose-50/50 border-rose-100': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                                        }">
                                         <div>
-                                            <p class="text-sm font-black text-slate-800 dark:text-slate-200 leading-tight">{{ orfano.nome }}</p>
-                                            <div class="flex items-center gap-2 mt-1">
-                                                <p class="text-[10px] font-semibold text-slate-500">{{ orfano.gestione }}</p>
-                                                <span v-if="orfano.strategia === 'fondo_riserva'" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-600 text-white">Fondo Riserva</span>
-                                                <span v-else-if="orfano.strategia === 'conguaglio'" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-600 text-white">A Consuntivo</span>
-                                                <span v-else-if="orfano.strategia === 'rata_integrativa'" class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">Rata Integrativa</span>
-                                                <span v-else class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">Sforo Aperto</span>
+                                            <div class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ orfano.nome }}</div>
+                                            <div class="flex items-center gap-2 mt-0.5">
+                                                <span class="text-xs text-slate-500 font-medium">{{ orfano.gestione }}</span>
+                                                <span v-if="orfano.strategia === 'fondo_riserva'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-emerald-600 text-white">
+                                                    Fondo Riserva
+                                                </span>
+                                                <span v-else-if="orfano.strategia === 'conguaglio'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-indigo-600 text-white">
+                                                    A Consuntivo
+                                                </span>
+                                                <span v-else-if="orfano.strategia === 'rata_integrativa'" 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-amber-600 text-white">
+                                                    Rata Integrativa
+                                                </span>
+                                                <span v-else 
+                                                    class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-rose-600 text-white">
+                                                    Sforo Aperto
+                                                </span>
                                             </div>
                                         </div>
-                                    </div>
-                                    
-                                    <div class="flex items-center gap-4">
-                                        <span class="text-sm font-mono font-black"
+                                        <div class="text-sm font-black px-2.5 py-1 rounded-md border"
                                             :class="{
-                                                'text-emerald-600': orfano.strategia === 'fondo_riserva',
-                                                'text-indigo-600': orfano.strategia === 'conguaglio',
-                                                'text-rose-600': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
+                                                'text-indigo-600 bg-indigo-50 border-indigo-200': orfano.strategia === 'conguaglio',
+                                                'text-emerald-600 bg-emerald-50 border-emerald-200': orfano.strategia === 'fondo_riserva',
+                                                'text-rose-600 bg-rose-50 border-rose-200': !['conguaglio', 'fondo_riserva'].includes(orfano.strategia)
                                             }">
                                             {{ euro(orfano.importo) }}
-                                        </span>
-                                        
-                                        <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id })">
-                                            <Button size="sm" variant="outline" class="h-8 text-[10px] uppercase font-bold border-slate-300 text-slate-700">
-                                                Gestisci <ArrowRight class="w-3 h-3 ml-1" />
-                                            </Button>
-                                        </Link>
+                                        </div>
+                                    </div>
+
+                                    <!-- Footer con azione -->
+                                    <div class="p-5">
+                                        <div class="mt-0 flex justify-end items-center">
+                                            <span v-if="orfano.strategia === 'conguaglio' || orfano.strategia === 'fondo_riserva'" 
+                                                class="text-[10px] font-bold text-slate-400 mr-auto">
+                                                {{ orfano.strategia === 'fondo_riserva' 
+                                                    ? 'Coperta dal fondo patrimoniale — nessuna rata richiesta' 
+                                                    : 'Verrà calcolata automaticamente a fine esercizio' }}
+                                            </span>
+                                           <!--  <Link v-else :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id })">
+                                                <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm">
+                                                    Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
+                                                </Button>
+                                            </Link> -->
+                                            <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" 
+                                                :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}`">
+                                                <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm">
+                                                    Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
+                                                </Button>
+                                            </Link>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

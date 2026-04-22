@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -9,7 +9,9 @@ import { createColumns } from '@/components/gestionale/movimenti/fatture/columns
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { FileText, Clock, AlertTriangle, Euro } from 'lucide-vue-next';
+import Alert from "@/components/Alert.vue";
 import type { Building } from '@/types/buildings';
+import type { Flash } from '@/types/flash';
 
 const props = defineProps<{
     condominio: Building;
@@ -21,6 +23,8 @@ const props = defineProps<{
 
 const { generatePath, generateRoute } = usePermission();
 const { euro } = useCurrencyFormatter();
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
 
 const headerBreadcrumbs = computed(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -130,6 +134,10 @@ const filterSfori = () => {
                                 </div>
                             </div>
 
+                        </div>
+
+                        <div v-if="flashMessage" class="mb-3">
+                            <Alert :message="flashMessage.message" :type="flashMessage.type" />
                         </div>
 
                         <div>

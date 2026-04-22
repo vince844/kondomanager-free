@@ -24,16 +24,17 @@ class FetchFattureStraordinarieController extends Controller
             $esercizioId   = $request->input('esercizio_id');
             $currentPlanId = $request->input('piano_rate_id');
 
-            // 1. Estrazione Fatture (Sommiamo i centesimi dal DB)
+            // 1a. Fatture CORRENTI con sopravvenienze o spese ad personam
             $rawFatture = DB::table('fatture_passive')
                 ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
                 ->join('righe_fattura', 'fatture_passive.id', '=', 'righe_fattura.fattura_passiva_id')
                 ->where('fatture_passive.condominio_id', $condominio->id)
                 ->where('fatture_passive.esercizio_id', $esercizioId)
+                ->where('fatture_passive.is_pregresso', false)
                 ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
                 ->where(function($q) {
                     $q->where('righe_fattura.is_sopravvenienza', true)
-                      ->orWhereNotNull('righe_fattura.immobile_id');
+                    ->orWhereNotNull('righe_fattura.immobile_id');
                 })
                 ->select(
                     'fatture_passive.id',
@@ -42,8 +43,40 @@ class FetchFattureStraordinarieController extends Controller
                     'fornitori.ragione_sociale as fornitore',
                     DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_straordinario')
                 )
-                ->groupBy('fatture_passive.id', 'fatture_passive.numero_documento', 'fatture_passive.data_documento', 'fornitori.ragione_sociale')
+                ->groupBy(
+                    'fatture_passive.id',
+                    'fatture_passive.numero_documento',
+                    'fatture_passive.data_documento',
+                    'fornitori.ragione_sociale'
+                )
                 ->get();
+
+            // 1b. Fatture PREGRESSE con copertura di tipo sopravvenienza
+            $rawFattureProgresse = DB::table('fatture_passive')
+                ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
+                ->join('fattura_coperture', 'fatture_passive.id', '=', 'fattura_coperture.fattura_passiva_id')
+                ->where('fatture_passive.condominio_id', $condominio->id)
+                ->where('fatture_passive.esercizio_id', $esercizioId)
+                ->where('fatture_passive.is_pregresso', true)
+                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
+                ->where('fattura_coperture.tipo_copertura', 'sopravvenienza')
+                ->select(
+                    'fatture_passive.id',
+                    'fatture_passive.numero_documento',
+                    'fatture_passive.data_documento',
+                    'fornitori.ragione_sociale as fornitore',
+                    DB::raw('SUM(fattura_coperture.importo) as totale_straordinario')
+                )
+                ->groupBy(
+                    'fatture_passive.id',
+                    'fatture_passive.numero_documento',
+                    'fatture_passive.data_documento',
+                    'fornitori.ragione_sociale'
+                )
+                ->get();
+
+            // Merge delle due liste
+            $rawFatture = $rawFatture->concat($rawFattureProgresse);
 
             $fattureIds = $rawFatture->pluck('id')->toArray();
 

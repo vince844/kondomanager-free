@@ -141,25 +141,21 @@ const form = useForm({
     is_pregresso:       false,
     data_competenza_originaria: '',
     saldo_patrimoniale_id: null as number | null,
-
     // NUOVI CAMPI PER FATTURA PREGRESSA
     imponibile_pregresso:       0,
     aliquota_iva_pregressa:     22,
-
     numero_documento:   '',
     data_documento:     new Date().toISOString().substring(0, 10),
     data_scadenza:      '',
     conto_corrente_id:  null as number | null,
     modalita_pagamento: 'bonifico',
     iban_fornitore:     '',
-
     dati_extra: {
         fiscal:     { cig: '', cup: '' },
         competenza: { dal: '', al: '' },
         override_budget:          null as any,
         log_legale_sopravvenienza: null as any
     },
-
     stato_approvazione: 'approvata',
     righe: [{
         descrizione: '',
@@ -169,6 +165,7 @@ const form = useForm({
         aliquota_iva: 22,
         is_sopravvenienza: false
     }],
+    coperture: [] as any[],
     file: null as File | null,
 });
 
@@ -376,6 +373,34 @@ const removeRiga = (idx: number) => {
 
 const showSpesaImprevistaModal = ref(false);
 
+const spesaImprevistaMode = ref<'corrente' | 'pregressa'>('corrente');
+
+const totaleCopertoPregressoEuro = computed(() => {
+    if (!form.is_pregresso) return 0;
+    let sum = 0;
+    
+    // 1. Aggiungiamo la base del debito patrimoniale selezionato
+    if (form.saldo_patrimoniale_id) {
+        const debito = props.debiti_patrimoniali.find(d => d.id === form.saldo_patrimoniale_id);
+        if (debito) sum += (debito.importo_disponibile / 100);
+    }
+    
+    // 2. Aggiungiamo i fondi extra selezionati (ignorando i click manuali su sopravvenienza)
+    if (form.coperture?.length) {
+        sum += form.coperture
+            .filter((c: any) => c.tipo_copertura !== 'sopravvenienza')
+            .reduce((acc: number, c: any) => acc + (Number(c.importo) || 0), 0);
+    }
+    
+    return sum;
+});
+
+const eccedenzaPregressaEuro = computed(() => {
+    if (!form.is_pregresso) return 0;
+    const eccedenza = totaleDocLordoEuro.value - totaleCopertoPregressoEuro.value;
+    return eccedenza > 0.01 ? eccedenza : 0;
+});
+
 /**
  * Entry point unico per l'invio del form.
  *
@@ -389,20 +414,27 @@ const showSpesaImprevistaModal = ref(false);
  * irraggiungibile. La gestione dei pregressi avviene interamente via WidgetDoubleLock.
  */
 const handleSubmit = () => {
-    // 1. Spesa imprevista corrente senza dati legali → chiedi natura e copertura
+    // 1. Spesa imprevista CORRENTE
     const hasSpesaImprevistaCorrente = form.righe.some(r => r.is_sopravvenienza && !r.immobile_id);
     if (!form.is_pregresso && hasSpesaImprevistaCorrente && !form.dati_extra.log_legale_sopravvenienza) {
+        spesaImprevistaMode.value = 'corrente';
         showSpesaImprevistaModal.value = true;
         return;
     }
 
-    // 2. Sforo budget senza override → chiedi strategia di rientro
+    // 2. Eccedenza PREGRESSA (Scenario C — fattura > coperture dichiarate)
+    if (form.is_pregresso && eccedenzaPregressaEuro.value > 0 && !form.dati_extra.log_legale_sopravvenienza) {
+        spesaImprevistaMode.value = 'pregressa';
+        showSpesaImprevistaModal.value = true;
+        return;
+    }
+
+    // 3. Sforo budget CORRENTE
     if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET' && !form.dati_extra.override_budget) {
         showOverrideModal.value = true;
         return;
     }
 
-    // 3. Tutti i controlli superati → invia
     doSubmit();
 };
 
@@ -416,21 +448,19 @@ const handleSubmit = () => {
  *   handleSubmit lo intercetta al punto 2 e apre ModalOverrideBudget
  */
 const handleSpesaImprevistaConfirm = (payload: any) => {
+    // La modale ora emette già i campi corretti, non serve più il remap manuale!
     form.dati_extra.log_legale_sopravvenienza = payload;
 
     if (payload.is_ordinario) {
         form.dati_extra.override_budget = {
-            motivazione:            payload.motivazione_sforo,
-            importo_sforo:          Math.round((totali.value.imponibile_sopravvenienza + totali.value.iva_sopravvenienza) * 100),
-            strategia_rientro:      payload.strategia_rientro,
-            fondo_patrimoniale_id:  payload.fondo_patrimoniale_id,
+            motivazione:           payload.motivazione_sforo,
+            importo_sforo:         Math.round((totali.value.imponibile_sopravvenienza + totali.value.iva_sopravvenienza) * 100),
+            strategia_rientro:     payload.strategia_rientro,
+            fondo_patrimoniale_id: payload.fondo_patrimoniale_id,
         };
     }
 
-    // Chiudiamo la finestra modale
     showSpesaImprevistaModal.value = false;
-
-    // Rilancia handleSubmit: il flusso è sempre lineare e auto-controllato
     handleSubmit();
 };
 
@@ -452,15 +482,11 @@ const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | n
 };
 
 const doSubmit = () => {
-    // 1. Usiamo form.transform per "igienizzare" i dati prima che finiscano in FormData
     form.transform((data) => {
-        // Cloniamo per non modificare reattivamente il form mentre si invia
         const payload = JSON.parse(JSON.stringify(data)); 
         
-        // Puliamo l'array righe per assicurarci che i tipi siano perfetti per il backend
         payload.righe = payload.righe.map((r: any) => ({
             ...r,
-            // Assicuriamoci che siano null veri o interi puri
             conto_id: r.conto_id ? Number(r.conto_id) : null,
             immobile_id: r.immobile_id ? Number(r.immobile_id) : null,
             importo_imponibile: Number(r.importo_imponibile) || 0,
@@ -468,9 +494,36 @@ const doSubmit = () => {
             is_sopravvenienza: Boolean(r.is_sopravvenienza)
         }));
 
+        // --- INIZIO FIX PREGRESSO ---
+        if (payload.is_pregresso) {
+            // Puliamo eventuali "sopravvenienze" aggiunte per errore dall'utente nel Widget
+            payload.coperture = payload.coperture.filter((c: any) => c.tipo_copertura !== 'sopravvenienza');
+            
+            // AUTO-INIEZIONE: Diciamo al backend che stiamo usando il Saldo Patrimoniale di base
+            if (payload.saldo_patrimoniale_id) {
+                const debito = props.debiti_patrimoniali.find(d => d.id === payload.saldo_patrimoniale_id);
+                if (debito) {
+                    const fatturaLordo = payload.imponibile_pregresso * (1 + payload.aliquota_iva_pregressa / 100);
+                    const copertureExtra = payload.coperture.reduce((a:any, c:any) => a + Number(c.importo), 0);
+                    
+                    // Calcoliamo quanta parte del debito base stiamo effettivamente usando
+                    const importoBase = Math.min(debito.importo_disponibile / 100, fatturaLordo - copertureExtra);
+                    
+                    if (importoBase > 0) {
+                        payload.coperture.unshift({
+                            tipo_copertura: 'rata_0',
+                            importo: importoBase,
+                            fonte_id: debito.id
+                        });
+                    }
+                }
+            }
+        }
+        // --- FINE FIX ---
+
         return payload;
     }).post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
-        forceFormData: true, // Manteniamo questo perché c'è un file allegato
+        forceFormData: true, 
         preserveScroll: true,
         onSuccess: () => {
             showSuccessModal.value = true;
@@ -571,8 +624,8 @@ const pageGuides = [
                                 :options="fornitori"
                                 label="ragione_sociale"
                                 :reduce="(f: Fornitore) => f.id"
-                                placeholder="Cerca fornitore o P.IVA..."
-                                class="style-chooser w-full">
+                                placeholder="Cerca fornitore..."
+                                class="w-full">
                                 <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
                                     <div class="flex items-center gap-3 py-1">
                                         <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
@@ -614,7 +667,7 @@ const pageGuides = [
                                 :reduce="(g: Gestione) => g.id"
                                 label="nome"
                                 placeholder="Seleziona..."
-                                class="style-chooser" />
+                            />
                         </div>
 
                         <!-- N. Documento -->
@@ -654,10 +707,10 @@ const pageGuides = [
                             </div>
                             <div class="flex flex-col">
                                 <label for="is_pregresso" class="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer">
-                                    Debito Esercizio Precedente
+                                    Debito esercizio precedente
                                 </label>
                                 <p v-if="form.is_pregresso" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium leading-tight">
-                                    Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello Stato Patrimoniale.
+                                    Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello stato patrimoniale.
                                 </p>
                             </div>
                         </div>
@@ -677,7 +730,7 @@ const pageGuides = [
                             <div class="col-span-1 space-y-1.5 relative">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IVA</Label>
                                 <div class="relative">
-                                    <Input min="0" max="100" type="number" v-model="form.aliquota_iva_pregressa"
+                                    <Input min="0" max="100" v-model="form.aliquota_iva_pregressa"
                                         class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm focus:border-amber-400 focus:ring-amber-400/20" />
                                     <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
                                 </div>
@@ -689,7 +742,7 @@ const pageGuides = [
                         <!-- Conto addebito -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Conto Addebito</Label>
-                            <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca..." class="style-chooser">
+                            <v-select v-model="form.conto_corrente_id" :options="bancheNormalizzate" label="nome" :reduce="(c: any) => c.id" placeholder="Seleziona banca...">
                                 <template #option="{ nome, saldo_attuale_cents }">
                                     <div class="flex justify-between items-center py-0.5">
                                         <span class="font-bold text-sm">{{ nome }}</span>
@@ -1104,10 +1157,13 @@ const pageGuides = [
 
         <ModalSpesaImprevista
             v-model:show="showSpesaImprevistaModal"
+            :mode="spesaImprevistaMode"
             :condominio-id="props.condominio.id"
             :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
             :fondi-riserva="fondi_riserva"
-            :importo-imprevisto="Math.round((totali.imponibile_sopravvenienza + totali.iva_sopravvenienza) * 100)"
+            :importo-imprevisto="spesaImprevistaMode === 'corrente' 
+                ? Math.round((totali.imponibile_sopravvenienza + totali.iva_sopravvenienza) * 100) 
+                : Math.round(eccedenzaPregressaEuro * 100)"
             @confirm="handleSpesaImprevistaConfirm" 
         />
 

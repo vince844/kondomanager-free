@@ -47,15 +47,15 @@ const fatturaCents = computed(() => Math.round(props.totaleFatturaLordo * 100));
 const scopertoAttualeEuro = computed(() => {
     const disponibileCents = debitoSelezionato.value?.importo_disponibile || 0;
     
-    let extraCents = 0;
-    if (props.form.coperture && props.form.coperture.length) {
-        props.form.coperture.forEach((c: any) => { 
-            extraCents += Math.round(Number(c.importo || 0) * 100); 
-        });
-    }
+    // Rimuoviamo la logica delle coperture extra dal calcolo dello scoperto
+    // perché ora se ne occupa la modale.
+    const scopertoCents = Math.max(0, fatturaCents.value - disponibileCents);
+    return scopertoCents / 100;
+});
 
-    const scopertoCents = fatturaCents.value - disponibileCents - extraCents;
-    return Math.max(0, scopertoCents / 100);
+const uscitaNettaCents = computed(() => {
+    if (!props.bankForecast) return fatturaCents.value;
+    return props.bankForecast.attuale_cents - props.bankForecast.post_cents;
 });
 
 const bucoRataZeroCents = computed(() => {
@@ -69,8 +69,6 @@ const semaforoContabile = computed(() => {
     if (scopertoAttualeEuro.value > 0) return 'ORANGE'; 
     
     if (bucoRataZeroCents.value > 0) {
-        // Se il conto addebito selezionato ha i soldi per coprire la fattura, 
-        // l'amministratore ha "tamponato" il problema di liquidità. Declassiamo a Giallo!
         if (props.bankForecast && !props.bankForecast.isRed) {
             return 'YELLOW';
         }
@@ -92,19 +90,11 @@ const fiscalAssistant = computed(() => {
     }
 
     if (semaforoContabile.value === 'ORANGE') {
-        const hasCopertureAttive = props.form.coperture && props.form.coperture.length > 0;
-        let descrizioneDinamica = `La fattura è superiore al debito storico. Restano fuori esattamente ${euro(scopertoAttualeEuro.value * 100)} da giustificare. `;
-        
-        if (hasCopertureAttive) {
-            descrizioneDinamica += `Modifica gli importi nei campi che hai aperto qui sopra finché lo scarto non si azzera. Se serve, usa i pulsanti per aggiungere un'ulteriore voce.`;
-        } else {
-            descrizioneDinamica += `Per poter salvare, devi dire al sistema dove prendere questi soldi extra:\n\n` +
-                                   `👉 Usa il pulsante "+ Converti in spesa corrente" (qui sopra) se vuoi farli pagare ai condòmini.\n` +
-                                   `👉 Usa il pulsante "+ Storna da fondo riserva" (qui sopra) se vuoi usare un fondo cassa esistente.`;
-        }
+        const descrizioneDinamica = `La fattura è superiore al debito storico. Restano fuori esattamente ${euro(scopertoAttualeEuro.value * 100)} da giustificare.\n\n` +
+                                   `Per poter salvare questa differenza, clicca su "Registra Documento". Si aprirà l'assistente per configurare la copertura (Rata Extra, Conguaglio o Fondo di Riserva).`;
 
         return {
-            title: 'Bilancio da far quadrare (Azione Richiesta)',
+            title: 'Quadratura incompleta (Azione Richiesta)',
             desc: descrizioneDinamica,
             icon: Scale,
             colorClass: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800/50',
@@ -112,10 +102,9 @@ const fiscalAssistant = computed(() => {
         };
     }
 
-    // IL NUOVO SEMAFORO GIALLO (Deficit Tamponato)
     if (semaforoContabile.value === 'YELLOW') {
         return {
-            title: 'Deficit Storico Tamponato (Avviso)',
+            title: 'Deficit storico tamponato (Avviso)',
             desc: `Il bilancio quadra e il conto di addebito che hai selezionato ha fondi sufficienti per pagare questa fattura.\n\nTuttavia, ti ricordiamo che i condòmini non hanno versato abbastanza Rata 0 per coprire l'intero debito storico (mancano all'appello ${euro(bucoRataZeroCents.value)}). Assicurati che i soldi che stai per usare non siano destinati alla gestione ordinaria.`,
             icon: AlertTriangle,
             colorClass: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-800/50',
@@ -125,7 +114,7 @@ const fiscalAssistant = computed(() => {
 
     if (semaforoContabile.value === 'RED') {
         return {
-            title: 'Deficit Copertura Arretrati (Attenzione)',
+            title: 'Deficit copertura arretrati (Attenzione)',
             desc: `Il bilancio quadra, ma i condòmini non hanno versato abbastanza arretrati (Rata 0) per coprire interamente questo debito storico. Manca all'appello una provvista di ${euro(bucoRataZeroCents.value)}.\n\nPuoi registrare regolarmente la fattura, ma tieni presente che il suo pagamento assorbirà liquidità destinata alla gestione ordinaria. Sarà necessario un futuro riparto per recuperare questo deficit.`,
             icon: AlertOctagon,
             colorClass: 'bg-rose-50 border-rose-200 text-rose-800 dark:bg-rose-900/20 dark:border-rose-800/50',
@@ -152,18 +141,6 @@ const fiscalAssistant = computed(() => {
     };
 });
 
-const addCopertura = (tipo: string) => {
-    const newArr = [...(props.form.coperture || [])];
-    newArr.push({ tipo_copertura: tipo, importo: scopertoAttualeEuro.value, fonte_id: null });
-    props.form.coperture = newArr;
-};
-
-const removeCopertura = (idx: number) => {
-    const newArr = [...props.form.coperture];
-    newArr.splice(idx, 1);
-    props.form.coperture = newArr;
-};
-
 const rischioPrescrizione = computed(() => {
     if (!props.form.data_competenza_originaria) return false;
     return (new Date().getFullYear() - new Date(props.form.data_competenza_originaria).getFullYear()) >= 5;
@@ -186,11 +163,11 @@ const rischioPrescrizione = computed(() => {
 
             <div class="p-6 space-y-6">
                 
-                <div class="space-y-1.5">
-                    <Label class="text-[11px] font-bold uppercase text-slate-500">Data di origine del debito</Label>
-                    <Input type="date" v-model="form.data_competenza_originaria" class="h-9 w-48 text-sm" />
+                <div class="flex flex-col gap-1.5 w-max">
+                    <Label class="text-[11px] font-bold uppercase text-slate-500 block">Data di origine del debito</Label>
+                    <Input type="date" v-model="form.data_competenza_originaria" class="h-9 w-48 text-sm bg-white" />
                     <p v-if="rischioPrescrizione" class="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-1">
-                        <AlertTriangle class="w-3.5 h-3.5" /> Rischio Prescrizione (> 5 anni)
+                        <AlertTriangle class="w-3.5 h-3.5" /> Rischio prescrizione (> 5 anni)
                     </p>
                 </div>
 
@@ -202,7 +179,7 @@ const rischioPrescrizione = computed(() => {
                         label="descrizione"
                         :reduce="(d: any) => d.id" 
                         placeholder="Nessun debito selezionato..." 
-                        class="style-chooser w-full"
+                        class="bg-white w-full"
                         append-to-body 
                     >
                         <template #option="{ descrizione, importo_disponibile, importo_iniziale }">
@@ -241,10 +218,10 @@ const rischioPrescrizione = computed(() => {
                 <div v-if="debitoSelezionato" class="space-y-6">
                     
                     <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                        
-                        <div class="p-4 bg-slate-900 font-mono text-[11px] rounded-xl shadow-inner border border-slate-800 text-slate-300 flex flex-col justify-between">
+    
+                        <div class="p-4 bg-slate-900 text-[11px] rounded-xl shadow-inner border border-slate-800 text-slate-300 flex flex-col justify-between">
                             <div>
-                                <div class="flex items-center gap-2 text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
+                                <div class="flex items-center gap-2 text-[10px] text-blue-400 font-bold uppercase tracking-widest mb-3 border-b border-slate-800 pb-2">
                                     <Calculator class="w-3.5 h-3.5" /> Quadratura
                                 </div>
                                 <div class="flex justify-between mb-1.5">
@@ -252,18 +229,18 @@ const rischioPrescrizione = computed(() => {
                                     <span class="text-white">{{ euro(fatturaCents) }}</span>
                                 </div>
                                 <div class="flex justify-between mb-1.5 text-emerald-400">
-                                    <span>[-] Debito DB</span>
+                                    <span>[-] Debito Storico</span>
                                     <span>{{ euro(debitoSelezionato.importo_disponibile) }}</span>
                                 </div>
                                 <div v-for="(cop, idx) in props.form.coperture" :key="idx" class="flex justify-between mb-1.5 text-blue-400">
-                                    <span class="truncate pr-2">[-] Split</span>
+                                    <span class="truncate pr-2">[-] Split extra</span>
                                     <span>{{ euro((cop.importo || 0) * 100) }}</span>
                                 </div>
                             </div>
                             <div>
                                 <div class="border-t border-slate-700 my-2 border-dashed"></div>
                                 <div class="flex justify-between font-bold text-xs">
-                                    <span class="text-white">= SCARTO</span>
+                                    <span class="text-white">SCARTO</span>
                                     <span :class="scopertoAttualeEuro > 0 ? 'text-rose-500' : 'text-emerald-500'">
                                         {{ euro(scopertoAttualeEuro * 100) }}
                                     </span>
@@ -271,15 +248,15 @@ const rischioPrescrizione = computed(() => {
                             </div>
                         </div>
 
-                        <div class="p-4 rounded-xl border flex flex-col justify-between" :class="bucoRataZeroCents > 0 ? 'bg-rose-50/50 border-rose-200' : 'bg-emerald-50/50 border-emerald-200'">
+                        <div class="p-4 rounded-xl border flex flex-col justify-between" :class="bucoRataZeroCents > 0 ? 'bg-blue-100 border-blue-200' : 'bg-emerald-50/50 border-emerald-200'">
                             <div>
                                 <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest mb-3 border-b pb-2"
-                                    :class="bucoRataZeroCents > 0 ? 'text-rose-600 border-rose-200' : 'text-emerald-600 border-emerald-200'">
-                                    <Activity class="w-3.5 h-3.5" /> Copertura condòmini
+                                    :class="bucoRataZeroCents > 0 ? 'text-blue-600 border-blue-200' : 'text-emerald-600 border-emerald-200'">
+                                    <Activity class="w-3.5 h-3.5" /> Liquidità Arretrati
                                 </div>
                                 
                                 <div class="flex justify-between text-[11px] mb-1">
-                                    <span class="text-slate-600">Plafond Residuo Rata 0:</span>
+                                    <span class="text-slate-600">Quote Rata 0 previste:</span>
                                     <span class="font-bold">{{ euro(capienzaRataZero) }}</span>
                                 </div>
                                 <div class="flex justify-between text-[10px] mb-2 text-emerald-600 font-medium">
@@ -287,25 +264,24 @@ const rischioPrescrizione = computed(() => {
                                     <span class="font-bold">{{ euro(incassatoRataZero) }}</span>
                                 </div>
                                 
-                                <div class="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div class="h-1 bg-slate-200 rounded-full overflow-hidden">
                                     <div class="h-full transition-all duration-500"
-                                        :class="bucoRataZeroCents > 0 ? 'bg-rose-500' : 'bg-emerald-500'"
+                                        :class="bucoRataZeroCents > 0 ? 'bg-amber-500' : 'bg-emerald-500'"
                                         :style="{ width: Math.min((debitoSelezionato.importo_disponibile / Math.max(capienzaRataZero, 1)) * 100, 100) + '%' }">
                                     </div>
                                 </div>
                             </div>
 
-                            <div v-if="bucoRataZeroCents > 0" class="mt-3 p-2 bg-rose-100/50 dark:bg-rose-900/30 rounded border border-rose-200/50 dark:border-rose-800/50">
-                                <p class="text-[9px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-0.5">
-                                    ⚠️ Deficit Pregresso Rilevato
+                            <div v-if="bucoRataZeroCents > 0" class="mt-3 p-2 bg-amber-100/50 dark:bg-amber-900/30 rounded border border-amber-200/50 dark:border-amber-800/50">
+                                <p class="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-0.5">
+                                    Info di Cassa
                                 </p>
-                                <p class="text-[10px] text-rose-600 dark:text-rose-300 leading-tight">
-                                    Il debito ({{ euro(debitoSelezionato.importo_disponibile) }}) supera il totale della Rata 0 richiesta ai condòmini ({{ euro(capienzaRataZero) }}). 
-                                    <strong>Scoperto: {{ euro(bucoRataZeroCents) }}</strong>.
+                                <p class="text-[10px] text-amber-600 dark:text-amber-300 leading-tight">
+                                    La Rata 0 non copre interamente questo debito storico. Il pagamento di questa fattura assorbirà parzialmente liquidità della gestione ordinaria corrente.
                                 </p>
                             </div>
                             <div v-else class="text-[10px] font-bold text-emerald-600 mt-3">
-                                ✅ Rata 0 sufficiente.
+                                Rata 0 sufficiente.
                             </div>
                         </div>
 
@@ -320,8 +296,8 @@ const rischioPrescrizione = computed(() => {
                                         <span>{{ euro(bankForecast.attuale_cents) }}</span>
                                     </div>
                                     <div class="flex justify-between text-[11px] mb-2 text-rose-400">
-                                        <span>Uscita:</span>
-                                        <span>- {{ euro(fatturaCents) }}</span>
+                                        <span>Bonifico (Netto):</span>
+                                        <span>- {{ euro(uscitaNettaCents) }}</span>
                                     </div>
                                 </div>
                                 <div v-else class="text-[10px] text-slate-400 italic">
@@ -335,43 +311,9 @@ const rischioPrescrizione = computed(() => {
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    <div v-if="scopertoAttualeEuro > 0 || props.form.coperture?.length > 0" class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
                         
-                        <div class="flex gap-2">
-                            <Button type="button" size="sm" variant="outline" class="text-xs" @click="addCopertura('sopravvenienza')" :disabled="scopertoAttualeEuro === 0">
-                                + Converti in spesa corrente
-                            </Button>
-                            <Button type="button" size="sm" variant="outline" class="text-xs" @click="addCopertura('fondo_riserva')" :disabled="scopertoAttualeEuro === 0">
-                                + Storna da fondo riserva
-                            </Button>
-                        </div>
-
-                        <div v-if="props.form.coperture?.length > 0" class="space-y-3 mt-4 pt-4 border-t border-slate-200">
-                            <div v-for="(cop, idx) in props.form.coperture" :key="idx" class="flex gap-3 items-end">
-                                <div class="flex-1 relative z-40">
-                                    <Label class="text-[10px] uppercase text-slate-500 block mb-1">
-                                        {{ cop.tipo_copertura === 'sopravvenienza' ? 'Capitolo di Spesa' : 'Fondo' }}
-                                    </Label>
-                                    
-                                    <div v-if="cop.tipo_copertura === 'sopravvenienza'" class="h-9 border border-slate-200 rounded-md bg-amber-50 flex items-center px-3 text-sm text-slate-600 font-medium">
-                                        Integrazione straordinaria (Verrà chiesta la causale)
-                                    </div>
-                                    <v-select v-else v-model="cop.fonte_id" :options="fondiRiserva" label="nome" :reduce="(f: any) => f.id" class="style-chooser text-xs bg-white" append-to-body />
-                                    
-                                </div>
-                                <div class="w-32">
-                                    <Label class="text-[10px] uppercase text-slate-500 block mb-1">Importo (€)</Label>
-                                    <Input type="number" step="0.01" v-model="cop.importo" class="h-9 text-sm bg-white" />
-                                </div>
-                                <Button type="button" variant="ghost" size="icon" @click="removeCopertura(idx)" class="h-9 w-9 text-rose-500 hover:bg-rose-100">
-                                    <Trash2 class="w-4 h-4" />
-                                </Button>
-                            </div>
-                        </div>
-
                     </div>
+
                 </div>
             </div>
         </div>

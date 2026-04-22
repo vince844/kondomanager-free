@@ -166,37 +166,49 @@ class FatturaPassivaService
                 ]);
             }
 
-            // 4. SALVATAGGIO COPERTURE (Pregresso)
+            // 4. SALVATAGGIO COPERTURE E CALCOLO ECCEDENZA (Pregresso)
+            $totaleCopertoPregresso = 0;
+            $nuovoContoIdPregresso = null;
+
             if ($isPregresso && !empty($data['coperture'])) {
                 foreach ($data['coperture'] as $index => &$copertura) {
-                    if ($copertura['tipo_copertura'] === 'sopravvenienza' && empty($copertura['fonte_id'])) {
-                        $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
-                        
-                        if ($logLegale) {
-                            $importoCent = (int) round($copertura['importo'] * 100);
-                            $nuovoContoId = $this->creaContoDinamicoSopravvenienza(
-                                $condominioId, 
-                                $data['gestione_id'], 
-                                $data['fornitore_id'], 
-                                $logLegale, 
-                                $importoCent
-                            );
-
-                            $copertura['fonte_id'] = $nuovoContoId;
-                            $data['coperture'][$index]['fonte_id'] = $nuovoContoId;
-                        }
-                    }
+                    $importoCoperturaCents = (int) round($copertura['importo'] * 100);
+                    $totaleCopertoPregresso += $importoCoperturaCents;
 
                     $fattura->coperture()->create([
                         'tipo_copertura'      => $copertura['tipo_copertura'],
-                        'importo'             => (int) round($copertura['importo'] * 100),
+                        'importo'             => $importoCoperturaCents,
                         'stato'               => 'pianificata',
                         'saldo_id'            => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
-                        'conto_id'            => $copertura['tipo_copertura'] === 'sopravvenienza' ? $copertura['fonte_id'] : null,
+                        'conto_id'            => $copertura['tipo_copertura'] === 'sopravvenienza' ? ($copertura['fonte_id'] ?? null) : null,
                         'fondo_id'            => $copertura['tipo_copertura'] === 'fondo_riserva' ? $copertura['fonte_id'] : null,
                         'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
                     ]);
                 }
+            }
+
+            // CORRETTO — $totaleDoc è già in centesimi
+            $imponibileFatturaCents = abs((int)($totaleDoc * $moltiplicatore));
+            $eccedenzaCents = $imponibileFatturaCents - $totaleCopertoPregresso;
+
+            if ($isPregresso && $eccedenzaCents > 0 && $logLegale) {
+                // Creiamo la Sopravvenienza Passiva per l'eccedenza
+                $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
+                    $condominioId, 
+                    $data['gestione_id'], 
+                    $fornitore->id, 
+                    $logLegale, 
+                    $eccedenzaCents
+                );
+
+                // Registriamo la copertura come "Sopravvenienza"
+                $fattura->coperture()->create([
+                    'tipo_copertura'      => 'sopravvenienza',
+                    'importo'             => $eccedenzaCents,
+                    'stato'               => 'pianificata',
+                    'conto_id'            => $nuovoContoIdPregresso,
+                    'nota_amministratore' => "Eccedenza fattura pregressa non coperta dai saldi iniziali",
+                ]);
             }
 
             // 5. Salvataggio File
@@ -247,46 +259,61 @@ class FatturaPassivaService
                     ->where('ruolo', 'passate_gestioni')
                     ->firstOrFail();
 
+                $totaleRata0 = 0;
+
+                // 1. Smistiamo il DARE in base alla VERA natura della copertura (Scenario A e B)
                 if (!empty($data['coperture'])) {
                     foreach ($data['coperture'] as $copertura) {
-                        $importoCopertura = (int) round($copertura['importo'] * 100);
+                        $importoCoperturaCents = (int) round($copertura['importo'] * 100);
                         
-                        if ($copertura['tipo_copertura'] === 'sopravvenienza') {
-                            $contoBudget = Conto::find($copertura['fonte_id']);
-                            
-                            $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                'importo'            => $importoCopertura,
-                                'voce_spesa_id'      => $contoBudget->id ?? null,
-                                'note'               => 'Sopravvenienza passiva — spesa pregressa non contabilizzata',
-                            ]);
-                        }
-                        elseif ($copertura['tipo_copertura'] === 'fondo_riserva') {
+                        if ($copertura['tipo_copertura'] === 'fondo_riserva') {
+                            // SCENARIO B: DARE sul Fondo specifico (decrementa la passività)
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $copertura['fonte_id'],
                                 'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                'importo'            => $importoCopertura,
-                                'note'               => 'Utilizzo fondo per debito pregresso',
+                                'importo'            => $importoCoperturaCents,
+                                'note'               => 'Utilizzo fondo riserva per debito pregresso',
                             ]);
-                        }
-                        elseif ($copertura['tipo_copertura'] === 'rata_0') {
-                            $scrittura->righe()->create([
-                                'conto_contabile_id' => $contoPassateGestioni->id,
-                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                                'importo'            => $importoCopertura,
-                                'note'               => 'Copertura da saldi pregressi (Rata 0)',
-                            ]);
+                        } else {
+                            // SCENARIO A: rata_0 o saldo_patrimoniale -> Vanno su Passate Gestioni
+                            $totaleRata0 += $importoCoperturaCents;
                         }
                     }
-                } else {
-                    $importoTotaleCents = abs($totaleDoc * $moltiplicatore);
-                    $scrittura->righe()->create([
-                        'conto_contabile_id' => $contoPassateGestioni->id,
-                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
-                        'importo'            => $importoTotaleCents,
-                        'note'               => 'Caricamento debito pregresso senza copertura esplicita',
-                    ]);
+                    
+                    if ($totaleRata0 > 0) {
+                        $scrittura->righe()->create([
+                            'conto_contabile_id' => $contoPassateGestioni->id,
+                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'importo'            => $totaleRata0,
+                            'note'               => 'Chiusura debito patrimoniale pregresso',
+                        ]);
+                    }
+                }
+
+                // 2. Gestione Eccedenza (Scenario C) o Fallback Totale (Scenario D)
+                if ($eccedenzaCents > 0) {
+                    if ($nuovoContoIdPregresso) {
+                        // SCENARIO C: C'è la modale, quindi creiamo la Sopravvenienza
+                        $contoSopravv = Conto::find($nuovoContoIdPregresso);
+                        if ($contoSopravv && $contoSopravv->conto_contabile_id) {
+                            $scrittura->righe()->create([
+                                'conto_contabile_id' => $contoSopravv->conto_contabile_id,
+                                'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                                'importo'            => $eccedenzaCents,
+                                'voce_spesa_id'      => $contoSopravv->id,
+                                'note'               => 'Sopravvenienza passiva: eccedenza fattura pregressa',
+                            ]);
+                        }
+                    } else {
+                        // SCENARIO D (Fallback): Fattura pregressa senza coperture e senza modale. 
+                        // Buttiamo l'intero importo su Passate Gestioni per non sbilanciare il Libro Giornale.
+                        $scrittura->righe()->create([
+                            'conto_contabile_id' => $contoPassateGestioni->id,
+                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'importo'            => $eccedenzaCents,
+                            'note'               => 'Caricamento debito pregresso senza copertura esplicita',
+                        ]);
+                    }
                 }
             } else {
                 // =====================================================================
@@ -296,17 +323,17 @@ class FatturaPassivaService
                     $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
 
                     if (!empty($riga['immobile_id'])) {
-                        // SPESA PRIVATA -> Va nello Stato Patrimoniale (Crediti verso Condòmini)
+                        // SPESA PRIVATA
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
                             'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
                             'importo'            => $importoLordoRiga,
-                            'voce_spesa_id'      => null, // Nessun impatto sul Preventivo
+                            'voce_spesa_id'      => null,
                             'immobile_id'        => $riga['immobile_id'],
                             'note'               => 'Anticipazione spesa ad personam (Art. 63)',
                         ]);
-                    } elseif ($riga['conto_id']) {
-                        // SPESA COMUNE -> Va nel Conto Economico (Costi)
+                    } elseif (!empty($riga['conto_id'])) {
+                        // SPESA COMUNE
                         $contoBudget = Conto::find($riga['conto_id']);
                         if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
@@ -316,7 +343,12 @@ class FatturaPassivaService
                                 'voce_spesa_id'      => $riga['conto_id'],
                                 'immobile_id'        => null,
                             ]);
+                        } else {
+                            throw new \Exception("Integrità compromessa: Manca l'ancoraggio in Partita Doppia per il capitolo di spesa.");
                         }
+                    } else {
+                        // FIX: TRAPPOLA ANTI-SBILANCIO
+                        throw new \Exception("Integrità compromessa: Impossibile allocare la riga (nessun immobile e nessun conto associato).");
                     }
                 }
             }
@@ -354,9 +386,10 @@ class FatturaPassivaService
                 $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
                 
                 if ($importoSforo > 0) {
+                    // FIX: DARE sul Fondo Patrimoniale (diminuzione passività)
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $overrideData['fondo_patrimoniale_id'],
-                        'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
+                        'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
                         'importo'            => $importoSforo,
                         'note'               => 'Utilizzo fondo riserva per sforo budget: ' . ($overrideData['motivazione'] ?? ''),
                     ]);
@@ -366,9 +399,10 @@ class FatturaPassivaService
                         ->first();
 
                     if ($contoSopravvenienza) {
+                        // FIX: AVERE sul Conto Costi (storno/neutralizzazione del costo)
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoSopravvenienza->id,
-                            'tipo_riga'          => $isNotaCredito ? 'avere' : 'dare',
+                            'tipo_riga'          => $isNotaCredito ? 'dare' : 'avere',
                             'importo'            => $importoSforo,
                             'note'               => 'Giroconto copertura sforo budget da fondo riserva',
                         ]);

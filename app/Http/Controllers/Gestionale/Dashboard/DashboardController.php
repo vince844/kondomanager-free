@@ -7,6 +7,7 @@ use App\Models\Condominio;
 use App\Models\Evento;      
 use App\Models\Anagrafica;   
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Traits\HasCondomini;
@@ -61,44 +62,62 @@ class DashboardController extends Controller
                 ->whereNotNull('righe_fattura.immobile_id') // Solo le spese private
                 ->where(function($q) {
                     $q->where('righe_fattura.is_rateizzata', false)
-                      ->orWhere('righe_fattura.is_rateizzata', 0); // Copertura totale MySQL/Sqlite
+                      ->orWhere('righe_fattura.is_rateizzata', 0)
+                      ->orWhereNull('righe_fattura.is_rateizzata'); 
                 })
                 ->sum(DB::raw('righe_fattura.importo_imponibile + righe_fattura.importo_iva'));
 
             // --- STEP 7: LISTA FATTURE SCOPERTE (Sopravvenienze + Ad Personam) ---
-            // Ottimizziamo precaricando SOLO le righe che ci interessano, facendo fare tutto a SQL.
-            $fattureScoperteRaw = \App\Models\Gestionale\FatturaPassiva::with(['fornitore', 'righe' => function ($q) {
-                    $q->with(['immobile', 'conto'])
-                      ->where(function($sq) {
-                          $sq->where('is_rateizzata', false)
-                             ->orWhere('is_rateizzata', 0);
-                      })
-                      ->where(function ($inner) {
-                          $inner->where('is_sopravvenienza', true)
-                                ->orWhereNotNull('immobile_id');
-                      });
-                }])
+            $fattureScoperteRaw = FatturaPassiva::with([
+                    'fornitore', 
+                    'coperture',
+                    'righe' => function ($q) {
+                        $q->with(['immobile', 'conto'])
+                        ->where(function($sq) {
+                            $sq->where('is_rateizzata', false)
+                                ->orWhere('is_rateizzata', 0)
+                                ->orWhereNull('is_rateizzata'); // FIX NULL
+                        })
+                        ->where(function ($inner) {
+                            $inner->where('is_sopravvenienza', true)
+                                    ->orWhereNotNull('immobile_id');
+                        });
+                    }
+                ])
                 ->where('esercizio_id', $esercizio->id)
                 ->where('stato_approvazione', '!=', 'contestata')
-                ->whereHas('righe', function ($q) {
-                    $q->where(function($sq) {
-                          $sq->where('is_rateizzata', false)
-                             ->orWhere('is_rateizzata', 0);
-                      })
-                      ->where(function ($inner) {
-                          $inner->where('is_sopravvenienza', true)
-                                ->orWhereNotNull('immobile_id');
-                      });
+                ->where(function ($query) {
+                    $query->whereHas('righe', function ($q) {
+                        $q->where(function($sq) {
+                            $sq->where('is_rateizzata', false)
+                                ->orWhere('is_rateizzata', 0)
+                                ->orWhereNull('is_rateizzata'); // FIX NULL
+                        })
+                        ->where(function ($inner) {
+                            $inner->where('is_sopravvenienza', true)
+                                    ->orWhereNotNull('immobile_id');
+                        });
+                    })
+                    ->orWhere(function ($qPregresso) {
+                        $qPregresso->where('is_pregresso', 1)
+                                ->whereHas('coperture', function ($qCop) {
+                                    $qCop->where('tipo_copertura', 'sopravvenienza');
+                                });
+                    });
                 })
                 ->get();
 
-            // Ricaviamo l'ID della gestione attiva per passarlo al deep-link
             $gestionePrincipaleId = $esercizio->gestioni->where('attiva', true)->first()?->id;
 
             foreach ($fattureScoperteRaw as $fattura) {
-                // Siccome abbiamo filtrato la eager loading ('righe' => function(...)), 
-                // ora l'array $fattura->righe contiene GIA' SOLO E SOLTANTO le righe giuste. Non serve ri-filtrarle in PHP.
+                $datiExtra = is_string($fattura->dati_extra) 
+                    ? json_decode($fattura->dati_extra, true) 
+                    : (array) $fattura->dati_extra;
                 
+                $strategia = $datiExtra['override_budget']['strategia_rientro'] ?? 
+                            $datiExtra['log_legale_sopravvenienza']['strategia_rientro'] ?? 
+                            'nessuna';
+
                 $totaleFatturaCents = 0;
                 $righeMappate = [];
 
@@ -107,26 +126,45 @@ class DashboardController extends Controller
                     $totaleFatturaCents += $importoRigaCents;
 
                     $righeMappate[] = [
-                        'id' => $riga->id,
-                        'tipo' => $riga->immobile_id ? 'ad_personam' : 'comune',
-                        'importo' => $importoRigaCents, // Centesimi esatti
+                        'id'          => 'r_' . $riga->id,
+                        'tipo'        => $riga->immobile_id ? 'ad_personam' : 'comune',
+                        'importo'     => $importoRigaCents, 
                         'descrizione' => $riga->immobile_id 
                             ? "Addebito personale (Art. 63)" 
                             : "Parte comune (millesimale)",
-                        'dettaglio' => $riga->immobile_id
+                        'dettaglio'   => $riga->immobile_id
                             ? "Int. {$riga->immobile->interno}"
                             : ($riga->conto ? "Voce: {$riga->conto->nome}" : "Imprevisto")
                     ];
                 }
 
+                // Righe virtuali per sopravvenienze pregresse
+                if ($fattura->is_pregresso && $fattura->coperture->isNotEmpty()) {
+                    foreach ($fattura->coperture as $copertura) {
+                        if ($copertura->tipo_copertura === 'sopravvenienza') {
+                            $importoCopCents = (int) $copertura->importo;
+                            $totaleFatturaCents += $importoCopCents;
+
+                            $righeMappate[] = [
+                                'id'          => 'c_' . $copertura->id,
+                                'tipo'        => 'comune',
+                                'importo'     => $importoCopCents,
+                                'descrizione' => "Integrazione Debito Storico",
+                                'dettaglio'   => "Eccedenza da fattura anno precedente"
+                            ];
+                        }
+                    }
+                }
+
                 if ($totaleFatturaCents > 0) {
                     $fattureScoperte[] = [
-                        'id' => $fattura->id,
-                        'numero' => $fattura->numero_documento,
-                        'fornitore' => $fattura->fornitore->ragione_sociale ?? 'Sconosciuto',
+                        'id'             => $fattura->id,
+                        'numero'         => $fattura->numero_documento,
+                        'fornitore'      => $fattura->fornitore->ragione_sociale ?? 'Sconosciuto',
                         'totale_scoperto' => $totaleFatturaCents,
-                        'gestione_id' => $gestionePrincipaleId,
-                        'righe' => $righeMappate,
+                        'gestione_id'    => $gestionePrincipaleId,
+                        'strategia'      => $strategia,
+                        'righe'          => $righeMappate,
                     ];
                 }
             }
@@ -212,12 +250,13 @@ class DashboardController extends Controller
                         }
 
                         $vociScoperte[] = [
-                            'id'         => $item['id'],
-                            'nome'       => $item['nome'],
-                            'importo'    => $deficitRispettoRate, 
-                            'gestione'   => $gestione->nome,
-                            'is_sforo'   => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget'],
-                            'strategia'  => $tipoStrategia 
+                            'id'          => $item['id'],
+                            'nome'        => $item['nome'],
+                            'importo'     => $deficitRispettoRate, 
+                            'gestione'    => $gestione->nome,
+                            'gestione_id' => $gestione->id,
+                            'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget'],
+                            'strategia'   => $tipoStrategia 
                         ];
 
                     }
@@ -283,10 +322,8 @@ class DashboardController extends Controller
                 'pianificato'        => $totPian, 
                 'virtuale'           => $totVirtualeGlobale, 
                 'addebiti_personali' => $addebitiPersonali,
-                
                 // Uscite totali verso i fornitori (vero debito di oggi!)
                 'uscite_totali'      => $totFatturatoCondiviso + $addebitiPersonali, 
-                
                 'delta'              => $deltaReale,
                 'scoperto'           => max(0, $deltaReale),
                 'percentuale'        => $totPrev > 0 

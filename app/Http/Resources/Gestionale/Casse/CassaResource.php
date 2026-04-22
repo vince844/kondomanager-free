@@ -15,7 +15,14 @@ class CassaResource extends JsonResource
         $saldoIniziale = (int) ($this->saldo_iniziale ?? 0);
         $dare  = (int) ($this->totale_entrate ?? 0); 
         $avere = (int) ($this->totale_uscite ?? 0);
-        $saldoCentesimi = $saldoIniziale + $dare - $avere;
+
+        // Per i fondi (passività): AVERE aumenta, DARE diminuisce
+        // Per i conti (attività): DARE aumenta, AVERE diminuisce
+        if ($this->tipo === 'fondo') {
+            $saldoCentesimi = $saldoIniziale + $avere - $dare;
+        } else {
+            $saldoCentesimi = $saldoIniziale + $dare - $avere;
+        }
 
         return [
             'id'          => $this->id,

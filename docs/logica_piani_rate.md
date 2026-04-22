@@ -1,55 +1,131 @@
-# Logica di Validazione e Copertura Piani Rate (V1.9.3)
+# Guida Utente: Nuova Struttura Preventivi e Rateizzazione
 
-### 1. Il Principio di Saturazione del Budget
-Nella V1.9.3 superiamo il concetto rigido di "Una voce = Un piano".
-La nuova regola aurea è la **Saturazione**: una singola voce di spesa del preventivo può essere distribuita su più piani rate (es. Acconto e Saldo), purché la somma degli importi parziali non superi il totale preventivato.
+**Versione:** 1.1 (aggiornata v1.9.23)  
+**Data:** Aprile 2026  
+**Contesto:** Gestionale Condominiale Enterprise  
 
-### 2. Ancoraggio Frazionato & Smart Overrides
-Il collegamento tra Piano Rate e Voci di Spesa (Pivot `piano_rate_capitoli`) ora trasporta un metadato fondamentale: l'**Importo Impegnato**.
+---
 
-* **Partial Budgeting:** L'amministratore può decidere di includere solo una quota parte di una voce (es. 400€ su 1.000€). Il sistema traccia il "Residuo Disponibile" per i piani successivi.
-* **Smart Folder Push-Down:** Se viene selezionato un "Capitolo Padre" (Folder senza tabella millesimale) e gli viene assegnato un importo forzato (Override), il sistema applica una logica proporzionale inversa:
-    1. Calcola il rapporto tra l'Override e il totale originale dei figli.
-    2. "Spinge" (Push-Down) questo rapporto sui sottoconti figli.
-    3. Distribuisce l'importo ridotto usando le tabelle millesimali specifiche di ogni figlio.
+## Introduzione
 
-### 3. Motore di Calcolo "Penny Perfect"
-Per garantire la quadratura assoluta dei conti, il motore di calcolo (`CalcoloQuoteService`) abbandona gli arrotondamenti standard in favore dell'**Algoritmo di Quadratura**.
+Con questa evoluzione del sistema, la gestione dei preventivi e della rateizzazione diventa **più flessibile e potente**, mantenendo una **stretta integrità contabile**.
 
-* **Logica:** Durante la distribuzione su N condomini, il sistema accumula gli importi assegnati. All'ultimo beneficiario viene assegnato esattamente il *residuo matematico* (Totale - Somma Assegnata).
-* **Risultato:** Errore di arrotondamento = **0.00€**. La somma delle rate generate corrisponde sempre al centesimo all'importo impegnato.
+**Le novità principali sono:**
 
-### 4. Logica Saldi & Piani Integrativi
-Il sistema adotta una **Strategia Decisionale Ibrida** per prevenire la duplicazione dei debiti pregressi:
+- **Vincolo 1-a-1** tra Gestione (Ordinaria/Straordinaria) e Piano dei Conti: un solo preventivo per gestione.
+- **Introduzione dei Capitoli di spesa**: raggruppamento logico delle voci di costo (es. per Scala o Fabbricato).
+- **Possibilità di creare più Piani Rate** per la stessa Gestione.
+- **Emissione di rate parziali** (Scenario Supercondominio) selezionando solo determinati Capitoli.
+- **Piani Rate Straordinari** per finanziare fatture impreviste o addebiti ad personam (Art. 1135 c.c.).
+- **Separazione visiva Preventivo / Sopravvenienze** nel Piano dei Conti (Art. 1130-bis c.c.).
+- **Dashboard operativa** con alert in tempo reale su spese scoperte e azione diretta.
 
-* **Piano Principale (Master):** È il primo piano generato. Il Controller rileva che i saldi non sono ancora stati usati (`saldo_applicato = 0`), li include nel calcolo e marca il Flag DB a `1`.
-* **Piano Integrativo:** Qualsiasi piano creato successivamente trova il Flag DB a `1`. Il sistema riconosce che i debiti pregressi sono già stati "spesi" e forza l'esclusione dei saldi (`$saldi = []`), generando un piano contenente *solo* le nuove spese correnti.
-* **UX Contestuale:** I tooltip e gli indicatori visivi dei saldi (pallini Rossi/Blu) appaiono nell'interfaccia solo se lo snapshot delle regole di calcolo conferma l'effettivo utilizzo dei saldi in quel piano.
+Queste modifiche permettono di gestire casi reali complessi (es. lavori straordinari che riguardano solo una scala, fatture impreviste, addebiti misti comune/privato) **senza ricorrere a gestioni separate fittizie**.
 
-### 5. Dashboard Audit & Integrità Reale
-Il "Semaforo Contabile" della Dashboard è stato aggiornato per leggere i dati reali:
-* **Preventivo:** Somma dei valori nominali dei conti nel database.
-* **Pianificato (Reale):** Somma degli importi *effettivi* (Override) definiti nella tabella pivot dei piani attivi.
-* **Anomaly Detection:** Il sistema confronta Preventivo vs Pianificato. Se `Pianificato < Preventivo`, segnala l'ammanco come "Residuo da Rateizzare".
+---
 
-### 6. Workflow di Manutenzione (Sincronizzazione)
-In presenza di voci "Orfane" o parzialmente scoperte:
-* **Sincronizzazione Granulare:** È possibile aggiungere voci a un piano esistente.
-* **Gestione Conflitti:** Se si tenta di aggiungere una voce che ha residuo 0 (già saturata altrove), il sistema inibisce la selezione visualizzando un indicatore di "Budget Esaurito".
+## Concetti Chiave
 
-### 7. La "Fortezza": I 3 Livelli di Protezione
-Per garantire l'immutabilità dei dati contabili consolidati, permangono i tre livelli di blocco rigorosi:
+1. **Esercizio**  
+   Il contenitore temporale (es. "Esercizio 2025").  
+   Un condominio ha un solo esercizio ordinario attivo alla volta.
 
-* **Livello 1 (Blocco Incassi):** Se esistono pagamenti registrati (`importo_pagato > 0`) su qualsiasi rata del piano, **ogni modifica strutturale è inibita** (inclusa la modifica degli importi parziali).
-* **Livello 2 (Blocco Emissioni):** Se le rate sono state emesse in contabilità (`scrittura_contabile_id NOT NULL`), il sistema impedisce la modifica e richiede l'annullamento dell'emissione.
-* **Livello 3 (Blocco Dipendenze Preventivo):** A livello di `ContoController`, è impedita la modifica dell'importo base di una voce di spesa se questa è ancorata a un piano rate attivo, per evitare disallineamenti tra "Preventivato" e "Rateizzato".
+2. **Gestione**  
+   Il contenitore giuridico/funzionale del bilancio. Esempi:  
+   - Ordinaria  
+   - Straordinaria Facciata  
+   - Straordinaria Tetto  
 
-### 8. Dinamismo del Budget: Lo "Sposta Spesa"
-La V1.9.0 introduce il concetto di **Budget Dinamico**, permettendo di correggere la pianificazione finanziaria durante l'anno senza dover modificare il preventivo approvato.
+   Ogni Gestione rappresenta un "bilancio separato" con la propria contabilità, come previsto dalla normativa.
 
-* **Il Muro delle Gestioni:** Lo spostamento è consentito solo tra voci appartenenti allo stesso Piano dei Conti. Questo impedisce violazioni contabili dove i condòmini di una gestione (es. Scale) finirebbero per finanziare involontariamente le spese di un'altra (es. Riscaldamento).
-* **Indicatori Visivi di Trasparenza (Badges):**
-    * 🏷️ **INTEGRA:** Identifica le voci che hanno ricevuto fondi extra. Un sottotitolo esplicativo avvisa l'utente che l'importo visualizzato include integrazioni esterne non presenti nel preventivo originale.
-    * 🏷️ **STANDARD:** Contrassegna le voci "pure", il cui importo corrisponde esattamente a quanto preventivato originariamente.
-* **Integrità del Detach (Blocco di Dipendenza Globale):** Per garantire la quadratura, non è possibile "staccare" una voce da un Piano Rate se questa ha dei movimenti di budget registrati. L'amministratore deve prima eseguire un movimento inverso per riportare il saldo della voce alla sua condizione originale, "liberandola" per la cancellazione.
-* **Audit-Proofing:** Grazie alla separazione tra "Budget Originario" e "Movimenti", il sistema è in grado di ricostruire in ogni momento il motivo di ogni variazione, rendendo il rendiconto consuntivo a prova di revisione.
+3. **Piano dei Conti (Preventivo)**  
+   - **Unico per Gestione** (vincolo 1-a-1).  
+   - Contiene tutte le voci di spesa previste.  
+   - **Integrità**: il sistema impedisce di creare preventivi duplicati per la stessa gestione.
+   - **Separazione visiva**: l'albero dei conti mostra in due sezioni distinte il "Preventivo deliberato" e le "Sopravvenienze e imprevisti", con totali separati.
+
+4. **Capitoli di Spesa**  
+   Raggruppamento gerarchico all'interno del Piano dei Conti. Esempi:  
+   - Spese Generali  
+   - Scala A  
+   - Scala B  
+   - Ascensore  
+
+   Permettono di suddividere le spese in sotto-insiemi significativi, fondamentali per la ripartizione mirata.
+
+5. **Piani Rate**  
+   - **Molteplici per Gestione** (N-a-1).  
+   - Ogni Piano Rate definisce come e quando chiedere i contributi ai condòmini.  
+   - **Novità**: è possibile selezionare solo determinati Capitoli per creare rate mirate.
+
+   **Esempi pratici:**  
+   - Piano Rate 1: "Rate Ordinarie" → include tutti i Capitoli (Generali + Scala A + Scala B).  
+   - Piano Rate 2: "Lavori Scala A" → include solo il Capitolo "Scala A" (gli altri condòmini pagheranno 0 €).
+
+6. **Tipi di Piano Rate**  
+   - **Ordinario**: finanzia le voci del preventivo deliberato in assemblea. Può essere globale (tutte le voci) o parziale (solo alcuni capitoli).
+   - **Straordinario (Art. 1135 c.c.)**: finanzia fatture impreviste o addebiti ad personam non presenti a preventivo. Richiede obbligatoriamente un'autorizzazione legale (delibera assembleare o urgenza documentata).
+
+7. **Sopravvenienze e Imprevisti**  
+   Quando si registra una fattura fuori preventivo, il sistema crea automaticamente una voce tecnica nel Piano dei Conti, marcata come "sopravvenienza". Queste voci:
+   - Appaiono in una sezione separata dell'albero conti ("Sopravvenienze e imprevisti")
+   - Non alterano il totale del preventivo deliberato in assemblea
+   - Non sono selezionabili nel piano rate ordinario
+   - Vengono finanziate esclusivamente tramite piani rate straordinari
+
+---
+
+## Flusso Operativo Consigliato
+
+### Step 1: Creare il Piano dei Conti
+1. Vai in **Gestioni** → seleziona una Gestione (es. Ordinaria 2025).
+2. Se non esiste già un preventivo → clicca **"Crea Preventivo"**.
+3. Inserisci le voci di spesa e **assegna un Capitolo** a ciascuna (es. "Pulizie" sotto "Spese Generali").
+4. Salva.  
+   Il sistema bloccherà automaticamente la creazione di ulteriori preventivi per questa gestione.
+
+### Step 2: Creare i Piani Rate (Ordinari)
+1. Nella stessa Gestione → sezione **Piani Rate** → **"Nuovo Piano Rate"**.
+2. Assegna un nome significativo (es. "Rate Ordinarie Complete", "Contributo Lavori Scala A").
+3. Seleziona i **Capitoli** da includere:  
+   - **Tutti** → per la classica gestione ordinaria.  
+   - **Selezione parziale** → per emettere rate solo su specifici centri di costo (scenario Supercondominio).
+4. Definisci numero di rate, data prima scadenza e eventuali arrotondamenti.
+5. Il sistema genera automaticamente le rate, calcolando i millesimi **solo sulle voci dei Capitoli selezionati**.
+
+### Step 2-bis: Gestire Spese Impreviste (Piano Straordinario)
+
+Quando arriva una fattura non prevista a bilancio (es. guasto urgente, multa, intervento d'emergenza), il flusso è diverso:
+
+1. **Registra la fattura** con il flag "Sopravvenienza" attivo. Se la spesa riguarda un singolo immobile, seleziona anche l'unità immobiliare destinataria.
+2. **Il sistema segnala automaticamente** la spesa scoperta nel widget Dashboard con l'alert "Sotto Copertura".
+3. **Dalla Dashboard** → clicca "Analizza voci" → nella modale trovi la fattura con il dettaglio riga per riga (parte comune vs addebito personale).
+4. **Clicca "Finanzia spesa"**: il sistema ti reindirizza al wizard di creazione Piano Rate con la fattura già pre-selezionata nel carrello.
+5. **Compila lo Scudo Legale** (obbligatorio): scegli tra "Delibera Assembleare" o "Urgenza Art. 1135 c.c." e inserisci la motivazione.
+6. **Salva**: il sistema genera le rate, calcolando automaticamente le quote millesimali per la parte comune e l'addebito diretto al proprietario per la parte ad personam.
+
+> **Nota:** Puoi anche aggiungere altre fatture scoperte al carrello prima di salvare. Un singolo piano straordinario può finanziare più fatture contemporaneamente.
+
+### Step 3: Registrare Incassi
+- La registrazione incassi ora supporta **pagamenti che coprono rate di gestioni diverse**.
+- L'importo viene allocato correttamente alle rate corrispondenti.
+- La reportistica di quadratura gestisce automaticamente la riconciliazione.
+
+---
+
+## Vantaggi della Nuova Struttura
+
+| Vantaggio                      | Descrizione                                                                 |
+|--------------------------------|-----------------------------------------------------------------------------|
+| **Integrità contabile**        | Vincolo 1-a-1 Piano Conti → nessuna duplicazione o ambiguità sui preventivi |
+| **Flessibilità reale**         | Rate parziali per lavori su singola scala o fabbricato (Supercondominio)    |
+| **Chiarezza**                  | Bollettini distinti per spese ordinarie vs straordinarie specifiche         |
+| **Prevenzione errori**         | L'interfaccia impedisce duplicati e guida la selezione dei Capitoli         |
+| **Precisione**                 | Calcolo matematico sui centesimi con gestione automatica degli arrotondamenti |
+| **Trasparenza Art. 1130-bis**  | Sopravvenienze separate dal preventivo — l'assemblea vede esattamente cosa era previsto e cosa no |
+| **Audit Trail Legale**         | Ogni piano straordinario traccia autorizzazione, motivazione e timestamp di approvazione |
+| **Dashboard Operativa**        | Alert in tempo reale su spese scoperte con azione diretta (deep-link al wizard) |
+
+---
+
+**Benvenuto nella nuova era della gestione condominiale: più flessibile, più precisa e sempre rigorosamente contabile.**

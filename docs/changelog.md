@@ -25,6 +25,36 @@ Tutte le modifiche notevoli a questo progetto saranno documentate in questo file
 * **Prevenzione Falsi Positivi Booleani:** Blindata l'estrazione delle fatture orfane nel Controller. La query SQL ora intercetta correttamente i fallback numerici (`0`) delle colonne booleane (`is_rateizzata`) nativi nei database MySQL/SQLite, garantendo che nessuna spesa venga ignorata dal radar.
 * **Intellisense Fix:** Corretto un falso positivo nel Controller dei Piani Rate (`Undefined method 'rate'`) applicando il Type Hinting rigoroso (`instanceof`) sul modello Eloquent.
 
+### Hardening Legale & Tracciabilità (Backend Core)
+* **Migrazione Unificata:** Nuova migrazione che aggiunge `is_tecnico` su `conti`, 
+  `origine_tipo`/`stato_legale`/`stato_legale_aggiornato_at`/`riga_fattura_id`/`voce_id` 
+  su `rate_quote`, `is_rateizzata` su `righe_fattura`, e `contesto_creazione` su `piani_rate`. 
+  Include data migration retroattiva (D1-D5) per marcare i record esistenti.
+* **Conti Tecnici (Shadow Accounts):** Le sopravvenienze passive generate dal 
+  `FatturaPassivaService` nascono ora con `is_tecnico=true`. Invisibili al wizard 
+  ordinario, escluse dal dropdown capitoli, mostrate solo nel consuntivo (Art. 1130-bis c.c.).
+* **Scope `visibili()` su Model Conto:** Nuovo scope riusabile che filtra `is_tecnico=false`. 
+  Applicato su `FetchCapitoliContiController`, `FetchCapitoliPerGestioneController`, 
+  e `PianoRateController::store()` (emissione globale + sposta spesa).
+* **Euristica `origine_tipo`/`stato_legale` su Rate Quote:** 
+  `GenerateRateQuotesAction` popola automaticamente l'origine della quota 
+  (`condominiale` vs `ad_personam`) e lo stato legale (`certo` vs `contestabile`) 
+  in base al tipo di piano e alla presenza di `immobile_id`.
+* **Semaforo Dashboard (`is_rateizzata`):** Le righe fattura vengono marcate 
+  `is_rateizzata=true` alla creazione del piano straordinario e riaccese a `false` 
+  alla cancellazione, alimentando il widget "Fatture scoperte".
+* **Contesto Creazione Piano Rate:** Nuovo campo enum `contesto_creazione` 
+  (`preventivo_iniziale`/`integrazione_dashboard`/`libero_manuale`) per tracciare 
+  la genesi di ogni piano rate.
+
+### Fix Deep-Link Pre-selezione Fatture
+* **Race Condition Inertia/URL:** Risolto bug critico in `PianiRateNew.vue` dove 
+  Inertia sovrascriveva i parametri URL prima che il componente potesse leggerli. 
+  Gli ID fatture vengono ora salvati in una ref dedicata durante `onMounted`, 
+  sopravvivendo alla riscrittura URL del router.
+* **Compatibilità formato array URL:** Fix parsing parametri `fatture[]` vs 
+  `fatture[0]` (encoding differente tra browser/Inertia).
+
 ---
 
 ## [1.9.22] - Fund Governance & Audit-Ready Resources (Latest)

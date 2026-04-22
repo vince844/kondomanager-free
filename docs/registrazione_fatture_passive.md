@@ -332,23 +332,24 @@ Questi dati vengono salvati su `piani_rate`:
 
 ---
 
-## 8. UX — Le 3 Porte di Accesso al Piano Straordinario
+## 8. UX — Le 4 Porte di Accesso al Piano Straordinario
 
 Il sistema è multi-entry — tutti i percorsi convergono nello stesso motore:
 
-| Punto di accesso | Azione | Trigger |
-|-----------------|--------|---------|
-| **Dalla fattura** | Pulsante "Finanzia con piano rate" | Manuale |
-| **Dalla Dashboard** | Action Inbox — card con pulsante "Risolvi" | Automatico |
-| **Dai Piani Rate** | Creazione manuale nuovo piano | Manuale |
+| Punto di accesso | Azione | Trigger | Pre-selezione |
+|-----------------|--------|---------|---------------|
+| **Dalla fattura** | Pulsante "Finanzia con piano rate" | Manuale | NO |
+| **Dalla Dashboard (Widget)** | Action Inbox — card con pulsante "Risolvi" | Automatico | NO |
+| **Dalla Dashboard (Modale Audit)** | Pulsante "Finanzia spesa" per singola fattura | Semi-automatico | SÌ — fattura pre-selezionata nel carrello |
+| **Dai Piani Rate** | Creazione manuale nuovo piano | Manuale | NO |
 
-### Il Carrello delle Fatture (Piano Straordinario)
+### Deep-Link dalla Modale Audit (v1.9.23)
+Il pulsante "Finanzia spesa" nella modale "Audit Spese Scoperte" genera un URL con parametri: /piani-rate/create?tipo=straordinario&origine=dashboard&gestione_id=22&fatture[]=77
 
-Quando si crea un piano straordinario, il sistema mostra:
-- Fatture correnti con `is_sopravvenienza = true` non ancora finanziate
-- Fatture pregresse con copertura `sopravvenienza` non ancora finanziate
-
-L'amministratore seleziona le fatture, imposta l'`importo_collegato` per ciascuna, e il motore calcola automaticamente le quote.
+Il wizard riceve questi parametri in `onMounted()`, pre-seleziona il tipo straordinario, 
+mostra il banner "Risoluzione Scoperto", e spunta automaticamente la checkbox della fattura 
+nel carrello. L'amministratore può aggiungere altre fatture o modificare gli importi prima 
+di confermare.
 
 ---
 
@@ -418,6 +419,14 @@ L'amministratore seleziona le fatture, imposta l'`importo_collegato` per ciascun
 | `immobile_id` | `righe_fattura` | Override ad personam |
 | `importo_collegato` | `piano_rate_fatture` | Quota finanziata da questo piano |
 | `tabella_millesimale_id` | `piano_rate_fatture` | Override tabella per pregresse |
+| `is_tecnico`             | `conti`          | Conto shadow (sopravvenienza) — invisibile al preventivo |
+| `is_rateizzata`          | `righe_fattura`  | Semaforo Dashboard — true se collegata a piano straordinario |
+| `contesto_creazione`     | `piani_rate`     | Genesi: `preventivo_iniziale`, `integrazione_dashboard`, `libero_manuale` |
+| `origine_tipo`           | `rate_quote`     | `condominiale` o `ad_personam` |
+| `stato_legale`           | `rate_quote`     | `certo`, `contestabile`, `diffidato`, `ingiungibile` |
+| `stato_legale_aggiornato_at` | `rate_quote` | Timestamp ultimo cambio stato legale (NULL fino a v1.11) |
+| `riga_fattura_id`        | `rate_quote`     | FK granulare alla riga fattura (NULL fino a v1.11) |
+| `voce_id`                | `rate_quote`     | FK alla voce di spesa (NULL fino a v1.11) |
 
 ---
 
@@ -449,6 +458,12 @@ L'amministratore seleziona le fatture, imposta l'`importo_collegato` per ciascun
 3. Le fatture pregresse con `rata_0` o `fondo_riserva` non generano mai un piano rate
 4. Nessun piano straordinario può essere approvato senza `tipo_autorizzazione` valorizzato
 5. Il fallback Art. 1123 c.c. richiede sempre conferma esplicita dell'amministratore
+6. I conti con `is_tecnico = true` non appaiono mai nel wizard piano ordinario, 
+   nel dropdown selezione capitoli, né nel PDF preventivo deliberato
+7. L'emissione globale (nessun capitolo selezionato) usa `->visibili()` per escludere 
+   automaticamente i conti tecnici dalla sincronizzazione
+8. Il deep-link dalla Dashboard salva i parametri URL in una ref Vue prima che Inertia 
+   sovrascriva l'URL — i parametri non devono mai essere letti dopo il primo `router.get()`
 
 ---
 
@@ -457,9 +472,12 @@ L'amministratore seleziona le fatture, imposta l'`importo_collegato` per ciascun
 | Feature | Versione target | Note |
 |---------|----------------|------|
 | Legal Shield (`debitore_legale_id` / `intestatario_rate_id`) | v1.10 | Separazione soggetto legale da intestatario bollettino |
-| Stato finanziario fattura (calcolato) | v1.10 | Widget su lista fatture |
-| Conguaglio / Consuntivo | v1.12 | Calcolo differenza preventivo/consuntivo per condòmino |
+| Stato finanziario fattura (calcolato) | v1.10 | Widget su lista fatture — parzialmente implementato via `is_rateizzata` in v1.9.23 |
+| Popolamento `riga_fattura_id` / `voce_id` | v1.11 | Link granulare quota → riga fattura per drill-down recupero crediti |
+| Transizione `stato_legale` | v1.11 | Macchina a stati: contestabile → diffidato → ingiungibile |
+| Filtro `is_tecnico` nel PDF preventivo | v1.11 | Applicare `->visibili()` nelle query di generazione stampa |
 | Stampa PDF bollettini | v1.11 | Export rate_quote formattato |
+| Conguaglio / Consuntivo | v1.12 | Calcolo differenza preventivo/consuntivo per condòmino |
 | Area condòmini portal | v1.12 | Art. 1130-bis c.c. — accesso condòmini |
 
 ---

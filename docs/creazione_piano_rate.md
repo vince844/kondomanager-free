@@ -103,13 +103,58 @@ Per evitare falsi positivi nell'Audit Dashboard:
 
 ---
 
-## 🗺️ Roadmap Evolutiva  
+## 6. Hardening Legale e Tracciabilità (v1.9.23)
+**Pattern: "Shadow Accounts & Legal State Machine"**
+
+### Conti Tecnici (Shadow Accounts)
+Le sopravvenienze passive generate automaticamente dal `FatturaPassivaService` vengono ora 
+marcate `is_tecnico = true` sia sul capitolo padre ("Integrazioni Straordinarie") sia sulle 
+voci figlie. Questi conti:
+- Sono invisibili al wizard Piano Rate Ordinario (scope `visibili()`)
+- Non appaiono nel dropdown di selezione capitoli
+- Non inflazionano il totale del preventivo deliberato
+- Sono mostrati in una sezione separata dell'albero conti ("Sopravvenienze e Imprevisti")
+- Saranno esclusi dal PDF preventivo (rimandato al modulo Stampe)
+
+### Macchina a Stati Legale su Rate Quote
+Ogni quota generata da `GenerateRateQuotesAction` porta ora due metadati:
+- `origine_tipo`: `condominiale` (millesimale) o `ad_personam` (Art. 63)
+- `stato_legale`: `certo` (non contestabile) o `contestabile` (addebito diretto)
+
+L'euristica è deterministica:
+| Piano | immobile_id | origine_tipo | stato_legale |
+|-------|-------------|-------------|--------------|
+| Ordinario | qualsiasi | condominiale | certo |
+| Straordinario | NULL | condominiale | certo |
+| Straordinario | > 0 | ad_personam | contestabile |
+
+Le colonne `riga_fattura_id`, `voce_id` e `stato_legale_aggiornato_at` sono predisposte 
+ma restano NULL fino alla v1.11 (Recupero Crediti), dove il link granulare alla singola riga 
+fattura e la transizione di stato (`contestabile → diffidato → ingiungibile`) saranno implementati.
+
+### Semaforo Dashboard
+La colonna `righe_fattura.is_rateizzata` alimenta il widget "Fatture Scoperte":
+- Si accende (`true`) quando un piano straordinario collega la fattura
+- Si spegne (`false`) quando il piano viene eliminato
+- Il `DashboardController` filtra solo righe con `is_rateizzata = false` per il widget
+
+### Contesto Creazione Piano Rate
+Nuovo campo `contesto_creazione` su `piani_rate` con valori:
+- `preventivo_iniziale`: il piano madre di inizio anno (emissione globale)
+- `integrazione_dashboard`: creato dal deep-link del widget Dashboard
+- `libero_manuale`: creato dall'amministratore con selezione specifica capitoli
+
+---
+
+## Roadmap Evolutiva  
 **Verso lo “Year End Master”**
 
-### Fase 1 – Treasury & Cash Flow  (v1.11)
-- **UX Incasso “Rata 0”** Selettore dedicato nella maschera incassi per destinazione esplicita saldo pregresso.
-- **Alert Liquidità** in tempo reale  
-  Basato sulle informazioni già elaborate dal Trait Waterfall.
+### Fase 1 – Recupero Crediti & Treasury (v1.11)
+- **Popolamento `riga_fattura_id` e `voce_id`** su `rate_quote` per drill-down granulare
+- **Transizione `stato_legale`** da `contestabile` → `diffidato` → `ingiungibile` 
+  con popolamento automatico di `stato_legale_aggiornato_at`
+- **UX Incasso "Rata 0"** Selettore dedicato per destinazione esplicita saldo pregresso
+- **Alert Liquidità** in tempo reale basato sul Trait Waterfall
 
 ### Fase 2 – Reporting Suite  (v1.12)
 - **Rendiconto Analitico** professionale  

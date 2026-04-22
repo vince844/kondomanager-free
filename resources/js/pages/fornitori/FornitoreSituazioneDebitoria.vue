@@ -123,7 +123,7 @@ const deleteDebito = (id: number) => {
       >
         <template #actions>
           <Button @click="showAddModal = true" class="gap-2 bg-slate-800 hover:bg-slate-700">
-            <Plus class="w-4 h-4" /> Aggiungi Pendenza
+            <Plus class="w-3 h-3" /> Aggiungi pendenza
           </Button>
         </template>
       </PageHeaderGuide>
@@ -220,7 +220,7 @@ const deleteDebito = (id: number) => {
               <Wallet class="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <h3 class="font-bold text-lg">Carica Debito Pregresso</h3>
+              <h3 class="font-bold text-lg">Carica debito pregresso</h3>
               <p class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Apertura Stato Patrimoniale</p>
             </div>
           </div>
@@ -256,7 +256,7 @@ const deleteDebito = (id: number) => {
           <div class="flex gap-3 pt-4">
             <Button type="button" variant="outline" class="flex-1 h-11 font-bold" @click="showAddModal = false">Annulla</Button>
             <Button type="submit" class="flex-1 h-11 font-black bg-slate-900 hover:bg-slate-800" :disabled="form.processing || !form.condominio_id || !form.importo">
-              Registra Debito
+              Registra debito
             </Button>
           </div>
         </form>
