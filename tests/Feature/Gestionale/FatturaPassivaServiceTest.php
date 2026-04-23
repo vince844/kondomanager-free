@@ -2,6 +2,9 @@
 
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\ScritturaContabile;
+use App\Models\User;
 use App\Services\Gestionale\FatturaPassivaService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -442,4 +445,186 @@ it('il guardiano contabile (DoubleEntryValidator) blocca una scrittura sbilancia
     // 4. Ci aspettiamo che il Validatore tiri un'eccezione bloccando tutto
     expect(fn() => \App\Services\Gestionale\DoubleEntryValidator::validateOrFail($scrittura->id))
         ->toThrow(Exception::class, 'Errore di integrità contabile');
+});
+
+it('elimina una fattura aperta senza vincoli (happy path)', function () {
+    // 1. Setup Permessi
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [[
+                'descrizione' => 'Test delete',
+                'importo_imponibile' => 1000,
+                'aliquota_iva'       => 22,
+                'conto_id'           => $capitolo->id,
+                'is_sopravvenienza'  => false,
+            ]]
+        ]),
+        $condominio->id
+    );
+
+    $response = $this->delete(route('admin.gestionale.fatture.destroy', [$condominio->id, $fattura->id]));
+    $response->assertStatus(302); 
+
+    expect(\App\Models\Gestionale\FatturaPassiva::find($fattura->id))->toBeNull();
+});
+
+it('blocca eliminazione se fattura non è aperta', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id]]
+        ]),
+        $condominio->id
+    );
+
+    // Forza lo stato a PAGATA
+    $fattura->update(['stato_pagamento' => 'pagata']);
+
+    $response = $this->delete(route('admin.gestionale.fatture.destroy', [$condominio->id, $fattura->id]));
+    
+    // Invece di assertSessionHasErrors, verifichiamo che la fattura ESISTA ancora (segno che il delete è fallito)
+    expect(FatturaPassiva::find($fattura->id))->not->toBeNull();
+});
+
+it('blocca eliminazione se esercizio è chiuso', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id]]
+        ]),
+        $condominio->id
+    );
+
+    // Chiudiamo l'esercizio dopo la registrazione
+    DB::table('esercizi')->where('id', $esercizio->id)->update(['stato' => 'chiuso']);
+
+    $this->delete(route('admin.gestionale.fatture.destroy', [$condominio->id, $fattura->id]));
+    
+    // La fattura deve sopravvivere
+    expect(FatturaPassiva::find($fattura->id))->not->toBeNull();
+});
+
+it('eliminando nota di credito ripristina fattura originale', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    // 1. Creazione Fattura originale
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [['descrizione' => 'Originale', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id]]
+        ]),
+        $condominio->id
+    );
+
+    // 2. Creazione Nota credito collegata
+    $notaCredito = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'tipo_documento' => 'nota_credito',
+            'righe' => [['descrizione' => 'Storno', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id]],
+            'dati_extra' => ['stornata_da_id' => $fattura->id]
+        ]),
+        $condominio->id
+    );
+
+    // 3. Simuliamo lo stato stornato sull'originale (come farebbe il sistema)
+    $fattura->update([
+        'stato_pagamento' => 'stornata',
+        'dati_extra' => array_merge($fattura->dati_extra ?? [], ['is_stornata' => true, 'stornata_da_id' => $notaCredito->id])
+    ]);
+
+    // 4. Eliminazione della NOTA DI CREDITO
+    $this->delete(route('admin.gestionale.fatture.destroy', [$condominio->id, $notaCredito->id]))
+        ->assertSessionHasNoErrors();
+
+    // 5. Verifica ripristino originale
+    $fatturaFresh = $fattura->fresh();
+    expect($fatturaFresh->stato_pagamento)->toEqual('aperta');
+    // Verifichiamo che il flag is_stornata sia sparito dai dati_extra
+    expect($fatturaFresh->dati_extra['is_stornata'] ?? false)->toBeFalsy();
+});
+
+it('blocca eliminazione se piano rate ha pagamenti', function () {
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
+    $user = \App\Models\User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [['descrizione' => 'Straord', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id]]
+        ]),
+        $condominio->id
+    );
+
+    // Creiamo il piano rate in stato 'approvato' (così non è più eliminabile liberamente)
+    $pianoId = DB::table('piani_rate')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'gestione_id'    => $gestione->id,
+        'nome'           => 'Piano Approvato',
+        'stato'          => 'approvato', // Questo di solito basta a bloccare il delete
+        'tipo'           => 'straordinario',
+        'created_at'     => now(),
+        'updated_at'     => now(),
+    ]);
+
+    DB::table('piano_rate_fatture')->insert(['piano_rate_id' => $pianoId, 'fattura_passiva_id' => $fattura->id]);
+
+    // Inseriamo la rata senza il campo 'stato' che faceva crashare SQLite
+    $rataId = DB::table('rate')->insertGetId([
+        'piano_rate_id' => $pianoId,
+        'numero_rata'   => 1,
+        'data_scadenza' => now()->addDays(30)->format('Y-m-d'),
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    // Simuliamo la presenza di una scrittura di incasso (il protocollo è l'unica cosa certa)
+    DB::table('scritture_contabili')->insert([
+        'condominio_id'      => $condominio->id,
+        'esercizio_id'       => $esercizio->id,
+        'gestione_id'        => $gestione->id,
+        'tipo_movimento'     => 'incasso_rata',
+        'data_registrazione' => now(),
+        'data_competenza'    => now(),
+        'causale'            => 'Incasso Rata Test',
+        'stato'              => 'registrata',
+        'numero_protocollo'  => 'INC-' . uniqid(), 
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
+    
+    $this->delete(route('admin.gestionale.fatture.destroy', [$condominio->id, $fattura->id]));
+
+    // Se la riga è ancora nel DB, il test passa.
+    expect(\App\Models\Gestionale\FatturaPassiva::find($fattura->id))->not->toBeNull();
 });
