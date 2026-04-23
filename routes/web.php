@@ -20,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Artisan;
 use App\Http\Middleware\CheckExternalCron;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Http\Request; // Assicurati di importare Request
+use Illuminate\Http\Request;
 
 Route::get('/', WelcomeController::class)
     ->name('home');

@@ -272,7 +272,24 @@ class SystemUpgradeController extends Controller
             ];
         }
 
-        return json_decode(file_get_contents($path), true) ?? [];
+        // 1. Leggiamo e decodifichiamo il JSON
+        $parsedJson = json_decode(file_get_contents($path), true) ?? [];
+
+        // 2. Se il file JSON è un semplice array di stringhe (manca la chiave 'features')
+        if (is_array($parsedJson) && !isset($parsedJson['features'])) {
+            return [
+                'date' => date('d/m/Y'),
+                'version' => $version,
+                'features' => $parsedJson, // Inseriamo tutto il JSON dentro features
+            ];
+        }
+
+        // 3. Se il JSON era già strutturato, facciamo comunque un fallback sicuro
+        return [
+            'date' => $parsedJson['date'] ?? date('d/m/Y'),
+            'version' => $parsedJson['version'] ?? $version,
+            'features' => $parsedJson['features'] ?? [],
+        ];
     }
 
     /**
