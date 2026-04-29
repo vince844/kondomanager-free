@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Ripartizione spese su più tabelle millesimali: ora puoi distribuire una voce di spesa su più tabelle con percentuali diverse — ad esempio 50% Tabella Generale e 50% Tabella Scale. Il sistema calcola automaticamente quanto coefficiente è ancora disponibile e ti impedisce di superare il 100%, mostrando in tempo reale la quota residua assegnabile.",
+        "Modifica dei coefficienti già assegnati: fino ad oggi il coefficiente della prima tabella associata era bloccato al 100% e non potevi cambiarlo. Ora puoi modificarlo direttamente dalla scheda della voce di spesa, con un controllo automatico che verifica la coerenza prima di salvare.",
+        "Protezione delle ripartizioni su piani approvati: se una voce di spesa è già inclusa in un piano rate approvato o con rate emesse, il sistema blocca automaticamente qualsiasi modifica alle tabelle millesimali associate. Un banner ambra ti avvisa e i pulsanti di modifica vengono disabilitati, proteggendo la delibera assembleare da modifiche accidentali.",
+        "Navigazione diretta ai piani rate dall'analisi copertura: nella scheda di ogni voce di spesa, i nomi dei piani rate che la finanziano sono ora cliccabili. Con un solo tap vai direttamente alla pagina del piano rate corrispondente, senza dover navigare manualmente tra i menu.",
+        "Copertura piani straordinari tracciabile: in precedenza le spese coperte da piani rate straordinari apparivano con un'etichetta generica senza possibilità di navigare al piano. Ora ogni riga mostra il piano esatto che copre quella spesa, con il relativo importo calcolato correttamente — escludendo le quote ad personam che non appartengono alla ripartizione condominiale."
+    ]
+}

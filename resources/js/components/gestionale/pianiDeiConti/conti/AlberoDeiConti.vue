@@ -117,7 +117,7 @@ const getTextColor = (conto: Conto) => {
             </div>
 
             <div class="flex items-center gap-1.5">
-              <Lock v-if="conto.has_rate_emesse || props.isParentLocked" class="w-3 h-3 text-amber-500" />
+              <Lock v-if="!isCapitolo(conto) && conto.has_rate_emesse" class="w-3 h-3 text-amber-500" />
               <span v-if="!isCapitolo(conto)" class="text-sm font-medium" :class="conto.tipo === 'spesa' ? 'text-slate-900' : 'text-green-600'">
                 {{ conto.importo }} 
               </span>
@@ -144,7 +144,7 @@ const getTextColor = (conto: Conto) => {
             <AlberoDeiConti 
               :conti="conto.sottoconti || []" 
               :selected-id="props.selectedId"
-              :is-parent-locked="conto.has_rate_emesse || props.isParentLocked"
+              :is-parent-locked="false"
               @seleziona="selezionaConto"
             />
           </div>

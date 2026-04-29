@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Rateio de despesas em múltiplas tabelas milésimais (frações ideais): agora você pode distribuir um item de despesa em várias tabelas com porcentagens diferentes — por exemplo, 50% Tabela Geral e 50% Tabela Escadas. O sistema calcula automaticamente o coeficiente disponível e impede que você exceda os 100%, mostrando a cota restante que pode ser atribuída em tempo real.",
+        "Modificação de coeficientes já atribuídos: até hoje, o coeficiente da primeira tabela associada ficava bloqueado em 100% e não podia ser alterado. Agora você pode modificá-lo diretamente da ficha do item de despesa, com uma verificação automática de consistência antes de salvar.",
+        "Proteção de rateios em planos aprovados: se um item de despesa já estiver incluído em um plano de parcelamento aprovado ou com parcelas emitidas, o sistema bloqueia automaticamente qualquer modificação nas tabelas milésimais associadas. Um banner âmbar alerta você e os botões de edição são desativados, protegendo a deliberação da assembleia contra alterações acidentais.",
+        "Navegação direta para os planos de parcelamento a partir da análise de cobertura: na ficha de cada item de despesa, os nomes dos planos de parcelamento que o financiam agora são clicáveis. Com um único toque, você vai direto para a página do plano de parcelamento correspondente, sem precisar navegar manualmente pelos menus.",
+        "Cobertura de planos extraordinários rastreável: anteriormente, as despesas cobertas por planos de parcelamento extraordinários apareciam com um rótulo genérico sem a possibilidade de navegar para o plano. Agora, cada linha mostra o plano exato que cobre essa despesa, com o respectivo valor calculado corretamente — excluindo as cotas ad personam que não pertencem ao rateio do condomínio."
+    ]
+}

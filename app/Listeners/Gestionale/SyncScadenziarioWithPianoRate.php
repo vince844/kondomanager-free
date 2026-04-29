@@ -209,7 +209,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'condominio_nome'   => $condominio->nome,
                             'numero_rata'       => $rata->numero_rata,
                             'piano_nome'        => $pianoRate->nome,
-                            'credito_rata_zero' => $creditoRataZeroApplicabile, // 🟢 NUOVO CAMPO WALLET
+                            'credito_rata_zero' => $creditoRataZeroApplicabile, // NUOVO CAMPO WALLET
                             'context' => [
                                 'piano_rate_id' => $pianoRate->id,
                                 'rata_id'       => $rata->id

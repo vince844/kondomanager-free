@@ -470,8 +470,9 @@ class FatturaPassivaService
             ]
         );
 
-        $origine = isset($logLegale['origine_decisionale']) ? strtoupper($logLegale['origine_decisionale']) : 'GESTIONE_CORRENTE';
-        $motivazione = !empty($logLegale['motivazione_sforo']) ? " | Mot: " . $logLegale['motivazione_sforo'] : '';
+        $origine = isset($logLegale['origine_decisionale'])
+            ? ucfirst(strtolower(str_replace('_', ' ', $logLegale['origine_decisionale'])))
+            : 'Gestione corrente';
 
         $nuovoConto = Conto::create([
             'piano_conto_id'       => $pianoConto->id,
@@ -483,7 +484,12 @@ class FatturaPassivaService
             'tipo_ripartizione'    => $logLegale['tipo_ripartizione'] ?? 'millesimale',
             'origine_decisionale'  => $logLegale['origine_decisionale'] ?? 'gestione_corrente',
             'is_tecnico'           => true,
-            'note'                 => "Origine: " . $origine . $motivazione,
+            'note' => implode("\n", array_filter([
+                "Origine delibera: " . $origine,
+                !empty($logLegale['motivazione_sforo'])
+                    ? "Motivazione: " . $logLegale['motivazione_sforo']
+                    : null,
+            ])),
             'conto_contabile_id'   => $contoContabileSopravvenienza->id,
         ]);
 

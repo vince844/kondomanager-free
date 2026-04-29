@@ -183,10 +183,10 @@ class BudgetCoverageService
         // FIX: Le righe con conto_id = NULL (spese private ad personam) vengono escluse
         // sia dal totale della fattura che dalla distribuzione della copertura.
         $straordinari = $pianiRate->filter(fn($p) => $p->tipo === 'straordinario');
-        
+
         if ($straordinari->isNotEmpty()) {
             $fattureIds = $straordinari->flatMap->fattureStraordinarie->pluck('id')->unique()->toArray();
-            
+
             if (!empty($fattureIds)) {
                 $righe = DB::table('righe_fattura')
                     ->whereIn('fattura_passiva_id', $fattureIds)
@@ -201,19 +201,22 @@ class BudgetCoverageService
                         $righeFattura = $righe->get($fattura->id, collect());
                         if ($righeFattura->isEmpty()) continue;
 
-                        // FIX: Escludiamo le righe private (conto_id NULL) dal totale
-                        // per evitare che la copertura venga distribuita su un denominatore
-                        // gonfiato, generando un deficit silenzioso sulle righe comuni.
                         $righeComuniFattura = $righeFattura->filter(fn($r) => !is_null($r->conto_id));
-                        $totaleFattura      = $righeComuniFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
+                        $totaleComune       = $righeComuniFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
+
+                        // FIX: scala importo_collegato alla sola quota comune
+                        // $righeFattura include anche le private → è il totale lordo reale
+                        $totaleLordo = $righeFattura->sum(fn($r) => $r->importo_imponibile + $r->importo_iva);
+                        $importoFinanziatoScalato = $totaleLordo > 0
+                            ? (int) round(($totaleComune / $totaleLordo) * $importoFinanziato)
+                            : $importoFinanziato;
 
                         foreach ($righeFattura as $riga) {
-                            // FIX: Salta esplicitamente le righe private
                             if (is_null($riga->conto_id)) continue;
 
                             $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
-                            if ($totaleFattura > 0) {
-                                $quota = (int) round(($importoRiga / $totaleFattura) * $importoFinanziato);
+                            if ($totaleComune > 0) {
+                                $quota = (int) round(($importoRiga / $totaleComune) * $importoFinanziatoScalato);
                                 if (isset($contiById[$riga->conto_id])) {
                                     $map[$riga->conto_id] = ($map[$riga->conto_id] ?? 0) + $quota;
                                 }

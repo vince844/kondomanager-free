@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { useForm } from '@inertiajs/vue3'
-import { ref, watch, nextTick, computed } from 'vue'
+import { watch, nextTick, computed } from 'vue'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,8 +31,10 @@ interface Props {
   condominioId: number
   /** Se valorizzato → modalità MODIFICA */
   tabellaEsistente?: TabellaAssociata | null
-  /** Residuo disponibile calcolato dal genitore (solo per modalità CREA) */
+  /** Residuo disponibile calcolato dal genitore */
   residuoDisponibile?: number
+  /** ID delle tabelle già associate — filtra il dropdown in CREATE mode */
+  tabelleGiaAssociateIds?: number[]
 }
 
 const props = defineProps<Props>()
@@ -50,12 +52,14 @@ const submitLabel = computed(() =>
   isEditMode.value ? 'Salva modifiche' : 'Associa'
 )
 
-// In edit mode il massimo è: (100 - somma_altri) = quello che il backend accetterà
-// In create mode il massimo è il residuo passato dal genitore
+// Dropdown: esclude tabelle già associate al conto (solo in CREATE mode)
+const tabelleDisponibili = computed(() => {
+  const escludiIds = new Set(props.tabelleGiaAssociateIds ?? [])
+  return tabelle.value.filter(t => !escludiIds.has(t.id))
+})
+
 const maxCoefficiente = computed(() => {
   if (isEditMode.value && props.tabellaEsistente) {
-    // Il residuo in edit = residuo disponibile + coefficiente attuale della tabella che stiamo modificando
-    // Il genitore passa residuoDisponibile già calcolato senza considerare la tabella corrente
     return (props.residuoDisponibile ?? 100) + props.tabellaEsistente.coefficiente
   }
   return props.residuoDisponibile ?? 100
@@ -63,10 +67,10 @@ const maxCoefficiente = computed(() => {
 
 const form = useForm({
   tabella_millesimale_id: null as number | null,
-  coefficiente: 100 as number,
-  percentuale_proprietario: 100,
-  percentuale_inquilino: 0,
-  percentuale_usufruttuario: 0,
+  coefficiente:              100 as number,
+  percentuale_proprietario:  100 as number,
+  percentuale_inquilino:       0 as number,
+  percentuale_usufruttuario:   0 as number,
 })
 
 const resetForm = () => {
@@ -79,7 +83,6 @@ const resetForm = () => {
     form.percentuale_usufruttuario = t.ripartizioni.find(r => r.soggetto === 'usufruttuario')?.percentuale ?? 0
   } else {
     form.reset()
-    // Pre-compila con il residuo disponibile
     form.coefficiente              = props.residuoDisponibile ?? 100
     form.percentuale_proprietario  = 100
     form.percentuale_inquilino     = 0
@@ -108,14 +111,17 @@ const onDropdownTabelleOpen = () => {
   if (tabelle.value.length === 0) fetchTabelle(props.condominioId)
 }
 
-// Somma percentuali soggetti
+// FIX: Number() esplicito per garantire somma aritmetica (non concatenazione di stringhe)
 const sommaPercentuali = computed(() =>
-  form.percentuale_proprietario + form.percentuale_inquilino + form.percentuale_usufruttuario
+  Number(form.percentuale_proprietario) +
+  Number(form.percentuale_inquilino) +
+  Number(form.percentuale_usufruttuario)
 )
 
-// Coefficiente fuori range
 const coefficienteNonValido = computed(() =>
-  !form.coefficiente || form.coefficiente <= 0 || form.coefficiente > maxCoefficiente.value
+  !form.coefficiente ||
+  Number(form.coefficiente) <= 0 ||
+  Number(form.coefficiente) > maxCoefficiente.value
 )
 
 const submit = () => {
@@ -132,9 +138,13 @@ const submit = () => {
   }
 
   emit('success', {
-    ...form.data(),
+    tabella_millesimale_id:    form.tabella_millesimale_id,
+    coefficiente:              Number(form.coefficiente),
+    percentuale_proprietario:  Number(form.percentuale_proprietario),
+    percentuale_inquilino:     Number(form.percentuale_inquilino),
+    percentuale_usufruttuario: Number(form.percentuale_usufruttuario),
     _tabellaId: isEditMode.value ? props.tabellaEsistente!.id : null,
-    _isEdit: isEditMode.value,
+    _isEdit:    isEditMode.value,
   })
 
   closeModal()
@@ -163,11 +173,11 @@ const submit = () => {
             </span>
           </div>
 
-          <!-- CREATE MODE: dropdown -->
+          <!-- CREATE MODE: dropdown filtrato -->
           <v-select
             v-else
             id="tabella"
-            :options="tabelle"
+            :options="tabelleDisponibili"
             label="nome"
             v-model="form.tabella_millesimale_id"
             placeholder="Seleziona tabella millesimale"
@@ -178,7 +188,11 @@ const submit = () => {
           >
             <template #no-options>
               <div class="text-sm text-gray-500 p-2">
-                {{ isLoadingTabelle ? 'Caricamento tabelle...' : 'Nessuna tabella disponibile' }}
+                <template v-if="isLoadingTabelle">Caricamento tabelle...</template>
+                <template v-else-if="tabelleDisponibili.length === 0">
+                  Tutte le tabelle disponibili sono già associate a questa voce
+                </template>
+                <template v-else>Nessuna tabella disponibile</template>
               </div>
             </template>
             <template #option="option">
@@ -193,7 +207,6 @@ const submit = () => {
         <div>
           <div class="flex items-center justify-between mb-1">
             <Label for="coefficiente" class="required">Coefficiente di attribuzione</Label>
-            <!-- Badge residuo: visibile solo in create mode o quando ha senso -->
             <Badge
               variant="outline"
               class="text-[10px] px-2 h-5 rounded-md tabular-nums"
@@ -208,7 +221,7 @@ const submit = () => {
           <div class="relative">
             <Input
               id="coefficiente"
-              v-model="form.coefficiente"
+              v-model.number="form.coefficiente"
               placeholder="100"
               min="1"
               :max="maxCoefficiente"
@@ -233,32 +246,33 @@ const submit = () => {
           <div class="grid grid-cols-3 gap-4">
             <div>
               <Label for="proprietario" class="text-xs">Proprietario %</Label>
-              <Input 
+              <!-- FIX: type="number" + v-model.number su tutti e tre i campi -->
+              <Input
                 id="proprietario"
-                v-model="form.percentuale_proprietario"
-                placeholder="100" 
-                min="0" 
-                max="100" 
+                v-model.number="form.percentuale_proprietario"
+                placeholder="100"
+                min="0"
+                max="100"
               />
             </div>
             <div>
               <Label for="inquilino" class="text-xs">Inquilino %</Label>
-              <Input 
-                id="inquilino" 
-                v-model="form.percentuale_inquilino"
-                placeholder="0" 
-                min="0" 
-                max="100" 
+              <Input
+                id="inquilino"
+                v-model.number="form.percentuale_inquilino"
+                placeholder="0"
+                min="0"
+                max="100"
               />
             </div>
             <div>
               <Label for="usufruttuario" class="text-xs">Usufruttuario %</Label>
-              <Input 
-                id="usufruttuario" 
-                v-model="form.percentuale_usufruttuario"
-                placeholder="0" 
-                min="0" 
-                max="100" 
+              <Input
+                id="usufruttuario"
+                v-model.number="form.percentuale_usufruttuario"
+                placeholder="0"
+                min="0"
+                max="100"
               />
             </div>
           </div>

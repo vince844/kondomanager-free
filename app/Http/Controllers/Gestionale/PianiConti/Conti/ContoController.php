@@ -291,8 +291,22 @@ class ContoController extends Controller
         // Prevenzione 2: Non puoi eliminare un conto se è agganciato a piani rate in stato bloccante
         // (bozza non blocca l'eliminazione)
         $statiBloccanti = ['approvato', 'emesso', 'chiuso'];
-        $lock = $conto->pianiRate()->whereIn('stato', $statiBloccanti)->exists() ||
-                ($conto->parent && $conto->parent->pianiRate()->whereIn('stato', $statiBloccanti)->exists());
+
+        // CORRETTO — il conto direttamente in un piano bloccante
+        $lockDiretto = $conto->pianiRate()
+            ->whereIn('stato', $statiBloccanti)
+            ->exists();
+
+        // Il padre ha un piano bloccante E questo conto è incluso in quel piano
+        $lockIndiretto = false;
+        if ($conto->parent) {
+            $lockIndiretto = $conto->parent->pianiRate()
+                ->whereIn('stato', $statiBloccanti)
+                ->whereHas('capitoli', fn($q) => $q->where('conto_id', $conto->id))
+                ->exists();
+        }
+
+        $lock = $lockDiretto || $lockIndiretto;
 
         if ($lock) {
             return back()->with($this->flashError(__('gestionale.error_conto_locked_by_rate_plan')));

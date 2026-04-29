@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Expense allocation across multiple millesimal tables: you can now distribute an expense item across multiple tables with different percentages — for example, 50% General Table and 50% Stairs Table. The system automatically calculates the available coefficient and prevents you from exceeding 100%, showing the remaining assignable quota in real-time.",
+        "Modification of already assigned coefficients: until now, the coefficient of the first associated table was locked at 100% and could not be changed. You can now modify it directly from the expense item card, with an automatic check that verifies consistency before saving.",
+        "Protection of allocations on approved plans: if an expense item is already included in an approved installment plan or one with issued installments, the system automatically blocks any modifications to the associated millesimal tables. An amber banner warns you and the edit buttons are disabled, protecting the assembly resolution from accidental changes.",
+        "Direct navigation to installment plans from coverage analysis: on the card of each expense item, the names of the installment plans financing it are now clickable. With a single tap, you go directly to the corresponding installment plan page, without having to manually navigate through the menus.",
+        "Trackable coverage of extraordinary plans: previously, expenses covered by extraordinary installment plans appeared with a generic label without the ability to navigate to the plan. Now, each row shows the exact plan covering that expense, with its correctly calculated amount — excluding ad personam quotas that do not belong to the condominium allocation."
+    ]
+}

@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { Plus, LoaderCircle, List, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock } from 'lucide-vue-next'
+import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
@@ -23,7 +23,6 @@ import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Conto } from '@/types/gestionale/conti'
 import type { Flash } from '@/types/flash';
 
-// Tipo locale per la tabella da modificare
 interface TabellaAssociata {
   id: number
   nome: string
@@ -53,8 +52,6 @@ const contoDaEliminare          = ref<Conto | null>(null)
 const tabellaDaRimuovere        = ref<number | null>(null)
 const showModalAssociaTabella   = ref(false)
 const showModalRimuoviTabella   = ref(false)
-
-// Stato per la modifica di una tabella esistente
 const tabellaDaModificare       = ref<TabellaAssociata | null>(null)
 
 const page = usePage<{ flash: { message?: Flash } }>();
@@ -114,31 +111,28 @@ watch(
   { deep: true }
 );
 
-const selezionaConto    = (conto: Conto) => { contoSelezionato.value = conto }
-const modificaConto     = (conto: Conto) => { contoSelezionato.value = conto; showModalEdit.value = true }
+const selezionaConto       = (conto: Conto) => { contoSelezionato.value = conto }
+const modificaConto        = (conto: Conto) => { contoSelezionato.value = conto; showModalEdit.value = true }
 const confermaEliminazione = (conto: Conto) => { contoDaEliminare.value = conto; showModalDelete.value = true }
 
 const confermaRimozioneTabella = (payload: { conto: Conto, tabellaId: number }) => {
-  contoSelezionato.value   = payload.conto
-  tabellaDaRimuovere.value = payload.tabellaId
+  contoSelezionato.value        = payload.conto
+  tabellaDaRimuovere.value      = payload.tabellaId
   showModalRimuoviTabella.value = true
 }
 
-// Handler per l'edit della tabella dal DettaglioConto
 const onModificaTabella = (payload: { conto: Conto, tabella: TabellaAssociata }) => {
-  contoSelezionato.value   = payload.conto
-  tabellaDaModificare.value = payload.tabella
+  contoSelezionato.value        = payload.conto
+  tabellaDaModificare.value     = payload.tabella
   showModalAssociaTabella.value = true
 }
 
-// Handler per aprire la modale in modalità CREA
 const onAggiungiTabella = (conto: Conto) => {
-  contoSelezionato.value   = conto
-  tabellaDaModificare.value = null   // nessuna tabella = modalità creazione
+  contoSelezionato.value        = conto
+  tabellaDaModificare.value     = null
   showModalAssociaTabella.value = true
 }
 
-// Chiusura modale: pulisce sempre la tabellaDaModificare
 const onChiudiModalAssociaTabella = (val: boolean) => {
   showModalAssociaTabella.value = val
   if (!val) tabellaDaModificare.value = null
@@ -147,24 +141,27 @@ const onChiudiModalAssociaTabella = (val: boolean) => {
 const contiPreventivo = computed(() => props.conti.filter(c => !c.is_tecnico))
 const contiTecnici    = computed(() => props.conti.filter(c => c.is_tecnico))
 
-// Residuo disponibile per il conto selezionato (esclude la tabella in modifica se in edit mode)
+// Residuo disponibile per il conto selezionato
 const residuoDisponibile = computed(() => {
   if (!contoSelezionato.value?.tabelle_millesimali) return 100
   const somma = contoSelezionato.value.tabelle_millesimali.reduce(
     (acc, tm) => acc + (tm.coefficiente ?? 0), 0
   )
-  // In edit mode il residuo "grezzo" esclude già la tabella corrente perché
-  // maxCoefficiente nella modale aggiunge il coefficiente attuale della tabella
   return Math.max(0, 100 - somma)
 })
+
+// ID delle tabelle già associate al conto selezionato (per filtrare il dropdown)
+const tabelleGiaAssociateIds = computed(() =>
+  contoSelezionato.value?.tabelle_millesimali?.map(tm => tm.tabella_id) ?? []
+)
 
 const eliminaConto = () => {
   if (!contoDaEliminare.value) return
   router.delete(route('admin.gestionale.esercizi.piani-conti.conti.destroy', {
     condominio: props.condominio.id,
-    esercizio: props.esercizio.id,
+    esercizio:  props.esercizio.id,
     pianoConto: props.pianoConti.id,
-    conto: contoDaEliminare.value.id
+    conto:      contoDaEliminare.value.id
   }), {
     preserveScroll: true,
     onSuccess: () => { contoSelezionato.value = null; contoDaEliminare.value = null; showModalDelete.value = false },
@@ -172,19 +169,14 @@ const eliminaConto = () => {
   })
 }
 
-const annullaEliminazione    = () => { contoDaEliminare.value = null; showModalDelete.value = false }
+const annullaEliminazione     = () => { contoDaEliminare.value = null; showModalDelete.value = false }
 const annullaRimozioneTabella = () => { tabellaDaRimuovere.value = null; showModalRimuoviTabella.value = false }
-const onModificaSuccess      = () => { showModalEdit.value = false }
+const onModificaSuccess       = () => { showModalEdit.value = false }
 
-/**
- * Callback unica per la ModalAssociaTabella.
- * In base a _isEdit chiama POST (crea) o PUT (aggiorna).
- */
 const gestisciTabella = (dati: any) => {
   if (!contoSelezionato.value) return
 
   if (dati._isEdit && dati._tabellaId) {
-    // === MODIFICA ===
     router.put(
       route('admin.gestionale.esercizi.piani-conti.conti.aggiorna-tabella', {
         condominio: props.condominio.id,
@@ -201,14 +193,10 @@ const gestisciTabella = (dati: any) => {
       },
       {
         preserveScroll: true,
-        onSuccess: () => {
-          showModalAssociaTabella.value = false
-          tabellaDaModificare.value     = null
-        },
+        onSuccess: () => { showModalAssociaTabella.value = false; tabellaDaModificare.value = null },
       }
     )
   } else {
-    // === CREAZIONE ===
     router.post(
       route('admin.gestionale.esercizi.piani-conti.conti.associa-tabella', {
         condominio: props.condominio.id,
@@ -363,13 +351,13 @@ const rimuoviTabella = () => {
       @update:show="showModalNew = $event"
     />
 
-    <!-- Modale unica per CREA e MODIFICA associazione -->
     <ModalAssociaTabella
       :show="showModalAssociaTabella"
       :conto="contoSelezionato"
       :condominio-id="props.condominio.id"
       :tabella-esistente="tabellaDaModificare"
       :residuo-disponibile="residuoDisponibile"
+      :tabelle-gia-associate-ids="tabelleGiaAssociateIds"
       @update:show="onChiudiModalAssociaTabella"
       @success="gestisciTabella"
     />

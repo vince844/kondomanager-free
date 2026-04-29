@@ -159,17 +159,19 @@ class Conto extends Model
 
     public function getHasRateEmesseAttribute(): bool
     {
+        // Check 1: piano rate direttamente collegato a questo conto
         $vincoloDiretto = $this->pianiRate()
             ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
             ->exists();
 
-        if ($vincoloDiretto) {
-            return true;
-        }
+        if ($vincoloDiretto) return true;
 
+        // Check 2: padre ha un piano approvato E questo conto
+        // è esplicitamente incluso in quel piano via piano_rate_capitoli
         if ($this->parent_id && $this->parent) {
-             return $this->parent->pianiRate()
+            return $this->parent->pianiRate()
                 ->whereIn('stato', ['approvato', 'emesso', 'chiuso'])
+                ->where('piani_rate.created_at', '>=', $this->created_at)
                 ->exists();
         }
 

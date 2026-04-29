@@ -160,10 +160,19 @@ class ContoResource extends JsonResource
             }
         }
 
-        $hasHardLock = $this->pianiRate->contains(function ($piano) {
-            $statoPuro = $piano->stato instanceof \App\Enums\StatoPianoRate ? $piano->stato->value : $piano->stato;
-            return strtolower(trim((string)$statoPuro)) === 'approvato';
-        });
+        // Check 1: piani ordinari via piano_rate_capitoli (logica esistente)
+        $hasHardLock = $this->has_rate_emesse;
+
+        // Check 2: piani straordinari via piano_rate_fatture (nuovo)
+        if (!$hasHardLock) {
+            $pianiStr = self::$pianiStraordinariMap[$this->id] ?? [];
+            foreach ($pianiStr as $pianoStr) {
+                if (in_array(strtolower($pianoStr['stato']), ['approvato', 'emesso', 'chiuso'])) {
+                    $hasHardLock = true;
+                    break;
+                }
+            }
+        }
 
         $pianiCollegati = $this->pianiRate->pluck('nome')->toArray();
         if ($mancanteStraordinario > 0) {

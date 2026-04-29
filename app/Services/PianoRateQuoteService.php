@@ -101,26 +101,6 @@ class PianoRateQuoteService
                             ];
                         })->values()->toArray();
                         
-                 /*        $dettaglioQuote = $q->map(function ($quota) {
-                            $componenteSpesa = $quota->importo;
-                            $componenteSaldo = 0;
-
-                            $meta = $quota->regole_calcolo; // È già un array!
-
-                            if (!empty($meta) && is_array($meta)) {
-                                $componenteSpesa = $meta['importi']['quota_pura_gestione'] ?? $meta['audit']['quota_pura'] ?? $quota->importo;
-                                $componenteSaldo = $meta['importi']['saldo_usato'] ?? $meta['audit']['saldo_usato'] ?? 0;
-                            }
-
-                            return [
-                                'id'               => $quota->id,
-                                'importo'          => $quota->importo,
-                                'residuo'          => max(0, $quota->importo - $quota->importo_pagato),
-                                'componente_spesa' => $componenteSpesa,
-                                'componente_saldo' => $componenteSaldo,
-                            ];
-                        })->values()->toArray(); */
-
                         return [
                             'numero'          => $rata->numero_rata,
                             'scadenza'        => optional($rata->data_scadenza)->format('Y-m-d'),

@@ -2,7 +2,7 @@
 
 import { computed } from 'vue'
 import { Link } from '@inertiajs/vue3'
-import { AlertTriangle, Percent, Edit, Trash2, FileText, Plus, PieChart, Info, TrendingUp, ArrowRight, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, ShieldAlert, User, Wallet, Folders } from 'lucide-vue-next'
+import { AlertTriangle, Percent, Edit, Trash2, FileText, Plus, PieChart, Info, TrendingUp, ArrowRight, ArrowDownCircle, ArrowUpCircle, Folder, CheckCircle, AlertCircle, CircleDashed, CornerDownRight, Target, GitMerge, ShieldAlert, User, Wallet, Folders, Lock } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,11 +20,11 @@ interface TabellaAssociata {
   ripartizioni: Array<{ soggetto: string; percentuale: number }>
 }
 
-  interface Props {
-    conto: Conto | null
-    condominioId: number   
-    esercizioId: number    
-  }
+interface Props {
+  conto: Conto | null
+  condominioId: number
+  esercizioId: number
+}
 
 interface Emits {
   (e: 'elimina', conto: Conto): void
@@ -66,7 +66,6 @@ const getPercentualeSoggetto = (tabellaId: number, soggetto: string) => {
   return r ? r.percentuale : 0
 }
 
-// Somma attuale dei coefficienti e residuo disponibile
 const sommaCoefficienti = computed(() =>
   getTabelleAssociate().reduce((sum, t) => sum + t.coefficiente, 0)
 )
@@ -75,7 +74,9 @@ const residuoDisponibile = computed(() =>
   Math.max(0, 100 - sommaCoefficienti.value)
 )
 
-const aggiungiDisabilitato = computed(() => residuoDisponibile.value === 0)
+const aggiungiDisabilitato = computed(() =>
+  residuoDisponibile.value === 0 || !!props.conto?.has_rate_emesse
+)
 
 const statusColorClass = computed(() => {
   const stato    = props.conto?.stato_copertura
@@ -210,7 +211,7 @@ const statusColorClass = computed(() => {
       </Card>
 
       <!-- ANALISI COPERTURA -->
-       <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw" class="mt-3">
+      <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw" class="mt-3">
         <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
             <PieChart class="w-4 h-4 text-indigo-600" /> Analisi copertura
@@ -253,7 +254,7 @@ const statusColorClass = computed(() => {
               </div>
             </div>
           </div>
-      
+
           <div v-if="props.conto.dettaglio_copertura && props.conto.dettaglio_copertura.length > 0" class="rounded-md border">
             <Table>
               <TableHeader>
@@ -268,8 +269,6 @@ const statusColorClass = computed(() => {
                   <TableCell class="font-medium py-3">
                     <div class="flex flex-col gap-1">
                       <div class="flex items-center gap-3 group">
-      
-                        <!-- Pallino stato -->
                         <TooltipProvider :delay-duration="100">
                           <Tooltip>
                             <TooltipTrigger as-child>
@@ -291,8 +290,7 @@ const statusColorClass = computed(() => {
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-      
-                        <!-- Nome piano: link se ha piano_rate_id, testo altrimenti -->
+
                         <Link
                           v-if="item.piano_rate_id"
                           :href="route('admin.gestionale.esercizi.piani-rate.show', {
@@ -301,10 +299,9 @@ const statusColorClass = computed(() => {
                             pianoRate:  item.piano_rate_id,
                           })"
                           class="truncate max-w-[200px] text-sm font-bold tracking-tight
-                                text-indigo-700 dark:text-indigo-400
-                                hover:text-indigo-900 dark:hover:text-indigo-200
-                                hover:underline underline-offset-2
-                                transition-colors"
+                                 text-indigo-700 dark:text-indigo-400
+                                 hover:text-indigo-900 dark:hover:text-indigo-200
+                                 hover:underline underline-offset-2 transition-colors"
                           :title="item.piano"
                         >
                           {{ item.piano }}
@@ -316,7 +313,6 @@ const statusColorClass = computed(() => {
                         >
                           {{ item.piano }}
                         </span>
-      
                       </div>
                       <p
                         v-if="item.is_shifted || item.note"
@@ -327,7 +323,7 @@ const statusColorClass = computed(() => {
                       </p>
                     </div>
                   </TableCell>
-      
+
                   <TableCell class="py-3">
                     <Badge v-if="item.is_shifted" variant="outline" class="bg-purple-50 text-purple-700 border-purple-200 rounded-md gap-1">
                       <TrendingUp class="w-3 h-3" /> Spostamento
@@ -342,7 +338,7 @@ const statusColorClass = computed(() => {
                       <Target class="w-3 h-3" /> Diretta
                     </Badge>
                   </TableCell>
-      
+
                   <TableCell class="text-right py-3 font-medium">
                     {{ euro(item.importo) }}
                   </TableCell>
@@ -350,7 +346,7 @@ const statusColorClass = computed(() => {
               </TableBody>
             </Table>
           </div>
-      
+
           <div v-else class="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 p-3 rounded-md">
             <Info class="w-4 h-4" />
             Nessun piano rate sta finanziando questa spesa al momento.
@@ -404,7 +400,8 @@ const statusColorClass = computed(() => {
           </div>
           <div v-if="(props.conto?.strategie_sforo?.length || 0) > 0">
             <h4 class="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2.5 flex items-center gap-1.5">
-              <Wallet class="w-3.5 h-3.5 text-slate-400" /> Gestione Sfori Budget
+              <Wallet class="w-3.5 h-3.5 text-slate-400" />
+              {{ props.conto.is_tecnico ? 'Finanziamento imprevisto' : 'Gestione sfori budget' }}
             </h4>
             <div class="space-y-2">
               <div v-for="(sforo, idx) in props.conto?.strategie_sforo" :key="idx"
@@ -435,6 +432,20 @@ const statusColorClass = computed(() => {
 
       <!-- ===== RIPARTIZIONE ORDINARIA ===== -->
       <Card v-if="!isCapitolo(props.conto)">
+
+        <!-- BANNER LOCK: piano approvato con rate emesse -->
+        <div
+          v-if="props.conto.has_rate_emesse"
+          class="mx-3 mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50/70 text-sm"
+        >
+          <Lock class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+          <p class="text-amber-800 text-xs leading-relaxed">
+            <span class="font-bold">Ripartizione bloccata.</span>
+            Questa voce è inclusa in un piano rate approvato o con rate già emesse.
+            Per modificare le tabelle è necessario prima annullare il piano rate associato.
+          </p>
+        </div>
+
         <CardHeader class="flex flex-row items-center justify-between space-y-0 p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
             <Percent class="w-4 h-4 text-indigo-600" /> Ripartizione ordinaria
@@ -459,7 +470,7 @@ const statusColorClass = computed(() => {
               </span>
             </div>
 
-            <!-- Bottone Aggiungi con tooltip se bloccato -->
+            <!-- Bottone Aggiungi -->
             <TooltipProvider :delay-duration="100">
               <Tooltip>
                 <TooltipTrigger as-child>
@@ -476,7 +487,10 @@ const statusColorClass = computed(() => {
                     </Button>
                   </span>
                 </TooltipTrigger>
-                <TooltipContent v-if="aggiungiDisabilitato" side="top" class="text-[11px] max-w-[200px] text-center">
+                <TooltipContent v-if="props.conto.has_rate_emesse" side="top" class="text-[11px] max-w-[200px] text-center">
+                  Piano rate approvato: ripartizione bloccata.
+                </TooltipContent>
+                <TooltipContent v-else-if="aggiungiDisabilitato" side="top" class="text-[11px] max-w-[200px] text-center">
                   Coefficienti al 100%. Modifica le tabelle esistenti prima di aggiungerne una nuova.
                 </TooltipContent>
               </Tooltip>
@@ -490,110 +504,120 @@ const statusColorClass = computed(() => {
           </div>
 
           <div v-else class="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow class="hover:bg-transparent">
-                <!-- Nome: prende tutto lo spazio residuo -->
-                <TableHead class="h-8 w-auto">Tabella millesimale</TableHead>
-                <!-- Colonne numeriche: larghezza fissa stretta -->
-                <TableHead class="h-8 w-14 text-center">Coeff.</TableHead>
-                <TableHead class="h-8 w-10 text-center">P%</TableHead>
-                <TableHead class="h-8 w-10 text-center">I%</TableHead>
-                <TableHead class="h-8 w-10 text-center">U%</TableHead>
-                <!-- Azioni: due icon button -->
-                <TableHead class="h-8 w-16"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-for="tabella in getTabelleAssociate()" :key="tabella.id">
-
-                <!-- Nome: truncate + tooltip -->
-                <TableCell class="py-1.5 pr-2">
-                  <TooltipProvider :delay-duration="300">
-                    <Tooltip>
-                      <TooltipTrigger as-child>
-                        <span class="block truncate max-w-[220px] text-sm font-medium cursor-default">
+            <Table>
+              <TableHeader>
+                <TableRow class="hover:bg-transparent">
+                  <TableHead class="h-8 w-auto">Tabella millesimale</TableHead>
+                  <TableHead class="h-8 w-14 text-center">Coeff.</TableHead>
+                  <TableHead class="h-8 w-10 text-center">P%</TableHead>
+                  <TableHead class="h-8 w-10 text-center">I%</TableHead>
+                  <TableHead class="h-8 w-10 text-center">U%</TableHead>
+                  <TableHead class="h-8 w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow v-for="tabella in getTabelleAssociate()" :key="tabella.id">
+                  <TableCell class="py-1.5 pr-2">
+                    <TooltipProvider :delay-duration="300">
+                      <Tooltip>
+                        <TooltipTrigger as-child>
+                          <span class="block truncate max-w-[220px] text-sm font-medium cursor-default">
+                            {{ tabella.nome }}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" class="text-xs max-w-[240px]">
                           {{ tabella.nome }}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" class="text-xs max-w-[240px]">
-                        {{ tabella.nome }}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </TableCell>
-
-                <!-- Coefficiente -->
-                <TableCell class="text-center py-1.5 px-1">
-                  <Badge variant="outline" class="rounded-md px-1.5 h-5 text-[11px] tabular-nums">
-                    {{ tabella.coefficiente }}%
-                  </Badge>
-                </TableCell>
-
-                <!-- Proprietario -->
-                <TableCell class="text-center py-1.5 px-1">
-                  <Badge
-                    :variant="getPercentualeSoggetto(tabella.id, 'proprietario') > 0 ? 'default' : 'outline'"
-                    class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
-                  >
-                    {{ getPercentualeSoggetto(tabella.id, 'proprietario') }}%
-                  </Badge>
-                </TableCell>
-
-                <!-- Inquilino -->
-                <TableCell class="text-center py-1.5 px-1">
-                  <Badge
-                    :variant="getPercentualeSoggetto(tabella.id, 'inquilino') > 0 ? 'default' : 'outline'"
-                    class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
-                  >
-                    {{ getPercentualeSoggetto(tabella.id, 'inquilino') }}%
-                  </Badge>
-                </TableCell>
-
-                <!-- Usufruttuario -->
-                <TableCell class="text-center py-1.5 px-1">
-                  <Badge
-                    :variant="getPercentualeSoggetto(tabella.id, 'usufruttuario') > 0 ? 'default' : 'outline'"
-                    class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
-                  >
-                    {{ getPercentualeSoggetto(tabella.id, 'usufruttuario') }}%
-                  </Badge>
-                </TableCell>
-
-                <!-- Azioni -->
-                <TableCell class="py-1.5 px-1">
-                  <div class="flex items-center justify-end gap-0.5">
-                    <TooltipProvider :delay-duration="100">
-                      <Tooltip>
-                        <TooltipTrigger as-child>
-                          <Button variant="ghost" size="icon"
-                            class="h-7 w-7 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
-                            @click="modificaTabella(tabella)">
-                            <Edit class="w-3 h-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" class="text-[10px]">Modifica</TooltipContent>
+                        </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
+                  </TableCell>
+                  <TableCell class="text-center py-1.5 px-1">
+                    <Badge variant="outline" class="rounded-md px-1.5 h-5 text-[11px] tabular-nums">
+                      {{ tabella.coefficiente }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-1.5 px-1">
+                    <Badge
+                      :variant="getPercentualeSoggetto(tabella.id, 'proprietario') > 0 ? 'default' : 'outline'"
+                      class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
+                    >
+                      {{ getPercentualeSoggetto(tabella.id, 'proprietario') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-1.5 px-1">
+                    <Badge
+                      :variant="getPercentualeSoggetto(tabella.id, 'inquilino') > 0 ? 'default' : 'outline'"
+                      class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
+                    >
+                      {{ getPercentualeSoggetto(tabella.id, 'inquilino') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="text-center py-1.5 px-1">
+                    <Badge
+                      :variant="getPercentualeSoggetto(tabella.id, 'usufruttuario') > 0 ? 'default' : 'outline'"
+                      class="rounded-md px-1.5 h-5 text-[11px] tabular-nums justify-center w-full"
+                    >
+                      {{ getPercentualeSoggetto(tabella.id, 'usufruttuario') }}%
+                    </Badge>
+                  </TableCell>
+                  <TableCell class="py-1.5 px-1">
+                    <div class="flex items-center justify-end gap-0.5">
 
-                    <TooltipProvider :delay-duration="100">
-                      <Tooltip>
-                        <TooltipTrigger as-child>
-                          <Button variant="ghost" size="icon"
-                            class="h-7 w-7 text-destructive hover:bg-destructive/10"
-                            @click="rimuoviTabella(tabella)">
-                            <Trash2 class="w-3 h-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" class="text-[10px]">Rimuovi</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </TableCell>
+                      <!-- Edit -->
+                      <TooltipProvider :delay-duration="100">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-7 w-7"
+                                :class="props.conto.has_rate_emesse
+                                  ? 'text-muted-foreground opacity-40 cursor-not-allowed'
+                                  : 'text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50'"
+                                :disabled="props.conto.has_rate_emesse"
+                                @click="!props.conto.has_rate_emesse && modificaTabella(tabella)"
+                              >
+                                <Edit class="w-3 h-3" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" class="text-[10px]">
+                            {{ props.conto.has_rate_emesse ? 'Piano approvato — bloccato' : 'Modifica' }}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
 
-              </TableRow>
-            </TableBody>
-          </Table>
+                      <!-- Delete -->
+                      <TooltipProvider :delay-duration="100">
+                        <Tooltip>
+                          <TooltipTrigger as-child>
+                            <span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-7 w-7"
+                                :class="props.conto.has_rate_emesse
+                                  ? 'text-muted-foreground opacity-40 cursor-not-allowed'
+                                  : 'text-destructive hover:bg-destructive/10'"
+                                :disabled="props.conto.has_rate_emesse"
+                                @click="!props.conto.has_rate_emesse && rimuoviTabella(tabella)"
+                              >
+                                <Trash2 class="w-3 h-3" />
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" class="text-[10px]">
+                            {{ props.conto.has_rate_emesse ? 'Piano approvato — bloccato' : 'Rimuovi' }}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                    </div>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

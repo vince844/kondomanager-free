@@ -315,38 +315,50 @@ class PianoContiController extends Controller
                     ->toArray();
         
                 if (!empty($fattureIds)) {
-                    // Stessa query dello Step 3 del BudgetCoverageService
+                    // Righe comuni (con conto_id) — per la distribuzione
                     $righePerFattura = DB::table('righe_fattura')
                         ->whereIn('fattura_passiva_id', $fattureIds)
-                        ->whereNotNull('conto_id')        // escludi righe private
+                        ->whereNotNull('conto_id')
                         ->get()
                         ->groupBy('fattura_passiva_id');
-        
+
+                    // Totale lordo per fattura (incluse righe private) — per scalare importo_collegato
+                    $totaleLordoPerFattura = DB::table('righe_fattura')
+                        ->whereIn('fattura_passiva_id', $fattureIds)
+                        ->selectRaw('fattura_passiva_id, SUM(importo_imponibile + importo_iva) as totale')
+                        ->groupBy('fattura_passiva_id')
+                        ->pluck('totale', 'fattura_passiva_id');
+
                     foreach ($straordinari as $piano) {
                         $statoPiano = $piano->stato instanceof \App\Enums\StatoPianoRate
                             ? $piano->stato->value
                             : $piano->stato;
-        
+
                         foreach ($piano->fattureStraordinarie as $fattura) {
                             $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
                             if ($importoFinanziato <= 0) continue;
-        
+
                             $righeFattura = $righePerFattura->get($fattura->id, collect());
                             if ($righeFattura->isEmpty()) continue;
-        
-                            $totaleFattura = $righeFattura->sum(
+
+                            $totaleComune = $righeFattura->sum(
                                 fn($r) => $r->importo_imponibile + $r->importo_iva
                             );
-                            if ($totaleFattura <= 0) continue;
-        
+                            if ($totaleComune <= 0) continue;
+
+                            // Scala importo_collegato alla sola quota comune
+                            $totaleLordo = (int) ($totaleLordoPerFattura[$fattura->id] ?? $totaleComune);
+                            $importoFinanziatoScalato = $totaleLordo > 0
+                                ? (int) round(($totaleComune / $totaleLordo) * $importoFinanziato)
+                                : $importoFinanziato;
+
                             foreach ($righeFattura as $riga) {
                                 $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
-                                $quota = (int) round(($importoRiga / $totaleFattura) * $importoFinanziato);
+                                $quota = (int) round(($importoRiga / $totaleComune) * $importoFinanziatoScalato);
                                 if ($quota <= 0) continue;
-        
+
                                 $contoId = (int) $riga->conto_id;
-        
-                                // Accumula per conto, raggruppando per piano
+
                                 $trovato = false;
                                 foreach ($pianiStraordinariMap[$contoId] ?? [] as &$entry) {
                                     if ($entry['id'] === $piano->id) {
@@ -356,7 +368,7 @@ class PianoContiController extends Controller
                                     }
                                 }
                                 unset($entry);
-        
+
                                 if (!$trovato) {
                                     $pianiStraordinariMap[$contoId][] = [
                                         'id'      => $piano->id,
@@ -371,7 +383,6 @@ class PianoContiController extends Controller
                 }
             }
         }
-
         // Fine fix piani straordinari
 
         ContoResource::$coverageMap = $coverageMap;
