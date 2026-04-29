@@ -13,15 +13,20 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-class AssociaTabellaController extends Controller
+class AggiornaTabellaController extends Controller
 {
-    public function __invoke(Request $request, Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, Conto $conto): RedirectResponse
-    {
+    public function __invoke(
+        Request $request,
+        Condominio $condominio,
+        Esercizio $esercizio,
+        PianoConto $pianoConto,
+        Conto $conto,
+        Tabella $tabella
+    ): RedirectResponse {
         try {
             DB::beginTransaction();
 
             $data = $request->validate([
-                'tabella_millesimale_id'    => 'required|exists:tabelle,id',
                 'coefficiente'              => 'required|numeric|min:0|max:100',
                 'percentuale_proprietario'  => 'required|integer|min:0|max:100',
                 'percentuale_inquilino'     => 'required|integer|min:0|max:100',
@@ -37,44 +42,50 @@ class AssociaTabellaController extends Controller
                 throw new \Exception("La somma delle percentuali deve essere 100%. Attuale: {$sommaPercentuali}%");
             }
 
-            // Verifica che la tabella appartenga al condominio
-            $tabella = Tabella::where('id', $data['tabella_millesimale_id'])
-                ->where('condominio_id', $condominio->id)
+            // Recupera l'associazione esistente
+            $contoTabella = DB::table('conto_tabella_millesimale')
+                ->where('conto_id', $conto->id)
+                ->where('tabella_id', $tabella->id)
                 ->first();
 
-            if (!$tabella) {
-                throw new \Exception('Tabella millesimale non trovata per questo condominio.');
+            if (!$contoTabella) {
+                throw new \Exception('Associazione tabella-conto non trovata.');
             }
 
             // -------------------------------------------------------
-            // BLOCCO HARD: somma coefficienti esistenti + nuovo ≤ 100
+            // BLOCCO HARD: somma delle ALTRE tabelle + nuovo valore <= 100
+            // Escludiamo la riga corrente (quella che stiamo modificando)
             // -------------------------------------------------------
-            $sommaEsistente = DB::table('conto_tabella_millesimale')
+            $sommaAltri = DB::table('conto_tabella_millesimale')
                 ->where('conto_id', $conto->id)
+                ->where('id', '!=', $contoTabella->id)
                 ->sum('coefficiente');
 
-            $nuovaSomma = $sommaEsistente + $data['coefficiente'];
+            $nuovaSomma = $sommaAltri + $data['coefficiente'];
 
             if ($nuovaSomma > 100) {
-                $residuo = 100 - $sommaEsistente;
+                $maxConsentito = 100 - $sommaAltri;
                 throw new \Exception(
-                    "Impossibile associare la tabella: la somma dei coefficienti supererebbe il 100% " .
-                    "(attuale: {$sommaEsistente}%, aggiunta: {$data['coefficiente']}%). " .
-                    "Residuo disponibile: {$residuo}%."
+                    "Impossibile aggiornare: la somma dei coefficienti supererebbe il 100% " .
+                    "(altre tabelle: {$sommaAltri}%). " .
+                    "Valore massimo consentito per questa tabella: {$maxConsentito}%."
                 );
             }
             // -------------------------------------------------------
 
-            // Crea l'associazione
-            $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                'conto_id'     => $conto->id,
-                'tabella_id'   => $tabella->id,
-                'coefficiente' => $data['coefficiente'],
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ]);
+            // Aggiorna il coefficiente
+            DB::table('conto_tabella_millesimale')
+                ->where('id', $contoTabella->id)
+                ->update([
+                    'coefficiente' => $data['coefficiente'],
+                    'updated_at'   => now(),
+                ]);
 
-            // Crea le ripartizioni
+            // Ricrea le ripartizioni (delete + insert)
+            DB::table('conto_tabella_ripartizioni')
+                ->where('conto_tabella_millesimale_id', $contoTabella->id)
+                ->delete();
+
             $ripartizioni = [
                 ['soggetto' => 'proprietario',  'percentuale' => $data['percentuale_proprietario']],
                 ['soggetto' => 'inquilino',      'percentuale' => $data['percentuale_inquilino']],
@@ -84,7 +95,7 @@ class AssociaTabellaController extends Controller
             foreach ($ripartizioni as $r) {
                 if ($r['percentuale'] > 0) {
                     DB::table('conto_tabella_ripartizioni')->insert([
-                        'conto_tabella_millesimale_id' => $contoTabellaId,
+                        'conto_tabella_millesimale_id' => $contoTabella->id,
                         'soggetto'                     => $r['soggetto'],
                         'percentuale'                  => $r['percentuale'],
                         'created_at'                   => now(),
@@ -96,18 +107,19 @@ class AssociaTabellaController extends Controller
             DB::commit();
 
             return redirect()->back()->with('message', [
-                'message' => 'Tabella associata con successo!',
+                'message' => 'Associazione aggiornata con successo!',
                 'type'    => 'success',
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
 
-            Log::error('Errore durante l\'associazione della tabella:', [
+            Log::error('Errore durante l\'aggiornamento della tabella:', [
                 'condominio_id'  => $condominio->id,
                 'esercizio_id'   => $esercizio->id,
                 'piano_conto_id' => $pianoConto->id,
                 'conto_id'       => $conto->id,
+                'tabella_id'     => $tabella->id,
                 'error'          => $e->getMessage(),
             ]);
 

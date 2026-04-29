@@ -23,11 +23,19 @@ import type { PianoDeiConti } from '@/types/gestionale/piani-dei-conti'
 import type { Conto } from '@/types/gestionale/conti'
 import type { Flash } from '@/types/flash';
 
+// Tipo locale per la tabella da modificare
+interface TabellaAssociata {
+  id: number
+  nome: string
+  coefficiente: number
+  ripartizioni: Array<{ soggetto: string; percentuale: number }>
+}
+
 const props = defineProps<{
   condominio: Building
   esercizio: Esercizio
-  esercizi?: Esercizio[] 
-  condomini?: Building[] 
+  esercizi?: Esercizio[]
+  condomini?: Building[]
   pianoConti: PianoDeiConti
   conti: Conto[]
   fornitori: Array<{ id: number, ragione_sociale: string }>
@@ -37,27 +45,28 @@ const props = defineProps<{
 }>()
 
 const { generatePath } = usePermission()
-const showModalNew = ref(false)
-const showModalEdit = ref(false)
-const showModalDelete = ref(false)
-const contoSelezionato = ref<Conto | null>(null)
-const contoDaEliminare = ref<Conto | null>(null)
-const tabellaDaRimuovere = ref<number | null>(null)
-const showModalAssociaTabella = ref(false)
-const showModalRimuoviTabella = ref(false)
+const showModalNew              = ref(false)
+const showModalEdit             = ref(false)
+const showModalDelete           = ref(false)
+const contoSelezionato          = ref<Conto | null>(null)
+const contoDaEliminare          = ref<Conto | null>(null)
+const tabellaDaRimuovere        = ref<number | null>(null)
+const showModalAssociaTabella   = ref(false)
+const showModalRimuoviTabella   = ref(false)
+
+// Stato per la modifica di una tabella esistente
+const tabellaDaModificare       = ref<TabellaAssociata | null>(null)
+
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
-
 const { euro } = useCurrencyFormatter()
 
-// Rinominato in headerBreadcrumbs per coerenza
 const headerBreadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
   { title: 'Piani dei conti', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: props.pianoConti.nome, href: '#' }
 ])
 
-// Guide specifiche per questa pagina
 const pageGuides = [
   {
     title: 'Struttura ad Albero',
@@ -105,22 +114,49 @@ watch(
   { deep: true }
 );
 
-const selezionaConto = (conto: Conto) => { contoSelezionato.value = conto }
-const modificaConto = (conto: Conto) => { contoSelezionato.value = conto; showModalEdit.value = true }
+const selezionaConto    = (conto: Conto) => { contoSelezionato.value = conto }
+const modificaConto     = (conto: Conto) => { contoSelezionato.value = conto; showModalEdit.value = true }
 const confermaEliminazione = (conto: Conto) => { contoDaEliminare.value = conto; showModalDelete.value = true }
+
 const confermaRimozioneTabella = (payload: { conto: Conto, tabellaId: number }) => {
-  contoSelezionato.value = payload.conto
+  contoSelezionato.value   = payload.conto
   tabellaDaRimuovere.value = payload.tabellaId
   showModalRimuoviTabella.value = true
 }
 
-const contiPreventivo = computed(() => 
-  props.conti.filter(c => !c.is_tecnico)
-)
+// Handler per l'edit della tabella dal DettaglioConto
+const onModificaTabella = (payload: { conto: Conto, tabella: TabellaAssociata }) => {
+  contoSelezionato.value   = payload.conto
+  tabellaDaModificare.value = payload.tabella
+  showModalAssociaTabella.value = true
+}
 
-const contiTecnici = computed(() => 
-  props.conti.filter(c => c.is_tecnico)
-)
+// Handler per aprire la modale in modalità CREA
+const onAggiungiTabella = (conto: Conto) => {
+  contoSelezionato.value   = conto
+  tabellaDaModificare.value = null   // nessuna tabella = modalità creazione
+  showModalAssociaTabella.value = true
+}
+
+// Chiusura modale: pulisce sempre la tabellaDaModificare
+const onChiudiModalAssociaTabella = (val: boolean) => {
+  showModalAssociaTabella.value = val
+  if (!val) tabellaDaModificare.value = null
+}
+
+const contiPreventivo = computed(() => props.conti.filter(c => !c.is_tecnico))
+const contiTecnici    = computed(() => props.conti.filter(c => c.is_tecnico))
+
+// Residuo disponibile per il conto selezionato (esclude la tabella in modifica se in edit mode)
+const residuoDisponibile = computed(() => {
+  if (!contoSelezionato.value?.tabelle_millesimali) return 100
+  const somma = contoSelezionato.value.tabelle_millesimali.reduce(
+    (acc, tm) => acc + (tm.coefficiente ?? 0), 0
+  )
+  // In edit mode il residuo "grezzo" esclude già la tabella corrente perché
+  // maxCoefficiente nella modale aggiunge il coefficiente attuale della tabella
+  return Math.max(0, 100 - somma)
+})
 
 const eliminaConto = () => {
   if (!contoDaEliminare.value) return
@@ -132,36 +168,77 @@ const eliminaConto = () => {
   }), {
     preserveScroll: true,
     onSuccess: () => { contoSelezionato.value = null; contoDaEliminare.value = null; showModalDelete.value = false },
-    onError: () => { showModalDelete.value = false }
+    onError:   () => { showModalDelete.value = false }
   })
 }
 
-const annullaEliminazione = () => { contoDaEliminare.value = null; showModalDelete.value = false }
+const annullaEliminazione    = () => { contoDaEliminare.value = null; showModalDelete.value = false }
 const annullaRimozioneTabella = () => { tabellaDaRimuovere.value = null; showModalRimuoviTabella.value = false }
-const onModificaSuccess = () => { showModalEdit.value = false }
-const onAggiungiTabella = (conto: Conto) => { contoSelezionato.value = conto; showModalAssociaTabella.value = true }
+const onModificaSuccess      = () => { showModalEdit.value = false }
 
-const associaTabella = (dati: any) => {
+/**
+ * Callback unica per la ModalAssociaTabella.
+ * In base a _isEdit chiama POST (crea) o PUT (aggiorna).
+ */
+const gestisciTabella = (dati: any) => {
   if (!contoSelezionato.value) return
-  router.post(route('admin.gestionale.esercizi.piani-conti.conti.associa-tabella', {
-    condominio: props.condominio.id,
-    esercizio: props.esercizio.id,
-    pianoConto: props.pianoConti.id,
-    conto: contoSelezionato.value.id
-  }), dati, {
-    preserveScroll: true,
-    onSuccess: () => { showModalAssociaTabella.value = false }
-  })
+
+  if (dati._isEdit && dati._tabellaId) {
+    // === MODIFICA ===
+    router.put(
+      route('admin.gestionale.esercizi.piani-conti.conti.aggiorna-tabella', {
+        condominio: props.condominio.id,
+        esercizio:  props.esercizio.id,
+        pianoConto: props.pianoConti.id,
+        conto:      contoSelezionato.value.id,
+        tabella:    dati._tabellaId,
+      }),
+      {
+        coefficiente:              dati.coefficiente,
+        percentuale_proprietario:  dati.percentuale_proprietario,
+        percentuale_inquilino:     dati.percentuale_inquilino,
+        percentuale_usufruttuario: dati.percentuale_usufruttuario,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => {
+          showModalAssociaTabella.value = false
+          tabellaDaModificare.value     = null
+        },
+      }
+    )
+  } else {
+    // === CREAZIONE ===
+    router.post(
+      route('admin.gestionale.esercizi.piani-conti.conti.associa-tabella', {
+        condominio: props.condominio.id,
+        esercizio:  props.esercizio.id,
+        pianoConto: props.pianoConti.id,
+        conto:      contoSelezionato.value.id,
+      }),
+      {
+        tabella_millesimale_id:    dati.tabella_millesimale_id,
+        coefficiente:              dati.coefficiente,
+        percentuale_proprietario:  dati.percentuale_proprietario,
+        percentuale_inquilino:     dati.percentuale_inquilino,
+        percentuale_usufruttuario: dati.percentuale_usufruttuario,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => { showModalAssociaTabella.value = false },
+      }
+    )
+  }
 }
 
 const rimuoviTabella = () => {
   if (!contoSelezionato.value || !tabellaDaRimuovere.value) return
   router.delete(route('admin.gestionale.esercizi.piani-conti.conti.dissocia-tabella', {
     condominio: props.condominio.id,
-    esercizio: props.esercizio.id,
+    esercizio:  props.esercizio.id,
     pianoConto: props.pianoConti.id,
-    conto: contoSelezionato.value.id,
-    tabella: tabellaDaRimuovere.value
+    conto:      contoSelezionato.value.id,
+    tabella:    tabellaDaRimuovere.value
   }), {
     preserveScroll: true,
     onSuccess: () => { showModalRimuoviTabella.value = false; tabellaDaRimuovere.value = null }
@@ -174,7 +251,7 @@ const rimuoviTabella = () => {
 
   <GestionaleLayout>
     <div class="px-6 py-8 space-y-4">
-      
+
       <PageHeaderGuide
         page-title="Gestione spese"
         :page-subtitle="props.pianoConti.nome"
@@ -197,19 +274,19 @@ const rimuoviTabella = () => {
       </PageHeaderGuide>
 
       <div class="w-full">
-
         <section class="w-full">
           <div v-if="flashMessage" class="py-3">
             <Alert :message="flashMessage.message" :type="flashMessage.type" />
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+
+            <!-- ELENCO CONTI -->
             <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
               <div class="p-4 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Elenco conti e sottoconti</h3>
-                
                 <div class="flex items-center gap-2">
-                  <span v-if="contiTecnici.length > 0" 
+                  <span v-if="contiTecnici.length > 0"
                         class="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                     <AlertTriangle class="w-3 h-3" />
                     Sopravvenienze: {{ euro(props.totaleSopravvenienze) }}
@@ -220,24 +297,22 @@ const rimuoviTabella = () => {
                   </span>
                 </div>
               </div>
-              
+
               <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto">
-                <!-- SEZIONE 1: Preventivo Deliberato -->
                 <div class="mb-2">
                   <div class="flex items-center gap-2 px-3 py-2">
                     <Lock class="w-3.5 h-3.5 text-indigo-500" />
                     <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Preventivo deliberato</span>
                   </div>
-                   <div class="bg-indigo-50/30 rounded-lg mx-1 mb-2">
+                  <div class="bg-indigo-50/30 rounded-lg mx-1 mb-2">
                     <AlberoDeiConti
-                      :conti="contiPreventivo" 
+                      :conti="contiPreventivo"
                       :selected-id="contoSelezionato?.id"
                       @seleziona="selezionaConto"
                     />
                   </div>
                 </div>
 
-                <!-- SEZIONE 2: Sopravvenienze (solo se esistono) -->
                 <div v-if="contiTecnici.length > 0" class="mt-4 pt-3 border-t border-dashed border-amber-200">
                   <div class="flex items-center gap-2 px-3 py-2 mb-1">
                     <AlertTriangle class="w-3.5 h-3.5 text-amber-500" />
@@ -246,7 +321,7 @@ const rimuoviTabella = () => {
                   </div>
                   <div class="bg-amber-50/30 rounded-lg mx-1 mb-2">
                     <AlberoDeiConti
-                      :conti="contiTecnici" 
+                      :conti="contiTecnici"
                       :selected-id="contoSelezionato?.id"
                       @seleziona="selezionaConto"
                     />
@@ -255,20 +330,25 @@ const rimuoviTabella = () => {
               </div>
             </div>
 
+            <!-- DETTAGLIO CONTO -->
             <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
               <div class="p-4 border-b border-gray-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Dettagli voce selezionata</h3>
               </div>
               <div class="p-2">
-              <DettaglioConto
-                  :conto="contoSelezionato" 
-                  @elimina="confermaEliminazione" 
+                <DettaglioConto
+                  :conto="contoSelezionato"
+                  :condominio-id="props.condominio.id"
+                  :esercizio-id="props.esercizio.id"
+                  @elimina="confermaEliminazione"
                   @modifica="modificaConto"
                   @aggiungi-tabella="onAggiungiTabella"
+                  @modifica-tabella="onModificaTabella"
                   @rimuovi-tabella="confermaRimozioneTabella"
                 />
               </div>
             </div>
+
           </div>
         </section>
       </div>
@@ -279,15 +359,19 @@ const rimuoviTabella = () => {
       :condominio-id="props.condominio.id"
       :esercizio-id="props.esercizio.id"
       :piano-conto-id="props.pianoConti.id"
-      :fornitori="props.fornitori"  @update:show="showModalNew = $event"
+      :fornitori="props.fornitori"
+      @update:show="showModalNew = $event"
     />
 
+    <!-- Modale unica per CREA e MODIFICA associazione -->
     <ModalAssociaTabella
       :show="showModalAssociaTabella"
       :conto="contoSelezionato"
       :condominio-id="props.condominio.id"
-      @update:show="showModalAssociaTabella = $event"
-      @success="associaTabella"
+      :tabella-esistente="tabellaDaModificare"
+      :residuo-disponibile="residuoDisponibile"
+      @update:show="onChiudiModalAssociaTabella"
+      @success="gestisciTabella"
     />
 
     <ModalModificaConto
@@ -297,7 +381,8 @@ const rimuoviTabella = () => {
       :esercizio-id="props.esercizio.id"
       :piano-conto-id="props.pianoConti.id"
       :tabelle="props.tabelle"
-      :fornitori="props.fornitori"  @update:show="showModalEdit = $event"
+      :fornitori="props.fornitori"
+      @update:show="showModalEdit = $event"
       @success="onModificaSuccess"
     />
 
@@ -322,5 +407,6 @@ const rimuoviTabella = () => {
       @confirm="eliminaConto"
       @cancel="annullaEliminazione"
     />
+
   </GestionaleLayout>
 </template>

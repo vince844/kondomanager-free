@@ -296,11 +296,90 @@ class PianoContiController extends Controller
                 ->toArray();
         }
 
+        // Inizio fix piani straordinari
+        $pianiStraordinariMap = [];
+ 
+        if ($gestione) {
+            // Riusiamo i piani già caricati dal service (già in memoria)
+            $gestione->loadMissing(['pianiRate.fattureStraordinarie']);
+        
+            $straordinari = $gestione->pianiRate->filter(
+                fn($p) => $p->tipo === 'straordinario'
+            );
+        
+            if ($straordinari->isNotEmpty()) {
+                $fattureIds = $straordinari
+                    ->flatMap->fattureStraordinarie
+                    ->pluck('id')
+                    ->unique()
+                    ->toArray();
+        
+                if (!empty($fattureIds)) {
+                    // Stessa query dello Step 3 del BudgetCoverageService
+                    $righePerFattura = DB::table('righe_fattura')
+                        ->whereIn('fattura_passiva_id', $fattureIds)
+                        ->whereNotNull('conto_id')        // escludi righe private
+                        ->get()
+                        ->groupBy('fattura_passiva_id');
+        
+                    foreach ($straordinari as $piano) {
+                        $statoPiano = $piano->stato instanceof \App\Enums\StatoPianoRate
+                            ? $piano->stato->value
+                            : $piano->stato;
+        
+                        foreach ($piano->fattureStraordinarie as $fattura) {
+                            $importoFinanziato = (int) ($fattura->pivot->importo_collegato ?? 0);
+                            if ($importoFinanziato <= 0) continue;
+        
+                            $righeFattura = $righePerFattura->get($fattura->id, collect());
+                            if ($righeFattura->isEmpty()) continue;
+        
+                            $totaleFattura = $righeFattura->sum(
+                                fn($r) => $r->importo_imponibile + $r->importo_iva
+                            );
+                            if ($totaleFattura <= 0) continue;
+        
+                            foreach ($righeFattura as $riga) {
+                                $importoRiga = $riga->importo_imponibile + $riga->importo_iva;
+                                $quota = (int) round(($importoRiga / $totaleFattura) * $importoFinanziato);
+                                if ($quota <= 0) continue;
+        
+                                $contoId = (int) $riga->conto_id;
+        
+                                // Accumula per conto, raggruppando per piano
+                                $trovato = false;
+                                foreach ($pianiStraordinariMap[$contoId] ?? [] as &$entry) {
+                                    if ($entry['id'] === $piano->id) {
+                                        $entry['importo'] += $quota;
+                                        $trovato = true;
+                                        break;
+                                    }
+                                }
+                                unset($entry);
+        
+                                if (!$trovato) {
+                                    $pianiStraordinariMap[$contoId][] = [
+                                        'id'      => $piano->id,
+                                        'nome'    => $piano->nome,
+                                        'stato'   => $statoPiano,
+                                        'importo' => $quota,
+                                    ];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fine fix piani straordinari
+
         ContoResource::$coverageMap = $coverageMap;
         ContoResource::$extraPianiNames = $extraPianiNames;
         ContoResource::$addebitiMap = $addebitiMap; // Passata
         ContoResource::$strategieSforoMap = $strategieSforoMap; // Passata
         ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
+        ContoResource::$pianiStraordinariMap = $pianiStraordinariMap;
 
         // --- FIX v1.9.23: TOTALI SEPARATI (Preventivo vs Sopravvenienze) ---
         $totalePreventivo = 0;

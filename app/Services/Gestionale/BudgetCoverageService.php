@@ -108,6 +108,13 @@ class BudgetCoverageService
 
                 if ($contoModel && $contoModel->sottoconti->isNotEmpty()) {
 
+                    // FIX: solo sottoconti che esistevano alla creazione del piano
+                    $sottocontiValidi = $contoModel->sottoconti->filter(
+                        fn($s) => $s->created_at->lte($piano->created_at)
+                    );
+
+                    if ($sottocontiValidi->isEmpty()) continue;
+
                     $residuoPiano = is_null($capitolo->pivot->importo)
                         ? (int) $capitolo->importo
                         : (int) $capitolo->pivot->importo;
@@ -115,16 +122,12 @@ class BudgetCoverageService
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;
 
                     $figliDaSoddisfare = [];
-                    foreach ($contoModel->sottoconti as $figlio) {
+                    foreach ($sottocontiValidi as $figlio) {
                         $budgetTeorico  = (int) $figlio->importo;
                         $copertoAttuale = $map[$figlio->id] ?? 0;
                         $deficit        = $budgetTeorico - $copertoAttuale;
-
                         if ($deficit > 0) {
-                            $figliDaSoddisfare[] = [
-                                'id'      => $figlio->id,
-                                'deficit' => $deficit,
-                            ];
+                            $figliDaSoddisfare[] = ['id' => $figlio->id, 'deficit' => $deficit];
                         }
                     }
 
@@ -141,7 +144,7 @@ class BudgetCoverageService
                                     $map[$f['id']] = ($map[$f['id']] ?? 0) + 1;
                                     $residuoPiano -= 1;
                                 }
-                                break; 
+                                break;
                             }
 
                             $nuoviFigli = [];
@@ -150,7 +153,6 @@ class BudgetCoverageService
                                 $map[$f['id']] = ($map[$f['id']] ?? 0) + $daAssegnare;
                                 $residuoPiano -= $daAssegnare;
                                 $f['deficit'] -= $daAssegnare;
-
                                 if ($f['deficit'] > 0) {
                                     $nuoviFigli[] = $f;
                                 }

@@ -335,15 +335,15 @@ const submit = () => {
           <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.owner_percent') }}</Label>
-              <Input v-model="form.percentuale_proprietario" class="h-8 mt-1" placeholder="100" type="number" />
+              <Input v-model="form.percentuale_proprietario" class="h-8 mt-1" placeholder="100" />
             </div>
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.tenant_percent') }}</Label>
-              <Input v-model="form.percentuale_inquilino" class="h-8 mt-1" placeholder="0" type="number" />
+              <Input v-model="form.percentuale_inquilino" class="h-8 mt-1" placeholder="0" />
             </div>
             <div>
               <Label class="text-xs">{{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.usufructuary_percent') }}</Label>
-              <Input v-model="form.percentuale_usufruttuario" class="h-8 mt-1" placeholder="0" type="number" />
+              <Input v-model="form.percentuale_usufruttuario" class="h-8 mt-1" placeholder="0" />
             </div>
             <InputError :message="form.errors.percentuale_proprietario" />
           </div>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
@@ -9,6 +10,11 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle }
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types'
 
+interface SystemUpdateData {
+  available?: boolean;
+  new_version?: string;
+}
+
 const breadcrumbs: BreadcrumbItem[] = [
   {
     title: 'Impostazioni',
@@ -16,12 +22,33 @@ const breadcrumbs: BreadcrumbItem[] = [
   },
 ]
 
-// Recuperiamo stato aggiornamento
 const page = usePage()
-const updateAvailable = computed(() => page.props.system_update?.available || false)
-const newVersion = computed(() => page.props.system_update?.new_version || '')
 
-// Definiamo le app come computed property per reagire ai cambiamenti di updateAvailable
+const updateAvailable = computed(() => {
+  const updateInfo = page.props.system_update as SystemUpdateData | undefined;
+  return updateInfo?.available || false;
+})
+
+const newVersion = computed(() => {
+  const updateInfo = page.props.system_update as SystemUpdateData | undefined;
+  return updateInfo?.new_version || '';
+})
+
+const searchTerm = ref("")
+
+const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+const filteredApps = computed(() => {
+  const term = normalize(searchTerm.value)
+
+  return apps.value.filter(app => {
+    const name = normalize(trans(app.name))
+    const desc = app.highlight ? normalize(app.desc) : normalize(trans(app.desc)) 
+
+    return name.includes(term) || desc.includes(term)
+  })
+})
+
 const apps = computed(() => [
   {
     name: 'impostazioni.dialogs.general_settings_title',
@@ -58,33 +85,19 @@ const apps = computed(() => [
     logo: DatabaseBackup,
     desc: 'impostazioni.dialogs.backups_settings_description',
     href: "#",
+    comingSoon: true, 
   },
   {
-      name: 'impostazioni.dialogs.updates_title',
-      logo: RefreshCw,
-      // Usiamo trans() con parametri per inserire la versione
-      desc: updateAvailable.value 
-          ? trans('impostazioni.dialogs.updates_desc_available', { version: newVersion.value })
-          : trans('impostazioni.dialogs.updates_desc_latest'),
-      href: '/system/upgrade',
-      highlight: updateAvailable.value, 
+    name: 'impostazioni.dialogs.updates_title',
+    logo: RefreshCw,
+    desc: updateAvailable.value 
+        ? trans('impostazioni.dialogs.updates_desc_available', { version: newVersion.value })
+        : trans('impostazioni.dialogs.updates_desc_latest'),
+    href: '/system/upgrade',
+    highlight: updateAvailable.value, 
   }
 ])
 
-const searchTerm = ref("")
-
-const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
-const filteredApps = computed(() => {
-  const term = normalize(searchTerm.value)
-
-  return apps.value.filter(app => {
-    const name = normalize(trans(app.name))
-    const desc = app.highlight ? normalize(app.desc) : normalize(trans(app.desc)) 
-
-    return name.includes(term) || desc.includes(term)
-  })
-})
 </script>
 
 <template>
@@ -129,16 +142,33 @@ const filteredApps = computed(() => {
           </ItemMedia>
           
           <ItemContent>
-            <ItemTitle>
+            <ItemTitle class="flex items-center gap-2">
               {{ trans(app.name) }}
+              <span 
+                v-if="app.comingSoon" 
+                class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/30"
+              >
+                In arrivo
+              </span>
             </ItemTitle>
-            <ItemDescription class="text-[13px] leading-tight">
+            <ItemDescription class="text-[13px] leading-tight mt-0.5">
               {{ app.highlight ? app.desc : trans(app.desc) }}
             </ItemDescription>
           </ItemContent>
           
           <ItemActions>
             <Button 
+              v-if="app.comingSoon"
+              disabled
+              variant="outline" 
+              size="sm"
+              class="h-8 text-xs font-semibold opacity-50 cursor-not-allowed"
+            >
+              Prossimamente
+            </Button>
+
+            <Button 
+              v-else
               as-child 
               :variant="app.highlight ? 'default' : 'outline'" 
               size="sm"

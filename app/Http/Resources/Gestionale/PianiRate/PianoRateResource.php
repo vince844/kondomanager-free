@@ -38,32 +38,26 @@ class PianoRateResource extends JsonResource
         $statoValue = $this->stato instanceof \UnitEnum ? $this->stato->value : $this->stato;
 
         return [
-            'id'              => $this->id,
-            'tipo'            => $this->tipo ?? 'ordinario', // Esposto per sicurezza
-            'nome'            => $this->nome,
-            'descrizione'     => $this->descrizione,
-            'numero_rate'     => $this->numero_rate,
-            'stato'           => $statoValue,
-            'giorno_scadenza' => $this->giorno_scadenza,
-            'metodo_distribuzione'    => $this->metodo_distribuzione,
-            'data_inizio'             => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
-            
-            // Scudo Legale e Audit
-            'data_delibera_assemblea' => $this->data_delibera_assemblea?->format('Y-m-d'),
-            'numero_verbale'          => $this->numero_verbale,
-            'nota_approvazione'       => $this->nota_approvazione,
-            'tipo_autorizzazione'     => $this->tipo_autorizzazione,
-            'motivazione_autorizzazione' => $this->motivazione_autorizzazione,
-            'approvato_da_user_id'    => $this->approvato_da_user_id,
-            'approvato_il'            => $this->approvato_il?->format('Y-m-d H:i:s'),
-            
-            // --- FIX: IL TOTALE ORA SARÀ 183€ E NON PIÙ 0€ ---
-            'totale_capitoli' => (int) $totaleReale,
-            'totale_piano'    => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
-            // -------------------------------------------------
-
-            'gestione'        => new GestioneResource($this->whenLoaded('gestione')),
-            'budget_movements' => $this->whenLoaded('budgetMovements'),
+            'id'                            => $this->id,
+            'tipo'                          => $this->tipo ?? 'ordinario',
+            'nome'                          => $this->nome,
+            'descrizione'                   => $this->descrizione,
+            'numero_rate'                   => $this->numero_rate,
+            'stato'                         => $statoValue,
+            'giorno_scadenza'               => $this->giorno_scadenza,
+            'metodo_distribuzione'          => $this->metodo_distribuzione,
+            'data_inizio'                   => $this->data_inizio?->format('Y-m-d') ?? $this->created_at?->format('Y-m-d'),
+            'data_delibera_assemblea'       => $this->data_delibera_assemblea?->format('Y-m-d'),
+            'numero_verbale'                => $this->numero_verbale,
+            'nota_approvazione'             => $this->nota_approvazione,
+            'tipo_autorizzazione'           => $this->tipo_autorizzazione,
+            'motivazione_autorizzazione'    => $this->motivazione_autorizzazione,
+            'approvato_da_user_id'          => $this->approvato_da_user_id,
+            'approvato_il'                  => $this->approvato_il?->format('Y-m-d H:i:s'),
+            'totale_capitoli'               => (int) $totaleReale,
+            'totale_piano'                  => $this->relationLoaded('rate') ? (int) $this->rate->sum('importo_totale') : 0,
+            'gestione'                      => new GestioneResource($this->whenLoaded('gestione')),
+            'budget_movements'              => $this->whenLoaded('budgetMovements'),
             
             'has_saldi' => DB::table('rate_quote') 
                 ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
@@ -93,9 +87,19 @@ class PianoRateResource extends JsonResource
                 })
                 : $this->whenLoaded('capitoli', function() {
                     return $this->capitoli->map(function ($c) {
-                        $isParent = $c->sottoconti()->exists();
+
+                        $isParent = $c->sottoconti->isNotEmpty();
+
                         $importoEffettivo = !is_null($c->pivot->importo) ? $c->pivot->importo : $c->importo;
-                        $importoOriginale = $isParent ? $c->sottoconti->sum('importo') : $c->importo;
+
+                        $sottocontiSnapshot = $c->sottoconti->filter(
+                            fn($s) => $s->created_at->lte($this->created_at)
+                        );
+
+                         $importoOriginale = $isParent 
+                            ? $sottocontiSnapshot->sum('importo')  // ← usa snapshot
+                            : $c->importo;
+
                         $isFrazionato = !is_null($c->pivot->importo) && abs($c->pivot->importo - $importoOriginale) > 1;
 
                         return [
@@ -106,7 +110,7 @@ class PianoRateResource extends JsonResource
                             'is_frazionato'     => $isFrazionato,
                             'note'              => $c->pivot->note,
                             'is_parent'         => $isParent,
-                            'figli_names'       => $isParent ? $c->sottoconti->pluck('nome')->join(', ') : '',
+                            'figli_names'       => $isParent ? $sottocontiSnapshot->pluck('nome')->join(', ') : '',
                         ];
                     });
                 }),

@@ -17,6 +17,7 @@ use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
@@ -130,6 +131,9 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::delete('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/dissocia-tabella/{tabella}', DissociaTabellaController::class)
         ->name('esercizi.piani-conti.conti.dissocia-tabella');
+    
+    Route::put('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}', AggiornaTabellaController::class)
+        ->name('esercizi.piani-conti.conti.aggiorna-tabella');
 
     Route::resource('esercizi.piani-rate', PianoRateController::class)
         ->parameters([

@@ -2,6 +2,7 @@
 
 export interface DettaglioCopertura {
   piano: string;
+  piano_rate_id: number;
   importo: number; // in centesimi
   fonte: 'diretta' | 'indiretta' | 'mista';
   stato: 'bozza' | 'approvato';

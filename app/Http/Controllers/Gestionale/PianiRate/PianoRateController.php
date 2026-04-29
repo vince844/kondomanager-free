@@ -283,24 +283,63 @@ class PianoRateController extends Controller
                     $analisiBilancio = $coverageService->analyze($gestione, $fatturatoMap, $coperturaVirtualeMap);
                     $capitoliFinanziabili = collect($coverageService->getCapitoliFinanziabili($analisiBilancio))->keyBy('id');
 
-                    if (!empty($validated['capitoli_ids'])) {
+                    /* if (!empty($validated['capitoli_ids'])) {
                         $conti = Conto::with('sottoconti')->findMany($validated['capitoli_ids']);
                         foreach ($conti as $c) {
                             $importoDaFinanziare = $capitoliFinanziabili->has($c->id) ? $capitoliFinanziabili->get($c->id)['importo_suggerito'] : $calcolaVeroTotale($c);
                             $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Selezione rapida (Smart Budget)'];
+                        } */
+                    if (!empty($validated['capitoli_ids'])) {
+                        $conti = Conto::with(['sottoconti' => fn($q) => $q->visibili()])->findMany($validated['capitoli_ids']);
+                        foreach ($conti as $c) {
+                            if ($c->sottoconti->isNotEmpty()) {
+                                // SNAPSHOT: salviamo le foglie esistenti ORA, non il padre
+                                foreach ($c->sottoconti as $sub) {
+                                    $importoSub = $capitoliFinanziabili->has($sub->id)
+                                        ? $capitoliFinanziabili->get($sub->id)['importo_suggerito']
+                                        : ($sub->importo ?? 0);
+                                    $syncData[$sub->id] = ['importo' => $importoSub, 'note' => 'Selezione rapida (Smart Budget)'];
+                                }
+                            } else {
+                                // Padre senza figli: è già una foglia, comportamento invariato
+                                $importoDaFinanziare = $capitoliFinanziabili->has($c->id)
+                                    ? $capitoliFinanziabili->get($c->id)['importo_suggerito']
+                                    : $calcolaVeroTotale($c);
+                                $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Selezione rapida (Smart Budget)'];
+                            }
                         }
-                    } else {
+                    }else {
 
                         $capitoliOrfani = $gestione->pianoConto->conti()
-                            ->visibili()
-                            ->whereNull('parent_id')
-                            ->whereDoesntHave('pianiRate', fn($q) => $q->whereIn('stato', ['bozza', 'approvato']))
-                            ->with(['sottoconti' => fn($q) => $q->visibili()])
-                            ->get();
+                        ->visibili()
+                        ->whereNull('parent_id')
+                        ->where(function ($q) {
+                            // Il padre stesso non deve essere in un piano attivo (caso padre=foglia)
+                            $q->whereDoesntHave('pianiRate', fn($q2) => $q2->whereIn('stato', ['bozza', 'approvato']))
+                            // E nessuno dei suoi sottoconti deve essere in un piano attivo (caso snapshot)
+                            ->whereDoesntHave('sottoconti', fn($sub) =>
+                                $sub->whereHas('pianiRate', fn($q2) => $q2->whereIn('stato', ['bozza', 'approvato']))
+                            );
+                        })
+                        ->with(['sottoconti' => fn($q) => $q->visibili()])
+                        ->get();
 
                         foreach ($capitoliOrfani as $c) {
-                            $importoDaFinanziare = $capitoliFinanziabili->has($c->id) ? $capitoliFinanziabili->get($c->id)['importo_suggerito'] : $calcolaVeroTotale($c);
-                            $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Inclusione automatica orfani'];
+                            if ($c->sottoconti->isNotEmpty()) {
+                                // SNAPSHOT: salviamo le foglie esistenti ORA, non il padre
+                                foreach ($c->sottoconti as $sub) {
+                                    $importoSub = $capitoliFinanziabili->has($sub->id)
+                                        ? $capitoliFinanziabili->get($sub->id)['importo_suggerito']
+                                        : ($sub->importo ?? 0);
+                                    $syncData[$sub->id] = ['importo' => $importoSub, 'note' => 'Inclusione automatica orfani'];
+                                }
+                            } else {
+                                // Padre senza figli: è già una foglia, comportamento invariato
+                                $importoDaFinanziare = $capitoliFinanziabili->has($c->id)
+                                    ? $capitoliFinanziabili->get($c->id)['importo_suggerito']
+                                    : $calcolaVeroTotale($c);
+                                $syncData[$c->id] = ['importo' => $importoDaFinanziare, 'note' => 'Inclusione automatica orfani'];
+                            }
                         }
 
                     }

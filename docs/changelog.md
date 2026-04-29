@@ -2,6 +2,64 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.27] - Tabelle Millesimali Multi-Coefficiente & Copertura Straordinaria Granulare
+
+### Funzionalità: Gestione Multi-Tabella con Coefficienti Controllati
+
+**Contesto:** Fino a questa versione era possibile associare più tabelle millesimali a una voce di spesa, ma il coefficiente della tabella creata al momento dell'inserimento restava bloccato al 100% senza possibilità di modifica. Questo rendeva impossibile scenari reali come "50% Tabella Generale + 50% Tabella Scale".
+
+**File Modificati (7):**
+
+* **`AssociaTabellaController`** — Aggiunto blocco hard: prima di creare una nuova associazione, il sistema verifica che `somma_coefficienti_esistenti + nuovo_coefficiente ≤ 100`. In caso di violazione la richiesta viene rigettata con messaggio esplicito che indica il residuo disponibile.
+
+* **`AggiornaTabellaController`** *(nuovo)* — Controller invocabile via `PUT` per modificare `coefficiente` e ripartizioni per soggetto di un'associazione esistente. Applica lo stesso blocco hard escludendo dal calcolo la riga corrente (`WHERE id != $contoTabella->id`) per evitare falsi positivi quando si modifica l'unica tabella al 100%.
+
+* **`routes/gestionale.php`** — Aggiunta route `PUT esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}` con nome `esercizi.piani-conti.conti.aggiorna-tabella`.
+
+* **`DettaglioConto.vue`** — Ogni riga della tabella "Ripartizione ordinaria" espone ora un bottone ✏️ edit (accanto all'esistente 🗑️ elimina). L'header della card mostra una barra visiva della somma dei coefficienti (arancione se parziale, verde se 100%) e il bottone "Aggiungi" diventa disabilitato con tooltip esplicativo quando la somma raggiunge il 100%, guidando l'utente a modificare prima una tabella esistente. Layout tabella rifattorizzato: nome con `truncate` + tooltip per testi lunghi, badge percentuali compatti (`h-5 px-1.5 text-[11px]`), larghezze colonne fisse.
+
+* **`ModalAssociaTabella.vue`** — Supporto modalità dual-mode (crea / modifica). In edit mode il dropdown tabella è sostituito da un campo bloccato con il nome. In entrambe le modalità il campo coefficiente mostra un badge "max X% disponibile", è pre-compilato con il residuo e il `max` dell'input è vincolato al massimo consentito. Il bottone submit resta disabilitato finché coefficiente e somma percentuali soggetti non sono validi.
+
+* **`Index.vue`** — Unica istanza `ModalAssociaTabella` condivisa per crea e modifica. `onAggiungiTabella` azzera `tabellaDaModificare` (→ crea), `onModificaTabella` la popola (→ edit). Il callback `gestisciTabella` smista su `router.post` o `router.put` in base al flag `_isEdit`. Aggiunto `computed residuoDisponibile` passato come prop alla modale.
+
+---
+
+### Bug Fix: Copertura Piani Straordinari Tracciabile e Collegabile
+
+**Problema:** Nella card "Analisi Copertura" del dettaglio voce, la riga relativa ai piani rate straordinari veniva generata come fallback generico (`$mancanteStraordinario`) senza `piano_rate_id`, rendendo impossibile il collegamento diretto al piano. Il nome mostrato era la concatenazione di tutti i piani straordinari della gestione, indipendentemente da quale coprisse effettivamente quella voce.
+
+**Causa Radice:** `BudgetCoverageService` Step 3 calcola la copertura straordinaria attraverso `piano_rate_fatture → righe_fattura → conto_id`, ma questa copertura non lascia traccia in `piano_rate_capitoli`. Quando `ContoResource` cercava di spiegare `$impegnato` guardando `$this->pianiRate()` (che usa `piano_rate_capitoli`), il gap rimaneva inesplicato e veniva tappato dal fallback.
+
+**File Modificati (3):**
+
+* **`PianoContiController::show()`** — Replica la logica dello Step 3 del `BudgetCoverageService` (stessa query su `righe_fattura`, stessa proporzione `importo_riga / totale_fattura * importo_collegato`) per costruire `$pianiStraordinariMap`: una mappa `conto_id → [{id, nome, stato, importo}]` granulare per piano. Se lo stesso conto è coperto da due piani straordinari distinti, entrambi appaiono come entry separate. La mappa viene passata a `ContoResource::$pianiStraordinariMap`.
+
+* **`ContoResource`** — Aggiunta proprietà statica `$pianiStraordinariMap`. Il blocco `$mancanteStraordinario` ora ha due percorsi: se la mappa contiene dati produce una riga per ogni piano straordinario con `piano_rate_id` reale; se è vuota (dati storici privi di `importo_collegato`) cade nel fallback esistente con `piano_rate_id: null`. Aggiunto `piano_rate_id` a tutti e quattro i punti di costruzione di `$dettaglioPiani` (copertura null, esplicita, indiretta, straordinaria).
+
+* **`DettaglioConto.vue`** — Il nome del piano rate nella tabella di analisi copertura è ora un `<InertiaLink>` cliccabile quando `item.piano_rate_id` è valorizzato, testo semplice altrimenti. Risolve anche un conflitto di nome con l'icona `Link` di lucide-vue-next, ora importata come `InertiaLink`.
+
+**Invarianti garantiti:** Nessuna migration necessaria. Il fallback generico viene mantenuto per compatibilità con dati storici privi di `importo_collegato` sul pivot `piano_rate_fatture`. La suite di test, la logica contabile e il Penny-Perfect Algorithm rimangono invariati.
+
+## [1.9.26] - Piano Rate Snapshot Engine (Bug Fix)
+
+### Bug Fix Critico: Isolamento Temporale dei Piani Rate
+
+**Problema:** L'aggiunta di una nuova voce di spesa come sottoconto di un capitolo già incluso in un piano rate attivo causava l'inclusione automatica e silenziosa della nuova voce nel piano esistente. Il bug si manifestava esclusivamente su voci aggiunte come figlie di un capitolo padre già presente in `piano_rate_capitoli` — le voci standalone non erano affette.
+
+**Causa Radice:** Il sistema non aveva il concetto di "snapshot temporale". I sottoconti venivano sempre letti dinamicamente dalla relazione Eloquent al momento del calcolo, includendo qualsiasi figlio aggiunto dopo la creazione del piano rate.
+
+**File Modificati (4):**
+
+* **`CalcoloQuoteService`** — Nel path con override del padre (pivot `importo` NOT NULL), i sottoconti vengono ora filtrati per `created_at <= piano_rate.created_at` prima di distribuire proporzionalmente il budget. I figli aggiunti dopo sono invisibili al calcolo delle quote.
+
+* **`BudgetCoverageService`** — STEP 1 del `calcolaCoperturaReale()`: il push-down del budget dai padri ai figli applica lo stesso filtro temporale, escludendo i nuovi sottoconti dalla coverage map. Risolve la barra verde "gonfiata" nell'albero dei conti.
+
+* **`PianoRateController::store`** — I nuovi piani rate ora salvano in `piano_rate_capitoli` gli ID delle **foglie** (sottoconti esistenti al momento della creazione) anziché l'ID del padre. Questo rende il problema strutturalmente impossibile per i piani futuri, indipendentemente dal filtro `created_at`.
+
+* **`PianoRateResource`** — La serializzazione del campo `figli_names` e il calcolo di `importo_originale` applicano lo stesso snapshot temporale, eliminando dal frontend i nomi e gli importi dei sottoconti aggiunti dopo.
+
+**Invarianti garantiti:** Nessuna migration necessaria. La logica per i piani straordinari, il calcolo saldi, il Penny-Perfect Algorithm e tutta la suite di test esistente rimangono invariati.
+
 ## [1.9.25] - ERP Accounting Engine & Reverse Ledger (Latest)
 
 ### Architettura ERP (Il Filtro Invertitore)

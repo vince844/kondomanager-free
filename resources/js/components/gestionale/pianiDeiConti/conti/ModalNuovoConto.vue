@@ -251,15 +251,15 @@ const submit = () => {
             <div v-if="!isCapitolo" class="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-md">
               <div>
                 <Label class="text-xs">Proprietario %</Label>
-                <Input type="number" v-model="form.percentuale_proprietario" placeholder="100" class="h-8 mt-1" />
+                <Input v-model="form.percentuale_proprietario" placeholder="100" class="h-8 mt-1" />
               </div>
               <div>
                 <Label class="text-xs">Inquilino %</Label>
-                <Input type="number" v-model="form.percentuale_inquilino" placeholder="0" class="h-8 mt-1" />
+                <Input v-model="form.percentuale_inquilino" placeholder="0" class="h-8 mt-1" />
               </div>
               <div>
                 <Label class="text-xs">Usufruttuario %</Label>
-                <Input type="number" v-model="form.percentuale_usufruttuario" placeholder="0" class="h-8 mt-1" />
+                <Input v-model="form.percentuale_usufruttuario" placeholder="0" class="h-8 mt-1" />
               </div>
             </div>
 

@@ -11,6 +11,7 @@ class ContoResource extends JsonResource
     public static array $coverageMap = [];
     public static array $extraPianiNames = [];
     public static array $pianiCoinvoltiMap = [];
+    public static array $pianiStraordinariMap = [];
     
     // Nuove mappe aggiunte per il widget
     public static array $addebitiMap = []; 
@@ -51,26 +52,28 @@ class ContoResource extends JsonResource
                 $valore = max(0, $this->importo - $totaleNonSpostati);
                 if ($valore > 0) {
                     $dettaglioPiani[] = [
-                        'piano'      => $piano->nome,
-                        'stato'      => $statoPiano,
-                        'importo'    => $valore,
-                        'fonte'      => 'diretta',
-                        'is_shifted' => false,
-                        'is_auto'    => true,
-                        'note'       => $nota,
+                        'piano'         => $piano->nome,
+                        'piano_rate_id' => $piano->id, 
+                        'stato'         => $statoPiano,
+                        'importo'       => $valore,
+                        'fonte'         => 'diretta',
+                        'is_shifted'    => false,
+                        'is_auto'       => true,
+                        'note'          => $nota,
                     ];
                 }
             } else {
                 $valore = (int) $piano->pivot->importo;
                 if ($valore > 0) {
                     $dettaglioPiani[] = [
-                        'piano'      => $piano->nome,
-                        'stato'      => $statoPiano,
-                        'importo'    => $valore,
-                        'fonte'      => 'diretta',
-                        'is_shifted' => $isSpostamento,
-                        'is_auto'    => false,
-                        'note'       => $nota,
+                        'piano'         => $piano->nome,
+                        'piano_rate_id' => $piano->id, 
+                        'stato'         => $statoPiano,
+                        'importo'       => $valore,
+                        'fonte'         => 'diretta',
+                        'is_shifted'    => $isSpostamento,
+                        'is_auto'       => false,
+                        'note'          => $nota,
                     ];
                 }
             }
@@ -86,13 +89,14 @@ class ContoResource extends JsonResource
                 if (!is_null($pianoPadre->pivot->importo) && (int) $pianoPadre->pivot->importo > 0) {
                     $quotaIndirettaVisiva = $quotaPushDownTarget;
                     $dettaglioPiani[] = [
-                        'piano'      => $pianoPadre->nome,
-                        'stato'      => $pianoPadre->stato instanceof \App\Enums\StatoPianoRate ? $pianoPadre->stato->value : $pianoPadre->stato,
-                        'importo'    => $quotaIndirettaVisiva,
-                        'fonte'      => 'indiretta',
-                        'is_shifted' => false,
-                        'is_auto'    => false,
-                        'note'       => '',
+                        'piano'         => $pianoPadre->nome,
+                        'piano_rate_id' => $pianoPadre->id, 
+                        'stato'         => $pianoPadre->stato instanceof \App\Enums\StatoPianoRate ? $pianoPadre->stato->value : $pianoPadre->stato,
+                        'importo'       => $quotaIndirettaVisiva,
+                        'fonte'         => 'indiretta',
+                        'is_shifted'    => false,
+                        'is_auto'       => false,
+                        'note'          => '',
                     ];
                     break;
                 }
@@ -100,18 +104,42 @@ class ContoResource extends JsonResource
         }
 
         $mancanteStraordinario = $impegnato - $totaleDirettoVisivo - $quotaIndirettaVisiva;
-        
+ 
         if ($mancanteStraordinario > 0) {
-            $nomeRiga = !empty(self::$extraPianiNames) ? implode(', ', self::$extraPianiNames) : 'Piano rate straordinario';
-            $dettaglioPiani[] = [
-                'piano'      => $nomeRiga, 
-                'stato'      => 'approvato',
-                'importo'    => $mancanteStraordinario,
-                'fonte'      => 'diretta',
-                'is_shifted' => false,
-                'is_auto'    => false,
-                'note'       => 'Copertura generata dal piano rate straordinario.',
-            ];
+            $pianiStr = self::$pianiStraordinariMap[$this->id] ?? [];
+        
+            if (!empty($pianiStr)) {
+                // Caso ideale: abbiamo la granularità piano-per-piano
+                foreach ($pianiStr as $pianoStr) {
+                    $dettaglioPiani[] = [
+                        'piano'         => $pianoStr['nome'],
+                        'piano_rate_id' => $pianoStr['id'],      
+                        'stato'         => $pianoStr['stato'],
+                        'importo'       => $pianoStr['importo'],
+                        'fonte'         => 'diretta',
+                        'is_shifted'    => false,
+                        'is_auto'       => false,
+                        'note'          => 'Copertura da piano rate straordinario.',
+                    ];
+                }
+            } else {
+                // Fallback: nessun piano straordinario tracciabile per questo conto
+                // (es. vecchi dati senza pivot importo_collegato)
+                $nomeRiga = !empty(self::$extraPianiNames)
+                    ? implode(', ', self::$extraPianiNames)
+                    : 'Piano rate straordinario';
+        
+                $dettaglioPiani[] = [
+                    'piano'         => $nomeRiga,
+                    'piano_rate_id' => null,         
+                    'stato'         => 'approvato',
+                    'importo'       => $mancanteStraordinario,
+                    'fonte'         => 'diretta',
+                    'is_shifted'    => false,
+                    'is_auto'       => false,
+                    'note'          => 'Copertura generata dal piano rate straordinario.',
+                ];
+            }
         }
 
         $percentualeCopertura = 0;

@@ -37,6 +37,7 @@ class CalcoloQuoteService
 {
     private ?Gestione $gestioneCorrente = null;
     private array $pivotOverrides = [];
+    private ?\Carbon\Carbon $pianoRateCreatedAt = null;
 
     /**
      * Motore per Piani Ordinari.
@@ -47,6 +48,7 @@ class CalcoloQuoteService
     {
         $this->gestioneCorrente = $gestione;
         $this->pivotOverrides = [];
+        $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
@@ -237,32 +239,40 @@ class CalcoloQuoteService
                     $this->distribuisciSuTabelle($conto, $importoConto, $totali);
                     continue; 
                 }
-                
+
                 elseif ($conto->sottoconti->isNotEmpty()) {
-                    
-                    $totaleOriginaleFigli = (int) $conto->sottoconti->sum('importo');
+
+                    // FIX: snapshot — solo sottoconti esistenti alla creazione del piano
+                    $sottocontiFiltrati = $this->pianoRateCreatedAt
+                        ? $conto->sottoconti->filter(
+                            fn($s) => $s->created_at->lte($this->pianoRateCreatedAt)
+                        )
+                        : $conto->sottoconti;
+
+                    if ($sottocontiFiltrati->isEmpty()) {
+                        continue;
+                    }
+
+                    $totaleOriginaleFigli = (int) $sottocontiFiltrati->sum('importo');
 
                     if ($totaleOriginaleFigli != 0) {
                         $ratio = $importoOverride / $totaleOriginaleFigli;
-                        
                         $sommaAssegnata = 0;
                         $counter = 0;
-                        $totaleFigli = $conto->sottoconti->count();
+                        $totaleFigli = $sottocontiFiltrati->count();
 
-                        foreach ($conto->sottoconti as $figlio) {
+                        foreach ($sottocontiFiltrati as $figlio) {
                             $counter++;
-                            
                             if ($counter === $totaleFigli) {
                                 $quotaFiglio = $importoOverride - $sommaAssegnata;
                             } else {
                                 $quotaFiglio = (int) round($figlio->importo * $ratio);
                                 $sommaAssegnata += $quotaFiglio;
                             }
-
                             $this->pivotOverrides[$figlio->id] = $quotaFiglio;
                         }
-                        
-                        $this->processaConti($conto->sottoconti, $totali);
+
+                        $this->processaConti($sottocontiFiltrati, $totali); // ← filtrati
                         continue;
                     }
                 }

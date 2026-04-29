@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue';
 import { usePage } from '@inertiajs/vue3';
+import { trans } from 'laravel-vue-i18n';
 
 interface EnableResponse {
   qrCode: string;
@@ -91,12 +92,12 @@ export function useTwoFactorAuth(initialConfirmed: boolean, initialRecoveryCodes
         error.value = '';
       } else {
         const errorData = await response.json();
-        error.value = errorData.message || 'Invalid verification code';
+        error.value = errorData.message || trans('settings.two_factor.invalid_code');
         passcode.value = '';
         console.error('Verification error:', errorData.message);
       }
     } catch (err) {
-      error.value = 'An error occurred while confirming 2FA';
+      error.value = trans('settings.two_factor.confirm_error');
       console.error('Error confirming 2FA:', err);
     }
   };
