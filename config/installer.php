@@ -75,13 +75,11 @@ return [
             'json',
         ],
         'permissions' => [
-            'storage/' => 'writable',
-            'bootstrap/cache/'      => 'writable',
             'storage/'              => 'writable',
+            'bootstrap/cache/'      => 'writable',
             'storage/app/'          => 'writable',
             'storage/framework/'    => 'writable',
             'storage/logs/'         => 'writable',
-            'bootstrap/cache/'      => 'writable',
             '.env'                  => 'writable',
         ],
         'environment' => [

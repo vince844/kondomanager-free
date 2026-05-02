@@ -39,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
         // Agisce SOLO se l'installazione guidata è attiva
         // ====================================================================
         if (config('installer.run_installer') && class_exists(Livewire::class) && class_exists(InstallerWizard::class)) {
-            Livewire::component('installer::install.installer-wizard', InstallerWizard::class);
+            Livewire::component('eii.installer.livewire.install.installer-wizard', InstallerWizard::class);
         }
 
         // ====================================================================
