@@ -1,8 +1,7 @@
 <?php
 
-namespace App\Livewire\Installer; // <-- IL NOSTRO NUOVO NAMESPACE
+namespace App\Livewire\Installer;
 
-use Exception;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\File;
 use Livewire\Attributes\Layout;
@@ -11,7 +10,27 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Livewire\Component;
+use Illuminate\Database\Seeder;
 
+/**
+ * Custom InstallerWizard — Override del package eii/installer
+ *
+ * SCOPO: Usato SOLO per gli aggiornamenti (non per la prima installazione pulita).
+ *
+ * DIFFERENZE rispetto all'originale (Eii\Installer\Livewire\Install\InstallerWizard):
+ *
+ * 1. FIX SOTTO-PROCESSI: updateEnvSettings() viene chiamata PRIMA di migrate e seed,
+ *    così i sotto-processi Artisan leggono sempre le credenziali corrette dal .env.
+ *
+ * 2. FIX SPATIE CACHE: Purge della cache Spatie Permission dopo migrate:fresh.
+ *    Necessario perché su DB esistente la cache contiene permessi stale
+ *    dopo migrate:fresh, causando errori silenti nel seeder.
+ *    Fix proposto come PR al package eii/installer.
+ *
+ * NOTA: Per la prima installazione pulita, Livewire usa il file originale del package
+ * a causa del checksum nel snapshot DOM. Questo file viene attivato tramite
+ * AppServiceProvider::boot() → Livewire::component() solo per gli aggiornamenti.
+ */
 class InstallerWizard extends Component
 {
     public string $stepKey;
@@ -22,7 +41,7 @@ class InstallerWizard extends Component
     public bool $skippable = false;
     public bool $showWaitScreen = false;
 
-    public function mount($step)
+    public function mount(string $step)
     {
         $this->steps = collect(config('installer.steps'));
         $this->stepKey = $step;
@@ -35,7 +54,7 @@ class InstallerWizard extends Component
 
         $this->loadProgress();
 
-       if (isset($this->progress['raw_env_data'])) {
+        if (isset($this->progress['raw_env_data'])) {
             if (isset($this->progress['error'])) {
                 session()->flash('installer.error', $this->progress['error']);
                 unset($this->progress['error']);
@@ -47,7 +66,7 @@ class InstallerWizard extends Component
                 $this->saveProgress();
 
                 $savedIndex = $this->steps->search(fn($s) => $s['key'] === 'environment');
-                $nextStepRoute = $this->steps[$savedIndex + 1]['key']; 
+                $nextStepRoute = $this->steps[$savedIndex + 1]['key'];
                 return $this->redirect(route('install.step', $nextStepRoute));
             }
         }
@@ -56,7 +75,7 @@ class InstallerWizard extends Component
         $savedIndex = $this->steps->search(fn($s) => $s['key'] === $savedStep);
 
         if ($savedIndex !== false && $this->currentIndex > $savedIndex + 1) {
-            $nextStepRoute = $this->steps[$savedIndex + 1]['key']; // <-- Estratto per l'editor
+            $nextStepRoute = $this->steps[$savedIndex + 1]['key'];
             return $this->redirect(route('install.step', $nextStepRoute));
         }
     }
@@ -93,7 +112,6 @@ class InstallerWizard extends Component
     #[Layout('installer::layouts.installer')]
     public function render()
     {
-        // Usa ancora la grafica originale del pacchetto!
         return view('installer::livewire.install.installer-wizard', [
             'step' => $this->steps[$this->currentIndex],
             'steps' => $this->steps,
@@ -115,9 +133,11 @@ class InstallerWizard extends Component
             if ($this->stepKey === "environment") {
                 $this->runEnvironmentSetup($payload['data']);
             }
+
             if ($this->stepKey === "mail") {
                 $this->runMailSetup($payload['data'] ?? []);
             }
+
             if (!empty($payload)) {
                 $progress['data'][$this->stepKey] = $payload;
             }
@@ -126,16 +146,20 @@ class InstallerWizard extends Component
             File::put($progressFile, json_encode($progress, JSON_PRETTY_PRINT));
 
             $nextStepKey = $this->getNextStepKey();
-            // Corretto il path della configurazione aggiungendo ".options."
-            $redirectUrl = config('installer.options.redirect_after_install', '/'); 
-            
+            $redirectUrl = config('installer.options.redirect_after_install', '/');
+
             return $this->redirect(route('install.step', $nextStepKey ?? $redirectUrl));
 
         } catch (\Throwable $th) {
-            $progress['error'] = $th->getMessage();
+            Log::error("Installer Failed at step [{$this->stepKey}]: " . $th->getMessage(), [
+                'exception' => $th
+            ]);
+
+            $friendlyMessage = $this->friendlyErrorMessage($th); 
+            $progress['error'] = $friendlyMessage;
             File::put($progressFile, json_encode($progress, JSON_PRETTY_PRINT));
             $this->showWaitScreen = false;
-            session()->flash('installer.error', $th->getMessage());
+            session()->flash('installer.error', $friendlyMessage);
         }
     }
 
@@ -168,18 +192,26 @@ class InstallerWizard extends Component
                 throw new \Exception("DB_DATABASE is missing. Please provide a database name.");
             }
 
+            // =====================================================
+            // STEP 1: Scrivi subito il .env con le credenziali reali.
+            // Deve essere il PRIMO passo — così migrate:fresh e db:seed
+            // leggono sempre le credenziali corrette dal .env anche
+            // nei sotto-processi Artisan che rileggono il file dal disco.
+            // =====================================================
+            $this->updateEnvSettings($data);
+
             Artisan::call('config:clear');
             config([
-                'database.connections.mysql.host' => $data['db_host'],
-                'database.connections.mysql.port' => $data['db_port'] ?? 3306,
+                'database.connections.mysql.host'     => $data['db_host'],
+                'database.connections.mysql.port'     => $data['db_port'] ?? 3306,
                 'database.connections.mysql.database' => $data['db_database'],
                 'database.connections.mysql.username' => $data['db_username'],
                 'database.connections.mysql.password' => $data['db_password'],
             ]);
-
             DB::purge('mysql');
             DB::reconnect('mysql');
 
+            // Verifica connessione
             try {
                 $dbName = DB::connection()->getDatabaseName();
                 if (empty($dbName) || $dbName !== $data['db_database']) {
@@ -187,7 +219,7 @@ class InstallerWizard extends Component
                 }
             } catch (\Exception $e) {
                 Log::error("Database connection failed: " . $e->getMessage());
-                throw new \Exception("We couldn’t connect to your database. Please check your credentials.");
+                throw new \Exception("We couldn't connect to your database. Please check your credentials.");
             }
 
             $exitCode = Artisan::call('migrate:fresh', ['--force' => true]);
@@ -195,16 +227,56 @@ class InstallerWizard extends Component
                 throw new \Exception("Database migration failed.");
             }
 
-            // =========================================================
-            // FIX CACELLA CACHE DI SPATIE
-            // =========================================================
-            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            // Ripristina connessione dopo migrate:fresh che può resettarla
+            DB::purge('mysql');
+            DB::reconnect('mysql');
+
+            // =====================================================
+            // FIX SPATIE PERMISSION CACHE
+            // Dopo migrate:fresh il DB è vuoto ma la cache Spatie
+            // contiene ancora i permessi precedenti. Senza questo
+            // purge il seeder trova dati stale e può fallire silenziosamente.
+            // Questo fix è stato proposto come PR al package eii/installer.
+            // =====================================================
+            if (class_exists(\Spatie\Permission\PermissionRegistrar::class)) {
+                app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            }
             Artisan::call('cache:clear');
 
-            if (config('installer.requirements.seed_database', false)) {
-                $seedExitCode = Artisan::call('db:seed', ['--force' => true]);
-                if ($seedExitCode !== 0) {
-                    throw new \Exception("Database seeding failed.");
+            // Seed — usa la chiave seeding.enabled per compatibilità
+            // con il package originale eii/installer
+            $seedingConfig = config('installer.requirements.seeding');
+
+            if ($seedingConfig && ($seedingConfig['enabled'] ?? false)) {
+                DB::beginTransaction();
+
+                try {
+                    $classes = $seedingConfig['classes'] ?? [];
+
+                    if (empty($classes)) {
+                        $seedExitCode = Artisan::call('db:seed', ['--force' => true]);
+                        if ($seedExitCode !== 0) {
+                            throw new \Exception("Default seeding failed: " . Artisan::output());
+                        }
+                    } else {
+                        foreach ($classes as $class) {
+                            if (class_exists($class) && is_subclass_of($class, Seeder::class)) {
+                                $seedExitCode = Artisan::call('db:seed', ['--class' => $class, '--force' => true]);
+                                if ($seedExitCode !== 0) {
+                                    throw new \Exception("Seeding failed for class [{$class}]: " . Artisan::output());
+                                }
+                            } else {
+                                Log::warning("Installer: Seeder class [{$class}] not found or invalid. Skipping.");
+                            }
+                        }
+                    }
+
+                    DB::commit();
+
+                } catch (\Throwable $e) {
+                    DB::rollBack();
+                    Log::error("Seeding rolled back: " . $e->getMessage());
+                    throw $e;
                 }
             }
         }
@@ -218,12 +290,12 @@ class InstallerWizard extends Component
             }
         }
 
+        // NON richiamare updateEnvSettings qui — già fatto all'inizio del metodo
         $this->progress['raw_env_data'] = $data;
         $this->saveProgress();
-        $this->updateEnvSettings($data);
     }
 
-    private function runMailSetup(array $data)
+    private function runMailSetup(array $data): void
     {
         $this->progress['raw_env_data'] = $data;
         $this->saveProgress();
@@ -237,16 +309,16 @@ class InstallerWizard extends Component
         $quoteIfNeeded = fn($value) => preg_match('/\s/', $value ?? '') ? '"' . addslashes($value) . '"' : $value;
 
         $pairs = [
-            'APP_NAME' => $quoteIfNeeded(config('installer.app_name', 'Eii Laravel Installer')),
-            'APP_ENV' => config('installer.requirements.environment.production') ? 'production' : 'local',
-            'APP_DEBUG' => config('installer.requirements.environment.debug') ? 'true' : 'false',
-            'APP_URL' => $data['app_url'] ?? '',
+            'APP_NAME'      => $quoteIfNeeded(config('installer.app_name', 'Kondomanager')),
+            'APP_ENV'       => config('installer.requirements.environment.production') ? 'production' : 'local',
+            'APP_DEBUG'     => config('installer.requirements.environment.debug') ? 'true' : 'false',
+            'APP_URL'       => $data['app_url'] ?? '',
             'DB_CONNECTION' => $data['db_connection'] ?? 'mysql',
-            'DB_HOST' => $data['db_host'] ?? '127.0.0.1',
-            'DB_PORT' => $data['db_port'] ?? '3306',
-            'DB_DATABASE' => $data['db_database'] ?? '',
-            'DB_USERNAME' => $data['db_username'] ?? '',
-            'DB_PASSWORD' => $data['db_password'] ?? '',
+            'DB_HOST'       => $data['db_host'] ?? '127.0.0.1',
+            'DB_PORT'       => $data['db_port'] ?? '3306',
+            'DB_DATABASE'   => $data['db_database'] ?? '',
+            'DB_USERNAME'   => $data['db_username'] ?? '',
+            'DB_PASSWORD'   => $data['db_password'] ?? '',
         ];
 
         foreach ($pairs as $key => $value) {
@@ -255,6 +327,7 @@ class InstallerWizard extends Component
                 ? preg_replace($pattern, "{$key}={$value}", $env)
                 : $env . PHP_EOL . "{$key}={$value}";
         }
+
         File::put($envPath, trim($env));
     }
 
@@ -265,13 +338,13 @@ class InstallerWizard extends Component
         $quoteIfNeeded = fn($value) => preg_match('/\s/', $value ?? '') ? '"' . addslashes($value) . '"' : $value;
 
         $pairs = [
-            'MAIL_MAILER' => $data['mail_mailer'] ?? 'smtp',
-            'MAIL_HOST' => $data['mail_host'] ?? '',
-            'MAIL_PORT' => $data['mail_port'] ?? '',
-            'MAIL_USERNAME' => $data['mail_username'] ?? '',
-            'MAIL_PASSWORD' => $data['mail_password'] ?? '',
+            'MAIL_MAILER'       => $data['mail_mailer'] ?? 'smtp',
+            'MAIL_HOST'         => $data['mail_host'] ?? '',
+            'MAIL_PORT'         => $data['mail_port'] ?? '',
+            'MAIL_USERNAME'     => $data['mail_username'] ?? '',
+            'MAIL_PASSWORD'     => $data['mail_password'] ?? '',
             'MAIL_FROM_ADDRESS' => $data['mail_from_address'] ?? '',
-            'MAIL_FROM_NAME' => $quoteIfNeeded($data['mail_from_name'] ?? ''),
+            'MAIL_FROM_NAME'    => $quoteIfNeeded($data['mail_from_name'] ?? ''),
         ];
 
         foreach ($pairs as $key => $value) {
@@ -280,16 +353,26 @@ class InstallerWizard extends Component
                 ? preg_replace($pattern, "{$key}={$value}", $env)
                 : $env . PHP_EOL . "{$key}={$value}";
         }
+
         File::put($envPath, trim($env));
     }
 
     private function friendlyErrorMessage(\Throwable $th): string
     {
         $msg = $th->getMessage();
-        if (str_contains($msg, 'SQLSTATE') || str_contains($msg, 'Connection refused')) return "Unable to connect to the database.";
+
+        if ($th instanceof \Exception && !str_contains($msg, 'SQLSTATE') && !str_contains($msg, 'PDOException')) {
+            return $msg;
+        }
+
+        if (str_contains($msg, 'SQLSTATE') || str_contains($msg, 'Connection refused')) {
+            return "Unable to connect to the database. Please check your credentials and make sure the database exists.";
+        }
+
         if (str_contains($msg, 'migrate')) return "Database migration failed.";
-        if (str_contains($msg, 'seed')) return "Database seeding failed.";
-        if (str_contains($msg, '.env')) return "There was a problem updating the environment file.";
+        if (str_contains($msg, 'seed'))    return "Database seeding failed.";
+        if (str_contains($msg, '.env'))    return "There was a problem updating the environment file.";
+
         return "An unexpected error occurred.";
     }
 }

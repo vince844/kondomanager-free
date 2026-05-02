@@ -35,8 +35,22 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // ====================================================================
-        // OVERRIDE INSTALLER LIBRERIA TERZE PARTI (Fix Spatie Cache)
-        // Agisce SOLO se l'installazione guidata è attiva
+        // OVERRIDE INSTALLER WIZARD (Fix Spatie Permission Cache)
+        // ====================================================================
+        // IMPORTANTE: Questo override funziona SOLO per gli aggiornamenti.
+        //
+        // PRIMA INSTALLAZIONE PULITA:
+        //   Livewire usa il file originale del package (Eii\Installer\...)
+        //   perché il checksum del snapshot nel DOM contiene il nome originale.
+        //   Il seed gira correttamente tramite config('installer.requirements.seeding').
+        //
+        // AGGIORNAMENTI (migrate su DB esistente):
+        //   Qui l'override viene applicato e il nostro InstallerWizard custom
+        //   viene usato al posto dell'originale. Il fix aggiunge il purge della
+        //   cache Spatie Permission PRIMA del seed, necessario perché la cache
+        //   contiene ancora i permessi del DB precedente alle migrazioni.
+        //   Senza questo purge, Spatie legge dati stale e il seed può fallire.
+        //
         // ====================================================================
         if (config('installer.run_installer') && class_exists(Livewire::class) && class_exists(InstallerWizard::class)) {
             Livewire::component('eii.installer.livewire.install.installer-wizard', InstallerWizard::class);

@@ -89,7 +89,17 @@ return [
             'mail'          => true,
         ],
         'link_storage'      => true,  // True to link storage
-        'seed_database'     => true, // Enable DB seeding after migrations
+        /*
+        | Database Seeding Logic
+        | Set 'enabled' to true to run seeders after migrations.
+        | If 'classes' is empty, the default DatabaseSeeder will be executed.
+        */
+        'seeding' => [
+            'enabled' => true,
+            'classes' => [
+                // \Database\Seeders\RoleAndPermissionSeeder::class,
+            ],
+        ],
     ],
 
     /*
