@@ -46,9 +46,13 @@ const eliminaConto     = () => { if (props.conto) emit('elimina', props.conto) }
 const modificaConto    = () => { if (props.conto) emit('modifica', props.conto) }
 const selectSottoconto = (sottoconto: Conto) => { emit('select', sottoconto) }
 
-const isCapitolo = (conto: Conto) => {
+/* const isCapitolo = (conto: Conto) => {
   const importoZero = ['€ 0,00', '0,00', '€0,00', '0,00€'].some(v => conto.importo.includes(v))
   return conto.parent_id === null && importoZero
+} */
+
+const isCapitolo = (conto: Conto) => {
+  return conto.parent_id === null && conto.importo_raw === 0
 }
 
 const getTabelleAssociate = (): TabellaAssociata[] =>

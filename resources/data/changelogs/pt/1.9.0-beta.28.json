@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Corrigido o erro que não permitia ratear uma única despesa em várias tabelas de frações (millesimal), pois o card de repartição não era exibido nos detalhes da despesa.",
+        "Melhorada a compatibilidade com serviços de hospedagem gratuita (ex: Altervista) para o envio de notificações por e-mail; agora é possível utilizar o driver PHP Mail local."
+    ]
+}

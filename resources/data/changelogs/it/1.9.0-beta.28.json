@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Risolto errore che non permetteva di ripartire voce di spesa singola su più tabelle millesimali perchè nel dettaglio spesa non veniva mostrata la card per la ripartizione.",
+        "Migliorata compatibilità con hosting gratuito (es Altervista) per l'invio delle notifiche email, adesso è possibile utilizzare il driver Mail PHP locale"
+    ]
+}

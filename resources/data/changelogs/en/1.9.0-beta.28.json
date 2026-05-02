@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Fixed a bug that prevented splitting a single expense item across multiple millesimal tables because the breakdown card was not displayed in the expense details.",
+        "Improved compatibility with free hosting services (e.g., Altervista) for sending email notifications; it is now possible to use the local PHP Mail driver."
+    ]
+}
