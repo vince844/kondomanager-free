@@ -1,13 +1,25 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 
 return new class extends Migration
 {
+    // Colonne aggiunte a piani_rate (usate da cleanupPartialMigration e down)
+    private array $pianiRateColumns = [
+        'tipo',
+        'tipo_autorizzazione',
+        'motivazione_autorizzazione',
+    ];
+
     public function up(): void
     {
-        // 1. Aggiorniamo la tabella dei Piani Rate
+        // ── 1. Cleanup colonne orfane su piani_rate ───────────────────────────
+        $this->cleanupPartialMigration();
+
+        // ── 2. Aggiorna piani_rate ────────────────────────────────────────────
         Schema::table('piani_rate', function (Blueprint $table) {
             $table->enum('tipo', ['ordinario', 'straordinario'])
                   ->default('ordinario')
@@ -25,7 +37,16 @@ return new class extends Migration
                   ->comment('Audit trail: estremi delibera o motivazione urgenza');
         });
 
-        // 2. Creiamo la Pivot Finanziaria (Il Carrello delle fatture)
+        // ── 3. Crea la pivot finanziaria (idempotente) ────────────────────────
+        // Il drop preventivo garantisce che una creazione parziale precedente
+        // (tabella creata ma migration non registrata) non causi errori.
+        if (Schema::hasTable('piano_rate_fatture')) {
+            Log::warning('Partial migration detected: [piano_rate_fatture] già esistente, dropping before re-creating', [
+                'table' => 'piano_rate_fatture',
+            ]);
+            Schema::dropIfExists('piano_rate_fatture');
+        }
+
         Schema::create('piano_rate_fatture', function (Blueprint $table) {
             $table->id();
 
@@ -45,7 +66,7 @@ return new class extends Migration
             // Override esplicito in fase di riscossione (utile per vecchie pendenze)
             $table->foreignId('tabella_millesimale_id')
                   ->nullable()
-                  ->constrained('tabelle') // Corretto: punta alla tabella "tabelle"
+                  ->constrained('tabelle')
                   ->nullOnDelete()
                   ->comment('Override manuale della tabella millesimale in fase di riscossione');
 
@@ -66,12 +87,42 @@ return new class extends Migration
     {
         Schema::dropIfExists('piano_rate_fatture');
 
-        Schema::table('piani_rate', function (Blueprint $table) {
-            $table->dropColumn([
-                'tipo',
-                'tipo_autorizzazione',
-                'motivazione_autorizzazione'
-            ]);
+        $toDrop = array_filter(
+            $this->pianiRateColumns,
+            fn($col) => Schema::hasColumn('piani_rate', $col)
+        );
+
+        if (!empty($toDrop)) {
+            Schema::table('piani_rate', function (Blueprint $table) use ($toDrop) {
+                $table->dropColumn(array_values($toDrop));
+            });
+        }
+    }
+
+    /**
+     * Rileva ed elimina colonne orfane lasciate da un'esecuzione parziale precedente.
+     * Necessario perché MySQL non supporta DDL transazionali: se la migration
+     * viene interrotta a metà (es. timeout PHP), le colonne già aggiunte
+     * restano nel DB senza che la migration venga registrata in `migrations`.
+     */
+    private function cleanupPartialMigration(): void
+    {
+        $orphans = array_filter(
+            $this->pianiRateColumns,
+            fn($col) => Schema::hasColumn('piani_rate', $col)
+        );
+
+        if (empty($orphans)) {
+            return;
+        }
+
+        Log::warning('Partial migration detected on [piani_rate], cleaning up before re-running', [
+            'table'   => 'piani_rate',
+            'orphans' => array_values($orphans),
+        ]);
+
+        Schema::table('piani_rate', function (Blueprint $table) use ($orphans) {
+            $table->dropColumn(array_values($orphans));
         });
     }
 };

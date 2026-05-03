@@ -107,6 +107,14 @@ class SystemUpgradeController extends Controller
      */
     public function run() 
     {
+        // Previene il timeout PHP su ambienti Windows / hosting condiviso.
+        // Artisan::call('migrate') gira nello stesso processo PHP della richiesta HTTP
+        // e quindi eredita il max_execution_time del web server (default 60s).
+        // ini_set + set_time_limit coprono entrambi i meccanismi di enforcement
+        // (alcuni SAPI Windows rispettano solo uno dei due).
+        set_time_limit(0);
+        ini_set('max_execution_time', '0');
+
         try {
             Log::info('Upgrade finalization started');
 
@@ -181,6 +189,13 @@ class SystemUpgradeController extends Controller
      */
     private function runMigrationsWithRetry(int $maxAttempts = 3): void
     {
+        // Le migration vengono eseguite dentro una richiesta HTTP (via Artisan::call),
+        // quindi ereditano il max_execution_time del web server.
+        // Su Windows / hosting condiviso il default è 60 secondi: troppo poco per
+        // migration con data-migration su tabelle grandi.
+        // set_time_limit(0) rimuove il limite per tutta la durata di questa chiamata.
+        set_time_limit(0);
+
         $attempts = 0;
         
         while ($attempts < $maxAttempts) {

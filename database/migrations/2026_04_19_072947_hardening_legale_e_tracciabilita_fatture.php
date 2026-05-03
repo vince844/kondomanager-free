@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * =============================================================================
@@ -48,19 +49,35 @@ use Illuminate\Support\Facades\DB;
  */
 return new class extends Migration
 {
+    // ── Colonne per tabella (usate da cleanup e down) ─────────────────────────
+
+    private array $contiColumns = [
+        'is_tecnico',
+    ];
+
+    private array $rateQuoteColumns = [
+        'origine_tipo',
+        'stato_legale',
+        'stato_legale_aggiornato_at',
+        'riga_fattura_id',   // FK → richiede dropForeign prima di dropColumn
+        'voce_id',           // FK → richiede dropForeign prima di dropColumn
+    ];
+
+    private array $righeFatturaColumns = [
+        'is_rateizzata',
+    ];
+
+    private array $pianiRateColumns = [
+        'contesto_creazione',
+    ];
+
     public function up(): void
     {
+        // ── Cleanup esecuzioni parziali precedenti ────────────────────────────
+        $this->cleanupPartialMigration();
+
         // ---------------------------------------------------------------------
         // 1. CONTI — Il Conto Tecnico (Shadow Account)
-        // ---------------------------------------------------------------------
-        // Distingue i conti deliberati in assemblea (preventivo) dai conti
-        // generati on-the-fly dal sistema per gestire sopravvenienze passive.
-        //
-        // I conti tecnici sono:
-        //   - Invisibili al wizard "Nuovo Piano Ordinario"
-        //   - Separati nella UI del piano dei conti
-        //   - Esclusi dal PDF del preventivo deliberato
-        //   - Mostrati solo nel consuntivo (Art. 1130-bis c.c.)
         // ---------------------------------------------------------------------
         Schema::table('conti', function (Blueprint $table) {
             $table->boolean('is_tecnico')
@@ -72,38 +89,22 @@ return new class extends Migration
         // ---------------------------------------------------------------------
         // 2. RATE_QUOTE — DNA Legale della Quota
         // ---------------------------------------------------------------------
-        // Aggiunge 5 campi che classificano la natura legale di ogni quota:
-        //
-        //   - origine_tipo: condominiale (millesimale) o ad_personam (Art. 63)
-        //   - stato_legale: macchina a stati evolutiva (certo → diffidato → ingiungibile)
-        //   - stato_legale_aggiornato_at: timestamp dell'ultima transizione
-        //   - riga_fattura_id: FK alla riga fattura specifica che ha generato la quota
-        //   - voce_id: FK al conto di preventivo (popolato in Fase 2)
-        //
-        // I primi 3 campi vengono popolati dall'Action GenerateRateQuotesAction.
-        // Gli ultimi 2 rimangono NULL in Fase 1 — popolati con il refactor del
-        // CalcoloQuoteService (Fase 2, v1.9.25+).
-        // ---------------------------------------------------------------------
         Schema::table('rate_quote', function (Blueprint $table) {
-            // Classificazione legale indicizzabile
             $table->enum('origine_tipo', ['condominiale', 'ad_personam'])
                   ->default('condominiale')
                   ->after('tipo')
                   ->comment('condominiale = ripartita millesimalmente; ad_personam = 100% al proprietario (Art. 63 disp. att. c.c.)');
 
-            // Macchina a stati per il modulo Recupero Crediti (v1.11)
             $table->enum('stato_legale', ['certo', 'contestabile', 'diffidato', 'ingiungibile'])
                   ->default('certo')
                   ->after('origine_tipo')
                   ->comment('Evoluzione: certo (default) → contestabile (ad personam) → diffidato (post lettera) → ingiungibile (post decreto)');
 
-            // Audit trail delle transizioni legali
             $table->timestamp('stato_legale_aggiornato_at')
                   ->nullable()
                   ->after('stato_legale')
                   ->comment('Timestamp dell\'ultimo cambio di stato_legale. Essenziale per il modulo Recupero Crediti.');
 
-            // FK alla RIGA (non alla testata) per tracciabilità millimetrica
             $table->foreignId('riga_fattura_id')
                   ->nullable()
                   ->after('immobile_id')
@@ -111,7 +112,6 @@ return new class extends Migration
                   ->nullOnDelete()
                   ->comment('FK alla riga fattura che ha generato questa quota. NULL per quote da preventivo ordinario.');
 
-            // FK al conto di preventivo (per quote condominiali, Fase 2)
             $table->foreignId('voce_id')
                   ->nullable()
                   ->after('riga_fattura_id')
@@ -119,21 +119,11 @@ return new class extends Migration
                   ->nullOnDelete()
                   ->comment('FK al conto (voce di spesa) da cui deriva la quota. Popolato in Fase 2 con refactor CalcoloQuoteService.');
 
-            // Indice dedicato per il modulo Recupero Crediti
-            // Query tipo: "Tutte le quote diffidate/ingiungibili di Rossi"
             $table->index(['anagrafica_id', 'stato_legale'], 'idx_recupero_crediti');
         });
 
         // ---------------------------------------------------------------------
         // 3. RIGHE_FATTURA — Flag Semaforo Dashboard
-        // ---------------------------------------------------------------------
-        // Flag che spegne l'allarme "fattura scoperta" nella Dashboard quando
-        // la riga è stata inclusa in un piano rate attivo.
-        //
-        // Sostituisce le fragili query `whereNotExists` con un filtro diretto
-        // indicizzato. Viene popolato automaticamente quando:
-        //   - La riga viene inclusa in un piano rate (stato bozza/approvato)
-        //   - La riga viene rimossa dal piano (detach) → torna a false
         // ---------------------------------------------------------------------
         Schema::table('righe_fattura', function (Blueprint $table) {
             $table->boolean('is_rateizzata')
@@ -141,22 +131,11 @@ return new class extends Migration
                   ->after('is_sopravvenienza')
                   ->comment('True quando questa riga è inclusa in un piano rate attivo. Spegne l\'allarme Dashboard.');
 
-            // Indice per la query della Dashboard (chiamata ad ogni caricamento)
             $table->index('is_rateizzata');
         });
 
         // ---------------------------------------------------------------------
         // 4. PIANI_RATE — Etichetta Organizzativa
-        // ---------------------------------------------------------------------
-        // Distingue la genesi del piano rate per reporting e audit:
-        //
-        //   - preventivo_iniziale:    Piano madre di inizio anno da bilancio
-        //   - integrazione_dashboard: Nato dal deep-link del widget "Risolvi"
-        //   - libero_manuale:         Creato manualmente dal menu Piani Rate
-        //
-        // NON sostituisce il campo `tipo` (ordinario/straordinario) — è un
-        // campo ortogonale che traccia il percorso utente, non la natura
-        // contabile del piano.
         // ---------------------------------------------------------------------
         Schema::table('piani_rate', function (Blueprint $table) {
             $table->enum('contesto_creazione', [
@@ -172,26 +151,13 @@ return new class extends Migration
         // =====================================================================
         // DATA MIGRATION — Retrocompatibilità v1.8 / v1.9.x
         // =====================================================================
-
-        // ---------------------------------------------------------------------
-        // D1. Classifica i piani straordinari esistenti come "libero_manuale"
-        // ---------------------------------------------------------------------
-        // I piani straordinari pre-migrazione sono nati da un'azione manuale
-        // dal menu Piani Rate (non esisteva ancora il deep-link Dashboard).
-        // Quelli ordinari rimangono al default 'preventivo_iniziale'.
-        // ---------------------------------------------------------------------
-        DB::table('piani_rate')
-            ->where('tipo', 'straordinario')
-            ->update(['contesto_creazione' => 'libero_manuale']);
-
-        // ---------------------------------------------------------------------
-        // D2. Marca come rateizzate le righe fattura già incluse in piani attivi
-        // ---------------------------------------------------------------------
-        // Evita che il widget Dashboard accenda falsi allarmi su righe già
-        // gestite da piani pre-migrazione. Solo piani in stato bozza/approvato
-        // (non cancellati o archiviati) contribuiscono.
-        // ---------------------------------------------------------------------
         if (DB::getDriverName() === 'mysql') {
+            // D1. Classifica i piani straordinari esistenti come "libero_manuale"
+            DB::table('piani_rate')
+                ->where('tipo', 'straordinario')
+                ->update(['contesto_creazione' => 'libero_manuale']);
+
+            // D2. Marca come rateizzate le righe fattura già incluse in piani attivi
             DB::statement("
                 UPDATE righe_fattura rf
                 JOIN fatture_passive fp ON rf.fattura_passiva_id = fp.id
@@ -201,12 +167,7 @@ return new class extends Migration
                 WHERE pr.stato IN ('bozza', 'approvato')
             ");
 
-            // ---------------------------------------------------------------------
-            // D3. Marca come tecnici i conti FIGLI con ruolo sopravvenienze_passive
-            // ---------------------------------------------------------------------
-            // Tutti i conti esistenti collegati al mastro Sopravvenienze Passive
-            // vanno esclusi dal wizard piano ordinario.
-            // ---------------------------------------------------------------------
+            // D3. Marca come tecnici i conti figli con ruolo sopravvenienze_passive
             DB::statement("
                 UPDATE conti c
                 JOIN conti_contabili cc ON c.conto_contabile_id = cc.id
@@ -214,14 +175,7 @@ return new class extends Migration
                 WHERE cc.ruolo = 'sopravvenienze_passive'
             ");
 
-            // ---------------------------------------------------------------------
-            // D4. Marca come tecnici i CAPITOLI PADRE delle sopravvenienze
-            // ---------------------------------------------------------------------
-            // Il capitolo "Integrazioni Straordinarie (Scudo Legale)" è un
-            // contenitore che raggruppa le sopravvenienze. Non ha un ruolo
-            // contabile proprio (ereditato da FatturaPassivaService::creaContoDinamicoSopravvenienza)
-            // ma deve essere anch'esso invisibile al preventivo ordinario.
-            // ---------------------------------------------------------------------
+            // D4. Marca come tecnici i capitoli padre delle sopravvenienze
             DB::statement("
                 UPDATE conti
                 SET is_tecnico = 1
@@ -229,20 +183,7 @@ return new class extends Migration
                 AND parent_id IS NULL
             ");
 
-            // ---------------------------------------------------------------------
             // D5. Normalizzazione relitti storici (RELITTO CONTO 138)
-            // ---------------------------------------------------------------------
-            // Prima versioni del FatturaPassivaService avevano un bug nel
-            // firstOrCreate che assegnava erroneamente `conto_contabile_id` al
-            // capitolo padre (es. conto 138 nel DB con ruolo 'costi_servizi').
-            //
-            // Il capitolo padre delle sopravvenienze è un puro raggruppatore
-            // visivo — i costi reali sono sui conti figli. Qui ripuliamo il
-            // capitolo padre impostando conto_contabile_id = NULL.
-            //
-            // Sicuro: nessuna scrittura contabile è mai stata generata sul
-            // capitolo padre direttamente (solo sui figli).
-            // ---------------------------------------------------------------------
             DB::statement("
                 UPDATE conti
                 SET conto_contabile_id = NULL
@@ -255,38 +196,152 @@ return new class extends Migration
 
     public function down(): void
     {
-        // ---------------------------------------------------------------------
-        // Rollback ordinato: prima FK, poi indici, poi colonne
-        //
-        // NOTA: il rollback NON ripristina i relitti storici (D5) né
-        // cancella i dati popolati da D1/D2/D3/D4. Quelle sono operazioni
-        // di sola correzione che non hanno senso "annullare".
-        // ---------------------------------------------------------------------
+        // Rollback ordinato: prima FK e indici, poi colonne
+        // NOTA: il rollback NON ripristina i dati modificati da D1–D5.
+        // Quelle sono operazioni di sola correzione senza senso da "annullare".
 
-        Schema::table('rate_quote', function (Blueprint $table) {
-            $table->dropForeign(['riga_fattura_id']);
-            $table->dropForeign(['voce_id']);
-            $table->dropIndex('idx_recupero_crediti');
-            $table->dropColumn([
-                'origine_tipo',
-                'stato_legale',
-                'stato_legale_aggiornato_at',
-                'riga_fattura_id',
-                'voce_id',
+        if (Schema::hasTable('rate_quote')) {
+            $rqToDrop = array_filter(
+                $this->rateQuoteColumns,
+                fn($col) => Schema::hasColumn('rate_quote', $col)
+            );
+            if (!empty($rqToDrop)) {
+                Schema::table('rate_quote', function (Blueprint $table) use ($rqToDrop) {
+                    if (in_array('riga_fattura_id', $rqToDrop)) {
+                        $table->dropForeign(['riga_fattura_id']);
+                    }
+                    if (in_array('voce_id', $rqToDrop)) {
+                        $table->dropForeign(['voce_id']);
+                    }
+                    // Droppa l'indice solo se esiste
+                    if (DB::getDriverName() === 'mysql') {
+                        $indexExists = DB::select("
+                            SELECT COUNT(*) as cnt FROM information_schema.STATISTICS
+                            WHERE table_schema = DATABASE()
+                            AND table_name = 'rate_quote' AND index_name = 'idx_recupero_crediti'
+                        ");
+                        if ($indexExists[0]->cnt > 0) {
+                            $table->dropIndex('idx_recupero_crediti');
+                        }
+                    }
+                    $table->dropColumn(array_values($rqToDrop));
+                });
+            }
+        }
+
+        $rfToDrop = array_filter(
+            $this->righeFatturaColumns,
+            fn($col) => Schema::hasColumn('righe_fattura', $col)
+        );
+        if (!empty($rfToDrop)) {
+            Schema::table('righe_fattura', function (Blueprint $table) use ($rfToDrop) {
+                if (in_array('is_rateizzata', $rfToDrop)) {
+                    $table->dropIndex(['is_rateizzata']);
+                }
+                $table->dropColumn(array_values($rfToDrop));
+            });
+        }
+
+        $prToDrop = array_filter(
+            $this->pianiRateColumns,
+            fn($col) => Schema::hasColumn('piani_rate', $col)
+        );
+        if (!empty($prToDrop)) {
+            Schema::table('piani_rate', function (Blueprint $table) use ($prToDrop) {
+                $table->dropColumn(array_values($prToDrop));
+            });
+        }
+
+        $cToDrop = array_filter(
+            $this->contiColumns,
+            fn($col) => Schema::hasColumn('conti', $col)
+        );
+        if (!empty($cToDrop)) {
+            Schema::table('conti', function (Blueprint $table) use ($cToDrop) {
+                $table->dropColumn(array_values($cToDrop));
+            });
+        }
+    }
+
+    /**
+     * Rileva ed elimina colonne orfane lasciate da un'esecuzione parziale precedente.
+     * Gestisce 4 tabelle indipendenti. Le FK vengono droppate prima delle colonne.
+     */
+    private function cleanupPartialMigration(): void
+    {
+        // ── conti ─────────────────────────────────────────────────────────────
+        $contiOrphans = array_filter(
+            $this->contiColumns,
+            fn($col) => Schema::hasColumn('conti', $col)
+        );
+        if (!empty($contiOrphans)) {
+            Log::warning('Partial migration detected on [conti] (hardening)', [
+                'orphans' => array_values($contiOrphans),
             ]);
-        });
+            Schema::table('conti', function (Blueprint $table) use ($contiOrphans) {
+                $table->dropColumn(array_values($contiOrphans));
+            });
+        }
 
-        Schema::table('righe_fattura', function (Blueprint $table) {
-            $table->dropIndex(['is_rateizzata']);
-            $table->dropColumn('is_rateizzata');
-        });
+        // ── rate_quote ────────────────────────────────────────────────────────
+        $rqOrphans = array_filter(
+            $this->rateQuoteColumns,
+            fn($col) => Schema::hasColumn('rate_quote', $col)
+        );
+        if (!empty($rqOrphans)) {
+            Log::warning('Partial migration detected on [rate_quote] (hardening)', [
+                'orphans' => array_values($rqOrphans),
+            ]);
+            Schema::table('rate_quote', function (Blueprint $table) use ($rqOrphans) {
+                if (in_array('riga_fattura_id', $rqOrphans)) {
+                    $table->dropForeign(['riga_fattura_id']);
+                }
+                if (in_array('voce_id', $rqOrphans)) {
+                    $table->dropForeign(['voce_id']);
+                }
+                if (DB::getDriverName() === 'mysql') {
+                    $indexExists = DB::select("
+                        SELECT COUNT(*) as cnt FROM information_schema.STATISTICS
+                        WHERE table_schema = DATABASE()
+                        AND table_name = 'rate_quote' AND index_name = 'idx_recupero_crediti'
+                    ");
+                    if ($indexExists[0]->cnt > 0) {
+                        $table->dropIndex('idx_recupero_crediti');
+                    }
+                }
+                $table->dropColumn(array_values($rqOrphans));
+            });
+        }
 
-        Schema::table('piani_rate', function (Blueprint $table) {
-            $table->dropColumn('contesto_creazione');
-        });
+        // ── righe_fattura ─────────────────────────────────────────────────────
+        $rfOrphans = array_filter(
+            $this->righeFatturaColumns,
+            fn($col) => Schema::hasColumn('righe_fattura', $col)
+        );
+        if (!empty($rfOrphans)) {
+            Log::warning('Partial migration detected on [righe_fattura] (hardening)', [
+                'orphans' => array_values($rfOrphans),
+            ]);
+            Schema::table('righe_fattura', function (Blueprint $table) use ($rfOrphans) {
+                if (in_array('is_rateizzata', $rfOrphans)) {
+                    $table->dropIndex(['is_rateizzata']);
+                }
+                $table->dropColumn(array_values($rfOrphans));
+            });
+        }
 
-        Schema::table('conti', function (Blueprint $table) {
-            $table->dropColumn('is_tecnico');
-        });
+        // ── piani_rate ────────────────────────────────────────────────────────
+        $prOrphans = array_filter(
+            $this->pianiRateColumns,
+            fn($col) => Schema::hasColumn('piani_rate', $col)
+        );
+        if (!empty($prOrphans)) {
+            Log::warning('Partial migration detected on [piani_rate] (hardening)', [
+                'orphans' => array_values($prOrphans),
+            ]);
+            Schema::table('piani_rate', function (Blueprint $table) use ($prOrphans) {
+                $table->dropColumn(array_values($prOrphans));
+            });
+        }
     }
 };

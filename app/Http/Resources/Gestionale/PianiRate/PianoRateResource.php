@@ -62,9 +62,18 @@ class PianoRateResource extends JsonResource
             'has_saldi' => DB::table('rate_quote') 
                 ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
                 ->where('rate.piano_rate_id', $this->id)
-                ->where(function($q) {
+                ->where(function ($q) {
                     $q->where('rate_quote.tipo', 'saldo_iniziale')
-                      ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != '0' AND JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) IS NOT NULL");
+                      ->orWhere(function ($or) {
+                          // Confronto bindato: '0' passa come parametro preparato, mai inline nel SQL
+                          $or->whereRaw(
+                                  "JSON_UNQUOTE(JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato')) != ?",
+                                  ['0']
+                              )
+                             ->whereRaw(
+                                  "JSON_EXTRACT(rate_quote.regole_calcolo, '$.importi.saldo_usato') IS NOT NULL"
+                              );
+                      });
                 })
                 ->exists(),
             

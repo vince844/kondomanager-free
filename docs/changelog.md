@@ -2,6 +2,44 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.28] - Migration Resilience & Collation Fix (Hosting Condivisi)
+
+### Hardening: Pattern Idempotente `cleanupPartialMigration` sulle Migration Critiche
+
+**Contesto:** Su hosting condivisi (es. Netsons, SiteGround, Aruba) con PHP-FPM, oppure su ambiente Windows, il `max_execution_time` del webserver può interrompere una migration `ALTER TABLE` a metà esecuzione. La successiva esecuzione automatica del comando `migrate` (lanciato da `SystemUpgradeController`) trovava colonne parzialmente create e andava in crash con errori `Duplicate column name` o `Can't DROP ... check it exists`. Il pattern `cleanupPartialMigration` rende ogni migration auto-riparante: prima di aggiungere colonne, verifica e rimuove quelle orfane lasciate dall'esecuzione precedente.
+
+**Problema specifico risolto in questa release:** La migration `add_fornitore_and_description_to_saldi_table` applicava `dropForeign` + `dropIndex` in sequenza fissa, assumendo che l'indice composito `idx_saldi_condominio_fornitore` esistesse sempre quando `fornitore_id` era presente. Se il timeout avveniva *dopo* `ADD COLUMN fornitore_id` ma *prima* di `ADD INDEX idx_saldi_condominio_fornitore`, il cleanup esplodeva su `dropIndex` con "Can't drop index ... check it exists". Lo stesso rischio esisteva nel `down()`.
+
+**File Modificati (3 migration):**
+
+* **`2026_03_16_223813_add_fornitore_and_description_to_saldi_table`** — Aggiunta guard `information_schema.STATISTICS` prima di ogni `dropIndex('idx_saldi_condominio_fornitore')`, sia nel `cleanupPartialMigration()` che nel `down()`. L'indice viene droppato solo se la query su `STATISTICS` conferma che esiste effettivamente. Aggiunto import `DB`. Stesso pattern già presente correttamente in `hardening_legale_e_tracciabilita_fatture`.
+
+* **`2026_03_27_160203_add_mastri_costo_e_ripara_voci_orfane`** — Refactoring della data migration da pattern N+1 (`whereHas` con subquery correlata) a `DB::join()` che sfrutta gli indici FK esistenti su `conti.piano_conto_id`. Aggiunto `set_time_limit(0)` in cima all'`up()` per prevenire il timeout su ambienti Windows/hosting condiviso. Loop su `Condominio` convertito da `all()` a `lazy()` (cursor DB) per eliminare il rischio OOM su installazioni con molti condomini.
+
+* **`2026_04_19_072947_hardening_legale_e_tracciabilita_fatture`** — Già conforme al pattern: la guard `information_schema.STATISTICS` era presente per `idx_recupero_crediti` su `rate_quote`. Nessuna modifica necessaria; è la migration di riferimento che ha ispirato il fix della saldi.
+
+**Invarianti garantiti:** Nessuna modifica allo schema finale delle tabelle. Il comportamento su installazioni pulite (primo deploy) è identico. Le guard `information_schema` sono a costo zero su DB già corretti.
+
+---
+
+### Bug Fix Critico: Collation Mismatch MySQL su Hosting Condivisi (Error 1267)
+
+**Problema:** Il dashboard di produzione su Netsons (e hosting analoghi con MySQL 5.7/8.0 su `utf8mb3_general_ci`) crashava con `SQLSTATE[HY000]: General error: 1267 Illegal mix of collations (utf8mb3_general_ci,COERCIBLE) and (utf8mb3_unicode_ci,COERCIBLE) for operation '='`. Il crash avveniva ad ogni caricamento della dashboard (ogni 8 minuti, come da log).
+
+**Causa Radice:** `JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type'))` restituisce una stringa con la **collation della connessione** (`utf8mb3_general_ci` su Netsons), mentre i letterali stringa PHP confrontati (`'emissione_rata'`, `'scadenza_rata_condomino'`, ecc.) ereditavano la collation della colonna `meta` della tabella `eventi` (`utf8mb3_unicode_ci`). Entrambe le sorgenti avevano lo stesso livello di coercizione (`COERCIBLE`), quindi MySQL non poteva risolvere il conflitto autonomamente e lanciava l'errore 1267.
+
+**Soluzione:** Wrapping sistematico di tutti i risultati `JSON_UNQUOTE` con `CONVERT(... USING utf8mb4)`, che forza la reinterpretazione in un charset univoco prima del confronto, eliminando l'ambiguità di coercizione.
+
+**File Modificati (3):**
+
+* **`app/Services/RecurrenceService`** — Refactoring completo delle query JSON su tabella `eventi`. Tutti i confronti `where('meta->type', ...)` / `where('meta->status', ...)` convertiti in `whereRaw("CONVERT(JSON_UNQUOTE(JSON_EXTRACT(...)) USING utf8mb4) = ?", [...])` con binding parametrizzato. Sostituito `where('meta->requires_action', true)` con `whereJsonContains('meta->requires_action', true)` per uniformità. Aggiunto null-check su `$user` in `isAdmin()`. Refactoring `getUserScopedRecurringEvents` e `expandRecurringEvent` per leggibilità. Corretti tutti i punti in `applyFilters()` compreso il filtro `exclude_type`.
+
+* **`app/Services/Gestionale/InboxService`** — Aggiunto `CONVERT(... USING utf8mb4)` ai due confronti `JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type'))` dentro `selectRaw` di `getCounts()`. I confronti con `'verifica_pagamento'` e `'segnalazione_guasto'` erano vulnerabili allo stesso identico errore 1267.
+
+* **`app/Http/Resources/Gestionale/PianiRate/PianoRateResource`** — Refactoring del `whereRaw` nella clausola `has_saldi`: il confronto `!= '0'` e il check `IS NOT NULL` erano concatenati in una singola stringa grezza. Separati in due `whereRaw` distinti dentro un `orWhere(closure)` per leggibilità e manutenibilità. Nota: il confronto con `'0'` subisce un cast numerico implicito da MySQL e non è soggetto a 1267; la modifica è di qualità, non di sicurezza.
+
+**File non modificati (già sicuri):** Tutti i Listener (`SyncScadenziarioWithFattura`, `AggiornaScadenziarioCondomino`, `CompletaEventoScadenziario`, `SyncScadenziarioWithPianoRate`), i Controller (`ActionInboxController`, `DashboardController`, `SituazioneDebitoriaController`, `StornoIncassoController`), il Model `Evento` e `GeneratePianoRateAction` usano `whereJsonContains` o `where('meta->...')` — la sintassi Laravel che passa i valori come binding PDO, immune al problema di collation.
+
 ## [1.9.27] - Tabelle Millesimali Multi-Coefficiente & Copertura Straordinaria Granulare
 
 ### Funzionalità: Gestione Multi-Tabella con Coefficienti Controllati

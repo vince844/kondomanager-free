@@ -13,22 +13,26 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // 1. Recuperiamo tutti i condomini presenti a database
-        $condomini = Condominio::all();
+        // Critico su Windows / hosting condiviso: questa migration gira dentro
+        // una richiesta HTTP (Artisan::call in SystemUpgradeController).
+        // max_execution_time = 60s di default — insufficiente per installazioni grandi.
+        set_time_limit(0);
 
-        foreach ($condomini as $condominio) {
-            // 2. Troviamo la radice del PASSIVO per questo condominio
+        // lazy() usa un cursor DB invece di caricare tutti i record in RAM
+        Condominio::query()->select('id')->lazy()->each(function (Condominio $condominio) {
+
+            // Troviamo la radice del PASSIVO per questo condominio
             $passivoRoot = ContoContabile::where('condominio_id', $condominio->id)
                 ->whereNull('parent_id')
                 ->where('nome', 'PASSIVO')
                 ->first();
 
             if ($passivoRoot) {
-                // 3. Creiamo il conto solo se non esiste già
+                // Crea il conto solo se non esiste già
                 ContoContabile::firstOrCreate(
                     [
-                        'condominio_id' => $condominio->id, 
-                        'ruolo'         => 'passate_gestioni'
+                        'condominio_id' => $condominio->id,
+                        'ruolo'         => 'passate_gestioni',
                     ],
                     [
                         'parent_id'   => $passivoRoot->id,
@@ -39,13 +43,13 @@ return new class extends Migration
                         'categoria'   => 'fondi',
                         'di_sistema'  => true,
                         'attivo'      => true,
-                        'livello'     => 1
+                        'livello'     => 1,
                     ]
                 );
             } else {
                 Log::warning("Impossibile trovare la radice PASSIVO per il condominio ID: {$condominio->id} durante la migration.");
             }
-        }
+        });
     }
 
     /**

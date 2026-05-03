@@ -59,8 +59,8 @@ class InboxService
             ->selectRaw("
                 COUNT(*) as all_tasks,
                 SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
-                SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type')) = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
-                SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type')) = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
+                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
+                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
             ", [$deadline])
             ->first();
 

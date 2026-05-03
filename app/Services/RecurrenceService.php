@@ -20,7 +20,7 @@ class RecurrenceService
 {
     private const MAX_DAYS = 365;
 
-     public function getEventsInNextDays(
+    public function getEventsInNextDays(
         int $days = 7,
         array $filters = [],
         ?int $page = null,
@@ -53,14 +53,15 @@ class RecurrenceService
             ->whereNull('recurrence_id')
             ->with('categoria', 'condomini', 'anagrafiche');
 
-        // LOGICA ADMIN:
-        // 1. Calendario: Eventi nel range (Futuri)
-        // 2. Inbox: Eventi scaduti SOLO se sono Rate da emettere
         $query->where(function ($q) use ($start, $end) {
             $q->whereBetween('start_time', [$start, $end])
               ->orWhere(function ($sub) {
-                  $sub->where('meta->requires_action', true)
-                      ->where('meta->type', 'emissione_rata');
+                  // whereJsonContains è universale: gestisce MySQL e MariaDB senza whereRaw fragili
+                  $sub->whereJsonContains('meta->requires_action', true)
+                      ->whereRaw(
+                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) = ?",
+                          ['emissione_rata']
+                      );
               });
         });
 
@@ -72,12 +73,26 @@ class RecurrenceService
             return $copy;
         });
     }
-    
-    private function getUserScopedRecurringEvents(Carbon $s, Carbon $e, array $f, ?Anagrafica $a, ?Collection $c): Collection {
-        $q = Evento::query()->whereNotNull('recurrence_id')->with(['ricorrenza','categoria','condomini','anagrafiche'])->where('is_approved',true)->where('visibility','public');
+
+    private function getUserScopedRecurringEvents(Carbon $s, Carbon $e, array $f, ?Anagrafica $a, ?Collection $c): Collection
+    {
+        $q = Evento::query()
+            ->whereNotNull('recurrence_id')
+            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche'])
+            ->where('is_approved', true)
+            ->where('visibility', 'public');
+
         $this->applyFilters($q, $f);
-        $q->where(function($qq) use ($a,$c){ $qq->whereHas('anagrafiche',fn($z)=>$z->where('anagrafica_id',$a?->id))->orWhere(function($z) use ($c){ $z->whereDoesntHave('anagrafiche')->whereHas('condomini',fn($x)=>$x->whereIn('condominio_id',$c)); }); });
-        return $q->get()->flatMap(fn($ev)=>$this->expandRecurringEvent($ev,$s,$e,$f));
+
+        $q->where(function ($qq) use ($a, $c) {
+            $qq->whereHas('anagrafiche', fn($z) => $z->where('anagrafica_id', $a?->id))
+               ->orWhere(function ($z) use ($c) {
+                   $z->whereDoesntHave('anagrafiche')
+                     ->whereHas('condomini', fn($x) => $x->whereIn('condominio_id', $c));
+               });
+        });
+
+        return $q->get()->flatMap(fn($ev) => $this->expandRecurringEvent($ev, $s, $e, $f));
     }
 
     private function getUserScopedOneTimeEvents(
@@ -91,51 +106,42 @@ class RecurrenceService
             ->whereNull('recurrence_id')
             ->with('categoria', 'condomini', 'anagrafiche')
             ->where('is_approved', true)
-            // SICUREZZA GLOBALE: Il condòmino non deve mai vedere roba HIDDEN (dell'admin)
             ->where('visibility', '!=', 'hidden');
 
-        // LOGICA TEMPORALE
         $query->where(function ($q) use ($start, $end) {
-            
-            // 1. CALENDARIO: Mostra tutto ciò che è nel range (futuro)
             $q->whereBetween('start_time', [$start, $end])
-            
-            // 2. INBOX DEBITI & RICEVUTE: Mostra le rate passate
-            ->orWhere(function ($sub) {
-                $sub->where('meta->type', 'scadenza_rata_condomino')
-                    ->where(function ($statusQuery) {
-                        // A. Mostra sempre quelle da pagare (pending, partial)
-                        $statusQuery->where('meta->status', '!=', 'paid')
-                        // B. Mostra quelle pagate, ma SOLO se modificate di recente (ultimi 30gg)
-                        ->orWhere(function ($paidQuery) {
-                            $paidQuery->where('meta->status', 'paid')
-                                    ->where('updated_at', '>=', now()->subDays(30));
-                        });
-                    });
-            });
+              ->orWhere(function ($sub) {
+                  $sub->whereRaw(
+                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) = ?",
+                          ['scadenza_rata_condomino']
+                      )
+                      ->where(function ($statusQuery) {
+                          $statusQuery
+                              ->whereRaw(
+                                  "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"status\"')) USING utf8mb4) != ?",
+                                  ['paid']
+                              )
+                              ->orWhere(function ($paidQuery) {
+                                  $paidQuery
+                                      ->whereRaw(
+                                          "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"status\"')) USING utf8mb4) = ?",
+                                          ['paid']
+                                      )
+                                      ->where('updated_at', '>=', now()->subDays(30));
+                              });
+                      });
+              });
         });
 
         $this->applyFilters($query, $filters);
 
-        // LOGICA DI APPARTENENZA (Scope)
         $query->where(function ($q) use ($anagrafica, $condominioIds) {
-            
-            // A. I MIEI EVENTI (PRIVATE o PUBLIC che sia)
-            // Se sono nella tabella pivot anagrafica_evento, sono miei.
-            $q->whereHas('anagrafiche', fn($k) =>
-                $k->where('anagrafica_id', $anagrafica?->id)
-            )
-            
-            // B. EVENTI CONDOMINIALI (Solo PUBLIC)
-            // Es. Assemblea, Disinfestazione. Li vedo se sono del mio condominio.
-            ->orWhere(function ($sub) use ($condominioIds) {
-                $sub->where('visibility', 'public')
-                    ->whereHas('condomini', fn($k) =>
-                        $k->whereIn('condominio_id', $condominioIds)
-                    )
-                    // Opzionale: escludo quelli assegnati specificamente ad altri
-                    ->whereDoesntHave('anagrafiche'); 
-            });
+            $q->whereHas('anagrafiche', fn($k) => $k->where('anagrafica_id', $anagrafica?->id))
+              ->orWhere(function ($sub) use ($condominioIds) {
+                  $sub->where('visibility', 'public')
+                      ->whereHas('condomini', fn($k) => $k->whereIn('condominio_id', $condominioIds))
+                      ->whereDoesntHave('anagrafiche');
+              });
         });
 
         return $query->get()->map(function ($event) {
@@ -145,29 +151,27 @@ class RecurrenceService
         });
     }
 
-    private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection {
-        $query = Evento::query()->whereNotNull('recurrence_id')->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
+    private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection
+    {
+        $query = Evento::query()
+            ->whereNotNull('recurrence_id')
+            ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
+
         $this->applyFilters($query, $filters);
+
         return $query->get()->flatMap(fn($event) => $this->expandRecurringEvent($event, $start, $end, $filters));
     }
 
-    // --- PUNTO CRITICO: CREAZIONE CLONE RICORRENZA ---
     private function buildOccurrenceClone(Evento $original, Carbon $occursAt): Evento
     {
         $clone = $original->replicate();
-        $clone->id = $original->id; 
-        
-        // 1. Impostiamo la data tecnica per l'ordinamento
+        $clone->id = $original->id;
         $clone->occurs_at = $occursAt;
-        
-        // 2. FIX FONDAMENTALE: Aggiorniamo la data VISIBILE!
-        // Se non lo facciamo, il frontend vede la data del 2025 e dice "SCADUTO"
-        $clone->start_time = $occursAt; 
+        $clone->start_time = $occursAt;
 
-        // Se c'è una data fine, trasliamo anche quella per mantenere la durata
         if ($original->start_time && $original->end_time) {
-             $duration = $original->start_time->diff($original->end_time);
-             $clone->end_time = $occursAt->copy()->add($duration);
+            $duration = $original->start_time->diff($original->end_time);
+            $clone->end_time = $occursAt->copy()->add($duration);
         }
 
         return $clone;
@@ -179,7 +183,13 @@ class RecurrenceService
         if (!$rec?->rrule) return collect();
 
         $timezone = $rec->timezone ?? config('app.timezone');
-        $exceptions = $event->eccezioni()->where('is_deleted', true)->whereBetween('exception_date', [$start, $end])->get()->pluck('exception_date')->map(fn($date) => Carbon::parse($date)->format('Y-m-d H:i:s'))->toArray();
+        $exceptions = $event->eccezioni()
+            ->where('is_deleted', true)
+            ->whereBetween('exception_date', [$start, $end])
+            ->get()
+            ->pluck('exception_date')
+            ->map(fn($date) => Carbon::parse($date)->format('Y-m-d H:i:s'))
+            ->toArray();
 
         try {
             $rule = new Rule($rec->rrule, new \DateTime($event->start_time, new \DateTimeZone($timezone)));
@@ -217,7 +227,6 @@ class RecurrenceService
         return !in_array($event->occurs_at->format('Y-m-d H:i:s'), $exceptions);
     }
 
-    // --- FILTRI CORRETTI (FIX SQL ERROR) ---
     private function applyFilters($query, array $filters): void
     {
         if (!empty($filters['title'])) {
@@ -234,21 +243,26 @@ class RecurrenceService
 
         if (!empty($filters['exclude_type'])) {
             $query->where(function ($q) use ($filters) {
-                $q->where('meta->type', '!=', $filters['exclude_type'])
+                $q->whereRaw(
+                        "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(`meta`, '$.\"type\"')) USING utf8mb4) != ?",
+                        [$filters['exclude_type']]
+                    )
                   ->orWhereNull('meta')
-                  // Uso 'orWhereNull' sulla chiave JSON che è standard e sicuro
-                  ->orWhereNull('meta->type'); 
+                  ->orWhereRaw("JSON_EXTRACT(`meta`, '$.\"type\"') IS NULL");
             });
         }
     }
 
-    private function passesSearchFilter(Evento $event, ?string $search): bool {
+    private function passesSearchFilter(Evento $event, ?string $search): bool
+    {
         if (empty($search)) return true;
         $search = strtolower($search);
-        return str_contains(strtolower($event->title), $search) || str_contains(strtolower($event->description ?? ''), $search);
+        return str_contains(strtolower($event->title), $search)
+            || str_contains(strtolower($event->description ?? ''), $search);
     }
 
-    private function paginateResults(Collection $items, int $page, int $perPage): LengthAwarePaginator {
+    private function paginateResults(Collection $items, int $page, int $perPage): LengthAwarePaginator
+    {
         return new LengthAwarePaginator(
             $items->forPage($page, $perPage)->values(),
             $items->count(),
@@ -258,19 +272,39 @@ class RecurrenceService
         );
     }
 
-    // ... metodi stats ...
-    public function getUpcomingStats(): array {
-        return ['next_seven_days' => $this->countEventsInNextDays(7), 'next_fourteen_days' => $this->countEventsInNextDays(14), 'next_twentyeight_days' => $this->countEventsInNextDays(28), 'expired_last_seven_days' => $this->countExpiredEventsLast7Days()];
+    public function getUpcomingStats(): array
+    {
+        return [
+            'next_seven_days'          => $this->countEventsInNextDays(7),
+            'next_fourteen_days'       => $this->countEventsInNextDays(14),
+            'next_twentyeight_days'    => $this->countEventsInNextDays(28),
+            'expired_last_seven_days'  => $this->countExpiredEventsLast7Days(),
+        ];
     }
-    private function countEventsInNextDays(int $days): int { return $this->getEventsInNextDays($days)->count(); }
-    public function countExpiredEventsLast7Days(): int {
-        $now = Carbon::now(); $start = $now->copy()->subDays(7); $end = $now->copy();
-        $one = Evento::query()->whereNull('recurrence_id')->whereBetween('start_time', [$start, $end])->where('start_time', '<', $now)->count();
-        return $one; 
+
+    private function countEventsInNextDays(int $days): int
+    {
+        return $this->getEventsInNextDays($days)->count();
     }
-    
-    private function isAdmin(): bool {
+
+    public function countExpiredEventsLast7Days(): int
+    {
+        $now   = Carbon::now();
+        $start = $now->copy()->subDays(7);
+
+        return Evento::query()
+            ->whereNull('recurrence_id')
+            ->whereBetween('start_time', [$start, $now])
+            ->where('start_time', '<', $now)
+            ->count();
+    }
+
+    private function isAdmin(): bool
+    {
         $user = Auth::user();
-        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value]) || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
+        if (!$user) return false;
+
+        return $user->hasRole([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])
+            || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
     }
 }
