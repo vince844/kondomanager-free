@@ -125,7 +125,7 @@ const runTest = async () => {
                     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
                         {{ trans('impostazioni.header.mail_settings_title') }}
                     </h1>
-                    <span :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-full', mailStatus.color]">
+                    <span :class="['px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-md', mailStatus.color]">
                         {{ mailStatus.label }}
                     </span>
                 </div>
@@ -219,7 +219,7 @@ const runTest = async () => {
                                 <Label class="block text-sm font-medium mb-3">
                                     {{ trans('impostazioni.label.mail_driver') }}
                                 </Label>
-                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <button
                                         v-for="d in drivers"
                                         :key="d.value"

@@ -28,7 +28,7 @@ const startLaunch = () => {
             <CardHeader class="pb-4 border-b">
                 <CardTitle class="flex items-center gap-2">
                     <CloudDownload class="w-6 h-6 text-blue-600" />
-                    Gestione Aggiornamenti
+                    Gestione aggiornamenti
                 </CardTitle>
                 <CardDescription>Versione installata: <Badge variant="secondary">{{ currentVersion }}</Badge></CardDescription>
             </CardHeader>

@@ -705,23 +705,32 @@ const confirmReject = () => {
                                         </div>
                                     </div>
 
-                                    <!-- Footer con azione -->
                                     <div class="p-5">
-                                        <div class="mt-0 flex justify-end items-center">
-                                            <span v-if="orfano.strategia === 'conguaglio' || orfano.strategia === 'fondo_riserva'" 
-                                                class="text-[10px] font-bold text-slate-400 mr-auto">
-                                                {{ orfano.strategia === 'fondo_riserva' 
-                                                    ? 'Coperta dal fondo patrimoniale — nessuna rata richiesta' 
-                                                    : 'Verrà calcolata automaticamente a fine esercizio' }}
-                                            </span>
-                                           <!--  <Link v-else :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id })">
-                                                <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm">
-                                                    Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
-                                                </Button>
-                                            </Link> -->
+                                        <div class="flex items-start justify-between gap-4">
+                                            <p class="text-sm text-slate-500 leading-relaxed border-l-2 pl-3"
+                                                :class="{
+                                                    'border-indigo-200 text-indigo-600/70': orfano.strategia === 'conguaglio',
+                                                    'border-emerald-200 text-emerald-600/70': orfano.strategia === 'fondo_riserva',
+                                                    'border-amber-200': orfano.strategia === 'rata_integrativa',
+                                                    'border-rose-200': !['conguaglio', 'fondo_riserva', 'rata_integrativa'].includes(orfano.strategia)
+                                                }">
+                                                <template v-if="orfano.strategia === 'rata_integrativa'">
+                                                    La spesa ha superato il preventivo. Emetti una rata integrativa per recuperare la differenza.
+                                                </template>
+                                                <template v-else-if="orfano.strategia === 'conguaglio'">
+                                                    Verrà conguagliata a fine esercizio nel rendiconto consuntivo.
+                                                </template>
+                                                <template v-else-if="orfano.strategia === 'fondo_riserva'">
+                                                    Coperta dal fondo di riserva patrimoniale. Nessuna azione richiesta.
+                                                </template>
+                                                <template v-else>
+                                                    Voce senza copertura attiva. Delibera un piano rate per finanziare questo importo.
+                                                </template>
+                                            </p>
+
                                             <Link v-if="!['conguaglio', 'fondo_riserva'].includes(orfano.strategia)" 
                                                 :href="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate/create', { condominio: condominio.id, esercizio: esercizio.id }) + `?tipo=ordinario&origine=dashboard&gestione_id=${orfano.gestione_id ?? ''}`">
-                                                <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm">
+                                                <Button size="sm" class="h-8 text-[10px] uppercase font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm shrink-0">
                                                     Gestisci sforo <ArrowRight class="w-3.5 h-3.5 ml-1.5" />
                                                 </Button>
                                             </Link>

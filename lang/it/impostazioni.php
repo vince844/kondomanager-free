@@ -19,7 +19,7 @@ return [
      | Mail Status Badge
      | ------------------------------------------------------------------ */
     'mail_status' => [
-        'database' => 'SMTP da Database',
+        'database' => 'Configurazione da Database',
         'env'      => 'Configurazione .env',
         'log'      => 'Modalità Sicura (Log)',
     ],
@@ -28,8 +28,8 @@ return [
      | Driver descriptions
      | ------------------------------------------------------------------ */
     'driver' => [
-        'smtp_description'     => 'Server SMTP esterno (Gmail, Brevo, ecc.)',
-        'sendmail_description' => 'Mail PHP locale — ideale per hosting condivisi',
+        'smtp_description'     => 'Consigliato. Usa un server SMTP esterno (Gmail, Brevo, ecc.)',
+        'sendmail_description' => 'Solo per VPS o server dedicati con Postfix e SPF/DKIM configurati.',
     ],
 
     /* ------------------------------------------------------------------
@@ -70,6 +70,8 @@ return [
         'mail_driver'           => 'Metodo di invio',
         'api_key_is_set'        => 'API key configurata e sicura',
         'encryption_none'       => 'Nessuna',
+        'mail_sendmail_path'      => 'Percorso Sendmail',
+        'mail_sendmail_path_hint' => 'Lascia il valore di default se non sai cosa modificare. Cambia solo se il tuo server usa un percorso diverso.',
     ],
 
     /* ------------------------------------------------------------------
@@ -95,18 +97,18 @@ return [
         'user_registration_description'         => 'Se attivato, gli utenti possono registrarsi dalla home page',
         'mail_settings_title'                   => 'Configurazione email',
         'mail_settings_description'             => 'Scegli il metodo di invio, configura le credenziali e testa la connessione.',
-        'mail_guide_title'                      => 'Guida alla configurazione SMTP',
-        'mail_guide_gmail'                      => 'Gmail: Attiva la verifica in 2 passaggi e genera una "Password per le App". Usa porta 587 con TLS.',
-        'mail_guide_smtp2go'                    => 'Server Gratuiti: Se usi Altervista, considera Sendmail oppure SMTP2Go per superare i blocchi delle porte.',
-        'mail_guide_domain'                     => 'Consiglio Pro: Usa un dominio professionale validato per evitare lo Spam.',
+        'mail_guide_title'                      => 'Guida alla configurazione',
+        'mail_guide_gmail'                      => 'Gmail (consigliato per tutti): Attiva la verifica in 2 passaggi, genera una "Password per le App" e usa smtp.gmail.com, porta 587, TLS. Funziona su qualsiasi hosting senza configurazioni DNS.',
+        'mail_guide_smtp2go'                    => 'Altri provider SMTP (Brevo, SMTP2Go, ecc.): richiedono la verifica del dominio mittente tramite record DNS (SPF/DKIM). Usa questa opzione solo se hai un dominio proprio con accesso al pannello DNS.',
+        'mail_guide_domain'                     => 'Sendmail: funziona solo su VPS o server dedicati con Postfix installato e SPF/DKIM configurati. Non adatto per hosting condivisi.',
         'mail_info_title'                       => 'Come funziona l\'invio email?',
-        'mail_info_description'                 => 'Kondomanager supporta tre metodi di invio: <strong>SMTP</strong> per server esterni (Gmail, Brevo, ecc.), <strong>Sendmail</strong> per hosting condivisi (es. Altervista) dove le porte SMTP sono bloccate.<br><br>Se disattivi la configurazione da database, verrà usata quella del file <strong>.env</strong>.',
+        'mail_info_description'                 => 'Kondomanager supporta due metodi di invio.<br><br><strong>SMTP</strong> — il metodo consigliato per tutti. Usa un server di posta esterno (es. Gmail). Le email vengono consegnate in modo affidabile senza configurazioni avanzate.<br><br><strong>Sendmail</strong> — per utenti avanzati con VPS o server dedicati dove Postfix è installato e i record SPF/DKIM sono configurati nel DNS. Su hosting condivisi le email verranno rifiutate dai destinatari.<br><br>Se disattivi la configurazione da database, verrà usata quella del file <strong>.env</strong>.',
         'mail_legend_title'                     => 'Legenda stati',
-        'mail_legend_database'                  => 'Usa le tue credenziali personalizzate (Prioritario).',
-        'mail_legend_env'                       => 'Usa la configurazione di default del server.',
-        'mail_legend_log'                       => 'Invio email disabilitato (Solo file di log).',
-        'sendmail_guide_title'                  => 'Sendmail — nessuna credenziale richiesta',
-        'sendmail_guide_description'            => 'Le email vengono inviate tramite il server di posta locale (PHP mail). Ideale per hosting condivisi come Altervista dove le porte SMTP esterne sono bloccate. La deliverability dipende dalla reputazione del server.',
+        'mail_legend_database'                  => 'Usa le credenziali configurate in questa pagina (prioritario rispetto al .env).',
+        'mail_legend_env'                       => 'Usa la configurazione definita nel file .env del server.',
+        'mail_legend_log'                       => 'Invio email disabilitato — le email vengono scritte solo nel file di log.',
+        'sendmail_guide_title'                  => 'Sendmail — solo per server dedicati',
+        'sendmail_guide_description'            => 'Usa questa opzione SOLO se il tuo server è un VPS o server dedicato con Postfix/Exim installato e i record SPF e DKIM configurati nel DNS del dominio mittente. Su hosting condivisi (Altervista, Aruba, ecc.) le email verranno rifiutate dai destinatari perché i provider moderni (Gmail, Outlook) richiedono l\'autenticazione DNS. Per hosting condivisi usa Gmail SMTP.',
         'test_header'                           => 'Test di invio immediato',
         'test_success_title'                    => 'Connessione riuscita',
         'test_success_message'                  => 'L\'email di test è stata inviata correttamente al destinatario.',
@@ -134,15 +136,15 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
-        'select_building'       => 'Seleziona condominio',
-        'select_language'       => 'Seleziona lingua',
-        'search_settings'       => 'Filtra impostazioni...',
-        'mail_host'             => 'es. smtp.gmail.com',
-        'mail_password'         => 'Inserisci la password SMTP',
-        'mail_password_keep'    => 'Lascia vuoto per mantenere la password attuale',
-        'mail_password_enter'   => 'Inserisci la password SMTP',
-        'mail_from_address'     => 'es. amministrazione@studio-rossi.it',
-        'test_recipient'        => 'Inserisci l\'email per il test',
+        'select_building'     => 'Seleziona condominio',
+        'select_language'     => 'Seleziona lingua',
+        'search_settings'     => 'Filtra impostazioni...',
+        'mail_host'           => 'es. smtp.gmail.com',
+        'mail_password'       => 'Inserisci la password SMTP',
+        'mail_password_keep'  => 'Lascia vuoto per mantenere la password attuale',
+        'mail_password_enter' => 'Inserisci la password SMTP',
+        'mail_from_address'   => 'es. amministrazione@studio-rossi.it',
+        'test_recipient'      => 'Inserisci l\'email per il test',
 
         'language' => [
             'it' => 'Italiano',

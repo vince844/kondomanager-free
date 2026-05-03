@@ -21,7 +21,7 @@
 {{-- Footer --}}
 <x-slot:footer>
 <x-mail::footer>
-© {{ date('Y') }} {{ config('app.name') }}. {{ __('Software di gestione condominiale.') }}
+© {{ date('Y') }} {{ config('app.name') }}. {{ __('Software di gestione condominiale open source') }}
 </x-mail::footer>
 </x-slot:footer>
 </x-mail::layout>

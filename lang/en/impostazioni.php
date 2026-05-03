@@ -19,7 +19,7 @@ return [
      | Mail Status Badge
      | ------------------------------------------------------------------ */
     'mail_status' => [
-        'database' => 'SMTP from Database',
+        'database' => 'Database Configuration',
         'env'      => '.env Configuration',
         'log'      => 'Safe Mode (Log)',
     ],
@@ -28,8 +28,8 @@ return [
      | Driver descriptions
      | ------------------------------------------------------------------ */
     'driver' => [
-        'smtp_description'     => 'External SMTP server (Gmail, Brevo, etc.)',
-        'sendmail_description' => 'Local PHP mail — ideal for shared hosting',
+        'smtp_description'     => 'Recommended. Use an external SMTP server (Gmail, Brevo, etc.)',
+        'sendmail_description' => 'Only for VPS or dedicated servers with Postfix and SPF/DKIM configured.',
     ],
 
     /* ------------------------------------------------------------------
@@ -70,6 +70,8 @@ return [
         'mail_driver'           => 'Sending method',
         'api_key_is_set'        => 'API key configured and secure',
         'encryption_none'       => 'None',
+        'mail_sendmail_path'      => 'Sendmail path',
+        'mail_sendmail_path_hint' => 'Leave the default value if unsure. Change only if your server uses a different path.',
     ],
 
     /* ------------------------------------------------------------------
@@ -93,41 +95,48 @@ return [
         'select_building_description'           => 'Select the building to open automatically after login.',
         'user_registration_title'               => 'Enable user registration',
         'user_registration_description'         => 'If enabled, users can register from the home page.',
-        'mail_settings_title'                   => 'Email configuration',
-        'mail_settings_description'             => 'Choose the sending method, configure credentials and test the connection.',
-        'mail_guide_title'                      => 'SMTP configuration guide',
-        'mail_guide_gmail'                      => 'Gmail: Enable 2-step verification and generate an "App Password". Use port 587 with TLS.',
-        'mail_guide_smtp2go'                    => 'Free Hosting: If you use Altervista, consider Sendmail or SMTP2Go to bypass port restrictions.',
-        'mail_guide_domain'                     => 'Pro tip: Use a validated professional domain to avoid emails landing in spam.',
-        'mail_info_title'                       => 'How does email sending work?',
-        'mail_info_description'                 => 'Kondomanager supports two sending methods: <strong>SMTP</strong> for external servers (Gmail, Brevo, etc.) and <strong>Sendmail</strong> for shared hosting (e.g. Altervista) where outbound SMTP ports are blocked.<br><br>If you disable the database configuration, the <strong>.env</strong> file settings will be used.',
-        'mail_legend_title'                     => 'Status legend',
-        'mail_legend_database'                  => 'Uses your custom credentials (Priority).',
-        'mail_legend_env'                       => 'Uses the default server configuration.',
-        'mail_legend_log'                       => 'Email sending disabled (Log file only).',
-        'sendmail_guide_title'                  => 'Sendmail — no credentials required',
-        'sendmail_guide_description'            => 'Emails are sent through the local mail server (PHP mail). Ideal for shared hosting such as Altervista where outbound SMTP ports are blocked. Deliverability depends on the server\'s reputation.',
-        'test_header'                           => 'Immediate send test',
-        'test_success_title'                    => 'Connection successful',
-        'test_success_message'                  => 'The test email was sent successfully to the recipient.',
-        'test_error_title'                      => 'Connection error',
-        'test_error_message'                    => 'Unable to send the email. Check the parameters and try again.',
-        'cron_info_title'                       => 'What is Cloud Automation?',
-        'cron_info_description'                 => 'Kondomanager runs scheduled tasks in the background (e.g. instalment generation, email sending).<br><br>Normally, the server handles everything automatically. Enable this option <strong>ONLY</strong> if you are on <strong>Shared Hosting</strong> that does not allow configuring the system "Crontab" via terminal.',
-        'cron_legend_title'                     => 'Operating Mode',
-        'cron_legend_external'                  => 'Webhook (External): The system waits for a signal from cron-job.org.',
-        'cron_legend_internal'                  => 'System Cron (Internal): The server manages processes autonomously.',
-        'cron_settings_title'                   => 'Cloud automation',
-        'cron_settings_description'             => 'Configure cron-job.org for shared hosting.',
-        'enable_external_scheduler_title'       => 'Enable external scheduler',
-        'enable_external_scheduler_description' => 'Allow third-party services to run automations.',
-        'webhook_url_title'                     => 'Webhook URL',
-        'webhook_url_description'               => 'Copy this URL and set up a GET call every 1 minute on your external service.',
-        'webhook_url_badge'                     => 'Secret',
-        'security_warning_title'                => 'IP security active',
-        'security_warning_description'          => 'The system only accepts calls from the official cron-job.org IP addresses. If you use another service, this configuration will not work.',
-        'logs_settings_title'                   => 'Audit & System Logs',
-        'logs_settings_description'             => 'View the history of sent emails, user activity and system logs.',
+
+        'mail_settings_title'       => 'Email configuration',
+        'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',
+
+        'mail_guide_title'   => 'Configuration guide',
+        'mail_guide_gmail'   => 'Gmail (recommended for everyone): Enable 2-step verification, generate an "App Password" and use smtp.gmail.com, port 587, TLS. Works on any hosting without DNS configuration.',
+        'mail_guide_smtp2go' => 'Other SMTP providers (Brevo, SMTP2Go, etc.): require sender domain verification via DNS records (SPF/DKIM). Use this option only if you have your own domain with access to the DNS panel.',
+        'mail_guide_domain'  => 'Sendmail: works only on VPS or dedicated servers with Postfix installed and SPF/DKIM configured. Not suitable for shared hosting.',
+
+        'mail_info_title'       => 'How does email sending work?',
+        'mail_info_description' => 'Kondomanager supports two sending methods.<br><br><strong>SMTP</strong> — the recommended method for everyone. Uses an external mail server (e.g. Gmail). Emails are delivered reliably without advanced configuration.<br><br><strong>Sendmail</strong> — for advanced users with a VPS or dedicated server where Postfix is installed and SPF/DKIM records are configured in DNS. On shared hosting, emails will be rejected by recipients.<br><br>If you disable the database configuration, the <strong>.env</strong> file settings will be used.',
+
+        'mail_legend_title'    => 'Status legend',
+        'mail_legend_database' => 'Uses the credentials configured on this page (takes priority over .env).',
+        'mail_legend_env'      => 'Uses the configuration defined in the server .env file.',
+        'mail_legend_log'      => 'Email sending disabled — emails are written to the log file only.',
+
+        'sendmail_guide_title'       => 'Sendmail — dedicated servers only',
+        'sendmail_guide_description' => 'Use this option ONLY if your server is a VPS or dedicated server with Postfix/Exim installed and SPF and DKIM records configured in your sender domain DNS. On shared hosting (Altervista, etc.) emails will be rejected by recipients because modern providers (Gmail, Outlook) require DNS authentication. For shared hosting use Gmail SMTP.',
+
+        'test_header'          => 'Immediate send test',
+        'test_success_title'   => 'Connection successful',
+        'test_success_message' => 'The test email was sent successfully to the recipient.',
+        'test_error_title'     => 'Connection error',
+        'test_error_message'   => 'Unable to send the email. Check the parameters and try again.',
+
+        'cron_info_title'               => 'What is Cloud Automation?',
+        'cron_info_description'         => 'Kondomanager runs scheduled tasks in the background (e.g. instalment generation, email sending).<br><br>Normally, the server handles everything automatically. Enable this option <strong>ONLY</strong> if you are on <strong>Shared Hosting</strong> that does not allow configuring the system "Crontab" via terminal.',
+        'cron_legend_title'             => 'Operating Mode',
+        'cron_legend_external'          => 'Webhook (External): The system waits for a signal from cron-job.org.',
+        'cron_legend_internal'          => 'System Cron (Internal): The server manages processes autonomously.',
+        'cron_settings_title'                     => 'Cloud automation',
+        'cron_settings_description'               => 'Configure cron-job.org for shared hosting.',
+        'enable_external_scheduler_title'         => 'Enable external scheduler',
+        'enable_external_scheduler_description'   => 'Allow third-party services to run automations.',
+        'webhook_url_title'                       => 'Webhook URL',
+        'webhook_url_description'                 => 'Copy this URL and set up a GET call every 1 minute on your external service.',
+        'webhook_url_badge'                       => 'Secret',
+        'security_warning_title'                  => 'IP security active',
+        'security_warning_description'            => 'The system only accepts calls from the official cron-job.org IP addresses. If you use another service, this configuration will not work.',
+        'logs_settings_title'                     => 'Audit & System Logs',
+        'logs_settings_description'               => 'View the history of sent emails, user activity and system logs.',
     ],
 
     /* ------------------------------------------------------------------
