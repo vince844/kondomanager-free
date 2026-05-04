@@ -10,10 +10,11 @@ import { initializeTheme } from './composables/useAppearance';
 import money from 'v-money3';
 import { i18nVue, loadLanguageAsync } from 'laravel-vue-i18n';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
-
 createInertiaApp({
-    title: (title) => (title ? `${title} - ${appName}` : appName),
+    title: (title) => {
+        const appName = usePage().props.name as string || 'KondoManager';
+        return title ? `${title} - ${appName}` : appName;
+    },
     resolve: (name) =>
         resolvePageComponent(
             `./pages/${name}.vue`,
