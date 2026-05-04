@@ -120,6 +120,7 @@ return [
         'test_success_message' => 'The test email was sent successfully to the recipient.',
         'test_error_title'     => 'Connection error',
         'test_error_message'   => 'Unable to send the email. Check the parameters and try again.',
+        'test_unsaved_warning' => 'You have unsaved changes. Save the configuration before sending the test.',
 
         'cron_info_title'               => 'What is Cloud Automation?',
         'cron_info_description'         => 'Kondomanager runs scheduled tasks in the background (e.g. instalment generation, email sending).<br><br>Normally, the server handles everything automatically. Enable this option <strong>ONLY</strong> if you are on <strong>Shared Hosting</strong> that does not allow configuring the system "Crontab" via terminal.',

@@ -120,6 +120,7 @@ return [
         'test_success_message' => 'O email de teste foi enviado com sucesso para o destinatário.',
         'test_error_title'     => 'Erro de ligação',
         'test_error_message'   => 'Não foi possível enviar o email. Verifique os parâmetros e tente novamente.',
+        'test_unsaved_warning' => 'Tem alterações não guardadas. Guarde a configuração antes de enviar o teste.',
 
         'cron_info_title'               => 'O que é a Automação Cloud?',
         'cron_info_description'         => 'O Kondomanager executa tarefas agendadas em segundo plano (ex: geração de prestações, envio de emails).<br><br>Normalmente, o servidor gere tudo autonomamente. Ative esta opção <strong>APENAS</strong> se estiver num <strong>Alojamento Partilhado</strong> que não permita configurar o "Crontab" do sistema via terminal.',

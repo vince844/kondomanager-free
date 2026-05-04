@@ -1,6 +1,10 @@
 {
-    "features": [
-        "Corrigido o erro que não permitia ratear uma única despesa em várias tabelas de frações (millesimal), pois o card de repartição não era exibido nos detalhes da despesa.",
-        "Melhorada a compatibilidade com serviços de hospedagem gratuita (ex: Altervista) para o envio de notificações por e-mail; agora é possível utilizar o driver PHP Mail local."
+   "features": [
+        "Corrigido um erro que impedia a divisão de uma única despesa em várias tabelas milesimais porque o cartão de rateio não era exibido nos detalhes da despesa.",
+        "Melhorada a compatibilidade com hospedagem gratuita (ex. Altervista) para o envio de notificações por e-mail; agora é possível usar o driver local do PHP Mail.",
+        "Corrigido um problema crítico que causava o bloqueio de atualizações automáticas em servidores Windows ou hospedagem compartilhada: durante a atualização, o servidor impunha um limite máximo de tempo de 60 segundos, mas algumas operações internas (como a correção de dados dos condomínios) demoravam mais e eram interrompidas pela metade. Agora o sistema desativa esse limite de tempo durante as operações de atualização, permitindo que até mesmo instalações com muitos condomínios sejam atualizadas sem erros.",
+        "Otimizadas as operações de atualização de banco de dados que lidam com grandes quantidades de dados: em vez de carregar tudo na memória simultaneamente e fazer muitas pequenas consultas ao banco de dados (método lento e sujeito a timeouts), os dados agora são processados em blocos progressivos com consultas mais eficientes. Como resultado, as atualizações são muito mais rápidas e não correm o risco de travar na metade.",
+        "Tornou as alterações na estrutura do banco de dados (migrações) mais robustas: anteriormente, se uma atualização fosse interrompida na metade (por exemplo, devido a um timeout ou interrupção de rede), o sistema apresentava um erro na tentativa seguinte porque tentava adicionar colunas que já haviam sido parcialmente criadas. Agora, cada migração verifica primeiro se as alterações já foram aplicadas e as ignora, se for o caso, permitindo que o processo seja retomado de onde parou sem erros.",
+        "Adicionados avisos técnicos no log do sistema quando é detectado que uma migração ficou travada pela metade em uma sessão anterior: isso ajuda a equipe de suporte a identificar quaisquer problemas durante a atualização e a entender quantos usuários podem ter sido afetados."
     ]
 }

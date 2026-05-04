@@ -114,6 +114,7 @@ return [
         'test_success_message'                  => 'L\'email di test è stata inviata correttamente al destinatario.',
         'test_error_title'                      => 'Errore di connessione',
         'test_error_message'                    => 'Impossibile inviare l\'email. Controlla i parametri e riprova.',
+        'test_unsaved_warning'                  => 'Hai modifiche non salvate. Salva la configurazione prima di inviare il test.',
         'cron_info_title'                       => 'Cos\'è l\'automazione cloud?',
         'cron_info_description'                 => 'Kondomanager esegue operazioni pianificate in background (es. generazione rate, invio email).<br><br>Di norma, il server gestisce tutto autonomamente. Attiva questa opzione <strong>SOLO</strong> se sei su un <strong>Hosting Condiviso</strong> che non permette di configurare il "Crontab" di sistema via terminale.',
         'cron_legend_title'                     => 'Modalità Operativa',

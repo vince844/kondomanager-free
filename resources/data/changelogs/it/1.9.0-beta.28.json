@@ -1,6 +1,10 @@
 {
     "features": [
         "Risolto errore che non permetteva di ripartire voce di spesa singola su più tabelle millesimali perchè nel dettaglio spesa non veniva mostrata la card per la ripartizione.",
-        "Migliorata compatibilità con hosting gratuito (es Altervista) per l'invio delle notifiche email, adesso è possibile utilizzare il driver Mail PHP locale"
+        "Migliorata compatibilità con hosting gratuito (es Altervista) per l'invio delle notifiche email, adesso è possibile utilizzare il driver Mail PHP locale",
+        "Risolto problema critico che causava il blocco degli aggiornamenti automatici su server Windows o hosting condiviso: durante l'aggiornamento, il server imponeva un limite di tempo massimo di 60 secondi, ma alcune operazioni interne (come la sistemazione dei dati dei condomini) richiedevano più tempo e venivano interrotte a metà. Ora il sistema disattiva quel limite di tempo durante le operazioni di aggiornamento, consentendo anche installazioni con molti condomini di aggiornarsi senza errori.",
+        "Ottimizzate le operazioni di aggiornamento del database che lavorano su grandi quantità di dati: invece di caricare tutto in memoria contemporaneamente e fare tante piccole interrogazioni al database (metodo lento e soggetto a timeout), ora i dati vengono elaborati a blocchi progressivi con query più efficienti. Il risultato è che gli aggiornamenti sono molto più veloci e non rischiano di bloccarsi a metà.",
+        "Rese più robuste le modifiche alla struttura del database (migrazioni): in precedenza, se un aggiornamento veniva interrotto a metà (ad esempio per un timeout o un'interruzione di rete), al tentativo successivo il sistema andava in errore perché cercava di aggiungere colonne già parzialmente create. Ora ogni migrazione controlla prima se le modifiche sono già state applicate, e in caso le salta, permettendo di riprendere da dove si era interrotto senza errori.",
+        "Aggiunti avvisi tecnici nel log di sistema quando viene rilevato che una migrazione era rimasta bloccata a metà in una sessione precedente: questo aiuta il team di supporto a identificare eventuali problemi durante l'aggiornamento e a capire quanti utenti potrebbero essere stati coinvolti."
     ]
 }

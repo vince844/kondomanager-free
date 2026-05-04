@@ -356,6 +356,14 @@ const runTest = async () => {
 
                     <!-- Sezione test -->
                     <div v-if="form.mail_enabled" class="border-t pt-6 mt-6 animate-in fade-in duration-500">
+
+                        <!-- Avviso modifiche non salvate -->
+                        <div v-if="form.isDirty" 
+                            class="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 rounded-md text-sm flex items-center gap-2 border border-yellow-200 dark:border-yellow-800">
+                            <AlertCircle class="w-4 h-4 shrink-0" />
+                            {{ trans('impostazioni.dialogs.test_unsaved_warning') }}
+                        </div>
+
                         <h3 class="text-sm font-semibold mb-4 flex items-center gap-2">
                             <Send class="w-4 h-4 text-primary" />
                             {{ trans('impostazioni.dialogs.test_header') }}

@@ -1,6 +1,10 @@
 {
     "features": [
-        "Fixed a bug that prevented splitting a single expense item across multiple millesimal tables because the breakdown card was not displayed in the expense details.",
-        "Improved compatibility with free hosting services (e.g., Altervista) for sending email notifications; it is now possible to use the local PHP Mail driver."
+        "Fixed an error that prevented splitting a single expense item across multiple millesimal tables because the allocation card was not displayed in the expense details.",
+        "Improved compatibility with free hosting (e.g., Altervista) for sending email notifications; it is now possible to use the local PHP Mail driver.",
+        "Fixed a critical issue that caused automatic updates to freeze on Windows servers or shared hosting: during the update, the server imposed a maximum time limit of 60 seconds, but some internal operations (like fixing condominium data) took longer and were interrupted halfway. The system now disables that time limit during update operations, allowing even installations with many condominiums to update without errors.",
+        "Optimized database update operations that handle large amounts of data: instead of loading everything into memory simultaneously and making many small queries to the database (a slow method prone to timeouts), data is now processed in progressive chunks with more efficient queries. As a result, updates are much faster and are not at risk of freezing halfway.",
+        "Made database structure changes (migrations) more robust: previously, if an update was interrupted halfway (e.g., due to a timeout or network interruption), the system would throw an error on the next attempt because it tried to add columns that were already partially created. Now, each migration first checks if the changes have already been applied and skips them if so, allowing the process to resume where it left off without errors.",
+        "Added technical warnings in the system log when it detects that a migration was stuck halfway in a previous session: this helps the support team identify any issues during the update and understand how many users might have been affected."
     ]
 }
