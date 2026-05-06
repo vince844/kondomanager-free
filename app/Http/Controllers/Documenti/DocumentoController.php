@@ -34,14 +34,19 @@ class DocumentoController extends Controller
     /**
      * Create a new controller instance.
      *
-     * @param  \App\Services\DocumentoService 
+     * @param \App\Services\DocumentoService $documentoService
+     * 
      */
     public function __construct(
         private DocumentoService $documentoService,
     ) {}
     
     /**
-     * Display a listing of the resource.
+     * Display a paginated listing of documents with stats and active filters.
+     *
+     * @param  \App\Http\Requests\Documento\DocumentoIndexRequest $request
+     * @param  \App\Models\Documento $documento
+     * @return \Inertia\Response
      */
     public function index(DocumentoIndexRequest $request, Documento $documento): Response
     {
@@ -72,7 +77,10 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the form for creating a new document.
+     *
+     * @param  \App\Models\Documento $documento
+     * @return \Inertia\Response
      */
     public function create(Documento $documento): Response
     {
@@ -88,17 +96,16 @@ class DocumentoController extends Controller
     /**
      * Store a newly uploaded document in the database and filesystem.
      *
-     * This method performs the following:
      * - Validates incoming form data via CreateDocumentoRequest.
      * - Verifies that a file was uploaded and is valid.
-     * - Stores the uploaded file in the `storage/app/documenti` directory using a hashed name.
-     * - Creates a new Documento record in the database.
-     * - Attaches related condomini and anagrafiche records via pivot tables.
-     * - Uses a database transaction to ensure consistency.
-     * - Logs and handles any exceptions that may occur.
+     * - Stores the uploaded file in `storage/app/documenti` using a hashed filename.
+     * - Creates a new Documento record and attaches related condomini and anagrafiche via pivot tables.
+     * - Dispatches a notification event after a successful save.
+     * - Wraps persistence in a DB transaction; rolls back on failure.
      *
-     * @param  \App\Http\Requests\CreateDocumentoRequest  $request  The incoming HTTP request containing form data and file.
-     * @return \Illuminate\Http\RedirectResponse  Redirects to the document index route with a success or error message.
+     * @param  \App\Http\Requests\Documento\CreateDocumentoRequest $request
+     * @param  \App\Models\Documento $documento
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function store(CreateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
@@ -177,7 +184,10 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the form for editing the specified document.
+     *
+     * @param  \App\Models\Documento $documento
+     * @return \Inertia\Response
      */
     public function edit(Documento $documento): Response
     {
@@ -194,7 +204,15 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the specified document in storage.
+     *
+     * If a new file is uploaded, the old file is deleted from disk and replaced.
+     * Pivot relations for condomini and anagrafiche are synced on every update.
+     * Wraps all persistence in a DB transaction; rolls back on failure.
+     *
+     * @param  \App\Http\Requests\Documento\UpdateDocumentoRequest $request
+     * @param  \App\Models\Documento $documento
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function update(UpdateDocumentoRequest $request, Documento $documento): RedirectResponse
     {
@@ -257,16 +275,14 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Delete a document and its associated file from storage.
+     * Delete a document record and its associated file from storage.
      *
-     * This method performs the following:
-     * - Deletes the physical file from the storage if it exists.
-     * - Deletes the document record from the database.
-     * - Relies on ON DELETE CASCADE to clean up pivot table relations.
-     * - Logs any errors that occur during the process.
+     * - Deletes the physical file from disk if it exists.
+     * - Deletes the Documento record; pivot relations are cleaned up via ON DELETE CASCADE.
+     * - Wraps all operations in a DB transaction; rolls back on failure.
      *
-     * @param  \App\Models\Documento  $documento  The document instance to be deleted.
-     * @return \Illuminate\Http\RedirectResponse  Redirects back with a success or error message.
+     * @param  \App\Models\Documento $documento
+     * @return \Illuminate\Http\RedirectResponse
      */
     public function destroy(Documento $documento): RedirectResponse
     {
@@ -307,27 +323,42 @@ class DocumentoController extends Controller
     }
 
     /**
-     * Download the specified document file.
+     * Stream the specified document as a file download.
      *
-     * @param  \App\Models\Documento  $documento
+     * The file is stored on disk with a hashed filename that preserves the original
+     * extension (via hashName()), but $documento->name holds a user-defined title
+     * with no extension. The extension is extracted from the stored path and appended
+     * to the download filename if not already present, so the browser receives a
+     * correctly named file regardless of the operating system or browser in use.
+     *
+     * @param  \App\Models\Documento $documento
+     * @return \Symfony\Component\HttpFoundation\BinaryFileResponse|\Illuminate\Http\RedirectResponse
      */
     public function download(Documento $documento)
     {
         Gate::authorize('view', $documento);
 
         try {
-            
-            // Specifichiamo il disco 'local' per coerenza con il metodo store()
+
             if (!Storage::disk('local')->exists($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found'))
                 );
             }
 
-            // Otteniamo il percorso assoluto e usiamo l'helper nativo per il download
+            // Il file è salvato con hashName() che preserva l'estensione originale
+            // (es. documenti/a1b2c3.pdf), ma $documento->name è il titolo senza estensione.
+            // Appendiamo l'estensione al nome solo se non è già presente.
+            $extension    = pathinfo($documento->path, PATHINFO_EXTENSION);
+            $downloadName = $documento->name;
+
+            if (!empty($extension) && !str_ends_with(strtolower($downloadName), '.' . strtolower($extension))) {
+                $downloadName .= '.' . $extension;
+            }
+
             $percorsoAssoluto = Storage::disk('local')->path($documento->path);
 
-            return response()->download($percorsoAssoluto, $documento->name);
+            return response()->download($percorsoAssoluto, $downloadName);
 
         } catch (\Exception $e) {
 
@@ -339,7 +370,7 @@ class DocumentoController extends Controller
             return redirect()->back()->with(
                 $this->flashError(__('documenti.error_downloading_document'))
             );
-
         }
     }
+
 }
