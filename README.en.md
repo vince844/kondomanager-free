@@ -6,7 +6,7 @@
 
 # KondoManager - Free and Open Source Condominium Management Software
 
-**KondoManager** is an innovative free and open source condominium management software, built with **Laravel** and **MySQL** database. Designed to simplify the life of condominium administrators while providing transparency and digital services for residents.
+**KondoManager** is the first open source, self-hosted condominium management software, built with **Laravel, Vue 3, Inertia.js and MySQL**. Designed for property managers who need a serious tool: double-entry bookkeeping, legally validated instalment plans, a digital resident portal and automatic updates — no subscriptions, no vendor lock-in.
 
 ---
 
@@ -127,7 +127,7 @@ Make sure to use the absolute path to the PHP v8.2+ executable, for example
 
 In the previous example, replace "ea-php99" with the PHP version assigned to the domain you want to use. Check in MultiPHP Manager for the PHP version actually assigned to a domain.
 
-### 3. Update from Version 1.7.0 to 1.8.0
+### 3. Update manually from Version 1.7.0 to 1.8.0
 
 Automatic updates are available starting from version 1.8.0, so if you are still using version 1.7.0 and want to update, you must follow these steps:
 

@@ -8,12 +8,13 @@ use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Anagrafica;
-use App\Helpers\MoneyHelper; 
+use App\Helpers\MoneyHelper;
+use App\Models\Esercizio;
 use Illuminate\Support\Facades\DB;
 
 class StoreIncassoRateAction
 {
-    public function execute(array $validated, Condominio $condominio, $esercizio): void
+    public function execute(array $validated, Condominio $condominio, Esercizio $esercizio): void
     {
         $pagamentiOrdinari = array_filter(
             $validated['dettaglio_pagamenti'],

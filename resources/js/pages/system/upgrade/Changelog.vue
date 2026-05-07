@@ -14,7 +14,7 @@ const props = defineProps({
 
 <template>
     <div class="min-h-screen flex items-center justify-center bg-gray-50/50 p-4">
-        <Card class="w-full max-w-lg shadow-xl border-t-4 border-t-green-500">
+        <Card class="w-full max-w-2xl shadow-xl border-t-4 border-t-green-500">
             <CardHeader class="text-center border-b pb-6">
                 <div class="mx-auto bg-green-100 p-3 rounded-full w-fit mb-4">
                     <CheckCircle2 class="w-10 h-10 text-green-600" />
@@ -32,7 +32,7 @@ const props = defineProps({
                     Novità di questa versione
                 </h3>
                 
-                <ul class="space-y-3">
+                <ul class="space-y-3 max-h-96 overflow-y-auto pr-1">
                     <li v-for="(feature, index) in log.features" :key="index" class="flex items-start text-sm text-gray-600">
                         <CheckCircle2 class="w-4 h-4 text-green-500 mr-2 mt-0.5 shrink-0" />
                         {{ feature }}

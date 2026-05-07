@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Servizio per il calcolo delle quote di spesa/entrata per ogni gestione.
- * * VERSION: 1.9.4 (RIPARTIZIONE MISTA - Straordinario + Override Immobile)
+ * * VERSION: 1.9.5 (RIPARTIZIONE MISTA & FIX SNAPSHOT SOTTOCONTI)
  * * =========================================================================
  * ARCHITETTURA DEL RULE ENGINE (Motore di Ripartizione)
  * =========================================================================
@@ -43,6 +43,10 @@ class CalcoloQuoteService
      * Motore per Piani Ordinari.
      * Legge gli importi previsti dal Piano dei Conti (Budget Preventivo)
      * o le sovrascritture manuali (overrides) impostate in fase di creazione rate.
+     *
+     * @param Gestione $gestione La gestione corrente di riferimento.
+     * @param PianoRate|null $pianoRate Il piano rate da elaborare (opzionale).
+     * @return array Array associativo dei totali raggruppati per [anagrafica_id][immobile_id].
      */
     public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
     {
@@ -65,11 +69,16 @@ class CalcoloQuoteService
             }
         }
 
+        // EAGER LOADING PROFONDO: carichiamo le tabelle millesimali anche per i sottoconti
+        // per prevenire N+1 queries (o Fatal Error con lazy loading disabilitato in L10/11)
+        // quando processaConti() scende ricorsivamente nei figli.
         $query = $pianoConto->conti()
             ->with([
                 'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
                 'tabelleMillesimali.ripartizioni',
-                'sottoconti.sottoconti', 
+                'sottoconti.tabelleMillesimali.tabella.quote.immobile.anagrafiche',
+                'sottoconti.tabelleMillesimali.ripartizioni',
+                'sottoconti.sottoconti',
             ]);
 
         if (!empty($capitoliIds)) {
@@ -80,7 +89,7 @@ class CalcoloQuoteService
 
         $conti = $query->get();
 
-        Log::info("=== INIZIO CALCOLO QUOTE ORDINARIO V1.9.4 ===", [
+        Log::info("=== INIZIO CALCOLO QUOTE ORDINARIO V1.9.5 ===", [
             'piano_rate_id' => $pianoRate?->id,
             'overrides' => count($this->pivotOverrides)
         ]);
@@ -94,6 +103,10 @@ class CalcoloQuoteService
      * FEATURE 2 — RIPARTIZIONE MISTA (Motore per Piani Straordinari).
      * Legge direttamente le righe fattura collegate al piano, bypassando il budget.
      * Implementa la regola dell'Override Individuale.
+     *
+     * @param PianoRate $pianoRate Il piano rate straordinario da calcolare.
+     * @return array Array associativo dei totali raggruppati per [anagrafica_id][immobile_id].
+     * @throws \RuntimeException Se il piano straordinario non ha fatture collegate.
      */
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
     {
@@ -163,6 +176,11 @@ class CalcoloQuoteService
      * Applica l'addebito diretto al 100% sull'immobile (Override),
      * dividendo la quota solo tra gli eventuali comproprietari, applicando
      * l'algoritmo Penny-Perfect per evitare scompensi centesimali.
+     *
+     * @param int $immobileId L'ID dell'immobile a cui addebitare direttamente la spesa.
+     * @param int $importoCents L'importo totale da addebitare (in centesimi).
+     * @param array &$totali Array associativo passato per riferimento per accumulare le quote.
+     * @return void
      */
     private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali): void
     {
@@ -223,6 +241,15 @@ class CalcoloQuoteService
     // METODI PRIVATI CONDIVISI (usati da entrambi i motori per il calcolo standard)
     // =========================================================================
 
+    /**
+     * Processa ricorsivamente una collezione di conti e sottoconti,
+     * applicando eventuali override (valori pivot congelati) o usando il preventivo live,
+     * e distribuendo gli importi calcolati sulle tabelle millesimali.
+     *
+     * @param Collection $conti Collezione di oggetti Conto da elaborare.
+     * @param array &$totali Array associativo passato per riferimento per accumulare le quote.
+     * @return void
+     */
     private function processaConti(Collection $conti, array &$totali): void
     {
         foreach ($conti as $conto) {
@@ -242,39 +269,54 @@ class CalcoloQuoteService
 
                 elseif ($conto->sottoconti->isNotEmpty()) {
 
-                    // FIX: snapshot — solo sottoconti esistenti alla creazione del piano
+                    // FIX: snapshot — solo sottoconti esistenti alla creazione del piano.
+                    // Se TUTTI i sottoconti risultano successivi alla creazione del piano
+                    // (es. aggiunti dalla migration dopo la pivot), usiamo i figli correnti
+                    // come destinatari: il valore pivot è già il totale "congelato" corretto.
                     $sottocontiFiltrati = $this->pianoRateCreatedAt
                         ? $conto->sottoconti->filter(
                             fn($s) => $s->created_at->lte($this->pianoRateCreatedAt)
                         )
                         : $conto->sottoconti;
 
+                    // FALLBACK: se il filtro snapshot svuota la lista ma abbiamo
+                    // un override esplicito dalla pivot, usiamo TUTTI i figli correnti.
+                    // L'importo pivot è già il valore snapshot congelato — non si gonfia.
+                    if ($sottocontiFiltrati->isEmpty() && $importoOverride > 0) {
+                        Log::warning("processaConti: snapshot vuoto per conto ID={$conto->id} ('{$conto->nome}'), fallback su tutti i sottoconti correnti. importoOverride={$importoOverride}");
+                        $sottocontiFiltrati = $conto->sottoconti;
+                    }
+
                     if ($sottocontiFiltrati->isEmpty()) {
                         continue;
                     }
 
                     $totaleOriginaleFigli = (int) $sottocontiFiltrati->sum('importo');
+                    $totaleFigli = $sottocontiFiltrati->count();
+                    $sommaAssegnata = 0;
+                    $counter = 0;
 
-                    if ($totaleOriginaleFigli != 0) {
-                        $ratio = $importoOverride / $totaleOriginaleFigli;
-                        $sommaAssegnata = 0;
-                        $counter = 0;
-                        $totaleFigli = $sottocontiFiltrati->count();
-
-                        foreach ($sottocontiFiltrati as $figlio) {
-                            $counter++;
-                            if ($counter === $totaleFigli) {
-                                $quotaFiglio = $importoOverride - $sommaAssegnata;
-                            } else {
-                                $quotaFiglio = (int) round($figlio->importo * $ratio);
-                                $sommaAssegnata += $quotaFiglio;
-                            }
-                            $this->pivotOverrides[$figlio->id] = $quotaFiglio;
+                    // Distribuzione proporzionale al budget dei figli.
+                    // FALLBACK: se tutti i figli hanno importo=0 (es. mastro vuoto creato
+                    // manualmente), ripartiamo l'override in parti uguali (Penny-Perfect equo)
+                    // per non perdere silenziosamente l'importo della pivot.
+                    foreach ($sottocontiFiltrati as $figlio) {
+                        $counter++;
+                        if ($counter === $totaleFigli) {
+                            // Ultimo figlio: assorbe il residuo per quadratura perfetta
+                            $quotaFiglio = $importoOverride - $sommaAssegnata;
+                        } elseif ($totaleOriginaleFigli > 0) {
+                            $quotaFiglio = (int) round($importoOverride * ($figlio->importo / $totaleOriginaleFigli));
+                        } else {
+                            // Budget figli tutti zero: divisione equa di emergenza
+                            $quotaFiglio = (int) round($importoOverride / $totaleFigli);
                         }
-
-                        $this->processaConti($sottocontiFiltrati, $totali); // ← filtrati
-                        continue;
+                        $sommaAssegnata += $quotaFiglio;
+                        $this->pivotOverrides[$figlio->id] = $quotaFiglio;
                     }
+
+                    $this->processaConti($sottocontiFiltrati, $totali);
+                    continue;
                 }
                 
                 continue; 
@@ -297,7 +339,17 @@ class CalcoloQuoteService
         }
     }
 
-    private function distribuisciSuTabelle($conto, $importoConto, array &$totali): void
+    /**
+     * Distribuisce l'importo di un conto di spesa/uscita (o entrata) sulle anagrafiche (condomini).
+     * Il calcolo viene effettuato distribuendo l'importo proporzionalmente in base ai
+     * millesimi (tabelle millesimali) e alle percentuali di ripartizione (proprietario/inquilino).
+     *
+     * @param Conto $conto Il conto (capitolo di spesa) da elaborare.
+     * @param int $importoConto L'importo totale da distribuire (in centesimi). Positivo per spese, negativo per entrate.
+     * @param array &$totali Array associativo passato per riferimento per accumulare le quote per [anagrafica_id][immobile_id].
+     * @return void
+     */
+    private function distribuisciSuTabelle(Conto $conto, int $importoConto, array &$totali): void
     {
         $weights = [];
 
@@ -387,6 +439,15 @@ class CalcoloQuoteService
         }
     }
 
+    /**
+     * Distribuisce un importo totale su un array di pesi proporzionali (Penny-Perfect).
+     * Garantisce che la somma delle quote distribuite sia esattamente uguale all'importo totale,
+     * risolvendo i problemi di arrotondamento e allocando eventuali centesimi rimanenti ai soggetti con resti maggiori.
+     *
+     * @param array $weights Array associativo di pesi normalizzati (chiave stringa => float peso). La somma dei pesi deve essere 1.
+     * @param int $importoTotale L'importo totale da distribuire (in centesimi).
+     * @return array Array associativo con le stesse chiavi di $weights contenente le quote esatte (in centesimi).
+     */
     private function distribuisciImporto(array $weights, int $importoTotale): array
     {
         $result = [];

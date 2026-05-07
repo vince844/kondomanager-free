@@ -13,13 +13,22 @@ return new class extends Migration {
         // max_execution_time = 60s di default — insufficiente con molti piani rate.
         set_time_limit(0);
 
-        // PULIZIA TOTALE (siamo in Beta, ricalcoliamo da zero per sicurezza)
-        DB::table('piano_rate_capitoli')->truncate();
+        // PULIZIA SELETTIVA: Ricalcoliamo lo storico solo per i piani in bozza o approvati.
+        // I piani emessi o chiusi hanno già generato rate e il loro snapshot non deve
+        // essere alterato retroattivamente, altrimenti perdono la storicizzazione.
+        $pianiDaRicalcolare = DB::table('piani_rate')
+            ->where('attivo', true)
+            ->whereIn('stato', ['bozza', 'approvato'])
+            ->pluck('id');
 
-        // Recuperiamo tutti i piani attivi via cursor (lazy) invece di ->get()
+        DB::table('piano_rate_capitoli')
+            ->whereIn('piano_rate_id', $pianiDaRicalcolare)
+            ->delete();
+
+        // Recuperiamo i piani da ricalcolare via cursor (lazy) invece di ->get()
         // per evitare di caricare potenzialmente migliaia di record in RAM
         DB::table('piani_rate')
-            ->where('attivo', true)
+            ->whereIn('id', $pianiDaRicalcolare)
             ->orderBy('id')
             ->lazyById()
             ->each(function (object $piano) {
@@ -61,6 +70,15 @@ return new class extends Migration {
 
     public function down(): void
     {
-        DB::table('piano_rate_capitoli')->truncate();
+        // Rollback simmetrico all'up(): rimuoviamo solo i capitoli dei piani
+        // che avremmo ripopolato, preservando lo snapshot dei piani emessi/chiusi.
+        $pianiDaRimuovere = DB::table('piani_rate')
+            ->where('attivo', true)
+            ->whereIn('stato', ['bozza', 'approvato'])
+            ->pluck('id');
+
+        DB::table('piano_rate_capitoli')
+            ->whereIn('piano_rate_id', $pianiDaRimuovere)
+            ->delete();
     }
 };

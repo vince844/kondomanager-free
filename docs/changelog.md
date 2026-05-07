@@ -2,6 +2,29 @@
 
 Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
 
+## [1.9.29] - Piano Rate Engine Fixes & Snapshot Architecture
+
+### Bugfix: Calcolo Totale Piano Rate (Filtro Snapshot)
+
+**Contesto:** Il sistema utilizza un filtro di "fotografia temporale" (snapshot) durante il calcolo del piano rate per evitare che i sottoconti aggiunti successivamente alla sua creazione ne gonfino l'importo.
+**Problema:** Se la struttura del piano dei conti veniva popolata in un momento successivo (es. tramite la migrazione automatica della v1.9), il filtro escludeva completamente interi capitoli di spesa (come "Manutenzione Ordinaria") perché tutti i suoi sottoconti risultavano creati dopo il piano rate. Questo portava a un totale rate inferiore al preventivo (es. 4.610€ anziché 9.600€).
+**Soluzione:** Aggiunto un fallback in `CalcoloQuoteService`: se il filtro snapshot esclude tutti i figli, ma esiste un importo totale già congelato (override) nella tabella pivot `piano_rate_capitoli`, il sistema usa ora tutti i figli correnti per distribuire l'importo corretto, preservando la quadratura senza gonfiare il preventivo.
+
+### Ottimizzazione: Deep Eager Loading Motore di Calcolo
+
+**Problema:** Il `CalcoloQuoteService` caricava le relazioni in modo superficiale. Durante la discesa ricorsiva nei sottoconti, Laravel era costretto a eseguire il lazy loading delle tabelle millesimali per ogni singola voce. Nelle versioni di Laravel con `preventLazyLoading(true)` questo generava un Fatal Error, o in alternativa causava un elevato numero di query (N+1 problem).
+**Soluzione:** Implementato il Deep Eager Loading (`sottoconti.tabelleMillesimali...`) direttamente all'avvio del calcolo, riducendo drasticamente le query e prevenendo crash.
+
+### Hardening: Fallback Divisione Equa (Penny-Perfect)
+
+**Problema:** Se un capitolo padre aveva dei sottoconti, ma il totale del loro budget era 0 (es. struttura creata manualmente o non ancora valorizzata), l'importo congelato del padre veniva ignorato silenziosamente e andava perso.
+**Soluzione:** Aggiunto un comportamento di emergenza in `CalcoloQuoteService`: se il budget totale dei figli è zero, l'importo del padre viene distribuito in parti uguali tra i figli, garantendo sempre che l'intero budget allocato venga ripartito sulle rate.
+
+### Architettura: Snapshot Puro per i Capitoli Orfani
+
+**Problema (Debito Tecnico):** L'azione `SyncOrphanChaptersAction` associava i nuovi capitoli orfani al piano rate inserendoli nella pivot con importo `NULL`. Questo forzava il motore a leggere il valore "live" dal preventivo, rompendo il principio di immutabilità (snapshot) necessario per la corretta chiusura dell'esercizio futuro.
+**Soluzione:** Sostituita la logica con un calcolo "Snapshot Puro". Durante la sincronizzazione, il sistema esegue ora una somma ricorsiva del preventivo effettivo (filtrando i conti tecnici) e salva il valore esatto nella pivot, congelandolo definitivamente per mantenere la coerenza storica anche in caso di future modifiche al preventivo.
+
 ## [1.9.28] - Migration Resilience & Collation Fix (Hosting Condivisi)
 
 ### Hardening: Pattern Idempotente `cleanupPartialMigration` sulle Migration Critiche

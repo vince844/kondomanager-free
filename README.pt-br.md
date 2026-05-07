@@ -6,7 +6,7 @@
 
 # KondoManager - Software Gratuito e de Código Aberto para Gestão de Condomínios
 
-**KondoManager** é um software inovador, gratuito e de código aberto para gestão de condomínios, desenvolvido em **Laravel** e base de dados **MySQL**. Pensado para simplificar a vida dos administradores de condomínios, oferecendo ao mesmo tempo transparência e serviços digitais para os condóminos.
+**KondoManager** é o primeiro software open source e self-hosted para gestão de condomínios, desenvolvido em **Laravel, Vue 3, Inertia.js e MySQL**. Concebido para administradores de condomínios que precisam de uma ferramenta a sério: contabilidade em partidas dobradas, planos de prestações com validação legal, portal digital para condóminos e atualizações automáticas — sem subscrições, sem vendor lock-in.
 
 ---
 
