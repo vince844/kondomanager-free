@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Invito;
 use App\Models\User;
 use App\Notifications\Users\RegisteredUserNotification;
+use App\Settings\GeneralSettings;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
@@ -24,16 +25,26 @@ class UserRegistrationService
                 'remember_token' => Str::random(60),
             ]);
 
-            $user->assignRole(Role::UTENTE->value);
+            // 1. Assegnazione del ruolo dinamico dalle Impostazioni Generali
+            $settings = app(GeneralSettings::class);
+            $user->assignRole($settings->default_user_role);
 
+            // 2. Gestione dell'invito (se presente)
             $invito = Invito::where('email', $user->email)->first();
             if ($invito) {
                 $invito->accepted_at = now();
                 $invito->save();
             }
 
-            $admins = User::role([Role::AMMINISTRATORE->value])->get();
-            Notification::send($admins, new RegisteredUserNotification());
+            // 3. Notifica agli amministratori (escludendo l'utente appena registrato)
+            $admins = User::role([Role::AMMINISTRATORE->value])
+                ->where('id', '!=', $user->id)
+                ->get();
+
+            // 4. Invia la notifica solo se ci sono altri amministratori
+            if ($admins->isNotEmpty()) {
+                Notification::send($admins, new RegisteredUserNotification());
+            }
 
             return $user;
         });

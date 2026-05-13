@@ -108,15 +108,40 @@ class BudgetCoverageService
 
                 if ($contoModel && $contoModel->sottoconti->isNotEmpty()) {
 
-                    // FIX: solo sottoconti che esistevano alla creazione del piano
-                    $sottocontiValidi = $contoModel->sottoconti->filter(
-                        fn($s) => $s->created_at->lte($piano->created_at)
-                    );
+                    // FIX: solo sottoconti che esistevano alla creazione del piano.
+                    // Guard difensiva: se created_at è assente o NULL (es. stdClass
+                    // nei test unitari) includiamo tutti i sottoconti correnti.
+                    $pianoCreatedAt = $piano->created_at ?? null;
+                    $sottocontiValidi = ($pianoCreatedAt instanceof \Carbon\Carbon)
+                        ? $contoModel->sottoconti->filter(
+                            fn($s) => $s->created_at?->lte($pianoCreatedAt) ?? true
+                          )
+                        : $contoModel->sottoconti;
 
-                    if ($sottocontiValidi->isEmpty()) continue;
+                    if ($sottocontiValidi->isEmpty()) {
+                        // FALLBACK identico a CalcoloQuoteService (commit 3dc7981):
+                        // se il filtro snapshot svuota la lista ma la pivot ha un
+                        // importo congelato > 0, usiamo tutti i figli correnti.
+                        // Il valore pivot è già uno snapshot — non si gonfia.
+                        // Caso reale: piano creato alle 13:28, sottoconti aggiunti
+                        // alle 13:37-43, migration popola la pivot giorni dopo.
+                        $pivotImporto = (int) ($capitolo->pivot->importo ?? 0);
+                        if ($pivotImporto > 0) {
+                            $sottocontiValidi = $contoModel->sottoconti;
+                        } else {
+                            continue;
+                        }
+                    }
 
                     $residuoPiano = is_null($capitolo->pivot->importo)
-                        ? (int) $capitolo->importo
+                        ? (function () use ($capitolo, $contoModel): int {
+                            $padreBudget = (int) $capitolo->importo;
+                            // Mastro padre (importo=0): NULL significa "copri tutto il fabbisogno dei figli"
+                            if ($padreBudget === 0) {
+                                $padreBudget = (int) $contoModel->sottoconti->sum('importo');
+                            }
+                            return $padreBudget;
+                          })()
                         : (int) $capitolo->pivot->importo;
 
                     $map[$contoModel->id] = ($map[$contoModel->id] ?? 0) + $residuoPiano;

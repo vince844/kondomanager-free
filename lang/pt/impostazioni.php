@@ -95,6 +95,8 @@ return [
         'select_building_description'           => 'Selecione o condomínio a abrir automaticamente após o início de sessão.',
         'user_registration_title'               => 'Ativar registo de utilizadores',
         'user_registration_description'         => 'Se ativado, os utilizadores podem registar-se a partir da página inicial.',
+        'default_role_title'                    => 'Função padrão para novos usuários',
+        'default_role_description'              => 'Escolha qual função atribuir automaticamente aos usuários que se registram pelo frontend.',
 
         'mail_settings_title'       => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',
@@ -153,6 +155,7 @@ return [
         'mail_password_enter' => 'Insira a palavra-passe SMTP',
         'mail_from_address'   => 'ex: geral@seu-dominio.pt',
         'test_recipient'      => 'Inserir e-mail para o teste',
+        'select_role'         => 'Selecione uma função',
 
         'language' => [
             'it' => 'Italiano',

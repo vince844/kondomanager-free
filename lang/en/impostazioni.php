@@ -95,6 +95,8 @@ return [
         'select_building_description'           => 'Select the building to open automatically after login.',
         'user_registration_title'               => 'Enable user registration',
         'user_registration_description'         => 'If enabled, users can register from the home page.',
+        'default_role_title'                    => 'Default role for new users',
+        'default_role_description'              => 'Choose which role to automatically assign to users who register from the frontend.',
 
         'mail_settings_title'       => 'Email configuration',
         'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',
@@ -153,6 +155,7 @@ return [
         'mail_password_enter' => 'Enter SMTP password',
         'mail_from_address'   => 'e.g. admin@your-domain.com',
         'test_recipient'      => 'Enter email for test',
+        'select_role'         => 'Select a role',
 
         'language' => [
             'it' => 'Italian',

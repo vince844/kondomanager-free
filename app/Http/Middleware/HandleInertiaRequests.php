@@ -30,6 +30,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'name' => config('app.name'),
             'version' => config('app.version'),
+            'is_demo' => env('IS_DEMO', false),
             
             // Dati per Vue I18n
             'locale' => app()->getLocale(),

@@ -62,20 +62,34 @@ class UserDashboardController extends Controller
                 limit: 3
             );
 
-            // Fetch raw events
+            // 1. Fetch dell'intera collection: il waterfall deve vedere tutti gli eventi
             $eventiCollection = $this->recurrenceService->getEventsInNextDays(
-                days: 30,
+                days: 90, // ampliato come per la dashboard admin
                 anagrafica: $anagrafica,
                 condominioIds: $condominioIds
             );
 
-            // 3. APPLICAZIONE WATERFALL (DASHBOARD)
+            // 2. Waterfall applicato sull'intera collection (invariato)
             $eventiProcessati = $this->applyFinancialWaterfall(
-                $eventiCollection, 
+                $eventiCollection,
                 $anagrafica->id
             );
-            
-            $eventiLimited = $eventiProcessati->take(50);
+
+            // 3. Paginazione manuale del risultato processato
+            $perPage = 10;
+            $page = (int) $request->query('page', 1);
+            $total = $eventiProcessati->count();
+
+            $eventiPaginati = new \Illuminate\Pagination\LengthAwarePaginator(
+                $eventiProcessati->forPage($page, $perPage)->values(),
+                $total,
+                $perPage,
+                $page,
+                [
+                    'path' => \Illuminate\Pagination\LengthAwarePaginator::resolveCurrentPath(),
+                    'query' => $request->query(),
+                ]
+            );
 
         } catch (\Exception $e) {
             Log::error('Error getting dashboard widgets: ' . $e->getMessage());
@@ -85,8 +99,8 @@ class UserDashboardController extends Controller
         return Inertia::render('dashboard/UserDashboard', [
             'segnalazioni'  => SegnalazioneResource::collection($segnalazioni),
             'comunicazioni' => ComunicazioneResource::collection($comunicazioni),
-            'eventi'        => EventoResource::collection($eventiLimited),
             'documenti'     => DocumentoResource::collection($documenti),
+            'eventi'        => Inertia::scroll(EventoResource::collection($eventiPaginati)),
         ]);
     }
 }

@@ -1,12 +1,7 @@
 <?php
 
 use App\Models\Condominio;
-use App\Models\Esercizio;
 use App\Models\Gestione;
-use App\Models\Gestionale\PianoRate;
-use App\Models\Gestionale\Rata;
-use App\Models\Gestionale\RataQuote; // Corretto in RataQuote
-use App\Models\User;
 use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -14,112 +9,76 @@ use Illuminate\Support\Facades\DB;
 uses(RefreshDatabase::class);
 
 beforeEach(function () {
-    $this->service = new SaldoEsercizioService();
+    $this->service    = new SaldoEsercizioService();
     $this->condominio = Condominio::factory()->create();
 });
 
-test('calcola correttamente il saldo matematico dall\'esercizio precedente chiuso', function () {
-    // 1. Creiamo l'Anagrafica reale per evitare il Foreign Key constraint failed
-    $anagrafica = \App\Models\Anagrafica::factory()->create();
+// ─── TEST 1 ──────────────────────────────────────────────────────────────────
+// Verifica che il saldo matematico venga calcolato correttamente
+// dalla tabella `saldi` (wallet v1.9) quando la gestione non è bloccata.
+// ─────────────────────────────────────────────────────────────────────────────
+test('calcola correttamente il saldo matematico dalla tabella saldi v1.9', function () {
+    $gestione = Gestione::factory()->create([
+        'condominio_id'   => $this->condominio->id,
+        'saldo_applicato' => false,
+    ]);
 
-    // 2. Setup Esercizio 2025 (CHIUSO)
-    $esercizio2025 = Esercizio::factory()->create([
+    $esercizio = \App\Models\Esercizio::factory()->create([
         'condominio_id' => $this->condominio->id,
-        'data_inizio' => '2025-01-01',
-        'data_fine' => '2025-12-31',
-        'stato' => 'chiuso'
     ]);
-
-    // 3. Setup Gestione e Piano Rate nel 2025
-    $gestione2025 = Gestione::factory()->create(['condominio_id' => $this->condominio->id]);
-    $gestione2025->esercizi()->attach($esercizio2025->id);
-    
-    $pianoRate2025 = PianoRate::factory()->create(['gestione_id' => $gestione2025->id]);
-    $rata = Rata::factory()->create(['piano_rate_id' => $pianoRate2025->id]);
-
-    // 4. Simula un debito: Importo 100€, Pagato 0€
-    // Usiamo l'ID dell'anagrafica appena creata
-    RataQuote::factory()->create([
-        'rata_id' => $rata->id,
-        'anagrafica_id' => $anagrafica->id,
-        'importo' => 10000, 
-        'importo_pagato' => 0,
-        'stato' => 'da_pagare'
-    ]);
-
-    // 5. Setup Esercizio 2026 (CORRENTE)
-    $esercizio2026 = Esercizio::factory()->create([
+    $immobile = \App\Models\Immobile::create([
         'condominio_id' => $this->condominio->id,
-        'data_inizio' => '2026-01-01',
-        'data_fine' => '2026-12-31',
-        'stato' => 'aperto'
+        'nome'          => 'Int 1',
+        'descrizione'   => 'Test',
+        'interno'       => '1',
+        'foglio'        => '1', 'particella' => '1', 'subalterno' => '1',
     ]);
 
-    // 6. Esegui il calcolo
-    $result = $this->service->calcolaSaldoApplicabile($this->condominio, $esercizio2026, $anagrafica->id);
+    DB::table('saldi')->insert([
+        'gestione_id'    => $gestione->id,
+        'esercizio_id'   => $esercizio->id,
+        'condominio_id'  => $this->condominio->id,
+        'immobile_id'    => $immobile->id,
+        'anagrafica_id'  => null,
+        'saldo_iniziale' => 10000, // 100€ in centesimi
+        'is_applicato'   => false,
+        'created_at'     => now(),
+        'updated_at'     => now(),
+    ]);
 
-    // 7. Asserzioni
+    $result = $this->service->calcolaSaldoApplicabile($gestione);
+
     expect($result['saldo'])->toBe(10000)
         ->and($result['applicabile'])->toBeTrue();
 });
 
-test('mantiene saldo_applicato a 0 se la creazione del piano rate fallisce', function () {
-    // Setup con saldo a 0
-    $ordinaria = Gestione::factory()->create(['saldo_applicato' => 0]);
-    
-    // Forziamo il CreatorService a lanciare un'eccezione (simulando un errore DB improvviso)
-    $this->mock(PianoRateCreatorService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('creaPianoRate')->andThrow(new \Exception("Errore imprevisto"));
-    });
-
-    // Eseguiamo la chiamata
-    // OPZIONE A — se non servono parametri
-    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store'));
-
-    // OPZIONE B — se servono i parametri del condominio/esercizio
-    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-rate.store', [
-        'condominio' => $condominio->id,
-        'esercizio'  => $esercizio->id,
-    ]));
-
-    // Verifichiamo che il valore sia rimasto 0 (Rollback della transazione)
-    $valoreDb = DB::table('gestioni')->where('id', $ordinaria->id)->value('saldo_applicato');
-    expect((int)$valoreDb)->toBe(0);
-});
-
-test('blocca l\'applicazione se un\'altra gestione ha già il lock', function () {
-    $esercizio = Esercizio::factory()->create([
-        'condominio_id' => $this->condominio->id,
-        'stato' => 'aperto'
-    ]);
-
+// ─── TEST 2 ──────────────────────────────────────────────────────────────────
+// Il service deve restituire applicabile=false se la gestione ha già
+// il lock `saldo_applicato = true`.
+// ─────────────────────────────────────────────────────────────────────────────
+test('blocca l\'applicazione se la gestione ha già il lock saldo_applicato', function () {
     $ordinaria = Gestione::factory()->create([
-        'condominio_id' => $this->condominio->id,
-        'nome' => 'Ordinaria',
-        'saldo_applicato' => true 
+        'condominio_id'   => $this->condominio->id,
+        'nome'            => 'Ordinaria',
+        'saldo_applicato' => true,
     ]);
-    $ordinaria->esercizi()->attach($esercizio->id);
 
-    $result = $this->service->calcolaSaldoApplicabile($this->condominio, $esercizio, 1);
+    $result = $this->service->calcolaSaldoApplicabile($ordinaria);
 
-    // Usiamo un controllo più flessibile sul messaggio per evitare errori di case-sensitivity
-    expect($result['applicabile'])->toBeFalse();
-    expect(strtolower($result['motivo']))->toContain('ordinaria'); 
+    expect($result['applicabile'])->toBeFalse()
+        ->and(strtolower($result['motivo']))->toContain('ordinaria');
 });
 
-test('permette l\'applicazione se nessuna gestione ha il lock', function () {
-    $esercizio = Esercizio::factory()->create([
-        'condominio_id' => $this->condominio->id,
-        'stato' => 'aperto'
+// ─── TEST 3 ──────────────────────────────────────────────────────────────────
+// Se la gestione NON ha il lock, il service deve restituire applicabile=true.
+// ─────────────────────────────────────────────────────────────────────────────
+test('permette l\'applicazione se la gestione non ha il lock', function () {
+    $gestione = Gestione::factory()->create([
+        'condominio_id'   => $this->condominio->id,
+        'saldo_applicato' => false,
     ]);
 
-    $vecchiaStraordinaria = Gestione::factory()->create([
-        'condominio_id' => $this->condominio->id,
-        'saldo_applicato' => false 
-    ]);
-    $vecchiaStraordinaria->esercizi()->attach($esercizio->id);
-
-    $result = $this->service->calcolaSaldoApplicabile($this->condominio, $esercizio, 1);
+    $result = $this->service->calcolaSaldoApplicabile($gestione);
 
     expect($result['applicabile'])->toBeTrue();
 });

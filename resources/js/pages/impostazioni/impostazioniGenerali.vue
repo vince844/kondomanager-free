@@ -1,5 +1,4 @@
 <script setup lang="ts">
-
 import { computed, watch, onMounted, ref, nextTick } from 'vue'
 import { Head, useForm, usePage, Link } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
@@ -54,6 +53,8 @@ const {
   open_condominio_on_login,
   default_condominio_id,
   condomini,
+  default_user_role, 
+  roles,            
 } = page.props
 
 /* -------------------------------------------------
@@ -63,13 +64,12 @@ const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: (language || 'it') as SupportedLanguage,
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
-  default_condominio_id: default_condominio_id
-    ? String(default_condominio_id)
-    : '',
+  default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
+  default_user_role: default_user_role || 'utenti', 
 })
 
 /* -------------------------------------------------
- * Selected language label (SOLUZIONE)
+ * Selected language label
  * ------------------------------------------------- */
 const selectedLanguageLabel = computed(() => {
   return languageLabels.value[form.language].value
@@ -115,23 +115,16 @@ const submit = () => {
     <div class="px-4 py-6">
       <Heading
         :title="trans('impostazioni.header.general_settings_title')"
-        :description="
-          trans('impostazioni.header.general_settings_description')
-        "
+        :description="trans('impostazioni.header.general_settings_description')"
       />
 
       <div v-if="flashMessage" class="py-2">
-        <Alert
-          :message="flashMessage.message"
-          :type="flashMessage.type"
-        />
+        <Alert :message="flashMessage.message" :type="flashMessage.type" />
       </div>
 
       <form @submit.prevent="submit">
         <Card class="border shadow-none p-4">
-          <div
-            class="flex flex-col w-full sm:flex-row sm:justify-end mb-4"
-          >
+          <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
             <Link
               as="button"
               href="/impostazioni"
@@ -144,13 +137,9 @@ const submit = () => {
 
           <CardContent class="space-y-4 p-0">
             <!-- LANGUAGE -->
-            <div
-              class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4"
-            >
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
-                <label
-                  class="block text-sm font-medium leading-none mb-1"
-                >
+                <label class="block text-sm font-medium leading-none mb-1">
                   {{ trans('impostazioni.dialogs.language_settings_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -166,55 +155,34 @@ const submit = () => {
                         {{ selectedLanguageLabel }}
                       </SelectValue>
                     </SelectTrigger>
-
                     <SelectContent>
-                      <SelectItem value="it">
-                        {{ languageLabels.it.value }}
-                      </SelectItem>
-                      <SelectItem value="en">
-                        {{ languageLabels.en.value }}
-                      </SelectItem>
-                      <SelectItem value="pt">
-                        {{ languageLabels.pt.value }}
-                      </SelectItem>
+                      <SelectItem value="it">{{ languageLabels.it.value }}</SelectItem>
+                      <SelectItem value="en">{{ languageLabels.en.value }}</SelectItem>
+                      <SelectItem value="pt">{{ languageLabels.pt.value }}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div
-                  v-else
-                  class="w-full h-10 bg-muted/50 rounded-md animate-pulse"
-                />
+                <div v-else class="w-full h-10 bg-muted/50 rounded-md animate-pulse" />
               </div>
             </div>
 
             <!-- OPEN CONDOMINIO -->
-            <div
-              class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4"
-            >
+            <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
-                <label
-                  class="block text-sm font-medium leading-none mb-1"
-                >
+                <label class="block text-sm font-medium leading-none mb-1">
                   {{ trans('impostazioni.dialogs.default_building_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
                   {{ trans('impostazioni.dialogs.default_building_description') }}
                 </p>
               </div>
-
               <Switch v-model="form.open_condominio_on_login" />
             </div>
 
             <!-- DEFAULT CONDOMINIO -->
-            <div
-              v-if="form.open_condominio_on_login"
-              class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4"
-            >
+            <div v-if="form.open_condominio_on_login" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
-                <label
-                  class="block text-sm font-medium leading-none mb-1"
-                >
+                <label class="block text-sm font-medium leading-none mb-1">
                   {{ trans('impostazioni.dialogs.select_building_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
@@ -224,67 +192,69 @@ const submit = () => {
 
               <div class="w-full sm:w-[240px] shrink-0">
                 <Select v-model="form.default_condominio_id">
-                  <SelectTrigger
-                    class="w-full"
-                    :class="{
-                      'border-red-500':
-                        form.errors.default_condominio_id,
-                    }"
-                  >
-                    <SelectValue
-                      :placeholder="trans('impostazioni.placeholder.select_building')"
-                    />
+                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_condominio_id }">
+                    <SelectValue :placeholder="trans('impostazioni.placeholder.select_building')" />
                   </SelectTrigger>
-
                   <SelectContent>
-                    <SelectItem
-                      v-for="c in condomini"
-                      :key="c.id"
-                      :value="String(c.id)"
-                    >
+                    <SelectItem v-for="c in condomini" :key="c.id" :value="String(c.id)">
                       {{ c.nome }}
                     </SelectItem>
                   </SelectContent>
                 </Select>
-
-                <p
-                  v-if="form.errors.default_condominio_id"
-                  class="text-sm text-red-500 mt-1"
-                >
+                <p v-if="form.errors.default_condominio_id" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_condominio_id }}
                 </p>
               </div>
             </div>
 
             <!-- REGISTRATION -->
-            <div
-              class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4"
-            >
+            <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
               <div class="flex-1">
-                <label
-                  class="block text-sm font-medium leading-none mb-1"
-                >
+                <label class="block text-sm font-medium leading-none mb-1">
                   {{ trans('impostazioni.dialogs.user_registration_title') }}
                 </label>
                 <p class="text-sm text-muted-foreground">
                   {{ trans('impostazioni.dialogs.user_registration_description') }}
                 </p>
               </div>
-
-              <Switch
-                v-model="form.user_frontend_registration"
-              />
+              <Switch v-model="form.user_frontend_registration" />
             </div>
+
+            <!-- DEFAULT USER ROLE (NUOVO BLOCCO) -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.default_role_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.default_role_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Select v-model="form.default_user_role">
+                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_user_role }">
+                    <SelectValue :placeholder="trans('impostazioni.placeholder.select_role')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <!-- Itera sui ruoli passati dal backend -->
+                    <SelectItem v-for="role in roles" :key="role.id" :value="role.name">
+                      <!-- Trasforma la prima lettera in maiuscolo o traduci se preferisci -->
+                      <span class="capitalize">{{ role.name }}</span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p v-if="form.errors.default_user_role" class="text-sm text-red-500 mt-1">
+                  {{ form.errors.default_user_role }}
+                </p>
+              </div>
+            </div>
+
           </CardContent>
 
-          <CardFooter
-            class="px-0 pt-6 flex items-center gap-4"
-          >
+          <CardFooter class="px-0 pt-6 flex items-center gap-4">
             <Button :disabled="form.processing">
-              <span
-                v-if="form.processing"
-                class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2"
-              />
+              <span v-if="form.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
               {{ trans('impostazioni.actions.save_settings') }}
             </Button>
           </CardFooter>

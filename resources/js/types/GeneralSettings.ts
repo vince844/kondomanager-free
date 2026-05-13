@@ -6,6 +6,11 @@ export interface CondominioOption {
   nome: string
 }
 
+export interface RoleOption {
+  id: number
+  name: string
+}
+
 export interface GeneralSettings extends PageProps {
   flash?: { message?: Flash }
   can_register: boolean
@@ -13,4 +18,6 @@ export interface GeneralSettings extends PageProps {
   open_condominio_on_login: boolean
   default_condominio_id: number | null
   condomini: CondominioOption[]
+  default_user_role: string
+  roles: RoleOption[]
 }

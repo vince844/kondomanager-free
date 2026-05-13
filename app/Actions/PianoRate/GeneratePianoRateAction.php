@@ -21,11 +21,11 @@ class GeneratePianoRateAction
     public function execute(PianoRate $pianoRate, ?bool $forzaApplicazioneSaldi = null, array $saldiConfig = []): array
     {
         $pianoRate->refresh();
-        
+
         Log::info("=== GENERAZIONE PIANO RATE ===");
         Log::info("▶ Tipo Piano: " . strtoupper($pianoRate->tipo));
 
-        $pianoRate->load(['ricorrenza', 'fatture']); // Carichiamo la pivot delle fatture
+        $pianoRate->load(['ricorrenza', 'fatture']);
 
         if (!$pianoRate->relationLoaded('gestione')) {
             $pianoRate->load('gestione');
@@ -33,28 +33,44 @@ class GeneratePianoRateAction
         $gestione = $pianoRate->gestione;
 
         // =========================================================================
-        // IL BIVIO ARCHITETTURALE (Rule Engine Routing)
+        // BIVIO ARCHITETTURALE
         // =========================================================================
         if ($pianoRate->tipo === 'straordinario') {
-            // FEATURE 2: Legge direttamente dalle righe fattura collegate, applicando l'Override
             $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate);
         } else {
-            // FEATURE 1 (Standard): Legge dal Budget/Preventivo tramite tabelle millesimali
             $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate);
         }
         // =========================================================================
 
+        // =========================================================================
+        // GUARD PRE-GENERAZIONE (fail-fast)
+        // Blocca la generazione se il calcolo ha prodotto zero soggetti/importi.
+        // Evita che il piano venga salvato come "completato" con quote_create=0
+        // mascherando un errore di configurazione (millesimi mancanti, anagrafiche
+        // non configurate, tabelle millesimali vuote).
+        // =========================================================================
+        if (empty($totaliPerImmobile)) {
+            Log::error("GeneratePianoRate: GUARD — totaliPerImmobile vuoto per piano_rate_id={$pianoRate->id}. Generazione bloccata.", [
+                'piano_rate_id' => $pianoRate->id,
+                'tipo'          => $pianoRate->tipo,
+                'gestione_id'   => $gestione->id,
+            ]);
+
+            throw new \RuntimeException(
+                "Impossibile generare il piano rate: nessuna quota calcolata. " .
+                "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, " .
+                "(2) ogni immobile abbia almeno un condòmino attivo associato, " .
+                "(3) ogni voce di spesa sia collegata a una tabella millesimale."
+            );
+        }
+        // =========================================================================
+
         // 3. GESTIONE SALDI
-        $flagDb = $gestione->fresh()->saldo_applicato; 
-        
+        $flagDb   = $gestione->fresh()->saldo_applicato;
         $applicare = $forzaApplicazioneSaldi !== null ? $forzaApplicazioneSaldi : $flagDb;
 
-        // Se è un piano straordinario (es. fattura muratore urgente), di solito non si applicano i saldi pregressi.
-        // Lasciamo comunque la facoltà all'amministratore, ma forziamo false se non esplicitamente richiesto.
         if ($pianoRate->tipo === 'straordinario') {
             Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
-            // Se nel tuo front-end non passi il flag per gli straordinari, possiamo forzarlo a false.
-            // $applicare = false; 
         }
 
         if ($applicare) {
@@ -82,11 +98,9 @@ class GeneratePianoRateAction
         try {
             Log::info("▶ START AUTO-CHIUSURA INBOX per Piano Rate ID: {$pianoRate->id}");
 
-            // Se è un piano straordinario, chiudiamo i task basandoci direttamente sulle fatture collegate!
             if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture->isNotEmpty()) {
                 $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
             } else {
-                // Vecchia logica per i piani ordinari (basata sui capitoli)
                 if (!$pianoRate->relationLoaded('capitoli')) {
                     $pianoRate->load('capitoli');
                 }
@@ -102,7 +116,7 @@ class GeneratePianoRateAction
 
             if (!empty($fattureIds)) {
                 $eventiChiusi = 0;
-                
+
                 foreach ($fattureIds as $fattId) {
                     $evento = Evento::where('meta->type', 'emissione_rata_sopravvenienza')
                         ->where('meta->context->fattura_id', $fattId)
@@ -113,14 +127,13 @@ class GeneratePianoRateAction
                         $meta = $evento->meta;
                         $meta['requires_action'] = false;
                         $meta['is_completed']    = true;
-                        
                         $evento->meta = $meta;
                         $evento->save();
-                        
                         $eventiChiusi++;
                     }
                 }
-                Log::info("✅ AUTO-CHIUSURA INBOX completata. Task risolti: {$eventiChiusi}");
+
+                Log::info("AUTO-CHIUSURA INBOX completata. Task risolti: {$eventiChiusi}");
             }
         } catch (\Exception $e) {
             Log::error("❌ Errore Auto-chiusura Inbox: " . $e->getMessage());

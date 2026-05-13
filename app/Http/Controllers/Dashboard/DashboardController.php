@@ -24,13 +24,13 @@ class DashboardController extends Controller
 
     public function __invoke(Request $request): Response
     {
-        // MODIFICA QUI: Aggiungiamo il filtro per escludere le rate condòmini
+
         $events = $this->recurrenceService->getEventsInNextDays(
-            days: 30,
-            filters: [
-                'exclude_type' => 'scadenza_rata_condomino'
-            ]
-        )->take(3);
+            days: 90,
+            filters: ['exclude_type' => 'scadenza_rata_condomino'],
+            page: (int) $request->query('page', 1), 
+            perPage: 10,
+        );
         
         $stats = [
             'total_condomini'     => Condominio::count(),
@@ -58,7 +58,7 @@ class DashboardController extends Controller
                     ->whereNull('documentable_type')
                     ->latest()->limit(3)->get()
             ),
-            'eventi' => EventoResource::collection($events),
+            'eventi' => Inertia::scroll(EventoResource::collection($events)),
         ]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Settings;
 
+use App\Enums\Role;
 use Spatie\LaravelSettings\Settings;
 
 class GeneralSettings extends Settings
@@ -11,6 +12,7 @@ class GeneralSettings extends Settings
     public string $version = '1.7.0';
     public bool $external_cron_enabled = false;
     public ?string $external_cron_token = null;
+    public string $default_user_role = Role::UTENTE->value;
     
     public static function group(): string
     {

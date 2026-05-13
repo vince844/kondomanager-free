@@ -1,10 +1,10 @@
 <script setup lang="ts">
 
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage, InfiniteScroll } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { House, TriangleAlert, CalendarClock, HardDrive, Bell, ArrowRight, AlertCircle } from 'lucide-vue-next';
+import { House, TriangleAlert, CalendarClock, HardDrive, Bell, ArrowRight, AlertCircle, Mail, X, Check, Loader2 } from 'lucide-vue-next';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
@@ -13,7 +13,7 @@ import BuildingsDropdown from '@/components/BuildingsDropdown.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
-import { computed } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
 import type { Documento } from '@/types/documenti';
@@ -44,8 +44,67 @@ const props = defineProps<{
     segnalazioni: Segnalazione[];
     comunicazioni: Comunicazione[];
     documenti: Documento[];
-    eventi: Evento[];
-}>();
+    eventi: {          
+        total: number;
+        data: Evento[];
+    };
+}>()
+
+// ─── LOGICA NEWSLETTER AVANZATA ───
+const showNewsletterBanner = ref(false);
+const isSubscribing = ref(false);
+const isSuccess = ref(false);
+
+const userEmail = computed(() => (page.props.auth as any).user?.email);
+const isDemo = computed(() => (page.props as any).is_demo || false);
+
+onMounted(() => {
+    // Rimuoviamo la vecchia chiave se esiste per evitare conflitti
+    localStorage.removeItem('hide_kondomanager_newsletter');
+
+    // Leggi la data di scadenza dal localStorage
+    const hideUntil = localStorage.getItem('hide_kondomanager_newsletter_until');
+    
+    // Controlla se il banner deve restare nascosto
+    const shouldHide = hideUntil && Date.now() < parseInt(hideUntil);
+
+    if (!isDemo.value && !shouldHide) {
+        showNewsletterBanner.value = true;
+    }
+});
+
+const closeBanner = () => {
+    showNewsletterBanner.value = false;
+    
+    // Nascondi per 30 giorni (Snooze)
+    const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+    const hideUntilDate = Date.now() + thirtyDaysInMs;
+    localStorage.setItem('hide_kondomanager_newsletter_until', hideUntilDate.toString());
+};
+
+const subscribe = () => {
+    isSubscribing.value = true;
+
+    router.post(route('admin.newsletter.subscribe'), {}, {
+        onSuccess: () => {
+            isSuccess.value = true;
+            
+            // Nascondi per 10 anni (Chiusura definitiva)
+            const tenYearsInMs = 10 * 365 * 24 * 60 * 60 * 1000;
+            localStorage.setItem('hide_kondomanager_newsletter_until', (Date.now() + tenYearsInMs).toString());
+            
+            // Attendi 2.5 secondi per far leggere il messaggio e chiudi dolcemente
+            setTimeout(() => {
+                showNewsletterBanner.value = false;
+            }, 2500);
+        },
+        onFinish: () => {
+            isSubscribing.value = false;
+        },
+        preserveScroll: true
+    });
+};
+// ──────────────────────────────────
 
 const storagePercent = computed(() => {
     if (!props.stats.storage.total_bytes) return null;
@@ -113,6 +172,55 @@ const navigateToDocumenti = () => {
                     <BuildingsDropdown />
                 </div>
             </div>
+
+            <!-- ── NEWSLETTER BANNER ── -->
+            <div v-if="showNewsletterBanner" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 p-5 pr-12 md:pr-14 shadow-sm flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5 transition-all">
+                <div class="absolute -right-10 -top-10 opacity-10 pointer-events-none">
+                    <Mail class="w-40 h-40" />
+                </div>
+                
+                <div class="flex items-center gap-4 relative z-10">
+                    <div class="bg-white/20 p-2.5 rounded-lg shrink-0">
+                        <Mail class="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-white text-sm">Resta un passo avanti e tieniti aggiornato</h3>
+                        <p class="text-blue-100 text-xs mt-0.5 max-w-2xl">
+                            Iscriviti alla newsletter per ricevere in anteprima gli aggiornamenti tecnici e l'accesso ai nuovi moduli e tutte le novità sullo sviluppo futuro di Kondomanager.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="flex flex-col items-start xl:items-end gap-2 relative z-10 w-full xl:w-auto shrink-0">
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <span class="text-blue-100 text-xs font-medium">
+                            Ricevi avvisi su: <strong class="text-white">{{ userEmail }}</strong>
+                        </span>
+                        
+                        <button 
+                            @click="subscribe" 
+                            :disabled="isSubscribing || isSuccess"
+                            class="px-4 py-2 rounded-md text-xs h-8 whitespace-nowrap font-bold transition-all flex items-center justify-center min-w-[140px]"
+                            :class="isSuccess ? 'bg-emerald-400 text-emerald-950' : 'bg-white text-blue-800 hover:bg-blue-50 disabled:opacity-50'"
+                        >
+                            <span v-if="isSubscribing" class="animate-pulse">Attivazione...</span>
+                            <span v-else-if="isSuccess" class="flex items-center gap-1.5">
+                                <Check class="w-3.5 h-3.5" /> Fatto!
+                            </span>
+                            <span v-else>Attiva notifiche</span>
+                        </button>
+
+                    </div>
+                    <p class="text-[9px] text-white text-left xl:text-right max-w-xs leading-tight">
+                        Cliccando su "Attiva Notifiche", accetti di ricevere aggiornamenti. <br>Puoi annullare l'iscrizione in qualsiasi momento.
+                    </p>
+                </div>
+
+                <button @click="closeBanner" class="absolute top-2 right-2 p-1.5 text-white/50 hover:text-white transition-colors rounded-md hover:bg-white/10 z-20">
+                    <X class="w-4 h-4" />
+                </button>
+            </div>
+            <!-- ───────────────────────── -->
 
             <!-- ── KPI CARDS ── -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -321,17 +429,26 @@ const navigateToDocumenti = () => {
                             <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Prossime scadenze in agenda</h2>
                             <p class="text-[10px] text-slate-400 mt-0.5">Elenco delle scadenze nei prossimi giorni</p>
                         </div>
-                        <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route(generateRoute('eventi.index'))">
-                            <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                Visualizza tutte <ArrowRight class="w-3 h-3" />
-                            </Button>
-                        </Link>
+                        <div class="flex items-center gap-2">
+                            <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route(generateRoute('eventi.index'))">
+                                <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
+                                    Visualizza tutte <ArrowRight class="w-3 h-3" />
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
-                    <div class="p-2">
-                        <EventiList
-                            v-if="hasPermission([Permission.VIEW_EVENTS])"
-                            :eventi="eventi"
-                        />
+
+                    <div class="p-2 max-h-[420px] overflow-y-auto custom-scrollbar">
+                        <template v-if="hasPermission([Permission.VIEW_EVENTS])">
+                            <InfiniteScroll data="eventi" preserve-url>
+                                <EventiList :eventi="eventi.data" />
+                                <template #loading>
+                                    <div class="py-6 flex items-center justify-center text-slate-400">
+                                        <Loader2 class="w-5 h-5 animate-spin" />
+                                    </div>
+                                </template>
+                            </InfiniteScroll>
+                        </template>
                         <div v-else class="flex items-center gap-2 px-4 py-6 text-xs text-slate-400">
                             <AlertCircle class="w-4 h-4 shrink-0" />
                             Non hai permessi sufficienti per visualizzare le scadenze in agenda!

@@ -95,6 +95,8 @@ return [
         'select_building_description'           => 'Seleziona il condominio da aprire automaticamente il gestionale dopo il login',
         'user_registration_title'               => 'Abilita registrazione utenti',
         'user_registration_description'         => 'Se attivato, gli utenti possono registrarsi dalla home page',
+        'default_role_title'                    => 'Ruolo predefinito nuovi utenti',
+        'default_role_description'              => 'Scegli quale ruolo assegnare automaticamente agli utenti che si registrano dal frontend.',
         'mail_settings_title'                   => 'Configurazione email',
         'mail_settings_description'             => 'Scegli il metodo di invio, configura le credenziali e testa la connessione.',
         'mail_guide_title'                      => 'Guida alla configurazione',
@@ -146,6 +148,7 @@ return [
         'mail_password_enter' => 'Inserisci la password SMTP',
         'mail_from_address'   => 'es. amministrazione@studio-rossi.it',
         'test_recipient'      => 'Inserisci l\'email per il test',
+        'select_role'         => 'Seleziona un ruolo',
 
         'language' => [
             'it' => 'Italiano',

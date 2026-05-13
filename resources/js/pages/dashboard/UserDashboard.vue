@@ -1,8 +1,7 @@
 <script setup lang="ts">
 
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
-import PlaceholderPattern from '@/components/PlaceholderPattern.vue';
+import { Head, Link, InfiniteScroll } from '@inertiajs/vue3';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
@@ -11,6 +10,7 @@ import EventiList from '@/components/eventi/EventiList.vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
+import { Loader2 } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import type { Comunicazione } from '@/types/comunicazioni';
@@ -30,7 +30,10 @@ const props = defineProps<{
   segnalazioni: Segnalazione[]; 
   comunicazioni: Comunicazione[];
   documenti: Documento[];
-  eventi: Evento[];
+  eventi: {           
+      total: number;
+      data: Evento[];
+  };
 }>()
 
 </script>
@@ -40,17 +43,6 @@ const props = defineProps<{
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
-            <div class="grid auto-rows-min gap-4 md:grid-cols-3">
-                <div class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <PlaceholderPattern />
-                </div>
-                <div class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <PlaceholderPattern />
-                </div>
-                <div class="relative aspect-video overflow-hidden rounded-xl border border-sidebar-border/70 dark:border-sidebar-border">
-                    <PlaceholderPattern />
-                </div>
-            </div>
 
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
                 <Card class="w-full">
@@ -174,10 +166,17 @@ const props = defineProps<{
                             </Link>
                         </div>
                     </CardHeader>
-                    <CardContent v-if="hasPermission([Permission.VIEW_EVENTS])">
-                        <EventiList
-                            :eventi="eventi" 
-                        />
+                    <CardContent v-if="hasPermission([Permission.VIEW_EVENTS])" class="p-0">
+                        <div class="h-[360px] overflow-y-auto px-6 pb-4">
+                            <InfiniteScroll data="eventi" preserve-url>
+                                <EventiList :eventi="eventi.data" />
+                                <template #loading>
+                                    <div class="py-4 flex items-center justify-center text-slate-400">
+                                        <Loader2 class="w-5 h-5 animate-spin" />
+                                    </div>
+                                </template>
+                            </InfiniteScroll>
+                        </div>
                     </CardContent>
 
                     <CardContent v-else>

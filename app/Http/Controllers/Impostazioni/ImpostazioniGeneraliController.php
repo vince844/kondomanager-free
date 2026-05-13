@@ -9,6 +9,7 @@ use App\Settings\GeneralSettings;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
+use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -26,6 +27,8 @@ class ImpostazioniGeneraliController extends Controller
         Gate::authorize('manage', $settings);
 
         $user = Auth::user();
+
+        $roles = Role::select('id', 'name')->get();
         
         return Inertia::render('impostazioni/impostazioniGenerali', [
             'can_register'             => (bool) $settings->user_frontend_registration,
@@ -33,6 +36,8 @@ class ImpostazioniGeneraliController extends Controller
             'open_condominio_on_login' => $user->userPreferences->open_condominio_on_login,
             'default_condominio_id'    => $user->userPreferences->default_condominio_id,
             'condomini'                => Condominio::select('id','nome')->get(),
+            'default_user_role'        => (string) $settings->default_user_role,
+            'roles'                    => $roles,
         ]);
     }
 
@@ -52,6 +57,7 @@ class ImpostazioniGeneraliController extends Controller
 
             $settings->user_frontend_registration = $validated['user_frontend_registration'];
             $settings->language = $validated['language'];
+            $settings->default_user_role = $validated['default_user_role'];
             $settings->save();
 
             $userPreferences = $user->userPreferences;
