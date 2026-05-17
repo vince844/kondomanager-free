@@ -3,7 +3,7 @@
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
 [![Generic badge](https://img.shields.io/badge/Version-1.9.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
-[![Forum](https://img.shields.io/badge/Forum-Comunità-orange.svg)](https://forum.karibusana.org/)
+[![Forum](https://img.shields.io/badge/Forum-Comunità-orange.svg)](https://kondomanager.short.gy/km-forum)
 [![GitHub stars](https://img.shields.io/github/stars/vince844/kondomanager-free?style=social)](https://github.com/vince844/kondomanager-free/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/vince844/kondomanager-free?style=social)](https://github.com/vince844/kondomanager-free/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/issues)
@@ -313,7 +313,7 @@ php artisan tinker
 
 Hai domande sull'installazione, vuoi condividere la tua esperienza o cercare aiuto da altri utenti? Unisciti alla community ufficiale di KondoManager:
 
-**[Forum ufficiale KondoManager](https://forum.karibusana.org/)**
+**[Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)**
 
 Il forum è il posto giusto per:
 - chiedere supporto tecnico e consigli di configurazione
@@ -328,7 +328,7 @@ Il forum è il posto giusto per:
 Chi volesse contribuire a far crescere il progetto è sempre il benvenuto!
 
 Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). 
-Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://forum.karibusana.org/)
+Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)
 
 ---
 
@@ -342,7 +342,7 @@ Sviluppare un software open source richiede molto impegno e dedizione. Ti sarò 
 
 ## Feedback & Supporto
 
-- **Community:** Unisciti al [forum ufficiale](https://forum.karibusana.org/) per confrontarti con altri utenti e ricevere supporto dalla community.
+- **Community:** Unisciti al [forum ufficiale](https://kondomanager.short.gy/km-forum) per confrontarti con altri utenti e ricevere supporto dalla community.
 - **Bug e richieste:** Usa la sezione ["Issues" o "Discussions"](https://github.com/vince844/kondomanager-free/issues) di questa repository.
 - **Supporto dedicato:** Per richieste di personalizzazione o supporto professionale, usa il [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) sul sito ufficiale.
 
