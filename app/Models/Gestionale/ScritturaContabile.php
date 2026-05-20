@@ -2,11 +2,13 @@
 
 namespace App\Models\Gestionale;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Traits\HasProtocolNumber;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany; 
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\Condominio;
@@ -14,37 +16,17 @@ use App\Models\Esercizio;
 use App\Models\Gestione;
 
 /**
- * Class ScritturaContabile
- * * Rappresenta un movimento in Prima Nota (Libro Giornale) del gestionale.
+ * Rappresenta un movimento in Prima Nota (Libro Giornale) del gestionale.
  * Ogni scrittura è composta da una testata e da più righe di dettaglio in Dare/Avere.
  *
- * @property int $id
- * @property int $condominio_id
- * @property int|null $gestione_id
- * @property int $esercizio_id
- * @property \Illuminate\Support\Carbon|null $data_registrazione
- * @property \Illuminate\Support\Carbon|null $data_competenza
- * @property string|null $numero_protocollo
- * @property string $causale
- * @property string|null $descrizione
- * @property string $tipo_movimento
- * @property int|null $scrittura_padre_id
- * @property string $stato
- * @property int|null $created_by
- * @property int|null $registrata_by
- * @property \Illuminate\Support\Carbon|null $registrata_at
- * @property string|null $note
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- * @property-read Condominio $condominio
- * @property-read Gestione|null $gestione
- * @property-read Esercizio $esercizio
- * @property-read \Illuminate\Database\Eloquent\Collection|RigaScrittura[] $righe
- * @property-read ScritturaContabile|null $padre
- * @property-read \Illuminate\Database\Eloquent\Collection|ScritturaContabile[] $figlie
- * @property-read \Illuminate\Database\Eloquent\Collection|RataQuote[] $quotePagate
- * @property-read Model|\Eloquent $documentabile
+ * PRINCIPIO LEDGER-CENTRIC: questa tabella è la verità immutabile.
+ * - Gli storni creano scritture inverse (scrittura_padre_id → originale), mai soft-delete.
+ * - Il blocco per esercizio chiuso si applica su questa tabella (esercizio_id),
+ *   non sulle fatture passive.
+ *
+ * NOTA SoftDeletes: presente per retrocompatibilità con codice pre-v1.9.1.
+ * Le nuove operazioni (pagamenti, storni) NON devono mai usare soft-delete:
+ * il ledger è append-only per principio architetturale.
  */
 class ScritturaContabile extends Model
 {
@@ -61,110 +43,122 @@ class ScritturaContabile extends Model
         'numero_protocollo',
         'causale',
         'descrizione',
-        'tipo_movimento', 
+        'tipo_movimento',
         'scrittura_padre_id',
-        'stato',          
+        'stato',
         'created_by',
         'registrata_by',
         'registrata_at',
-        'note'
+        'note',
+        // v1.9.1: UUID per prevenire doppi inserimenti su retry/concorrenza.
+        // Il service lo imposta prima del DB::transaction().
+        // Su duplicato: QueryException su UNIQUE → IdempotencyKeyDuplicateException.
+        'idempotency_key',
     ];
 
     protected $casts = [
         'data_registrazione' => 'date',
         'data_competenza'    => 'date',
         'registrata_at'      => 'datetime',
+        // v1.9.1: tipo_movimento era ENUM MySQL, ora VARCHAR(50).
+        // Il Backed Enum gestisce sia lettura che scrittura.
+        'tipo_movimento'     => TipoMovimentoContabile::class,
     ];
 
-    // --- RELAZIONI ---
+    // ── Relazioni ────────────────────────────────────────────────────────────
 
-    /**
-     * Ottiene la gestione (Ordinaria, Straordinaria, ecc.) a cui appartiene la scrittura.
-     */
     public function gestione(): BelongsTo
     {
         return $this->belongsTo(Gestione::class, 'gestione_id');
     }
 
-    /**
-     * Ottiene il condominio in cui è stata registrata l'operazione.
-     */
     public function condominio(): BelongsTo
     {
         return $this->belongsTo(Condominio::class);
     }
 
-    /**
-     * Ottiene l'esercizio contabile (es. Anno 2026) di riferimento.
-     */
     public function esercizio(): BelongsTo
     {
         return $this->belongsTo(Esercizio::class);
     }
 
-    /**
-     * Ottiene le singole righe (movimenti in Dare o Avere) che compongono questa scrittura.
-     */
     public function righe(): HasMany
     {
-        // Usa 'scrittura_id' come definito nella migration righe_scritture
         return $this->hasMany(RigaScrittura::class, 'scrittura_id');
     }
 
-    /**
-     * Relazione polimorfica per collegare la scrittura a un documento (es. FatturaPassiva).
-     */
     public function documentabile(): MorphTo
     {
         return $this->morphTo();
     }
-    
-    /**
-     * Verifica il principio della Partita Doppia: la somma dei movimenti in Dare 
-     * deve essere esattamente uguale alla somma dei movimenti in Avere.
-     * * @return bool True se la scrittura è bilanciata (quadrata), False altrimenti.
-     */
-    public function isQuadrata(): bool
-    {
-        $dare = $this->righe->where('tipo_riga', 'dare')->sum('importo');
-        $avere = $this->righe->where('tipo_riga', 'avere')->sum('importo');
-        
-        return $dare === $avere;
-    }
 
-    /**
-     * Ottiene la scrittura contabile "Madre" da cui deriva questo movimento 
-     * (es. la scrittura padre di uno storno_credito o di una rettifica).
-     */
     public function padre(): BelongsTo
     {
         return $this->belongsTo(ScritturaContabile::class, 'scrittura_padre_id');
     }
 
-    /**
-     * Ottiene le scritture derivate (figlie) collegate a questa registrazione originaria 
-     * (es. le scritture di compensazione credito o gli storni generati a cascata).
-     */
     public function figlie(): HasMany
     {
         return $this->hasMany(ScritturaContabile::class, 'scrittura_padre_id');
     }
 
-    /**
-     * RELAZIONE INVERSA (Pivot)
-     * Restituisce tutte le quote rateali pagate (o parzialmente pagate) con questa scrittura.
-     * Sfrutta la tabella `quota_scrittura` per leggere o manipolare (tramite Eager Loading) 
-     * l'importo storico applicato alla singola rata, fondamentale per Storni e Compensazioni.
-     */
     public function quotePagate(): BelongsToMany
     {
         return $this->belongsToMany(
-            RataQuote::class, 
-            'quota_scrittura',       // Tabella pivot
-            'scrittura_contabile_id', // Chiave esterna in pivot per questo modello
-            'rate_quota_id'           // Chiave esterna in pivot per l'altro modello
+            RataQuote::class,
+            'quota_scrittura',
+            'scrittura_contabile_id',
+            'rate_quota_id'
         )
-        ->withPivot(['importo_pagato', 'data_pagamento']) 
+        ->withPivot(['importo_pagato', 'data_pagamento'])
         ->withTimestamps();
+    }
+
+    /**
+     * Fatture passive collegate tramite la pivot fattura_scrittura.
+     *
+     * FK esplicite necessarie: la pivot usa fattura_passiva_id e scrittura_contabile_id
+     * che NON seguono la convenzione Laravel (che inferisce fattura_id / scrittura_id).
+     *
+     * Relazione inversa di FatturaPassiva::scritture().
+     * Usata da PagamentoFornitore::fatture() tramite delega.
+     */
+    public function fatture(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            FatturaPassiva::class,
+            'fattura_scrittura',          // tabella pivot
+            'scrittura_contabile_id',     // FK di questa classe nella pivot
+            'fattura_passiva_id'          // FK dell'altra classe nella pivot
+        )
+        ->using(FatturaScrittura::class)
+        ->withPivot(['importo_allocato', 'tipo'])
+        ->withTimestamps();
+    }
+
+    /**
+     * Il pagamento fornitore collegato a questa scrittura (1:1 inversa).
+     *
+     * v1.9.1: ogni scrittura di tipo pagamento_fornitore ha esattamente
+     * un record PagamentoFornitore che ne contiene i metadati documentali.
+     * NULL se la scrittura non è legata a un pagamento fornitore.
+     */
+    public function pagamentoFornitore(): HasOne
+    {
+        return $this->hasOne(PagamentoFornitore::class, 'scrittura_contabile_id');
+    }
+
+    // ── Metodi ───────────────────────────────────────────────────────────────
+
+    /**
+     * Verifica il principio della Partita Doppia.
+     * La somma in Dare deve essere uguale alla somma in Avere.
+     */
+    public function isQuadrata(): bool
+    {
+        $dare  = $this->righe->where('tipo_riga', 'dare')->sum('importo');
+        $avere = $this->righe->where('tipo_riga', 'avere')->sum('importo');
+
+        return $dare === $avere;
     }
 }

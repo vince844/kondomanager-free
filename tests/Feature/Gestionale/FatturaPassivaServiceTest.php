@@ -1,5 +1,7 @@
 <?php
 
+use App\Enums\StatoPagamentoFattura;
+
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
@@ -555,7 +557,7 @@ it('eliminando nota di credito ripristina fattura originale', function () {
 
     // 3. Simuliamo lo stato stornato sull'originale (come farebbe il sistema)
     $fattura->update([
-        'stato_pagamento' => 'stornata',
+        'stato_pagamento' => StatoPagamentoFattura::PAGATA,
         'dati_extra' => array_merge($fattura->dati_extra ?? [], ['is_stornata' => true, 'stornata_da_id' => $notaCredito->id])
     ]);
 
@@ -565,7 +567,7 @@ it('eliminando nota di credito ripristina fattura originale', function () {
 
     // 5. Verifica ripristino originale
     $fatturaFresh = $fattura->fresh();
-    expect($fatturaFresh->stato_pagamento)->toEqual('aperta');
+    expect($fatturaFresh->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
     // Verifichiamo che il flag is_stornata sia sparito dai dati_extra
     expect($fatturaFresh->dati_extra['is_stornata'] ?? false)->toBeFalsy();
 });

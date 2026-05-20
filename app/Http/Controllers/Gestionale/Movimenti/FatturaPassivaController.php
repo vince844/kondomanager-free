@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Http\Controllers\Controller;
+use App\Enums\StatoPagamentoFattura;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
@@ -470,7 +471,7 @@ class FatturaPassivaController extends Controller
         // --- FINE FIX ---
 
         // 1. IL MURO CONTABILE
-        if ($fattura->stato_pagamento !== 'aperta') {
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
             return back()->with($this->flashError(
                 'Operazione negata: La fattura risulta pagata o parzialmente saldata. ' .
                 'Per mantenere la coerenza del libro giornale, devi usare la funzione "Storna".'
@@ -533,7 +534,7 @@ class FatturaPassivaController extends Controller
                     unset($datiExtraOriginali['stornata_da_id']);
                     
                     $fatturaOriginale->update([
-                        'stato_pagamento' => 'aperta',
+                        'stato_pagamento' => StatoPagamentoFattura::APERTA,
                         'dati_extra'      => $datiExtraOriginali
                     ]);
                 }

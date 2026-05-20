@@ -149,12 +149,13 @@ const navigateToDocumenti = () => {
                     <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pannello di controllo</p>
                     <h1 class="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">Dashboard comunicazioni</h1>
                 </div>
-                <div class="flex items-center gap-3">
-                    <Link :href="route('admin.inbox')">
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto sm:justify-end">
+                    <BuildingsDropdown class="w-full sm:w-auto" />
+                    <Link :href="route('admin.inbox')" class="w-full sm:w-auto">
                         <Button
                             variant="outline"
                             size="sm"
-                            class="h-9 text-[10px] font-bold uppercase tracking-wide gap-2 transition-all"
+                            class="w-full sm:w-auto h-9 text-[10px] font-bold uppercase tracking-wide gap-2 transition-all"
                             :class="{
                                 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400': inboxCount > 0,
                             }"
@@ -169,10 +170,8 @@ const navigateToDocumenti = () => {
                             </Badge>
                         </Button>
                     </Link>
-                    <BuildingsDropdown />
                 </div>
             </div>
-
             <!-- ── NEWSLETTER BANNER ── -->
             <div v-if="showNewsletterBanner" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 p-5 pr-12 md:pr-14 shadow-sm flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5 transition-all">
                 <div class="absolute -right-10 -top-10 opacity-10 pointer-events-none">
@@ -329,17 +328,17 @@ const navigateToDocumenti = () => {
                 <!-- Comunicazioni -->
                 <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
-                        <div>
-                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">
+                        <div class="min-w-0 flex-1 mr-3">
+                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 truncate">
                                 {{ trans('comunicazioni.header.widget_communications_title') }}
                             </h2>
-                            <p class="text-[10px] text-slate-400 mt-0.5">
+                            <p class="text-[10px] text-slate-400 mt-0.5 truncate">
                                 {{ trans('comunicazioni.header.widget_communications_description') }}
                             </p>
                         </div>
-                        <Link v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])" :href="route(generateRoute('comunicazioni.index'))">
+                        <Link v-if="hasPermission([Permission.VIEW_COMUNICAZIONI])" :href="route(generateRoute('comunicazioni.index'))" class="shrink-0">
                             <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                {{ trans('comunicazioni.actions.view_all_communications') }}
+                                <span class="hidden sm:inline">{{ trans('comunicazioni.actions.view_all_communications') }}</span>
                                 <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
@@ -366,20 +365,20 @@ const navigateToDocumenti = () => {
                         class="flex items-center justify-between px-5 py-4 border-b bg-slate-50/50 dark:bg-slate-800/50"
                         :class="stats.segnalazioni_aperte > 0 ? 'border-amber-100 dark:border-amber-900/30' : 'border-sidebar-border/70'"
                     >
-                        <div>
+                        <div class="min-w-0 flex-1 mr-3">
                             <div class="flex items-center gap-2">
-                                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">
+                                <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 truncate">
                                     {{ trans('segnalazioni.header.widget_tickets_title') }}
                                 </h2>
-                                <span v-if="stats.segnalazioni_aperte > 0" class="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                <span v-if="stats.segnalazioni_aperte > 0" class="flex h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
                             </div>
-                            <p class="text-[10px] text-slate-400 mt-0.5">
+                            <p class="text-[10px] text-slate-400 mt-0.5 truncate">
                                 {{ trans('segnalazioni.header.widget_tickets_description') }}
                             </p>
                         </div>
-                        <Link v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])" :href="route(generateRoute('segnalazioni.index'))">
-                            <Button size="sm"  class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                {{ trans('segnalazioni.actions.view_all_tickets') }}
+                        <Link v-if="hasPermission([Permission.VIEW_SEGNALAZIONI])" :href="route(generateRoute('segnalazioni.index'))" class="shrink-0">
+                            <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
+                                <span class="hidden sm:inline">{{ trans('segnalazioni.actions.view_all_tickets') }}</span>
                                 <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
@@ -400,13 +399,14 @@ const navigateToDocumenti = () => {
                 <!-- Documenti -->
                 <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
-                        <div>
-                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Ultimi documenti</h2>
-                            <p class="text-[10px] text-slate-400 mt-0.5">Elenco degli ultimi documenti in archivio caricati</p>
+                        <div class="min-w-0 flex-1 mr-3">
+                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 truncate">Ultimi documenti</h2>
+                            <p class="text-[10px] text-slate-400 mt-0.5 truncate">Elenco degli ultimi documenti in archivio caricati</p>
                         </div>
-                        <Link v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])" :href="route(generateRoute('documenti.index'))">
+                        <Link v-if="hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS])" :href="route(generateRoute('documenti.index'))" class="shrink-0">
                             <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                Visualizza tutti <ArrowRight class="w-3 h-3" />
+                                <span class="hidden sm:inline">Visualizza tutti</span>
+                                <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>
                     </div>
@@ -425,19 +425,17 @@ const navigateToDocumenti = () => {
                 <!-- Scadenze agenda -->
                 <div class="rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                     <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
-                        <div>
-                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500">Prossime scadenze in agenda</h2>
-                            <p class="text-[10px] text-slate-400 mt-0.5">Elenco delle scadenze nei prossimi giorni</p>
+                        <div class="min-w-0 flex-1 mr-3">
+                            <h2 class="text-xs font-bold uppercase tracking-widest text-slate-500 truncate">Prossime scadenze in agenda</h2>
+                            <p class="text-[10px] text-slate-400 mt-0.5 truncate">Elenco delle scadenze nei prossimi giorni</p>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route(generateRoute('eventi.index'))">
-                                <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
-                                    Visualizza tutte <ArrowRight class="w-3 h-3" />
-                                </Button>
-                            </Link>
-                        </div>
+                        <Link v-if="hasPermission([Permission.VIEW_EVENTS])" :href="route(generateRoute('eventi.index'))" class="shrink-0">
+                            <Button size="sm" class="h-7 text-[10px] font-bold uppercase gap-1.5">
+                                <span class="hidden sm:inline">Visualizza tutte</span>
+                                <ArrowRight class="w-3 h-3" />
+                            </Button>
+                        </Link>
                     </div>
-
                     <div class="p-2 max-h-[420px] overflow-y-auto custom-scrollbar">
                         <template v-if="hasPermission([Permission.VIEW_EVENTS])">
                             <InfiniteScroll data="eventi" preserve-url>

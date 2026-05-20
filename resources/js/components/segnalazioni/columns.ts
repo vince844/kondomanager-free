@@ -93,7 +93,7 @@ export const columns: ColumnDef<Segnalazione>[] = [
           key: `condominio-avatar`,
           title: fullDetails.nome || condominio.label,
           class: `
-            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
+            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 dark:bg-slate-700 dark:text-slate-200 text-xs font-bold
             flex items-center justify-center border border-white shadow
           `,
           style: `
