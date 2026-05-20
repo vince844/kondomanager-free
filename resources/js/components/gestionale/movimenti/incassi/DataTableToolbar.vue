@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import { Plus, X } from 'lucide-vue-next';
+import {  Search, Plus } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
@@ -43,17 +43,22 @@ const resetFilter = () => { globalFilter.value = '' }
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full ">
+  <div class="flex items-center justify-between w-full">
 
     <div class="flex items-center space-x-2">
-      <div class="flex items-center space-x-2">
+
+      <!-- Ricerca libera -->
+      <div class="relative">
+        <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+          <Search class="h-4 w-4" />
+        </div>
         <Input
           placeholder="Filtra per nome..."
           v-model="globalFilter"
-          class="h-8 w-[150px] lg:w-[250px]"
+          class="pl-9 h-8 w-[200px] lg:w-[250px]"
         />
-
       </div>
+
     </div>
 
     <Button as-child>

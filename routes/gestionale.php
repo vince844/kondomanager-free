@@ -10,6 +10,7 @@ use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
+use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
@@ -202,4 +203,17 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/fatture/{fattura}/download/{documento}', [FatturaPassivaController::class, 'download'])
         ->name('fatture.download');
+    
+    // --- CICLO PASSIVO: PAGAMENTI (v1.9.1) ---
+    Route::get('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'index'])
+        ->name('pagamenti-fornitori.index');
+        
+    Route::get('/pagamenti-fornitori/create', [PagamentoFornitoreController::class, 'create'])
+        ->name('pagamenti-fornitori.create');
+
+    Route::post('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'store'])
+        ->name('pagamenti-fornitori.store');
+
+    Route::get('/pagamenti-fornitori/pendenze', [PagamentoFornitoreController::class, 'pendenze'])
+        ->name('pagamenti-fornitori.pendenze');
 });

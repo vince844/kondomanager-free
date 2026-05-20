@@ -23,7 +23,7 @@ class IncassoRateService
                 'gestione', 
                 'righe.anagrafica', 
                 'righe.cassa',
-                // 🔥 EAGER LOADING: Carichiamo le quote e le rate padre in un colpo solo
+                // EAGER LOADING: Carichiamo le quote e le rate padre in un colpo solo
                 'quotePagate.rata', 
                 'quotePagate.immobile',  // ← aggiungi
                 'figlie.quotePagate.rata',     // ← aggiungi per credito

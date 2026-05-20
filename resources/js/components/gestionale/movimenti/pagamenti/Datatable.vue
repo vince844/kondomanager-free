@@ -6,16 +6,15 @@ import { FlexRender, getCoreRowModel, useVueTable, getSortedRowModel } from '@ta
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
-import DataTableToolbar from '@/components/gestionale/movimenti/incassi/DataTableToolbar.vue';
+import DataTableToolbar from '@/components/gestionale/movimenti/pagamenti/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
-import { Wallet } from 'lucide-vue-next';
+import { CreditCard } from 'lucide-vue-next'; 
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
-import type { Incasso } from '@/types/gestionale/movimenti';
 
 const props = defineProps<{
-  columns: ColumnDef<Incasso, any>[],
-  data: Incasso[],
+  columns: ColumnDef<any, any>[],
+  data: any[],
   condominio: Building,
   meta: {
     current_page: number,
@@ -51,7 +50,7 @@ const table = useVueTable({
 
     const nextPageSize = table.getState().pagination.pageSize;
 
-    router.get(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id }), {
+    router.get(route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id }), {
       page: nextPage + 1,
       per_page: nextPageSize,
     }, {
@@ -112,17 +111,17 @@ const table = useVueTable({
 
       <Empty v-else class="py-12 bg-slate-50/50">
         <EmptyHeader class="max-w-4xl">
-          <EmptyMedia variant="icon" class="bg-emerald-50/50 dark:bg-emerald-900/20 text-emerald-500">
-            <Wallet class="w-8 h-8" />
+          <EmptyMedia variant="icon" class="bg-indigo-50/50 dark:bg-indigo-900/20 text-indigo-500">
+            <CreditCard class="w-8 h-8" />
           </EmptyMedia>
-          <EmptyTitle>Nessun incasso trovato</EmptyTitle>
+          <EmptyTitle>Nessun pagamento registrato</EmptyTitle>
           <EmptyDescription>
-            Non ci sono movimenti in entrata che corrispondono ai criteri. <br>
-            Registra un nuovo incasso o modifica i filtri di ricerca.
+            Non ci sono movimenti in uscita che corrispondono ai criteri. <br>
+            Registra un nuovo pagamento o modifica i filtri di ricerca.
           </EmptyDescription>
         </EmptyHeader>
       </Empty>
-
+      
     </div>
     
     <div v-if="table.getRowModel().rows?.length > 0 && props.meta.last_page > 1" class="flex items-center justify-end">

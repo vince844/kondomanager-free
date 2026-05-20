@@ -225,7 +225,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
 
         return h('div', { 
             // Aggiungiamo 'group' e 'cursor-help' per indicare che c'è un tooltip
-            class: 'flex flex-col items-end group cursor-help',
+            class: 'flex flex-col group cursor-help',
             title: scontrino // Tooltip nativo super pulito
         }, [
             // 1. IL LORDO (In grande, per la coerenza del Budget)

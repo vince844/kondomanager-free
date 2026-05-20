@@ -64,6 +64,21 @@ class IncassoRateController extends Controller
             ->orderBy('data_inizio', 'desc')
             ->get(['id', 'nome', 'stato']);
 
+        $stats = [
+            'totale_incassi' => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+                ->where('tipo_movimento', 'incasso_rata')
+                ->count(),
+            'incassi_mese'   => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+                ->where('tipo_movimento', 'incasso_rata')
+                ->whereMonth('data_registrazione', now()->month)
+                ->whereYear('data_registrazione', now()->year)
+                ->count(),
+            'stornati'       => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+                ->where('tipo_movimento', 'incasso_rata')
+                ->where('stato', 'stornato')
+                ->count(),
+        ];
+
         return Inertia::render('gestionale/movimenti/incassi/IncassoRateList', [
             'condominio' => $condominio,
             'movimenti'  => $movimenti,
@@ -71,6 +86,7 @@ class IncassoRateController extends Controller
             'soggetti'   => $soggettiList, 
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
+            'stats'      => $stats,
             'filters'    => $request->all(['search']),
         ]);
     }
