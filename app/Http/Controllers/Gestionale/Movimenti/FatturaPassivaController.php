@@ -75,9 +75,9 @@ class FatturaPassivaController extends Controller
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         $stats = [
-            'totale_aperte'       => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', 'aperta')->count(),
+            'totale_aperte'       => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->count(),
             'totale_sfori'        => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_approvazione', 'sforo_motivato')->count(),
-            'importo_da_pagare'   => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', 'aperta')->sum('netto_a_pagare'),
+            'importo_da_pagare'   => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->sum('netto_a_pagare'),
         ];
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterList', [

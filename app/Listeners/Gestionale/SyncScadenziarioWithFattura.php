@@ -2,6 +2,7 @@
 
 namespace App\Listeners\Gestionale;
 
+use App\Enums\StatoPagamentoFattura;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Helpers\MoneyHelper;
@@ -52,8 +53,8 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                 'is_approved' => true,
                 'meta'        => [
                     'type'             => 'pagamento_fornitore',
-                    'requires_action'  => ($fattura->stato_pagamento !== 'pagata'),
-                    'is_completed'     => ($fattura->stato_pagamento === 'pagata'),
+                    'requires_action'  => ($fattura->stato_pagamento !== StatoPagamentoFattura::PAGATA),
+                    'is_completed'     => ($fattura->stato_pagamento === StatoPagamentoFattura::PAGATA),
                     'condominio_nome'  => $condominio->nome,
                     'importo'          => $fattura->netto_a_pagare,
                     'fornitore'        => $fornitore->ragione_sociale,

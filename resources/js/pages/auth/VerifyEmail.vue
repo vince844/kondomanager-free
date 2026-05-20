@@ -37,5 +37,29 @@ const submit = () => {
 
             <TextLink :href="route('logout')" method="post" as="button" class="mx-auto block text-sm"> {{ trans('auth.button.logout') }} </TextLink>
         </form>
+
+        <hr class="my-6 border-border" />
+
+        <div class="text-center text-xs text-muted-foreground">
+            Powered by 
+            <a 
+                href="https://www.kondomanager.com" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                class="font-semibold transition-colors hover:text-foreground hover:underline"
+            >
+                Kondomanager
+            </a> 
+            — 
+            <a 
+                href="https://github.com/vince844/kondomanager-free" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                class="transition-colors hover:text-foreground hover:underline"
+            >
+                Software Open Source (AGPL-3.0)
+            </a>
+        </div>
+        
     </AuthLayout>
 </template>

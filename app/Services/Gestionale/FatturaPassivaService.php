@@ -4,6 +4,7 @@ namespace App\Services\Gestionale;
 
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
+use App\Enums\StatoPagamentoFattura;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Models\CategoriaDocumento;
 use App\Models\Fornitore;
@@ -141,7 +142,7 @@ class FatturaPassivaService
                 'importo_ritenuta'   => $ritenuta * $moltiplicatore,
                 'totale_documento'   => $totaleDoc * $moltiplicatore,
                 'netto_a_pagare'     => $netto,
-                'stato_pagamento'    => 'aperta',
+                'stato_pagamento'    => StatoPagamentoFattura::APERTA,
                 'stato_approvazione' => $statoApprovazione,
                 'modalita_pagamento' => $data['modalita_pagamento'],
                 'iban_fornitore'     => $data['iban_fornitore'] ?? null,
