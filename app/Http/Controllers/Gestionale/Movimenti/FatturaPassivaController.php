@@ -590,6 +590,51 @@ class FatturaPassivaController extends Controller
     }
 
     /**
+     * Registra la ratifica assembleare di una fattura in sforo motivato (Art. 1135 c.c.).
+     *
+     * Transizione: sforo_motivato → approvata.
+     * La fattura diventa selezionabile per il pagamento in PagamentoNew.
+     * I dati dell'approvazione (note, timestamp, utente) vengono salvati in dati_extra
+     * per garantire l'audit trail della delibera assembleare.
+     *
+     * @param Request $request
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function approvaSforo(Request $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        // Guard: solo fatture in sforo_motivato possono essere ratificate
+        if ($fattura->stato_approvazione !== 'sforo_motivato') {
+            return back()->with($this->flashError(
+                'Operazione non valida: questa fattura non è in stato "sforo motivato".'
+            ));
+        }
+
+        $request->validate([
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $datiExtra = $fattura->dati_extra ?? [];
+        $datiExtra['ratifica_assembleare'] = [
+            'note'           => $request->input('note'),
+            'approvato_il'   => now()->toIso8601String(),
+            'approvato_da'   => auth()->id(),
+        ];
+
+        $fattura->update([
+            'stato_approvazione' => 'approvata',
+            'dati_extra'         => $datiExtra,
+        ]);
+
+        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID " . auth()->id());
+
+        return back()->with($this->flashSuccess(
+            'Fattura ratificata con successo. Può ora essere pagata.'
+        ));
+    }
+
+    /**
      * Esegue il download sicuro (protetto) del file PDF allegato alla fattura.
      *
      * Applica un controllo autorizzativo tramite Policy e un controllo anti-IDOR polimorfico

@@ -8,11 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
     CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
     AlertOctagon, TriangleAlert, Lock, Unlock, ChevronDown, ChevronUp,
-    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check
+    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
@@ -142,6 +144,11 @@ const showIbanConfirmModal = ref(false);
 const showDuplicateConfirmModal = ref(false);
 const ibanDiscrepanzaMsg = ref('');
 const duplicatoMsg = ref('');
+
+// --- Ratifica Sforo (inline in PagamentoNew) ---
+const showApprovaSforoModal = ref(false);
+const sforoTarget = ref<Pendenza | null>(null);
+const noteApprovazioneInline = ref('');
 
 const fiscalSentinelExpanded = ref(false);
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
@@ -321,6 +328,34 @@ const applyNetting = () => {
 
 const selezionaTutte = () => {
     pendenze.value.filter(p => !p.is_nota_credito && p.stato_approvazione === 'approvata').forEach(p => saldaTutto(p));
+};
+
+// Apre il modale di ratifica sforo per una fattura specifica
+const apriModaleApprovazioneSforo = (p: Pendenza) => {
+    sforoTarget.value = p;
+    noteApprovazioneInline.value = '';
+    showApprovaSforoModal.value = true;
+};
+
+// Invia la ratifica al backend e ricarica le pendenze al successo
+const executeApprovaSforoInline = () => {
+    if (!sforoTarget.value) return;
+    router.post(
+        route(generateRoute('gestionale.fatture.approva-sforo'), {
+            condominio: props.condominio.id,
+            fattura: sforoTarget.value.id,
+        }),
+        { note: noteApprovazioneInline.value || null },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                showApprovaSforoModal.value = false;
+                sforoTarget.value = null;
+                // Ricarica le pendenze: la fattura ora appare sbloccata
+                if (form.fornitore_id) fetchPendenze(form.fornitore_id);
+            },
+        }
+    );
 };
 
 const deselezionaTutte = () => {
@@ -814,10 +849,38 @@ const pageGuides = [
                                             class="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-none">
                                             Parziale
                                         </span>
-                                        <span v-if="p.stato_approvazione !== 'approvata'"
-                                            class="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 leading-none">
-                                            {{ p.stato_approvazione === 'sforo_motivato' ? 'Sforo Motivato' : 'Da approvare' }}
+                                        <!-- Badge sforo con Tooltip shadcn (sfondo nero, freccia) -->
+                                        <TooltipProvider v-if="p.stato_approvazione === 'sforo_motivato'" :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <span
+                                                        class="text-[8px] font-black uppercase tracking-wider text-orange-700 bg-orange-100 border border-orange-300 rounded px-1.5 py-0.5 leading-none cursor-help"
+                                                    >
+                                                        ⚠ Ratifica richiesta
+                                                    </span>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="top" class="max-w-xs text-center">
+                                                    <p class="font-bold mb-1">Spesa urgente in attesa di ratifica</p>
+                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">Art. 1135 c.c. — L'assemblea deve deliberare la spesa prima del pagamento. Usa "Approva sforo" per registrare la ratifica.</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                        <span
+                                            v-else-if="p.stato_approvazione !== 'approvata'"
+                                            class="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 leading-none"
+                                        >
+                                            Da approvare
                                         </span>
+                                        <!-- Bottone inline ratifica: visibile solo per sforo_motivato -->
+                                        <button
+                                            v-if="p.stato_approvazione === 'sforo_motivato'"
+                                            type="button"
+                                            @click.stop="apriModaleApprovazioneSforo(p)"
+                                            class="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 rounded px-2 py-0.5 leading-none transition-colors shadow-sm"
+                                        >
+                                            <Stamp class="w-2.5 h-2.5" />
+                                            Approva sforo
+                                        </button>
                                     </div>
                                     <div class="flex items-center gap-3 text-[11px] text-slate-500">
                                         <span>{{ p.data_documento }}</span>
@@ -1068,6 +1131,54 @@ const pageGuides = [
                 </div>
             </div>
         </Teleport>
+
+        <!-- Modale Ratifica Assembleare Sforo (inline da PagamentoNew) — stesso stile ConfirmDialog -->
+        <ConfirmDialog
+            v-model="showApprovaSforoModal"
+            title="Ratifica Assembleare — Sforo Motivato"
+            confirm-text="Ratifica & Sblocca"
+            variant="default"
+            @confirm="executeApprovaSforoInline"
+        >
+            <div class="space-y-4">
+
+                <!-- Contesto legale -->
+                <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
+                    <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
+                    <div>
+                        <p class="font-bold text-orange-900">Ratifica assembleare obbligatoria (Art. 1135 c.c.)</p>
+                        <p class="text-xs mt-1 leading-relaxed">
+                            Questa fattura supera il budget approvato ed è stata registrata come spesa urgente.
+                            Confermando, dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Fattura in oggetto -->
+                <div v-if="sforoTarget" class="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Fattura in oggetto</p>
+                    <p class="text-sm font-bold text-slate-800">{{ sforoTarget.numero_documento }}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">{{ sforoTarget.data_documento }}</p>
+                </div>
+
+                <!-- Note -->
+                <div class="space-y-1.5">
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                        Riferimento verbale / Note
+                        <span class="font-normal text-slate-400 normal-case tracking-normal ml-1">(facoltativo, consigliato)</span>
+                    </label>
+                    <textarea
+                        v-model="noteApprovazioneInline"
+                        rows="3"
+                        placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente..."
+                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                    />
+                    <p class="text-[10px] text-slate-400 leading-relaxed">
+                        Il sistema registra automaticamente data e autore nell'audit trail.
+                    </p>
+                </div>
+            </div>
+        </ConfirmDialog>
 
     </GestionaleLayout>
 </template>

@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Ratifica assembleare fatture con sforo motivato (Art. 1135 c.c.): le fatture registrate con sforo motivato — spese urgenti che superano il budget deliberato — mostrano ora un badge arancione interattivo con tooltip esplicativo (sfondo nero, stile professionale) che guida l'amministratore sul perché il pagamento è bloccato e cosa fare. Un bottone 'Approva sforo' inline sblocca direttamente dalla pagina Pagamento Fornitori, aprendo una modale di ratifica con campo note per l'audit trail (numero verbale, riferimento delibera). La stessa azione è accessibile dal menu azioni della Lista Fatture Registrate. Al conferma, il sistema transita lo stato da 'sforo_motivato' ad 'approvata', salva automaticamente nell'audit trail data, autore e note, e ricarica le pendenze istantaneamente senza uscire dalla pagina.",
+        "Tutela legale dell'amministratore nel ciclo passivo: il blocco pagamento su fatture non ratificate è ora comunicato chiaramente invece di essere silenzioso, riducendo richieste di supporto e documentando formalmente la conformità all'Art. 1135 c.c. prima di ogni bonifico."
+    ]
+}

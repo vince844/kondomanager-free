@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-// Importata l'icona Download
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck } from 'lucide-vue-next'
 
 const props = defineProps<{
   fattura: any,
@@ -18,9 +17,15 @@ const { generateRoute } = usePermission();
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
 const isStornoModalOpen = ref(false);
+const isApprovaSforoModalOpen = ref(false);
+const noteApprovazioneRatifica = ref('');
 
 const confirmDeleteFattura = () => isDeleteModalOpen.value = true;
 const confirmStornoFattura = () => isStornoModalOpen.value = true;
+const apriModaleApprovazione = () => {
+    noteApprovazioneRatifica.value = '';
+    isApprovaSforoModalOpen.value = true;
+};
 
 // Esecuzione Eliminazione Fisica (Errore Immediato)
 const executeDelete = () => {
@@ -41,6 +46,19 @@ const executeStorno = () => {
     }), {}, {
         preserveScroll: true,
         onSuccess: () => isStornoModalOpen.value = false
+    });
+};
+
+// Esecuzione Ratifica Assembleare (sforo_motivato → approvata)
+const executeApprovaSforo = () => {
+    router.post(route(generateRoute('gestionale.fatture.approva-sforo'), {
+        condominio: props.condominioId,
+        fattura: props.fattura.id
+    }), {
+        note: noteApprovazioneRatifica.value || null,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => isApprovaSforoModalOpen.value = false
     });
 };
 
@@ -67,7 +85,7 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[160px]">
+    <DropdownMenuContent align="end" class="w-[190px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -88,6 +106,15 @@ const downloadPdf = () => {
         class="text-blue-600 focus:text-blue-700 focus:bg-blue-50 font-medium cursor-pointer"
       >
         <CreditCard class="w-4 h-4 mr-2" /> Ordina bonifico
+      </DropdownMenuItem>
+
+      <!-- Ratifica Assembleare: visibile solo per fatture in sforo_motivato -->
+      <DropdownMenuItem
+        v-if="fattura.stato_approvazione === 'sforo_motivato'"
+        @click="apriModaleApprovazione"
+        class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
+      >
+        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica Assembleare
       </DropdownMenuItem>
 
       <DropdownMenuSeparator />
@@ -151,6 +178,48 @@ const downloadPdf = () => {
               <p>
                   Il sistema non eliminerà il documento originale, ma genererà automaticamente una <strong>Nota di Credito a pareggio</strong> per neutralizzare i costi nel Libro Giornale e ripristinare il budget nei capitoli di spesa.
               </p>
+          </div>
+      </ConfirmDialog>
+
+      <!-- Modale Ratifica Assembleare sforo_motivato → approvata -->
+      <ConfirmDialog
+          v-model="isApprovaSforoModalOpen"
+          title="Ratifica Assembleare — Sforo Motivato"
+          confirm-text="Conferma Ratifica"
+          variant="default"
+          @confirm="executeApprovaSforo"
+      >
+          <div class="space-y-4 text-sm text-slate-600">
+
+              <!-- Contesto legale -->
+              <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
+                  <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
+                  <div>
+                      <p class="font-bold text-orange-900">Ratifica assembleare obbligatoria (Art. 1135 c.c.)</p>
+                      <p class="text-xs mt-1 leading-relaxed">
+                          Questa fattura è stata registrata con sforo motivato: la spesa supera il budget approvato dall'assemblea.
+                          La ratifica è obbligatoria per legge prima del pagamento.
+                          Confermando dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
+                      </p>
+                  </div>
+              </div>
+
+              <!-- Campo note -->
+              <div class="space-y-1.5">
+                  <label class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Riferimento verbale / Note
+                      <span class="font-normal text-slate-400 ml-1">(facoltativo, consigliato per audit)</span>
+                  </label>
+                  <textarea
+                      v-model="noteApprovazioneRatifica"
+                      rows="3"
+                      placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente manutenzione ascensore..."
+                      class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 resize-none"
+                  />
+                  <p class="text-[10px] text-slate-400 leading-relaxed">
+                      Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
+                  </p>
+              </div>
           </div>
       </ConfirmDialog>
   </Teleport>

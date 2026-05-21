@@ -255,6 +255,12 @@ class PagamentoFornitoreController extends Controller
                     'residuo'           => abs($nc->residuo),
                     'is_nota_credito'   => true,
                     'gestione_id'       => $nc->scritture()->first()?->gestione_id,
+                    // Necessario per il controllo di selezione nel frontend:
+                    // togglePendenza() controlla p.stato_approvazione === 'approvata'
+                    // Se mancante (undefined) il click viene sempre bloccato.
+                    'stato_approvazione' => $nc->stato_approvazione,
+                    'is_scaduta'         => false, // Le NC non hanno scadenza di pagamento
+                    'stato_pagamento'    => $nc->stato_pagamento->value,
                 ];
             });
 

@@ -4,7 +4,7 @@ import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
-import DataTable from '@/components/gestionale/movimenti/pagamenti/DataTable.vue'; 
+import DataTable from '@/components/gestionale/movimenti/pagamenti/Datatable.vue'
 import { createColumns } from '@/components/gestionale/movimenti/pagamenti/columns';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
