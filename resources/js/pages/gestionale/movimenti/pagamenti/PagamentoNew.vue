@@ -108,13 +108,15 @@ const props = defineProps<{
     fornitori: Fornitore[];
     banche: Banca[];
     gestioni: Gestione[];
+    preselected_fornitore_id?: number | null;
+    preselected_fattura_id?: number | null;
 }>();
 
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
 const form = useForm({
-    fornitore_id:                   null as number | null,
+    fornitore_id:                   props.preselected_fornitore_id || null,
     esercizio_id:                   props.esercizio?.id || null,
     conto_corrente_id:              null as number | null,
     data_pagamento:                 new Date().toISOString().substring(0, 10),
@@ -430,10 +432,17 @@ watch(() => form.fornitore_id, async (newVal) => {
             form.iban_confermato_manualmente = false;
             form.conferma_duplicato_verificato = false;
         }
+        
+        if (props.preselected_fattura_id) {
+            const p = pendenze.value.find((x: any) => x.id === props.preselected_fattura_id);
+            if (p && !p.selezionata) {
+                saldaTutto(p);
+            }
+        }
     } else {
         pendenze.value = [];
     }
-});
+}, { immediate: true });
 
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');

@@ -18,10 +18,12 @@ const { generateRoute } = usePermission();
 const isDeleteModalOpen = ref(false);
 const isStornoModalOpen = ref(false);
 const isApprovaSforoModalOpen = ref(false);
+const isApprovaBaseModalOpen = ref(false);
 const noteApprovazioneRatifica = ref('');
 
 const confirmDeleteFattura = () => isDeleteModalOpen.value = true;
 const confirmStornoFattura = () => isStornoModalOpen.value = true;
+const confirmApprovaBase = () => isApprovaBaseModalOpen.value = true;
 const apriModaleApprovazione = () => {
     noteApprovazioneRatifica.value = '';
     isApprovaSforoModalOpen.value = true;
@@ -62,6 +64,17 @@ const executeApprovaSforo = () => {
     });
 };
 
+// Esecuzione Approvazione Base (da_approvare → approvata)
+const executeApprovaBase = () => {
+    router.post(route(generateRoute('gestionale.fatture.approva'), {
+        condominio: props.condominioId,
+        fattura: props.fattura.id
+    }), {}, {
+        preserveScroll: true,
+        onSuccess: () => isApprovaBaseModalOpen.value = false
+    });
+};
+
 // Esecuzione Download PDF
 const downloadPdf = () => {
     if (props.fattura.documenti && props.fattura.documenti.length > 0) {
@@ -85,7 +98,7 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[190px]">
+    <DropdownMenuContent align="end" class="w-[200px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -114,7 +127,16 @@ const downloadPdf = () => {
         @click="apriModaleApprovazione"
         class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
       >
-        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica Assembleare
+        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica assembleare
+      </DropdownMenuItem>
+
+      <!-- Approvazione Base: visibile solo per fatture in da_approvare -->
+      <DropdownMenuItem
+        v-if="fattura.stato_approvazione === 'da_approvare'"
+        @click="confirmApprovaBase"
+        class="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-medium cursor-pointer"
+      >
+        <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come approvata
       </DropdownMenuItem>
 
       <DropdownMenuSeparator />
@@ -220,6 +242,24 @@ const downloadPdf = () => {
                       Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
                   </p>
               </div>
+          </div>
+      </ConfirmDialog>
+
+      <!-- Modale Approvazione Base da_approvare → approvata -->
+      <ConfirmDialog
+          v-model="isApprovaBaseModalOpen"
+          title="Approva Fattura"
+          confirm-text="Approva"
+          variant="default"
+          @confirm="executeApprovaBase"
+      >
+          <div class="space-y-3 text-sm text-slate-600">
+              <p>
+                  Stai per approvare la fattura <strong>{{ fattura.numero_documento }}</strong>.
+              </p>
+              <p>
+                  Una volta approvata, la fattura diventerà visibile nel registro pagamenti per poter essere saldata.
+              </p>
           </div>
       </ConfirmDialog>
   </Teleport>

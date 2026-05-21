@@ -590,6 +590,31 @@ class FatturaPassivaController extends Controller
     }
 
     /**
+     * Approva una fattura in stato "da_approvare" (flusso interno).
+     *
+     * Transizione: da_approvare → approvata.
+     * Differisce dalla ratifica sforo perché non richiede motivazioni legali.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function approva(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        if ($fattura->stato_approvazione !== 'da_approvare') {
+            return back()->with($this->flashError(
+                'Operazione non valida: questa fattura non è in stato "da approvare".'
+            ));
+        }
+
+        $fattura->update(['stato_approvazione' => 'approvata']);
+
+        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID " . auth()->id());
+
+        return back()->with($this->flashSuccess('Fattura approvata con successo.'));
+    }
+
+    /**
      * Registra la ratifica assembleare di una fattura in sforo motivato (Art. 1135 c.c.).
      *
      * Transizione: sforo_motivato → approvata.
@@ -632,6 +657,44 @@ class FatturaPassivaController extends Controller
         return back()->with($this->flashSuccess(
             'Fattura ratificata con successo. Può ora essere pagata.'
         ));
+    }
+
+    /**
+     * Mostra il dettaglio della singola fattura passiva.
+     *
+     * Include le righe di dettaglio, i documenti allegati e le informazioni
+     * sull'eventuale ratifica dello sforo motivato.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return Response
+     */
+    public function show(Condominio $condominio, FatturaPassiva $fattura): Response
+    {
+        $fattura->load([
+            'fornitore',
+            'righe.conto.parent',
+            'documenti'
+        ]);
+
+        // Caricamento del nome utente che ha ratificato se presente
+        $utenteRatifica = null;
+        if (!empty($fattura->dati_extra['ratifica_assembleare']['approvato_da'])) {
+            $utenteRatifica = DB::table('users')
+                ->where('id', $fattura->dati_extra['ratifica_assembleare']['approvato_da'])
+                ->value('name');
+        }
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
+        return Inertia::render('gestionale/movimenti/fatture/FatturaShow', [
+            'condominio' => new CondominioResource($condominio),
+            'fattura' => $fattura,
+            'utenteRatifica' => $utenteRatifica,
+            'esercizio' => $esercizio,
+            'condomini' => $listaCondomini,
+        ]);
     }
 
     /**

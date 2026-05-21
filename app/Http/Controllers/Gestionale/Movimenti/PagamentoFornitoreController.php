@@ -153,6 +153,8 @@ class PagamentoFornitoreController extends Controller
             'fornitori'  => Fornitore::all(),
             'banche'     => $banche,
             'gestioni'   => $gestioni,
+            'preselected_fornitore_id' => request('fornitore_id') ? (int)request('fornitore_id') : null,
+            'preselected_fattura_id'   => request('fattura_id') ? (int)request('fattura_id') : null,
         ]);
     }
 

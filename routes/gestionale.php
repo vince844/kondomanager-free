@@ -201,6 +201,10 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
         ->name('fatture.storno');
     
+    // --- APPROVAZIONE BASE: transizione da_approvare → approvata ---
+    Route::post('/fatture/{fattura}/approva', [FatturaPassivaController::class, 'approva'])
+        ->name('fatture.approva');
+    
     // --- RATIFICA SFORO: transizione sforo_motivato → approvata dopo delibera assembleare ---
     Route::post('/fatture/{fattura}/approva-sforo', [FatturaPassivaController::class, 'approvaSforo'])
         ->name('fatture.approva-sforo');
