@@ -4,7 +4,13 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Enums\StatoPagamentoFattura;
 use App\Enums\TipoAllocazioneFattura;
+use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
+use App\Exceptions\Pagamenti\FatturaNonApprovataException;
+use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
+use App\Exceptions\Pagamenti\IllegalCashAmountException;
+use App\Exceptions\Pagamenti\InsufficientFundsException;
+use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StorePagamentoFornitoreRequest;
@@ -175,19 +181,77 @@ class PagamentoFornitoreController extends Controller
 
             return back()->with($this->flashSuccess('Pagamento registrato con successo.'));
 
+        // ── BLOCCHI BYPASSABILI CON CONFERMA ESPLICITA (modali con override) ──────────
+
         } catch (IbanDiscrepanzaException $e) {
+            // Sentinella Anti-Frode: IBAN differisce dall'anagrafica.
+            // Bypassabile con iban_confermato_manualmente=true dopo conferma esplicita.
             return back()->withErrors([
                 'iban_discrepanza' => $e->getMessage(),
             ]);
 
         } catch (PossibilePagamentoDuplicatoException $e) {
+            // Warning duplicato: stesso importo+fattura nelle ultime 24h.
+            // Bypassabile con conferma_duplicato_verificato=true.
             return back()->withErrors([
                 'possibile_duplicato' => $e->getMessage(),
             ]);
 
+        } catch (InsufficientFundsException $e) {
+            // Saldo conto insufficiente. Bypassabile con allow_overdraft=true
+            // + nota_override obbligatoria (art. 1129 c.c. — responsabilità admin).
+            // I dati strutturati viaggiano come JSON nella stessa chiave errors
+            // perché Inertia garantisce errors al frontend; ->with() va in sessione
+            // e il middleware condivide solo 'flash.message', non chiavi custom.
+            return back()->withErrors([
+                'insufficient_funds'      => $e->getMessage(),
+                'insufficient_funds_data' => json_encode([
+                    'saldo_cents'      => $e->saldoCents,
+                    'necessario_cents' => $e->necessarioCents,
+                    'scopertura_cents' => $e->scoperturaCents,
+                ]),
+            ]);
+
+        } catch (OverpaymentException $e) {
+            // Importo allocato supera il residuo fattura.
+            // Bypassabile con allow_overpayment=true + nota_override obbligatoria.
+            // Stessa strategia: dati strutturati come JSON in errors.
+            return back()->withErrors([
+                'overpayment'      => $e->getMessage(),
+                'overpayment_data' => json_encode([
+                    'allocato_cents' => $e->allocatoCents,
+                    'residuo_cents'  => $e->residuoCents,
+                    'num_fattura'    => $e->numFattura,
+                ]),
+            ]);
+
+        // ── BLOCCHI NON BYPASSABILI (modali informative, no override) ─────────────
+
+        } catch (FiscalYearClosedException $e) {
+            // Esercizio chiuso: nessuna scrittura possibile.
+            // Non bypassabile — l'admin deve selezionare un esercizio aperto.
+            return back()->withErrors(['fiscal_year_closed' => $e->getMessage()]);
+
+        } catch (IllegalCashAmountException $e) {
+            // Pagamento contanti ≥ 5.000€ — violazione D.Lgs. 231/2007 antiriciclaggio.
+            // Non bypassabile per proteggere l'admin da sanzioni penali/amministrative.
+            return back()->withErrors(['illegal_cash' => $e->getMessage()]);
+
+        } catch (FatturaNonApprovataException $e) {
+            // Fattura non approvata: art. 1135 c.c. richiede delibera assembleare.
+            // Non bypassabile — l'admin deve prima ottenere l'approvazione.
+            return back()->withErrors(['fattura_non_approvata' => $e->getMessage()]);
+
+        } catch (AllocazioniInconsistentiException $e) {
+            // Errore dati: fatture di fornitori/condomini diversi nello stesso pagamento.
+            // Non bypassabile — errore operativo da correggere.
+            return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
+
         } catch (\Exception $e) {
-            Log::error("Errore registrazione pagamento fornitore: " . $e->getMessage());
-            Log::error("Traccia: " . $e->getTraceAsString());
+            // Errore tecnico non previsto. La transazione atomica garantisce
+            // che nessun dato parziale sia stato scritto nel DB.
+            Log::error('Errore registrazione pagamento fornitore: ' . $e->getMessage());
+            Log::error('Traccia: ' . $e->getTraceAsString());
 
             return back()->withErrors(['error' => $e->getMessage()]);
         }

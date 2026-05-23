@@ -312,7 +312,25 @@ class PagamentoFornitoreService
                     'fornitore_snapshot'     => $this->costruisciSnapshot($fornitore),
                     'user_id'                => auth()->id(),
                     'idempotency_key'        => $idempotencyKey,
+                    'note_override'          => $data['nota_override'] ?? null,
                 ]);
+
+                // ── Audit trail override ─────────────────────────────────────
+                // Se l'admin ha proceduto bypassando un blocco (saldo insufficiente,
+                // overpayment), la motivazione viene loggata strutturata per garantire
+                // tracciabilità anche dopo mesi dall'operazione.
+                if (! empty($data['nota_override'])) {
+                    Log::info('Override pagamento fornitore con nota audit.', [
+                        'pagamento_id'    => $pagamento->id,
+                        'condominio_id'   => $condominioId,
+                        'fornitore_id'    => (int) $data['fornitore_id'],
+                        'user_id'         => auth()->id(),
+                        'allow_overdraft' => (bool) ($data['allow_overdraft'] ?? false),
+                        'allow_overpayment' => (bool) ($data['allow_overpayment'] ?? false),
+                        'nota_override'   => $data['nota_override'],
+                        'importo_cents'   => $totali['uscitaCassa'],
+                    ]);
+                }
 
                 // ── Step 10: Ricalcola stato pagamento su tutte le fatture ───
                 foreach ($fatture as $fattura) {
@@ -757,7 +775,10 @@ class PagamentoFornitoreService
                         $fattura->id,
                         number_format($allocatoProposto / 100, 2, ',', '.'),
                         number_format($residuo / 100, 2, ',', '.')
-                    )
+                    ),
+                    allocatoCents: (int) $allocatoProposto,
+                    residuoCents:  (int) $residuo,
+                    numFattura:    $fattura->numero_documento ?? "#{$fattura->id}",
                 );
             }
         }
@@ -794,7 +815,10 @@ class PagamentoFornitoreService
                         number_format($capienza['saldo_attuale_cents'] / 100, 2, ',', '.'),
                         number_format($totaleCassa / 100, 2, ',', '.'),
                         number_format($capienza['scopertura_cents'] / 100, 2, ',', '.')
-                    )
+                    ),
+                    saldoCents:      (int) $capienza['saldo_attuale_cents'],
+                    necessarioCents: (int) $totaleCassa,
+                    scoperturaCents: (int) $capienza['scopertura_cents'],
                 );
             }
         }
@@ -954,7 +978,13 @@ class PagamentoFornitoreService
      */
     private function saldoCorrente(int $contoId): int
     {
-        $saldo = DB::table('righe_scritture')
+        // 1. Recupera il saldo iniziale della cassa associata al conto
+        $saldoIniziale = DB::table('casse')
+            ->where('conto_contabile_id', $contoId)
+            ->value('saldo_iniziale') ?? 0;
+
+        // 2. Calcola il delta dei movimenti (DARE - AVERE per conti attivi)
+        $movimenti = DB::table('righe_scritture')
             ->join('scritture_contabili', 'righe_scritture.scrittura_id', '=', 'scritture_contabili.id')
             ->where('righe_scritture.conto_contabile_id', $contoId)
             ->whereNull('scritture_contabili.deleted_at')
@@ -964,7 +994,8 @@ class PagamentoFornitoreService
             ")
             ->value('saldo');
 
-        return (int) ($saldo ?? 0);
+        // Il saldo reale è il saldo di apertura + il saldo dei movimenti
+        return (int) $saldoIniziale + (int) ($movimenti ?? 0);
     }
 
     /**

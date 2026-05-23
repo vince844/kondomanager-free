@@ -77,8 +77,14 @@ class StorePagamentoFornitoreRequest extends FormRequest
 
             // --- FLAG SENTINELLA ---
             'allow_overdraft'               => ['boolean'],
+            'allow_overpayment'             => ['boolean'],
             'iban_confermato_manualmente'    => ['boolean'],
             'conferma_duplicato_verificato' => ['boolean'],
+
+            // --- AUDIT TRAIL OVERRIDE ---
+            // Obbligatoria a livello UI (min 10 char) quando si bypassa un blocco.
+            // Nullable lato server per non rompere submit senza override.
+            'nota_override' => ['nullable', 'string', 'max:2000'],
 
             // --- IDEMPOTENCY ---
             'idempotency_key' => ['nullable', 'string', 'uuid'],

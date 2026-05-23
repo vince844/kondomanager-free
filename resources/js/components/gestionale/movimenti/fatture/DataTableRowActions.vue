@@ -98,7 +98,7 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[200px]">
+    <DropdownMenuContent align="end" class="w-[190px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -127,7 +127,7 @@ const downloadPdf = () => {
         @click="apriModaleApprovazione"
         class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
       >
-        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica assembleare
+        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica Assembleare
       </DropdownMenuItem>
 
       <!-- Approvazione Base: visibile solo per fatture in da_approvare -->
@@ -136,7 +136,7 @@ const downloadPdf = () => {
         @click="confirmApprovaBase"
         class="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-medium cursor-pointer"
       >
-        <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come approvata
+        <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come Approvata
       </DropdownMenuItem>
 
       <DropdownMenuSeparator />
@@ -209,6 +209,7 @@ const downloadPdf = () => {
           title="Ratifica Assembleare — Sforo Motivato"
           confirm-text="Conferma Ratifica"
           variant="default"
+          :disabled="noteApprovazioneRatifica.trim().length < 10"
           @confirm="executeApprovaSforo"
       >
           <div class="space-y-4 text-sm text-slate-600">
@@ -228,9 +229,11 @@ const downloadPdf = () => {
 
               <!-- Campo note -->
               <div class="space-y-1.5">
-                  <label class="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      Riferimento verbale / Note
-                      <span class="font-normal text-slate-400 ml-1">(facoltativo, consigliato per audit)</span>
+                  <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex justify-between">
+                      <span>Riferimento verbale / Note <span class="text-rose-500">*</span></span>
+                      <span class="font-normal text-slate-400 normal-case tracking-normal ml-1" :class="{'text-rose-500 font-bold': noteApprovazioneRatifica.trim().length < 10}">
+                          {{ noteApprovazioneRatifica.trim().length < 10 ? `(minimo 10 caratteri, attuali: ${noteApprovazioneRatifica.trim().length})` : '(obbligatorio)' }}
+                      </span>
                   </label>
                   <textarea
                       v-model="noteApprovazioneRatifica"

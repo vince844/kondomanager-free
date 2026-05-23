@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Tratamento Inteligente de Erros de Pagamento: introduzidos 7 novos modais inteligentes (design largo max-w-xl) para gestão proativa de exceções de domínio durante os pagamentos a fornecedores, comunicando claramente e orientando o administrador sobre como proceder (ex: Limites de Dinheiro Anti-Lavagem, Ano Fiscal Fechado, Alocações Inconsistentes).",
+        "Trilha de Auditoria de Responsabilidade e Proteção Legal: a substituição de bloqueios críticos (como descobertos em contas bancárias ou ratificação de assembleia) agora exige estritamente uma motivação explícita (mínimo de 10 caracteres) que é salva permanentemente no log de auditoria para proteger o profissional.",
+        "Corrigido um bug crítico no cálculo da capacidade de Caixa: o sistema agora inclui corretamente o saldo inicial juntamente com os lançamentos contábeis atuais, eliminando falsos positivos nos modais de saldo insuficiente."
+    ]
+}
+

@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Smart Error Handling Pagamenti: introdotti 7 nuovi modali intelligenti (design largo max-w-xl) per la gestione proattiva delle eccezioni di dominio durante il pagamento fornitori, in grado di comunicare in modo chiaro e guidare l'amministratore su come procedere (es. Limite Contanti Antiriciclaggio, Esercizio Chiuso, Allocazioni Inconsistenti).",
+        "Audit Trail Responsabilità e Tutela Legale: l'override di blocchi critici (come lo scoperto di conto corrente o la ratifica assembleare ex Art. 1135 c.c.) richiede ora obbligatoriamente l'inserimento di una motivazione esplicita (minimo 10 caratteri) che viene persistita permanentemente nell'audit log a tutela del professionista.",
+        "Risolto un bug critico nel calcolo della capienza della Cassa: il sistema ora conteggia correttamente il saldo iniziale impostato in configurazione insieme alle scritture correnti, eliminando i falsi positivi nei modali di saldo insufficiente."
+    ]
+}

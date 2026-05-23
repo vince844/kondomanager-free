@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm, Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -13,8 +13,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
     CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
-    AlertOctagon, TriangleAlert, Lock, Unlock, ChevronDown, ChevronUp,
-    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp
+    AlertOctagon, TriangleAlert, Lock, ChevronDown,
+    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
+    Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
@@ -127,25 +128,56 @@ const form = useForm({
     tipo_detrazione:                null as string | null,
     beneficiari_detrazione:         [] as any[],
     allow_overdraft:                false,
+    allow_overpayment:              false,
     iban_confermato_manualmente:    false,
-    conferma_duplicato_verificato: false,
+    conferma_duplicato_verificato:  false,
+    nota_override:                  null as string | null,
     allocazioni:                    [] as { fattura_id: number; tipo: string; importo_allocato_cents: number }[],
 });
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
+
 const pendenze = ref<Pendenza[]>([]);
 const loadingPendenze = ref(false);
 const hasNetting = ref(false);
 const totaleNC = ref(0);
 const totaleFT = ref(0);
 
+// ── Modali successo / IBAN / duplicato (originali) ──
 const showSuccessModal = ref(false);
 const showIbanConfirmModal = ref(false);
 const showDuplicateConfirmModal = ref(false);
 const ibanDiscrepanzaMsg = ref('');
 const duplicatoMsg = ref('');
+
+// ── Modali errori di dominio — bypassabili ──
+const showInsufficientFundsModal = ref(false);
+const insufficientFundsMsg = ref('');
+const insufficientFundsData = ref({ saldo_cents: 0, necessario_cents: 0, scopertura_cents: 0 });
+const overdraftNote = ref('');
+
+const showOverpaymentModal = ref(false);
+const overpaymentMsg = ref('');
+const overpaymentData = ref({ allocato_cents: 0, residuo_cents: 0, num_fattura: '' });
+const overpaymentNote = ref('');
+
+// ── Modali errori di dominio — non bypassabili ──
+const showFiscalYearClosedModal = ref(false);
+const fiscalYearClosedMsg = ref('');
+
+const showIllegalCashModal = ref(false);
+const illegalCashMsg = ref('');
+
+const showFatturaNonApprovataModal = ref(false);
+const fatturaNonApprovataMsg = ref('');
+
+const showAllocazioniInconsistentiModal = ref(false);
+const allocazioniInconsistentiMsg = ref('');
+
+const showGenericErrorModal = ref(false);
+const genericErrorMsg = ref('');
 
 // --- Ratifica Sforo (inline in PagamentoNew) ---
 const showApprovaSforoModal = ref(false);
@@ -394,15 +426,69 @@ const handleSubmit = () => {
             showSuccessModal.value = true;
         },
         onError: (errors) => {
-            // Sentinella IBAN
+            // ── Bypassabili: IBAN ──
             if (errors.iban_discrepanza) {
                 ibanDiscrepanzaMsg.value = errors.iban_discrepanza;
                 showIbanConfirmModal.value = true;
+                return;
             }
-            // Sentinella duplicato
+            // ── Bypassabili: Duplicato ──
             if (errors.possibile_duplicato) {
                 duplicatoMsg.value = errors.possibile_duplicato;
                 showDuplicateConfirmModal.value = true;
+                return;
+            }
+            // ── Bypassabili: Saldo insufficiente ──
+            if (errors.insufficient_funds) {
+                insufficientFundsMsg.value = errors.insufficient_funds;
+                // I dati strutturati viaggiano come JSON in errors (canale garantito da Inertia).
+                // Il middleware condivide solo flash.message, non chiavi flash custom.
+                if (errors.insufficient_funds_data) {
+                    try {
+                        insufficientFundsData.value = JSON.parse(errors.insufficient_funds_data);
+                    } catch { /* usa i valori di default */ }
+                }
+                overdraftNote.value = '';
+                showInsufficientFundsModal.value = true;
+                return;
+            }
+            // ── Bypassabili: Overpayment ──
+            if (errors.overpayment) {
+                overpaymentMsg.value = errors.overpayment;
+                if (errors.overpayment_data) {
+                    try {
+                        overpaymentData.value = JSON.parse(errors.overpayment_data);
+                    } catch { /* usa i valori di default */ }
+                }
+                overpaymentNote.value = '';
+                showOverpaymentModal.value = true;
+                return;
+            }
+            // ── Non bypassabili ──
+            if (errors.fiscal_year_closed) {
+                fiscalYearClosedMsg.value = errors.fiscal_year_closed;
+                showFiscalYearClosedModal.value = true;
+                return;
+            }
+            if (errors.illegal_cash) {
+                illegalCashMsg.value = errors.illegal_cash;
+                showIllegalCashModal.value = true;
+                return;
+            }
+            if (errors.fattura_non_approvata) {
+                fatturaNonApprovataMsg.value = errors.fattura_non_approvata;
+                showFatturaNonApprovataModal.value = true;
+                return;
+            }
+            if (errors.allocazioni_inconsistenti) {
+                allocazioniInconsistentiMsg.value = errors.allocazioni_inconsistenti;
+                showAllocazioniInconsistentiModal.value = true;
+                return;
+            }
+            // ── Fallback tecnico ──
+            if (errors.error) {
+                genericErrorMsg.value = errors.error;
+                showGenericErrorModal.value = true;
             }
         },
     });
@@ -417,6 +503,22 @@ const confirmIban = () => {
 const confirmDuplicate = () => {
     form.conferma_duplicato_verificato = true;
     showDuplicateConfirmModal.value = false;
+    handleSubmit();
+};
+
+// Override saldo insufficiente: l'admin assume responsabilità con nota obbligatoria
+const confirmOverdraft = () => {
+    form.allow_overdraft = true;
+    form.nota_override = overdraftNote.value;
+    showInsufficientFundsModal.value = false;
+    handleSubmit();
+};
+
+// Override overpayment: l'admin conferma l'eccedenza con nota obbligatoria
+const confirmOverpayment = () => {
+    form.allow_overpayment = true;
+    form.nota_override = overpaymentNote.value;
+    showOverpaymentModal.value = false;
     handleSubmit();
 };
 
@@ -1145,8 +1247,9 @@ const pageGuides = [
         <ConfirmDialog
             v-model="showApprovaSforoModal"
             title="Ratifica Assembleare — Sforo Motivato"
-            confirm-text="Ratifica & Sblocca"
+            confirm-text="Conferma Ratifica"
             variant="default"
+            :disabled="noteApprovazioneInline.trim().length < 10"
             @confirm="executeApprovaSforoInline"
         >
             <div class="space-y-4">
@@ -1157,8 +1260,9 @@ const pageGuides = [
                     <div>
                         <p class="font-bold text-orange-900">Ratifica assembleare obbligatoria (Art. 1135 c.c.)</p>
                         <p class="text-xs mt-1 leading-relaxed">
-                            Questa fattura supera il budget approvato ed è stata registrata come spesa urgente.
-                            Confermando, dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
+                            Questa fattura è stata registrata con sforo motivato: la spesa supera il budget approvato dall'assemblea.
+                            La ratifica è obbligatoria per legge prima del pagamento.
+                            Confermando dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
                         </p>
                     </div>
                 </div>
@@ -1172,22 +1276,428 @@ const pageGuides = [
 
                 <!-- Note -->
                 <div class="space-y-1.5">
-                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Riferimento verbale / Note
-                        <span class="font-normal text-slate-400 normal-case tracking-normal ml-1">(facoltativo, consigliato)</span>
+                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex justify-between">
+                        <span>Riferimento verbale / Note <span class="text-rose-500">*</span></span>
+                        <span class="font-normal text-slate-400 normal-case tracking-normal ml-1" :class="{'text-rose-500 font-bold': noteApprovazioneInline.trim().length < 10}">
+                            {{ noteApprovazioneInline.trim().length < 10 ? `(minimo 10 caratteri, attuali: ${noteApprovazioneInline.trim().length})` : '(obbligatorio)' }}
+                        </span>
                     </label>
                     <textarea
                         v-model="noteApprovazioneInline"
                         rows="3"
-                        placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente..."
-                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                        placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente manutenzione ascensore..."
+                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 resize-none"
                     />
                     <p class="text-[10px] text-slate-400 leading-relaxed">
-                        Il sistema registra automaticamente data e autore nell'audit trail.
+                        Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
                     </p>
                 </div>
             </div>
         </ConfirmDialog>
+
+        <!-- ════════════════════════════════════════════════════════════════ -->
+        <!-- MODALI ERRORI DI DOMINIO                                        -->
+        <!-- ════════════════════════════════════════════════════════════════ -->
+
+        <!-- ── 1. SALDO INSUFFICIENTE — bypassabile con nota obbligatoria ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showInsufficientFundsModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <!-- Header -->
+                        <div class="bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-950/40 dark:to-rose-900/20 px-8 pt-8 pb-6 text-center border-b border-rose-100 dark:border-rose-900/30">
+                            <div class="w-16 h-16 bg-white dark:bg-rose-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-rose-200/50 dark:shadow-rose-900/30 border border-rose-100 dark:border-rose-800">
+                                <Wallet class="w-8 h-8 text-rose-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Saldo Conto Insufficiente</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-rose-600 dark:text-rose-400 bg-rose-100 dark:bg-rose-900/50 px-2.5 py-1 rounded-full border border-rose-200 dark:border-rose-800">
+                                <Scale class="w-3 h-3" /> Art. 1129 c.c.
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <!-- Dati strutturati saldo -->
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-700">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Saldo Attuale</p>
+                                    <p class="font-black text-lg text-slate-700 dark:text-slate-300">{{ euro(insufficientFundsData.saldo_cents) }}</p>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-700">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Necessario</p>
+                                    <p class="font-black text-lg text-slate-700 dark:text-slate-300">{{ euro(insufficientFundsData.necessario_cents) }}</p>
+                                </div>
+                                <div class="bg-rose-50 dark:bg-rose-950/30 rounded-xl p-3 text-center border border-rose-200 dark:border-rose-800/50">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-rose-400 mb-1">Scopertura</p>
+                                    <p class="font-black text-lg text-rose-600 dark:text-rose-400">{{ euro(insufficientFundsData.scopertura_cents) }}</p>
+                                </div>
+                            </div>
+
+                            <!-- Contesto legale -->
+                            <div class="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-amber-800 dark:text-amber-300 mb-1">Responsabilità dell'amministratore (art. 1129 c.c.)</p>
+                                    <p class="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                                        Procedere con saldo insufficiente significa che il pagamento avverrà in scoperto di conto corrente.
+                                        L'amministratore assume personalmente la responsabilità di questa decisione. La motivazione sarà
+                                        registrata nell'audit trail permanente del pagamento.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Nota override obbligatoria -->
+                            <div class="space-y-2">
+                                <label class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                                    <FileText class="w-3.5 h-3.5" />
+                                    Motivazione (obbligatoria per procedere)
+                                </label>
+                                <textarea
+                                    v-model="overdraftNote"
+                                    rows="3"
+                                    placeholder="Es: Incasso rate previsto entro 48h — bonifico urgente per lavori in corso — accordo verbale con fornitore..."
+                                    class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-400 resize-none transition-all"
+                                />
+                                <p class="text-[10px] text-slate-400 flex items-center gap-1.5">
+                                    <Lock class="w-3 h-3" />
+                                    Salvata permanentemente nel record del pagamento e nel log di sistema.
+                                </p>
+                            </div>
+
+                            <!-- Azioni -->
+                            <div class="flex gap-3 pt-2">
+                                <Button variant="ghost" @click="showInsufficientFundsModal = false"
+                                    class="flex-1 h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    Annulla
+                                </Button>
+                                <Button @click="confirmOverdraft"
+                                    :disabled="overdraftNote.trim().length < 10"
+                                    class="flex-1 h-12 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black uppercase tracking-widest text-[11px] transition-all">
+                                    <Lock class="w-4 h-4 mr-2" />
+                                    Procedo — Assumo Responsabilità
+                                </Button>
+                            </div>
+                            <p v-if="overdraftNote.trim().length > 0 && overdraftNote.trim().length < 10" class="text-[10px] text-rose-500 text-center">
+                                La motivazione deve essere almeno 10 caratteri.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 2. OVERPAYMENT — bypassabile con nota obbligatoria ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showOverpaymentModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-orange-50 to-orange-100/50 dark:from-orange-950/40 dark:to-orange-900/20 px-8 pt-8 pb-6 text-center border-b border-orange-100 dark:border-orange-900/30">
+                            <div class="w-16 h-16 bg-white dark:bg-orange-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-200/50 border border-orange-100 dark:border-orange-800">
+                                <AlertOctagon class="w-8 h-8 text-orange-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Importo Eccede il Residuo Fattura</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-orange-600 bg-orange-100 dark:bg-orange-900/50 px-2.5 py-1 rounded-full border border-orange-200 dark:border-orange-800">
+                                <Scale class="w-3 h-3" /> Partita Doppia
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-700">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Fattura</p>
+                                    <p class="font-bold text-sm text-slate-700 dark:text-slate-300 truncate">{{ overpaymentData.num_fattura }}</p>
+                                </div>
+                                <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-center border border-slate-200 dark:border-slate-700">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Residuo</p>
+                                    <p class="font-black text-lg text-slate-700 dark:text-slate-300">{{ euro(overpaymentData.residuo_cents) }}</p>
+                                </div>
+                                <div class="bg-orange-50 dark:bg-orange-950/30 rounded-xl p-3 text-center border border-orange-200 dark:border-orange-800/50">
+                                    <p class="text-[9px] font-black uppercase tracking-widest text-orange-400 mb-1">Allocato</p>
+                                    <p class="font-black text-lg text-orange-600 dark:text-orange-400">{{ euro(overpaymentData.allocato_cents) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-amber-800 dark:text-amber-300 mb-1">Implicazione contabile — Partita Doppia</p>
+                                    <p class="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                                        Un pagamento eccedente il residuo crea un credito vs. fornitore non controllato nel piano dei conti.
+                                        Questo è ammissibile solo se concordato con il fornitore (es. anticipo su lavori futuri).
+                                        Documenta il motivo per giustificare la scrittura contabile.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <label class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                                    <FileText class="w-3.5 h-3.5" />
+                                    Motivazione (obbligatoria per procedere)
+                                </label>
+                                <textarea
+                                    v-model="overpaymentNote"
+                                    rows="3"
+                                    placeholder="Es: Acconto su lavori straordinari approvati — accordo con fornitore del [data]..."
+                                    class="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 text-sm text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 resize-none transition-all"
+                                />
+                            </div>
+
+                            <div class="flex gap-3 pt-2">
+                                <Button variant="ghost" @click="showOverpaymentModal = false"
+                                    class="flex-1 h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    Annulla e Correggi
+                                </Button>
+                                <Button @click="confirmOverpayment"
+                                    :disabled="overpaymentNote.trim().length < 10"
+                                    class="flex-1 h-12 rounded-xl bg-orange-600 hover:bg-orange-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-black uppercase tracking-widest text-[11px] transition-all">
+                                    Confermo — Procedo
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 3. ESERCIZIO CHIUSO — non bypassabile ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showFiscalYearClosedModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-700/30 px-8 pt-8 pb-6 text-center border-b border-slate-200 dark:border-slate-700">
+                            <div class="w-16 h-16 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-slate-200 dark:border-slate-600">
+                                <Lock class="w-8 h-8 text-slate-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Esercizio Contabile Chiuso</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-200 dark:bg-slate-700 px-2.5 py-1 rounded-full">
+                                <Scale class="w-3 h-3" /> Art. 1130-bis c.c.
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-blue-800 dark:text-blue-300 mb-1">Perché non posso procedere?</p>
+                                    <p class="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                                        Le scritture contabili devono essere attribuite all'esercizio corretto (art. 1130-bis c.c.).
+                                        Un esercizio chiuso non può ricevere nuove scritture — questo è un requisito contabile fondamentale,
+                                        non una limitazione del software.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4 space-y-2">
+                                <p class="text-xs font-bold text-emerald-800 dark:text-emerald-300">✅ Come risolvere</p>
+                                <ol class="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-1.5 list-decimal list-inside leading-relaxed">
+                                    <li>Torna al form e seleziona un <strong>esercizio aperto</strong> nel campo "Esercizio"</li>
+                                    <li>Se non esiste un esercizio aperto, crea un nuovo esercizio dalla gestione condominio</li>
+                                    <li>Una fattura di competenza 2025 può essere pagata in un esercizio 2026 aperto</li>
+                                </ol>
+                            </div>
+
+                            <Button @click="showFiscalYearClosedModal = false"
+                                class="w-full h-12 rounded-xl bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho capito — Torno al Form
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 4. LIMITE CONTANTI ANTIRICICLAGGIO — non bypassabile ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showIllegalCashModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-red-200 dark:border-red-900/50">
+                        <div class="bg-gradient-to-br from-red-600 to-red-700 px-8 pt-8 pb-6 text-center">
+                            <div class="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/30">
+                                <Ban class="w-8 h-8 text-white" />
+                            </div>
+                            <h3 class="font-black text-white text-xl mb-1">Pagamento Non Consentito</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-red-100 bg-white/20 px-2.5 py-1 rounded-full">
+                                D.Lgs. 231/2007 — Antiriciclaggio
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl p-4">
+                                <AlertOctagon class="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-red-800 dark:text-red-300 mb-1">Normativa antiriciclaggio obbligatoria</p>
+                                    <p class="text-[11px] text-red-700 dark:text-red-400 leading-relaxed">
+                                        Il <strong>D.Lgs. 231/2007</strong> vieta i pagamenti in contanti di importo pari o superiore a
+                                        <strong>5.000€</strong> (soglia vigente dal 01/01/2023). La violazione comporta sanzioni
+                                        amministrative da <strong>1.000€ a 50.000€</strong>. Questo blocco non può essere aggirato.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4 space-y-2">
+                                <p class="text-xs font-bold text-emerald-800 dark:text-emerald-300">✅ Metodi di pagamento alternativi consentiti</p>
+                                <ul class="text-[11px] text-emerald-700 dark:text-emerald-400 space-y-1 leading-relaxed">
+                                    <li>🏦 <strong>Bonifico bancario</strong> — metodo preferito, tracciabile</li>
+                                    <li>📋 <strong>Assegno non trasferibile</strong> — sempre intestato al beneficiario</li>
+                                    <li>💳 <strong>Carta di credito/bancomat</strong> — con ricevuta elettronica</li>
+                                </ul>
+                            </div>
+
+                            <Button @click="showIllegalCashModal = false"
+                                class="w-full h-12 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest text-[11px]">
+                                Cambio Metodo di Pagamento
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 5. FATTURA NON APPROVATA — non bypassabile ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showFatturaNonApprovataModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-amber-950/40 dark:to-yellow-950/20 px-8 pt-8 pb-6 text-center border-b border-amber-100 dark:border-amber-900/30">
+                            <div class="w-16 h-16 bg-white dark:bg-amber-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-amber-100 dark:border-amber-800">
+                                <FileX class="w-8 h-8 text-amber-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Fattura Non Ancora Approvata</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-amber-600 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                                <Scale class="w-3 h-3" /> Art. 1135 c.c.
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl p-4">
+                                <ShieldCheck class="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-amber-800 dark:text-amber-300 mb-1">Delibera assembleare richiesta (art. 1135 c.c.)</p>
+                                    <p class="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                                        L'assemblea condominiale deve deliberare e approvare le spese <strong>prima</strong> che l'amministratore
+                                        possa procedere al pagamento. Pagare fatture non approvate espone l'amministratore a
+                                        responsabilità personale verso i condòmini.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-4 space-y-2">
+                                <p class="text-xs font-bold text-blue-800 dark:text-blue-300">✅ Come sbloccare il pagamento</p>
+                                <ol class="text-[11px] text-blue-700 dark:text-blue-400 space-y-1.5 list-decimal list-inside leading-relaxed">
+                                    <li>Vai alla <strong>fattura passiva</strong> e approvala tramite il workflow di approvazione</li>
+                                    <li>Per spese urgenti non differibili: registra come <strong>"sforo motivato"</strong> (art. 1135 c.2 c.c.)
+                                        e poi fai ratificare in assemblea</li>
+                                    <li>Torna qui e ripeti la registrazione del pagamento</li>
+                                </ol>
+                            </div>
+
+                            <Button @click="showFatturaNonApprovataModal = false"
+                                class="w-full h-12 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho capito — Vado ad Approvare
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 6. ALLOCAZIONI INCONSISTENTI — non bypassabile ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showAllocazioniInconsistentiModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-violet-50 to-violet-100/50 dark:from-violet-950/40 dark:to-violet-900/20 px-8 pt-8 pb-6 text-center border-b border-violet-100 dark:border-violet-900/30">
+                            <div class="w-16 h-16 bg-white dark:bg-violet-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-violet-100 dark:border-violet-800">
+                                <AlertTriangle class="w-8 h-8 text-violet-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Errore nelle Allocazioni</h3>
+                            <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-violet-600 bg-violet-100 dark:bg-violet-900/50 px-2.5 py-1 rounded-full border border-violet-200 dark:border-violet-800">
+                                Partita Doppia
+                            </span>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{{ allocazioniInconsistentiMsg }}</p>
+
+                            <div class="flex items-start gap-3 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-violet-800 dark:text-violet-300 mb-1">Principio contabile violato</p>
+                                    <p class="text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
+                                        Un singolo pagamento deve chiudere debiti verso un <strong>unico fornitore</strong> per un
+                                        <strong>unico condominio</strong>. Questo è un requisito fondamentale della partita doppia
+                                        che garantisce la tracciabilità contabile.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4">
+                                <p class="text-xs font-bold text-emerald-800 dark:text-emerald-300 mb-2">✅ Come correggere</p>
+                                <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                                    Deseleziona tutte le fatture con il pulsante "Reset" e riseleziona solo quelle dello stesso fornitore.
+                                    Il sistema garantisce automaticamente la coerenza delle selezioni.
+                                </p>
+                            </div>
+
+                            <Button @click="showAllocazioniInconsistentiModal = false"
+                                class="w-full h-12 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-black uppercase tracking-widest text-[11px]">
+                                Capito — Correggo la Selezione
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- ── 7. ERRORE TECNICO GENERICO — fallback ── -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showGenericErrorModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-slate-800 to-slate-900 px-8 pt-8 pb-6 text-center">
+                            <div class="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
+                                <Bug class="w-8 h-8 text-white/80" />
+                            </div>
+                            <h3 class="font-black text-white text-xl mb-1">Errore Tecnico</h3>
+                            <p class="text-slate-400 text-sm">Il pagamento non è stato registrato</p>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-xl p-4">
+                                <CheckCircle class="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                                <div>
+                                    <p class="text-xs font-bold text-emerald-800 dark:text-emerald-300 mb-1">Nessun dato è andato perso</p>
+                                    <p class="text-[11px] text-emerald-700 dark:text-emerald-400 leading-relaxed">
+                                        Il sistema utilizza transazioni atomiche: o tutto viene registrato, o niente. Non ci sono
+                                        dati parziali o scritture contabili danneggiate.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Dettaglio tecnico collassabile -->
+                            <details class="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                <summary class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                                    Dettaglio tecnico (per il supporto)
+                                </summary>
+                                <div class="px-4 py-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700">
+                                    <p class="text-[10px] font-mono text-slate-600 dark:text-slate-400 break-all leading-relaxed">{{ genericErrorMsg }}</p>
+                                </div>
+                            </details>
+
+                            <div class="flex gap-3">
+                                <Button variant="ghost" @click="showGenericErrorModal = false"
+                                    class="flex-1 h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100">
+                                    Chiudi
+                                </Button>
+                                <Button @click="() => { showGenericErrorModal = false; handleSubmit(); }"
+                                    class="flex-1 h-12 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-black uppercase tracking-widest text-[11px]">
+                                    Riprova
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
 
     </GestionaleLayout>
 </template>
