@@ -3,6 +3,8 @@
         "Treasury Guardian Widget MVP: introduzido o novo assistente preditivo de tesouraria no painel que calcula a descoberta de liquidez em 30 dias e classifica o risco (Verde, Amarelo, Vermelho).",
         "Call-to-Actions Dinâmicos (Smart UX): o widget sugere proativamente ações contextuais com base no cenário de fluxo de caixa (ex: 'Emitir Novas Parcelas' ou 'Verificar ou Solicitar Recebimentos').",
         "Reconciliação de Liquidez e Saldos Iniciais: resolvido o desalinhamento entre o widget e o balancete de verificação integrando o saldo de caixa inicial no cálculo da liquidez disponível.",
-        "Cálculo Exato de Recebimentos Esperados: corrigido o algoritmo de estimativa de recebimentos para extrair exclusivamente pagamentos reais recebidos por partidas dobradas, garantindo projeções financeiras exatas ao centavo."
+        "Cálculo Exato de Recebimentos Esperados: corrigido o algoritmo de estimativa de recebimentos para extrair exclusivamente pagamentos reais recebidos por partidas dobradas, garantindo projeções financeiras exatas ao centavo.",
+        "Estatísticas de Retenção na Fonte: corrigido um problema estatístico no painel de pagamentos que mantinha a contagem de retenções em zero, agora calculando-a proporcionalmente no momento do registro do pagamento.",
+        "Action Inbox para Planos Extraordinários e Sync: estendido o suporte da Action Inbox aos Planos de Parcelamento Extraordinários (geração imediata de tarefas para emissão de parcelas e verificação de recebimentos) e resolvido um bug que não excluía eventos antigos após regeneração total de um plano aprovado."
     ]
 }

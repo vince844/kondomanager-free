@@ -274,9 +274,24 @@ class PagamentoFornitoreService
                 // Snapshot fornitore: immutabile per audit fiscale storico (CU, 770).
                 // Anche se l'anagrafica viene modificata in futuro, questo record
                 // conserva i dati al momento del pagamento.
-                $importoLordo    = (int) ($data['importo_lordo_cents'] ?? $totali['uscitaCassa']);
+                
                 $importoRitenuta = (int) ($data['importo_ritenuta_cents'] ?? 0);
-                $importoNetto    = (int) ($data['importo_netto_cents'] ?? ($importoLordo - $importoRitenuta));
+                
+                // Se non fornita esplicitamente, la calcoliamo pro-quota sulle fatture pagate
+                if ($importoRitenuta === 0) {
+                    foreach ($data['allocazioni'] as $alloc) {
+                        if ($alloc['tipo'] === TipoAllocazioneFattura::PAGAMENTO->value) {
+                            $f = $fatture[(int) $alloc['fattura_id']];
+                            if (($f->importo_ritenuta ?? 0) > 0 && ($f->netto_a_pagare ?? 0) > 0) {
+                                $ratio = min($alloc['importo_allocato_cents'] / $f->netto_a_pagare, 1);
+                                $importoRitenuta += (int) round($f->importo_ritenuta * $ratio);
+                            }
+                        }
+                    }
+                }
+
+                $importoNetto    = (int) ($data['importo_netto_cents'] ?? $totali['totalePagamento']);
+                $importoLordo    = (int) ($data['importo_lordo_cents'] ?? ($importoNetto + $importoRitenuta));
 
                 $causaleBonifico = $data['causale_bonifico'] ?? $this->generaCausaleBonifico(
                     $fatture->first(),

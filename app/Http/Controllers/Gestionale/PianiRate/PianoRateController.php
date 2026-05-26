@@ -385,6 +385,22 @@ class PianoRateController extends Controller
                 $pianoRate->setRelation('gestione', $gestione);
             }
 
+            // --- BUG FIX SCADENZIARIO ---
+            // I piani straordinari nascono già in stato APPROVATO, bypassando updateStato().
+            // Dobbiamo dispatchare l'evento manualmente affinché vengano creati gli avvisi
+            // per amministratore e condòmini (controllo incassi, solleciti, ecc).
+            if ($tipoPiano === 'straordinario' && !empty($validated['genera_subito'])) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio,
+                    $esercizio,
+                    $pianoRate,
+                    Auth::user(),
+                    StatoPianoRate::BOZZA,
+                    StatoPianoRate::APPROVATO
+                );
+            }
+            // ----------------------------
+
             DB::commit();
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
 
@@ -841,9 +857,25 @@ class PianoRateController extends Controller
             
             // Sgancia il capitolo, elimina le rate attuali e le ricalcola
             $pianoRate->capitoli()->detach($capitoloId);
-            $pianoRate->rate()->delete();
             
+            $vecchioStato = $pianoRate->stato;
+            
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    $vecchioStato, \App\Enums\StatoPianoRate::BOZZA
+                );
+            }
+
+            $pianoRate->rate()->delete();
             app(GeneratePianoRateAction::class)->execute($pianoRate, null); 
+            
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    \App\Enums\StatoPianoRate::BOZZA, $vecchioStato
+                );
+            }
             
             DB::commit();
             return back()->with($this->flashSuccess("Voce rimossa e ricalcolata."));

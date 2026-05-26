@@ -67,9 +67,27 @@ class PianoRateGenerationController extends Controller
                 $nuoviCapitoli = $syncAction->execute($pianoRate, $orphanIds);
             }
 
-            // 4. Reset e Rigenerazione
+            // 4. Reset e Rigenerazione Inbox
+            $vecchioStato = $pianoRate->stato;
+            
+            // Svuotiamo l'inbox dai vecchi eventi orfani
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                \App\Events\Gestionale\PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, \Illuminate\Support\Facades\Auth::user(), 
+                    $vecchioStato, \App\Enums\StatoPianoRate::BOZZA
+                );
+            }
+
             $pianoRate->rate()->delete();
             $stats = $generateAction->execute($pianoRate);
+
+            // Ricreiamo l'inbox con i nuovi ID delle rate
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                \App\Events\Gestionale\PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, \Illuminate\Support\Facades\Auth::user(), 
+                    \App\Enums\StatoPianoRate::BOZZA, $vecchioStato
+                );
+            }
 
             DB::commit();
 
