@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Treasury Guardian Widget MVP: introduced the new predictive treasury assistant on the dashboard that calculates liquidity overdraft at 30 days and classifies risk (Green, Yellow, Red).",
+        "Dynamic Call-to-Actions (Smart UX): the widget proactively suggests contextual actions based on the cash flow scenario (e.g. 'Issue New Installments' or 'Check or Remind Inflows').",
+        "Liquidity and Initial Balances Reconciliation: resolved misalignment between the widget and the trial balance by incorporating the initial cash balance into the available liquidity calculation.",
+        "Exact Expected Inflows Calculation: corrected the inflow estimation algorithm to exclusively extract actual payments received in double-entry bookkeeping, guaranteeing flawless financial projections."
+    ]
+}

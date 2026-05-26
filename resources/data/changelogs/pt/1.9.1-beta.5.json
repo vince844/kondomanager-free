@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Treasury Guardian Widget MVP: introduzido o novo assistente preditivo de tesouraria no painel que calcula a descoberta de liquidez em 30 dias e classifica o risco (Verde, Amarelo, Vermelho).",
+        "Call-to-Actions Dinâmicos (Smart UX): o widget sugere proativamente ações contextuais com base no cenário de fluxo de caixa (ex: 'Emitir Novas Parcelas' ou 'Verificar ou Solicitar Recebimentos').",
+        "Reconciliação de Liquidez e Saldos Iniciais: resolvido o desalinhamento entre o widget e o balancete de verificação integrando o saldo de caixa inicial no cálculo da liquidez disponível.",
+        "Cálculo Exato de Recebimentos Esperados: corrigido o algoritmo de estimativa de recebimentos para extrair exclusivamente pagamentos reais recebidos por partidas dobradas, garantindo projeções financeiras exatas ao centavo."
+    ]
+}

@@ -12,6 +12,7 @@ import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, La
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import TreasuryGuardianWidget from './components/TreasuryGuardianWidget.vue';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -75,6 +76,7 @@ const props = defineProps<{
       context: { anagrafica_nome: string | null }
     }>;
   };
+  widgets?: Record<string, any>;
 }>()
 
 const { generatePath } = usePermission();
@@ -456,21 +458,13 @@ const confirmReject = () => {
                             </Button>
                         </Link>
                     </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="aspect-[4/3] flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 p-4 text-center">
-                            <ShieldAlert class="w-5 h-5 text-slate-400 mb-2" />
-                            <span class="text-[9px] font-bold uppercase text-slate-400 tracking-tighter">Fiscale</span>
-                            <span class="text-[8px] text-slate-300 dark:text-slate-600 mt-0.5">In arrivo</span>
-                        </div>
-                        <div class="aspect-[4/3] flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 p-4 text-center">
-                            <Inbox class="w-5 h-5 text-slate-400 mb-2" />
-                            <span class="text-[9px] font-bold uppercase text-slate-400 tracking-tighter">Fornitori</span>
-                            <span class="text-[8px] text-slate-300 dark:text-slate-600 mt-0.5">In arrivo</span>
-                        </div>
-                    </div>
                 </div>
+                <!-- Widget Tesoreria Semaforico -->
+                <TreasuryGuardianWidget 
+                    v-if="widgets?.treasury_guardian" 
+                    :treasury="widgets.treasury_guardian" 
+                />
+            </div>
 
                 <div class="md:col-span-2 lg:col-span-8">
                     <div v-if="inboxTasks" class="bg-white dark:bg-slate-900 border border-sidebar-border/70 rounded-xl overflow-hidden shadow-sm flex flex-col h-[430px]">

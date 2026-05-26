@@ -60,7 +60,7 @@ Release che porta a maturità l'infrastruttura contabile.
 - **Stato Patrimoniale operativo** con scritture di chiusura
 - **Bilanciatore Fondi** — verifica copertura liquida, morosità per immobile, quota segue immobile
 - **Dashboard Intelligence:**
-  - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva
+  - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*
   - Radar Salute Contabile — validatore millesimi + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
 - **Backup Management**
@@ -197,6 +197,15 @@ Sviluppato in 4 fasi parallelizzabili.
 - Export avanzati (Excel, PDF formattati)
 - Prospetti per assemblea
 - Analytics di condominio
+- **Pagina Treasury Guardian** — vista distesa e operativa del widget di dashboard, drill-down per singolo condominio. Il widget compatto risponde a *"devo preoccuparmi?"*, questa pagina a *"cosa faccio?"*.
+  - Accesso da pulsante dedicato sul widget compatto in dashboard
+  - Grafico proiezione di cassa a 30 giorni (scenari ottimistico, pessimistico, saldo attuale)
+  - Pannello "Perché è a rischio" — fatture in scadenza, morosità impattanti, anomalie
+  - Azioni suggerite con impatto stimato, ordinate per fattibilità, con link ai flussi operativi
+  - Situazione dettagliata + esposizione debiti pregressi segregata dal semaforo
+  - Vista per gestione (ordinaria/straordinaria) — risolve la cecità della vista aggregata
+  - Riuso di `TreasuryGuardianService` e del DTO esistenti: nessuna nuova logica di dominio, in prevalenza lavoro di presentazione
+  - Simulatore liquidità what-if interattivo *(richiede v1.10 — Bilanciatore Fondi)*
 
 ---
 
@@ -248,7 +257,7 @@ Una volta completato il DNA Fiscale, si abilita una serie di moduli "intelligent
 1. **Fiscal Sentinel** — validazione layer su `FatturaPassivaService`, soft warning con override
 2. **Compliance Health Badge** — semaforo DURC/Visura/CF/PIVA per fornitore
 3. **Smart Ledger Suggester** — suggerimento conto contabile da `categoria_fornitore` × `voce_deliberata`
-4. **Treasury Guardian** — freeze automatico pagamenti su DURC scaduto *(richiede Fase D)*
+4. **Treasury Guardian — Freeze DURC** — freeze automatico pagamenti su DURC scaduto *(richiede Fase D)*
 5. **Reverse Charge Auto-entry** — doppia scrittura automatica su Natura IVA N6.x
 6. **Fiscal Debt Predictor** — previsione mensile F24 *(richiede Fase C)*
 
@@ -320,4 +329,4 @@ Hai un'idea per una feature? Vuoi anticipare qualcosa nella roadmap? Apri una is
 
 ---
 
-*Ultimo aggiornamento: in fase v1.9.1*-
+*Ultimo aggiornamento: in fase v1.9.1*

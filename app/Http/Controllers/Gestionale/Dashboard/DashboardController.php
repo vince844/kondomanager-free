@@ -10,6 +10,8 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Dashboard\WidgetManager;
+use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -20,8 +22,10 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget): Response
     {
+        $widgetManager->register($treasuryWidget);
+
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;
         $pianiDisallineati = [];
@@ -378,6 +382,7 @@ class DashboardController extends Controller
             'copertura'         => $copertura,
             'fattureScoperte'   => $fattureScoperte,
             'pianiDisallineati' => $pianiDisallineati,
+            'widgets'           => $widgetManager->getPayloads($condominio->id),
             'inboxTasks'        => Inertia::scroll($inboxTasks)
         ]);
     }

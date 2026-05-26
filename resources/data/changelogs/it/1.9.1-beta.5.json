@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Treasury Guardian Widget MVP: introdotto il nuovo assistente predittivo di tesoreria in dashboard che calcola lo scoperto di liquidità a 30 giorni e classifica il rischio (Verde, Giallo, Rosso).",
+        "Call-to-Action Dinamiche (Smart UX): il widget suggerisce in modo proattivo azioni contestuali basate sullo scenario di cassa (es. 'Emetti Nuove Rate' o 'Verifica o Sollecita Incassi').",
+        "Quadratura Liquidità e Saldi Iniziali: risolto disallineamento tra il widget e il bilancio di verifica, integrando il saldo iniziale di cassa nel calcolo della liquidità disponibile.",
+        "Calcolo Esatto degli Incassi Attesi: corretto algoritmo di stima degli incassi per estrarre esclusivamente i pagamenti reali ricevuti in Partita Doppia, garantendo proiezioni finanziarie perfette al centesimo."
+    ]
+}
