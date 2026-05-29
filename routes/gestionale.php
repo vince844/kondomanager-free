@@ -14,6 +14,7 @@ use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
+use App\Http\Controllers\Gestionale\Movimenti\StornoPagamentoController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
@@ -224,4 +225,7 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('/pagamenti-fornitori/pendenze', [PagamentoFornitoreController::class, 'pendenze'])
         ->name('pagamenti-fornitori.pendenze');
+
+    Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
+        ->name('pagamenti-fornitori.storno');
 });

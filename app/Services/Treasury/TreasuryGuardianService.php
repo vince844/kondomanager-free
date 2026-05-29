@@ -5,6 +5,8 @@ namespace App\Services\Treasury;
 use App\Support\Treasury\TreasuryStatus;
 use App\Support\Treasury\AzioneSuggerita;
 use App\Enums\TipoAllocazioneFattura;
+use App\Models\Gestionale\FatturaPassiva;
+use App\Models\Gestionale\Rata;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -48,7 +50,7 @@ final class TreasuryGuardianService
         $fatture = $this->queryFattureAperte($condominioId, $gestioneId);
         
         foreach ($fatture as $f) {
-            $residuo = $f->netto_a_pagare - $f->totale_pagato;
+            $residuo = $f->netto_a_pagare - ($f->allocazioni_pagamento_sum_importo_allocato ?? 0);
             if ($residuo <= 0) continue;
 
             // §6.2 Anomalia: fattura aperta con data_scadenza NULL
@@ -56,7 +58,7 @@ final class TreasuryGuardianService
             // NON entra nelle uscite predittive né nella timeline.
             if (empty($f->data_scadenza)) {
                 $fattureSenzaScadenza[] = [
-                    'fornitore'    => $f->fornitore_nome,
+                    'fornitore'    => $f->fornitore->ragione_sociale ?? '(sconosciuto)',
                     'numero'       => $f->numero_documento,
                     'importoCents' => $residuo,
                 ];
@@ -76,12 +78,14 @@ final class TreasuryGuardianService
                 continue;
             }
 
+            $fornitoreNome = $f->fornitore->ragione_sociale ?? '(sconosciuto)';
+
             // Entra nella timeline (le scadute non pregresse vanno a day 0 grazie al clamp del TimelineBuilder)
-            $this->timeline->addUscita($f->fornitore_nome . ' - ' . $f->numero_documento, $residuo, $scadenza->toDateString());
+            $this->timeline->addUscita($fornitoreNome . ' - ' . $f->numero_documento, $residuo, $scadenza->toDateString());
             $uscitePredittiveCents += $residuo;
 
             $fattureInScadenza[] = [
-                'fornitore'    => $f->fornitore_nome,
+                'fornitore'    => $fornitoreNome,
                 'numero'       => $f->numero_documento,
                 'dataScadenza' => $scadenza->toDateString(),
                 'importoCents' => $residuo,
@@ -92,7 +96,7 @@ final class TreasuryGuardianService
         $rate = $this->queryRateEmesse($condominioId, $gestioneId, $limite);
         
         foreach ($rate as $r) {
-            $residuoRata = $r->importo_totale - $r->totale_incassato;
+            $residuoRata = $r->importo_totale - ($r->incassi_sum_importo ?? 0);
             if ($residuoRata <= 0) continue;
 
             $this->timeline->addEntrataAttesa('Rata ' . $r->numero_rata, $residuoRata, $r->data_scadenza);
@@ -195,71 +199,51 @@ final class TreasuryGuardianService
             ->exists();
     }
 
-    private function queryFattureAperte(int $condominioId, ?int $gestioneId): array
+    /**
+     * Fatture aperte/parziali con totale pagato calcolato via subquery (withSum).
+     *
+     * Usa Eloquent + withSum('allocazioniPagamento', 'importo_allocato') che genera
+     * una subquery correlata, eliminando completamente il GROUP BY e il rischio
+     * ONLY_FULL_GROUP_BY di MySQL.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<FatturaPassiva>
+     */
+    private function queryFattureAperte(int $condominioId, ?int $gestioneId): \Illuminate\Database\Eloquent\Collection
     {
-        $query = DB::table('fatture_passive as fp')
-            ->leftJoin('fornitori as f', 'fp.fornitore_id', '=', 'f.id')
-            // Join con fattura_scrittura per calcolare il totale già pagato senza N+1
-            ->leftJoin('fattura_scrittura as fs', function($join) {
-                $join->on('fp.id', '=', 'fs.fattura_passiva_id')
-                     ->whereIn('fs.tipo', ['pagamento', 'compensazione']);
-            })
-            ->where('fp.condominio_id', $condominioId)
-            ->whereIn('fp.stato_pagamento', ['aperta', 'parziale'])
-            ->where('fp.stato_approvazione', '!=', 'contestata');
-            
-        // Se la fattura passiva ha gestione_id, possiamo filtrare (verificare lo schema)
-        if ($gestioneId) {
-            // Nota: Se fatture_passive non ha gestione_id direttamente, potremmo dover leggere la pivot.
-            // Assumiamo che se richiesto per gestione, filtriamo (solitamente la prima riga o il documento).
-            // Se non c'è, commentiamo o rimuoviamo.
-        }
-
-        $rows = $query->groupBy('fp.id')
-            ->select(
-                'fp.id',
-                'fp.numero_documento',
-                'fp.data_scadenza',
-                'fp.netto_a_pagare',
-                'fp.is_pregresso',
-                'f.ragione_sociale as fornitore_nome',
-                DB::raw('COALESCE(SUM(fs.importo_allocato), 0) as totale_pagato')
-            )
+        return FatturaPassiva::query()
+            ->withSum('allocazioniPagamento', 'importo_allocato')
+            ->with('fornitore:id,ragione_sociale')
+            ->where('condominio_id', $condominioId)
+            ->whereIn('stato_pagamento', ['aperta', 'parziale'])
+            ->where('stato_approvazione', '!=', 'contestata')
             ->get();
-            
-        return $rows->toArray();
     }
 
-    private function queryRateEmesse(int $condominioId, ?int $gestioneId, Carbon $limite): array
+    /**
+     * Rate emesse con totale incassato calcolato via subquery (withSum).
+     *
+     * Usa Eloquent + withSum('incassi', 'importo') per sommare solo le righe
+     * di tipo 'avere' collegate alla rata, senza GROUP BY.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<Rata>
+     */
+    private function queryRateEmesse(int $condominioId, ?int $gestioneId, Carbon $limite): \Illuminate\Database\Eloquent\Collection
     {
-        // Ottiene le rate emesse e non ancora chiuse
-        // Join con righe_scritture per il totale pagato
-        $query = DB::table('rate as r')
-            ->join('piani_rate as pr', 'r.piano_rate_id', '=', 'pr.id')
-            ->join('gestioni as g', 'pr.gestione_id', '=', 'g.id')
-            ->leftJoin('righe_scritture as rs', 'r.id', '=', 'rs.rata_id')
-            ->where('g.condominio_id', $condominioId)
-            ->where('r.stato', 'emessa')
+        $query = Rata::query()
+            ->withSum('incassi', 'importo')
+            ->where('stato', 'emessa')
             ->where(function($q) use ($limite) {
-                $q->whereNull('r.data_scadenza')
-                  ->orWhere('r.data_scadenza', '<=', $limite->toDateString());
+                $q->whereNull('data_scadenza')
+                  ->orWhere('data_scadenza', '<=', $limite->toDateString());
+            })
+            ->whereHas('pianoRate.gestione', function ($q) use ($condominioId, $gestioneId) {
+                $q->where('condominio_id', $condominioId);
+                if ($gestioneId) {
+                    $q->where('gestioni.id', $gestioneId);
+                }
             });
 
-        if ($gestioneId) {
-            $query->where('g.id', $gestioneId);
-        }
-
-        $rows = $query->groupBy('r.id')
-            ->select(
-                'r.id',
-                'r.numero_rata',
-                'r.data_scadenza',
-                'r.importo_totale',
-                DB::raw("COALESCE(SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE 0 END), 0) as totale_incassato")
-            )
-            ->get();
-            
-        return $rows->toArray();
+        return $query->get();
     }
 
     private function generaAzioniSuggerite(string $livello, int $scenarioPessimisticoCents, int $incassiAttesiCents, int $debitiPregressiScadutiCents): array

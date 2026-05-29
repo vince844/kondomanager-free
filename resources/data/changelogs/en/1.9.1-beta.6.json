@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Payment Reversal (Immutable Ledger): Complete module (backend and UI) to reverse incorrect or rejected payments (e.g., bounced bank transfers). The system ensures accounting integrity by recording an append-only reverse entry, automatically reopening the affected invoices and restoring the bank balance, without deleting historical records.",
+        "Cross-Fiscal Year Reversals: Smart handling of reversals on closed balance sheets. If the fiscal year of the original payment is closed, the system prevents retroactive changes but records the reversal operation in the current open fiscal year, safeguarding consolidated historical balances.",
+        "Action Inbox & Payments Synchronization: Implemented a new listener that links payment registration and reversal to the administrative tasks in the Inbox, resolving or reopening them automatically.",
+        "Optimized Action Inbox UX: Resolving a payment task from the Inbox automatically redirects the user to the pre-filled payment registration form.",
+        "Accounting Automated Tests: Added a comprehensive suite of automated tests for advanced reversal logic, ensuring perfect debit/credit balance, plus automated tests for the task lifecycle in the Admin Inbox.",
+        "SQL Strict Mode Compatibility (ONLY_FULL_GROUP_BY): Resolved error 1055 (Syntax error or access violation) in the Treasury Guardian module that caused application crashes on MySQL 8.0 servers or strict configurations. The refactoring now leverages the Eloquent ORM to delegate aggregation to Laravel via subqueries, eliminating incompatible legacy joins."
+    ]
+}

@@ -96,6 +96,20 @@ class FatturaPassiva extends Model
         return $this->morphMany(Documento::class, 'documentable');
     }
 
+    // ── Relazione diretta hasMany per withSum() ───────────────────────────────
+
+    /**
+     * Righe pivot filtrate per tipo pagamento/compensazione.
+     *
+     * Usata con withSum('allocazioniPagamento', 'importo_allocato') per calcolare
+     * il totale pagato come subquery, evitando GROUP BY + aggregazione manuale.
+     */
+    public function allocazioniPagamento()
+    {
+        return $this->hasMany(FatturaScrittura::class, 'fattura_passiva_id')
+                     ->whereIn('tipo', TipoAllocazioneFattura::perCalcoloSaldo());
+    }
+
     // ── Relazioni pregressi ──────────────────────────────────────────────────
 
     public function debitoPatrimonialeIniziale()

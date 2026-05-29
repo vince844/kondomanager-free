@@ -60,7 +60,10 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                     'fornitore'        => $fornitore->ragione_sociale,
                     'numero_documento' => $fattura->numero_documento,
                     'titolo_azione'    => 'Registra pagamento',
-                    'action_url'       => $urlAzione,
+                    'action_url'       => route('admin.gestionale.pagamenti-fornitori.create', [
+                        'condominio' => $condominio->id,
+                        'fattura_id' => $fattura->id,
+                    ]),
                     'context'          => [
                         'fattura_id'   => $fattura->id,
                         'fornitore_id' => $fornitore->id,

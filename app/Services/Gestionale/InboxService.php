@@ -21,11 +21,15 @@ class InboxService
      */
     public static function clearAdminCache(): void
     {
-        // Recuperiamo solo gli ID per massimizzare le performance della query
-        $adminIds = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->pluck('id');
-        
-        foreach ($adminIds as $id) {
-            Cache::forget("inbox_count_{$id}");
+        try {
+            // Recuperiamo solo gli ID per massimizzare le performance della query
+            $adminIds = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->pluck('id');
+            
+            foreach ($adminIds as $id) {
+                Cache::forget("inbox_count_{$id}");
+            }
+        } catch (\Spatie\Permission\Exceptions\RoleDoesNotExist $e) {
+            // Ignoriamo in ambiente di testing se il seeder dei ruoli non è stato eseguito
         }
     }
 

@@ -98,7 +98,7 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[190px]">
+    <DropdownMenuContent align="end" class="w-[210px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -113,21 +113,21 @@ const downloadPdf = () => {
         <Download class="w-4 h-4 mr-2" /> Scarica PDF
       </DropdownMenuItem>
       
-      <DropdownMenuItem 
+     <!--  <DropdownMenuItem 
         v-if="fattura.stato_pagamento !== 'pagata' && fattura.stato_pagamento !== 'stornata' && !fattura.dati_extra?.is_stornata"
         @click="router.visit(route(generateRoute('gestionale.pagamenti.create'), { condominio: condominioId, fattura_id: fattura.id }))"
         class="text-blue-600 focus:text-blue-700 focus:bg-blue-50 font-medium cursor-pointer"
       >
         <CreditCard class="w-4 h-4 mr-2" /> Ordina bonifico
       </DropdownMenuItem>
-
+ -->
       <!-- Ratifica Assembleare: visibile solo per fatture in sforo_motivato -->
       <DropdownMenuItem
         v-if="fattura.stato_approvazione === 'sforo_motivato'"
         @click="apriModaleApprovazione"
         class="text-orange-600 focus:text-orange-700 focus:bg-orange-50 font-medium cursor-pointer"
       >
-        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica Assembleare
+        <ShieldCheck class="w-4 h-4 mr-2" /> Ratifica assembleare
       </DropdownMenuItem>
 
       <!-- Approvazione Base: visibile solo per fatture in da_approvare -->
@@ -136,7 +136,7 @@ const downloadPdf = () => {
         @click="confirmApprovaBase"
         class="text-emerald-600 focus:text-emerald-700 focus:bg-emerald-50 font-medium cursor-pointer"
       >
-        <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come Approvata
+        <CheckCircle2 class="w-4 h-4 mr-2" /> Segna come approvata
       </DropdownMenuItem>
 
       <DropdownMenuSeparator />

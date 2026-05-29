@@ -30,6 +30,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Controller per la gestione delle Fatture Passive (Ciclo Passivo).
@@ -609,7 +610,7 @@ class FatturaPassivaController extends Controller
 
         $fattura->update(['stato_approvazione' => 'approvata']);
 
-        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID " . auth()->id());
+        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID " . Auth::id());
 
         return back()->with($this->flashSuccess('Fattura approvata con successo.'));
     }
@@ -644,7 +645,7 @@ class FatturaPassivaController extends Controller
         $datiExtra['ratifica_assembleare'] = [
             'note'           => $request->input('note'),
             'approvato_il'   => now()->toIso8601String(),
-            'approvato_da'   => auth()->id(),
+            'approvato_da'   => Auth::id(),
         ];
 
         $fattura->update([
@@ -652,7 +653,7 @@ class FatturaPassivaController extends Controller
             'dati_extra'         => $datiExtra,
         ]);
 
-        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID " . auth()->id());
+        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID " . Auth::id());
 
         return back()->with($this->flashSuccess(
             'Fattura ratificata con successo. Può ora essere pagata.'

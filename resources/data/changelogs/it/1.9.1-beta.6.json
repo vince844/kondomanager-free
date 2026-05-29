@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Storno Pagamenti (Ledger Immutabile): Modulo completo (backend e UI) per l'annullamento di pagamenti errati o respinti (es. insoluti bancari). Il sistema garantisce l'integrità contabile registrando una scrittura inversa append-only, riaprendo automaticamente le fatture coinvolte e ripristinando la cassa, senza cancellare record storici.",
+        "Storni Cross-Esercizio: Gestione intelligente degli storni su bilanci chiusi. Se l'esercizio del pagamento originale è chiuso, il sistema non permette la modifica retroattiva ma registra l'operazione di storno nell'esercizio corrente aperto, salvaguardando i saldi storici consolidati.",
+        "Sincronizzazione Action Inbox e Pagamenti: Implementato un nuovo listener che collega la registrazione e lo storno dei pagamenti ai task amministrativi dell'Inbox, risolvendoli o riaprendoli automaticamente.",
+        "UX Ottimizzata Action Inbox: Risolvendo il task di pagamento dall'Inbox, l'utente viene reindirizzato automaticamente al modulo di registrazione pagamento pre-compilato.",
+        "Test Automatici Contabili: Aggiunta un'ampia suite di test automatici per le logiche di storno avanzato, garantendo quadratura perfetta DARE/AVERE, oltre a test automatizzati per il ciclo di vita dei task nell'Admin Inbox.",
+        "Compatibilità SQL Strict Mode (ONLY_FULL_GROUP_BY): Risolto errore 1055 (Syntax error or access violation) nel modulo Treasury Guardian che causava il crash dell'applicazione su server MySQL 8.0 o configurazioni strict. Il refactoring sfrutta ora l'ORM Eloquent per delegare a Laravel l'aggregazione tramite subquery, eliminando le vecchie join incompatibili."
+    ]
+}

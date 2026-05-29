@@ -579,6 +579,91 @@ it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', functi
     assertQuadraturaPerfetta($storno->scrittura_contabile_id);
 });
 
+it('storno pagamento cumulativo multi-fattura: riapre entrambe', function () {
+    $ctx     = setupPagamenti();
+    $service = new PagamentoFornitoreService();
+    [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
+
+    $fattura1 = registraFatturaTest($ctx);
+    $fattura2 = registraFatturaTest($ctx);
+
+    $pagamento = $service->registraPagamento([
+        'fornitore_id'                  => $fornitore->id,
+        'condominio_id'                 => $condominio->id,
+        'esercizio_id'                  => $esercizio->id,
+        'conto_corrente_id'             => $contoCorrenteId,
+        'data_pagamento'                => now()->format('Y-m-d'),
+        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft'               => true,
+        'iban_confermato_manualmente'   => true,
+        'conferma_duplicato_verificato' => true,
+        'allocazioni'                   => [
+            ['fattura_id' => $fattura1->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => $fattura1->netto_a_pagare],
+            ['fattura_id' => $fattura2->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value, 'importo_allocato_cents' => $fattura2->netto_a_pagare],
+        ],
+    ]);
+
+    $service->stornaPagamento($pagamento, 'Storno cumulativo');
+
+    $fattura1->refresh();
+    $fattura2->refresh();
+
+    expect($fattura1->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
+    expect($fattura2->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
+});
+
+it('storno pagamento con netting NC: riapre fattura e nota di credito', function () {
+    $ctx     = setupPagamenti();
+    $service = new PagamentoFornitoreService();
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
+
+    $fattura = registraFatturaTest($ctx);
+    
+    $nc = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'tipo_documento'   => 'nota_credito',
+            'applica_ritenuta' => false,
+            'righe'            => [[
+                'descrizione'        => 'NC test storno',
+                'importo_imponibile' => 200,
+                'aliquota_iva'       => 22,
+                'conto_id'           => $capitolo->id,
+                'is_sopravvenienza'  => false,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    $importoNC = abs($nc->netto_a_pagare);
+    $bonifico  = $fattura->netto_a_pagare - $importoNC;
+
+    $pagamento = $service->registraPagamento([
+        'fornitore_id'                  => $fornitore->id,
+        'condominio_id'                 => $condominio->id,
+        'esercizio_id'                  => $esercizio->id,
+        'conto_corrente_id'             => $contoCorrenteId,
+        'data_pagamento'                => now()->format('Y-m-d'),
+        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
+        'allow_overdraft'               => true,
+        'iban_confermato_manualmente'   => true,
+        'conferma_duplicato_verificato' => true,
+        'allocazioni'                   => [
+            ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,     'importo_allocato_cents' => $bonifico],
+            ['fattura_id' => $fattura->id, 'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
+            ['fattura_id' => $nc->id,      'tipo' => TipoAllocazioneFattura::COMPENSAZIONE->value, 'importo_allocato_cents' => $importoNC],
+        ],
+    ]);
+
+    $storno = $service->stornaPagamento($pagamento, 'Storno netting');
+
+    $fattura->refresh();
+    $nc->refresh();
+
+    expect($fattura->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
+    expect($nc->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
+    assertQuadraturaPerfetta($storno->scrittura_contabile_id);
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // GRUPPO 4 — COMMISSIONI BANCARIE
 // ════════════════════════════════════════════════════════════════════════════
@@ -850,4 +935,61 @@ it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', functi
         ->numero_protocollo;
 
     expect($scritturaProtocollo)->toStartWith('PAG-');
+});
+
+it('ritenute dacconto: calcolo pro-quota su pagamento parziale', function () {
+    $ctx     = setupPagamenti();
+    $service = new PagamentoFornitoreService();
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
+
+    // Fattura da 1000€ netto a pagare. Ha 200€ di ritenuta.
+    // In db i cents sono 100000 e 20000.
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'applica_ritenuta' => true,
+            'righe' => [[
+                'descrizione'        => 'Fattura Ritenuta',
+                'importo_imponibile' => 1000,
+                'aliquota_iva'       => 0, // No IVA per calcoli più chiari
+                'conto_id'           => $capitolo->id,
+                'is_sopravvenienza'  => false,
+            ]],
+        ]),
+        $condominio->id
+    );
+
+    // Forza la ritenuta a 20000 cents (200€) per il test
+    $fattura->update([
+        'netto_a_pagare' => 100000,
+        'importo_ritenuta' => 20000,
+    ]);
+
+    // Paghiamo il 50% della fattura (50000 cents)
+    $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
+        'allocazioni' => [[
+            'fattura_id'             => $fattura->id,
+            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'importo_allocato_cents' => 50000,
+        ]],
+    ]));
+
+    $pagamento->refresh();
+    
+    // Il 50% di 20000 è 10000 cents (100€)
+    expect($pagamento->importo_ritenuta)->toEqual(10000);
+    
+    // Il secondo pagamento del restante 50%
+    $pagamento2 = $service->registraPagamento(datiPagamento($ctx, $fattura, [
+        'conferma_duplicato_verificato' => true,
+        'allocazioni' => [[
+            'fattura_id'             => $fattura->id,
+            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'importo_allocato_cents' => 50000,
+        ]],
+    ]));
+
+    $pagamento2->refresh();
+    
+    // Anche il secondo pagamento deve avere 100€ di ritenuta
+    expect($pagamento2->importo_ritenuta)->toEqual(10000);
 });

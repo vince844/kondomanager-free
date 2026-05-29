@@ -41,11 +41,11 @@ const pageGuides = [
 </script>
 
 <template>
-    <Head title="Registro Pagamenti" />
+    <Head title="Registro pagamenti" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-3">
             <PageHeaderGuide
-                page-title="Registro Pagamenti"
+                page-title="Registro pagamenti"
                 page-subtitle="Consulta lo storico dei pagamenti ai fornitori, scarica le distinte e gestisci gli storni contabili."
                 :guides="pageGuides"
                 :breadcrumbs="(headerBreadcrumbs as any)"
@@ -64,7 +64,7 @@ const pageGuides = [
                                     <Euro class="w-5 h-5 text-blue-600" />
                                 </div>
                                 <div>
-                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Pagato nel Mese</p>
+                                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Pagato nel mese</p>
                                     <p class="text-2xl font-black text-slate-900">{{ euro(stats.totale_pagato_mese) }}</p>
                                 </div>
                             </div>
