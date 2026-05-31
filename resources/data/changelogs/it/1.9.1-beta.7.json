@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Chiarezza Visiva nei Pagamenti Stornati: Migliorata la distinzione visiva tra pagamenti originali (annullati) e operazioni di storno (compensazioni) nella lista pagamenti, evitando ambiguità.",
+        "Filtros Rapidi sulle Card Statistiche: Le card di riepilogo finanziario nella scheda pagamenti sono ora cliccabili, permettendo di filtrare istantaneamente la tabella per ritenute d'acconto o operazioni stornate.",
+        "Flusso di Registrazione Ottimizzato: Dopo aver registrato un nuovo pagamento, la schermata di successo reindirizza ora correttamente alla lista dei pagamenti effettuati invece che alle fatture, ottimizzando il flusso di lavoro.",
+        "Allineamento Globale Interfaccia (UI): Il design system interattivo delle card statistiche è stato esteso in modo uniforme alle liste Fatture Passive e Incassi Rate, introducendo filtri rapidi e transizioni visive coerenti su tutto il ciclo passivo e attivo.",
+        "Miglioramenti Interfaccia (UI/UX) nei Documenti Contabili: Risolti i problemi di sovrapposizione del testo in note lunghe e IBAN nella pagina di dettaglio, integrando la visualizzazione responsiva dell'Audit Trail per le approvazioni legali."
+    ]
+}

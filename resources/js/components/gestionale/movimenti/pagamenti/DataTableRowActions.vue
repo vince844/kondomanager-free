@@ -48,6 +48,15 @@ const confirmStorno = () => {
 const downloadDistinta = () => {
     alert("La generazione della Distinta di Pagamento in PDF sarà disponibile prossimamente.");
 }
+
+// ── Navigazione dettaglio scrittura (beta.7) ────────────────────────────────
+const goToScrittura = () => {
+    if (!props.pagamento.scrittura_contabile_id) return;
+    router.visit(route(generateRoute('gestionale.scritture.show'), {
+        condominio: props.condominioId,
+        scrittura: props.pagamento.scrittura_contabile_id,
+    }));
+};
 </script>
 
 <template>
@@ -62,9 +71,9 @@ const downloadDistinta = () => {
     <DropdownMenuContent align="end" class="w-[200px]">
       
       <!-- Dettaglio scrittura (beta.7) -->
-      <DropdownMenuItem disabled class="opacity-50 cursor-not-allowed" title="Disponibile nella prossima versione">
-        <Eye class="mr-2 h-4 w-4 text-slate-400" />
-        <span class="text-slate-400">Dettaglio scrittura</span>
+      <DropdownMenuItem @click="goToScrittura" :disabled="!pagamento.scrittura_contabile_id">
+        <Eye class="mr-2 h-4 w-4" />
+        Dettaglio scrittura
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="downloadDistinta" :disabled="true" title="In arrivo">
@@ -72,10 +81,10 @@ const downloadDistinta = () => {
         <span class="text-slate-500">Scarica distinta</span>
       </DropdownMenuItem>
       
-      <DropdownMenuSeparator v-if="pagamento.stato === 'confermato'" />
+      <DropdownMenuSeparator v-if="pagamento.stato === 'confermato' && !pagamento.is_storno" />
       
       <DropdownMenuItem 
-        v-if="pagamento.stato === 'confermato'" 
+        v-if="pagamento.stato === 'confermato' && !pagamento.is_storno" 
         @click="openStornoModal" 
         class="text-rose-600 focus:text-rose-700 cursor-pointer"
       >
@@ -83,10 +92,10 @@ const downloadDistinta = () => {
         Storna pagamento
       </DropdownMenuItem>
 
-      <!-- Badge stornato (solo visivo, non cliccabile) -->
-      <div v-if="pagamento.stato === 'stornato'" class="px-2 py-1.5">
+      <!-- Badge stornato o record di storno (solo visivo, non cliccabile) -->
+      <div v-if="pagamento.stato === 'stornato' || pagamento.is_storno" class="px-2 py-1.5">
         <span class="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-          <RotateCcw class="w-3 h-3" /> Già stornato
+          <RotateCcw class="w-3 h-3" /> {{ pagamento.is_storno ? 'Operazione di storno' : 'Già stornato' }}
         </span>
       </div>
 

@@ -48,6 +48,9 @@ class PagamentoFornitoreResource extends JsonResource
                     'descrizione' => $this->scrittura->descrizione,
                 ];
             }),
+            // v1.9.1-beta.7: campi per navigazione dettaglio scrittura e distinzione record storno
+            'is_storno'              => $this->pagamento_padre_id !== null,
+            'scrittura_contabile_id' => $this->scrittura_contabile_id,
         ];
     }
 }

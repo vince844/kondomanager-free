@@ -11,6 +11,7 @@ use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
@@ -228,4 +229,8 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
         ->name('pagamenti-fornitori.storno');
+
+    // --- DETTAGLIO SCRITTURA CONTABILE (v1.9.1-beta.7) ---
+    Route::get('/scritture/{scrittura}', [ScritturaContabileController::class, 'show'])
+        ->name('scritture.show');
 });

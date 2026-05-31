@@ -43,7 +43,7 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
         }
 
         return h('div', { class: 'flex flex-col gap-1 overflow-hidden' }, [
-            h('span', { class: `font-bold text-sm truncate ${isStornato ? 'text-slate-400 line-through' : 'text-slate-900'}` }, fornitoreNome),
+            h('span', { class: `font-bold text-sm truncate ${isStornato ? 'text-slate-400' : 'text-slate-900'}` }, fornitoreNome),
             
             // Badge (solo se presenti)
             badgeRow.length > 0
@@ -97,16 +97,17 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
     size: 130,
     cell: ({ row }) => {
         const stato = row.original.stato as string;
+        const isStorno = row.original.is_storno as boolean;
 
         const config: Record<string, { label: string; class: string; icon: any }> = {
             confermato: { 
-                label: 'Confermato', 
-                class: 'bg-emerald-50 text-emerald-700 border border-emerald-200', 
-                icon: CheckCircle 
+                label: isStorno ? 'Storno Confermato' : 'Confermato', 
+                class: isStorno ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200', 
+                icon: isStorno ? RotateCcw : CheckCircle 
             },
             stornato: { 
-                label: 'Stornato', 
-                class: 'bg-slate-100 text-slate-500 border border-slate-200 decoration-slate-400 line-through', 
+                label: 'Originale Stornato', 
+                class: 'bg-slate-100 text-slate-500 border border-slate-200 decoration-slate-400', 
                 icon: RotateCcw 
             },
         };
@@ -152,7 +153,7 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
             h('span', { class: 'text-[9px] font-black uppercase text-slate-400 tracking-wider' }, 'Totale Pagato'),
             h('span', { 
                 class: `font-black text-sm whitespace-nowrap transition-colors ${
-                    isStornato ? 'text-slate-400 line-through' : 'text-slate-900 group-hover:text-indigo-600'
+                    isStornato ? 'text-slate-400' : 'text-slate-900 group-hover:text-indigo-600'
                 }` 
             }, euro(lordo)),
             

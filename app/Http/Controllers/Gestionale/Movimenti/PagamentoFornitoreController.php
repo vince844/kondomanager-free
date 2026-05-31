@@ -66,6 +66,8 @@ class PagamentoFornitoreController extends Controller
                 });
             })
             ->when($request->metodo_pagamento, fn($q, $v) => $q->where('metodo_pagamento', $v))
+            ->when($request->has('has_ritenuta'), fn($q) => $q->where('importo_ritenuta', '>', 0))
+            ->when($request->stato, fn($q, $v) => $q->where('stato', $v))
             ->orderByDesc('data_pagamento')
             ->orderByDesc('id')
             ->paginate(20)
@@ -77,6 +79,7 @@ class PagamentoFornitoreController extends Controller
         $stats = [
             'totale_pagato_mese' => PagamentoFornitore::where('condominio_id', $condominio->id)
                 ->where('stato', 'confermato')
+                ->whereNull('pagamento_padre_id')
                 ->whereMonth('data_pagamento', now()->month)
                 ->whereYear('data_pagamento', now()->year)
                 ->sum('importo_lordo'),
@@ -85,6 +88,7 @@ class PagamentoFornitoreController extends Controller
                 ->count(),
             'totale_ritenute' => PagamentoFornitore::where('condominio_id', $condominio->id)
                 ->where('stato', 'confermato')
+                ->whereNull('pagamento_padre_id')
                 ->where('importo_ritenuta', '>', 0)
                 ->count(),
         ];
@@ -95,7 +99,7 @@ class PagamentoFornitoreController extends Controller
             'esercizio'  => $esercizio,
             'pagamenti'  => PagamentoFornitoreResource::collection($pagamenti),
             'stats'      => $stats,
-            'filters'    => $request->only(['search', 'metodo_pagamento']),
+            'filters'    => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato']),
         ]);
     }
 

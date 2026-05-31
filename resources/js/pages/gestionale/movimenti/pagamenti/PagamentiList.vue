@@ -18,7 +18,7 @@ const props = defineProps<{
     condomini:  Building[];
     pagamenti:  { data: any[]; meta: any };
     stats:      { totale_pagato_mese: number; totale_stornati: number; totale_ritenute: number };
-    filters:    { search?: string; metodo_pagamento?: string };
+    filters:    { search?: string; metodo_pagamento?: string; has_ritenuta?: boolean | string; stato?: string };
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -70,26 +70,34 @@ const pageGuides = [
                             </div>
 
                             <!-- Card: Pagamenti con Ritenuta -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
+                            <button 
+                                @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id, has_ritenuta: filters.has_ritenuta ? undefined : true }), { preserveState: true })"
+                                class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 hover:border-cyan-300 hover:ring-2 hover:ring-cyan-100 transition-all text-left outline-none"
+                                :class="filters.has_ritenuta ? 'ring-2 ring-cyan-500 border-cyan-500' : ''"
+                            >
                                 <div class="bg-cyan-50 p-2.5 rounded-lg border border-cyan-100">
                                     <CreditCard class="w-5 h-5 text-cyan-600" />
                                 </div>
-                                <div>
+                                <div class="flex-1">
                                     <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Con Ritenuta d'Acconto</p>
                                     <p class="text-2xl font-black text-slate-900">{{ stats.totale_ritenute }}</p>
                                 </div>
-                            </div>
+                            </button>
 
                             <!-- Card: Pagamenti Stornati -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 opacity-80">
+                            <button 
+                                @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id, stato: filters.stato === 'stornato' ? undefined : 'stornato' }), { preserveState: true })"
+                                class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 hover:opacity-100 hover:border-slate-400 hover:ring-2 hover:ring-slate-100 transition-all text-left outline-none"
+                                :class="filters.stato === 'stornato' ? 'ring-2 ring-slate-400 border-slate-400 opacity-100' : 'opacity-80'"
+                            >
                                 <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200">
                                     <RotateCcw class="w-5 h-5 text-slate-500" />
                                 </div>
-                                <div>
+                                <div class="flex-1">
                                     <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Operazioni Stornate</p>
                                     <p class="text-2xl font-black text-slate-900">{{ stats.totale_stornati }}</p>
                                 </div>
-                            </div>
+                            </button>
 
                         </div>
 

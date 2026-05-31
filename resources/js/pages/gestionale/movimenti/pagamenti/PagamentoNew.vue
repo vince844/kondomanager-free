@@ -1234,9 +1234,9 @@ const pageGuides = [
                         </Button>
                         <Button
                             variant="ghost"
-                            @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }))"
+                            @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id }))"
                             class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all">
-                            Torna all'elenco fatture
+                            Torna all'elenco pagamenti
                         </Button>
                     </div>
                 </div>

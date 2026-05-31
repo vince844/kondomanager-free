@@ -45,7 +45,8 @@ class IncassoRateController extends Controller
     {
         $query = $this->incassoService->getIncassiQuery(
             $condominio,
-            $request->input('search')
+            $request->input('search'),
+            $request->input('stato')
         );
 
         $movimenti = $query->paginate(config('pagination.default_per_page'))
@@ -87,7 +88,7 @@ class IncassoRateController extends Controller
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'stats'      => $stats,
-            'filters'    => $request->all(['search']),
+            'filters'    => $request->all(['search', 'stato']),
         ]);
     }
 
@@ -158,13 +159,16 @@ class IncassoRateController extends Controller
             ->filter()
             ->toArray();
 
-        if (!empty($quoteOrdinarie) && $paganteId) {
-
+        $rataIdsReali = [];
+        if (!empty($quoteOrdinarie)) {
             // FIX: Convertiamo ID Quote -> ID Rate (Padri)
             $rataIdsReali = RataQuote::whereIn('id', $quoteOrdinarie)
                 ->pluck('rata_id')
                 ->unique()
                 ->toArray();
+        }
+
+        if (!empty($quoteOrdinarie) && $paganteId) {
 
             $eventiDaAggiornare = Evento::where('meta->type', 'scadenza_rata_condomino')
                 ->where(function ($q) use ($rataIdsReali) {

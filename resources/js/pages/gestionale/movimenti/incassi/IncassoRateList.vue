@@ -1,6 +1,7 @@
 <script setup lang="ts">
+
 import { computed } from "vue";
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import DataTable from '@/components/gestionale/movimenti/incassi/DataTable.vue'; 
@@ -8,7 +9,6 @@ import { createColumns } from '@/components/gestionale/movimenti/incassi/columns
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Wallet, Coins, CheckCircle, RotateCcw } from 'lucide-vue-next';
-
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from "@/types/gestionale/esercizi";
 
@@ -22,7 +22,7 @@ const props = defineProps<{
   filters: any;
 }>();
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 
 const headerBreadcrumbs = computed(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -76,7 +76,7 @@ const pageGuides = [
             <!-- ─── STATS ──────────────────────────────────────────── -->
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
 
-              <!-- Card: Totale Incassi -->
+              <!-- Card: Totale Incassi (statica) -->
               <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                 <div class="bg-blue-100 p-2.5 rounded-lg border border-blue-200">
                   <Wallet class="w-5 h-5 text-blue-600" />
@@ -87,7 +87,7 @@ const pageGuides = [
                 </div>
               </div>
 
-              <!-- Card: Incassi Questo Mese -->
+              <!-- Card: Incassi Questo Mese (statica) -->
               <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                 <div class="bg-emerald-100 p-2.5 rounded-lg border border-emerald-200">
                   <CheckCircle class="w-5 h-5 text-emerald-600" />
@@ -98,16 +98,24 @@ const pageGuides = [
                 </div>
               </div>
 
-              <!-- Card: Stornati -->
-              <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                <div class="bg-rose-50 p-2.5 rounded-lg border border-rose-100">
-                  <RotateCcw class="w-5 h-5 text-rose-600" />
+              <!-- Card: Stornati (toggle filtro) -->
+              <button 
+                @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id, stato: filters.stato === 'stornato' ? undefined : 'stornato' }), { preserveState: true })"
+                class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 transition-all text-left outline-none hover:opacity-100 hover:border-rose-300 hover:ring-2 hover:ring-rose-100 cursor-pointer"
+                :class="filters.stato === 'stornato' ? 'ring-2 ring-rose-500 border-rose-500 opacity-100' : 'opacity-80'"
+              >
+                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'bg-rose-50 border-rose-100' : ''">
+                  <RotateCcw class="w-5 h-5 text-slate-500" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'text-rose-600' : ''" />
                 </div>
-                <div>
-                  <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Stornati</p>
-                  <p class="text-2xl font-black text-slate-900">{{ stats.stornati }}</p>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Stornati</p>
+                  </div>
+                  <p class="text-2xl font-black text-slate-900" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'text-rose-700' : ''">
+                    {{ stats.stornati }}
+                  </p>
                 </div>
-              </div>
+              </button>
 
             </div>
             <!-- ─────────────────────────────────────────────────────── -->

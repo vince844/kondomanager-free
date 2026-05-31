@@ -5,6 +5,7 @@ namespace App\Services\Gestionale;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Models\Gestionale\RigaScrittura;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -14,7 +15,7 @@ class IncassoRateService
     /**
      * Recupera la query per gli incassi con filtri ed Eager Loading
      */
-    public function getIncassiQuery(Condominio $condominio, ?string $search = null): Builder
+    public function getIncassiQuery(Condominio $condominio, ?string $search = null, ?string $stato = null): Builder
     {
         $query = ScritturaContabile::query()
             ->where('condominio_id', $condominio->id)
@@ -40,6 +41,10 @@ class IncassoRateService
                          });
                   });
             });
+        }
+
+        if ($stato) {
+            $query->where('stato', $stato);
         }
 
         return $query->orderByDesc('data_registrazione')
@@ -108,7 +113,7 @@ class IncassoRateService
                 'scadenza'          => $quota->rata->data_scadenza?->format('d/m/Y') ?? '-',
                 'immobile'          => $quota->immobile?->interno ?? null,
                 'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato),
-                'tipo'              => 'contanti', // 💶 icona banconota
+                'tipo'              => 'contanti', // icona banconota
             ]);
         }
 
@@ -125,7 +130,7 @@ class IncassoRateService
                     'scadenza'          => $quota->rata->data_scadenza?->format('d/m/Y') ?? '-',
                     'immobile'          => $quota->immobile?->interno ?? null,
                     'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato),
-                    'tipo'              => 'credito', // 🪙 icona monete
+                    'tipo'              => 'credito', // icona monete
                 ]);
             }
         }
@@ -135,35 +140,14 @@ class IncassoRateService
             ->values()
             ->toArray();
     }
-    /* private function getDettagliRate(ScritturaContabile $movimento): array
-    {
-        // Se non ci sono quote pagate (es. anticipo puro), ritorna array vuoto
-        if ($movimento->quotePagate->isEmpty()) {
-            return [];
-        }
-
-        return $movimento->quotePagate
-            ->sortBy(fn($quota) => $quota->rata->numero_rata ?? 0) // Ordina in memoria (PHP)
-            ->map(function($quota) {
-                return [
-                    'numero' => $quota->rata->numero_rata ?? '-',
-                    
-                    'scadenza' => $quota->rata->data_scadenza 
-                        ? $quota->rata->data_scadenza->format('d/m/Y') 
-                        : '-',
-                    
-                    // Legge dalla pivot caricata in memoria
-                    'importo_formatted' => MoneyHelper::format($quota->pivot->importo_pagato)
-                ];
-            })
-            ->values() // Resetta indici array
-            ->toArray();
-    } */
 
     /**
      * Determina il ruolo del pagante
+     *
+     * @param RigaScrittura|null $rigaPagantePrinc La riga contabile associata al pagante principale
+     * @return string
      */
-    private function getRuoloPagante($rigaPagantePrinc): string
+    private function getRuoloPagante(?RigaScrittura $rigaPagantePrinc): string
     {
         $ruoloPagante = 'Condòmino';
 
@@ -186,8 +170,11 @@ class IncassoRateService
 
     /**
      * Ottiene la label del tipo di risorsa
+     *
+     * @param RigaScrittura|null $rigaCassa La riga contabile della cassa utilizzata
+     * @return string
      */
-    private function getTipoRisorsaLabel($rigaCassa): string
+    private function getTipoRisorsaLabel(?RigaScrittura $rigaCassa): string
     {
         if (!$rigaCassa || !$rigaCassa->cassa) {
             return 'N/D';

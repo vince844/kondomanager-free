@@ -1,4 +1,5 @@
 <script setup lang="ts">
+
 import { computed } from 'vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -42,7 +43,6 @@ const sforiFilterActive = computed(() => props.filters.stato_approvazione === 's
 
 // Toggle filtro sfori — click attiva, secondo click rimuove
 const filterSfori = () => {
-    if (props.stats.totale_sfori === 0 && !sforiFilterActive.value) return;
 
     router.get(
         route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }),
@@ -75,17 +75,21 @@ const filterSfori = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
 
                             <!-- Card: Fatture Aperte -->
-                            <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
-                                <div class="bg-amber-100 p-2.5 rounded-lg border border-amber-200">
+                            <button 
+                                @click="router.visit(route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id, stato_pagamento: filters.stato_pagamento === 'aperta' ? undefined : 'aperta' }), { preserveState: true })"
+                                class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 hover:border-amber-300 hover:ring-2 hover:ring-amber-100 transition-all text-left outline-none"
+                                :class="filters.stato_pagamento === 'aperta' ? 'ring-2 ring-amber-500 border-amber-500' : ''"
+                            >
+                                <div class="bg-amber-50 p-2.5 rounded-lg border border-amber-100">
                                     <Clock class="w-5 h-5 text-amber-600" />
                                 </div>
-                                <div>
+                                <div class="flex-1">
                                     <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Fatture Aperte</p>
                                     <p class="text-2xl font-black text-slate-900">{{ stats.totale_aperte }}</p>
                                 </div>
-                            </div>
+                            </button>
 
-                            <!-- Card: Importo da Pagare -->
+                            <!-- Card: Importo da Pagare (solo visivo) -->
                             <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4">
                                 <div class="bg-red-50 p-2.5 rounded-lg border border-red-100">
                                     <Euro class="w-5 h-5 text-red-600" />
@@ -97,42 +101,23 @@ const filterSfori = () => {
                             </div>
 
                             <!-- Card: Da Ratificare (toggle filtro) -->
-                            <div
+                            <button 
                                 @click="filterSfori"
-                                class="border rounded-xl p-4 flex items-center gap-4 transition-all select-none"
-                                :class="[
-                                    stats.totale_sfori > 0 || sforiFilterActive
-                                        ? 'bg-orange-50 border-orange-200 hover:bg-orange-100 cursor-pointer shadow-sm'
-                                        : 'bg-white border-slate-200 opacity-70 cursor-default'
-                                ]"
+                                class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 transition-all text-left outline-none hover:opacity-100 hover:border-orange-300 hover:ring-2 hover:ring-orange-100 cursor-pointer"
+                                :class="sforiFilterActive ? 'ring-2 ring-orange-500 border-orange-500 opacity-100' : 'opacity-80'"
                             >
-                                <div
-                                    class="p-2.5 rounded-lg"
-                                    :class="stats.totale_sfori > 0 || sforiFilterActive ? 'bg-orange-100 border border-orange-200' : 'bg-slate-100'"
-                                >
-                                    <AlertTriangle
-                                        class="w-5 h-5"
-                                        :class="stats.totale_sfori > 0 || sforiFilterActive ? 'text-orange-600' : 'text-slate-400'"
-                                    />
+                                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200" :class="stats.totale_sfori > 0 || sforiFilterActive ? 'bg-orange-50 border-orange-100' : ''">
+                                    <AlertTriangle class="w-5 h-5 text-slate-500" :class="stats.totale_sfori > 0 || sforiFilterActive ? 'text-orange-600' : ''" />
                                 </div>
                                 <div class="flex-1 min-w-0">
                                     <div class="flex items-center gap-2 flex-wrap">
                                         <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Da Ratificare</p>
-                                        <span
-                                            v-if="sforiFilterActive"
-                                            class="text-[9px] font-black uppercase bg-orange-200 text-orange-700 px-1.5 py-0.5 rounded-full whitespace-nowrap"
-                                        >
-                                            FILTRO ATTIVO · clicca per rimuovere
-                                        </span>
                                     </div>
-                                    <p
-                                        class="text-2xl font-black"
-                                        :class="stats.totale_sfori > 0 || sforiFilterActive ? 'text-orange-700' : 'text-slate-900'"
-                                    >
+                                    <p class="text-2xl font-black text-slate-900" :class="stats.totale_sfori > 0 || sforiFilterActive ? 'text-orange-700' : ''">
                                         {{ stats.totale_sfori }}
                                     </p>
                                 </div>
-                            </div>
+                            </button>
 
                         </div>
 
