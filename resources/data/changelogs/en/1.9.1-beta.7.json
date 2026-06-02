@@ -6,6 +6,8 @@
         "Global UI Alignment: The interactive design system for statistic cards has been uniformly extended to the Invoices and Installment Collections lists, introducing quick filters and consistent visual transitions across the entire system.",
         "UI/UX Improvements in Accounting Documents: Fixed text overflow issues on long notes and IBANs in the detail page, integrating responsive display of the Audit Trail for legal approvals.",
         "Native PDF Document Infrastructure: Added the capability to generate and download the Supplier Payment Slip (Distinta) in PDF format, based on native templates.",
-        "PSR-4 Exceptions Refactoring: Completed the architectural refactoring of system exceptions to fully comply with PSR-4 standards."
+        "PSR-4 Exceptions Refactoring: Completed the architectural refactoring of system exceptions to fully comply with PSR-4 standards.",
+        "Installment Collections Detail View: Added a read-only view to analytically explore the composition of an installment collection, highlighting if paid via direct payment or credit compensation.",
+        "Table Tooltips Optimization: Replaced native text tooltips with interactive HoverCards (Shadcn) for immediate and rich reading of amounts details in Invoices and Payments tables."
     ]
 }

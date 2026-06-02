@@ -6,6 +6,8 @@
         "Alinhamento Global de Interface (UI): O design interativo dos cartões de estatísticas foi estendido de forma uniforme às listas de Faturas e Recebimentos de Quotas, introduzindo filtros rápidos e transições visuais consistentes em todo o sistema.",
         "Melhorias de Interface (UI/UX) em Documentos Contábeis: Corrigidos problemas de sobreposição de texto em notas longas e IBANs na página de detalhes, integrando visualização responsiva da trilha de auditoria (Audit Trail) para aprovações legais.",
         "Infraestrutura de Documentos PDF Nativa: Adicionada a capacidade de gerar e baixar o Recibo de Pagamento a Fornecedores (Distinta) em formato PDF, com base em templates nativos.",
-        "Refatoração de Exceções PSR-4: Concluída a refatoração arquitetônica das exceções do sistema para conformidade total com os padrões PSR-4."
+        "Refatoração de Exceções PSR-4: Concluída a refatoração arquitetônica das exceções do sistema para conformidade total com os padrões PSR-4.",
+        "Visualização Detalhada de Recebimentos de Quotas: Adicionada uma vista de leitura analítica para explorar a composição de um recebimento de quota, destacando se foi pago através de pagamento direto ou compensação de crédito.",
+        "Otimização de Tooltips em Tabelas: Substituição das tooltips nativas de texto por HoverCards interativos (Shadcn) para uma leitura imediata e rica de valores nas tabelas de Faturas e Pagamentos."
     ]
 }

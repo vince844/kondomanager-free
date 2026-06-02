@@ -4,6 +4,7 @@ import DropdownAction from './DataTableRowActions.vue'
 import { CheckCircle, RotateCcw, Building2, Calendar, FileText } from 'lucide-vue-next'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { ColumnDef } from '@tanstack/vue-table'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 
 const { euro } = useCurrencyFormatter(); 
 
@@ -67,7 +68,7 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
                 h(Building2, { class: 'w-3.5 h-3.5 text-slate-400' }),
                 contoNome
             ]),
-            iban ? h('span', { class: 'text-[10px] text-slate-500 font-mono tracking-tight' }, iban) : null
+            iban ? h('span', { class: 'text-[10px] text-slate-500 tracking-tight' }, iban) : null
         ]);
     },
     enableSorting: false,
@@ -136,31 +137,52 @@ export const createColumns = (condominioId: number): ColumnDef<any>[] => [
 
         const isStornato = pagamento.stato === 'stornato';
 
-        // Scontrino per il tooltip
-        const scontrino = 
-            `DETTAGLIO TRANSAZIONE\n\n` +
-            `Totale Debito Saldato: ${euro(lordo)}\n` +
-            (ritenuta > 0 ? `Ritenuta (Trattenuta): -${euro(ritenuta)}\n` : '') +
-            `Importo Bonificato: ${euro(netto)}\n` +
-            (commissioni > 0 ? `Commissioni Bancarie: +${euro(commissioni)}\n` : '') +
-            `----------------------\n` +
-            `Totale Uscita Cassa: ${euro(netto + commissioni)}`;
+        // Righe per il tooltip strutturato
+        const rows: Array<{ label: string; value: string; bold?: boolean; textClass?: string; bgClass?: string }> = [
+            { label: 'Totale Debito Saldato', value: euro(lordo), bold: true },
+        ];
+        if (ritenuta > 0) {
+            rows.push({ label: 'Ritenuta (Trattenuta)', value: `-${euro(ritenuta)}`, textClass: 'text-rose-600' });
+        }
+        rows.push({ label: 'Importo Bonificato', value: euro(netto) });
+        if (commissioni > 0) {
+            rows.push({ label: 'Commissioni Bancarie', value: `+${euro(commissioni)}`, textClass: 'text-amber-600' });
+        }
+        rows.push({ label: 'Totale Uscita Cassa', value: euro(netto + commissioni), bold: true, bgClass: 'bg-emerald-50 border border-emerald-100', textClass: 'text-emerald-700' });
 
-        return h('div', { 
-            class: 'flex flex-col items-end group cursor-help',
-            title: scontrino
-        }, [
-            h('span', { class: 'text-[9px] font-black uppercase text-slate-400 tracking-wider' }, 'Totale Pagato'),
-            h('span', { 
-                class: `font-black text-sm whitespace-nowrap transition-colors ${
-                    isStornato ? 'text-slate-400' : 'text-slate-900 group-hover:text-indigo-600'
-                }` 
-            }, euro(lordo)),
-            
-            ritenuta > 0 && !isStornato
-                ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5' }, `Netto: ${euro(netto)}`)
-                : null
-        ]);
+        return h(HoverCard, null, {
+            default: () => [
+                h(HoverCardTrigger, { asChild: false }, {
+                    default: () => h('div', { 
+                        class: 'flex flex-col items-end group cursor-help'
+                    }, [
+                        h('span', { class: 'text-[9px] font-black uppercase text-slate-400 tracking-wider' }, 'Totale Pagato'),
+                        h('span', { 
+                            class: `font-black text-sm whitespace-nowrap transition-colors ${
+                                isStornato ? 'text-slate-400' : 'text-slate-900 group-hover:text-indigo-600'
+                            }` 
+                        }, euro(lordo)),
+                        
+                        ritenuta > 0 && !isStornato
+                            ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5' }, `Netto: ${euro(netto)}`)
+                            : null
+                    ])
+                }),
+                h(HoverCardContent, { class: 'w-60 p-0 shadow-xl border-gray-200 z-50', side: 'top', align: 'end', sideOffset: 5 }, {
+                    default: () => h('div', { class: 'flex flex-col' }, [
+                        h('div', { class: 'px-3 py-2 bg-gray-50 border-b border-gray-100 rounded-t-md' }, [
+                            h('span', { class: 'text-[10px] font-bold text-gray-500 uppercase tracking-wider' }, 'Dettaglio Transazione')
+                        ]),
+                        h('div', { class: 'p-2 space-y-1' }, rows.map(r => 
+                            h('div', { class: `flex items-center justify-between text-xs px-2 py-1.5 rounded-md ${r.bgClass || 'bg-white'}` }, [
+                                h('span', { class: `font-medium text-slate-600` }, r.label),
+                                h('span', { class: `${r.bold ? 'font-bold' : ''} ${r.textClass || 'text-slate-900'}` }, r.value)
+                            ])
+                        ))
+                    ])
+                })
+            ]
+        });
     },
   },
   {

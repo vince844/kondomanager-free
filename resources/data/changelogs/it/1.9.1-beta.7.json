@@ -6,6 +6,8 @@
         "Allineamento Globale Interfaccia (UI): Il design system interattivo delle card statistiche è stato esteso in modo uniforme alle liste Fatture Passive e Incassi Rate, introducendo filtri rapidi e transizioni visive coerenti su tutto il ciclo passivo e attivo.",
         "Miglioramenti Interfaccia (UI/UX) nei Documenti Contabili: Risolti i problemi di sovrapposizione del testo in note lunghe e IBAN nella pagina di dettaglio, integrando la visualizzazione responsiva dell'Audit Trail per le approvazioni legali.",
         "Infrastruttura Documentale PDF Nativa: Aggiunta la funzionalità di generazione e download del PDF della Distinta di Pagamento Fornitore, basata su template nativi.",
-        "Refactoring PSR-4 Eccezioni: Completato il refactoring architetturale delle eccezioni di sistema per rispettare integralmente gli standard PSR-4."
+        "Refactoring PSR-4 Eccezioni: Completato il refactoring architetturale delle eccezioni di sistema per rispettare integralmente gli standard PSR-4.",
+        "Visualizzazione Dettaglio Incasso Rate: Aggiunta la vista in sola lettura per esplorare analiticamente la composizione di un incasso rata, evidenziando se pagato tramite versamento o compensazione del credito.",
+        "Ottimizzazione Tooltip Tabelle: Sostituiti i tooltip testuali nativi con HoverCard interattivi (Shadcn) per una lettura immediata e ricca del dettaglio importi nelle tabelle Fatture Passive e Pagamenti Fornitori."
     ]
 }

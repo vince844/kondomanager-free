@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\PianoConto;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Traits\HasCustomIdentifier;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -159,5 +160,13 @@ class Condominio extends Model
     public function contiContabili(): HasMany
     {
         return $this->hasMany(ContoContabile::class);
+    }
+
+     /**
+     * Le scritture contabili associate a questo condominio (Libro Giornale).
+     */
+    public function scrittureContabili(): HasMany
+    {
+        return $this->hasMany(ScritturaContabile::class);
     }
 }

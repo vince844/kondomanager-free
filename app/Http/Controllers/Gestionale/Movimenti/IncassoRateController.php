@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
+use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StoreIncassoRateRequest;
 use App\Http\Resources\Condominio\CondominioResource;
@@ -12,13 +13,15 @@ use App\Models\Evento;
 use App\Models\Immobile;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Rata;
-use App\Models\Gestionale\RataQuote; 
+use App\Models\Gestionale\RataQuote;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\InboxService;
 use App\Services\Gestionale\IncassoRateService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class IncassoRateController extends Controller
@@ -66,15 +69,15 @@ class IncassoRateController extends Controller
             ->get(['id', 'nome', 'stato']);
 
         $stats = [
-            'totale_incassi' => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+            'totale_incassi' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
                 ->count(),
-            'incassi_mese'   => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+            'incassi_mese' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
                 ->whereMonth('data_registrazione', now()->month)
                 ->whereYear('data_registrazione', now()->year)
                 ->count(),
-            'stornati'       => \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $condominio->id)
+            'stornati' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
                 ->where('stato', 'stornato')
                 ->count(),
@@ -267,5 +270,73 @@ class IncassoRateController extends Controller
         return to_route('admin.gestionale.movimenti-rate.index', $condominio)
             ->with($this->flashSuccess('Incasso registrato con successo.'));
     }
-    
+
+    /**
+     * Mostra il dettaglio di un singolo incasso.
+     * Recupera le informazioni estese della scrittura contabile, il pagante,
+     * il conto di accredito e la scomposizione delle rate pagate con questo versamento.
+     *
+     * @param Condominio $condominio Il condominio di appartenenza.
+     * @param string|int $scrittura L'ID della scrittura contabile (l'incasso) da visualizzare.
+     * @return \Inertia\Response
+     */
+    public function show(Condominio $condominio, string|int $scrittura)
+    {
+        $scrittura = \App\Models\Gestionale\ScritturaContabile::findOrFail($scrittura);
+
+        \Illuminate\Support\Facades\Log::info("IncassoRateController@show reached", [
+            'condominio_id' => $condominio->id,
+            'scrittura_id' => $scrittura->id,
+            'tipo_movimento' => is_object($scrittura->tipo_movimento) ? $scrittura->tipo_movimento->value : $scrittura->tipo_movimento,
+        ]);
+
+        // Verifica di sicurezza base
+        if ((int) $scrittura->condominio_id !== (int) $condominio->id || $scrittura->tipo_movimento !== \App\Enums\TipoMovimentoContabile::INCASSO_RATA) {
+            \Illuminate\Support\Facades\Log::error("IncassoRateController@show ABORT 404", [
+                'condominio_id_match' => (int) $scrittura->condominio_id === (int) $condominio->id,
+                'tipo_match' => $scrittura->tipo_movimento === \App\Enums\TipoMovimentoContabile::INCASSO_RATA,
+            ]);
+            abort(404);
+        }
+
+        // Eager loading per tutte le informazioni di dettaglio
+        $scrittura->load([
+            'righe.anagrafica',
+            'righe.cassa',
+            'quotePagate.rata.pianoRate.gestione',
+            'quotePagate.immobile',
+            'figlie.quotePagate.rata',
+            'figlie.quotePagate.immobile'
+        ]);
+
+        // Caricamento del nome utente creatore per l'audit trail
+        $utenteCreatore = DB::table('users')
+            ->where('id', $scrittura->created_by)
+            ->value('name');
+
+        // Idem per l'utente che ha effettuato un eventuale storno
+        $utenteStornatore = null;
+        if ($scrittura->stato === 'stornato' && !empty($scrittura->dati_extra['stornato_da_user_id'])) {
+            $utenteStornatore = DB::table('users')
+                ->where('id', $scrittura->dati_extra['stornato_da_user_id'])
+                ->value('name');
+        }
+
+        // Recuperiamo anche i formati frontend se vogliamo riciclare le stesse strutture logiche
+        $formattato = clone $scrittura;
+        $formattato = $this->incassoService->formatMovimentoForFrontend($formattato);
+
+        $listaPalazzi = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
+        return Inertia::render('gestionale/movimenti/incassi/IncassoRateShow', [
+            'condominio'       => new CondominioResource($condominio),
+            'esercizio'        => $esercizio,
+            'condomini'        => $listaPalazzi,
+            'incasso'          => $scrittura,
+            'incassoFormatted' => $formattato,
+            'utenteCreatore'   => $utenteCreatore,
+            'utenteStornatore' => $utenteStornatore,
+        ]);
+    }
 }

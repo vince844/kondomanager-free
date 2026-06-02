@@ -179,7 +179,7 @@ Route::prefix('/gestionale/{condominio}')
         ->parameters(['movimenti-rate' => 'scrittura']);
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
-    ->name('movimenti-rate.storno');
+        ->name('movimenti-rate.storno');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
