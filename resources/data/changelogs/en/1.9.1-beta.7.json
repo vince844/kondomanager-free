@@ -4,6 +4,8 @@
         "Quick Filters on Statistic Cards: Financial summary cards in the payments tab are now clickable, allowing instant filtering of the table by withholding taxes or reversed operations.",
         "Optimized Registration Flow: After registering a new payment, the success screen now correctly redirects to the list of made payments instead of invoices, streamlining the workflow.",
         "Global UI Alignment: The interactive design system for statistic cards has been uniformly extended to the Invoices and Installment Collections lists, introducing quick filters and consistent visual transitions across the entire system.",
-        "UI/UX Improvements in Accounting Documents: Fixed text overflow issues on long notes and IBANs in the detail page, integrating responsive display of the Audit Trail for legal approvals."
+        "UI/UX Improvements in Accounting Documents: Fixed text overflow issues on long notes and IBANs in the detail page, integrating responsive display of the Audit Trail for legal approvals.",
+        "Native PDF Document Infrastructure: Added the capability to generate and download the Supplier Payment Slip (Distinta) in PDF format, based on native templates.",
+        "PSR-4 Exceptions Refactoring: Completed the architectural refactoring of system exceptions to fully comply with PSR-4 standards."
     ]
 }

@@ -22,6 +22,7 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PagamentoFornitore;
 use App\Http\Resources\Gestionale\Movimenti\PagamentoFornitoreResource;
 use App\Services\Gestionale\PagamentoFornitoreService;
+use App\Services\PDF\PdfService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -346,5 +347,39 @@ class PagamentoFornitoreController extends Controller
             'totale_nc'     => $noteCredito->sum('residuo'),
             'totale_ft'     => $pendenze->where('is_nota_credito', false)->sum('residuo'),
         ]);
+    }
+
+    /**
+     * Generates and downloads the Supplier Payment Slip in PDF format.
+     *
+     * @param Condominio $condominio
+     * @param PagamentoFornitore $pagamento
+     * @param PdfService $pdfService
+     * @return \Symfony\Component\HttpFoundation\StreamedResponse
+     */
+    public function distinta(Condominio $condominio, PagamentoFornitore $pagamento, PdfService $pdfService)
+    {
+        abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Unauthorized action.');
+        
+        $pagamento->load(['fornitore', 'contoCorrente', 'scrittura.fatture']);
+        
+        $data = [
+            'condominio' => $condominio,
+            'pagamento'  => $pagamento,
+            'fornitore'  => $pagamento->fornitore,
+            'scrittura'  => $pagamento->scrittura,
+            'fatture'    => $pagamento->scrittura->fatture ?? collect(),
+        ];
+
+        $mpdf = $pdfService->generate('pdf.gestionale.distinta', $data);
+
+        $filename = sprintf('Distinta_PAG-%s_%s.pdf', 
+            $pagamento->scrittura->numero_protocollo ?? $pagamento->id,
+            $pagamento->data_pagamento?->format('Ymd') ?? date('Ymd')
+        );
+
+        return response()->streamDownload(function () use ($mpdf) {
+            echo $mpdf->Output('', 'S');
+        }, $filename, ['Content-Type' => 'application/pdf']);
     }
 }

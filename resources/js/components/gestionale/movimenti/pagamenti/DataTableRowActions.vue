@@ -44,10 +44,16 @@ const confirmStorno = () => {
     );
 };
 
-// ── Download distinta (placeholder) ─────────────────────────────────────────
+// ── Download distinta ───────────────────────────────────────────────────────
 const downloadDistinta = () => {
-    alert("La generazione della Distinta di Pagamento in PDF sarà disponibile prossimamente.");
-}
+    window.open(
+        route(generateRoute('gestionale.pagamenti-fornitori.distinta'), {
+            condominio: props.condominioId,
+            pagamento: props.pagamento.id,
+        }),
+        '_blank'
+    );
+};
 
 // ── Navigazione dettaglio scrittura (beta.7) ────────────────────────────────
 const goToScrittura = () => {
@@ -76,9 +82,9 @@ const goToScrittura = () => {
         Dettaglio scrittura
       </DropdownMenuItem>
 
-      <DropdownMenuItem @click="downloadDistinta" :disabled="true" title="In arrivo">
-        <Download class="mr-2 h-4 w-4 text-slate-400" />
-        <span class="text-slate-500">Scarica distinta</span>
+      <DropdownMenuItem @click="downloadDistinta" :disabled="pagamento.is_storno || pagamento.stato === 'stornato'">
+        <Download class="mr-2 h-4 w-4" />
+        <span>Scarica distinta</span>
       </DropdownMenuItem>
       
       <DropdownMenuSeparator v-if="pagamento.stato === 'confermato' && !pagamento.is_storno" />
