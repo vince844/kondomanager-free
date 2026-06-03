@@ -33,8 +33,12 @@ RUN composer install --no-dev --optimize-autoloader && npm install && npm run bu
 # CORREZIONE PERMESSI: Tutto di proprietà di www-data
 RUN chown -R www-data:www-data /var/www /var/lib/nginx /var/log/nginx
 
-# Script di avvio (PHP-FPM + Nginx)
-RUN echo '#!/bin/sh\nphp-fpm -D\nnginx -g "daemon off;"' > /start.sh && chmod +x /start.sh
+# SCRIPT DI AVVIO AGGIORNATO (PHP-FPM + WORKER + SCHEDULER + NGINX)
+RUN echo '#!/bin/sh\n\
+php-fpm -D\n\
+su -s /bin/sh www-data -c "php /var/www/artisan queue:work --daemon" > /var/log/nginx/worker.log 2>&1 &\n\
+su -s /bin/sh www-data -c "php /var/www/artisan schedule:work" > /var/log/nginx/scheduler.log 2>&1 &\n\
+nginx -g "daemon off;"' > /start.sh && chmod +x /start.sh
 
 EXPOSE 80
 CMD ["/start.sh"]
