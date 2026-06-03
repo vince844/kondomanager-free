@@ -1,4 +1,4 @@
-FROM php:8.2-fpm-bookworm
+FROM php:8.4-fpm-bookworm
 
 RUN apt-get update && apt-get install -y nginx git curl unzip libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev zip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
