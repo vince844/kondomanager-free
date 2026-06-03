@@ -43,7 +43,7 @@ return [
         'greeting'  => 'Salve :name,',
         'line_1'    => 'L\'amministratore di condominio ha creato il tuo profilo. Clicca sul seguente link per impostare la tua password.',
         'action'    => 'Imposta password',
-        'line_2'    => 'Questo link scadrà in 60 minuti.',
+        'line_2'    => 'Questo link scadrà tra tre giorni.',
     ],
 
     // Approvazione comunicazione (ApproveComunicazioneNotification)

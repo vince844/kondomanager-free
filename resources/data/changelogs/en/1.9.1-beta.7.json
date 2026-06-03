@@ -11,6 +11,9 @@
         "Table Tooltips Optimization: Replaced native text tooltips with interactive HoverCards (Shadcn) for immediate and rich reading of amounts details in Invoices and Payments tables.",
         "Schedules and Allotment Prints (PDF): Released the official printing suite for installment plans (Schedule / Installment Prospectus) and for the chart of accounts (Estimate Bill and Expense Allotment). Layouts include legal reference headers and printer-friendly design.",
         "Multiple PDF Aggregation Options: The administrator can now dynamically choose whether to export the Installment Prospectus grouped 'By Condominium Owner', 'By Property Unit', or combining both views into a single multi-page PDF document.",
-        "PDF Integrity and Balancing Tests: Integrated a comprehensive test suite dedicated to print controllers ensuring perfect cross-checks: every amount shown on PDFs must strictly match the totals in the database, preventing any printing misalignments."
+        "PDF Integrity and Balancing Tests: Integrated a comprehensive test suite dedicated to print controllers ensuring perfect cross-checks: every amount shown on PDFs must strictly match the totals in the database, preventing any printing misalignments.",
+        "Signed URL Security Fix: Replaced the email address with the user ID in encrypted links for invitations and password resets, permanently resolving a 403 error caused by automatic decoding of the '@' character by browsers and email clients.",
+        "Link Expiration UX Improvement: Extended the validity of links for accepting invitations and setting passwords from 60 minutes to 3 days, giving users more time to complete registration.",
+        "Chart of Accounts UI Optimization: Grouped the print buttons (Estimate Bill and Expense Allotment) into a single 'Prints' dropdown menu to save space and maintain a clean layout on smaller screens."
     ]
 }

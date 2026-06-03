@@ -37,13 +37,13 @@ return [
         'line_2'    => 'Este convite expirará dentro de três dias.',
     ],
 
-    // Nuovo utente creato dall'amministratore (NewUserEmailNotification)
+    // Novo usuário criado pelo administrador (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Bem-vindo ao :appName',
         'greeting'  => 'Olá :name,',
-        'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link seguinte para definir a sua palavra-passe.',
-        'action'    => 'Definir palavra-passe',
-        'line_2'    => 'Este link expirará em 60 minutos.',
+        'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link a seguir para definir a sua senha.',
+        'action'    => 'Definir senha',
+        'line_2'    => 'Este link expirará em três dias.',
     ],
 
     // Comunicação pendente de aprovação (ApproveComunicazioneNotification)

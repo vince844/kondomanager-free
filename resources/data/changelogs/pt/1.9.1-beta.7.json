@@ -11,6 +11,9 @@
         "Otimização de Tooltips em Tabelas: Substituição das tooltips nativas de texto por HoverCards interativos (Shadcn) para uma leitura imediata e rica de valores nas tabelas de Faturas e Pagamentos.",
         "Impressões de Vencimentos e Rateios (PDF): Lançada a suíte oficial de impressões para planos de quotas (Mapa de Vencimentos / Prospeto de Quotas) e para o plano de contas (Orçamento e Rateio de Despesas). Os layouts incluem cabeçalhos com referências legais e design adaptado para impressão.",
         "Múltiplas Opções de Agregação em PDF: O administrador pode agora decidir dinamicamente se exporta o Prospeto de Quotas agrupado 'Por Condómino', 'Por Fração', ou combinando ambas as vistas num único documento PDF com várias páginas.",
-        "Testes de Integridade e Quadratura de PDF: Integrada uma suíte de testes abrangente dedicada aos controladores de impressão que garante verificações cruzadas perfeitas: cada montante apresentado nos PDFs deve corresponder rigorosamente aos totais na base de dados, prevenindo eventuais desalinhamentos na impressão."
+        "Testes de Integridade e Quadratura de PDF: Integrada uma suíte de testes abrangente dedicada aos controladores de impressão que garante verificações cruzadas perfeitas: cada montante apresentado nos PDFs deve corresponder rigorosamente aos totais na base de dados, prevenindo eventuais desalinhamentos na impressão.",
+        "Correção de Segurança em URLs Assinados: Substituição do endereço de e-mail pelo ID do utilizador em links encriptados para convites e redefinições de senha, resolvendo definitivamente um erro 403 causado pela descodificação automática do caractere '@' por navegadores e clientes de e-mail.",
+        "Melhoria de UX na Validade de Links: Extensão da validade dos links para aceitação de convites e definição de senhas de 60 minutos para 3 dias, dando aos utilizadores mais tempo para concluir o registo.",
+        "Otimização da UI do Plano de Contas: Agrupamento dos botões de impressão (Orçamento e Rateio) num único menu suspenso 'Impressões' para poupar espaço e manter um layout limpo em ecrãs menores."
     ]
 }

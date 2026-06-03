@@ -11,13 +11,10 @@ class NewUserPasswordController extends Controller
 {
     public function showResetForm(Request $request)
     {
-        // Validate signed URL
-        if (!$request->hasValidSignature()) {
-            abort(403);
-        } 
+        $user = User::findOrFail($request->query('id'));
 
         return inertia('auth/NewUserCreatePassword', [
-            'email' => $request->query('email'),
+            'email' => $user->email,
         ]);
     }
 

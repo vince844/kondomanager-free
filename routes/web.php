@@ -98,7 +98,7 @@ Route::get('/fetch-condomini', FetchCondominiController::class)
 | Passwords Routes
 |--------------------------------------------------------------------------
 */
-Route::get('/password/new/', [NewUserPasswordController::class, 'showResetForm'])
+Route::get('/password/new', [NewUserPasswordController::class, 'showResetForm'])
     ->name('password.new')
     ->middleware('signed'); 
 
@@ -113,7 +113,7 @@ Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
 Route::resource('/inviti', InvitoController::class)
     ->middleware(['auth', 'verified']);
 
-Route::get('/invito/register/', [InvitoRegisteredUserController::class, 'show'])
+Route::get('/invito/register', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
     ->middleware('signed', 'throttle:6,1');
 

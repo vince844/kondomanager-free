@@ -37,13 +37,13 @@ return [
         'line_2'    => 'This invitation will expire in three days.',
     ],
     
-    // New user created by administrator (NewUserEmailNotification)
+    // New user created by admin (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Welcome to :appName',
         'greeting'  => 'Hello :name,',
-        'line_1'    => 'The condominium administrator has created your profile. Click the link below to set your password.',
-        'action'    => 'Set Password',
-        'line_2'    => 'This link will expire in 60 minutes.',
+        'line_1'    => 'The condominium administrator has created your profile. Click the following link to set your password.',
+        'action'    => 'Set password',
+        'line_2'    => 'This link will expire in three days.',
     ],
 
     // Communication pending approval (ApproveComunicazioneNotification)
