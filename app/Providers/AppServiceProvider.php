@@ -14,7 +14,6 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Database\Events\MigrationsEnded;
 use App\Settings\GeneralSettings;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Livewire\Livewire; 
 use App\Livewire\Installer\InstallerWizard; 
@@ -66,37 +65,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // ====================================================================
-        // GESTIONE PROXY E HEADER DI RICHIESTA (X-Forwarded-*)
-        // ====================================================================
-        
-        // 1. Legge la config. Se manca nel .env, restituisce NULL.
-        $trustedProxies = config('app.trusted_proxies');
-
-        // 2. Esegue solo se c'è una configurazione attiva
-        if ($trustedProxies) {
-            
-            // Definiamo quali header guardare (Standard Laravel/Symfony)
-            $headers = Request::HEADER_X_FORWARDED_FOR |
-                       Request::HEADER_X_FORWARDED_HOST |
-                       Request::HEADER_X_FORWARDED_PORT |
-                       Request::HEADER_X_FORWARDED_PROTO |
-                       Request::HEADER_X_FORWARDED_AWS_ELB;
-
-            // Trasformiamo la config in array per Symfony
-            if ($trustedProxies === '*') {
-                // Wildcard per IPv4 e IPv6 (Fidati di tutto Internet)
-                $proxies = ['0.0.0.0/0', '::/0']; 
-            } else {
-                // Lista IP specifici
-                $proxies = is_array($trustedProxies) 
-                    ? $trustedProxies 
-                    : array_map('trim', explode(',', $trustedProxies));
-            }
-
-            // Applica la configurazione alla Request globale
-            Request::setTrustedProxies($proxies, $headers);
-        }
-        
+        // GESTIONE PROXY (Spostata in bootstrap/app.php per standard Laravel 11)
         // ====================================================================
 
         // Sincronizza la versione dopo ogni migrazione

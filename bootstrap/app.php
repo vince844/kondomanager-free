@@ -21,6 +21,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        
+        $trustedProxies = config('app.trusted_proxies');
+        if ($trustedProxies === '*') {
+            $middleware->trustProxies(at: '*');
+        } elseif ($trustedProxies) {
+            $proxies = is_array($trustedProxies) ? $trustedProxies : array_map('trim', explode(',', $trustedProxies));
+            $middleware->trustProxies(at: $proxies);
+        }
 
         $middleware->web(append: [
             CheckForPendingUpdates::class,
