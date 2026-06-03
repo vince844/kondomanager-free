@@ -17,7 +17,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
 import PianoRateSpaccatoSheet from '@/components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue';
-import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel } from "lucide-vue-next";
+import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
@@ -552,6 +552,15 @@ const executePublishSilent = () => {
     });
 };
 
+const printScadenziario = (modalita: 'anagrafica' | 'immobile' | 'entrambi') => {
+    const url = route('admin.gestionale.esercizi.piani-rate.print-scadenziario', {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    }) + '?modalita=' + modalita;
+    window.open(url, '_blank');
+}
+
 </script>
 
 <template>   
@@ -789,6 +798,54 @@ const executePublishSilent = () => {
                     </HoverCard>
 
                     <div class="w-px h-5 bg-gray-300 shrink-0"></div>
+
+                    <!-- STAMPA SCADENZIARIO -->
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                                <Printer class="w-4 h-4" />
+                                <span class="hidden sm:inline">Stampa Scadenziario</span>
+                                <ChevronDown class="w-3 h-3 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-56 shadow-xl rounded-xl border-slate-100 p-1.5">
+                            <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                                Modalità di stampa
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem
+                                @click="printScadenziario('anagrafica')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                            >
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Per condòmino</div>
+                                    <div class="text-[10px] text-slate-400">1 riga per intestatario</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                @click="printScadenziario('immobile')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                            >
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Per unità immobiliare</div>
+                                    <div class="text-[10px] text-slate-400">1 riga per immobile</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem
+                                @click="printScadenziario('entrambi')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                            >
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Entrambi i prospetti</div>
+                                    <div class="text-[10px] text-slate-400">Condòmino + immobile in un PDF</div>
+                                </div>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
 
                     <!-- RICALCOLA / SINCRONIZZA -->
                     <HoverCard>

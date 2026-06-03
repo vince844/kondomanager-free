@@ -8,6 +8,9 @@
         "Infraestrutura de Documentos PDF Nativa: Adicionada a capacidade de gerar e baixar o Recibo de Pagamento a Fornecedores (Distinta) em formato PDF, com base em templates nativos.",
         "Refatoração de Exceções PSR-4: Concluída a refatoração arquitetônica das exceções do sistema para conformidade total com os padrões PSR-4.",
         "Visualização Detalhada de Recebimentos de Quotas: Adicionada uma vista de leitura analítica para explorar a composição de um recebimento de quota, destacando se foi pago através de pagamento direto ou compensação de crédito.",
-        "Otimização de Tooltips em Tabelas: Substituição das tooltips nativas de texto por HoverCards interativos (Shadcn) para uma leitura imediata e rica de valores nas tabelas de Faturas e Pagamentos."
+        "Otimização de Tooltips em Tabelas: Substituição das tooltips nativas de texto por HoverCards interativos (Shadcn) para uma leitura imediata e rica de valores nas tabelas de Faturas e Pagamentos.",
+        "Impressões de Vencimentos e Rateios (PDF): Lançada a suíte oficial de impressões para planos de quotas (Mapa de Vencimentos / Prospeto de Quotas) e para o plano de contas (Orçamento e Rateio de Despesas). Os layouts incluem cabeçalhos com referências legais e design adaptado para impressão.",
+        "Múltiplas Opções de Agregação em PDF: O administrador pode agora decidir dinamicamente se exporta o Prospeto de Quotas agrupado 'Por Condómino', 'Por Fração', ou combinando ambas as vistas num único documento PDF com várias páginas.",
+        "Testes de Integridade e Quadratura de PDF: Integrada uma suíte de testes abrangente dedicada aos controladores de impressão que garante verificações cruzadas perfeitas: cada montante apresentado nos PDFs deve corresponder rigorosamente aos totais na base de dados, prevenindo eventuais desalinhamentos na impressão."
     ]
 }

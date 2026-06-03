@@ -23,11 +23,13 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiConti\PianoContiPrintController;
 use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
 use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchFattureStraordinarieController;
+use App\Http\Controllers\Gestionale\PianiRate\PianoRatePrintController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController;
@@ -121,6 +123,12 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'    => 'esercizio',
             'piani-conti' => 'pianoConto'
         ]);
+        
+    Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-distinta', [PianoContiPrintController::class, 'distinta'])
+        ->name('esercizi.piani-conti.print-distinta');
+
+    Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-riparto', [PianoContiPrintController::class, 'riparto'])
+        ->name('esercizi.piani-conti.print-riparto');
     
     Route::resource('esercizi.piani-conti.conti', ContoController::class)
         ->parameters([
@@ -143,6 +151,9 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
         ]);
+
+    Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-scadenziario', [PianoRatePrintController::class, 'scadenziario'])
+        ->name('esercizi.piani-rate.print-scadenziario');
 
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');

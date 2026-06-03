@@ -1,4 +1,4 @@
-# 🗺️ Kondomanager — Roadmap
+# Kondomanager — Roadmap
 
 > Piano di sviluppo versionato per Kondomanager.
 > Le versioni sono sequenziate logicamente: alcune dipendono da altre.
@@ -57,7 +57,9 @@ Release che porta a maturità l'infrastruttura contabile.
 
 - **Voci di accantonamento** con `fondo_target_id`, bifurcation incasso, `delibera_id` nullable
 - **Giroconti** tra conti correnti e fondi
+- **Registrazione a regolazione immediata** — scrittura ledger-native senza Fattura a monte (costo → banca/cassa in scrittura unica) per utenze, bolli, commissioni bancarie, F24, piccole spese; fornitore opzionale come tag analitico; guard rail su ritenuta/split payment. Stesso primitivo dei Giroconti: `Scrittura` classificata via `RegistrazioneType`, nessuna riga pivot. Fondamenta per la riconciliazione bancaria (v1.16).
 - **Stato Patrimoniale operativo** con scritture di chiusura
+- **Estratto conto / situazione di cassa** — vista dei movimenti per conto corrente e cassa, derivata dalle scritture (read-model, non primitivo di scrittura)
 - **Bilanciatore Fondi** — verifica copertura liquida, morosità per immobile, quota segue immobile
 - **Dashboard Intelligence:**
   - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*

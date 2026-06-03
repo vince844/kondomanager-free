@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock } from 'lucide-vue-next'
+import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock, Printer } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
@@ -232,6 +232,21 @@ const rimuoviTabella = () => {
     onSuccess: () => { showModalRimuoviTabella.value = false; tabellaDaRimuovere.value = null }
   })
 }
+const printDistinta = () => {
+  window.open(route('admin.gestionale.esercizi.piani-conti.print-distinta', {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+    pianoConto: props.pianoConti.id
+  }), '_blank');
+}
+
+const printRiparto = () => {
+  window.open(route('admin.gestionale.esercizi.piani-conti.print-riparto', {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+    pianoConto: props.pianoConti.id
+  }), '_blank');
+}
 </script>
 
 <template>
@@ -250,6 +265,20 @@ const rimuoviTabella = () => {
       >
         <template #actions>
           <div class="flex items-center gap-2">
+            <button
+              @click="printDistinta"
+              class="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 shadow-sm hover:bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-700 transition-colors"
+            >
+              <Printer class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Stampa Distinta</span>
+            </button>
+            <button
+              @click="printRiparto"
+              class="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 shadow-sm hover:bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-700 transition-colors"
+            >
+              <Printer class="w-3.5 h-3.5" />
+              <span class="hidden sm:inline">Stampa Riparto</span>
+            </button>
             <button
               @click="showModalNew = true"
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
