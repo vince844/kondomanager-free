@@ -22,11 +22,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         
-        $trustedProxies = config('app.trusted_proxies');
+        // env() è necessario qui: config() non è ancora disponibile durante il bootstrap.
+        // Default: null (nessun proxy accettato = sicuro per VPS nude).
+        $trustedProxies = env('TRUSTED_PROXIES');
         if ($trustedProxies === '*') {
             $middleware->trustProxies(at: '*');
         } elseif ($trustedProxies) {
-            $proxies = is_array($trustedProxies) ? $trustedProxies : array_map('trim', explode(',', $trustedProxies));
+            $proxies = array_map('trim', explode(',', $trustedProxies));
             $middleware->trustProxies(at: $proxies);
         }
 
