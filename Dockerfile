@@ -1,6 +1,8 @@
 FROM php:8.4-fpm-bookworm
 
-RUN apt-get update && apt-get install -y nginx git curl unzip libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev zip \
+# Installazione dipendenze
+RUN apt-get update && apt-get install -y \
+    nginx git curl unzip libpng-dev libonig-dev libxml2-dev libzip-dev libicu-dev zip \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip intl \
@@ -25,10 +27,13 @@ RUN echo 'server { \
 WORKDIR /var/www
 COPY . .
 
+# Installazione e build
 RUN composer install --no-dev --optimize-autoloader && npm install && npm run build
-RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
 
-# Script di avvio
+# CORREZIONE PERMESSI: Tutto di proprietà di www-data
+RUN chown -R www-data:www-data /var/www /var/lib/nginx /var/log/nginx
+
+# Script di avvio (PHP-FPM + Nginx)
 RUN echo '#!/bin/sh\nphp-fpm -D\nnginx -g "daemon off;"' > /start.sh && chmod +x /start.sh
 
 EXPOSE 80
