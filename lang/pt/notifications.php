@@ -44,6 +44,7 @@ return [
         'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link a seguir para definir a sua senha.',
         'action'    => 'Definir senha',
         'line_2'    => 'Este link expirará em três dias.',
+        'password_already_set' => 'A sua senha já foi definida. Inicie sessão com as suas credenciais.',
     ],
 
     // Comunicação pendente de aprovação (ApproveComunicazioneNotification)

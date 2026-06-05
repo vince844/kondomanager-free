@@ -483,7 +483,11 @@ const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | n
 
 const doSubmit = () => {
     form.transform((data) => {
-        const payload = JSON.parse(JSON.stringify(data)); 
+        const payload = {
+            ...data,
+            dati_extra: JSON.parse(JSON.stringify(data.dati_extra)),
+            coperture: data.coperture ? JSON.parse(JSON.stringify(data.coperture)) : []
+        }; 
         
         payload.righe = payload.righe.map((r: any) => ({
             ...r,

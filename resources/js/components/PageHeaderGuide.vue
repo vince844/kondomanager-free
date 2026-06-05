@@ -125,7 +125,7 @@ function selectEsercizio(esercizioId: number | string) {
         <template v-if="condominio">
           <DropdownMenu v-if="showCondominioDropdown">
             <DropdownMenuTrigger
-              class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
             >
               <Building2 class="w-3.5 h-3.5 text-slate-400" />
               {{ condominio.nome }}
@@ -139,7 +139,7 @@ function selectEsercizio(esercizioId: number | string) {
               </DropdownMenuContent>
             </DropdownMenuPortal>
           </DropdownMenu>
-          <div v-else class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
+          <div v-else class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
             <Building2 class="w-3.5 h-3.5 text-slate-400" />
             <span class="text-slate-700 dark:text-slate-300">{{ condominio.nome }}</span>
           </div>
@@ -147,7 +147,7 @@ function selectEsercizio(esercizioId: number | string) {
           <template v-if="esercizio">
             <DropdownMenu v-if="showEsercizioDropdown">
               <DropdownMenuTrigger
-                class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
               >
                 <Calendar class="w-3.5 h-3.5 text-slate-400" />
                 {{ selectedEsercizio?.nome.toLowerCase() ?? 'Seleziona esercizio' }}
@@ -161,7 +161,7 @@ function selectEsercizio(esercizioId: number | string) {
                 </DropdownMenuContent>
               </DropdownMenuPortal>
             </DropdownMenu>
-            <div v-else class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
+            <div v-else class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium">
               <Calendar class="w-3.5 h-3.5 text-slate-400" />
               <span class="text-slate-700 dark:text-slate-300">{{ esercizio.nome }}</span>
             </div>
@@ -169,7 +169,7 @@ function selectEsercizio(esercizioId: number | string) {
 
           <Link 
             :href="generatePath('dashboard')"
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
+            class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
           >
             <CornerLeftUp class="w-3.5 h-3.5 text-white" />
             Dashboard social
@@ -187,7 +187,7 @@ function selectEsercizio(esercizioId: number | string) {
             <span>{{ backText || 'Indietro' }}</span>
         </Link>
 
-        <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
+        <a v-if="videoUrl" :href="videoUrl" target="_blank" class="inline-flex h-8 items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 transition-colors dark:bg-red-950/30 dark:text-red-400">
           <PlayCircle class="w-3.5 h-3.5" />
           Video guida
         </a>

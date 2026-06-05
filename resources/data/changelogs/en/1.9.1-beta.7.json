@@ -14,6 +14,11 @@
         "PDF Integrity and Balancing Tests: Integrated a comprehensive test suite dedicated to print controllers ensuring perfect cross-checks: every amount shown on PDFs must strictly match the totals in the database, preventing any printing misalignments.",
         "Signed URL Security Fix: Replaced the email address with the user ID in encrypted links for invitations and password resets, permanently resolving a 403 error caused by automatic decoding of the '@' character by browsers and email clients.",
         "Link Expiration UX Improvement: Extended the validity of links for accepting invitations and setting passwords from 60 minutes to 3 days, giving users more time to complete registration.",
-        "Chart of Accounts UI Optimization: Grouped the print buttons (Estimate Bill and Expense Allotment) into a single 'Prints' dropdown menu to save space and maintain a clean layout on smaller screens."
+        "Chart of Accounts UI Optimization: Grouped the print buttons (Estimate Bill and Expense Allotment) into a single 'Prints' dropdown menu to save space and maintain a clean layout on smaller screens.",
+        "Document UI Alignment: Standardized the design of document upload and edit pages (DocumentiNew, DocumentiEdit) to the system standard (AppLayout, PageHeaderGuide).",
+        "Document Table Optimization: Fixed a RangeError on date formatting in production, added missing visibility badge translations (Public/Private), and renamed the 'Date' column to 'Uploaded on' for better clarity.",
+        "Existing Invoice Attachments Display Fix: Corrected an issue in the Invoice Details view (FatturaShow) that prevented the correct display of attached document names and sizes due to misaligned properties with the data model.",
+        "New Invoice Attachments Upload Fix: Resolved a critical bug during new invoice registration that caused the attached document to be lost upon form submission due to a JSON conversion destroying the File object.",
+        "Operating Inbox Payment Auto-population Fix: Resolved an issue where clicking 'Resolve' on a payment task from the Operating Inbox did not pre-populate the payment form. The system now automatically infers the supplier from the passed invoice."
     ]
 }

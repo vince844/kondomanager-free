@@ -13,6 +13,12 @@ class NewUserPasswordController extends Controller
     {
         $user = User::findOrFail($request->query('id'));
 
+        // Se l'utente ha già una password impostata, il link è già stato usato.
+        if ($user->password) {
+            return redirect()->route('login')
+                ->with('status', __('notifications.new_user_created.password_already_set'));
+        }
+
         return inertia('auth/NewUserCreatePassword', [
             'email' => $user->email,
         ]);

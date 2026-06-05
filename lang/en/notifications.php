@@ -44,6 +44,7 @@ return [
         'line_1'    => 'The condominium administrator has created your profile. Click the following link to set your password.',
         'action'    => 'Set password',
         'line_2'    => 'This link will expire in three days.',
+        'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
     ],
 
     // Communication pending approval (ApproveComunicazioneNotification)

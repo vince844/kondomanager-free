@@ -1,25 +1,27 @@
 <script setup lang="ts">
   
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
-import FornitoreLayout from '@/layouts/fornitori/FornitoreLayout.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
-import { List, Plus, LoaderCircle, UploadCloud, Info, FileText, X } from 'lucide-vue-next';
+import { Plus, LoaderCircle, UploadCloud, Info, FileText, X, FileUp, Eye } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
 import { Item } from "@/components/ui/item";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { trans } from 'laravel-vue-i18n';
 import vSelect from "vue-select";
 import { publishedConstants } from '@/lib/documenti/constants';
 import type { PublishedType } from '@/types/documenti';
 import type { Fornitore } from '@/types/fornitori';
 import type { BaseDocumentForm } from '@/types/documenti';
+import type { BreadcrumbItem } from '@/types';
 
 const props = defineProps<{
   fornitore: Fornitore;
@@ -38,7 +40,35 @@ const form = useForm<BaseDocumentForm>({
   anagrafiche: []
 });
 
-// Metodi con tipi
+const breadcrumbs = computed<BreadcrumbItem[]>(() => [
+  { title: 'Fornitori', href: route(generateRoute('fornitori.index')) },
+  { title: props.fornitore.ragione_sociale, href: generatePath('fornitori/:fornitore', { fornitore: props.fornitore.id }) },
+  { title: 'Documenti', href: generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id }) },
+  { title: 'Nuovo Documento', href: '#' }
+]);
+
+const pageGuides = [
+  {
+    title: 'Caricamento',
+    description: 'Carica il documento in formato PDF o immagine (JPG/PNG).',
+    icon: FileUp,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Dettagli',
+    description: 'Inserisci un nome chiaro e una descrizione opzionale.',
+    icon: FileText,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Visibilità',
+    description: 'Scegli se renderlo visibile al fornitore o mantenerlo interno.',
+    icon: Eye,
+    colorVariant: 'amber' as const
+  }
+];
+
+// Metodi
 const handleFileChange = (event: Event): void => {
   const target = event.target as HTMLInputElement
   const selectedFile = target.files?.[0] || null
@@ -58,7 +88,6 @@ const onDrop = (event: DragEvent): void => {
     file.value = droppedFile
     form.file = droppedFile
     
-    // Aggiorna il valore dell'input file
     if (fileInputRef.value) {
       const dataTransfer = new DataTransfer()
       dataTransfer.items.add(droppedFile)
@@ -72,7 +101,6 @@ const removeFile = (): void => {
   file.value = null
   form.file = null
   
-  // Resetta l'input file
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
   }
@@ -87,6 +115,7 @@ const submit = (): void => {
     preserveScroll: true,
     onSuccess: () => {
       form.reset()
+      file.value = null
     }
   });
 };
@@ -94,175 +123,198 @@ const submit = (): void => {
 </script>
 
 <template>
+  <Head title="Crea documento fornitore" />
 
-    <Head title="Crea documento immobile" />
+  <AppLayout>
+    <div class="px-6 py-8 space-y-6">
 
-    <AppLayout>
-      <FornitoreLayout>
-          <form class="space-y-2" @submit.prevent="submit">
-            <!-- Action buttons -->
-            <div class="flex flex-col lg:flex-row lg:justify-end gap-2 w-full">
-              <Button :disabled="form.processing" class="h-8 w-full lg:w-auto">
-                <Plus class="w-4 h-4" v-if="!form.processing" />
-                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva
-              </Button>
+      <PageHeaderGuide
+          :page-title="`Nuovo Documento: ${fornitore.ragione_sociale}`"
+          page-subtitle="Carica un nuovo documento per questo fornitore"
+          :guides="pageGuides"
+          :breadcrumbs="breadcrumbs"
+          :video-url="null"
+          :back-url="generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id })"
+          back-text="Torna ai documenti"
+      />
 
-              <Link
-                as="button"
-                :href="generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id })"
-                class="w-full lg:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90"
-              >
-                <List class="w-4 h-4" />
-                <span>Elenco</span>
-              </Link>
-            </div>
+      <form @submit.prevent="submit" class="space-y-6">
 
-            <Separator class="my-4" />
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+            <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold">Contenuto Documento</CardTitle>
+                <CardDescription>Inserisci i dettagli principali e allega il file.</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+                
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
+                        <Label for="name">Nome documento</Label>
+                        <Input 
+                            id="name" 
+                            class="mt-1 block w-full bg-white dark:bg-slate-950"
+                            v-model="form.name" 
+                            v-on:focus="form.clearErrors('name')"
+                            placeholder="Es. Contratto di appalto" 
+                        />
+                        <InputError :message="form.errors.name" />
+                    </div>
 
-              <!-- Two-column layout (3:1 ratio) -->
-              <div class="grid grid-cols-1 lg:grid-cols-4 gap-3 ">
-                <!-- Main Card (3/4 width) -->
-                <div class="col-span-1 lg:col-span-3 mt-3">
-                  <div class="bg-white dark:bg-muted rounded shadow-sm p-3 space-y-4 border">
-                      
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-3">
-                          <Label for="nome">Nome documento</Label>
-                          <Input 
-                              id="name" 
-                              class="mt-1 block w-full"
-                              v-model="form.name" 
-                              v-on:focus="form.clearErrors('name')"
-                              placeholder="Nome documento" 
-                          />
-                          
-                          <InputError :message="form.errors.name" />
-                      </div>
-                    </div> 
+                    <div class="sm:col-span-6">
+                        <Label for="description">Descrizione</Label>
+                        <Textarea 
+                            id="description" 
+                            class="mt-1 block w-full min-h-[160px] bg-white dark:bg-slate-950"
+                            v-model="form.description" 
+                            v-on:focus="form.clearErrors('description')"
+                            placeholder="Descrizione opzionale del documento" 
+                        />
+                        <InputError :message="form.errors.description" />
+                    </div>  
+                </div> 
 
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                          <Label for="nome">Descrizione documento</Label>
-                          <Textarea 
-                              id="description" 
-                              class="mt-1 block w-full min-h-[200px]"
-                              v-model="form.description" 
-                              v-on:focus="form.clearErrors('description')"
-                              placeholder="Descrizone documento" 
-                          />
-                          
-                          <InputError :message="form.errors.description" />
-                      </div>     
-                    </div> 
-
-                    <div class="mt-2 grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                        <Label for="file-upload">Seleziona documento</Label>
+                <div class="grid grid-cols-1 sm:grid-cols-6">
+                    <div class="sm:col-span-6">
 
                         <label
-                          for="file-upload"
-                          @dragover.prevent
-                          @drop="onDrop"
-                          class="block cursor-pointer mt-2"
+                            for="file-upload"
+                            @dragover.prevent
+                            @drop="onDrop"
+                            class="block cursor-pointer"
                         >
-                          <Empty class="border border-dashed hover:bg-accent/10 transition">
-                            <EmptyHeader>
-                              <EmptyMedia variant="icon">
-                                <UploadCloud class="w-8 h-8 text-muted-foreground" />
-                              </EmptyMedia>
-                              <EmptyTitle>Trascina qui il tuo documento</EmptyTitle>
-                              <EmptyDescription>
-                                Oppure <strong>clicca</strong> per selezionarlo dal tuo dispositivo.
-                              </EmptyDescription>
-                            </EmptyHeader>
-                          </Empty>
+                            <Empty class="border border-dashed bg-white dark:bg-slate-950 hover:bg-accent/10 transition">
+                                <EmptyHeader>
+                                    <EmptyMedia variant="icon">
+                                        <UploadCloud class="w-8 h-8 text-muted-foreground" />
+                                    </EmptyMedia>
+                                    <EmptyTitle>Seleziona un documento</EmptyTitle>
+                                    <EmptyDescription>
+                                        Trascina qui il file oppure clicca per selezionarlo.
+                                        <div class="text-xs text-muted-foreground mt-1">
+                                            Formati supportati: PDF, Immagini
+                                        </div>
+                                    </EmptyDescription>
+                                </EmptyHeader>
+                            </Empty>
 
-                          <!-- input nascosto -->
-                          <input
-                            id="file-upload"
-                            type="file"
-                            class="hidden"
-                            accept="application/pdf,image/*"
-                            @change="handleFileChange"
-                            ref="fileInputRef"
-                          />
+                            <input
+                                id="file-upload"
+                                type="file"
+                                class="hidden"
+                                accept="application/pdf,image/*"
+                                @change="handleFileChange"
+                                ref="fileInputRef"
+                            />
                         </label>
 
-                        <!-- Stato: file selezionato -->
                         <div v-if="file" class="mt-4">
-                          <Item class="flex items-center justify-between border rounded-lg p-3 shadow-sm bg-card/60">
-                            <div class="flex items-center gap-3">
-                              <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-accent/20">
-                                <FileText class="w-5 h-5 text-muted-foreground" />
-                              </div>
-                              <div class="flex flex-col">
-                                <span class="text-sm font-medium truncate max-w-[180px]">
-                                  {{ file.name }}
-                                </span>
-                                <span class="text-xs text-muted-foreground">
-                                  {{ (file.size / 1024).toFixed(1) }} KB
-                                </span>
-                              </div>
-                            </div>
-                            <Button variant="ghost" size="icon" @click="removeFile">
-                              <X class="w-4 h-4" />
-                            </Button>
-                          </Item>
-                        </div>
-
-                        <InputError :message="form.errors.file" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Side Card (1/4 width) -->
-                <div class="col-span-1 mt-3">
-                  <div class="bg-white dark:bg-muted rounded shadow-sm p-3 border">
-                    <div class="grid grid-cols-1 sm:grid-cols-6">
-                      <div class="sm:col-span-6">
-                        <div class="flex items-center text-sm font-medium mb-1 gap-x-2">
-                          <Label for="stato">Stato pubblicazione</Label>
-                          <HoverCard>
-                            <HoverCardTrigger as-child>
-                              <button type="button" class="cursor-pointer">
-                                <Info class="w-4 h-4 text-muted-foreground" />
-                              </button>
-                            </HoverCardTrigger>
-                            <HoverCardContent class="w-80">
-                              <div class="flex justify-between space-x-4">
-                                <div class="space-y-1">
-                                  <h4 class="text-sm font-semibold">
-                                    Stato pubblicazione
-                                  </h4>
-                                  <p class="text-sm">
-                                    Scegli se rendere visibile il documento o mantenerlo nascosto.
-                                  </p>
+                            <Item class="flex items-center justify-between border rounded-lg p-3 shadow-sm bg-white dark:bg-slate-950">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 flex items-center justify-center rounded-lg bg-accent/20">
+                                        <FileText class="w-5 h-5 text-muted-foreground" />
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-sm font-medium truncate max-w-[250px]">
+                                            {{ file.name }}
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">
+                                            {{ (file.size / 1024).toFixed(1) }} KB
+                                        </span>
+                                    </div>
                                 </div>
-                              </div>
-                            </HoverCardContent>
-                          </HoverCard>
+                                <Button 
+                                    type="button"
+                                    variant="ghost" 
+                                    size="icon" 
+                                    @click.prevent="removeFile"
+                                    title="Rimuovi documento"
+                                >
+                                    <X class="w-4 h-4 text-red-500 hover:text-red-600" />
+                                </Button>
+                            </Item>
                         </div>
-
-                        <v-select 
-                          :options="publishedConstants" 
-                          label="label" 
-                          v-model="form.is_published"
-                          placeholder="Stato pubblicazione"
-                          @update:modelValue="form.clearErrors('is_published')" 
-                          :reduce="(is_published: PublishedType) => is_published.value"
-                        />
-
-                        <InputError :message="form.errors.is_published" />
-                      </div>
+                        <InputError :message="form.errors.file" class="mt-2" />
                     </div>
-                  </div>
                 </div>
-              </div>
-          </form>
-      </FornitoreLayout>
-    </AppLayout>
+
+            </CardContent>
+        </Card>
+
+        <Card class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+            <CardHeader class="pb-3 border-b border-dashed mb-4">
+                <CardTitle class="text-base font-semibold">Impostazioni</CardTitle>
+                <CardDescription>Configura la visibilità del documento.</CardDescription>
+            </CardHeader>
+            <CardContent class="space-y-6">
+                <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6">
+                    
+                    <div class="sm:col-span-3">
+                        <div class="flex items-center gap-2 min-h-[24px] mb-1">
+                            <Label for="is_published">Visibilità</Label>
+                            <HoverCard>
+                                <HoverCardTrigger as-child>
+                                    <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                        <Info class="w-4 h-4" />
+                                    </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                    <h4 class="text-sm font-bold mb-2">Visibilità</h4>
+                                    <p class="text-xs text-slate-500 leading-relaxed">Scegli se rendere il documento visibile al fornitore o mantenerlo a uso interno.</p>
+                                </HoverCardContent>
+                            </HoverCard>
+                        </div>
+                        <v-select 
+                            id="is_published"
+                            class="w-full premium-select bg-white dark:bg-slate-950 mt-1"
+                            :options="publishedConstants" 
+                            label="label" 
+                            v-model="form.is_published"
+                            placeholder="Seleziona visibilità"
+                            @update:modelValue="form.clearErrors('is_published')" 
+                            :reduce="(is_published: PublishedType) => is_published.value"
+                        >
+                            <template #option="{ label, icon }">
+                                <div class="flex items-center gap-2">
+                                    <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                                    <span>{{ trans(label) }}</span> 
+                                </div>
+                            </template>
+                            <template #selected-option="{ label, icon }">
+                                <div v-if="label" class="flex items-center gap-2">
+                                    <component :is="icon" class="w-4 h-4 text-muted-foreground" />
+                                    <span>{{ trans(label) }}</span>
+                                </div>
+                            </template>
+                        </v-select>
+                        <InputError :message="form.errors.is_published" />
+                    </div>
+
+                </div>
+            </CardContent>
+        </Card>
+
+        <div class="flex items-center justify-end gap-3">
+            <Link
+                :href="generatePath('fornitori/:fornitore/documenti', { fornitore: props.fornitore.id })"
+                class="inline-flex items-center justify-center h-9 px-6 rounded-md border border-input bg-background text-sm font-semibold hover:bg-accent hover:text-accent-foreground transition-all shadow-sm"
+            >
+                Annulla
+            </Link>
+
+            <Button 
+                type="submit"
+                :disabled="form.processing" 
+                class="h-9 px-8 text-sm font-semibold shadow-md gap-2"
+            >
+                <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
+                <Plus v-else class="h-4 w-4" />
+                Salva documento
+            </Button>
+        </div>
+
+      </form>
+    </div>
+  </AppLayout>
 </template>
 
 <style src="vue-select/dist/vue-select.css"></style>

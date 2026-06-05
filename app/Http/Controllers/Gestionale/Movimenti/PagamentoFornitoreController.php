@@ -156,6 +156,16 @@ class PagamentoFornitoreController extends Controller
                 ])
             : collect();
 
+        $preselectedFatturaId = request('fattura_id') ? (int)request('fattura_id') : null;
+        $preselectedFornitoreId = request('fornitore_id') ? (int)request('fornitore_id') : null;
+
+        if ($preselectedFatturaId && !$preselectedFornitoreId) {
+            $fattura = FatturaPassiva::find($preselectedFatturaId);
+            if ($fattura) {
+                $preselectedFornitoreId = $fattura->fornitore_id;
+            }
+        }
+
         return Inertia::render('gestionale/movimenti/pagamenti/PagamentoNew', [
             'condominio' => $condominio,
             'condomini'  => $listaCondomini,
@@ -164,8 +174,8 @@ class PagamentoFornitoreController extends Controller
             'fornitori'  => Fornitore::all(),
             'banche'     => $banche,
             'gestioni'   => $gestioni,
-            'preselected_fornitore_id' => request('fornitore_id') ? (int)request('fornitore_id') : null,
-            'preselected_fattura_id'   => request('fattura_id') ? (int)request('fattura_id') : null,
+            'preselected_fornitore_id' => $preselectedFornitoreId,
+            'preselected_fattura_id'   => $preselectedFatturaId,
         ]);
     }
 

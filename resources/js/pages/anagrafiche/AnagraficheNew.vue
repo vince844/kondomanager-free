@@ -102,7 +102,7 @@ const submit = () => {
 <template>
   <Head :title="trans('anagrafiche.header.new_resident_head')" />
 
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout>
   
     <div class="px-6 py-8 space-y-6">
 

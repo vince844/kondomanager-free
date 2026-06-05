@@ -1,4 +1,4 @@
-import { Anagrafica } from './anagrafiche';
+import { Anagrafica, AnagraficaFornitore } from './anagrafiche';
 import { Categoria } from './categorie';
 
 export interface Fornitore {
@@ -29,7 +29,7 @@ export interface Fornitore {
   codice_sia?: string;
   codice_cuc?: string;
   codice_sepa?: string;
-  referenti?: Anagrafica[];
+  referenti?: AnagraficaFornitore[];
   categoria?: Categoria;
   anagrafica_id?: number | string; 
   soggetto_ritenuta: boolean;

@@ -14,6 +14,11 @@
         "Test di Integrità e Quadratura PDF: Integrata una test suite completa dedicata ai controller di stampa che garantisce incroci perfetti: ogni importo mostrato sui PDF deve combaciare rigorosamente con i totali presenti a database, bloccando preventivamente eventuali disallineamenti di stampa.",
         "Fix Sicurezza URL Firmati: Sostituito l'indirizzo email con l'ID utente nei link crittografati per inviti e reset password, risolvendo definitivamente un errore 403 causato dalla decodifica automatica del carattere '@' da parte di browser e client email.",
         "Miglioramento UX Scadenza Link: Estesa la validità dei link per l'accettazione degli inviti e per la creazione della password da 60 minuti a 3 giorni, offrendo più tempo agli utenti per completare la registrazione.",
-        "Ottimizzazione UI Piano dei Conti: Raggruppati i pulsanti di stampa (Distinta Base e Ripartizione) all'interno di un unico menu a tendina 'Stampe' per preservare lo spazio e mantenere il layout pulito su schermi piccoli."
+        "Ottimizzazione UI Piano dei Conti: Raggruppati i pulsanti di stampa (Distinta Base e Ripartizione) all'interno di un unico menu a tendina 'Stampe' per preservare lo spazio e mantenere il layout pulito su schermi piccoli.",
+        "Allineamento UI Documenti: Uniformato il design delle pagine di caricamento e modifica documenti (DocumentiNew, DocumentiEdit) allo standard del gestionale (AppLayout, PageHeaderGuide).",
+        "Ottimizzazione Tabelle Documenti: Risolto un RangeError sul formato date in ambiente di produzione, aggiunta la traduzione mancante dei badge di visibilità (Pubblico/Privato) e rinominata la colonna 'Data' in 'Caricato il' per maggiore chiarezza.",
+        "Fix Bug Visualizzazione Allegati Fatture: Corretto un problema nella vista Dettaglio Fattura (FatturaShow) che impediva la corretta visualizzazione del nome e della dimensione dei documenti allegati a causa di proprietà disallineate col modello dati.",
+        "Fix Bug Upload Allegati Nuove Fatture: Risolto un bug critico in fase di registrazione nuova fattura che causava la perdita del documento allegato durante l'invio del modulo a causa di una conversione JSON che distruggeva l'oggetto File.",
+        "Fix Autocompilazione Pagamenti da Inbox Operativa: Risolto un problema per cui cliccando 'Risolvi' su un task di pagamento dalla Inbox Operativa il modulo di pagamento non veniva precompilato. Il sistema ora deduce automaticamente il fornitore a partire dalla fattura passata."
     ]
 }

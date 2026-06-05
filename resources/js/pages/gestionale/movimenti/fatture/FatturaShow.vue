@@ -75,13 +75,13 @@ const executeDownload = (documentoId: number) => {
 </script>
 
 <template>
-    <Head :title="`Dettaglio Fattura ${props.fattura.numero_documento}`" />
+    <Head :title="`Dettaglio fattura ${props.fattura.numero_documento}`" />
 
     <GestionaleLayout>
         
         <div class="px-6 py-8 space-y-6">
             <PageHeaderGuide 
-                pageTitle="Dettaglio Fattura" 
+                pageTitle="Dettaglio fattura" 
                 :pageSubtitle="`Fattura n. ${props.fattura.numero_documento} del Fornitore ${props.fattura.fornitore?.ragione_sociale || 'Sconosciuto'}`"
                 icon="FileText"
                 :guides="[]"
@@ -281,8 +281,8 @@ const executeDownload = (documentoId: number) => {
                                         <FileSignature class="w-4 h-4 text-red-600 dark:text-red-400" />
                                     </div>
                                     <div class="min-w-0">
-                                        <p class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{{ doc.nome_originale }}</p>
-                                        <p class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">{{ doc.size_bytes ? (doc.size_bytes / 1024).toFixed(1) + ' KB' : 'PDF' }}</p>
+                                        <p class="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{{ doc.name }}</p>
+                                        <p class="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">{{ doc.file_size ? (doc.file_size / 1024).toFixed(1) + ' KB' : 'PDF' }}</p>
                                     </div>
                                 </div>
                                 <Button size="icon" variant="ghost" class="shrink-0 h-8 w-8 text-slate-400 group-hover:text-primary" @click="executeDownload(doc.id)" title="Scarica Documento">

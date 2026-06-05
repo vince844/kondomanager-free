@@ -44,6 +44,7 @@ return [
         'line_1'    => 'L\'amministratore di condominio ha creato il tuo profilo. Clicca sul seguente link per impostare la tua password.',
         'action'    => 'Imposta password',
         'line_2'    => 'Questo link scadrà tra tre giorni.',
+        'password_already_set' => 'La password è già stata impostata. Effettua il login con le tue credenziali.',
     ],
 
     // Approvazione comunicazione (ApproveComunicazioneNotification)
