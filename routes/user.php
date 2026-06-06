@@ -9,6 +9,7 @@ use App\Http\Controllers\Dashboard\UserDashboardController;
 use App\Http\Controllers\Eventi\Utenti\EventoController;
 use App\Http\Controllers\Eventi\Utenti\PaymentReportingController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
+use App\Http\Controllers\Segnalazioni\CommentoController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(function () {
@@ -23,6 +24,20 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
             'segnalazioni' => 'segnalazione'
         ]);
     
+    /*
+    |--------------------------------------------------------------------------
+    | Commenti Segnalazioni Routes (Utenti)
+    |--------------------------------------------------------------------------
+    */
+    Route::post('segnalazioni/{segnalazione}/commenti', [CommentoController::class, 'store'])
+        ->name('segnalazioni.commenti.store');
+
+    Route::patch('commenti/{commento}', [CommentoController::class, 'update'])
+        ->name('commenti.update');
+
+    Route::delete('commenti/{commento}', [CommentoController::class, 'destroy'])
+        ->name('commenti.destroy');
+
     Route::resource('comunicazioni', ComunicazioneController::class)
         ->parameters([
             'comunicazioni' => 'comunicazione'

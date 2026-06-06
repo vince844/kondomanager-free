@@ -10,6 +10,17 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 ## [Unreleased] — 1.9.1 Cash Statements
 
 > Pagamento delle fatture passive, riconciliazione bancaria e rendiconto di cassa.
+---
+
+## [1.9.1-beta.8] - Modulo Commenti per Segnalazioni Guasto
+
+### Aggiunto
+- **Nuovo Modulo Commenti per le Segnalazioni Guasto**: Aggiunta la possibilità per amministratori, condòmini e fornitori di comunicare direttamente all'interno della singola segnalazione guasto.
+- **Sicurezza e Permessi per i Commenti**: Isolamento completo dei ruoli con controlli severi. Gli amministratori possono moderare o nascondere commenti, mentre gli utenti standard e fornitori possono aggiungere, modificare o cancellare esclusivamente i propri commenti relativi ai propri condomini.
+- **Notifiche in Tempo Reale**: Integrazione di notifiche automatiche in app e via email ogni volta che viene aggiunto o aggiornato un commento sulla segnalazione in carico.
+
+### Importante
+- **Nota per gli sviluppatori**: Dopo aver aggiornato il codice all'ultima versione e aver eseguito le migrazioni, è necessario lanciare il comando `php artisan db:seed --class=RolesAndPermissionsSeeder` per generare a database i nuovi permessi inseriti a sistema.
 
 ---
 

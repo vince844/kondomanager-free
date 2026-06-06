@@ -18,12 +18,14 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('pagamenti_fornitori', function (Blueprint $table) {
-            // Colonna nullable: valorizzata solo quando l'admin bypassa un blocco.
-            // TEXT per non limitare la lunghezza della motivazione.
-            $table->text('note_override')->nullable()->after('idempotency_key')
-                ->comment('Motivazione obbligatoria quando si bypassa un blocco (saldo, overpayment). Audit trail permanente.');
-        });
+        if (!Schema::hasColumn('pagamenti_fornitori', 'note_override')) {
+            Schema::table('pagamenti_fornitori', function (Blueprint $table) {
+                // Colonna nullable: valorizzata solo quando l'admin bypassa un blocco.
+                // TEXT per non limitare la lunghezza della motivazione.
+                $table->text('note_override')->nullable()->after('idempotency_key')
+                    ->comment('Motivazione obbligatoria quando si bypassa un blocco (saldo, overpayment). Audit trail permanente.');
+            });
+        }
     }
 
     public function down(): void

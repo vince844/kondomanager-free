@@ -88,6 +88,9 @@ enum Role: string
                 PermissionEnum::VIEW_COMMENTS_COMUNICAZIONI,
                 PermissionEnum::VIEW_SEGNALAZIONI,
                 PermissionEnum::COMMENT_SEGNALAZIONI,
+                PermissionEnum::PUBLISH_COMMENTS_SEGNALAZIONI,
+                PermissionEnum::EDIT_OWN_COMMENTS_SEGNALAZIONI,
+                PermissionEnum::DELETE_OWN_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
                 PermissionEnum::VIEW_EVENTS,
@@ -100,6 +103,9 @@ enum Role: string
                 PermissionEnum::CREATE_SEGNALAZIONI,
                 PermissionEnum::VIEW_SEGNALAZIONI,
                 PermissionEnum::COMMENT_SEGNALAZIONI,
+                PermissionEnum::PUBLISH_COMMENTS_SEGNALAZIONI,     // commenti pubblicati subito
+                PermissionEnum::EDIT_OWN_COMMENTS_SEGNALAZIONI,    // può modificare i propri
+                PermissionEnum::DELETE_OWN_COMMENTS_SEGNALAZIONI,  // può eliminare i propri
                 PermissionEnum::VIEW_COMMENTS_SEGNALAZIONI,
                 PermissionEnum::VIEW_ARCHIVE_DOCUMENTS,
                 PermissionEnum::VIEW_EVENTS,

@@ -111,7 +111,30 @@ Route::prefix('admin')->as('admin.')
         ->parameters([
             'segnalazioni' => 'segnalazione'
         ]);
-    
+
+    /*
+    |--------------------------------------------------------------------------
+    | Commenti Segnalazioni Routes
+    |--------------------------------------------------------------------------
+    */
+    Route::post('segnalazioni/{segnalazione}/commenti', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'store'])
+        ->name('segnalazioni.commenti.store');
+
+    Route::patch('segnalazioni/{segnalazione}/commenti/toggle', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'toggle'])
+        ->name('segnalazioni.commenti.toggle');
+
+    Route::patch('commenti/{commento}', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'update'])
+        ->name('commenti.update');
+
+    Route::delete('commenti/{commento}', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'destroy'])
+        ->name('commenti.destroy');
+
+    Route::post('commenti/{commento}/approva', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'approva'])
+        ->name('commenti.approva');
+
+    Route::post('commenti/{commento}/modera', [\App\Http\Controllers\Segnalazioni\CommentoController::class, 'modera'])
+        ->name('commenti.modera');
+
     Route::resource('comunicazioni', ComunicazioneController::class)
         ->parameters([
             'comunicazioni' => 'comunicazione'

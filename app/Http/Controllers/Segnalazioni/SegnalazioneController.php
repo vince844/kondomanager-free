@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
+use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
@@ -159,10 +160,31 @@ class SegnalazioneController extends Controller
     {
         Gate::authorize('view', $segnalazione);
 
+        $user = request()->user();
+        $canModerate = $user->hasPermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value)
+                    || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
+
+        $segnalazioneCaricata = Segnalazione::with([
+            'createdBy.anagrafica',
+            'assignedTo',
+            'condominio',
+            'anagrafiche',
+            'commenti.autore.anagrafica',
+        ])->findOrFail($segnalazione->id);
+
+        // Per i moderatori, carica anche i commenti in attesa e nascosti
+        if ($canModerate) {
+            $segnalazioneCaricata->load('commentiInAttesa.autore.anagrafica');
+        }
+
         return Inertia::render('segnalazioni/SegnalazioniView', [
-            'segnalazione' => new SegnalazioneResource(
-                Segnalazione::with('createdBy.anagrafica',  'assignedTo', 'condominio', 'anagrafiche')->findOrFail($segnalazione->id)
-            ),
+            'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
+            'commenti_config' => [
+                'can_comment'     => (bool) $segnalazione->can_comment,
+                'can_create'      => $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value),
+                'can_moderate'    => $canModerate,
+                'can_publish'     => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
+            ],
         ]);
     }
 

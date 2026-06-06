@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'titolo' => 'Comments',
+    'in_attesa' => 'Pending',
+    'disabilita' => 'Disable Comments',
+    'abilita' => 'Enable Comments',
+    'nessun_commento' => 'No comments yet. Be the first to write one!',
+    'autore_sconosciuto' => 'Unknown User',
+    'conferma_elimina' => 'Are you sure you want to delete this comment?',
+    'conferma_nascondi' => 'Are you sure you want to hide this comment?',
+    'rimosso_da_moderatore' => 'This comment has been removed by a moderator.',
+    'stato_nascosto' => 'Hidden',
+    'stato_eliminato' => 'Deleted',
+    'in_attesa_approvazione' => 'Your comment is pending approval from a moderator.',
+    'modificato' => 'Edited',
+    'approva' => 'Approve',
+    'nascondi' => 'Hide',
+    'thread_chiuso' => 'Comments for this ticket have been disabled.',
+    'no_permesso_commentare' => 'You do not have permission to post comments.',
+    'scrivi_commento' => 'Write a comment...',
+    'placeholder' => 'Add your comment here...',
+    'invio_in_corso' => 'Sending...',
+    'invia' => 'Send comment',
+    'cancel' => 'Cancel',
+    'save' => 'Save',
+];

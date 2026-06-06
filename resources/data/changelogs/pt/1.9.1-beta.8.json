@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Novo Módulo de Comentários para Solicitações de Manutenção: Adicionada a possibilidade para administradores, condôminos e fornecedores de se comunicarem diretamente dentro de um único chamado de manutenção.",
+        "Segurança e Permissões para Comentários: Isolamento completo de funções com controles rigorosos. Administradores podem moderar ou ocultar comentários, enquanto usuários padrão e fornecedores podem apenas adicionar, editar ou excluir seus próprios comentários referentes aos seus condomínios.",
+        "Notificações em Tempo Real: Integração de notificações automáticas no aplicativo e por e-mail sempre que um comentário for adicionado ou atualizado no chamado atribuído.",
+        "Nota para desenvolvedores: Após atualizar o código para a versão mais recente e executar as migrações, é necessário rodar 'php artisan db:seed --class=RolesAndPermissionsSeeder' para alinhar as novas permissões inseridas."
+    ]
+}

@@ -1,0 +1,27 @@
+<?php
+
+return [
+    'titolo' => 'Commenti',
+    'in_attesa' => 'In attesa',
+    'disabilita' => 'Disabilita Commenti',
+    'abilita' => 'Abilita Commenti',
+    'nessun_commento' => 'Nessun commento ancora. Scrivi il primo!',
+    'autore_sconosciuto' => 'Utente Sconosciuto',
+    'conferma_elimina' => 'Sei sicuro di voler eliminare questo commento?',
+    'conferma_nascondi' => 'Sei sicuro di voler nascondere questo commento?',
+    'rimosso_da_moderatore' => 'Questo commento è stato rimosso da un moderatore.',
+    'stato_nascosto' => 'Nascosto',
+    'stato_eliminato' => 'Eliminato',
+    'in_attesa_approvazione' => 'Il tuo commento è in attesa di approvazione da parte di un moderatore.',
+    'modificato' => 'Modificato',
+    'approva' => 'Approva',
+    'nascondi' => 'Nascondi',
+    'thread_chiuso' => 'I commenti per questa segnalazione sono stati disabilitati.',
+    'no_permesso_commentare' => 'Non hai i permessi per inserire commenti.',
+    'scrivi_commento' => 'Scrivi un commento...',
+    'placeholder' => 'Aggiungi il tuo commento qui...',
+    'invio_in_corso' => 'Invio...',
+    'invia' => 'Invia commento',
+    'cancel' => 'Annulla',
+    'save' => 'Salva',
+];

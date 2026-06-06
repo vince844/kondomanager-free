@@ -28,7 +28,7 @@ class SegnalazioneController extends Controller
     /**
      * Create a new controller instance.
      *
-     * @param  \App\Services\SegnalazioneService 
+     * @param  \App\Services\SegnalazioneService $segnalazioneService
      */
     public function __construct(
         private SegnalazioneService $segnalazioneService,
@@ -41,7 +41,7 @@ class SegnalazioneController extends Controller
      * It also ensures the user is authenticated, and their anagrafica exists before proceeding. If any error occurs 
      * during the fetching process, it logs the error and aborts with a 500 error.
      *
-     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request  The request object containing the validated filter parameters.
+     * @param  \App\Http\Requests\Segnalazione\SegnalazioneIndexRequest  $request  The request object containing the validated filter parameters.
      * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
      * @return \Inertia\Response  Returns an Inertia.js response rendering the filtered segnalazioni data along with pagination and filters.
      *
@@ -125,7 +125,7 @@ class SegnalazioneController extends Controller
      * If the segnalazione is approved, a success message is shown; if not, a message indicating the need for admin approval is displayed.
      * In case of an error, the process is logged, and an error message is shown.
      *
-     * @param  \App\Http\Requests\UserCreateSegnalazioneRequest  $request  The validated request object containing the data for the new segnalazione.
+     * @param  \App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest  $request  The validated request object containing the data for the new segnalazione.
      * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
      * @return \Illuminate\Http\RedirectResponse Returns a redirect response to the user’s segnalazioni index route with a success or error message.
      *
@@ -192,10 +192,24 @@ class SegnalazioneController extends Controller
     {
         Gate::authorize('show', $segnalazione);
 
-        return Inertia::render('segnalazioni/SegnalazioniView', [
-            'segnalazione' => new SegnalazioneResource(
-                Segnalazione::with('createdBy.anagrafica',  'assignedTo', 'condominio', 'anagrafiche')->findOrFail($segnalazione->id)
-            ),
+        $user = request()->user();
+
+        $segnalazioneCaricata = Segnalazione::with([
+            'createdBy.anagrafica',
+            'assignedTo',
+            'condominio',
+            'anagrafiche',
+            'commenti.autore.anagrafica',
+        ])->findOrFail($segnalazione->id);
+
+        return Inertia::render('segnalazioni/user/SegnalazioniView', [
+            'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
+            'commenti_config' => [
+                'can_comment'  => (bool) $segnalazione->can_comment,
+                'can_create'   => $user->hasPermissionTo(\App\Enums\Permission::COMMENT_SEGNALAZIONI->value),
+                'can_moderate' => false,
+                'can_publish'  => $user->hasPermissionTo(\App\Enums\Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
+            ],
         ]);
     }
 
@@ -237,7 +251,7 @@ class SegnalazioneController extends Controller
      * If successful, a success message is flashed and the user is redirected to the index page. If any error occurs during the update process,
      * the transaction is caught, and an error message is logged while the user is redirected with an error notification.
      *
-     * @param  \App\Http\Requests\UserCreateSegnalazioneRequest $request  The request containing validated data for updating the segnalazione.
+     * @param  \App\Http\Requests\Segnalazione\UserCreateSegnalazioneRequest $request  The request containing validated data for updating the segnalazione.
      * @param  \App\Models\Segnalazione  $segnalazione The segnalazione model to be updated.
      * @return \Illuminate\Http\RedirectResponse Returns a redirect response to the user.segnalazioni.index route with a success or error message.
      *
