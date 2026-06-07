@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { ref } from 'vue';
-import { Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User, ArrowUpFromLine, ArrowDownToLine } from 'lucide-vue-next';
+import { Banknote, AlertTriangle, Wrench, CheckCircle, XCircle, ArrowRight, Clock, Inbox, ChevronLeft, Loader2, CalendarDays, Building2, User, ArrowUpFromLine, ArrowDownToLine, MessageSquare } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -78,6 +78,24 @@ const STATUS_TOKENS: Record<string, { border: string, bg: string, iconBg: string
         iconBg: 'bg-amber-100',
         iconColor: 'text-amber-600',
         text: 'text-amber-700' 
+    },
+
+    // COMMENTO
+    commento: { 
+        border: 'border-l-indigo-500', 
+        bg: 'hover:bg-indigo-50/30', 
+        iconBg: 'bg-indigo-100',
+        iconColor: 'text-indigo-600',
+        text: 'text-indigo-700' 
+    },
+
+    // SEGNALAZIONE GUASTO
+    segnalazione_guasto: { 
+        border: 'border-l-orange-500', 
+        bg: 'hover:bg-orange-50/30', 
+        iconBg: 'bg-orange-100',
+        iconColor: 'text-orange-600',
+        text: 'text-orange-700' 
     },
 
     // DEFAULT
@@ -259,6 +277,8 @@ const getDateLabel = (dateStr: string | null, status: string) => {
                                     <ArrowDownToLine v-if="task.type === 'controllo_incassi'" class="w-4 h-4" />
                                     <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-4 h-4" />
                                     <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-4 h-4" />
+                                    <MessageSquare v-else-if="task.type === 'commento'" class="w-4 h-4" />
+                                    <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-4 h-4" />
                                     <Clock v-else-if="task.status === 'expired'" class="w-4 h-4" />
                                     <CalendarDays v-else class="w-4 h-4" />
                                 </div>

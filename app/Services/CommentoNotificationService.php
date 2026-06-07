@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\NotificationType;
+use App\Enums\Permission;
 use App\Models\Commento;
+use App\Models\NotificationPreference;
 use App\Models\User;
 use Illuminate\Support\Collection;
 
@@ -44,11 +47,22 @@ class CommentoNotificationService
             $utenti = $utenti->merge($partecipanti);
         }
 
+        $userIds = $utenti->pluck('id')->unique()->toArray();
+        $enabledUserIds = NotificationPreference::whereIn('user_id', $userIds)
+            ->where('type', NotificationType::NEW_COMMENT->value)
+            ->where('enabled', true)
+            ->pluck('user_id')
+            ->toArray();
+
         return $utenti
             ->filter()                                               // rimuovi null
             ->unique('id')                                           // dedup
             ->reject(fn (User $u) => $u->id === $commento->user_id) // non notificare l'autore
             ->reject(fn (User $u) => ! $u->email)                   // esclude utenti senza email
+            // Filtro permessi: solo chi ha accesso al commento o gli admin
+            ->filter(fn (User $u) => $commentable && $commentable->utenteHaAccessoAiCommenti($u) || $u->can(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value))
+            // Filtro preferenze utente (opt-in GDPR)
+            ->filter(fn (User $u) => in_array($u->id, $enabledUserIds))
             ->values();
     }
 
@@ -61,7 +75,7 @@ class CommentoNotificationService
         return User::whereHas('anagrafica', function ($q) use ($condominioId) {
             $q->whereHas('condomini', fn ($c) => $c->where('condomini.id', $condominioId));
         })
-        ->permission(\App\Enums\Permission::ACCESS_ADMIN_PANEL->value)
+        ->permission(Permission::ACCESS_ADMIN_PANEL->value)
         ->get();
     }
 
@@ -72,7 +86,7 @@ class CommentoNotificationService
     private function partecipanti(Commento $commento): Collection
     {
         return User::whereIn('id',
-            \App\Models\Commento::where('commentable_type', $commento->commentable_type)
+            Commento::where('commentable_type', $commento->commentable_type)
                 ->where('commentable_id', $commento->commentable_id)
                 ->where('id', '!=', $commento->id)
                 ->whereNull('deleted_at')

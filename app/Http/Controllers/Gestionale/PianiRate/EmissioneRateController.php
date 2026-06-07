@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
-use App\Enums\CategoriaEventoEnum;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
@@ -13,7 +12,7 @@ use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\RataEmessa;
-use App\Models\CategoriaEvento;
+use App\Enums\EventoTipo;
 use App\Models\Evento;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
@@ -141,7 +140,7 @@ class EmissioneRateController extends Controller
 
                     // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
                     $rataId = (int) $rata->id;
-                    $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                    $userEvents = Evento::where('tipo', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
                         ->where(function($q) use ($rataId) {
                             $q->where('meta->context->rata_id', $rataId)
                             ->orWhere('meta->context->rata_id', (string) $rataId);
@@ -165,7 +164,7 @@ class EmissioneRateController extends Controller
                     }
 
                     // 6. Pulizia Task Admin (CORRETTO: usiamo where standard per i path JSON)
-                    Evento::where('meta->type', 'emissione_rata')
+                    Evento::where('tipo', EventoTipo::EMISSIONE_RATA->value)
                         ->where(function($q) use ($rataId) {
                             $q->where('meta->context->rata_id', $rataId)
                             ->orWhere('meta->context->rata_id', (string) $rataId);
@@ -245,7 +244,7 @@ class EmissioneRateController extends Controller
                 $rataId = (int) $rata->id; // Cast sicuro
 
                 // 2. Ripristino Eventi Utente (Query Robusta Applicata)
-                $userEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+                $userEvents = Evento::where('tipo', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
                     ->where(function($q) use ($rataId) {
                         $q->where('meta->context->rata_id', $rataId)
                           ->orWhere('meta->context->rata_id', (string) $rataId);
@@ -263,27 +262,26 @@ class EmissioneRateController extends Controller
                     ]);
                 }
                 
-                // 3. Rigenerazione Task Admin (Promemoria Emissione)
-                $catAdmin = CategoriaEvento::where('name', CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value)->first();
+                // 3. Rigenerazione Task Admin tramite Builder
                 $dataPromemoria = $rata->data_scadenza->copy()->subDays(7)->setTime(9, 0);
                 
-                // Evitiamo firstOrCreate con chiavi JSON complesse, creiamo diretto (dato che l'abbiamo appena cancellato o non c'è)
-                $eventoAdmin = Evento::create([
-                    'title' => "Emettere rata {$rata->numero_rata} - {$condominio->nome}",
-                    'start_time' => $dataPromemoria,
-                    'end_time'   => $dataPromemoria->copy()->addHour(),
-                    'created_by' => $request->user()->id,
-                    'description' => "Ricordati di emettere le ricevute per questa rata entro la scadenza. (Riemissione dopo annullamento)",
-                    'category_id' => $catAdmin?->id,
-                    'visibility'  => VisibilityStatus::HIDDEN->value, 
-                    'is_approved' => true,
-                    'meta' => [
-                        'type'            => 'emissione_rata',
-                        'requires_action' => true, 
-                        'context' => [
-                            'piano_rate_id' => $pianoRate->id,
-                            'rata_id'       => $rataId 
-                        ],
+                $eventoAdmin = InboxService::createTask(
+                    tipo: EventoTipo::EMISSIONE_RATA,
+                    title: "Emettere rata {$rata->numero_rata} - {$condominio->nome}",
+                    description: "Ricordati di emettere le ricevute per questa rata entro la scadenza. (Riemissione dopo annullamento)",
+                    scadenza: $dataPromemoria,
+                    createdByUserId: $request->user()->id,
+                    condominioId: $condominio->id,
+                    context: [
+                        'piano_rate_id' => $pianoRate->id,
+                        'rata_id'       => $rataId 
+                    ],
+                    actionUrl: route('admin.gestionale.esercizi.piani-rate.show', [
+                        'condominio' => $condominio->id,
+                        'esercizio'  => $esercizio->id, 
+                        'pianoRate'  => $pianoRate->id
+                    ]),
+                    extraMeta: [
                         'gestione'          => $pianoRate->gestione->nome ?? 'Gestione',
                         'condominio_nome'   => $condominio->nome,
                         'totale_rata'       => $rata->importo_totale,
@@ -291,13 +289,8 @@ class EmissioneRateController extends Controller
                         'scadenza_reale'    => $rata->data_scadenza->toDateString(),
                         'numero_rata'       => $rata->numero_rata,
                         'piano_nome'        => $pianoRate->nome,
-                        'action_url'        => route('admin.gestionale.esercizi.piani-rate.show', [
-                            'condominio' => $condominio->id,
-                            'esercizio'  => $esercizio->id, 
-                            'pianoRate'  => $pianoRate->id
-                        ])
-                    ],
-                ]);
+                    ]
+                );
                 
                 $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
                 if ($request->user()->anagrafica_id) {
@@ -325,7 +318,7 @@ class EmissioneRateController extends Controller
             $idPiano = (int) $pianoRate->id;
 
             // 1. Trova gli eventi usando la ricerca robusta per ID Piano
-            $hiddenEvents = Evento::where('meta->type', 'scadenza_rata_condomino')
+            $hiddenEvents = Evento::where('tipo', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
                 ->where(function($q) use ($idPiano) {
                     $q->where('meta->context->piano_rate_id', $idPiano)
                       ->orWhere('meta->context->piano_rate_id', (string) $idPiano);

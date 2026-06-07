@@ -33,7 +33,7 @@ const props = defineProps<{
   currentUserId: number;
 }>();
 
-const { hasPermission } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 const isEditing = ref(false);
 const editForm = useForm({ corpo: props.commento.corpo });
@@ -47,7 +47,7 @@ const authorName = props.commento.autore?.anagrafica?.nome
   ?? trans('commenti.autore_sconosciuto');
 
 function submitEdit() {
-  editForm.patch(route('admin.commenti.update', { commento: props.commento.id }), {
+  editForm.patch(route(generateRoute('commenti.update'), { commento: props.commento.id }), {
     preserveScroll: true,
     onSuccess: () => { isEditing.value = false; },
   });
@@ -55,20 +55,20 @@ function submitEdit() {
 
 function deleteComment() {
   if (!confirm(trans('commenti.conferma_elimina'))) return;
-  router.delete(route('admin.commenti.destroy', { commento: props.commento.id }), {
+  router.delete(route(generateRoute('commenti.destroy'), { commento: props.commento.id }), {
     preserveScroll: true,
   });
 }
 
 function approveComment() {
-  router.post(route('admin.commenti.approva', { commento: props.commento.id }), {}, {
+  router.post(route(generateRoute('commenti.approva'), { commento: props.commento.id }), {}, {
     preserveScroll: true,
   });
 }
 
 function moderateComment() {
   if (!confirm(trans('commenti.conferma_nascondi'))) return;
-  router.post(route('admin.commenti.modera', { commento: props.commento.id }), {}, {
+  router.post(route(generateRoute('commenti.modera'), { commento: props.commento.id }), {}, {
     preserveScroll: true,
   });
 }

@@ -37,4 +37,29 @@ trait HasComments
                     ->where('stato', 'in_attesa')
                     ->oldest();
     }
+
+    /**
+     * Default: priorità normale. Override nei modelli che hanno un campo urgenza.
+     */
+    public function prioritaCommento(): string
+    {
+        return 'normale';
+    }
+
+    /**
+     * Default: "NomeClasse #id". Override per titoli leggibili nell'inbox.
+     */
+    public function titoloInbox(): string
+    {
+        return class_basename($this) . ' #' . $this->getKey();
+    }
+
+    /**
+     * Default: qualsiasi membro del condominio ha accesso.
+     * Override nei modelli con regole specifiche (es. Segnalazioni private/assegnate).
+     */
+    public function utenteHaAccessoAiCommenti(\App\Models\User $user): bool
+    {
+        return $user->condomini()->whereKey($this->condominioId())->exists();
+    }
 }

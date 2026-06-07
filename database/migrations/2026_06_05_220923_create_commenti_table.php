@@ -12,6 +12,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('commenti')) {
+            return;
+        }
+
         Schema::create('commenti', function (Blueprint $table) {
             $table->id();
 
@@ -50,8 +54,6 @@ return new class extends Migration
 
     /**
      * Reverse the migrations.
-     *
-     * Pattern cleanup KI: guard hasColumn() per gestire esecuzioni parziali.
      */
     public function down(): void
     {

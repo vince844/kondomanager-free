@@ -3,6 +3,9 @@
         "New Comments Module for Tickets: Added the ability for administrators, condo owners, and suppliers to communicate directly within a single maintenance ticket.",
         "Comments Security & Permissions: Complete role isolation with strict checks. Admins can moderate or hide comments, while standard users and suppliers can only add, edit, or delete their own comments relative to their buildings.",
         "Real-Time Notifications: Integrated automatic in-app and email notifications whenever a comment is added or updated on an assigned ticket.",
+        "Centralized Inbox and Polymorphism: Refactored ActionInboxController and InboxService for dynamic management of user actions with a universal createTask() builder.",
+        "Migrations Resilience: Shielded migrations against PHP timeouts on Windows and Shared Hosting systems by adding set_time_limit(0) and partial cleanup patterns.",
+        "Tests Security: Implemented a global block in TestCase to prevent the accidental execution of the test suite on the real database.",
         "Developer Note: After updating the code to the latest version and running migrations, it is necessary to run 'php artisan db:seed --class=RolesAndPermissionsSeeder' to align the newly inserted permissions."
     ]
 }

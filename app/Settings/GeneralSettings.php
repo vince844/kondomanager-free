@@ -13,6 +13,7 @@ class GeneralSettings extends Settings
     public bool $external_cron_enabled = false;
     public ?string $external_cron_token = null;
     public string $default_user_role = Role::UTENTE->value;
+    public bool $force_comment_moderation = false;
     
     public static function group(): string
     {

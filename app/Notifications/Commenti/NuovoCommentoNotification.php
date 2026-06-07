@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Notifications;
+namespace App\Notifications\Commenti;
 
 use App\Models\Commento;
 use Illuminate\Bus\Queueable;
@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Str;
+use App\Helpers\RouteHelper;
 
 class NuovoCommentoNotification extends Notification implements ShouldQueue
 {
@@ -15,9 +16,9 @@ class NuovoCommentoNotification extends Notification implements ShouldQueue
 
     public function __construct(public Commento $commento) {}
 
-    public function via(mixed $notifiable): array
+    public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
+        return ['mail'];
     }
 
     public function toMail(mixed $notifiable): MailMessage
@@ -32,7 +33,7 @@ class NuovoCommentoNotification extends Notification implements ShouldQueue
             ?? 'Segnalazione';
 
         // Construisce l'URL alla segnalazione
-        $url = $this->urlCommentabile();
+        $url = $this->urlCommentabile($notifiable);
 
         return (new MailMessage)
             ->subject("Nuovo commento su: {$titoloEntita}")
@@ -55,12 +56,13 @@ class NuovoCommentoNotification extends Notification implements ShouldQueue
         ];
     }
 
-    private function urlCommentabile(): string
+    private function urlCommentabile(mixed $notifiable): string
     {
         try {
             $commentable = $this->commento->commentable;
             if ($commentable instanceof \App\Models\Segnalazione) {
-                return route('admin.segnalazioni.show', $commentable->id);
+                $prefix = RouteHelper::getRoutePrefixForUser($notifiable);
+                return url("/{$prefix}/segnalazioni/{$commentable->id}#commenti");
             }
         } catch (\Exception) {
             // fallback silenzioso

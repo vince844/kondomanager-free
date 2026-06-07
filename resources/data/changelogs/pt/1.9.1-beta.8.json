@@ -1,8 +1,12 @@
 {
     "features": [
         "Novo Módulo de Comentários para Solicitações de Manutenção: Adicionada a possibilidade para administradores, condôminos e fornecedores de se comunicarem diretamente dentro de um único chamado de manutenção.",
+        "Forçar moderação de comentários: Nova configuração global para exigir aprovação prévia de todos os comentários de usuários padrão e fornecedores, ignorando suas permissões de publicação automática.",
         "Segurança e Permissões para Comentários: Isolamento completo de funções com controles rigorosos. Administradores podem moderar ou ocultar comentários, enquanto usuários padrão e fornecedores podem apenas adicionar, editar ou excluir seus próprios comentários referentes aos seus condomínios.",
         "Notificações em Tempo Real: Integração de notificações automáticas no aplicativo e por e-mail sempre que um comentário for adicionado ou atualizado no chamado atribuído.",
+        "Inbox Centralizada e Polimorfismo: Refatoração do ActionInboxController e InboxService para gerenciamento dinâmico de ações do usuário com um construtor universal createTask().",
+        "Resiliência das Migrações: Proteção das migrações contra tempos limite (timeouts) do PHP em sistemas Windows e Hospedagem Compartilhada adicionando set_time_limit(0) e padrões de limpeza parcial.",
+        "Segurança dos Testes: Implementado um bloqueio global no TestCase para evitar a execução acidental da suíte de testes no banco de dados real.",
         "Nota para desenvolvedores: Após atualizar o código para a versão mais recente e executar as migrações, é necessário rodar 'php artisan db:seed --class=RolesAndPermissionsSeeder' para alinhar as novas permissões inseridas."
     ]
 }

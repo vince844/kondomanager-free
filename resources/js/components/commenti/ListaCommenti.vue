@@ -20,7 +20,7 @@ const props = defineProps<{
   currentUserId: number;
 }>();
 
-const { hasPermission } = usePermission();
+const { hasPermission, generateRoute } = usePermission();
 
 // Tutti i commenti visibili: prima quelli in attesa (moderatori), poi i pubblicati
 const commentiDaMostrare = computed(() => {
@@ -64,7 +64,7 @@ const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
         v-if="commentiConfig.can_moderate"
         as="button"
         method="patch"
-        :href="route('admin.segnalazioni.commenti.toggle', { segnalazione: segnalazioneId })"
+        :href="route(generateRoute('segnalazioni.commenti.toggle'), { segnalazione: segnalazioneId })"
         preserve-scroll
         class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors"
         :class="commentiConfig.can_comment

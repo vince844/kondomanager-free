@@ -73,7 +73,7 @@ class ActionInboxController extends Controller
                     'description'  => $task->description, 
                     'date'         => $task->start_time->toISOString(),
                     'condominio'   => $condominio?->nome ?? 'Generale',
-                    'type'         => $task->meta['type'] ?? 'generic',
+                    'type'         => $task->tipo?->value ?? $task->meta['type'] ?? 'generic',
                     'amount'       => $task->meta['importo_dichiarato'] 
                                    ?? $task->meta['totale_rata'] 
                                    ?? null,
@@ -114,6 +114,7 @@ class ActionInboxController extends Controller
         $userEventId = $task->meta['context']['related_event_id'] ?? null;
         
         if ($userEventId) {
+            /** @var \App\Models\Evento|null $userEvent */
             $userEvent = Evento::find($userEventId);
             if ($userEvent) {
                 // Aggiorniamo l'evento utente diventa 'rejected'

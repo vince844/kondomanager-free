@@ -7,6 +7,10 @@ use App\Enums\Permission;
 use App\Events\Commenti\CommentoCreato;
 use App\Models\Commento;
 use App\Models\User;
+use App\Notifications\Commenti\CommentoApprovatoNotification;
+use App\Notifications\Commenti\CommentoEliminatoNotification;
+use App\Enums\NotificationType;
+use App\Models\NotificationPreference;
 use Illuminate\Support\Facades\DB;
 
 class CommentoService
@@ -23,9 +27,15 @@ class CommentoService
     public function crea(Commentable $commentable, User $autore, string $corpo): Commento
     {
         return DB::transaction(function () use ($commentable, $autore, $corpo) {
-            $stato = $autore->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value)
-                ? 'pubblicato'
-                : 'in_attesa';
+            $forceModeration = app(\App\Settings\GeneralSettings::class)->force_comment_moderation;
+
+            if ($forceModeration && !$autore->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value)) {
+                $stato = 'in_attesa';
+            } else {
+                $stato = $autore->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value)
+                    ? 'pubblicato'
+                    : 'in_attesa';
+            }
 
             $commento = $commentable->tuttiICommenti()->create([
                 'user_id'       => $autore->id,
@@ -66,6 +76,16 @@ class CommentoService
             'moderato_da' => $moderatore->id,
             'moderato_at' => now(),
         ]);
+
+        if ($commento->autore && $commento->autore->email) {
+            $wantsNotification = NotificationPreference::where('user_id', $commento->autore->id)
+                ->where('type', NotificationType::COMMENT_APPROVED->value)
+                ->value('enabled') ?? false;
+
+            if ($wantsNotification) {
+                $commento->autore->notify(new CommentoApprovatoNotification($commento));
+            }
+        }
     }
 
     /**
@@ -80,6 +100,16 @@ class CommentoService
             'moderato_da' => $moderatore->id,
             'moderato_at' => now(),
         ]);
+
+        if ($commento->autore && $commento->autore->email) {
+            $wantsNotification = NotificationPreference::where('user_id', $commento->autore->id)
+                ->where('type', NotificationType::COMMENT_DELETED->value)
+                ->value('enabled') ?? false;
+
+            if ($wantsNotification) {
+                $commento->autore->notify(new CommentoEliminatoNotification($commento));
+            }
+        }
     }
 
     /**

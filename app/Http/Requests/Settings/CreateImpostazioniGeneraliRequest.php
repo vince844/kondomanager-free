@@ -23,6 +23,7 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
     {
         return [
             'user_frontend_registration' => 'required|boolean',
+            'force_comment_moderation'   => 'required|boolean',
             'language'                   => 'required|in:it,en,pt',
             'open_condominio_on_login'   => 'required|boolean',
             'default_user_role'          => ['required', 'string', 'exists:roles,name'],

@@ -18,6 +18,12 @@ enum NotificationType: string
     case NEW_USER = 'new_user';
     case NEW_ARCHIVE_DOCUMENT = 'new_archive_document';
     case APPROVED_ARCHIVE_DOCUMENT = 'approved_archive_document';
+    
+    // Commenti
+    case NEW_COMMENT = 'new_comment';
+    case COMMENT_UNDER_MODERATION = 'comment_under_moderation';
+    case COMMENT_APPROVED = 'comment_approved';
+    case COMMENT_DELETED = 'comment_deleted';
 
     /**
      * Get a human-readable label for the notification type.
@@ -34,6 +40,12 @@ enum NotificationType: string
             self::NEW_USER => 'Nuovo utente registrato',
             self::NEW_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio',
             self::APPROVED_ARCHIVE_DOCUMENT => 'Nuovo documento in archivio approvato',
+            
+            // Commenti
+            self::NEW_COMMENT => 'Nuovo commento',
+            self::COMMENT_UNDER_MODERATION => 'Commento in attesa di moderazione',
+            self::COMMENT_APPROVED => 'Commento approvato',
+            self::COMMENT_DELETED => 'Commento eliminato',
         };
     }
 }

@@ -27,7 +27,7 @@ const isOverLimit = computed(() => charCount.value > MAX_CHARS);
 function submit() {
   if (!form.corpo.trim() || isOverLimit.value) return;
 
-  form.post(route('admin.segnalazioni.commenti.store', { segnalazione: props.segnalazioneId }), {
+  form.post(route(generateRoute('segnalazioni.commenti.store'), { segnalazione: props.segnalazioneId }), {
     preserveScroll: true,
     onSuccess: () => {
       form.reset('corpo');

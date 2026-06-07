@@ -97,6 +97,8 @@ return [
         'user_registration_description'         => 'Se attivato, gli utenti possono registrarsi dalla home page',
         'default_role_title'                    => 'Ruolo predefinito nuovi utenti',
         'default_role_description'              => 'Scegli quale ruolo assegnare automaticamente agli utenti che si registrano dal frontend.',
+        'force_comment_moderation_title'        => 'Forza moderazione commenti',
+        'force_comment_moderation_description'  => 'Se attivato, tutti i commenti degli utenti normali richiederanno l\'approvazione di un amministratore prima di essere pubblicati e visibili.',
         'mail_settings_title'                   => 'Configurazione email',
         'mail_settings_description'             => 'Scegli il metodo di invio, configura le credenziali e testa la connessione.',
         'mail_guide_title'                      => 'Guida alla configurazione',

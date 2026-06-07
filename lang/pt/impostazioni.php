@@ -97,6 +97,8 @@ return [
         'user_registration_description'         => 'Se ativado, os utilizadores podem registar-se a partir da página inicial.',
         'default_role_title'                    => 'Função padrão para novos usuários',
         'default_role_description'              => 'Escolha qual função atribuir automaticamente aos usuários que se registram pelo frontend.',
+        'force_comment_moderation_title'        => 'Forçar moderação de comentários',
+        'force_comment_moderation_description'  => 'Se ativado, todos os comentários de usuários normais exigirão aprovação de um administrador antes de serem publicados e visíveis.',
 
         'mail_settings_title'       => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',

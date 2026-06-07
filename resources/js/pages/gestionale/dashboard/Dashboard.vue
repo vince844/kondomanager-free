@@ -8,7 +8,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -491,6 +491,11 @@ const confirmReject = () => {
                                                 <div class="flex items-start gap-3 flex-1">
                                                     <div class="mt-1 shrink-0 text-slate-400">
                                                         <TriangleAlert v-if="task.status === 'expired'" class="w-5 h-5 text-red-500" />
+                                                        <ArrowDownToLine v-else-if="task.type === 'controllo_incassi'" class="w-5 h-5 text-purple-500" />
+                                                        <ArrowUpFromLine v-else-if="task.type === 'emissione_rata'" class="w-5 h-5 text-blue-500" />
+                                                        <Banknote v-else-if="task.type === 'verifica_pagamento'" class="w-5 h-5 text-amber-500" />
+                                                        <MessageSquare v-else-if="task.type === 'commento'" class="w-5 h-5 text-indigo-500" />
+                                                        <Wrench v-else-if="task.type === 'segnalazione_guasto'" class="w-5 h-5 text-orange-500" />
                                                         <CalendarClock v-else class="w-5 h-5" />
                                                     </div>
                                                     <div class="flex-1">

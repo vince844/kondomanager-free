@@ -68,6 +68,45 @@ class Segnalazione extends Model implements Commentable
         return $this->condominio_id;
     }
 
+    /**
+     * Mappa la priorità della segnalazione alla priorità dell'Evento in Inbox.
+     */
+    public function prioritaCommento(): string
+    {
+        if (in_array($this->priority, ['alta', 'urgente'])) {
+            return 'alta';
+        }
+        return 'normale';
+    }
+
+    /**
+     * Titolo leggibile per l'Admin Inbox.
+     */
+    public function titoloInbox(): string
+    {
+        return $this->subject ?? "Segnalazione #{$this->id}";
+    }
+
+    /**
+     * Matrice di accesso ai commenti per Segnalazione.
+     * I controlli dell'amministratore avvengono a monte nella Policy.
+     */
+    public function utenteHaAccessoAiCommenti(User $user): bool
+    {
+        // Se la segnalazione è privata, solo il creatore ha accesso
+        if ($this->is_private) {
+            return $this->created_by === $user->id;
+        }
+
+        // Se è assegnata a qualcuno, creatore + assegnatario
+        if ($this->assigned_to) {
+            return $this->created_by === $user->id || $this->assigned_to === $user->id;
+        }
+
+        // Altrimenti qualsiasi condomino dello stesso condominio
+        return $user->condomini()->whereKey($this->condominio_id)->exists();
+    }
+
     // -------------------------------------------------------------------------
     // Relazioni
     // -------------------------------------------------------------------------

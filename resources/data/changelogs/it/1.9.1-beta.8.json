@@ -1,8 +1,12 @@
 {
     "features": [
         "Nuovo Modulo Commenti per le Segnalazioni Guasto: Aggiunta la possibilità per amministratori, condòmini e fornitori di comunicare direttamente all'interno della singola segnalazione guasto.",
+        "Forza Moderazione Commenti: Nuova impostazione globale per obbligare tutti i commenti degli utenti standard e fornitori alla pre-approvazione, ignorando i permessi di auto-pubblicazione.",
         "Sicurezza e Permessi per i Commenti: Isolamento completo dei ruoli con controlli severi. Gli amministratori possono moderare o nascondere commenti, mentre gli utenti standard e fornitori possono aggiungere, modificare o cancellare esclusivamente i propri commenti relativi ai propri condomini.",
         "Notifiche in Tempo Reale: Integrazione di notifiche automatiche in app e via email ogni volta che viene aggiunto o aggiornato un commento sulla segnalazione in carico.",
+        "Inbox Centralizzata e Polimorfismo: Ristrutturazione di ActionInboxController e InboxService per la gestione dinamica delle azioni utente con costruttore universale createTask().",
+        "Resilienza delle Migrazioni: Blindate le migrazioni contro i timeout di PHP su sistemi Windows e Shared Hosting aggiungendo set_time_limit(0) e pattern di cleanup parziale.",
+        "Sicurezza dei Test: Implementato un blocco globale in TestCase per impedire l'esecuzione accidentale della suite di test sul database reale.",
         "Nota per gli sviluppatori: Dopo aver aggiornato il codice all'ultima versione e aver eseguito le migrazioni, è necessario lanciare il comando 'php artisan db:seed --class=RolesAndPermissionsSeeder' per generare a database i nuovi permessi inseriti a sistema."
     ]
 }

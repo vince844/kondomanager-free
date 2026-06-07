@@ -365,7 +365,7 @@ class DashboardController extends Controller
                     'title'        => $task->title,
                     'description'  => $task->description, 
                     'date'         => $task->start_time->toISOString(),
-                    'type'         => $task->meta['type'] ?? 'generic',
+                    'type'         => $task->tipo?->value ?? $task->meta['type'] ?? 'generic',
                     'action_url'   => $task->meta['action_url'] ?? null,
                     'status'       => $task->start_time->isPast() ? 'expired' : 'scheduled',
                     'context'      => [

@@ -66,6 +66,7 @@ const form = useForm({
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
+  force_comment_moderation: Boolean(page.props.force_comment_moderation),
 })
 
 /* -------------------------------------------------
@@ -248,6 +249,19 @@ const submit = () => {
                   {{ form.errors.default_user_role }}
                 </p>
               </div>
+            </div>
+
+            <!-- MODERAZIONE COMMENTI -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.force_comment_moderation_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.force_comment_moderation_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.force_comment_moderation" />
             </div>
 
           </CardContent>
