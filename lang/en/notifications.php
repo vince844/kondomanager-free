@@ -142,6 +142,36 @@ return [
         'action'      => 'View ticket',
     ],
 
+    // New comment
+    'new_ticket_comment' => [
+        'subject'  => 'New comment on: :entity',
+        'greeting' => 'Hello!',
+        'line_1'   => ':user has left a new comment:',
+        'action'   => 'View the report',
+        'line_2'   => 'You are receiving this email because you are involved in this report.',
+    ],
+
+    // Approved comment
+    'approved_ticket_comment' => [
+        'subject' => 'Your comment has been approved',
+        'line_1'  => 'Your comment on the :entity has been approved and published.',
+        'action'  => 'View the report',
+    ],
+
+    // Pending comment
+    'pending_ticket_comment' => [
+        'subject' => 'New comment pending approval on :entity',
+        'line_1'  => ':user wrote a comment on ":title" that requires approval.',
+        'line_2'  => 'Log in to approve or reject the comment.',
+        'action'  => 'View the report',
+    ],
+
+    // Deleted comment
+    'deleted_ticket_comment' => [
+        'subject' => 'Your comment has been removed',
+        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
+    ],
+
     // Common strings for all notifications
     'common' => [
         'regards'             => 'Best regards',

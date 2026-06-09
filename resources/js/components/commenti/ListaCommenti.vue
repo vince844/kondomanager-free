@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import { Link } from '@inertiajs/vue3';
 import { usePermission } from '@/composables/permissions';
-import { MessageSquare, MessageSquareOff, Clock, ToggleLeft, ToggleRight } from 'lucide-vue-next';
+import { MessageSquare, MessageSquareOff, Clock, ToggleLeft, ToggleRight, CheckCircle2 } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
 import Commento, { type CommentoData } from '@/components/commenti/Commento.vue';
 import FormCommento from '@/components/commenti/FormCommento.vue';
@@ -22,9 +22,9 @@ const props = defineProps<{
 
 const { hasPermission, generateRoute } = usePermission();
 
-// Tutti i commenti visibili: prima quelli in attesa (moderatori), poi i pubblicati
+// Tutti i commenti visibili: prima quelli in attesa, poi i pubblicati
 const commentiDaMostrare = computed(() => {
-  if (props.commentiConfig.can_moderate && props.commentiInAttesa?.length) {
+  if (props.commentiInAttesa?.length) {
     return [...(props.commentiInAttesa ?? []), ...props.commenti];
   }
   return props.commenti;
@@ -43,11 +43,14 @@ const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
         <h3 class="text-sm font-semibold text-slate-700 dark:text-slate-200">
           {{ trans('commenti.titolo') }}
         </h3>
+        <!-- Badge approvati/pubblicati -->
         <span
           v-if="totaleCommenti > 0"
-          class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+          class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400"
         >
-          {{ totaleCommenti }}
+          <CheckCircle2 class="w-3 h-3" />
+          <span>{{ totaleCommenti }}</span>
+          <span>{{ trans('commenti.pubblicati') }}</span>
         </span>
         <!-- Badge in attesa (solo moderatori) -->
         <span
@@ -55,7 +58,8 @@ const inAttesa = computed(() => props.commentiInAttesa?.length ?? 0);
           class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
         >
           <Clock class="w-3 h-3" />
-          {{ inAttesa }} {{ trans('commenti.in_attesa') }}
+          <span>{{ inAttesa }}</span>
+          <span>{{ trans('commenti.in_attesa') }}</span>
         </span>
       </div>
 

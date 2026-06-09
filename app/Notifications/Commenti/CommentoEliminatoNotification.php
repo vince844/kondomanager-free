@@ -6,13 +6,15 @@ use App\Models\Commento;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
+use App\Notifications\LocalizedNotification;
 
-class CommentoEliminatoNotification extends Notification implements ShouldQueue
+class CommentoEliminatoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Commento $commento) {}
+    public function __construct(public Commento $commento) {
+        parent::__construct();
+    }
 
     public function via(object $notifiable): array
     {
@@ -21,10 +23,31 @@ class CommentoEliminatoNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $entita = class_basename($this->commento->commentable);
+        $commentable = $this->commento->commentable;
+        $entita = class_basename($commentable);
+        
+        $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
+        $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
+        $key = $this->getEntityKey();
+
+        $subjectKey = "notifications.deleted_{$key}_comment.subject";
+        $line1Key = "notifications.deleted_{$key}_comment.line_1";
+
         return (new MailMessage)
-                    ->subject("Un tuo commento è stato rimosso")
-                    ->line("Il tuo commento sulla {$entita} è stato rimosso o nascosto da un amministratore.");
+                    ->subject(__($subjectKey))
+                    ->line(__($line1Key, [
+                        'entity' => $riferimento
+                    ]));
+    }
+
+    private function getEntityKey(): string
+    {
+        $class = class_basename($this->commento->commentable);
+        return match($class) {
+            'Segnalazione' => 'ticket',
+            'Comunicazione' => 'post',
+            default => strtolower($class),
+        };
     }
 
     public function toArray(object $notifiable): array

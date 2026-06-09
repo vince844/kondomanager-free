@@ -6,15 +6,17 @@ use App\Models\Commento;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Support\Str;
 use App\Helpers\RouteHelper;
 
-class NuovoCommentoNotification extends Notification implements ShouldQueue
+class NuovoCommentoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Commento $commento) {}
+    public function __construct(public Commento $commento) {
+        parent::__construct();
+    }
 
     public function via(object $notifiable): array
     {
@@ -34,14 +36,31 @@ class NuovoCommentoNotification extends Notification implements ShouldQueue
 
         // Construisce l'URL alla segnalazione
         $url = $this->urlCommentabile($notifiable);
+        $key = $this->getEntityKey();
+
+        $subjectKey = "notifications.new_{$key}_comment.subject";
+        $greetingKey = "notifications.new_{$key}_comment.greeting";
+        $line1Key = "notifications.new_{$key}_comment.line_1";
+        $actionKey = "notifications.new_{$key}_comment.action";
+        $line2Key = "notifications.new_{$key}_comment.line_2";
 
         return (new MailMessage)
-            ->subject("Nuovo commento su: {$titoloEntita}")
-            ->greeting("Salve!")
-            ->line("{$autoreNome} ha lasciato un nuovo commento:")
+            ->subject(__($subjectKey, ['entity' => $titoloEntita]))
+            ->greeting(__($greetingKey))
+            ->line(__($line1Key, ['user' => $autoreNome]))
             ->line(Str::limit($this->commento->corpo, 200))
-            ->action('Visualizza la segnalazione', $url)
-            ->line('Ricevi questa email perché sei coinvolto in questa segnalazione.');
+            ->action(__($actionKey), $url)
+            ->line(__($line2Key));
+    }
+
+    private function getEntityKey(): string
+    {
+        $class = class_basename($this->commento->commentable);
+        return match($class) {
+            'Segnalazione' => 'ticket',
+            'Comunicazione' => 'post',
+            default => strtolower($class),
+        };
     }
 
     public function toArray(mixed $notifiable): array

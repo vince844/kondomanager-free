@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { usePermission } from '@/composables/permissions';
 import { Permission } from '@/enums/Permission';
@@ -8,6 +8,8 @@ import {
   Clock, EyeOff, User as UserIcon, BadgeCheck
 } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export interface CommentoAutore {
   id: number;
@@ -46,6 +48,20 @@ const authorName = props.commento.autore?.anagrafica?.nome
   ?? props.commento.autore?.name
   ?? trans('commenti.autore_sconosciuto');
 
+const authorInitials = computed(() => {
+  const name = authorName.trim();
+  if (!name || name === trans('commenti.autore_sconosciuto')) return '?';
+  const parts = name.split(/\s+/);
+  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+});
+
+const showDeleteConfirm = ref(false);
+const isDeleting = ref(false);
+
+const showHideConfirm = ref(false);
+const isHiding = ref(false);
+
 function submitEdit() {
   editForm.patch(route(generateRoute('commenti.update'), { commento: props.commento.id }), {
     preserveScroll: true,
@@ -54,9 +70,17 @@ function submitEdit() {
 }
 
 function deleteComment() {
-  if (!confirm(trans('commenti.conferma_elimina'))) return;
+  showDeleteConfirm.value = true;
+}
+
+function confirmDelete() {
+  isDeleting.value = true;
   router.delete(route(generateRoute('commenti.destroy'), { commento: props.commento.id }), {
     preserveScroll: true,
+    onFinish: () => {
+      isDeleting.value = false;
+      showDeleteConfirm.value = false;
+    },
   });
 }
 
@@ -67,9 +91,17 @@ function approveComment() {
 }
 
 function moderateComment() {
-  if (!confirm(trans('commenti.conferma_nascondi'))) return;
+  showHideConfirm.value = true;
+}
+
+function confirmModerate() {
+  isHiding.value = true;
   router.post(route(generateRoute('commenti.modera'), { commento: props.commento.id }), {}, {
     preserveScroll: true,
+    onFinish: () => {
+      isHiding.value = false;
+      showHideConfirm.value = false;
+    },
   });
 }
 
@@ -95,20 +127,114 @@ function formatDate(dateStr: string): string {
     </span>
   </div>
 
-  <!-- Commento in attesa (visibile solo ai moderatori) -->
+  <!-- Commento in attesa (visibile all'autore) -->
   <div
     v-else-if="commento.stato === 'in_attesa' && !canModerate"
-    class="flex items-center gap-2 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-dashed border-amber-200 dark:border-amber-800/50 text-sm text-amber-600 dark:text-amber-400"
+    class="group flex gap-3 relative"
   >
-    <Clock class="w-4 h-4 shrink-0" />
-    <span>{{ trans('commenti.in_attesa_approvazione') }}</span>
+    <!-- Avatar -->
+    <div class="shrink-0 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 text-[10px] font-bold shadow-sm">
+      {{ authorInitials }}
+    </div>
+
+    <!-- Corpo -->
+    <div class="flex-1 min-w-0">
+      <!-- Header commento -->
+      <div class="flex items-center gap-2 flex-wrap mb-1.5">
+        <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ authorName }}</span>
+
+        <!-- Badge in attesa -->
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+          <Clock class="w-3 h-3" />
+          {{ trans('commenti.in_attesa_approvazione') }}
+        </span>
+
+        <span class="text-xs text-slate-400">{{ formatDate(commento.created_at) }}</span>
+
+        <!-- Menu azioni (su hover) -->
+        <TooltipProvider v-if="(canEdit || canDelete || canModerate) && !isEditing">
+          <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-auto">
+            <!-- Modifica (autore) -->
+            <Tooltip v-if="canEdit" :delay-duration="300">
+              <TooltipTrigger as-child>
+                <button
+                  @click="isEditing = true"
+                  class="p-1 rounded text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                >
+                  <Pencil class="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" :side-offset="5">
+                <p class="text-xs">{{ trans('commenti.modifica') }}</p>
+              </TooltipContent>
+            </Tooltip>
+            <!-- Elimina (autore) -->
+            <Tooltip v-if="canDelete" :delay-duration="300">
+              <TooltipTrigger as-child>
+                <button
+                  @click="deleteComment"
+                  class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" :side-offset="5">
+                <p class="text-xs">{{ trans('commenti.elimina') }}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
+      </div>
+
+      <!-- Testo commento -->
+      <div v-if="!isEditing" class="w-full p-3 bg-amber-50 dark:bg-amber-900/10 border border-dashed border-amber-200 dark:border-amber-800/50 rounded-lg">
+        <div class="flex items-center gap-2 mb-2 text-amber-700 dark:text-amber-400">
+          <Clock class="w-4 h-4 shrink-0" />
+          <span class="text-xs font-semibold">{{ trans('commenti.in_attesa_approvazione') }}</span>
+        </div>
+        <p class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+          {{ commento.corpo }}
+        </p>
+      </div>
+
+      <!-- Form editing inline -->
+      <div v-else class="mt-1 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-white dark:bg-slate-950 overflow-hidden">
+        <textarea
+          v-model="editForm.corpo"
+          rows="3"
+          autofocus
+          class="w-full resize-none px-3 pt-2 pb-1 text-sm text-slate-800 dark:text-slate-200 bg-transparent border-0 outline-none"
+          @keydown.ctrl.enter="submitEdit"
+          @keydown.meta.enter="submitEdit"
+          @keydown.esc="isEditing = false"
+        />
+        <div class="flex items-center justify-end gap-2 px-3 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+          <button
+            type="button"
+            @click="isEditing = false; editForm.reset()"
+            class="px-2.5 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 rounded transition-colors"
+          >
+            {{ trans('commenti.cancel') }}
+          </button>
+          <button
+            type="button"
+            @click="submitEdit"
+            :disabled="editForm.processing || !editForm.corpo.trim()"
+            class="px-3 py-1 text-xs font-semibold rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            {{ trans('commenti.save') }}
+          </button>
+        </div>
+        <p v-if="editForm.errors.corpo" class="px-3 pb-2 text-xs text-red-500">{{ editForm.errors.corpo }}</p>
+      </div>
+    </div>
   </div>
 
   <!-- Commento regolare -->
   <div v-else class="group relative flex gap-3">
     <!-- Avatar -->
-    <div class="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-      {{ authorName.charAt(0).toUpperCase() }}
+    <div class="shrink-0 w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 text-[10px] font-bold shadow-sm">
+      {{ authorInitials }}
     </div>
 
     <!-- Corpo -->
@@ -129,15 +255,65 @@ function formatDate(dateStr: string): string {
         <span class="text-xs text-slate-400">{{ formatDate(commento.created_at) }}</span>
 
         <span v-if="commento.modificato_at" class="text-xs text-slate-400 italic">
-          · {{ trans('commenti.modificato') }}
+          · {{ trans('commenti.modificato', { date: formatDate(commento.modificato_at) }) }}
         </span>
+
+        <!-- Menu azioni (su hover) -->
+        <TooltipProvider v-if="(canEdit || canDelete || canModerate) && !isEditing">
+          <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 ml-auto">
+            <!-- Modera (per commenti pubblicati) -->
+            <Tooltip v-if="canModerate && commento.stato === 'pubblicato'" :delay-duration="300">
+              <TooltipTrigger as-child>
+                <button
+                  @click="moderateComment"
+                  class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <ShieldOff class="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" :side-offset="5">
+                <p class="text-xs">{{ trans('commenti.nascondi_commento') }}</p>
+              </TooltipContent>
+            </Tooltip>
+            <!-- Modifica (autore) -->
+            <Tooltip v-if="canEdit" :delay-duration="300">
+              <TooltipTrigger as-child>
+                <button
+                  @click="isEditing = true"
+                  class="p-1 rounded text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                >
+                  <Pencil class="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" :side-offset="5">
+                <p class="text-xs">{{ trans('commenti.modifica') }}</p>
+              </TooltipContent>
+            </Tooltip>
+            <!-- Elimina (autore o moderatore) -->
+            <Tooltip v-if="canDelete || canModerate" :delay-duration="300">
+              <TooltipTrigger as-child>
+                <button
+                  @click="deleteComment"
+                  class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" :side-offset="5">
+                <p class="text-xs">{{ trans('commenti.elimina') }}</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
       </div>
 
       <!-- Testo commento o form di editing -->
       <div v-if="!isEditing">
-        <p class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
-          {{ commento.corpo }}
-        </p>
+        <div class="w-full p-3 bg-sky-50 dark:bg-sky-900/10 border border-sky-100 dark:border-sky-800/30 rounded-lg shadow-sm">
+          <p class="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+            {{ commento.corpo }}
+          </p>
+        </div>
       </div>
 
       <!-- Form editing inline -->
@@ -192,41 +368,29 @@ function formatDate(dateStr: string): string {
         </button>
       </div>
     </div>
-
-    <!-- Menu azioni (su hover) -->
-    <div
-      v-if="(canEdit || canDelete || canModerate) && !isEditing"
-      class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 shrink-0 self-start mt-0.5"
-    >
-      <!-- Modera (per commenti pubblicati) -->
-      <button
-        v-if="canModerate && commento.stato === 'pubblicato'"
-        @click="moderateComment"
-        title="Nascondi commento"
-        class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-      >
-        <ShieldOff class="w-3.5 h-3.5" />
-      </button>
-
-      <!-- Modifica (autore) -->
-      <button
-        v-if="canEdit"
-        @click="isEditing = true"
-        title="Modifica"
-        class="p-1 rounded text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-      >
-        <Pencil class="w-3.5 h-3.5" />
-      </button>
-
-      <!-- Elimina (autore) -->
-      <button
-        v-if="canDelete"
-        @click="deleteComment"
-        title="Elimina"
-        class="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-      >
-        <Trash2 class="w-3.5 h-3.5" />
-      </button>
-    </div>
   </div>
+
+  <!-- Dialog per Eliminare -->
+  <ConfirmDialog
+    v-model="showDeleteConfirm"
+    title="Elimina commento"
+    :description="trans('commenti.conferma_elimina')"
+    variant="destructive"
+    confirm-text="Elimina"
+    cancel-text="Annulla"
+    :loading="isDeleting"
+    @confirm="confirmDelete"
+  />
+
+  <!-- Dialog per Nascondere -->
+  <ConfirmDialog
+    v-model="showHideConfirm"
+    title="Nascondi commento"
+    :description="trans('commenti.conferma_nascondi')"
+    variant="warning"
+    confirm-text="Nascondi"
+    cancel-text="Annulla"
+    :loading="isHiding"
+    @confirm="confirmModerate"
+  />
 </template>

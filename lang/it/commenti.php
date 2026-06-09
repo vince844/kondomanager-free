@@ -3,7 +3,7 @@
 return [
     'titolo' => 'Commenti',
     'in_attesa' => 'In attesa',
-    'disabilita' => 'Disabilita Commenti',
+    'disabilita' => 'Disabilita commenti',
     'abilita' => 'Abilita Commenti',
     'nessun_commento' => 'Nessun commento ancora. Scrivi il primo!',
     'autore_sconosciuto' => 'Utente Sconosciuto',
@@ -13,7 +13,7 @@ return [
     'stato_nascosto' => 'Nascosto',
     'stato_eliminato' => 'Eliminato',
     'in_attesa_approvazione' => 'Il tuo commento è in attesa di approvazione da parte di un moderatore.',
-    'modificato' => 'Modificato',
+    'modificato' => 'Modificato il :date',
     'approva' => 'Approva',
     'nascondi' => 'Nascondi',
     'thread_chiuso' => 'I commenti per questa segnalazione sono stati disabilitati.',
@@ -24,4 +24,8 @@ return [
     'invia' => 'Invia commento',
     'cancel' => 'Annulla',
     'save' => 'Salva',
+    'modifica' => 'Modifica',
+    'elimina' => 'Elimina',
+    'nascondi_commento' => 'Nascondi commento',
+    'pubblicati' => 'Pubblicati',
 ];

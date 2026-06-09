@@ -136,7 +136,7 @@ const pageGuides = computed(() => [
               <ListaCommenti
                 :segnalazione-id="props.segnalazione.id"
                 :commenti="props.segnalazione.commenti || []"
-                :commenti-in-attesa="[]"
+                :commenti-in-attesa="props.segnalazione.commentiInAttesa || []"
                 :commenti-config="props.commenti_config"
                 :current-user-id="currentUserId"
               />

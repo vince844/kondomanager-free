@@ -46,7 +46,8 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
     Route::resource('documenti', DocumentoController::class)
         ->parameters([
             'documenti' => 'documento'
-        ]);
+        ])
+        ->except(['update']);
     
     // Rotta per segnalare il pagamento (Single Action Controller)
     Route::post('eventi/{evento}/segnala-pagamento', PaymentReportingController::class)
@@ -57,7 +58,7 @@ Route::prefix('user')->as('user.')->middleware(['auth', 'verified'])->group(func
             'eventi' => 'evento'
         ]);
 
-    Route::post('documenti/{documento}', [DocumentoController::class, 'update'])
+    Route::match(['put', 'patch', 'post'], 'documenti/{documento}', [DocumentoController::class, 'update'])
         ->name('documenti.update');
 
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])

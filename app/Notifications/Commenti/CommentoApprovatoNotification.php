@@ -6,15 +6,17 @@ use App\Models\Commento;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
+use App\Notifications\LocalizedNotification;
 use Illuminate\Support\Str;
 use App\Helpers\RouteHelper;
 
-class CommentoApprovatoNotification extends Notification implements ShouldQueue
+class CommentoApprovatoNotification extends LocalizedNotification implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Commento $commento) {}
+    public function __construct(public Commento $commento) {
+        parent::__construct();
+    }
 
     public function via(object $notifiable): array
     {
@@ -23,13 +25,35 @@ class CommentoApprovatoNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $entita = class_basename($this->commento->commentable);
+        $commentable = $this->commento->commentable;
+        $entita = class_basename($commentable);
+        
+        $titolo = $commentable->subject ?? $commentable->titolo ?? $commentable->title ?? $commentable->nome ?? null;
+        $riferimento = $titolo ? "{$entita} \"{$titolo}\"" : $entita;
+
         $prefix = RouteHelper::getRoutePrefixForUser($notifiable);
+        $key = $this->getEntityKey();
+        
+        $subjectKey = "notifications.approved_{$key}_comment.subject";
+        $line1Key   = "notifications.approved_{$key}_comment.line_1";
+        $actionKey  = "notifications.approved_{$key}_comment.action";
         
         return (new MailMessage)
-                    ->subject("Il tuo commento è stato approvato")
-                    ->line("Il tuo commento sulla {$entita} è stato approvato e pubblicato.")
-                    ->action('Visualizza Segnalazione', url("/{$prefix}/segnalazioni/{$this->commento->commentable_id}#commenti"));
+                    ->subject(__($subjectKey))
+                    ->line(__($line1Key, [
+                        'entity' => $riferimento
+                    ]))
+                    ->action(__($actionKey), url("/{$prefix}/segnalazioni/{$this->commento->commentable_id}#commenti"));
+    }
+
+    private function getEntityKey(): string
+    {
+        $class = class_basename($this->commento->commentable);
+        return match($class) {
+            'Segnalazione' => 'ticket',
+            'Comunicazione' => 'post',
+            default => strtolower($class),
+        };
     }
 
     public function toArray(object $notifiable): array

@@ -66,6 +66,8 @@ Release che porta a maturità l'infrastruttura contabile.
   - Radar Salute Contabile — validatore millesimi + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
 - **Backup Management**
+- **Gestione Code Fallite (System Health):** 
+  - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
 - **Iniziativa A — Tabelle Millesimali avanzate:**
   - Supporto Art. 1124 c.c. (scale e ascensori)
   - Tipo `manuale` aggiunto all'enum

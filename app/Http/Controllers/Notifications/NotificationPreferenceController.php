@@ -41,10 +41,13 @@ class NotificationPreferenceController extends Controller
             ->toArray();
 
         $preferences = collect($types)->map(function ($meta, $type) use ($saved) {
+            $labelKey = "settings.notification_types.{$type}.label";
+            $descKey = "settings.notification_types.{$type}.description";
+
             return [
                 'type' => $type,
-                'label' => $meta['label'],
-                'description' => $meta['description'],
+                'label' => __($labelKey),
+                'description' => __($descKey),
                 'enabled' => $saved[$type] ?? false,
             ];
         })->values();
@@ -67,8 +70,9 @@ class NotificationPreferenceController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
+        $user = Auth::user();
+
         try {
-            $user = Auth::user();
 
             // Validate the incoming request data
             $data = $request->validate([

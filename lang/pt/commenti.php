@@ -13,7 +13,7 @@ return [
     'stato_nascosto' => 'Oculto',
     'stato_eliminato' => 'Excluído',
     'in_attesa_approvazione' => 'Seu comentário está aguardando aprovação de um moderador.',
-    'modificato' => 'Editado',
+    'modificato' => 'Modificado em :date',
     'approva' => 'Aprovar',
     'nascondi' => 'Ocultar',
     'thread_chiuso' => 'Os comentários para este ticket foram desativados.',
@@ -24,4 +24,8 @@ return [
     'invia' => 'Enviar comentário',
     'cancel' => 'Cancelar',
     'save' => 'Salvar',
+    'modifica' => 'Editar',
+    'elimina' => 'Eliminar',
+    'nascondi_commento' => 'Ocultar comentário',
+    'pubblicati' => 'Publicados',
 ];

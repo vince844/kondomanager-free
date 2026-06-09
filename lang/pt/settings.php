@@ -104,4 +104,51 @@ return [
         'password_placeholder' => 'Palavra-passe',
         'cancel' => 'Cancelar',
     ],
+
+    'notification_types' => [
+        'new_communication' => [
+            'label' => 'Nova comunicação no quadro de avisos',
+            'description' => 'Receba uma notificação quando for criada uma nova comunicação',
+        ],
+        'approved_communication' => [
+            'label' => 'Comunicação aprovada',
+            'description' => 'Receba uma notificação quando a sua comunicação for aprovada',
+        ],
+        'new_ticket' => [
+            'label' => 'Novo relato de avaria',
+            'description' => 'Receba uma notificação quando for criado um novo relato de avaria',
+        ],
+        'approved_ticket' => [
+            'label' => 'Relato de avaria aprovado',
+            'description' => 'Receba uma notificação quando o seu relato de avaria for aprovado',
+        ],
+        'new_archive_document' => [
+            'label' => 'Novo documento no arquivo',
+            'description' => 'Receba uma notificação quando for publicado um novo documento no arquivo',
+        ],
+        'approved_archive_document' => [
+            'label' => 'Documento de arquivo aprovado',
+            'description' => 'Receba uma notificação quando o seu documento de arquivo for aprovado',
+        ],
+        'new_comment' => [
+            'label' => 'Novo comentário',
+            'description' => 'Receba uma notificação quando for adicionado um comentário a um relato em que participa',
+        ],
+        'comment_approved' => [
+            'label' => 'Comentário aprovado',
+            'description' => 'Receba uma notificação quando o seu comentário pendente for aprovado',
+        ],
+        'comment_deleted' => [
+            'label' => 'Comentário apagado ou oculto',
+            'description' => 'Receba uma notificação quando o seu comentário for apagado ou oculto',
+        ],
+        'new_user' => [
+            'label' => 'Novo utilizador registado',
+            'description' => 'Receba uma notificação quando um novo utilizador se registar',
+        ],
+        'comment_under_moderation' => [
+            'label' => 'Comentário a aguardar moderação',
+            'description' => 'Receba uma notificação quando um novo comentário exigir a sua aprovação',
+        ],
+    ],
 ];

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Segnalazioni\Utenti;
 
+use App\Enums\Permission;
 use App\Events\Segnalazioni\NotifyAdminOfCreatedSegnalazione;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
@@ -200,15 +201,18 @@ class SegnalazioneController extends Controller
             'condominio',
             'anagrafiche',
             'commenti.autore.anagrafica',
+            'commentiInAttesa' => function ($query) use ($user) {
+                $query->where('user_id', $user->id)->with('autore.anagrafica');
+            }
         ])->findOrFail($segnalazione->id);
 
         return Inertia::render('segnalazioni/user/SegnalazioniView', [
             'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
             'commenti_config' => [
                 'can_comment'  => (bool) $segnalazione->can_comment,
-                'can_create'   => $user->hasPermissionTo(\App\Enums\Permission::COMMENT_SEGNALAZIONI->value),
+                'can_create'   => $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value),
                 'can_moderate' => false,
-                'can_publish'  => $user->hasPermissionTo(\App\Enums\Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
+                'can_publish'  => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
             ],
         ]);
     }

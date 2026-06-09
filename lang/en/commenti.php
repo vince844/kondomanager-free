@@ -13,7 +13,7 @@ return [
     'stato_nascosto' => 'Hidden',
     'stato_eliminato' => 'Deleted',
     'in_attesa_approvazione' => 'Your comment is pending approval from a moderator.',
-    'modificato' => 'Edited',
+    'modificato' => 'Edited on :date',
     'approva' => 'Approve',
     'nascondi' => 'Hide',
     'thread_chiuso' => 'Comments for this ticket have been disabled.',
@@ -24,4 +24,8 @@ return [
     'invia' => 'Send comment',
     'cancel' => 'Cancel',
     'save' => 'Save',
+    'modifica' => 'Edit',
+    'elimina' => 'Delete',
+    'nascondi_commento' => 'Hide comment',
+    'pubblicati' => 'Published',
 ];

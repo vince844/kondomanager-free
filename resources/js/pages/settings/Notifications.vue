@@ -13,6 +13,7 @@ import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import { LoaderCircle } from 'lucide-vue-next';
 import type { Flash } from '@/types/flash';
+import { trans } from 'laravel-vue-i18n';
 
 const { generateRoute } = usePermission();
 
@@ -62,7 +63,7 @@ function submit() {
 
 <template>
   <AppLayout>
-    <Head title="Impostazioni notifiche" />
+    <Head :title="trans('settings.notifications.title')" />
 
     <SettingsLayout contentClass="w-full">
       <div v-if="flashMessage" class="py-2">
@@ -70,11 +71,11 @@ function submit() {
       </div>
 
       <div class="flex flex-col space-y-6 ">
-        <HeadingSmall title="Impostazioni notifiche" description="Di seguito puoi selezionare le notifiche email che vuoi ricevere" />
+        <HeadingSmall :title="trans('settings.notifications.heading')" :description="trans('settings.notifications.description')" />
 
          <div v-if="preferences.length === 0" class="space-y-4 rounded-lg border border-blue-100 bg-blue-50 p-4 dark:border-blue-200/10 dark:bg-blue-700/10">
             <div class="relative space-y-0.5 text-blue-600 dark:text-blue-100">
-                <p class="text-sm">Nessuna notifica email disponibile da selezionare.</p>
+                <p class="text-sm">{{ trans('settings.notifications.empty') }}</p>
             </div>
         </div>
 
@@ -102,7 +103,7 @@ function submit() {
             <CardFooter class="pl-0 flex items-center gap-4">
               <Button :disabled="form.processing">
                 <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-                Salva preferenze
+                {{ trans('settings.notifications.save') }}
               </Button>
             </CardFooter>
           </Card>
