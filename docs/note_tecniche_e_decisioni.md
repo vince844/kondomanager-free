@@ -44,6 +44,44 @@ l'ordinanza sanziona). Possibile argomento autentico per forum/changelog.
 
 ---
 
+## Architettura tabelle — ufficiali vs ripartizioni di calcolo
+
+*(rilevante quando si sviluppa la Tables Infrastructure — vedi nota versioni in fondo alla sezione)*
+
+**Distinzione da introdurre.** Separare due concetti che oggi nel modello dati coincidono:
+
+- **Tabelle ufficiali del condominio** — la generale e quelle allegate al regolamento
+  (scale, ascensore, riscaldamento). Stabili e governate: si toccano solo nei casi
+  dell'art. 69 disp. att. c.c. (errore, o mutamenti che alterano oltre 1/5 il valore
+  proporzionale anche di una sola unità). Approvazione/revisione a maggioranza qualificata
+  (art. 1136, c. 2) quando applicano i criteri legali — Cass. SS.UU. 18477/2010; unanimità
+  solo per le tabelle convenzionali che derogano ai criteri.
+- **Ripartizioni di calcolo** — derivate, per spese a uso parziale e una tantum. Non sono
+  tabelle ufficiali e non vanno trattate (né governate) come tali.
+
+**Approccio corretto per le spese a uso parziale** (es. colonna di scarico — Cass. 1095/2026):
+non creare una nuova tabella ufficiale, ma derivare il riparto di *quella* spesa dai
+millesimi generali già esistenti, ristretti alle unità interessate, a livello di spesa/piano.
+Perché:
+
+- non introduce alcun criterio nuovo → pura applicazione aritmetica dell'art. 1123, c. 1.
+  L'approvazione delle tabelle è una presa d'atto, non la fonte dell'obbligazione
+  (SS.UU. 18477/2010): quindi **niente nuova tabella e niente delibera ad hoc** — l'assemblea
+  approva spesa e rendiconto, il riparto proporzionale tra i beneficiari si applica per legge;
+- tiene pulite le tabelle ufficiali, che non vanno popolate di un oggetto per ogni spesa
+  una tantum.
+
+**Stato attuale (v1.9.5).** La via odierna — creare una tabella parziale con i millesimi dei
+beneficiari — dà i numeri giusti ma lascia un oggetto-tabella permanente. Target: trattare la
+ripartizione parziale come *derivata* (comando "genera dai millesimi generali sulle unità
+selezionate"), distinta dalle tabelle ufficiali nell'UI e nel modello dati.
+
+> **Nota versioni.** Questo è lavoro sull'area *tabelle* → sulla roadmap è la
+> **v1.9.10 (Tables Infrastructure)**, non la v1.10.0 (che è la migrazione dell'installer in
+> `Kondomanager\Installer`). Confermare dove agganciarlo.
+
+---
+
 ## Note varie
 
 _(da popolare)_
