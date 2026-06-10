@@ -15,7 +15,7 @@ Este guia usa a stack **Standard** (Nginx + PHP-FPM + Supervisor para processos 
 Você tem duas opções: usar a interface web (File Station) ou usar SSH.
 
 ### Opção A: Via File Station (Mais fácil, sem linha de comando)
-1. Faça o download do arquivo ZIP do KondoManager no GitHub: [Download v1.8.0beta](https://github.com/vince844/kondomanager-free/archive/refs/heads/v1.8.0beta.zip).
+1. Faça o download do arquivo ZIP do KondoManager no GitHub: [Download v1.9.1-beta](https://github.com/vince844/kondomanager-free/archive/refs/heads/v1.9.1-beta.zip).
 2. Abra o **File Station** no seu Synology.
 3. Navegue até a pasta compartilhada `docker`.
 4. Crie uma nova subpasta chamada `kondomanager-free`.
@@ -28,7 +28,7 @@ Você tem duas opções: usar a interface web (File Station) ou usar SSH.
 3. Execute:
    ```bash
    cd /volume1/docker
-   git clone -b v1.8.0beta https://github.com/vince844/kondomanager-free.git
+   git clone -b v1.9.1-beta https://github.com/vince844/kondomanager-free.git
    ```
 
 ---

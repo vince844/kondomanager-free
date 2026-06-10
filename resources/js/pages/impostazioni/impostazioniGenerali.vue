@@ -16,7 +16,7 @@ import type { GeneralSettings } from '@/types/GeneralSettings'
 /* -------------------------------------------------
  * Types
  * ------------------------------------------------- */
-type SupportedLanguage = 'it' | 'en' | 'pt'
+type SupportedLanguage = 'it' | 'en' | 'pt' | 'es'
 
 /* -------------------------------------------------
  * Page / State
@@ -63,6 +63,7 @@ const languageLabels = computed<
   it: wTrans('impostazioni.placeholder.language.it'),
   en: wTrans('impostazioni.placeholder.language.en'),
   pt: wTrans('impostazioni.placeholder.language.pt'),
+  es: wTrans('impostazioni.placeholder.language.es'),
 }))
 
 /* -------------------------------------------------
@@ -175,6 +176,7 @@ const submit = () => {
                       <SelectItem value="it">{{ languageLabels.it.value }}</SelectItem>
                       <SelectItem value="en">{{ languageLabels.en.value }}</SelectItem>
                       <SelectItem value="pt">{{ languageLabels.pt.value }}</SelectItem>
+                      <SelectItem value="es">{{ languageLabels.es.value }}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

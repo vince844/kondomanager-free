@@ -156,6 +156,7 @@ return [
             'it' => 'Italiano',
             'en' => 'Inglese',
             'pt' => 'Portoghese',
+            'es' => 'Spagnolo',
         ],
     ],
 

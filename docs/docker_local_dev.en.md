@@ -41,7 +41,7 @@ git clone ...
 
 ## Step 1 — Clone the repository
 
-Open a terminal (or WSL terminal on Windows) and run:
+Open your terminal (on macOS/Linux) or WSL terminal (on Windows) and run:
 
 ```bash
 git clone -b v1.9.1-beta https://github.com/vince844/kondomanager-free.git
@@ -172,8 +172,14 @@ stdout_logfile=/var/www/storage/logs/worker.log
 
 ### Monitoring the worker
 
+**1. Web Interface (Recommended)**
+You can easily check the process status and read logs from your browser:
+- Go to: `http://localhost:9001`
+- User: `admin` / Password: `password`
+
+**2. Command Line**
 ```bash
-# View worker logs in real time
+# View real-time worker logs in real time
 docker compose logs -f worker
 
 # View logs written by Supervisor to file

@@ -163,6 +163,7 @@ return [
             'it' => 'Italiano',
             'en' => 'Inglês',
             'pt' => 'Português',
+            'es' => 'Espanhol',
         ],
     ],
 
