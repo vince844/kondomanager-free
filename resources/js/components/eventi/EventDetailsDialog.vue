@@ -42,6 +42,11 @@ const isRejected = computed(() => props.evento?.meta?.status === 'rejected');
 // Gestione visiva: Un evento è "Credito" solo se il suo importo totale nel DB è negativo (es. Rata Zero con credito)
 const isGeneratingCredit = computed(() => isCondomino.value && importoOriginale.value < -0.01);
 
+// Nessun pagamento richiesto: importo restante è zero o meno (es. Saldo Iniziale con credito che azzera la rata)
+const isNothingToPay = computed(() => isCondomino.value && !isGeneratingCredit.value && importoRestante.value <= 0.01 && !isPaid.value);
+
+const isRataZero = computed(() => props.evento?.meta?.numero_rata === 0);
+
 // Una rata è coperta solo se l'importo restante è zero ma non è ancora segnata come pagata (raro in V1.9, ma possibile)
 const isFullyCoveredByCredit = computed(() => importoRestante.value === 0 && importoOriginale.value > 0 && !isPaid.value && isCondomino.value);
 
@@ -286,7 +291,7 @@ const reportPaymentWithCredit = () => {
 
                         <div v-else class="mb-6 space-y-4">
                             
-                            <div v-if="evento.meta?.storico_crediti > 0.01" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
+                            <div v-if="evento.meta?.storico_crediti > 0.01 && !isRataZero" class="mb-3 p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3">
                                 <div class="p-1.5 bg-blue-100 rounded-full text-blue-600 shrink-0 mt-0.5">
                                     <TrendingDown class="w-4 h-4" />
                                 </div>
@@ -299,7 +304,7 @@ const reportPaymentWithCredit = () => {
                                 </div>
                             </div>
 
-                            <div v-if="evento.meta?.storico_arretrati > 0.01 && !isGeneratingCredit" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
+                            <div v-if="evento.meta?.storico_arretrati > 0.01 && !isGeneratingCredit && !isRataZero" class="mb-3 p-4 rounded-lg bg-orange-50 border border-orange-200 flex items-start gap-3">
                                 <div class="p-1.5 rounded-full text-orange-600 shrink-0 mt-0.5">
                                     <AlertTriangle class="w-4 h-4" />
                                 </div>
@@ -319,6 +324,18 @@ const reportPaymentWithCredit = () => {
                                     <h4 class="text-sm font-bold text-blue-800 mb-1">Credito a tuo favore</h4>
                                     <p class="text-xs text-blue-700 leading-relaxed mb-2">
                                         Questo documento certifica un credito a tuo favore di <span class="font-bold">{{ euro(Math.abs(importoRestante)) }}</span>. Non è richiesto alcun pagamento.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div v-else-if="isNothingToPay" class="mb-3 p-4 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-3">
+                                <div class="p-1.5 bg-emerald-100 rounded-full text-emerald-600 shrink-0 mt-0.5">
+                                    <CheckCircle class="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-emerald-800 mb-1">Nessun pagamento richiesto</h4>
+                                    <p class="text-xs text-emerald-700 leading-relaxed">
+                                        Questa voce non richiede alcun versamento. L'importo è stato completamente compensato dal credito applicato.
                                     </p>
                                 </div>
                             </div>

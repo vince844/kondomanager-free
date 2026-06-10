@@ -206,7 +206,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                             'type'              => EventoTipo::SCADENZA_RATA_CONDOMINO->value,
                             'is_emitted'        => false, 
                             'requires_action'   => false, 
-                            'status'            => 'pending',
+                            'status'            => $importoVal <= 0 ? 'paid' : 'pending',
                             'importo_originale' => $importoVal,
                             'importo_pagato'    => 0,
                             'importo_restante'  => $importoVal,

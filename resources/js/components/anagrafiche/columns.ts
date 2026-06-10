@@ -4,8 +4,9 @@ import DropdownAction from '@/components/anagrafiche/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/anagrafiche/DataTableColumnHeader.vue'
 import { usePermission } from "@/composables/permissions"
 import { trans } from 'laravel-vue-i18n'
-import AnagraficheStack from '@/components/buildings/AnagraficheStack.vue'
-import { User, MapPin, Mail, Smartphone, Phone, ArrowRight } from 'lucide-vue-next' 
+import AnagraficheStack from '@/components/AnagraficheStack.vue'
+import { Badge } from '@/components/ui/badge'
+import { User, MapPin, Mail, Smartphone, Phone, ArrowRight, PhoneOff } from 'lucide-vue-next' 
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Anagrafica } from '@/types/anagrafiche'
 import type { Building } from '@/types/buildings'
@@ -33,16 +34,14 @@ export const columns: ColumnDef<Anagrafica>[] = [
         ]),
         
         // Contenitore Nome e CF
-        h('div', { class: 'flex flex-col min-w-0' }, [
-            h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
-                codiceFiscale ? h('span', { 
-                    class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
-                }, codiceFiscale) : null,
-
-                h('span', {
-                    class: 'font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate capitalize',
-                }, anagrafica.nome),
-            ]),
+        h('div', { class: 'flex flex-col items-start gap-1 min-w-0' }, [
+            h('span', {
+                class: 'font-bold text-sm text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate capitalize leading-tight',
+            }, anagrafica.nome),
+            
+            codiceFiscale ? h('span', { 
+                class: 'px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-tighter bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 rounded-md border border-indigo-100 dark:border-indigo-800' 
+            }, codiceFiscale) : null,
             
             // Sottotitolo interattivo
       /*       h('span', { 
@@ -66,7 +65,13 @@ export const columns: ColumnDef<Anagrafica>[] = [
       const emailPrincipale = a.email || a.pec;
 
       if (!emailPrincipale && !recapitoTelefonico) {
-        return h('span', { class: 'text-xs text-slate-400 italic' }, trans('anagrafiche.table.no_contacts'));
+        return h(Badge, { 
+          variant: 'outline',
+          class: 'text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-none font-normal flex items-center gap-1.5 w-fit mt-0.5'
+        }, () => [
+          h(PhoneOff, { class: 'w-3 h-3' }),
+          trans('anagrafiche.table.no_contacts')
+        ])
       }
 
       return h('div', { class: 'flex flex-col gap-1.5 text-sm text-slate-600 dark:text-slate-400' }, [
@@ -78,7 +83,7 @@ export const columns: ColumnDef<Anagrafica>[] = [
         recapitoTelefonico ? h('div', { class: 'flex items-center gap-2' }, [
             // Usa l'icona Smartphone se è un cellulare, altrimenti il Phone classico
             h(a.cellulare ? Smartphone : Phone, { class: 'w-3.5 h-3.5 shrink-0 text-slate-400' }),
-            h('span', { class: 'truncate font-mono text-xs' }, recapitoTelefonico)
+            h('span', { class: 'truncate text-xs' }, recapitoTelefonico)
         ]) : null,
       ]);
     }

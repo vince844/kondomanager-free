@@ -173,4 +173,16 @@ return [
         'permissions' => 'Permessi',
         'invites'     => 'Inviti',
     ],
+    
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'language_title' => 'Lingua e Traduzioni',
+        'language_desc'  => 'Scegli la lingua predefinita con cui l\'applicazione verrà mostrata ai nuovi utenti e sui dispositivi non ancora configurati.',
+        'access_title'   => 'Accesso e Condominio',
+        'access_desc'    => 'Semplifica il lavoro quotidiano: imposta l\'apertura automatica di un condominio specifico subito dopo il login, saltando la dashboard.',
+        'security_title' => 'Registrazione e Ruoli',
+        'security_desc'  => 'Abilita la registrazione pubblica sul sito web. Ai nuovi iscritti verrà assegnato automaticamente il ruolo predefinito che scegli qui.',
+    ],
 ];

@@ -5,7 +5,7 @@ import DataTableColumnHeader from '@/components/fornitori/DataTableColumnHeader.
 import { usePermission } from "@/composables/permissions";
 import { Badge }  from '@/components/ui/badge';
 import { trans } from 'laravel-vue-i18n';
-import AnagraficheStack from '@/components/buildings/AnagraficheStack.vue';
+import AnagraficheStack from '@/components/AnagraficheStack.vue';
 import { Truck, MapPin, ArrowRight } from 'lucide-vue-next'; 
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Fornitore } from '@/types/fornitori';
@@ -78,7 +78,7 @@ export const columns: ColumnDef<Fornitore>[] = [
   {
     accessorKey: 'codice_fiscale',
     header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('fornitori.label.tax_code') }), 
-    cell: ({ row }) => h('div', { class: 'font-mono text-xs uppercase text-slate-500 dark:text-slate-400' }, row.getValue('codice_fiscale') || '—'),
+    cell: ({ row }) => h('div', { class: 'text-xs uppercase text-slate-500 dark:text-slate-400' }, row.getValue('codice_fiscale') || '—'),
   },
   {
     accessorKey: 'referenti',

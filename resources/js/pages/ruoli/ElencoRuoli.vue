@@ -7,6 +7,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import Alert from "@/components/Alert.vue";
+import { trans } from 'laravel-vue-i18n';
 import { type BreadcrumbItem } from '@/types';
 import type { Role } from '@/types/roles';
 import type { Flash } from '@/types/flash';
@@ -29,10 +30,14 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 <template>
     
-    <AppLayout :breadcrumbs="breadcrumbs">
-        <Head title="Elenco ruoli registrati" />
+    <AppLayout :breadcrumbs="[]">
+        <Head :title="trans('users.header.list_roles_head')" />
 
-        <UtentiLayout>
+        <UtentiLayout
+            :page-title="trans('users.header.list_roles_head')"
+            :page-subtitle="trans('users.header.list_roles_description')"
+            :breadcrumbs="breadcrumbs"
+        >
          
             <div v-if="flashMessage" class="py-4">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />

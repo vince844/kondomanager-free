@@ -105,6 +105,9 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Select and associate buildings',
         'buildings_description' => 'You can select one or more buildings to associate with this resident record. This will allow the resident to view data related to the associated buildings.',
+        'system_notifications'  => 'System notifications',
+        'primary_email_desc'    => 'All system notifications for this resident (e.g. new tickets) will be sent to this address. The email address the associated user uses to log in may be different.',
+        'secondary_email_desc'  => 'Additional address to receive a copy of system notifications sent to this resident.',
     ],
 
     /* ------------------------------------------------------------------

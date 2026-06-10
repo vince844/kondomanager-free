@@ -180,4 +180,16 @@ return [
         'permissions' => 'Permissões',
         'invites'     => 'Convites',
     ],
+    
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'language_title' => 'Idioma e Traduções',
+        'language_desc'  => 'Escolha o idioma predefinido em que a aplicação será exibida para novos utilizadores e dispositivos não configurados.',
+        'access_title'   => 'Acesso e Navegação',
+        'access_desc'    => 'Simplifique o seu trabalho diário: configure um condomínio específico para abrir automaticamente logo após iniciar sessão, saltando o dashboard.',
+        'security_title' => 'Registo e Papéis',
+        'security_desc'  => 'Ative o registo público no site. Aos novos inscritos será automaticamente atribuído o papel predefinido que selecionar aqui.',
+    ],
 ];

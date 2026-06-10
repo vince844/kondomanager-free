@@ -180,4 +180,16 @@ return [
         'permissions' => 'Permissions',
         'invites'     => 'Invites',
     ],
+    
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'language_title' => 'Language & Translations',
+        'language_desc'  => 'Choose the default language the application will be displayed in for new users and unconfigured devices.',
+        'access_title'   => 'Login & Navigation',
+        'access_desc'    => 'Streamline your daily workflow: set a specific building to open automatically right after login, skipping the dashboard.',
+        'security_title' => 'Registration & Roles',
+        'security_desc'  => 'Enable public registration on the website. New registrants will automatically be assigned the default role you select here.',
+    ],
 ];

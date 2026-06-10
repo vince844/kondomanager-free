@@ -27,6 +27,12 @@ return [
      | ------------------------------------------------------------------ */
     'header' => [
         'list_users_head'                    => 'Elenco utenti',
+        'list_roles_head'                    => 'Gestione ruoli',
+        'list_roles_description'             => 'Definisci e gestisci i livelli di accesso per ogni tipologia di utente.',
+        'list_permissions_head'              => 'Elenco permessi',
+        'list_permissions_description'       => 'Visualizza tutti i permessi disponibili all\'interno dell\'applicazione.',
+        'list_invites_head'                  => 'Elenco inviti',
+        'list_invites_description'           => 'Monitora gli inviti inviati ai nuovi collaboratori e il loro stato.',
         'edit_user_head'                     => 'Modifica utente',
         'new_user_head'                      => 'Crea nuovo utente',
         'new_user_title'                     => 'Crea nuovo utente',
@@ -45,6 +51,8 @@ return [
         'email'              => 'Indirizzo email',
         'role'               => 'Ruolo',
         'permissions'        => 'Permessi',
+        'anagrafica'         => 'Anagrafica',
+        'no_anagrafica'      => 'Nessuna anagrafica',
         'status'             => 'Stato',
         'suspended'          => 'Sospeso',
         'active'             => 'Attivo',
@@ -97,6 +105,7 @@ return [
         'role_line_2' => 'I permessi associati al ruolo verranno ereditati automaticamente.',
         'resident'    => 'Seleziona l\'anagrafica da associare all\'utente. L\'anagrafica associata potrà accedere al sistema con le credenziali dell\'utente creato e consultare i propri dati e quelli a lui collegati.',
         'permissions' => 'Seleziona permessi specifici da assegnare all\'utente oltre a quelli ereditati dal ruolo selezionato.',
+        'resident_drawer_desc' => 'Dettagli dell\'anagrafica associata a questo utente.',
     ],
     /* ------------------------------------------------------------------
      | Dialogs
@@ -114,7 +123,7 @@ return [
     'empty_state' => [
         'inherited_permissions'   => 'Nessun permesso ereditato dal ruolo',
         'additional_permissions'  => 'Nessun permesso aggiuntivo assegnato',
-        'no_assigned_permissions' => 'Nessun permesso assegnato',
+        'no_assigned_permissions' => 'Nessun permesso',
     ],
     /* ------------------------------------------------------------------
      | Badges (etichette/stati)
@@ -136,5 +145,17 @@ return [
     'layout' => [
         'heading_title'       => 'Gestione utenti',
         'heading_description' => 'Di seguito un elenco degli utenti registrati, ruoli, permessi e inviti',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'users_title' => 'Utenti e Accessi',
+        'users_desc'  => 'Gestisci chi ha accesso alla piattaforma e le relative anagrafiche.',
+        'roles_title' => 'Ruoli e Permessi',
+        'roles_desc'  => 'Definisci i livelli di autorizzazione per proteggere i dati sensibili.',
+        'invites_title' => 'Inviti',
+        'invites_desc'  => 'Invia e monitora gli inviti per i nuovi collaboratori.',
     ],
 ];

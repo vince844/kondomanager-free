@@ -6,8 +6,8 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Settings } from 'lucide-vue-next'
-import Heading from '@/components/Heading.vue'
+import { Settings, Globe, Building2, ShieldCheck } from 'lucide-vue-next'
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
 import { trans, wTrans, isLoaded, loadLanguageAsync } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
@@ -26,11 +26,32 @@ const flashMessage = computed(() => page.props.flash?.message)
 const translationsLoaded = ref(false)
 
 /* -------------------------------------------------
- * Breadcrumbs
+ * Breadcrumbs & Guides
  * ------------------------------------------------- */
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: trans('impostazioni.label.settings'), href: '/impostazioni' },
   { title: trans('impostazioni.header.general_settings_title'), href: '/impostazioni/generali' },
+])
+
+const pageGuides = computed(() => [
+  {
+    title: trans('impostazioni.guides.language_title'),
+    description: trans('impostazioni.guides.language_desc'),
+    icon: Globe,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('impostazioni.guides.access_title'),
+    description: trans('impostazioni.guides.access_desc'),
+    icon: Building2,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: trans('impostazioni.guides.security_title'),
+    description: trans('impostazioni.guides.security_desc'),
+    icon: ShieldCheck,
+    colorVariant: 'amber' as const
+  }
 ])
 
 /* -------------------------------------------------
@@ -110,13 +131,18 @@ const submit = () => {
 </script>
 
 <template>
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout :breadcrumbs="[]">
     <Head :title="trans('impostazioni.header.general_settings_title')" />
 
-    <div class="px-4 py-6">
-      <Heading
-        :title="trans('impostazioni.header.general_settings_title')"
-        :description="trans('impostazioni.header.general_settings_description')"
+    <div class="px-4 py-6 space-y-6">
+      <PageHeaderGuide
+        :page-title="trans('impostazioni.header.general_settings_title')"
+        :page-subtitle="trans('impostazioni.header.general_settings_description')"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        back-url="/impostazioni"
+        :back-text="trans('impostazioni.label.settings')"
+        :video-url="null"
       />
 
       <div v-if="flashMessage" class="py-2">
@@ -124,18 +150,7 @@ const submit = () => {
       </div>
 
       <form @submit.prevent="submit">
-        <Card class="border shadow-none p-4">
-          <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
-            <Link
-              as="button"
-              href="/impostazioni"
-              class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-            >
-              <Settings class="w-4 h-4" />
-              <span>{{ trans('impostazioni.label.settings') }}</span>
-            </Link>
-          </div>
-
+        <Card class="border shadow-none p-4 mt-6">
           <CardContent class="space-y-4 p-0">
             <!-- LANGUAGE -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">

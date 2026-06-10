@@ -7,6 +7,7 @@
         "Inbox Centralizada e Polimorfismo: Refatoração do ActionInboxController e InboxService para gerenciamento dinâmico de ações do usuário com um construtor universal createTask().",
         "Resiliência das Migrações: Proteção das migrações contra tempos limite (timeouts) do PHP em sistemas Windows e Hospedagem Compartilhada adicionando set_time_limit(0) e padrões de limpeza parcial.",
         "Segurança dos Testes: Implementado um bloqueio global no TestCase para evitar a execução acidental da suíte de testes no banco de dados real.",
-        "Nota para desenvolvedores: Após atualizar o código para a versão mais recente e executar as migrações, é necessário rodar 'php artisan db:seed --class=RolesAndPermissionsSeeder' para alinhar as novas permissões inseridas."
+        "Nota para desenvolvedores: Após atualizar o código para a versão mais recente e executar as migrações, é necessário rodar 'php artisan db:seed --class=RolesAndPermissionsSeeder' para alinhar as novas permissões inseridas.",
+        "Falsos positivos de Dívidas de Usuários: Resolvido um bug crítico que mantinha as parcelas visíveis no painel do condômino mesmo após a quitação. Parcelas com valor zero (ex: Saldo Inicial) agora são marcadas automaticamente como pagas, e o botão de relatar pagamento é ocultado quando nenhum pagamento é necessário."
     ]
 }

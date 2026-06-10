@@ -269,7 +269,27 @@ const submit = () => {
                   <div class="hidden sm:block sm:col-span-2"></div>
 
                   <div class="sm:col-span-2">
-                      <Label for="email">{{trans('anagrafiche.label.primary_email')}}</Label>
+                      <div class="flex items-center gap-2 min-h-[24px]">
+                          <Label for="email">{{trans('anagrafiche.label.primary_email')}}</Label>
+                          <HoverCard>
+                              <HoverCardTrigger as-child>
+                                  <button type="button" class="cursor-pointer flex items-center outline-none">
+                                      <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                                  </button>
+                              </HoverCardTrigger>
+                              <HoverCardContent class="w-80 z-50">
+                                  <div class="space-y-3">
+                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                                          <Info class="w-4 h-4 text-indigo-500" /> 
+                                          {{ trans('anagrafiche.tooltip.system_notifications') }}
+                                      </h4>
+                                      <div class="text-sm space-y-2 text-slate-500 dark:text-slate-400">
+                                          <p>{{ trans('anagrafiche.tooltip.primary_email_desc') }}</p>
+                                      </div>
+                                  </div>
+                              </HoverCardContent>
+                          </HoverCard>
+                      </div>
                       <Input 
                           id="email" 
                           v-model="form.email"
@@ -281,7 +301,27 @@ const submit = () => {
                   </div>
 
                   <div class="sm:col-span-2">
-                      <Label for="email_secondaria">{{trans('anagrafiche.label.secondary_email')}}</Label>
+                      <div class="flex items-center gap-2 min-h-[24px]">
+                          <Label for="email_secondaria">{{trans('anagrafiche.label.secondary_email')}}</Label>
+                          <HoverCard>
+                              <HoverCardTrigger as-child>
+                                  <button type="button" class="cursor-pointer flex items-center outline-none">
+                                      <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                                  </button>
+                              </HoverCardTrigger>
+                              <HoverCardContent class="w-80 z-50">
+                                  <div class="space-y-3">
+                                      <h4 class="text-sm font-semibold flex items-center gap-2 text-slate-900 dark:text-slate-100">
+                                          <Info class="w-4 h-4 text-indigo-500" /> 
+                                          {{ trans('anagrafiche.tooltip.system_notifications') }}
+                                      </h4>
+                                      <div class="text-sm space-y-2 text-slate-500 dark:text-slate-400">
+                                          <p>{{ trans('anagrafiche.tooltip.secondary_email_desc') }}</p>
+                                      </div>
+                                  </div>
+                              </HoverCardContent>
+                          </HoverCard>
+                      </div>
                       <Input 
                           id="email_secondaria" 
                           v-model="form.email_secondaria" 

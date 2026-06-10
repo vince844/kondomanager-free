@@ -4,7 +4,6 @@ import { Link } from '@inertiajs/vue3'; // 1. Aggiunto l'import del Link
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Users, MapPin, ChevronRight, User } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
@@ -18,6 +17,8 @@ const props = defineProps<{
         telefono?: string;
         url?: string; // 2. Aggiunta la prop opzionale url
     }>;
+    title?: string;
+    description?: string;
 }>();
 
 const maxAvatars = 3; 
@@ -80,10 +81,10 @@ const finalWidth = computed(() => {
                 </div>
                 <div class="flex flex-col">
                     <span class="text-xl font-bold text-slate-900 dark:text-white tracking-tight">
-                        {{ trans('condomini.table.residents') }}
+                        {{ title || trans('condomini.table.residents') }}
                     </span>
                      <span class="text-sm text-slate-500 dark:text-slate-400 font-normal">
-                        {{ trans('condomini.table.residents_desc') }}
+                        {{ description || trans('condomini.table.residents_desc') }}
                     </span>
                 </div>
             </div>
@@ -96,7 +97,7 @@ const finalWidth = computed(() => {
         <Separator class="mb-2 bg-slate-100 dark:bg-slate-800" />
         
         <div class="px-4 pb-2 pt-2">
-          <ScrollArea class="max-h-[calc(100vh-250px)] w-full pr-4">
+          <div class="max-h-[min(320px,calc(100vh-250px))] w-full overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div class="flex flex-col gap-3 py-2 pb-24">
               
               <component
@@ -133,7 +134,7 @@ const finalWidth = computed(() => {
 
               </component>
             </div>
-          </ScrollArea>
+          </div>
         </div>
         
         <DrawerFooter class="absolute bottom-0 left-0 right-0 pt-4 border-t border-slate-100 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md rounded-b-3xl px-6 pb-6 flex items-center justify-center">

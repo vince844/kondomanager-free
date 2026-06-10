@@ -3,7 +3,7 @@
 > **Stato:** Bozza di design — da rifinire prima dell'implementazione
 > **Versione target:** v1.15
 > **Dipendenze:** Motore Riparto Unificato (v1.11), Anagrafica Immobiliare + `forniture_immobile` (v1.10.1)
-> **Ultimo aggiornamento:** merge — architettura di ingestion + ecosistema hardware + contratto canonico + `tracciato_import`
+> **Ultimo aggiornamento:** analisi export reale bMeters BMetering (§5.3) — due front-end parsing CSV/spreadsheet, formato di riferimento, sorgente generale tra i punti aperti
 
 ---
 
@@ -145,20 +145,22 @@ Specifica concreta del formato unico verso cui tutto si traduce. È il contratto
 
 ## 5. Profilo di import (`tracciato_import`)
 
-Il pezzo che tocca direttamente l'utente nel percorso CSV. Incapsula tutto ciò che serve a interpretare un export di un produttore specifico, in modo riutilizzabile.
+Il pezzo che tocca direttamente l'utente nel percorso di import da file. Incapsula tutto ciò che serve a interpretare un export di un produttore specifico, in modo riutilizzabile. **Nota dall'analisi di un file reale (export BMetering): il formato non è sempre CSV** — BMetering esporta in `.xls`. L'import deve quindi gestire sia CSV sia spreadsheet. La specifica concreta di questo formato è in §5.3.
 
-### 5.1 Perché non basta "mappare le colonne"
+### 5.1 Due front-end di parsing: CSV e spreadsheet
 
-In Italia il parsing CSV deve gestire diverse insidie oltre all'ordine delle colonne:
+L'import deve gestire due famiglie di formato, perché i produttori esportano in entrambe:
 
+**CSV** — strutturalmente semplice ma pieno di insidie in Italia, tutte da catturare nel profilo:
 - **Separatore di campo**: virgola vs **punto e virgola** (Excel italiano usa il `;`)
 - **Separatore decimale**: il `;` italiano implica spesso la virgola decimale
 - **Formato data**: `GG/MM/AAAA` vs ISO `AAAA-MM-GG` vs altri
-- **Unità di misura**: litri vs m³ (con conversione)
 - **Righe di intestazione/metadati** da saltare prima dei dati
 - **Encoding**: UTF-8 vs Latin-1/Windows-1252
 
-Tutto questo va catturato nel profilo, non gestito ad hoc a ogni import.
+**Spreadsheet (`.xls`/`.xlsx`)** — qui le insidie del CSV **spariscono**: i numeri sono valori tipizzati (69.966 è un float, non testo "69,966") e le date sono date native. Restano rilevanti solo la mappatura colonne, le righe di intestazione e l'unità di misura. Per i `.xls` legacy serve il motore `xlrd` (openpyxl li rifiuta); per `.xlsx` openpyxl o `extract-text`.
+
+**Comune a entrambi:** unità di misura (litri vs m³ con conversione) e mappatura delle colonne logiche → campi canonici. Tutto va catturato nel profilo, non gestito ad hoc a ogni import.
 
 ### 5.2 Struttura `tracciato_import`
 
@@ -167,6 +169,7 @@ Tutto questo va catturato nel profilo, non gestito ad hoc a ogni import.
 | `id` | BIGINT PK | |
 | `nome` | VARCHAR | Es. "Export BMetering" |
 | `descrizione_sorgente` | VARCHAR nullable | Produttore/software di origine |
+| `formato_file` | VARCHAR(50) | Backed Enum: `csv`, `xls`, `xlsx` — determina il front-end di parsing |
 | `mappatura_colonne` | JSON | `{matricola: 0, data: 2, valore: 3, ...}` (indice o nome colonna) |
 | `delimitatore` | VARCHAR(5) | `,` `;` `\t` |
 | `separatore_decimale` | VARCHAR(1) | `.` o `,` |
@@ -177,7 +180,43 @@ Tutto questo va catturato nel profilo, non gestito ad hoc a ogni import.
 | `condiviso` | BOOLEAN | Preset community vs profilo privato |
 | `created_at` / `updated_at` | TIMESTAMP | |
 
+> I campi `delimitatore`, `separatore_decimale` ed `encoding` si applicano solo a `formato_file = csv`. Per gli spreadsheet (`xls`/`xlsx`) sono ignorati: le celle sono già tipizzate.
+
 **UX risultante:** primo caricamento → configuri e salvi il profilo. Caricamenti successivi → "scegli profilo, carica file, conferma". I profili `condiviso = true` per i produttori comuni (bMeters, Maddalena, Sensus, Istmeca) diventano preset distribuiti: uno li configura, la community ne beneficia. Stesso spirito dei DTO canonici + adapter del modulo import dati.
+
+### 5.3 Formato di riferimento: export bMeters BMetering
+
+Analisi di un export reale fornito dalla community (file `.xls`, 13 contatori, raccolta walk-by — tutte le letture nello stesso giro in ~2 minuti, conferma concreta dello scenario §3.3). Header sulla prima riga, nessuna riga di metadati in testa; 58 colonne di cui ~21 popolate.
+
+**Mappatura colonne → campi canonici:**
+
+| Colonna BMetering | Campo canonico | Esempio | Note |
+|-------------------|----------------|---------|------|
+| `Contatore n°` | `matricola` (→ `contatore_id`) | `231321592A` | **Chiave di match.** Stabile e affidabile |
+| `Data lettura` | `data_lettura` | `2026-06-03 13:14:00` | Datetime nativo |
+| `Lettura` | `valore` | `69.966` (m³) | **In m³ con 3 decimali → ×1000 = 69966 litri** |
+| `Interno` | etichetta immobile (informativa) | `INT.8`, `INT10`, `INT.1A` | Formato incoerente: **non usare come chiave di match** |
+| `Modulo n°` | seriale trasmettitore (opzionale) | `23663478` | La "unità di trasmissione" radio sul contatore |
+| `Tipo di modulo` | tipo radio (opzionale) | `RFM-TX1.1 / 2.1` | |
+| `Gennaio`…`Dicembre` | storico mensile cumulato | `54.73`, `58.24`… | In m³; può popolare periodi storici |
+| `Tensione` | diagnostica batteria (opzionale) | `3.05` V | Possibile alert "batteria scarica" |
+
+**Profilo `tracciato_import` corrispondente:**
+```
+formato_file:        xls
+unita_misura:        mc          # → conversione ×1000 verso litri
+righe_intestazione:  1
+mappatura_colonne:   { matricola: "Contatore n°", data: "Data lettura",
+                       valore: "Lettura", etichetta: "Interno" }
+# delimitatore / separatore_decimale / encoding: N/A (spreadsheet tipizzato)
+```
+
+**Lezioni recepite nel design:**
+1. Il formato è `.xls`, non CSV → necessari due front-end di parsing (§5.1).
+2. Valori in m³ decimali → conversione ×1000 verso litri; conferma la necessità di `unita_misura` e conversione a livello di profilo, non solo di contatore.
+3. Match sul seriale contatore, mai sull'`Interno` (incoerente tra le righe).
+4. **Nel file ci sono solo contatori individuali, nessun generale** → la lettura del contatore generale per il calcolo sfrido va da altra fonte (file separato, inserimento manuale, o volume da bolletta). Vedi §9.
+5. Colonne allarme/diagnostica (perdita, frode, batteria, RSSI) presenti ma quasi sempre vuote → possibile enhancement: catturarle come flag/metadati sulla lettura (§9).
 
 ---
 
@@ -284,7 +323,7 @@ Risultato del calcolo per immobile in un periodo. È la **tabella dinamica** con
 
 ### 6.7 Nota sulle unità di misura
 
-Per rispettare il principio "no floating point", i valori sono interi. **Decisione confermata per l'acqua: memorizzare in litri** (1 mc = 1000 L). Conferma esterna: i dispositivi bMeters lavorano in litri (un contatore che mostra 1,231 m³ corrisponde a 1231). Per calore (Wh/kWh) e gas (litri/dl) l'unità base resta da confermare. Il campo `unita_misura` + `fattore_conversione` documentano la conversione per la visualizzazione.
+Per rispettare il principio "no floating point", i valori sono memorizzati come **interi in litri** per l'acqua (1 mc = 1000 L). Attenzione a due contesti diversi rilevati: l'export reale del software BMetering riporta la lettura **in m³ con 3 decimali** (es. 69.966), quindi l'import converte ×1000 → 69966 litri; il manuale bMeters, in un contesto di inserimento manuale verso software terzi, chiede invece il valore già in litri (1.231 m³ → 1231). In entrambi i casi l'unità interna è il litro; la conversione è guidata da `tracciato_import.unita_misura` (unità del file sorgente) e dal `fattore_conversione` del contatore. Per calore (Wh/kWh) e gas (litri/dl) l'unità base resta da confermare (§9).
 
 ---
 
@@ -349,6 +388,8 @@ La Fase 1 è il MVP funzionale completo: l'amministratore gestisce l'intero cicl
 7. **Permessi/ruoli:** chi può inserire/modificare letture e chiudere periodi? Allineare al sistema di permessi esistente.
 8. **Modifica lettura dopo chiusura periodo:** correzione errori in periodo chiuso (probabile riapertura con ricalcolo, tracciata).
 9. **Profili condivisi:** meccanismo di distribuzione dei preset `tracciato_import` (bundle nel repo? import/export profilo? contributo via forum?).
+10. **Sorgente lettura contatore generale:** l'export individuale non contiene il generale (confermato dal file reale). Da dove arriva la lettura del generale per lo sfrido? File/lettura separata, inserimento manuale, o volume da bolletta. Definire il flusso e cosa fare se il generale manca (sfrido non calcolabile → solo somma individuali?).
+11. **Dati diagnostici/allarme:** se catturare perdita d'acqua, frode, batteria scarica (Tensione), RSSI come flag/metadati sulla lettura. Enhancement utile per l'amministratore ma non core; valutare un campo JSON `diagnostica` su `letture`.
 
 ---
 

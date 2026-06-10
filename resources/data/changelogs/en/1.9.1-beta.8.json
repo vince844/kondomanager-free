@@ -6,6 +6,7 @@
         "Centralized Inbox and Polymorphism: Refactored ActionInboxController and InboxService for dynamic management of user actions with a universal createTask() builder.",
         "Migrations Resilience: Shielded migrations against PHP timeouts on Windows and Shared Hosting systems by adding set_time_limit(0) and partial cleanup patterns.",
         "Tests Security: Implemented a global block in TestCase to prevent the accidental execution of the test suite on the real database.",
-        "Developer Note: After updating the code to the latest version and running migrations, it is necessary to run 'php artisan db:seed --class=RolesAndPermissionsSeeder' to align the newly inserted permissions."
+        "Developer Note: After updating the code to the latest version and running migrations, it is necessary to run 'php artisan db:seed --class=RolesAndPermissionsSeeder' to align the newly inserted permissions.",
+        "False positive User Debts: Resolved a critical bug that kept installments visible in the condo owner's dashboard even after settlement. Zero-amount installments (e.g., Initial Balance) are now automatically marked as paid, and the payment reporting button is hidden when no payment is required."
     ]
 }

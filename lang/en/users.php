@@ -28,6 +28,12 @@ return [
      | ------------------------------------------------------------------ */
     'header' => [
         'list_users_head'                    => 'Users list',
+        'list_roles_head'                    => 'Roles Management',
+        'list_roles_description'             => 'Define and manage access levels for each type of user.',
+        'list_permissions_head'              => 'Permissions List',
+        'list_permissions_description'       => 'View all permissions available within the application.',
+        'list_invites_head'                  => 'Invites List',
+        'list_invites_description'           => 'Monitor invites sent to new collaborators and their status.',
         'edit_user_head'                     => 'Edit user',
         'new_user_head'                      => 'Create new user',
         'new_user_title'                     => 'Create new user',
@@ -47,6 +53,8 @@ return [
         'email'              => 'Email address',
         'role'               => 'Role',
         'permissions'        => 'Permissions',
+        'anagrafica'         => 'Resident record',
+        'no_anagrafica'      => 'No resident record',
         'status'             => 'Status',
         'suspended'          => 'Suspended',
         'active'             => 'Active',
@@ -103,6 +111,7 @@ return [
         'role_line_2' => 'Permissions associated with the role will be inherited automatically.',
         'resident'    => 'Select the resident record to associate with the user. The associated resident record will be able to access the system with the credentials of the created user and view their data and related information.',
         'permissions' => 'Select specific permissions to assign to the user in addition to those inherited from the selected role.',
+        'resident_drawer_desc' => 'Details of the resident record associated with this user.',
     ],
 
     /* ------------------------------------------------------------------
@@ -143,7 +152,19 @@ return [
      | Layout
      | ------------------------------------------------------------------ */
     'layout' => [
-        'heading_title'       => 'User management',
-        'heading_description' => 'Below is a list of registered users, roles, permissions and invitations',
+        'heading_title'       => 'User Management',
+        'heading_description' => 'Below is a list of registered users, roles, permissions, and invites',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'users_title' => 'Users and Access',
+        'users_desc'  => 'Manage who has access to the platform and their related records.',
+        'roles_title' => 'Roles and Permissions',
+        'roles_desc'  => 'Define authorization levels to protect sensitive data.',
+        'invites_title' => 'Invites',
+        'invites_desc'  => 'Send and track invitations for new collaborators.',
     ],
 ];

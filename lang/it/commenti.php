@@ -4,7 +4,7 @@ return [
     'titolo' => 'Commenti',
     'in_attesa' => 'In attesa',
     'disabilita' => 'Disabilita commenti',
-    'abilita' => 'Abilita Commenti',
+    'abilita' => 'Abilita commenti',
     'nessun_commento' => 'Nessun commento ancora. Scrivi il primo!',
     'autore_sconosciuto' => 'Utente Sconosciuto',
     'conferma_elimina' => 'Sei sicuro di voler eliminare questo commento?',

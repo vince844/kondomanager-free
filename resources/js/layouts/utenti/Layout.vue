@@ -1,11 +1,17 @@
 <script setup lang="ts">
 
-import Heading from '@/components/Heading.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/vue3';
-import { UsersRound, Drama, KeyRound, Mails } from 'lucide-vue-next';
+import { UsersRound, Drama, KeyRound, Mails, ShieldCheck, Mail, Users } from 'lucide-vue-next';
 import { trans } from 'laravel-vue-i18n';
-import type { LinkItem } from '@/types';
+import type { LinkItem, BreadcrumbItem } from '@/types';
+
+const props = defineProps<{
+    pageTitle?: string;
+    pageSubtitle?: string;
+    breadcrumbs?: BreadcrumbItem[];
+}>();
 
 const sidebarNavItems: LinkItem[] = [
     {
@@ -36,13 +42,40 @@ const sidebarNavItems: LinkItem[] = [
 
 const currentPath = window.location.pathname;
 
+const pageGuides = [
+  {
+    title: trans('users.guides.users_title'),
+    description: trans('users.guides.users_desc'),
+    icon: Users,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('users.guides.roles_title'),
+    description: trans('users.guides.roles_desc'),
+    icon: ShieldCheck,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: trans('users.guides.invites_title'),
+    description: trans('users.guides.invites_desc'),
+    icon: Mail,
+    colorVariant: 'amber' as const
+  }
+];
+
 </script>
 
 <template>
-    <div class="px-4 py-6">
-        <Heading 
-            :title="trans('users.layout.heading_title')" 
-            :description="trans('users.layout.heading_description')"  
+    <div class="px-4 py-6 space-y-6">
+        
+        <PageHeaderGuide
+            :page-title="props.pageTitle || trans('users.layout.heading_title')" 
+            :page-subtitle="props.pageSubtitle || trans('users.layout.heading_description')"
+            :guides="pageGuides"
+            :breadcrumbs="props.breadcrumbs || []"
+            back-url="/impostazioni"
+            :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
+            :video-url="null"
         />
 
         <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
