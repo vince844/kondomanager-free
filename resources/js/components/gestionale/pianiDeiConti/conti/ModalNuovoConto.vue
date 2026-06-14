@@ -33,7 +33,7 @@ const emit = defineEmits<Emits>()
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
 const { tabelle, isLoading: isLoadingTabelle, fetchTabelle } = useTabelle()
-const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti } = useCapitoliConti()
+const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
 
 const moneyOptions = ref({
   prefix: '',              
@@ -78,6 +78,14 @@ watch(isSottoConto, (val) => {
   form.isSottoConto = val 
 })
 
+watch(() => form.tabella_millesimale_id, () => {
+  form.clearErrors('tabella_millesimale_id')
+})
+
+watch(() => form.parent_id, () => {
+  form.clearErrors('parent_id')
+})
+
 const closeModal = () => {
   emit('update:show', false)
   form.reset()
@@ -106,6 +114,7 @@ const submit = () => {
       form.reset()
       isCapitolo.value = false
       isSottoConto.value = false
+      resetCapitoli()
       emit('success')
       closeModal()
     },

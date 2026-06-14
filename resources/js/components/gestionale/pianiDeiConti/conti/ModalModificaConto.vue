@@ -38,7 +38,7 @@ const emit = defineEmits<Emits>()
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
 
-const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti } = useCapitoliConti()
+const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
 const { euro } = useCurrencyFormatter()
 
 const moneyOptions = ref({
@@ -114,7 +114,7 @@ watch(
     form.parent_id = newConto.parent_id
 
     form.tabella_millesimale_id = newConto.tabelle_millesimali?.[0]?.tabella_id ?? null
-    form.percentuale_proprietario = getPercentualeBySoggetto(newConto, 'proprietario') || 100
+    form.percentuale_proprietario = getPercentualeBySoggetto(newConto, 'proprietario') ?? 100
     form.percentuale_inquilino = getPercentualeBySoggetto(newConto, 'inquilino')
     form.percentuale_usufruttuario = getPercentualeBySoggetto(newConto, 'usufruttuario')
 
@@ -147,6 +147,14 @@ watch(isSottoConto, (val) => {
     form.isCapitolo = false
   }
   form.isSottoConto = val
+})
+
+watch(() => form.tabella_millesimale_id, () => {
+  form.clearErrors('tabella_millesimale_id')
+})
+
+watch(() => form.parent_id, () => {
+  form.clearErrors('parent_id')
 })
 
 const closeModal = () => emit('update:show', false)
@@ -190,6 +198,7 @@ const submit = () => {
       preserveScroll: true,
       onSuccess: () => {
         resetForm()
+        resetCapitoli()
         emit('success')
         closeModal()
       },

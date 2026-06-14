@@ -12,6 +12,15 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 > Pagamento delle fatture passive, riconciliazione bancaria e rendiconto di cassa.
 ---
 
+## [1.9.1-beta.9] - Hotfix UI Piano dei Conti
+
+### Corretto
+- **Dropdown Capitoli Padre:** Risolto un bug nell'interfaccia di inserimento e modifica dei conti per cui il menu a tendina "Capitolo padre" non si aggiornava istantaneamente dopo la creazione di un nuovo capitolo, costringendo l'utente a ricaricare la pagina. Ora la cache del componente si invalida e si sincronizza automaticamente al salvataggio.
+- **Modifica Ripartizione Proprietario a 0%:** Risolto un bug nel modale di modifica dei sottoconti che forzava visivamente la quota del proprietario al 100% in apertura, ignorando il salvataggio legittimo di una quota pari allo 0% (es. per spese totalmente a carico dell'inquilino).
+- **Rimozione Errori Validazione Dinamici:** Risolto un problema di usabilità nel modale di creazione e modifica dei conti in cui gli errori rossi di validazione per i campi "Tabella Millesimale" e "Capitolo Padre" rimanevano visibili anche dopo che l'utente aveva selezionato un valore valido dalla tendina. Gli errori ora scompaiono in tempo reale al variare della selezione.
+
+---
+
 ## [1.9.1-beta.8] - Modulo Commenti per Segnalazioni Guasto
 
 ### Aggiunto
