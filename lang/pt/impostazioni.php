@@ -14,6 +14,7 @@ return [
     'error_regenerate_cron_token'             => 'Ocorreu um erro ao regenerar o token.',
     'success_save_mail_settings'              => 'Configuração de email guardada com sucesso.',
     'error_save_mail_settings'                => 'Erro ao guardar a configuração de email.',
+    'success_save_print_settings'             => 'Configurações de impressão guardadas com sucesso.',
 
     /* ------------------------------------------------------------------
      | Mail Status Badge
@@ -72,6 +73,13 @@ return [
         'encryption_none'       => 'Nenhuma',
         'mail_sendmail_path'      => 'Caminho do Sendmail',
         'mail_sendmail_path_hint' => 'Deixe o valor padrão se não tiver certeza. Altere apenas se o seu servidor usar um caminho diferente.',
+        'print_legal_note'        => 'Nota Legal / Rodapé',
+        'print_legal_note_help'   => 'Este texto aparecerá no rodapé de cada demonstrativo, junto com o número da página.',
+        'print_admin_signature'   => 'Assinatura do Administrador',
+        'print_no_signature'      => 'Sem assinatura',
+        'print_upload_image'      => 'Enviar Imagem',
+        'print_remove_signature'  => 'Remover',
+        'print_signature_help'    => 'Use uma imagem PNG ou JPG com fundo branco ou transparente (máx. 2MB). A imagem será impressa no final da última página dos demonstrativos e relatórios.',
     ],
 
     /* ------------------------------------------------------------------
@@ -102,7 +110,8 @@ return [
 
         'mail_settings_title'       => 'Configuração de email',
         'mail_settings_description' => 'Escolha o método de envio, configure as credenciais e teste a ligação.',
-
+        'print_settings_title'                  => 'Configurações de Impressão PDF',
+        'print_settings_description'            => 'Configure a aparência e os dados predefinidos que aparecerão na parte inferior de todos os documentos gerados pelo sistema.',
         'mail_guide_title'   => 'Guia de configuração',
         'mail_guide_gmail'   => 'Gmail (recomendado para todos): Ative a verificação em 2 passos, gere uma "Palavra-passe de aplicação" e use smtp.gmail.com, porta 587, TLS. Funciona em qualquer alojamento sem configurações DNS.',
         'mail_guide_smtp2go' => 'Outros fornecedores SMTP (Brevo, SMTP2Go, etc.): requerem verificação do domínio remetente via registos DNS (SPF/DKIM). Use esta opção apenas se tiver um domínio próprio com acesso ao painel DNS.',
@@ -158,6 +167,7 @@ return [
         'mail_from_address'   => 'ex: geral@seu-dominio.pt',
         'test_recipient'      => 'Inserir e-mail para o teste',
         'select_role'         => 'Selecione uma função',
+        'print_legal_note'    => 'Ex: Profissão exercida nos termos da lei de 14 de janeiro de 2013, n.4 - NIF 01234567890 - Apólice RC n. XYZ',
 
         'language' => [
             'it' => 'Italiano',
@@ -192,5 +202,11 @@ return [
         'access_desc'    => 'Simplifique o seu trabalho diário: configure um condomínio específico para abrir automaticamente logo após iniciar sessão, saltando o dashboard.',
         'security_title' => 'Registo e Papéis',
         'security_desc'  => 'Ative o registo público no site. Aos novos inscritos será automaticamente atribuído o papel predefinido que selecionar aqui.',
+        'print_footer_title' => 'Rodapé dos documentos',
+        'print_footer_desc'  => 'Configure o texto legal que aparecerá na parte inferior de todos os PDFs gerados.',
+        'print_signature_title' => 'Assinatura de documentos',
+        'print_signature_desc'  => 'Carregue ou desenhe a sua assinatura para anexar a relatórios e documentos oficiais.',
+        'print_layout_title' => 'Formato e layout',
+        'print_layout_desc'  => 'Todos os documentos são gerados automaticamente em formato A4, com margens adaptáveis para o cabeçalho.',
     ],
 ];

@@ -4,7 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -55,6 +55,12 @@ const apps = computed(() => [
     logo: Settings,
     desc: 'impostazioni.dialogs.general_settings_description',
     href: "/impostazioni/generali", 
+  },
+  {
+    name: 'impostazioni.dialogs.print_settings_title',
+    logo: Printer,
+    desc: 'impostazioni.dialogs.print_settings_description',
+    href: "/impostazioni/stampe",
   },
   {
     name: 'impostazioni.dialogs.users_settings_title',

@@ -14,6 +14,7 @@ return [
     'error_regenerate_cron_token'             => 'Si è verificato un errore durante la rigenerazione del token',
     'success_save_mail_settings'              => 'Configurazione email salvata con successo',
     'error_save_mail_settings'                => 'Errore durante il salvataggio della configurazione email',
+    'success_save_print_settings'             => 'Impostazioni di stampa salvate con successo',
 
     /* ------------------------------------------------------------------
      | Mail Status Badge
@@ -72,6 +73,13 @@ return [
         'encryption_none'       => 'Nessuna',
         'mail_sendmail_path'      => 'Percorso Sendmail',
         'mail_sendmail_path_hint' => 'Lascia il valore di default se non sai cosa modificare. Cambia solo se il tuo server usa un percorso diverso.',
+        'print_legal_note'        => 'Nota Legale / Footer',
+        'print_legal_note_help'   => 'Questo testo apparirà nel footer (piè di pagina) di ogni prospetto, assieme al numero di pagina.',
+        'print_admin_signature'   => 'Firma Amministratore',
+        'print_no_signature'      => 'Nessuna firma',
+        'print_upload_image'      => 'Carica Immagine',
+        'print_remove_signature'  => 'Rimuovi',
+        'print_signature_help'    => 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max 2MB). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.',
     ],
 
     /* ------------------------------------------------------------------
@@ -101,6 +109,8 @@ return [
         'force_comment_moderation_description'  => 'Se attivato, tutti i commenti degli utenti normali richiederanno l\'approvazione di un amministratore prima di essere pubblicati e visibili.',
         'mail_settings_title'                   => 'Configurazione email',
         'mail_settings_description'             => 'Scegli il metodo di invio, configura le credenziali e testa la connessione.',
+        'print_settings_title'                  => 'Impostazioni Stampe PDF',
+        'print_settings_description'            => 'Configura l\'aspetto e i dati predefiniti che appariranno in fondo a tutti i documenti generati dal sistema.',
         'mail_guide_title'                      => 'Guida alla configurazione',
         'mail_guide_gmail'                      => 'Gmail (consigliato per tutti): Attiva la verifica in 2 passaggi, genera una "Password per le App" e usa smtp.gmail.com, porta 587, TLS. Funziona su qualsiasi hosting senza configurazioni DNS.',
         'mail_guide_smtp2go'                    => 'Altri provider SMTP (Brevo, SMTP2Go, ecc.): richiedono la verifica del dominio mittente tramite record DNS (SPF/DKIM). Usa questa opzione solo se hai un dominio proprio con accesso al pannello DNS.',
@@ -151,6 +161,7 @@ return [
         'mail_from_address'   => 'es. amministrazione@studio-rossi.it',
         'test_recipient'      => 'Inserisci l\'email per il test',
         'select_role'         => 'Seleziona un ruolo',
+        'print_legal_note'    => 'Es: Professione esercitata ai sensi della legge 14 gennaio 2013, n.4 - P.IVA 01234567890 - Polizza RC n. XYZ',
 
         'language' => [
             'it' => 'Italiano',
@@ -185,5 +196,11 @@ return [
         'access_desc'    => 'Semplifica il lavoro quotidiano: imposta l\'apertura automatica di un condominio specifico subito dopo il login, saltando la dashboard.',
         'security_title' => 'Registrazione e Ruoli',
         'security_desc'  => 'Abilita la registrazione pubblica sul sito web. Ai nuovi iscritti verrà assegnato automaticamente il ruolo predefinito che scegli qui.',
+        'print_footer_title' => 'Piè di pagina documenti',
+        'print_footer_desc'  => 'Imposta la dicitura legale che apparirà in fondo a tutti i PDF generati.',
+        'print_signature_title' => 'Firma documenti',
+        'print_signature_desc'  => 'Carica o disegna la tua firma da apporre nei rendiconti e nei documenti ufficiali.',
+        'print_layout_title' => 'Formato e layout',
+        'print_layout_desc'  => 'Tutti i documenti vengono generati automaticamente in formato A4, con margini adattivi per l\'intestazione.',
     ],
 ];

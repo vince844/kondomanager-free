@@ -24,6 +24,15 @@
 
     <div class="content">
         @yield('content')
+
+        @if(!empty($firma_stampe_absolute_path))
+            <div style="margin-top: 40px; text-align: right; page-break-inside: avoid;">
+                <div style="font-size: 10pt; margin-bottom: 10px; color: #1e3a5f;">
+                    L'Amministratore
+                </div>
+                <img src="{{ $firma_stampe_absolute_path }}" style="max-width: 180px; max-height: 80px; object-fit: contain;">
+            </div>
+        @endif
     </div>
 
 </body>

@@ -1,5 +1,7 @@
 {
     "features": [
+        "PDF Print Settings: Added a new global configuration panel dedicated to prints. It is now possible to define a Legal Note (e.g. profession exercised pursuant to Law 4/2013, VAT number, RC Policy) that will appear as a footer in all generated statements.",
+        "Administrator Signature: Implemented the ability to upload the administrator's signature image (in PNG or JPG format), which will be automatically affixed to the bottom of official documents such as reports and installment statements.",
         "Parent Chapters Dropdown: Fixed a bug in the chart of accounts creation and modification interface where the \"Parent chapter\" dropdown did not update instantly after creating a new chapter, forcing the user to reload the page. The component cache now invalidates and synchronizes automatically upon saving.",
         "Owner Allocation Modification to 0%: Fixed a bug in the sub-account modification modal that visually forced the owner's share to 100% upon opening, ignoring the legitimate saving of a 0% share (e.g., for expenses entirely borne by the tenant).",
         "Dynamic Validation Errors Removal: Fixed a usability issue in the account creation and modification modal where red validation errors for the \"Allocation Table\" and \"Parent Chapter\" fields remained visible even after the user selected a valid value from the dropdown. Errors now disappear in real-time as the selection changes."

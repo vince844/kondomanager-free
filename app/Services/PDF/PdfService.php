@@ -2,6 +2,8 @@
 
 namespace App\Services\PDF;
 
+use App\Settings\PrintSettings;
+use Illuminate\Support\Facades\Storage;
 use Mpdf\Mpdf;
 use Illuminate\Support\Facades\View;
 
@@ -23,6 +25,7 @@ class PdfService
      */
     public function generate(string $view, array $data = [], array $config = []): Mpdf
     {
+        $settings = app(PrintSettings::class);
         $defaultConfig = [
             'mode'          => 'utf-8',
             'format'        => 'A4',
@@ -40,8 +43,26 @@ class PdfService
 
         $mpdf = new Mpdf($finalConfig);
         
-        // Add default footer with legal text and page numbering
-        $mpdf->SetFooter('Professione esercitata ai sensi della legge 14 gennaio 2013, n.4||Pagina {PAGENO} di {nbpg}');
+        // Add dynamic footer with legal text from settings and page numbering
+        $footerText = trim($settings->nota_legale_stampe ?? '');
+        
+        $footerHtml = '
+            <div style="border-top: 1px solid #ddd; padding-top: 5px; font-size: 8pt; font-weight: normal; color: #555;">
+                <table width="100%" style="border-collapse: collapse;">
+                    <tr>
+                        <td style="text-align: left; width: 80%; white-space: nowrap; overflow: hidden;">' . htmlspecialchars($footerText) . '</td>
+                        <td style="text-align: right; width: 20%;">Pagina {PAGENO} di {nbpg}</td>
+                    </tr>
+                </table>
+            </div>
+        ';
+        $mpdf->SetHTMLFooter($footerHtml);
+
+        // Prepare signature path for the view
+        $data['firma_stampe_absolute_path'] = null;
+        if ($settings->firma_stampe_path && Storage::disk('public')->exists($settings->firma_stampe_path)) {
+            $data['firma_stampe_absolute_path'] = Storage::disk('public')->path($settings->firma_stampe_path);
+        }
 
         $html = View::make($view, $data)->render();
         

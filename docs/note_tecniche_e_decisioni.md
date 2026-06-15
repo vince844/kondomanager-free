@@ -471,6 +471,52 @@ e il form di modifica dovrà comunque supportare la modalità IVA manuale.
 
 ---
 
+## Decisione — Footer stampe configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
+
+*(Decisione presa in data 2026-06-14.)*
+
+---
+
+### Contesto
+
+Le stampe PDF (Distinta Pagamento, Prospetto Rate, Ripartizione Spese, ecc.) oggi
+riportano diciture fisse nel footer tipo "professione esercitata ai sensi della L. 4/2013".
+Questa dicitura è **giuridicamente corretta solo per i professionisti** sotto quel regime.
+Taglia fuori:
+- L'**amministratore-condòmino** (art. 71-bis disp. att. c.c. — nessun obbligo di
+  formazione se nominato tra i condòmini dello stabile).
+- Le **società di servizi** (ragione sociale, P.IVA societaria, REA).
+
+### Decisione
+
+**Un singolo campo testo libero** gestito tramite **Spatie Settings**, nessuna tabella
+dedicata, nessun modello, nessuna relazione.
+
+**Scartato:**
+- ❌ Tabella `profili_stampa` con `hasOne` su `users` — over-engineering per un singolo
+  campo di testo.
+- ❌ Enum `tipo_soggetto` con UI adattiva (professionista/condòmino/società) — l'admin
+  sa chi è e cosa scrivere, non serve che il software decida per lui.
+- ❌ Campi strutturati (denominazione, indirizzo, telefono, PEC, polizza…) — il footer
+  è un blocco di testo, non un form strutturato.
+
+**Implementazione:**
+- Aggiungere un setting `nota_legale_stampe` (tipo `text`, nullable) nella classe
+  Settings Spatie già esistente.
+- Nella pagina Impostazioni del gestionale, esporre una **textarea** con placeholder
+  esplicativo (es. "Inserisci i tuoi dati professionali, il riferimento normativo e/o
+  la polizza RC. Questo testo apparirà nel footer di tutte le stampe PDF.").
+- Nel layout master mPDF, stampare il contenuto del setting così com'è, senza
+  interpretazione né formattazione automatica.
+- Il footer è **identico su tutte le stampe** — non c'è nessuno scenario in cui serve
+  un footer diverso per tipo di documento.
+
+**Conformità.** Coerente con l'art. 1129 c.c. (dati anagrafici/professionali e luogo di
+conservazione dei registri). L'amministratore scrive liberamente ciò che la normativa
+richiede per il suo caso specifico.
+
+---
+
 ## Note varie
 
 _(da popolare)_

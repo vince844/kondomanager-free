@@ -14,6 +14,7 @@ return [
     'error_regenerate_cron_token'             => 'An error occurred while regenerating the token.',
     'success_save_mail_settings'              => 'Email configuration saved successfully.',
     'error_save_mail_settings'                => 'Error while saving the email configuration.',
+    'success_save_print_settings'             => 'Print settings have been saved successfully.',
 
     /* ------------------------------------------------------------------
      | Mail Status Badge
@@ -72,6 +73,13 @@ return [
         'encryption_none'       => 'None',
         'mail_sendmail_path'      => 'Sendmail path',
         'mail_sendmail_path_hint' => 'Leave the default value if unsure. Change only if your server uses a different path.',
+        'print_legal_note'        => 'Legal Note / Footer',
+        'print_legal_note_help'   => 'This text will appear in the footer of every statement, along with the page number.',
+        'print_admin_signature'   => 'Administrator Signature',
+        'print_no_signature'      => 'No signature',
+        'print_upload_image'      => 'Upload Image',
+        'print_remove_signature'  => 'Remove',
+        'print_signature_help'    => 'Use a PNG or JPG image with a white or transparent background (max 2MB). The image will be printed at the end of the last page of statements and reports.',
     ],
 
     /* ------------------------------------------------------------------
@@ -102,7 +110,8 @@ return [
 
         'mail_settings_title'       => 'Email configuration',
         'mail_settings_description' => 'Choose the sending method, configure credentials and test the connection.',
-
+        'print_settings_title'                  => 'PDF Print Settings',
+        'print_settings_description'            => 'Configure the appearance and default data that will appear at the bottom of all system generated documents.',
         'mail_guide_title'   => 'Configuration guide',
         'mail_guide_gmail'   => 'Gmail (recommended for everyone): Enable 2-step verification, generate an "App Password" and use smtp.gmail.com, port 587, TLS. Works on any hosting without DNS configuration.',
         'mail_guide_smtp2go' => 'Other SMTP providers (Brevo, SMTP2Go, etc.): require sender domain verification via DNS records (SPF/DKIM). Use this option only if you have your own domain with access to the DNS panel.',
@@ -158,6 +167,7 @@ return [
         'mail_from_address'   => 'e.g. admin@your-domain.com',
         'test_recipient'      => 'Enter email for test',
         'select_role'         => 'Select a role',
+        'print_legal_note'    => 'E.g.: Profession exercised pursuant to Law January 14, 2013, no. 4 - VAT 01234567890 - Liability Policy no. XYZ',
 
         'language' => [
             'it' => 'Italian',
@@ -192,5 +202,11 @@ return [
         'access_desc'    => 'Streamline your daily workflow: set a specific building to open automatically right after login, skipping the dashboard.',
         'security_title' => 'Registration & Roles',
         'security_desc'  => 'Enable public registration on the website. New registrants will automatically be assigned the default role you select here.',
+        'print_footer_title' => 'Document footer',
+        'print_footer_desc'  => 'Set the legal text that will appear at the bottom of all generated PDFs.',
+        'print_signature_title' => 'Document signature',
+        'print_signature_desc'  => 'Upload or draw your signature to append to reports and official documents.',
+        'print_layout_title' => 'Format & Layout',
+        'print_layout_desc'  => 'All documents are automatically generated in A4 format, with adaptive margins for the header.',
     ],
 ];
