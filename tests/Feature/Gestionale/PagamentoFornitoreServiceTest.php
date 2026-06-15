@@ -330,6 +330,42 @@ it('bonifico cumulativo: paga 2 fatture con 1 scrittura e tutto quadra', functio
     expect($pivotCount)->toEqual(2);
 });
 
+it('pagamento con bonifico parlante genera causale fiscale corretta', function () {
+    $ctx     = setupPagamenti();
+    $fattura = registraFatturaTest($ctx);
+    $service = new PagamentoFornitoreService();
+
+    // Assicuriamoci che il fornitore abbia la P.IVA per la causale
+    $ctx[3]->update(['partita_iva' => '12345678901']);
+    
+    $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura, [
+        'bonifico_parlante'      => true,
+        'tipo_detrazione'        => \App\Enums\TipoDetrazione::RISTRUTTURAZIONE->value,
+        'beneficiari_detrazione' => [
+            ['codice_fiscale' => 'RSSMRA80A01H501U', 'nome' => 'Mario Rossi']
+        ],
+    ]));
+
+    $pagamento->refresh();
+
+    expect($pagamento->bonifico_parlante)->toBeTrue();
+    expect($pagamento->tipo_detrazione)->toEqual(\App\Enums\TipoDetrazione::RISTRUTTURAZIONE);
+    expect($pagamento->beneficiari_detrazione)->toHaveCount(1);
+    
+    $base = sprintf(
+        'Pagamento %s del %s',
+        $fattura->numero_documento ?? "FT#{$fattura->id}",
+        $fattura->data_documento?->format('d/m/Y') ?? now()->format('d/m/Y')
+    );
+
+    $expectedCausale = "Bonifico Ristrutturazione edilizia - art. 16-bis DPR 917/1986 - Benef. CF: RSSMRA80A01H501U - P.IVA: 12345678901 - {$base}";
+    if (mb_strlen($expectedCausale) > 140) {
+        $expectedCausale = mb_substr($expectedCausale, 0, 137) . '...';
+    }
+    
+    expect($pagamento->causale_bonifico)->toEqual($expectedCausale);
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // GRUPPO 2 — NETTING (Fattura + Nota di Credito)
 // ════════════════════════════════════════════════════════════════════════════

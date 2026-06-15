@@ -30,6 +30,7 @@ use App\Models\Gestionale\PagamentoFornitore;
 use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -183,7 +184,7 @@ class PagamentoFornitoreService
                     'causale'            => $this->generaCausaleScrittura($fornitore, $fatture),
                     'tipo_movimento'     => TipoMovimentoContabile::PAGAMENTO_FORNITORE,
                     'stato'              => 'registrata',
-                    'created_by'         => auth()->id(),
+                    'created_by'         => Auth::id(),
                     'idempotency_key'    => $idempotencyKey,
                 ]);
 
@@ -325,7 +326,7 @@ class PagamentoFornitoreService
                     'beneficiari_detrazione' => $data['beneficiari_detrazione'] ?? null,
                     'stato'                  => StatoPagamentoFornitore::CONFERMATO,
                     'fornitore_snapshot'     => $this->costruisciSnapshot($fornitore),
-                    'user_id'                => auth()->id(),
+                    'user_id'                => Auth::id(),
                     'idempotency_key'        => $idempotencyKey,
                     'note_override'          => $data['nota_override'] ?? null,
                 ]);
@@ -339,7 +340,7 @@ class PagamentoFornitoreService
                         'pagamento_id'    => $pagamento->id,
                         'condominio_id'   => $condominioId,
                         'fornitore_id'    => (int) $data['fornitore_id'],
-                        'user_id'         => auth()->id(),
+                        'user_id'         => Auth::id(),
                         'allow_overdraft' => (bool) ($data['allow_overdraft'] ?? false),
                         'allow_overpayment' => (bool) ($data['allow_overpayment'] ?? false),
                         'nota_override'   => $data['nota_override'],
@@ -462,7 +463,7 @@ class PagamentoFornitoreService
                 'tipo_movimento'     => TipoMovimentoContabile::STORNO_PAGAMENTO_FORNITORE,
                 'stato'              => 'registrata',
                 'scrittura_padre_id' => $scritturaOriginale->id,
-                'created_by'         => auth()->id(),
+                'created_by'         => Auth::id(),
                 'idempotency_key'    => (string) Str::uuid(),
             ]);
 
@@ -537,7 +538,7 @@ class PagamentoFornitoreService
                 'storno_cross_esercizio' => $crossEsercizio,
                 'esercizio_storno_id'    => $crossEsercizio ? $esercizioTarget->id : null,
                 'fornitore_snapshot'     => $pagamento->fornitore_snapshot,
-                'user_id'                => auth()->id(),
+                'user_id'                => Auth::id(),
                 'idempotency_key'        => (string) Str::uuid(),
             ]);
 
@@ -661,7 +662,7 @@ class PagamentoFornitoreService
 
         $causale = sprintf(
             'Bonifico %s - %s - Benef. CF: %s - P.IVA: %s - %s',
-            $tipoDetrazione->descrizione(),
+            $tipoDetrazione->label(),
             $normativa,
             $cfs,
             $piva,
