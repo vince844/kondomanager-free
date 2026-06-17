@@ -42,6 +42,7 @@ class PagamentoFornitore extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
+        'condominio_id'          => 'integer',
         'data_pagamento'         => 'date',
         'data_valuta'            => 'date',
         'metodo_pagamento'       => MetodoPagamento::class,

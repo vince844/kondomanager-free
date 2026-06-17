@@ -57,6 +57,7 @@ class ScritturaContabile extends Model
     ];
 
     protected $casts = [
+        'condominio_id'      => 'integer',
         'data_registrazione' => 'date',
         'data_competenza'    => 'date',
         'registrata_at'      => 'datetime',
