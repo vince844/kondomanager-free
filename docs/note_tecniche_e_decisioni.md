@@ -262,31 +262,9 @@ dell'amministratore — e senza falsi allarmi sulle tabelle legittimamente diver
 
 **File:** `resources/js/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue` — riga 117
 
-**Descrizione.** Quando si apre il modal di modifica di un sottoconto che ha
-`percentuale_proprietario = 0` (es. spesa interamente a carico dell'inquilino:
-proprietario 0%, inquilino 100%), il form mostra 100% al proprietario invece di 0%.
-L'utente è costretto a correggerlo manualmente.
+**Causa.** Operatore JavaScript `||` usato come fallback — `0 || 100` produce `100`.
 
-**Causa.** Operatore JavaScript `||` usato come fallback per il default 100:
-
-```js
-// RIGA 117 — SBAGLIATO
-form.percentuale_proprietario = getPercentualeBySoggetto(newConto, 'proprietario') || 100
-```
-
-`getPercentualeBySoggetto` ritorna `Number(...)`: se la percentuale salvata è `0`,
-il valore è **falsy** in JS e `0 || 100` produce `100`, sovrascrivendo il dato reale.
-
-**Fix.** Sostituire `||` con `??` (nullish coalescing), che scatta solo su `null`/`undefined`
-e non su `0`:
-
-```js
-// RIGA 117 — CORRETTO
-form.percentuale_proprietario = getPercentualeBySoggetto(newConto, 'proprietario') ?? 100
-```
-
-**Impatto.** Solo la UI in apertura del modal di *modifica*. Il salvataggio e il DB sono
-corretti (il dato zero è già scritto bene). Il bug si manifesta solo in lettura.
+**Fix.** Sostituire `||` con `??` (nullish coalescing).
 
 **Stato:** Risolto nella 1.9.1-beta.9
 
@@ -294,22 +272,9 @@ corretti (il dato zero è già scritto bene). Il bug si manifesta solo in lettur
 
 ### Bug 2 — Modifica sottoconto: campo codice non visibile dopo salvataggio (da verificare)
 
-**Segnalazione.** L'utente riferisce che il codice del sottoconto "non appare più da
-nessuna parte" dopo la modifica.
-
-**Analisi preliminare.** Il campo `codice` è correttamente:
-- inizializzato nel `watch` del conto (`form.codice = newConto.codice || ''` — riga 108);
-- esposto da `ContoResource` (`'codice' => $this->codice` — riga 198);
-- caricato dal controller `show` tramite eager load dei sottoconti con
-  `ContoResource::collection`.
-
-**Ipotesi da verificare.**
-Il controller `PianoContiController::show` carica i conti con `whereNull('parent_id')` e
-i sottoconti tramite eager load nella relazione. I sottoconti passano attraverso
-`ContoResource` ricorsivamente — verificare che il campo `codice` venga effettivamente
-trasmesso nel JSON per i sottoconti e che il campo input nel modal venga pre-popolato
-correttamente (potrebbe essere un problema di timing del `watch` con `immediate: true`
-se `props.conto` arriva già popolato prima del mount).
+**Ipotesi.** Possibile problema di timing del `watch` con `immediate: true` se `props.conto`
+arriva già popolato prima del mount — verificare che `codice` sia trasmesso nel JSON per i
+sottoconti tramite `ContoResource` ricorsivamente.
 
 **Stato.** Da riprodurre sul campo e confermare.
 
@@ -317,39 +282,21 @@ se `props.conto` arriva già popolato prima del mount).
 
 ### ✅ [RISOLTO] Bug 3 — Mancato aggiornamento dropdown Capitoli Padre dopo creazione/modifica
 
-**Segnalazione.** Quando si inserisce un conto padre non appare subito fra le opzioni ma si deve uscire (ricaricare la pagina) per poter associare un sottoconto.
+**Causa.** `onDropdownCapitoliOpen()` saltava la chiamata API se `capitoli.value.length > 0`,
+anche dopo un salvataggio che aggiungeva nuovi capitoli.
 
-**Riproduzione:**
-1. Cliccare su "Nuovo Conto", creare un "Capitolo padre" e salvare.
-2. Riaprire "Nuovo Conto" per creare un "Sotto-conto" e aprire la tendina "Capitolo padre".
-3. Il conto appena creato non è presente nella lista.
-4. Ricaricando la pagina, il conto appare.
-
-**Causa:**
-Il composable `useCapitoliConti` gestisce lo stato dei capitoli. Nel file `ModalNuovoConto.vue` (e `ModalModificaConto.vue`), all'apertura della tendina scatta la funzione `onDropdownCapitoliOpen()`. Questa funzione effettua la chiamata API **solo se** la lista è vuota (`if (capitoli.value.length === 0)`). 
-Al salvataggio di un nuovo conto, il form viene resettato ma lo stato `capitoli` del composable non viene svuotato. Di conseguenza, alla successiva apertura della tendina, la lunghezza è `> 0`, la chiamata API viene saltata e la lista mostra i vecchi dati.
-
-**Fix:**
-Estrarre la funzione `reset` dal composable `useCapitoliConti` e invocarla all'interno del blocco `onSuccess` del salvataggio del form (sia nel modale di creazione che di modifica), forzando così un nuovo fetch alla successiva apertura della tendina.
+**Fix.** Estrarre `reset` dal composable `useCapitoliConti` e invocarla nell'`onSuccess`
+del salvataggio.
 
 **Stato:** Risolto nella 1.9.1-beta.9
 
 ---
 
-### ✅ [RISOLTO] Bug 4 — Persistenza dell'errore di validazione sulle tendine v-select
+### ✅ [RISOLTO] Bug 4 — Persistenza errore validazione sulle tendine v-select
 
-**Segnalazione.** Creando o modificando una voce di spesa senza selezionare la "Tabella Millesimale" o il "Capitolo Padre", appare il messaggio di errore rosso. Tuttavia, andando successivamente a selezionare un valore valido dalla tendina, l'errore non scompariva dinamicamente.
+**Causa.** `update:modelValue` inline non scatenava `form.clearErrors()` in modo affidabile.
 
-**Causa:**
-Gli eventi `update:modelValue` inline non riuscivano a far scattare la funzione `form.clearErrors()` di InertiaJS in modo affidabile, soprattutto nel modale di modifica dati.
-
-**Fix:**
-Implementato un sistema più robusto basato sui watcher di Vue3 all'interno della sezione `<script setup>` di `ModalNuovoConto.vue` e `ModalModificaConto.vue`, che restano in ascolto perenne del valore e cancellano automaticamente l'errore al variare del model:
-```javascript
-watch(() => form.tabella_millesimale_id, () => {
-  form.clearErrors('tabella_millesimale_id')
-})
-```
+**Fix.** Watcher Vue 3 nella `<script setup>` che ascolta il valore e chiama `clearErrors`.
 
 **Stato:** Risolto nella 1.9.1-beta.9
 
@@ -357,117 +304,209 @@ watch(() => form.tabella_millesimale_id, () => {
 
 ## Segnalazioni v1.9.1-beta.10 — Fatture Passive: IVA manuale e Modifica
 
-*(Segnalate dall'utente in data 2026-06-14. Analisi e decisioni di design sotto.)*
+*(Segnalate dall'utente in data 2026-06-14.)*
 
 ---
 
 ### Feature 1 — Inserimento manuale importi IVA (Modalità "Importi Liberi")
 
-**Segnalazione.** Le bollette di energia (e in generale le utenze: gas, acqua, rifiuti) hanno
-una struttura in cui l'IVA non è calcolabile come semplice aliquota sull'imponibile. Nella
-bolletta allegata: imponibile lordo ~€44,31, "Accise e IVA" €11,02, totale €55,33. L'IVA
-include accise, contributi e arrotondamenti → nessuna aliquota % produce il valore corretto.
-L'utente non riesce a registrare il documento perché il pannello destra forza il calcolo
-`imponibile × aliquota%`. Mettendo aliquota 0%, il backend ricalcola comunque l'IVA
-(confermato dal codice: `$ivaRiga = round($impRiga * $aliq / 100)`).
-
-**Connessione con il modulo riscaldamento.** Le bollette di riscaldamento centralizzato sono
-il caso d'uso principale: la gestione "Riscaldamento" ha già tabelle millesimali dedicate
-(quota fissa + quota variabile + coefficiente dispersione) e gestioni separate nel piano dei
-conti, ma al momento della *registrazione della fattura del fornitore di energia* il flusso
-è identico alle fatture ordinarie — e quindi soffre dello stesso problema IVA. Risolvere
-questo punto è **prerequisito** per un corretto ciclo passivo delle utenze condominiali.
+**Segnalazione.** Le bollette di energia/utenze hanno IVA non calcolabile come semplice
+aliquota sull'imponibile (include accise, contributi, arrotondamenti). Il form forza
+`imponibile × aliquota%`.
 
 **Decisione di design — modalità duale.**
+- Default: imponibile + aliquota% → IVA calcolata (90% dei casi, invariato)
+- Nuova: toggle per riga → due campi separati Imponibile (€) + IVA (€). Aliquota%
+  diventa campo calcolato informativo, non editabile.
 
-1. **Default (attuale):** Importo imponibile + aliquota % → IVA calcolata. Resta il
-   comportamento principale, adatto al 90% delle fatture artigiani/professionisti.
-2. **Modalità "Importi Liberi" (nuova):** Toggle per riga che disattiva il calcolo
-   automatico e mostra due campi: Imponibile (€) + IVA (€). L'utente li inserisce
-   manualmente. Il totale riga è la somma dei due. L'aliquota % diventa un campo
-   calcolato e puramente informativo (IVA/imponibile×100), non editabile.
+**Impatto tecnico.**
+- Frontend: toggle + MoneyInput IVA manuale; computed `totali` gestisce entrambe le modalità
+- Backend `FatturaPassivaService`: usa `importo_iva` ricevuto se `iva_manuale = true`
+- Validazione: `importo_iva` required se `iva_manuale`, `aliquota_iva` nullable
+- Migration: colonna `iva_manuale` (boolean, default false) + `importo_iva_manuale`
+  (integer, nullable) su `righe_fattura`; `importo_iva_pregresso` su `fatture_passive`
 
-**Impatto tecnico — localizzato, non architetturale.**
-
-- **Frontend** (`FatturaRegisterNew.vue`): Aggiunta toggle per riga + campo MoneyInput per
-  IVA manuale. Il computed `totali` deve gestire entrambe le modalità. Anche per la
-  modalità "pregresso" (pannello sinistro) servono due campi separati.
-- **Backend** (`FatturaPassivaService.php`): La riga arriva con `importo_iva` esplicito
-  quando in modalità manuale. Il service deve usare il valore ricevuto invece di ricalcolare.
-  Aggiungere un campo `iva_manuale: boolean` nella riga per distinguere le due modalità.
-- **Validazione** (`StoreFatturaRequest.php`): Regola condizionale: se `iva_manuale` è true,
-  `importo_iva` è required e `aliquota_iva` diventa nullable.
-- **Migration**: Colonna `iva_manuale` (boolean, default false) su `righe_fattura` +
-  colonna `importo_iva_manuale` (integer, nullable) per il valore inserito dall'utente.
-  Per le fatture pregresse: aggiungere `importo_iva_pregresso` su `fatture_passive` per
-  l'override manuale.
-
-**Classificazione.** Feature media — non tocca l'architettura contabile (la partita doppia
-non cambia: dare/avere restano calcolati sugli importi finali, indipendentemente da come
-sono stati determinati). Stimata: 1–2 sessioni di lavoro.
+**Prerequisito** per il corretto ciclo passivo delle utenze condominiali.
+**Classificazione.** Feature media. Stimata: 1–2 sessioni. **Non architetturale.**
 
 ---
 
 ### Feature 2 — Modifica fattura passiva pre-pagamento
 
-**Segnalazione.** Dall'elenco Fatture Passive non è possibile modificare una fattura
-registrata. L'unica strada oggi è eliminarla e ricrearla da zero, con perdita del protocollo
-e dell'allegato.
+**Segnalazione.** Non esiste `update()` nel controller — eliminazione e ricreazione da zero.
 
-**Stato attuale del codice.** Confermato: non esiste alcun metodo `update()` nel controller,
-nessuna route `PUT /fatture/{fattura}`, nessuna voce "Modifica" nel menu azioni della
-DataTable. La show page è di sola lettura.
+**Decisione — modifica con soglia di cristallizzazione** (coerente con *Libro giornale a soglia*).
 
-**Decisione di design — modifica con soglia di cristallizzazione.**
-
-Coerente con la linea già stabilita in *"Libro giornale — immutabilità a soglia"* (vedi
-sopra): le scritture sono modificabili finché aperte, poi si corregge via storno.
-
-Regola: la fattura è **modificabile** se e solo se:
+Fattura modificabile se e solo se:
 - `stato_pagamento = aperta` (nessun pagamento, nemmeno parziale)
-- La fattura **non** è stata stornata (`dati_extra.is_stornata` è falso/assente)
-- L'esercizio contabile è ancora **aperto**
+- Non stornata (`dati_extra.is_stornata` falso/assente)
+- Esercizio contabile aperto
 
-Una volta che esiste un movimento di pagamento (anche parziale), la fattura si cristallizza.
-La correzione passa obbligatoriamente dallo **storno contabile**.
+Cosa è modificabile: testata, righe, allegato. **NON modificabile:** fornitore.
 
-**Cosa è modificabile (pre-pagamento):**
-- Dati testata: numero documento, data documento, data scadenza, IBAN, modalità pagamento,
-  conto corrente di addebito
-- Righe: descrizione, capitolo di spesa, importi, aliquote IVA, assegnazione immobile
-- Allegato: sostituzione/aggiunta PDF
-- **NON** modificabile: fornitore (cambierebbe la chiave del debito nel libro giornale)
+**Impatto tecnico.**
+- Route: `PUT /fatture/{fattura}` → `FatturaPassivaController::update()`
+- Service: `aggiornaFattura()` transazionale (valida → aggiorna testata → elimina vecchie
+  scritture → ricrea → Double-Entry Validator)
+- Frontend: `FatturaRegisterEdit.vue` o `FatturaRegisterNew.vue` con prop `editMode`
+- DataTable: voce "Modifica" visibile solo se modificabile
 
-**Impatto tecnico — significativo.**
+**Ordine consigliato:** Feature 1 prima di Feature 2 (il form di modifica dovrà
+supportare IVA manuale). **Classificazione:** Feature importante. Stimata: 2–3 sessioni.
 
-- **Route**: `PUT /fatture/{fattura}` → `FatturaPassivaController::update()`
-- **Controller**: Metodo `update()` con i guard contabili (stato pagamento, esercizio aperto,
-  non stornata). Deve rigenerare le scritture contabili collegate.
-- **Service**: Metodo `aggiornaFattura()` in `FatturaPassivaService` — transazionale, deve:
-  1. Validare le precondizioni
-  2. Aggiornare la testata
-  3. Eliminare vecchie righe e scritture contabili (stessa logica del `destroy`)
-  4. Ricreare righe e scrittura contabile con i nuovi dati
-  5. Rieseguire il Double-Entry Validator
-- **Frontend**: Pagina `FatturaRegisterEdit.vue` (o riuso di `FatturaRegisterNew.vue` con
-  prop `editMode`). Il form deve arrivare pre-compilato con i dati della fattura esistente.
-- **DataTableRowActions.vue**: Aggiungere voce "Modifica" visibile solo se la fattura è
-  modificabile (aperta + non stornata + esercizio aperto).
-- **Migration**: Nessuna — i dati esistono già, cambia solo la logica applicativa.
+---
 
-**Connessione con il modulo riscaldamento.** Le fatture di utenze (riscaldamento, energia)
-sono quelle più soggette a correzioni post-registrazione: l'amministratore spesso registra
-il documento alla ricezione e poi corregge l'allocazione sui capitoli dopo aver verificato
-i consumi. La modifica pre-pagamento è particolarmente utile per questo flusso.
+## Segnalazioni v1.9.1-beta.10 — Pagamento Fatture
 
-**Classificazione.** Feature importante — tocca il flusso contabile (riscrittura partita
-doppia) ma non cambia l'architettura. Richiede attenzione ai guard per non corrompere lo
-stato. La logica "elimina vecchie scritture + ricrea" è già collaudata nel `destroy()`.
-Stimata: 2–3 sessioni di lavoro.
+*(Analisi 2026-06-16, rivista 2026-06-17 dopo riscontro beta: approccio minimale — solo testo, niente nuovi campi DB.)*
 
-**Ordine di implementazione consigliato:** Feature 1 (IVA manuale) prima di Feature 2
-(Modifica), perché l'IVA manuale è più semplice, risolve il blocco immediato dell'utente,
-e il form di modifica dovrà comunque supportare la modalità IVA manuale.
+---
+
+### ✅ [NON È UN BUG] Bug 5 — `sforo_motivato` "blocca" il pagamento (art. 1135 c.c.)
+
+**Segnalazione.** Le fatture con `stato_approvazione = 'sforo_motivato'` non sono pagabili
+direttamente: `validaInput()` lancia `FatturaNonApprovataException`.
+
+**Conclusione — non è un blocco da rimuovere, è il gate previsto.** Lo sforo si sblocca
+passando dal modal "Approva Sforo" (POST `gestionale.fatture.approva-sforo`), che porta lo
+stato ad `'approvata'` registrando la nota; poi il pagamento procede. `validaInput()` resta
+sul check `== 'approvata'`.
+
+**Contesto normativo.** Per le spese urgenti ex art. 1135, c. 2 c.c. l'amministratore paga
+subito; la ratifica è successiva e non bloccante. Questo non impone di togliere il gate: impone
+solo che il modal lo spieghi bene (Feature 3 rivista) e che la motivazione finisca nella nota.
+
+**Fix backend `whereNotIn(['approvata', 'sforo_motivato'])` — scartato e non applicato.**
+Bypasserebbe il modal in silenzio, perdendo la nota e il valore documentale.
+
+**Stato:** Risolto come decisione di flusso. Resta solo il ritocco del testo (Feature 3 rivista).
+
+---
+
+### ✅ [RISOLTO] Bug 6 — `Call to undefined method TipoDetrazione::descrizione()`
+
+**Segnalazione.** Pagamento con Bonifico Parlante → errore fatale.
+
+**Causa.** Metodo `descrizione()` assente nell'enum implementato.
+`PagamentoFornitoreService::generaCausaleBonifico()` lo chiama per costruire la causale.
+
+**Fix.** Risolto dall'utente. Verificare che `TipoDetrazione` esponga entrambi:
+`descrizione()` e `riferimentoNormativo()` come da guida v1.9.1 sez. 4.4.
+
+**Stato:** Risolto dall'utente. ✅
+
+---
+
+### ✏️ [DA FARE — solo testo] Feature 3 (rivista) — Dicitura del modal "Approva Sforo"
+
+**Decisione (riscontro beta, 2026-06-17).** La versione strutturata — `tipo_autorizzazione`,
+`data_ratifica_prevista`, schema JSON in `dati_extra['ratifica_assembleare']`, toggle
+delibera/urgenza, 5 test sul metadata — **è abbandonata**: over-engineering. Il tester chiede
+solo di riscrivere la dicitura, e ha ragione: «il gestionale registra quello che accade, eviti
+di inserire campi boolean nelle tabelle del db».
+
+**Cosa si fa davvero — niente backend, niente DB.**
+- Il modal Approva Sforo resta com'è, con il **solo campo nota a testo libero** già presente
+  ("Riferimento verbale / Note"). Nessun campo nuovo, nessuno schema JSON, nessuna colonna.
+- Si riscrive solo la **dicitura** del warning, in un testo unico che copre delibera preventiva
+  e urgenza ex art. 1135. Alla conferma (nota valorizzata) lo stato va ad `'approvata'` come oggi
+  e il pagamento procede → risolve anche Bug 5.
+- L'Inbox operativa mantiene il warning "Ratifica Assemblea — Sforo budget" sulla fattura pagata.
+
+**Dicitura del modal:**
+
+> **Ratifica assembleare (Art. 1135 c.c.)**
+> Questa fattura supera il budget approvato dall'assemblea.
+> • Se la spesa è già stata deliberata, indica nel campo note il riferimento al verbale.
+> • In caso di lavori urgenti, per evitare un pregiudizio al condominio l'amministratore può
+>   procedere al pagamento, dandone comunicazione all'assemblea nella prima convocazione utile.
+>   In tal caso annota qui la motivazione, es.: «Pagamento effettuato per urgenza
+>   dall'amministratore — [breve descrizione]».
+> La ratifica resterà segnalata nella Inbox operativa fino all'approvazione in assemblea.
+
+**File toccato.** Solo il testo del `ConfirmDialog` in
+`resources/js/pages/gestionale/movimenti/pagamenti/PagamentoNew.vue`.
+
+**Test.** Niente test sul metadata (non esiste più). Resta utile un solo test di flusso:
+fattura `sforo_motivato` → approva-sforo con nota → stato `'approvata'` → fattura pagabile
+(nessuna `FatturaNonApprovataException`). Verificare che la nota del campo esistente venga
+persistita.
+
+**Stato:** Da fare — solo testo.
+
+---
+
+## Piano di Azione v1.9.1 — Stato al 2026-06-17
+
+### ✅ Completato
+
+**Fondamenta:**
+- [x] 6 Backed Enums (`TipoMovimentoContabile`, `MetodoPagamento`, `StatoPagamentoFattura`,
+  `StatoPagamentoFornitore`, `TipoAllocazioneFattura`, `TipoDetrazione`)
+- [x] 10 Domain Exceptions in `app/Exceptions/Pagamenti/` — 1 file per classe (PSR-4)
+- [x] `HasProtocolNumber` trait — fix Backed Enum cast: `tipo_movimento` restituisce Enum,
+  non stringa. Match corretto con `->value`. Aggiunto case `storno_pagamento_fornitore → 'STO'`.
+
+**Migration (4):**
+- [x] `upgrade_scritture_contabili_v191` — ENUM→VARCHAR(50) + `idempotency_key` UUID UNIQUE
+- [x] `upgrade_fatture_passive_v191` — 4 colonne audit read model (`versione_allocazioni` BIGINT)
+- [x] `create_pagamenti_fornitori_table` — tabella documentale completa con indici performance
+- [x] `seed_conti_mancanti_v191` — data migration conti `spese_bancarie`, `iva_acquisti`, `iva_vendite`
+
+**Modelli (4):**
+- [x] `FatturaPassiva` — cast `StatoPagamentoFattura`, accessor `residuo`/`totale_allocato`,
+  scope (`pagabili`, `conResiduo`, `conInconsistenza`), `scritture()` con `->using(FatturaScrittura::class)`
+- [x] `ScritturaContabile` — cast `TipoMovimentoContabile`, `idempotency_key` fillable,
+  relazione `fatture()` con FK esplicite, relazione `pagamentoFornitore()`, nota SoftDeletes
+- [x] `FatturaScrittura` (Pivot) — `$incrementing = true`, `$timestamps = true`,
+  cast `TipoAllocazioneFattura`
+- [x] `PagamentoFornitore` — relazioni complete, self-ref storno (`padre`/`storno`), scope
+
+**Service + Events:**
+- [x] `PagamentoFornitoreService` completo — `registraPagamento()`, `stornaPagamento()`
+  (cross-esercizio Variante B1), `ricalcolaStatoFattura()`, `generaCausaleBonifico()`,
+  `trovaNoteCreditoCompensabili()`, `verificaCapienza()`, `deriveGestioneId()`
+- [x] `PagamentoRegistrato` e `PagamentoStornato` — namespace `App\Events\Gestionale`
+- [x] `validaInput()` — mantenuto il check su `== 'approvata'` (nessun `whereNotIn`): lo
+  `sforo_motivato` si paga solo passando dal modal Approva Sforo, che lo porta ad `approvata`.
+  Il `whereNotIn(['approvata','sforo_motivato'])` valutato prima è stato scartato (toglierebbe
+  il gate e la nota). Non applicato.
+- [x] Fix overpayment check per NC — skip su `tipo_documento = 'nota_credito'`
+- [x] `cassa_id` popolato sulle righe di liquidità (coerenza con `StoreIncassoRateAction`)
+- [x] `gestione_id` derivato da `$fattura->scritture()->first()?->gestione_id`
+  (pattern identico a `StornoFatturaController`)
+
+**Test (22 test, 65+ assertions):**
+- [x] `GestionaleTestHelpers.php` — `setupContabile()`, `assertQuadraturaPerfetta()`, `datiBase()`
+- [x] `PagamentoFornitoreServiceTest.php` — 6 gruppi copertura completa
+
+---
+
+### 🔧 Da completare prima del rilascio v1.9.1
+
+- [ ] **Feature 3 (rivista)** — solo testo del modal Approva Sforo in `PagamentoNew.vue`
+  (dicitura delibera + urgenza ex art. 1135). Niente campi nuovi, niente JSON, niente colonne.
+  Risolve anche Bug 5. Un solo test di flusso (`sforo_motivato` → `approvata` → pagabile).
+- [ ] **Controller + Form Request** — `PagamentoFornitoreCreateRequest`, `StornoRequest`,
+  `PagamentoFornitoreController` (store, storno, index, show), exception handler HTTP mapping,
+  routes Inertia, Policy/Authorization
+- [ ] **F24 Refactor** — `SyncF24WithPagamento` listener (`$afterCommit = true`),
+  rimozione logica F24 da `SyncScadenziarioWithFattura`, test di regressione
+- [ ] **Comando Artisan** — `kondomanager:fatture-ricalcola-stati` con `--dry-run`,
+  `--condominio`, `--esercizio` + test
+- [ ] **Frontend Vue (Payment Sentinel UI)** — `Pagamenti/Create.vue`, `SimulatoreLiquidita.vue`,
+  `RadarNoteCredito.vue`, `SentinellaIban.vue`, `DetectorPagamentoDuplicato.vue`,
+  `BonificoParlanteForm.vue`, `ConfermaPagamento.vue`, `Pagamenti/Index.vue`,
+  `StornaPagamentoModal.vue`
+
+---
+
+### 📋 Post-v1.9.1
+
+- Acconti, anticipi admin, compensazione pura, assegni → v1.9.2
+- Export SEPA Pain.001.001.03 → v1.9.3
+- Feature 1 (IVA manuale bollette) → da schedulare
+- Feature 2 (Modifica fattura pre-pagamento) → dopo Feature 1
 
 ---
 
@@ -475,45 +514,10 @@ e il form di modifica dovrà comunque supportare la modalità IVA manuale.
 
 *(Decisione presa in data 2026-06-14.)*
 
----
+**Decisione.** Campo testo libero `nota_legale_stampe` gestito tramite **Spatie Settings**.
+Textarea in Impostazioni. Stampato as-is nel footer mPDF di tutte le stampe PDF.
 
-### Contesto
-
-Le stampe PDF (Distinta Pagamento, Prospetto Rate, Ripartizione Spese, ecc.) oggi
-riportano diciture fisse nel footer tipo "professione esercitata ai sensi della L. 4/2013".
-Questa dicitura è **giuridicamente corretta solo per i professionisti** sotto quel regime.
-Taglia fuori:
-- L'**amministratore-condòmino** (art. 71-bis disp. att. c.c. — nessun obbligo di
-  formazione se nominato tra i condòmini dello stabile).
-- Le **società di servizi** (ragione sociale, P.IVA societaria, REA).
-
-### Decisione
-
-**Un singolo campo testo libero** gestito tramite **Spatie Settings**, nessuna tabella
-dedicata, nessun modello, nessuna relazione.
-
-**Scartato:**
-- ❌ Tabella `profili_stampa` con `hasOne` su `users` — over-engineering per un singolo
-  campo di testo.
-- ❌ Enum `tipo_soggetto` con UI adattiva (professionista/condòmino/società) — l'admin
-  sa chi è e cosa scrivere, non serve che il software decida per lui.
-- ❌ Campi strutturati (denominazione, indirizzo, telefono, PEC, polizza…) — il footer
-  è un blocco di testo, non un form strutturato.
-
-**Implementazione:**
-- Aggiungere un setting `nota_legale_stampe` (tipo `text`, nullable) nella classe
-  Settings Spatie già esistente.
-- Nella pagina Impostazioni del gestionale, esporre una **textarea** con placeholder
-  esplicativo (es. "Inserisci i tuoi dati professionali, il riferimento normativo e/o
-  la polizza RC. Questo testo apparirà nel footer di tutte le stampe PDF.").
-- Nel layout master mPDF, stampare il contenuto del setting così com'è, senza
-  interpretazione né formattazione automatica.
-- Il footer è **identico su tutte le stampe** — non c'è nessuno scenario in cui serve
-  un footer diverso per tipo di documento.
-
-**Conformità.** Coerente con l'art. 1129 c.c. (dati anagrafici/professionali e luogo di
-conservazione dei registri). L'amministratore scrive liberamente ciò che la normativa
-richiede per il suo caso specifico.
+**Scartato:** tabella `profili_stampa`, enum `tipo_soggetto`, campi strutturati — over-engineering.
 
 ---
 
