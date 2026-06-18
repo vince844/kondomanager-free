@@ -1,5 +1,15 @@
 {
     "features": [
+        "Supplier payment detail endpoint: Added the show() method in PagamentoFornitoreController with ownership guard, relationships eager loading, and Inertia rendering to the PagamentoShow page.",
+        "Size prop on ConfirmDialog: The shared ConfirmDialog.vue component now supports a size prop with four sizes (sm, md, lg, xl) that overrides the default width.",
+        "F24 Refactor — SyncF24WithPagamento listener: Created the listener that creates the 'F24 Withholding' task in the Admin Inbox at the time of actual payment, not upon invoice registration.",
+        "Supplier payment detail page (PagamentoShow): Created the PagamentoShow.vue Vue page with GestionaleLayout layout, amounts summary, double entry of the linked journal entry, paid invoices, and PDF Statement button.",
+        "Detail link in payments list dropdown: Added 'View details' item in DataTableRowActions.vue navigating to PagamentoShow. The previous 'Journal entry details' item is renamed to 'Accounting journal entry details'.",
+        "Enlarged Shareholders' meeting ratification — Justified overrun modal: The overrun approval ConfirmDialog now uses size=\"lg\" to give room to the legal text.",
+        "Overrun Approval modal wording rewritten (Art. 1135 c.c.): The modal text and tooltip badge have been rewritten to explicitly cover the two scenarios foreseen by Art. 1135 c.c. (expense already resolved or urgent payment by the administrator).",
+        "Unified case: Modal titles and texts now follow sentence case instead of title case.",
+        "SyncScadenziarioWithFattura — dead code removed: Eliminated the commented block that created the F24 task at invoice time.",
+        "Accounting journal entry details menu item appeared disabled: Removed the class causing a gray appearance identical to the disabled state.",
         "PDF Print Settings: Added a new global configuration panel dedicated to prints. It is now possible to define a Legal Note (e.g. profession exercised pursuant to Law 4/2013, VAT number, RC Policy) that will appear as a footer in all generated statements.",
         "Administrator Signature: Implemented the ability to upload the administrator's signature image (in PNG or JPG format), which will be automatically affixed to the bottom of official documents such as reports and installment statements.",
         "Condominium Filter on Admin Action Inbox: Added a dropdown in the top navigation bar of the /admin/inbox page to filter tasks by individual condominium. The KPI cards (Overdue/Urgent, Payment Verifications, Tickets & Maintenance, Total) update dynamically based on the selected condominium.",

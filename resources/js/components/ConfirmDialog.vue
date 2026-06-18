@@ -9,6 +9,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { cn } from '@/lib/utils'
 
 const props = defineProps({
   modelValue: {
@@ -51,8 +52,21 @@ const props = defineProps({
     type: String,
     default: 'default',
     validator: (value) => ['default', 'destructive', 'warning'].includes(value)
+  },
+  // [NUOVA PROP] Larghezza modale: 'sm' (max-w-sm), 'md' (max-w-lg, default), 'lg' (max-w-2xl), 'xl' (max-w-3xl)
+  size: {
+    type: String,
+    default: 'md',
+    validator: (value) => ['sm', 'md', 'lg', 'xl'].includes(value)
   }
 })
+
+const sizeClass = {
+  sm: 'max-w-sm',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
+  xl: 'max-w-3xl',
+}
 
 const emit = defineEmits(['update:modelValue', 'confirm', 'cancel'])
 
@@ -72,7 +86,7 @@ const onOpenChange = (open) => {
 
 <template>
   <AlertDialog :open="modelValue" @update:open="onOpenChange">
-    <AlertDialogContent>
+    <AlertDialogContent :class="cn(sizeClass[size])">
       <AlertDialogHeader>
         <AlertDialogTitle :class="{
             'text-red-600': variant === 'destructive',

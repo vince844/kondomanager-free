@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 uses()->group('inbox', 'pagamenti');
 
-function setupPagamenti(): array
+if (!function_exists("setupPagamenti")) { function setupPagamenti(): array
 {
     [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
 
@@ -39,8 +39,9 @@ function setupPagamenti(): array
 
     return [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo];
 }
+}
 
-function registraFatturaTest(array $ctx, array $override = []): FatturaPassiva
+if (!function_exists("registraFatturaTest")) { function registraFatturaTest(array $ctx, array $override = []): FatturaPassiva
 {
     [$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;
 
@@ -59,6 +60,7 @@ function registraFatturaTest(array $ctx, array $override = []): FatturaPassiva
         ),
         $condominio->id
     );
+}
 }
 
 beforeEach(function () {

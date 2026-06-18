@@ -55,18 +55,35 @@ Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 
 Release che porta a maturità l'infrastruttura contabile.
 
-- **Voci di accantonamento** con `fondo_target_id`, bifurcation incasso, `delibera_id` nullable
+- **Voci di accantonamento** con `fondo_target_id`, bifurcation incasso, `delibera_id` nullable;
+  fix coverage entry per ancorare la copertura a `voce_spesa_id` (debito tecnico da `FatturaPassivaService`)
+- **Hardening DB — Invariante quote condominiali:** check constraint
+  `chk_immobile_condominiale` su `rate_quote`
+  (`origine_tipo = 'ad_personam' OR immobile_id IS NOT NULL`).
+  Trasforma in invariante certificato dal DB ciò che oggi è garantito
+  solo dall'application logic di `CalcoloQuoteService`.
+  Da aggiungere nella migration delle Voci di accantonamento,
+  contestualmente alla valorizzazione di `origine_tipo`.
+  // TODO(trigger:v1.10-voci-accantonamento)
 - **Giroconti** tra conti correnti e fondi
 - **Registrazione a regolazione immediata** — scrittura ledger-native senza Fattura a monte (costo → banca/cassa in scrittura unica) per utenze, bolli, commissioni bancarie, F24, piccole spese; fornitore opzionale come tag analitico; guard rail su ritenuta/split payment. Stesso primitivo dei Giroconti: `Scrittura` classificata via `RegistrazioneType`, nessuna riga pivot. Fondamenta per la riconciliazione bancaria (v1.16).
 - **Stato Patrimoniale operativo** con scritture di chiusura
 - **Estratto conto / situazione di cassa** — vista dei movimenti per conto corrente e cassa, derivata dalle scritture (read-model, non primitivo di scrittura)
 - **Bilanciatore Fondi** — verifica copertura liquida, morosità per immobile, quota segue immobile
+- **Attestazione debiti/crediti per rogito (MVP):** documento generabile su richiesta
+  per singolo condòmino/immobile; mostra credito fondo residuo e debiti aperti verso
+  il condominio. Formula: `credito_X = versato_da_X − (speso_dal_fondo × millesimi_X / 1000)`.
+  Richiesto per dichiarazione ex art. 1130 n. 9 c.c. in sede di compravendita.
+  Alimentato dal Bilanciatore Fondi — dipendenza diretta.
+  Suite stampa completa → v1.21.
+  > *Origine: feedback beta-tester — confermato da code review su `rate_quote.immobile_id`
+  > e `StoreIncassoRateAction`: la tracciabilità per immobile è già garantita a DB.*
 - **Dashboard Intelligence:**
   - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*
   - Radar Salute Contabile — validatore millesimi + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
 - **Backup Management**
-- **Gestione Code Fallite (System Health):** 
+- **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
 - **Iniziativa A — Tabelle Millesimali avanzate:**
   - Supporto Art. 1124 c.c. (scale e ascensori)

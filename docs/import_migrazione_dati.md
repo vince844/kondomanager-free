@@ -3,6 +3,8 @@
 > Documento di lavoro interno. Definisce l'architettura del modulo di importazione dati
 > da altri gestionali condominiali verso Kondomanager. Le interfacce e gli schemi qui
 > proposti sono **bozze da validare contro il codice reale** prima dell'implementazione.
+>
+> **Ultimo aggiornamento:** analisi export reali Danea (4 file) e Giada (4 file)
 
 ---
 
@@ -12,6 +14,8 @@ Ridurre l'attrito principale all'adozione di Kondomanager: il reinserimento manu
 dati quando un amministratore migra da un altro gestionale. L'obiettivo non è replicare lo
 storico contabile altrui, ma portare in Kondomanager le informazioni necessarie a **iniziare
 un nuovo esercizio già popolato** di anagrafiche, unità, tabelle, fornitori e saldi di apertura.
+
+---
 
 ## 2. Principio fondante
 
@@ -24,38 +28,42 @@ Il ponte tra vecchio e nuovo gestionale è il **saldo finale dell'esercizio prec
 diventa il **saldo iniziale** del primo esercizio in Kondomanager, materializzato come
 un'unica **scrittura di apertura in quadratura DARE/AVERE**.
 
-Questo principio è perfettamente coerente con l'architettura ledger-centric: il giornale
-resta verità immutabile, e l'import non lo viola — vi inserisce solo un punto di partenza pulito.
+Questo principio è confermato dall'analisi dei file reali: sia Danea che Giada espongono
+nei loro export i saldi per soggetto/unità in modo diretto e affidabile, ma i movimenti
+sottostanti hanno strutture incompatibili con il nostro ledger.
 
 ### Messaggio all'utente
 
 > Chiudi l'esercizio col vecchio gestionale, parti pulito con Kondomanager. Ti porti dietro
 > anagrafiche, unità, tabelle, fornitori e saldi di apertura — **non** la cronologia contabile.
 
+---
+
 ## 3. Cosa NON importiamo (per scelta)
 
 - Storico dei movimenti contabili / scritture.
 - Storico pagamenti e incassi di esercizi chiusi.
 - Riparti e rendiconti già emessi nel vecchio sistema.
+- Ruoli storici (`ex Pr`, `ex Co`, `ex Us` in Giada) — solo stato corrente.
+- Attività/ticket operativi (es. Elenco Attività di Danea) — storico operativo non contabile.
 
-Tentare la ricostruzione di questi dati comprometterebbe l'integrità del ledger. Si accetta
-il saldo di apertura e si va avanti.
+---
 
 ## 4. I tre livelli di importabilità
 
-Il problema si decompone in tre livelli con grado di compatibilità strutturale decrescente.
-Ognuno dipende da moduli diversi di Kondomanager e diventa disponibile man mano che quei
-moduli maturano.
-
 | Livello | Cosa | Compatibilità | Dipendenza |
-|--------|------|----------------|------------|
-| 1 — Master data puro | Condomìni, soggetti (anagrafiche), unità immobiliari, fornitori | Mappatura ~1:1 | Anagrafica Immobiliare (v1.10), Anagrafica Fornitore (v1.12) |
-| 2 — Strutture semi-standardizzate | Tabelle millesimali, piano dei conti | Buona, con normalizzazione | Tabelle: già possibile oggi. Piano dei conti: punto più scomodo |
-| 3 — Saldi (mai movimenti) | Saldi iniziali esercizio, debiti v/fornitori, morosità per immobile, fondi | Solo come scrittura di apertura | Stato Patrimoniale (v1.10), idealmente macchina apertura conti (v1.17) |
+|---------|------|----------------|------------|
+| 1 — Master data puro | Condomìni, soggetti, unità immobiliari, fornitori | Mappatura ~1:1 | Anagrafica Immobiliare (v1.10), Anagrafica Fornitore (v1.12) |
+| 2 — Strutture semi-standardizzate | Tabelle millesimali, piano dei conti | Buona, con normalizzazione | Tabelle: già possibile oggi |
+| 3 — Saldi (mai movimenti) | Saldi iniziali esercizio, debiti v/fornitori, morosità per soggetto/immobile, fondi | Solo come scrittura di apertura | Stato Patrimoniale (v1.10) |
 
 > **Nota tabelle millesimali**: importabili già oggi. Il tipo `manuale` accetta qualsiasi
 > insieme di numeri relativi e calcola le proporzioni via `valore / sommaValori`. Si ingeriscono
-> i millesimi altrui *as-is*, senza pretendere normalizzazione in ingresso.
+> i millesimi altrui *as-is*, senza pretendere normalizzazione in ingresso. **Tabelle parziali**
+> (NaN/assenza per alcune unità, confermato in Giada — es. tabella `idraulico`) = esclusione
+> dall'allocazione per quella tabella, non errore di validazione.
+
+---
 
 ## 5. Architettura: driver su formato canonico
 
@@ -64,81 +72,57 @@ Il cuore del modulo è un pattern **driver/adapter su formato canonico**.
 - Si definisce una **rappresentazione interna unica** (canonica) di ogni entità.
 - Ogni gestionale di origine ha un **driver** che traduce il suo export nel formato canonico.
 - Il **template Excel** compilabile a mano è la serializzazione human-facing dello stesso
-  formato canonico (l'approccio "incolla nei modelli" alla Danea).
+  formato canonico.
 
 ### Principio non negoziabile
 
 **Il formato canonico si progetta a partire dal dominio di Kondomanager, mai dall'export di
-Danea o di altri.** Se si modella il canonico attorno a una sorgente, si ereditano i suoi
-vincoli e ogni driver successivo diventa scomodo. Le sorgenti si adattano al canonico, non
-viceversa.
-
-> Conseguenza pratica: **non avere ancora il file di Danea è un vantaggio.** Costringe a
-> disegnare il canonico dal dominio, incontaminato da una singola sorgente.
+Danea o di altri.** Le sorgenti si adattano al canonico, non viceversa.
 
 ### La pipeline converge
 
-Il percorso manuale e il percorso driver **convergono sulla stessa pipeline**. Il driver
-sostituisce solo il primo passo. Tutto a valle è condiviso.
-
 ```
 Export Danea  ──┬─ [DaneaDriver]  ──┐
+Export Giada  ──┼─ [GiadaDriver]  ──┤
 Export altro  ──┼─ [AltroDriver]  ──┤
-Template man. ──┴─ [ManualDriver] ──┴──> DTO canonici ──> Validator ──> Preview/diff ──> Committer (tx + import_batch_id)
+Template man. ──┴─ [ManualDriver] ──┴──> DTO canonici ──> Validator ──> Preview/diff ──> Committer
 ```
-
-Non devono esistere due codepath di import. Costruendo prima la pipeline generica +
-`ManualTemplateDriver` end-to-end, ogni driver di sorgente diventa un'aggiunta piccola e
-isolata: pura mappatura colonne → canonico, **zero accesso al DB**, zero rischio per il core.
 
 ### Interfaccia driver (bozza)
 
 ```php
 interface ImportDriver
 {
-    /** Riconosce se può gestire il file fornito. */
     public function supports(ImportFile $file): bool;
-
-    /** Estrae DTO canonici dall'export di origine. Nessun accesso al DB. */
     public function extract(ImportFile $file): CanonicalDataset;
-
-    /** Identificativo del driver per logging/preview (es. 'danea', 'manual'). */
     public function key(): string;
 }
 ```
 
-- `ManualTemplateDriver` legge il template canonico 1:1.
-- `DaneaDriver` (futuro) legge l'export Danea e mappa. Granularità per entità (sub-handler per
-  Unità, Tabelle, Fornitori), dato che Danea esporta modelli separati per tipo.
-- I driver sono intercambiabili dal punto di vista della pipeline.
+---
 
 ## 6. La pipeline condivisa
 
-1. **Estrazione** (driver) → `CanonicalDataset` (collezioni di DTO per entità).
-2. **Validazione** — source-agnostic, opera sui DTO canonici. È qui che sta il lavoro vero.
-3. **Preview / diff** — mostra cosa verrà creato, evidenzia warning (CF mancante, somme non
-   quadrate, ecc.), richiede conferma esplicita.
-4. **Commit** — in transazione DB unica, ogni record taggato con `import_batch_id`.
-5. **Rollback** — possibile finché l'esercizio non è operativo, eliminando per `import_batch_id`.
+1. **Estrazione** (driver) → `CanonicalDataset`
+2. **Validazione** — source-agnostic, opera sui DTO canonici
+3. **Preview / diff** — mostra cosa verrà creato, warning, richiede conferma
+4. **Commit** — in transazione DB unica, ogni record taggato con `import_batch_id`
+5. **Rollback** — eliminando per `import_batch_id`
 
 ### Requisiti trasversali
+- Dry-run first: nessun commit senza preview confermata
+- Idempotenza: ri-eseguire lo stesso batch non duplica
+- `import_batch_id` su ogni entità creata
+- Fail-fast con log diagnostici
 
-- **Dry-run first**: nessun commit senza preview confermata.
-- **Idempotenza**: ri-eseguire l'import dello stesso batch non duplica.
-- **`import_batch_id`** su ogni entità creata, per rollback pulito.
-- **Fail-fast** con log diagnostici sui punti di uscita e reconciliation log dei delta.
+---
 
 ## 7. Formato canonico — Fase 1: Soggetto / Immobile / Titolarità
 
-Danea esporta "anagrafiche e unità immobiliari" insieme, ma il canonico le tiene **separate
-e pulite** in tre entità. Questo è il livello più semplice e quello costruibile già con v1.10.
-
-### 7.1 `CanonicalSoggetto` (anagrafica)
-
-Master data della persona/ente. Nessun ruolo, nessuna quota qui (vivono nella titolarità).
+### 7.1 `CanonicalSoggetto`
 
 | Campo | Tipo | Note |
-|------|------|------|
+|-------|------|------|
 | `tipo` | enum | `persona_fisica` \| `persona_giuridica` |
 | `nome` | string\|null | obbligatorio per persona fisica |
 | `cognome` | string\|null | obbligatorio per persona fisica |
@@ -148,131 +132,257 @@ Master data della persona/ente. Nessun ruolo, nessuna quota qui (vivono nella ti
 | `email` | string\|null | |
 | `pec` | string\|null | |
 | `telefono` | string\|null | |
-| `indirizzo_residenza` | string\|null | residenza / sede legale |
+| `indirizzo_residenza` | string\|null | |
 | `data_nascita` | date\|null | abilita alert maggiore età |
-| `ref_esterno` | string\|null | chiave originale nel gestionale di partenza, per de-dup |
+| `ref_esterno` | string\|null | chiave originale nel gestionale di partenza |
 
-### 7.2 `CanonicalImmobile` (unità immobiliare)
+> **Da analisi reali:** Danea non espone CF nell'export. Giada lo espone su `giada_unita.xls`
+> campo `CodFisc`. In entrambi i casi i nomi sono in un'unica stringa — il driver deve
+> tentare split `Cognome Nome` (formato comune nei gestionali italiani). De-dup per CF +
+> `ref_esterno` per evitare soggetti doppi quando lo stesso proprietario ha più unità
+> (confermato: `TACCALA MARAA RASA` appare per int. 3 e int. 4 in Danea; stessa logica in Giada).
 
-Master data della proprietà. Allineato ai campi Anagrafica Immobiliare (v1.10.1).
+### 7.2 `CanonicalImmobile`
 
 | Campo | Tipo | Note |
-|------|------|------|
-| `condominio_ref` | string | riferimento al condominio (codice o nome) |
+|-------|------|------|
+| `condominio_ref` | string | riferimento al condominio |
 | `denominazione` | string | es. "Interno 3", "Box 12" |
-| `scala` | string\|null | per filtro scope / art. 1124 |
-| `palazzina` | string\|null | |
-| `vani` | decimal\|null | decimale |
-| `in_bilancio` | bool | default true; false per minori/non titolari |
-| `dati_catastali` | object\|null | foglio, particella, subalterno, categoria, ecc. |
-| `ref_esterno` | string\|null | chiave originale, per de-dup |
+| `scala` | string\|null | |
+| `palazzina` | string\|null | confermato in entrambi i gestionali |
+| `piano` | string\|null | presente in Giada; assente in Danea |
+| `interno` | string\|null | presente in Giada; assente in Danea |
+| `vani` | decimal\|null | |
+| `in_bilancio` | bool | default true |
+| `dati_catastali` | object\|null | |
+| `ref_esterno` | string\|null | es. `1-3` (palazzina-progressivo) |
 
-> Estensione futura (Iniziativa B Fase 1): `forniture_immobile` con POD/PDR, matricole
-> contatori, `codice_cliente`, `intestatario_id`, `valid_from`/`valid_to`. Fuori scope Fase 1
-> dell'import.
-
-### 7.3 `CanonicalTitolarita` (link soggetto ↔ immobile)
-
-Il legame che porta ruolo e quota. Coerente col principio: **`quota_bilancio` segue
-l'immobile, non la persona**; gli split per ruolo vivono qui / sulle tabelle di riparto, non
-sull'anagrafica.
+### 7.3 `CanonicalTitolarita`
 
 | Campo | Tipo | Note |
-|------|------|------|
-| `soggetto_ref` | string | riferimento al `CanonicalSoggetto` |
-| `immobile_ref` | string | riferimento al `CanonicalImmobile` |
+|-------|------|------|
+| `soggetto_ref` | string | |
+| `immobile_ref` | string | |
 | `ruolo` | enum | `proprietario` \| `inquilino` \| `usufruttuario` \| `nudo_proprietario` |
-| `quota_bilancio` | decimal\|null | % di bilancio per quel soggetto su quell'immobile |
-| `valid_from` | date\|null | per storico subentri |
+| `quota_bilancio` | decimal\|null | |
+| `saldo_iniziale` | decimal\|null | **nuovo** — fonte diretta per Opzione A |
+| `valid_from` | date\|null | |
 | `valid_to` | date\|null | |
 
-> Vincolo di coerenza: la somma di `%Bilancio` per immobile deve fare **100%**, coprendo
-> tutti i titolari di godimento. I minori compaiono con `in_bilancio = false`.
+> **`saldo_iniziale` aggiunto** rispetto alla versione precedente: entrambi i gestionali
+> espongono il saldo per soggetto/unità direttamente. In Danea: `rate_versate.xls` (saldo
+> versato, da cui ricavare il residuo). In Giada: campo `Saldo prec` su `giada_unita.xls`
+> (saldo diretto per soggetto) e `Saldo finale` su `giara_riparto_consuntivo_24_25.xls`
+> (più preciso, include il riparto dell'esercizio appena chiuso).
 
-## 8. Validazione (regole per entità, source-agnostic)
+---
 
-- **Soggetto**: CF formalmente valido se presente (altrimenti warning, non blocco);
-  coerenza nome/cognome vs ragione sociale rispetto a `tipo`; de-dup su `codice_fiscale` +
-  `ref_esterno`.
-- **Immobile**: `condominio_ref` risolvibile; coerenza catastale di base; `vani` numerico.
-- **Titolarità**: `soggetto_ref` e `immobile_ref` risolvibili; somma `%Bilancio` per immobile
-  = 100% (warning se diverso, con possibilità di ribilanciamento guidato).
-- **Tabelle**: ogni immobile presente; somme coerenti — o auto-normalizzate via tipo `manuale`.
-- **Fornitori** (Fase 2): CF/PIVA valido per regime (aggancio a DNA Fiscale v1.12).
-- **Saldi**: quadratura DARE/AVERE della scrittura di apertura; i saldi per immobile
-  riconciliano col totale.
+## 8. Validazione
 
-## 9. Scrittura di apertura e saldi iniziali (decisione aperta)
+- **Soggetto**: CF formalmente valido se presente (warning se mancante, non blocco); de-dup su CF + `ref_esterno`.
+- **Immobile**: `condominio_ref` risolvibile; `palazzina` + `progressivo` come chiave.
+- **Titolarità**: somma `quota_bilancio` per immobile = 100% (warning se diverso).
+- **Tabelle**: ogni immobile presente; NaN/assenza = esclusione (non errore); somme a 1000 solo se tipo non `manuale`.
+- **Esercizio**: `data_inizio`/`data_fine` liberi — non assumere solare. Confermato da Giada (nov–ott).
+- **Fornitori** (Fase 2): CF/PIVA valido per regime.
+- **Saldi**: quadratura DARE/AVERE della scrittura di apertura.
 
-La scrittura di apertura è semplice per banca, cassa, debiti v/fornitori e fondi: una
-`scrittura_contabile` datata all'inizio del primo esercizio, con `esercizio_id` e
-`gestione_id` del nuovo esercizio, in quadratura DARE/AVERE.
+---
 
-Il nodo è la **morosità per condòmino**: in Kondomanager non è un saldo memorizzato, è
-*calcolata* da `rate_quote`/piano rate vs pagamenti. Importare un saldo iniziale per immobile
-richiede un meccanismo che il motore morosità riconosca **senza** un piano rate alle spalle.
+## 9. Scrittura di apertura e saldi iniziali
 
 ### Opzione A — Rata di apertura sintetica (MVP consigliato)
 
-Si genera una `rata` fittizia "Saldo esercizio precedente" per immobile. La morosità rientra
-naturalmente nel motore esistente e nel Credit Enforcer / Wizard Solleciti.
+Genera una `rata` fittizia "Saldo esercizio precedente" per soggetto/unità. Riusa il motore
+morosità esistente senza modifiche.
 
-- **Pro**: riusa tutto l'esistente, zero modifiche al motore morosità.
-- **Contro**: introduce una riga non deliberata nel piano rate.
+- **Pro**: zero modifiche al motore morosità, riuso totale.
+- **Contro**: riga non deliberata nel piano rate.
 
 ### Opzione B — Posizione ledger pura
 
-Scrittura di apertura su *Crediti v/Condòmini* per immobile; il motore morosità impara a
-leggere anche questa fonte.
+Scrittura di apertura su *Crediti v/Condòmini* per immobile.
 
 - **Pro**: contabilmente più pulito.
-- **Contro**: richiede di toccare la logica di calcolo morosità.
+- **Contro**: richiede modifiche alla logica morosità.
 
-**Raccomandazione**: Opzione A come MVP; Opzione B quando il Credit Enforcer (v1.10) sarà
-maturo. Decisione finale da validare contro il codice del motore morosità.
+**Raccomandazione**: Opzione A come MVP; Opzione B con Credit Enforcer maturo (v1.10+).
+
+---
 
 ## 10. Versioning dei template
 
-Lo schema canonico evolverà. Si versiona:
+- Campo `template_schema_version` nei template Excel e nei `CanonicalDataset`.
+- La pipeline rifiuta o migra versioni non compatibili esplicitamente.
 
-- Un campo `template_schema_version` nei template Excel e nei `CanonicalDataset`.
-- Il percorso manuale e tutti i driver devono dichiarare/tracciare la versione che producono.
-- La pipeline rifiuta (o migra) versioni non compatibili in modo esplicito.
+---
 
 ## 11. Sequencing nella roadmap
 
-Non costruire un modulo Import monolitico. Decomporre per livello e rilasciare ogni fetta
-quando l'entità sottostante matura.
-
 | Fetta | Pronta dopo |
-|------|-------------|
-| Tabelle millesimali | **Già possibile** (CalcoloQuoteService + tipo `manuale`) |
-| Soggetti / immobili / titolarità | v1.10 (Anagrafica Immobiliare + Stato Patrimoniale) |
-| Fornitori | v1.12 (DNA Fiscale — per validare regime/CF/PIVA in ingresso) |
-| Saldi iniziali / scrittura di apertura | MVP con v1.10; versione completa con v1.17 |
+|-------|-------------|
+| Tabelle millesimali | **Già possibile** |
+| Soggetti / immobili / titolarità | v1.10 |
+| Fornitori | v1.12 |
+| Saldi iniziali | MVP con v1.10; completo con v1.17 |
 
-> La pipeline generica nasce attorno al caso più semplice (Soggetto/Immobile/Titolarità)
-> prima di affrontare i saldi.
+---
 
-## 12. Driver Danea (rinviato)
+## 12. Driver Danea — Analisi export reali
 
-Da costruire quando sarà disponibile un export Excel reale. Checklist di analisi, quando arriva:
+> File ricevuti: `anagrafica.xls`, `Elenco_Attivita_.xls`, `Movimenti.xls`, `rate_versate.xls`
 
-- [ ] Come Danea struttura l'export dei **saldi per condòmino** (è il punto critico di mappatura).
-- [ ] Come struttura il **piano dei conti** (secondo punto critico).
-- [ ] Separazione/aggregazione di soggetti e unità nei suoi modelli.
-- [ ] Formato dei millesimi e dei tipi di tabella.
-- [ ] Codifica CF/PIVA e gestione campi mancanti.
+### Struttura file
 
-Il `DaneaDriver` mapperà *dentro* il canonico esistente; non si modifica il canonico per Danea.
+| File | Contenuto | Livello import |
+|------|-----------|----------------|
+| `anagrafica.xls` | Unità + millesimali fusi in un unico file. Header riga 0, dati da riga 1. | L1 + L2 |
+| `Movimenti.xls` | Movimenti contabili con righe principali + righe ritenuta alternate | NON importare |
+| `rate_versate.xls` | Incassi da condòmini per esercizio | L3 (saldi) |
+| `Elenco_Attivita_.xls` | Ticket/CRM: pratiche, guasti, richieste | Fuori scope |
 
-## 13. Prossimi passi
+### Mappatura `anagrafica.xls` → canonico
 
-1. **Validare il canonico Fase 1** (Soggetto / Immobile / Titolarità) contro lo schema reale
-   delle migrazioni Anagrafica Immobiliare v1.10.
-2. Definire i **DTO canonici** come value object immutabili.
-3. Implementare `ImportDriver` + `ManualTemplateDriver` + generazione dei **template Excel**.
-4. Implementare **Validator** (regole §8) e **Preview/diff**.
-5. Implementare **Committer** transazionale con `import_batch_id` + rollback.
-6. Test Pest end-to-end sul percorso manuale (helper condivisi, SQLite in-memory).
-7. Solo dopo: prima fetta saldi (Opzione A) e, in futuro, `DaneaDriver`.
+| Colonna Danea | Campo canonico | Note |
+|---------------|----------------|------|
+| `Palazzina` | `CanonicalImmobile.palazzina` | |
+| `Progressivo` | chiave `ref_esterno` (es. `1-3`) | |
+| `Proprietario` | `CanonicalSoggetto.nome`+`cognome` | Unica stringa — split necessario |
+| `Proprietà` | `CanonicalTabella.millesimi` (tabella Proprietà) | |
+| `Scala A palazz. 1` | `CanonicalTabella.millesimi` (tabella Scala A P1) | |
+| `Scala A palazz. 2` | `CanonicalTabella.millesimi` (tabella Scala A P2) | |
+| `Riscaldamento` | `CanonicalTabella.millesimi` (tabella Riscaldamento) | |
+
+### Osservazioni critiche
+
+- **Ruolo non esplicito**: Danea non espone il ruolo (Pr/Co/Us) nell'export anagrafica — si assume `proprietario` per default. Casi inquilino/usufruttuario richiedono integrazione manuale post-import.
+- **CF assente**: nessun codice fiscale nell'export; de-dup solo per nome+cognome (fragile).
+- **Tabelle millesimali fuse con anagrafiche**: il driver deve estrarre le due entità dallo stesso foglio.
+- **Soggetto con più unità**: `TACCALA MARAA RASA` appare per int. 3 e int. 4 — de-dup per nome cognome obbligatorio.
+- **Movimenti**: struttura a righe alternate (G1 = fattura, G61 = ritenuta correlata). Piano dei conti `Categoria / Sottovoce` non mappabile; utile solo per Smart Ledger Suggester post-v1.12.
+- **`rate_versate.xls`**: anagrafica troncata con `(...)` — non affidabile come chiave di match; meglio usare il protocollo `Rxx` come `ref_esterno`. L'importo è il versato cumulativo (può coprire più rate).
+- **Esercizio solare** (gen–dic): data header in `Movimenti.xls` e `rate_versate.xls`.
+
+### Checklist analisi (completata)
+
+- [x] Struttura saldi per condòmino → `rate_versate.xls`: importo versato per anagrafica (Opzione A)
+- [x] Piano dei conti → `Categoria / Sottovoce` testo libero, non mappabile al ledger
+- [x] Separazione soggetti/unità → **non separati**: una riga = un'unità, proprietario come stringa
+- [x] Formato millesimi → interi per colonna nello stesso foglio anagrafica
+- [x] CF/PIVA → **assenti** nell'export; warning garantito in validazione
+- [x] Esercizio → **solare** (jan–dic)
+
+---
+
+## 13. Driver Giada — Analisi export reali
+
+> File ricevuti: `giada_unita.xls`, `giada_mill.xls`, `giada_consuntivo_24_25.xls`,
+> `giara_riparto_consuntivo_24_25.xls`
+
+### Struttura file
+
+| File | Contenuto | Livello import |
+|------|-----------|----------------|
+| `giada_unita.xls` | Soggetti + unità + ruoli + saldi precedenti | L1 + L3 |
+| `giada_mill.xls` | Tabelle millesimali separate | L2 |
+| `giada_consuntivo_24_25.xls` | Consuntivo per conto | NON importare |
+| `giara_riparto_consuntivo_24_25.xls` | Riparto per unità/soggetto con saldi finali | L3 (saldi più precisi) |
+
+### Mappatura `giada_unita.xls` → canonico
+
+| Colonna Giada | Campo canonico | Note |
+|---------------|----------------|------|
+| `Palazzina` | `CanonicalImmobile.palazzina` | |
+| `Progressivo` | chiave `ref_esterno` | |
+| `Piano` | `CanonicalImmobile.piano` | assente in Danea |
+| `Interno` | `CanonicalImmobile.interno` | assente in Danea |
+| `Tipo` | tipo unità | es. `Appartamento` |
+| `Ruolo` | `CanonicalTitolarita.ruolo` | `Pr`→`proprietario`, `Co`→`inquilino`, `Us`→`usufruttuario` |
+| `Saldo prec` | `CanonicalTitolarita.saldo_iniziale` | saldo precedente per soggetto |
+| `Denominazione` | `CanonicalSoggetto.nome`+`cognome` | unica stringa, split necessario |
+| `CodFisc` | `CanonicalSoggetto.codice_fiscale` | presente — migliore qualità rispetto a Danea |
+| `Email` / `Tel1` | `CanonicalSoggetto.email` / `telefono` | |
+| `Sub. cat.` | quota millesimale sintetica (informativa) | non tabella completa |
+
+### Mappatura `giada_mill.xls` → canonico
+
+Una riga per unità, una colonna per tabella. Valori come numeri decimali che sommano a 1000.
+`NaN` = unità non partecipante a quella tabella (tabella parziale — non errore).
+
+| Colonna Giada | Tabella canonico | Note |
+|---------------|------------------|------|
+| `AMMINISTRAZIONE` | Tabella "Amministrazione" | somma = 1000 |
+| `ASSICURAZIONE` | Tabella "Assicurazione" | somma = 1000 |
+| `MANUTENZIONE ORDINARIA` | Tabella "Manutenzione Ordinaria" | somma = 1000 |
+| `ASCENSORE E SCALE` | Tabella "Ascensore e Scale" | somma = 1000 |
+| `idraulico` | Tabella "Idraulico" | **parziale** — solo 3 unità su 15 |
+| `Cassete postali` | Tabella tipo `manuale` a parti uguali | valore = 1 per ogni unità |
+
+### Mappatura saldi da `giara_riparto_consuntivo_24_25.xls`
+
+Il riparto consuntivo è la fonte più precisa per i saldi di fine esercizio:
+
+| Colonna Giada | Uso import |
+|---------------|-----------|
+| `Saldo finale` | saldo da portare come apertura in Kondomanager |
+| `Saldi di fine Es. prec.` | saldo dell'esercizio precedente (cross-check) |
+| `Movimenti personali` | addebiti ad personam già avvenuti (non importare come movimenti) |
+| `mill.` (accanto a ogni voce) | millesimi usati per il riparto (cross-check con `giada_mill.xls`) |
+
+### Osservazioni critiche
+
+- **Ruoli espliciti e multipli per unità**: `Pr`, `Co`, `Us` — più vicino al `CanonicalTitolarita`. Il driver deve gestire N righe per lo stesso `Progressivo`.
+- **Ruoli storici `ex`**: `ex Pr`, `ex Co`, `ex Us` con giorni proporzionali (`29 gg`, `336 gg`) per subentri mid-anno. **Non importare** — solo stato corrente.
+- **CF disponibile**: qualità superiore a Danea; de-dup affidabile.
+- **Tabelle parziali confermate**: `idraulico` con NaN per la maggior parte delle unità.
+- **Esercizio non solare**: `2024/2025` (nov–ott). Il canonico non deve assumere gen–dic.
+- **`Cassete postali`** = parti uguali (valore 1): schema tipo `manuale` confermato in uso reale.
+- **Consuntivo**: stesso pattern piano dei conti `Categoria / Sottovoce` di Danea — ulteriore conferma del pattern comune nei gestionali italiani (utile per Smart Ledger Suggester).
+
+### Checklist analisi (completata)
+
+- [x] Struttura saldi per soggetto → `Saldo prec` in `giada_unita.xls` (diretto); `Saldo finale` in riparto (più preciso)
+- [x] Piano dei conti → `Categoria / Sottovoce` testo libero, stesso pattern di Danea
+- [x] Separazione soggetti/unità → **parziale**: file unità ha più righe per progressivo con ruolo esplicito
+- [x] Millesimi → file separato; tabelle parziali con NaN gestite come esclusione
+- [x] CF/PIVA → **presente** in `giada_unita.xls` campo `CodFisc`
+- [x] Esercizio → **non solare** (nov–ott); canonico deve accettare date libere
+
+---
+
+## 14. Confronto Danea vs Giada
+
+| Aspetto | Danea | Giada |
+|---------|-------|-------|
+| Unità + millesimi | File unico fuso | File separati |
+| Ruoli soggetti | Assente nell'export (solo proprietario) | `Pr`, `Co`, `Us` espliciti |
+| Codice fiscale | Assente | Presente su `giada_unita.xls` |
+| Saldo iniziale | Da `rate_versate` per differenza | `Saldo prec` diretto per soggetto |
+| Saldo preciso | Non disponibile direttamente | `Saldo finale` nel riparto consuntivo |
+| Tabelle parziali | Non osservato | Confermato (NaN = non partecipa) |
+| Esercizio | Solare (gen–dic) | Non solare (nov–ott) |
+| Piano dei conti | `Categoria / Sottovoce` testo | `Categoria / Sottovoce` testo (identico) |
+| Attività/CRM | `Elenco_Attivita_.xls` | Non presente nell'export |
+
+### Implicazioni architetturali cross-gestionale
+
+1. **Due driver distinti necessari** — struttura dei file completamente diversa.
+2. **Il canonico regge entrambi** senza modifiche — conferma che il design è corretto.
+3. **`saldo_iniziale` su `CanonicalTitolarita`** — aggiunto dopo analisi reali; entrambi i gestionali lo espongono in forme diverse ma mappabili.
+4. **Tabelle parziali** — NaN/assenza = esclusione, non errore; da gestire nel validator e nel Committer.
+5. **Esercizio non solare** — `data_inizio`/`data_fine` liberi nel canonico, mai assumere gen–dic.
+6. **Nome+cognome come unica stringa** — pattern comune; split `Cognome Nome` tentato dal driver, con fallback a `denominazione` unica.
+7. **Piano dei conti `Categoria / Sottovoce`** — pattern identico in entrambi i gestionali; prezioso per Smart Ledger Suggester (post-v1.12) indipendentemente dall'import.
+
+---
+
+## 15. Prossimi passi
+
+1. Validare il canonico Fase 1 (§7) contro lo schema reale Anagrafica Immobiliare v1.10.
+2. Aggiungere `saldo_iniziale` a `CanonicalTitolarita` e gestirlo nella pipeline.
+3. Implementare `ImportDriver` + `ManualTemplateDriver` + template Excel.
+4. Implementare Validator (§8) con gestione tabelle parziali.
+5. Implementare Committer transazionale con `import_batch_id`.
+6. Test Pest end-to-end (SQLite in-memory).
+7. `DaneaDriver` — prima iterazione su `anagrafica.xls` (L1+L2, senza saldi).
+8. `GiadaDriver` — più completo di Danea: L1+L2+L3 da tre file distinti.

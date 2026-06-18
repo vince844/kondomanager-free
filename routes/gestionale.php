@@ -241,6 +241,9 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/pagamenti-fornitori/{pagamento}/distinta', [PagamentoFornitoreController::class, 'distinta'])
         ->name('pagamenti-fornitori.distinta');
 
+    Route::get('/pagamenti-fornitori/{pagamento}', [PagamentoFornitoreController::class, 'show'])
+        ->name('pagamenti-fornitori.show');
+
     Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
         ->name('pagamenti-fornitori.storno');
 

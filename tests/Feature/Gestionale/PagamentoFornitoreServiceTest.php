@@ -9,7 +9,7 @@ require_once __DIR__ . '/GestionaleTestHelpers.php';
  * → pagamento → storno → ricalcolo stato.
  *
  * Struttura dei test:
- *   - setupPagamenti()  helper che estende setupContabile() con conto bancario + cassa
+ *   - setupPagamentiService()  helper che estende setupContabile() con conto bancario + cassa
  *   - datiPagamento()   helper per costruire l'array input del service
  *   - Gruppo 1: pagamenti fondamentali (totale, parziale, cumulativo, netting)
  *   - Gruppo 2: storno (normale, cross-esercizio, già stornato)
@@ -48,111 +48,6 @@ use Illuminate\Support\Facades\Event;
  *
  * Restituisce: [condominio, esercizio, gestione, fornitore, contoCorrenteId]
  */
-function setupPagamenti(): array
-{
-    Event::fake([
-        \App\Events\Gestionale\FatturaRegistrata::class,
-        \App\Events\Gestionale\PagamentoRegistrato::class,
-        \App\Events\Gestionale\PagamentoStornato::class,
-    ]);
-
-    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
-
-    // Conto corrente bancario
-    // NOTA SQLite: 'attivo'/'crediti' invece di 'attivo'/'liquidita' e 'costo'/'costi'
-    // perché il CHECK constraint SQLite include solo i valori dell'ENUM originale.
-    // Il service trova il conto via ruolo, non via tipo/categoria.
-    $contoCorrenteId = DB::table('conti_contabili')->insertGetId([
-        'condominio_id' => $condominio->id,
-        'ruolo'         => 'conto_bancario',
-        'codice'        => 'BANCA-TEST',
-        'nome'          => 'Conto Corrente Test',
-        'tipo'          => 'attivo',
-        'categoria'     => 'crediti',
-        'created_at'    => now(),
-        'updated_at'    => now(),
-    ]);
-
-    // Cassa collegata al conto — necessaria per cassa_id nelle righe scritture
-    DB::table('casse')->insertGetId([
-        'condominio_id'      => $condominio->id,
-        'conto_contabile_id' => $contoCorrenteId,
-        'nome'               => 'Conto Corrente Test',
-        'created_at'         => now(),
-        'updated_at'         => now(),
-    ]);
-
-    // Conto spese bancarie — 'attivo'/'crediti' per compatibilità CHECK constraint SQLite
-    DB::table('conti_contabili')->insert([
-        'condominio_id' => $condominio->id,
-        'ruolo'         => 'spese_bancarie',
-        'codice'        => 'SPESE-BANC',
-        'nome'          => 'Spese Bancarie',
-        'tipo'          => 'attivo',
-        'categoria'     => 'crediti',
-        'created_at'    => now(),
-        'updated_at'    => now(),
-    ]);
-
-    return [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo];
-}
-
-/**
- * Registra una fattura standard pronta per il pagamento (1000€ + 22% IVA = 1220€ netto).
- * Usa FatturaPassivaService per creare il flusso end-to-end corretto.
- */
-function registraFatturaTest(array $ctx, array $override = []): FatturaPassiva
-{
-    [$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;
-
-    return (new FatturaPassivaService())->registraFattura(
-        array_merge(
-            datiBase([$condominio, $esercizio, $gestione, $fornitore], [
-                'righe' => [[
-                    'descrizione'        => 'Servizio Test',
-                    'importo_imponibile' => 1000,
-                    'aliquota_iva'       => 22,
-                    'conto_id'           => $capitolo->id,
-                    'is_sopravvenienza'  => false,
-                ]],
-            ]),
-            $override
-        ),
-        $condominio->id
-    );
-}
-
-/**
- * Costruisce l'array input per PagamentoFornitoreService::registraPagamento().
- * Imposta allow_overdraft=true per default nei test (non stiamo testando la capienza).
- * Imposta iban_confermato_manualmente=true per bypassare la sentinella IBAN.
- * Imposta conferma_duplicato_verificato=true per bypassare il check duplicati.
- */
-function datiPagamento(array $ctx, FatturaPassiva $fattura, array $extra = []): array
-{
-    [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
-
-    return array_merge([
-        'fornitore_id'                  => $fornitore->id,
-        'condominio_id'                 => $condominio->id,
-        'esercizio_id'                  => $esercizio->id,
-        'conto_corrente_id'             => $contoCorrenteId,
-        'data_pagamento'                => now()->format('Y-m-d'),
-        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
-        'iban_beneficiario'             => 'IT60X0542811101000000123456',
-        'importo_commissioni_cents'     => 0,
-        'bonifico_parlante'             => false,
-        'allow_overdraft'               => true,
-        'iban_confermato_manualmente'   => true,
-        'conferma_duplicato_verificato' => true,
-        'allocazioni'                   => [[
-            'fattura_id'             => $fattura->id,
-            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
-            'importo_allocato_cents' => $fattura->netto_a_pagare,
-        ]],
-    ], $extra);
-}
-
 /**
  * Verifica che la somma degli importi pivot di tipo 'pagamento' per una scrittura
  * sia uguale all'uscita di cassa (AVERE sul conto corrente).
@@ -185,8 +80,8 @@ function assertInvarianteCash(int $scritturaId, int $contoCorrenteId): void
 // ════════════════════════════════════════════════════════════════════════════
 
 it('pagamento totale: stato fattura diventa PAGATA e scrittura quadra', function () {
-    $ctx     = setupPagamenti();
-    $fattura = registraFatturaTest($ctx);
+    $ctx     = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx);
     $service = new PagamentoFornitoreService();
 
     expect($fattura->stato_pagamento)->toEqual(StatoPagamentoFattura::APERTA);
@@ -203,8 +98,8 @@ it('pagamento totale: stato fattura diventa PAGATA e scrittura quadra', function
 });
 
 it('pagamento totale: la pivot ha esattamente 1 record di tipo pagamento', function () {
-    $ctx     = setupPagamenti();
-    $fattura = registraFatturaTest($ctx);
+    $ctx     = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx);
     $service = new PagamentoFornitoreService();
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
@@ -220,8 +115,8 @@ it('pagamento totale: la pivot ha esattamente 1 record di tipo pagamento', funct
 });
 
 it('pagamento parziale: stato diventa PARZIALE', function () {
-    $ctx     = setupPagamenti();
-    $fattura = registraFatturaTest($ctx);
+    $ctx     = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx);
     $service = new PagamentoFornitoreService();
 
     $service->registraPagamento(datiPagamento($ctx, $fattura, [
@@ -240,8 +135,8 @@ it('pagamento parziale: stato diventa PARZIALE', function () {
 });
 
 it('due pagamenti parziali consecutivi chiudono la fattura', function () {
-    $ctx     = setupPagamenti();
-    $fattura = registraFatturaTest($ctx);
+    $ctx     = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx);
     $service = new PagamentoFornitoreService();
 
     // Primo pagamento: 700€
@@ -282,12 +177,12 @@ it('due pagamenti parziali consecutivi chiudono la fattura', function () {
 });
 
 it('bonifico cumulativo: paga 2 fatture con 1 scrittura e tutto quadra', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
 
-    $fattura1 = registraFatturaTest($ctx); // 1220€
-    $fattura2 = registraFatturaTest($ctx); // 1220€
+    $fattura1 = registraFatturaServiceTest($ctx); // 1220€
+    $fattura2 = registraFatturaServiceTest($ctx); // 1220€
 
     $pagamento = $service->registraPagamento([
         'fornitore_id'                  => $fornitore->id,
@@ -331,8 +226,8 @@ it('bonifico cumulativo: paga 2 fatture con 1 scrittura e tutto quadra', functio
 });
 
 it('pagamento con bonifico parlante genera causale fiscale corretta', function () {
-    $ctx     = setupPagamenti();
-    $fattura = registraFatturaTest($ctx);
+    $ctx     = setupPagamentiService();
+    $fattura = registraFatturaServiceTest($ctx);
     $service = new PagamentoFornitoreService();
 
     // Assicuriamoci che il fornitore abbia la P.IVA per la causale
@@ -371,12 +266,12 @@ it('pagamento con bonifico parlante genera causale fiscale corretta', function (
 // ════════════════════════════════════════════════════════════════════════════
 
 it('netting FT+NC: quadratura DARE=AVERE corretta', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
     // Fattura 1000€ + 22% = 1220€
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     // Nota credito 200€ + 22% = 244€ (no ritenuta)
     $nc = (new FatturaPassivaService())->registraFattura(
@@ -445,11 +340,11 @@ it('netting FT+NC: quadratura DARE=AVERE corretta', function () {
 });
 
 it('netting: invariante GOLD — Σ(pivot pagamento) = uscita cassa banca', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
-    $fattura = registraFatturaTest($ctx); // 1220€
+    $fattura = registraFatturaServiceTest($ctx); // 1220€
 
     $nc = (new FatturaPassivaService())->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
@@ -508,9 +403,9 @@ it('netting: invariante GOLD — Σ(pivot pagamento) = uscita cassa banca', func
 // ════════════════════════════════════════════════════════════════════════════
 
 it('storno pagamento: fattura torna APERTA e scrittura storno quadra', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
     $fattura->refresh();
@@ -548,9 +443,9 @@ it('storno pagamento: fattura torna APERTA e scrittura storno quadra', function 
 });
 
 it('storno: pivot negativi mirror del pagamento originale', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
     $storno    = $service->stornaPagamento($pagamento, 'Test pivot negativi');
@@ -565,9 +460,9 @@ it('storno: pivot negativi mirror del pagamento originale', function () {
 });
 
 it('storno di pagamento già stornato lancia PagamentoGiaStornatoException', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
     $service->stornaPagamento($pagamento, 'Primo storno');
@@ -578,10 +473,10 @@ it('storno di pagamento già stornato lancia PagamentoGiaStornatoException', fun
 });
 
 it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio] = $ctx;
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
 
@@ -616,12 +511,12 @@ it('storno cross-esercizio (Variante B1): usa esercizio corrente aperto', functi
 });
 
 it('storno pagamento cumulativo multi-fattura: riapre entrambe', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
 
-    $fattura1 = registraFatturaTest($ctx);
-    $fattura2 = registraFatturaTest($ctx);
+    $fattura1 = registraFatturaServiceTest($ctx);
+    $fattura2 = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento([
         'fornitore_id'                  => $fornitore->id,
@@ -649,11 +544,11 @@ it('storno pagamento cumulativo multi-fattura: riapre entrambe', function () {
 });
 
 it('storno pagamento con netting NC: riapre fattura e nota di credito', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
     
     $nc = (new FatturaPassivaService())->registraFattura(
         datiBase([$condominio, $esercizio, $gestione, $fornitore], [
@@ -705,10 +600,10 @@ it('storno pagamento con netting NC: riapre fattura e nota di credito', function
 // ════════════════════════════════════════════════════════════════════════════
 
 it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, , , , $contoCorrenteId] = $ctx;
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $commissioni = 500; // 5€
 
@@ -754,9 +649,9 @@ it('pagamento con commissioni: DARE spese bancarie + quadratura corretta', funct
 // ════════════════════════════════════════════════════════════════════════════
 
 it('overpayment bloccato: alloco più del residuo → OverpaymentException', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     expect(fn () => $service->registraPagamento(datiPagamento($ctx, $fattura, [
         'allow_overpayment' => false,
@@ -773,10 +668,10 @@ it('overpayment bloccato: alloco più del residuo → OverpaymentException', fun
 });
 
 it('esercizio chiuso: blocca registrazione → FiscalYearClosedException', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio] = $ctx;
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     // Chiude l'esercizio
     DB::table('esercizi')->where('id', $esercizio->id)->update(['stato' => 'chiuso']);
@@ -786,7 +681,7 @@ it('esercizio chiuso: blocca registrazione → FiscalYearClosedException', funct
 });
 
 it('antiriciclaggio: contanti >= 5000€ → IllegalCashAmountException', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
 
     // Fattura grande per superare il limite (6000€ + 22%)
@@ -815,7 +710,7 @@ it('antiriciclaggio: contanti >= 5000€ → IllegalCashAmountException', functi
 });
 
 it('antiriciclaggio: contanti 4999€ passano (sotto soglia)', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;
 
@@ -850,9 +745,9 @@ it('antiriciclaggio: contanti 4999€ passano (sotto soglia)', function () {
 // ════════════════════════════════════════════════════════════════════════════
 
 it('ricalcolaStatoFattura: corregge stato inconsistente (overpayment dirty data)', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     // Inserisce manualmente un pivot con overpayment (simula dirty data)
     $scrittura = $fattura->scritture()->first();
@@ -877,9 +772,9 @@ it('ricalcolaStatoFattura: corregge stato inconsistente (overpayment dirty data)
 });
 
 it('ricalcolaStatoFattura: non include tipo=competenza nel calcolo', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     // La fattura appena registrata ha già 1 pivot tipo=competenza da FatturaPassivaService.
     // Il totale allocato (ignorando la competenza) deve essere 0 → APERTA.
@@ -891,9 +786,9 @@ it('ricalcolaStatoFattura: non include tipo=competenza nel calcolo', function ()
 });
 
 it('versione_allocazioni incrementa ad ogni operazione sulla pivot', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $versioneIniziale = $fattura->versione_allocazioni;
 
@@ -917,9 +812,9 @@ it('versione_allocazioni incrementa ad ogni operazione sulla pivot', function ()
 });
 
 it('idempotency key: seconda chiamata con stessa key restituisce pagamento originale', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $idempotencyKey = (string) \Illuminate\Support\Str::uuid();
     $input = datiPagamento($ctx, $fattura, ['idempotency_key' => $idempotencyKey]);
@@ -940,10 +835,10 @@ it('idempotency key: seconda chiamata con stessa key restituisce pagamento origi
 });
 
 it('snapshot fornitore: salvato al momento del pagamento e immutabile', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, , , $fornitore] = $ctx;
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
 
@@ -961,9 +856,9 @@ it('snapshot fornitore: salvato al momento del pagamento e immutabile', function
 });
 
 it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
-    $fattura = registraFatturaTest($ctx);
+    $fattura = registraFatturaServiceTest($ctx);
 
     $pagamento = $service->registraPagamento(datiPagamento($ctx, $fattura));
 
@@ -974,7 +869,7 @@ it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', functi
 });
 
 it('ritenute dacconto: calcolo pro-quota su pagamento parziale', function () {
-    $ctx     = setupPagamenti();
+    $ctx     = setupPagamentiService();
     $service = new PagamentoFornitoreService();
     [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = $ctx;
 

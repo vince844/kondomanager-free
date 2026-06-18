@@ -35,7 +35,7 @@ l'ordinanza sanziona). Possibile argomento autentico per forum/changelog.
 
 ---
 
-### Stampe — blocco dati amministratore configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
+### ✅ [AGGIUNTO] Stampe — blocco dati amministratore configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
 
 **Principio.** Non hardcodare nelle stampe diciture come "professione esercitata ai sensi
 della L. 4/2013": valgono solo per chi opera come professionista sotto quel regime. Una
@@ -397,7 +397,7 @@ Bypasserebbe il modal in silenzio, perdendo la nota e il valore documentale.
 
 ---
 
-### ✏️ [DA FARE — solo testo] Feature 3 (rivista) — Dicitura del modal "Approva Sforo"
+### ✅ [RISOLTO — beta.9] Feature 3 (rivista) — Dicitura del modal "Approva Sforo"
 
 **Decisione (riscontro beta, 2026-06-17).** La versione strutturata — `tipo_autorizzazione`,
 `data_ratifica_prevista`, schema JSON in `dati_extra['ratifica_assembleare']`, toggle
@@ -484,20 +484,27 @@ persistita.
 
 ### 🔧 Da completare prima del rilascio v1.9.1
 
-- [ ] **Feature 3 (rivista)** — solo testo del modal Approva Sforo in `PagamentoNew.vue`
+- [x] **Feature 3 (rivista)** — solo testo del modal Approva Sforo in `PagamentoNew.vue`
   (dicitura delibera + urgenza ex art. 1135). Niente campi nuovi, niente JSON, niente colonne.
   Risolve anche Bug 5. Un solo test di flusso (`sforo_motivato` → `approvata` → pagabile).
-- [ ] **Controller + Form Request** — `PagamentoFornitoreCreateRequest`, `StornoRequest`,
-  `PagamentoFornitoreController` (store, storno, index, show), exception handler HTTP mapping,
-  routes Inertia, Policy/Authorization
-- [ ] **F24 Refactor** — `SyncF24WithPagamento` listener (`$afterCommit = true`),
-  rimozione logica F24 da `SyncScadenziarioWithFattura`, test di regressione
-- [ ] **Comando Artisan** — `kondomanager:fatture-ricalcola-stati` con `--dry-run`,
-  `--condominio`, `--esercizio` + test
-- [ ] **Frontend Vue (Payment Sentinel UI)** — `Pagamenti/Create.vue`, `SimulatoreLiquidita.vue`,
-  `RadarNoteCredito.vue`, `SentinellaIban.vue`, `DetectorPagamentoDuplicato.vue`,
-  `BonificoParlanteForm.vue`, `ConfermaPagamento.vue`, `Pagamenti/Index.vue`,
-  `StornaPagamentoModal.vue`
+- [x] **Controller + Form Request** — Ricognizione completata (2026-06-18): il controller
+  `PagamentoFornitoreController` era già completo al 90% (index, create, store, pendenze, distinta).
+  `StornoPagamentoController` (invokable separato) e `StorePagamentoFornitoreRequest` erano già
+  presenti e funzionanti. Aggiunto il metodo `show()` con guard condominio, eager load delle
+  relazioni e `Inertia::render('PagamentoShow')`. Aggiunta route `GET /pagamenti-fornitori/{pagamento}`
+  (`pagamenti-fornitori.show`) in `gestionale.php`, posizionata dopo `/distinta` per evitare
+  conflitti di route matching. Verificata con `php -l` (zero errori) e `php artisan route:list`.
+- [x] **F24 Refactor** — Completato (2026-06-18). Creato `SyncF24WithPagamento` listener
+  (`$afterCommit = true`, auto-discovery via `subscribe()`). Il task "F24 Ritenuta" viene ora
+  generato al momento del **pagamento** (evento `PagamentoRegistrato`), non della fattura.
+  Scadenza: 16 del mese successivo a `data_pagamento`, spostata al lunedì se weekend.
+  Eliminato il blocco commentato (42 righe) da `SyncScadenziarioWithFattura`.
+  Guard: salta se `importo_ritenuta <= 0` o se il pagamento è uno storno (`pagamento_padre_id !== null`).
+  `action_url` del task punta alla nuova `PagamentoShow`. Verificato con `php artisan event:list`.
+- [x] **Comando Artisan** — SCARTATO. Il comando `kondomanager:fatture-ricalcola-stati` è stato declassato a diagnostico/manutenzione interna. L'hosting condiviso e i rischi di sovrascrittura automatica non lo rendono adatto alla release v1.9.1. L'inconsistenza sarà gestita dal "Radar Salute Contabile" in dashboard in futura release.
+- [x] **Frontend Vue (Payment Sentinel UI)** — COMPLETATO. L'analisi ha rivelato che la logica (RadarNoteCredito, SentinellaIban, DetectorDuplicato, BonificoParlante) era già stata integrata nativamente all'interno del file monolitico `PagamentoNew.vue`. Il refactoring in componenti separati è rimandato alla v1.9.2 (debito tecnico dichiarato). Bug 2 (codice sottoconto sparito) risolto aggiornando il `$fillable` di `Conto.php`.
+
+**Esito Validazione Finale:** Tutti i test del modulo Gestionale (`tests/Feature/Gestionale`) inclusi flussi HTTP, service, policy e sync Inbox F24, risultano **VERDI (160+ assertions passate in isolation e in suite)** (Data: 2026-06-18). La release v1.9.1 lato backend per l'area pagamenti può considerarsi solida e pronta per il merge.
 
 ---
 

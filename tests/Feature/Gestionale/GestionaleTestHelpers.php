@@ -12,6 +12,10 @@
 
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestionale\FatturaPassiva;
+use App\Services\Gestionale\FatturaPassivaService;
+use App\Enums\MetodoPagamento;
+use App\Enums\TipoAllocazioneFattura;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
@@ -155,4 +159,142 @@ function datiBase(array $ctx, array $extra = []): array
         'modalita_pagamento' => 'bonifico',
         'dati_extra'         => ['fiscal' => [], 'competenza' => null, 'override_budget' => null],
     ], $extra);
+}if (!function_exists("setupPagamentiHttp")) { function setupPagamentiHttp(): array
+{
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $contoCorrenteId = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => 'conto_bancario',
+        'codice'        => 'BANCA-TEST',
+        'nome'          => 'Conto Corrente Test',
+        'tipo'          => 'attivo',
+        'categoria'     => 'crediti',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    DB::table('casse')->insertGetId([
+        'condominio_id'      => $condominio->id,
+        'conto_contabile_id' => $contoCorrenteId,
+        'nome'               => 'Conto Corrente Test',
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
+
+    DB::table('conti_contabili')->insert([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => 'spese_bancarie',
+        'codice'        => 'SPESE-BANC',
+        'nome'          => 'Spese Bancarie',
+        'tipo'          => 'attivo',
+        'categoria'     => 'crediti',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    return [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo];
+}
+}
+if (!function_exists("registraFatturaServiceTest")) { function registraFatturaServiceTest(array $ctx, array $override = []): FatturaPassiva
+{
+    [$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;
+
+    return (new FatturaPassivaService())->registraFattura(
+        array_merge(
+            datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+                'righe' => [[
+                    'descrizione'        => 'Servizio Test',
+                    'importo_imponibile' => 1000,
+                    'aliquota_iva'       => 22,
+                    'conto_id'           => $capitolo->id,
+                    'is_sopravvenienza'  => false,
+                ]],
+            ]),
+            $override
+        ),
+        $condominio->id
+    );
+}
+}
+
+/**
+ * Costruisce l'array input per PagamentoFornitoreService::registraPagamento().
+ * Imposta allow_overdraft=true per default nei test (non stiamo testando la capienza).
+ * Imposta iban_confermato_manualmente=true per bypassare la sentinella IBAN.
+ * Imposta conferma_duplicato_verificato=true per bypassare il check duplicati.
+ */
+function datiPagamento(array $ctx, FatturaPassiva $fattura, array $extra = []): array
+{
+    [$condominio, $esercizio, , $fornitore, $contoCorrenteId] = $ctx;
+
+    return array_merge([
+        'fornitore_id'                  => $fornitore->id,
+        'condominio_id'                 => $condominio->id,
+        'esercizio_id'                  => $esercizio->id,
+        'conto_corrente_id'             => $contoCorrenteId,
+        'data_pagamento'                => now()->format('Y-m-d'),
+        'metodo_pagamento'              => MetodoPagamento::BONIFICO->value,
+        'iban_beneficiario'             => 'IT60X0542811101000000123456',
+        'importo_commissioni_cents'     => 0,
+        'bonifico_parlante'             => false,
+        'allow_overdraft'               => true,
+        'iban_confermato_manualmente'   => true,
+        'conferma_duplicato_verificato' => true,
+        'allocazioni'                   => [[
+            'fattura_id'             => $fattura->id,
+            'tipo'                   => TipoAllocazioneFattura::PAGAMENTO->value,
+            'importo_allocato_cents' => $fattura->netto_a_pagare,
+        ]],
+    ], $extra);
+}
+
+if (!function_exists("setupPagamentiService")) { function setupPagamentiService(): array
+{
+    Event::fake([
+        \App\Events\Gestionale\FatturaRegistrata::class,
+        \App\Events\Gestionale\PagamentoRegistrato::class,
+        \App\Events\Gestionale\PagamentoStornato::class,
+    ]);
+
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    // Conto corrente bancario
+    // NOTA SQLite: 'attivo'/'crediti' invece di 'attivo'/'liquidita' e 'costo'/'costi'
+    // perché il CHECK constraint SQLite include solo i valori dell'ENUM originale.
+    // Il service trova il conto via ruolo, non via tipo/categoria.
+    $contoCorrenteId = DB::table('conti_contabili')->insertGetId([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => 'conto_bancario',
+        'codice'        => 'BANCA-TEST',
+        'nome'          => 'Conto Corrente Test',
+        'tipo'          => 'attivo',
+        'categoria'     => 'crediti',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    // Cassa collegata al conto — necessaria per cassa_id nelle righe scritture
+    DB::table('casse')->insertGetId([
+        'condominio_id'      => $condominio->id,
+        'conto_contabile_id' => $contoCorrenteId,
+        'nome'               => 'Conto Corrente Test',
+        'created_at'         => now(),
+        'updated_at'         => now(),
+    ]);
+
+    // Conto spese bancarie — 'attivo'/'crediti' per compatibilità CHECK constraint SQLite
+    DB::table('conti_contabili')->insert([
+        'condominio_id' => $condominio->id,
+        'ruolo'         => 'spese_bancarie',
+        'codice'        => 'SPESE-BANC',
+        'nome'          => 'Spese Bancarie',
+        'tipo'          => 'attivo',
+        'categoria'     => 'crediti',
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+
+    return [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo];
+}
 }

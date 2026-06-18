@@ -971,8 +971,8 @@ const pageGuides = [
                                                     </span>
                                                 </TooltipTrigger>
                                                 <TooltipContent side="top" class="max-w-xs text-center">
-                                                    <p class="font-bold mb-1">Spesa urgente in attesa di ratifica</p>
-                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">Art. 1135 c.c. — L'assemblea deve deliberare la spesa prima del pagamento. Usa "Approva sforo" per registrare la ratifica.</p>
+                                                    <p class="font-bold mb-1">Spesa in attesa di ratifica</p>
+                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">La spesa supera il budget approvato. Usa "Approva sforo" per registrare la delibera o la motivazione di urgenza (art. 1135 c.c.).</p>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
@@ -1246,9 +1246,10 @@ const pageGuides = [
         <!-- Modale Ratifica Assembleare Sforo (inline da PagamentoNew) — stesso stile ConfirmDialog -->
         <ConfirmDialog
             v-model="showApprovaSforoModal"
-            title="Ratifica Assembleare — Sforo Motivato"
-            confirm-text="Conferma Ratifica"
+            title="Ratifica assembleare — Sforo motivato"
+            confirm-text="Conferma ratifica"
             variant="default"
+            size="lg"
             :disabled="noteApprovazioneInline.trim().length < 10"
             @confirm="executeApprovaSforoInline"
         >
@@ -1258,11 +1259,16 @@ const pageGuides = [
                 <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
                     <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
                     <div>
-                        <p class="font-bold text-orange-900">Ratifica assembleare obbligatoria (Art. 1135 c.c.)</p>
+                        <p class="font-bold text-orange-900">Ratifica assembleare (Art. 1135 c.c.)</p>
                         <p class="text-xs mt-1 leading-relaxed">
-                            Questa fattura è stata registrata con sforo motivato: la spesa supera il budget approvato dall'assemblea.
-                            La ratifica è obbligatoria per legge prima del pagamento.
-                            Confermando dichiari che l'assemblea ha deliberato l'approvazione di questa spesa.
+                            Questa fattura supera il budget approvato dall'assemblea.
+                        </p>
+                        <ul class="text-xs mt-2 space-y-1 leading-relaxed list-none">
+                            <li>• Se la spesa è già stata deliberata, indica nel campo note il riferimento al verbale.</li>
+                            <li>• In caso di lavori urgenti, per evitare un pregiudizio al condominio l'amministratore può procedere al pagamento, dandone comunicazione all'assemblea nella prima convocazione utile. In tal caso annota qui la motivazione, es.: <em>«Pagamento effettuato per urgenza dall'amministratore — [breve descrizione]»</em>.</li>
+                        </ul>
+                        <p class="text-xs mt-2 leading-relaxed opacity-80">
+                            La ratifica resterà segnalata nella Inbox operativa fino all'approvazione in assemblea.
                         </p>
                     </div>
                 </div>

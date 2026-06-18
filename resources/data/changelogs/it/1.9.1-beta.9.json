@@ -1,5 +1,15 @@
 {
     "features": [
+        "Endpoint dettaglio pagamento fornitore: Aggiunto il metodo show() in PagamentoFornitoreController con guard di appartenenza, eager loading delle relazioni e rendering Inertia verso la pagina PagamentoShow.",
+        "Prop size su ConfirmDialog: Il componente condiviso ConfirmDialog.vue supporta ora una prop size con quattro taglie (sm, md, lg, xl) che sovrascrive la larghezza di default.",
+        "F24 Refactor — SyncF24WithPagamento listener: Creato il listener che crea il task 'F24 Ritenuta' nell'Admin Inbox al momento del pagamento effettivo, non della registrazione fattura.",
+        "Pagina dettaglio pagamento fornitore (PagamentoShow): Creata la pagina Vue PagamentoShow.vue con layout GestionaleLayout, riepilogo importi, partita doppia della scrittura collegata, fatture saldate e pulsante Distinta PDF.",
+        "Link dettaglio nel dropdown lista pagamenti: Aggiunta voce 'Vedi dettaglio' nel DataTableRowActions.vue che naviga a PagamentoShow. La precedente voce 'Dettaglio scrittura' è rinominata 'Dettaglio scrittura contabile'.",
+        "Modal Ratifica assembleare — Sforo motivato allargato: Il ConfirmDialog di approvazione sforo usa ora size=\"lg\" per dare respiro al testo legale.",
+        "Dicitura modal Approva Sforo riscritta (Art. 1135 c.c.): Il testo del modal e del tooltip badge è stato riscritto per coprire esplicitamente i due scenari previsti dall'art. 1135 c.c. (spesa già deliberata o pagamento d'urgenza dell'amministratore).",
+        "Case uniformato: Titoli e testi dei modali seguono ora sentence case invece di title case.",
+        "SyncScadenziarioWithFattura — codice morto rimosso: Eliminato il blocco commentato che creava il task F24 al momento della fattura.",
+        "Voce menu Dettaglio scrittura contabile appariva disabilitata: Rimosso il class che causava un aspetto grigio identico allo stato disabled.",
         "Impostazioni Stampe PDF: Aggiunto un nuovo pannello di configurazione globale dedicato alle stampe. È ora possibile definire una Nota Legale (es. professione esercitata ex l. 4/2013, P.IVA, Polizza RC) che apparirà come piè di pagina in tutti i prospetti generati.",
         "Firma Amministratore: Implementata la possibilità di caricare l'immagine della firma dell'amministratore (in formato PNG o JPG), che verrà apposta automaticamente in calce ai documenti ufficiali come rendiconti e prospetti rate.",
         "Filtro Condominio su Action Inbox Admin: Aggiunto un dropdown nella barra di navigazione superiore della pagina /admin/inbox per filtrare i task per singolo condominio. Le KPI card (Scaduti/Urgenti, Verifiche incassi, Ticket & Manutenzione, Totale) si aggiornano dinamicamente in base al condominio selezionato.",

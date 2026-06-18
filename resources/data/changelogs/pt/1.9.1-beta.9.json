@@ -1,5 +1,15 @@
 {
     "features": [
+        "Endpoint de detalhe de pagamento do fornecedor: Adicionado o método show() em PagamentoFornitoreController com guarda de pertencimento, carregamento ansioso de relacionamentos e renderização Inertia para a página PagamentoShow.",
+        "Propriedade size no ConfirmDialog: O componente compartilhado ConfirmDialog.vue agora suporta uma propriedade size com quatro tamanhos (sm, md, lg, xl) que substitui a largura padrão.",
+        "F24 Refactor — Listener SyncF24WithPagamento: Criado o listener que cria a tarefa 'Retenção F24' na Action Inbox Admin no momento do pagamento efetivo, e não no registro da fatura.",
+        "Página de detalhe de pagamento do fornecedor (PagamentoShow): Criada a página Vue PagamentoShow.vue com layout GestionaleLayout, resumo de valores, partidas dobradas da entrada contábil vinculada, faturas pagas e botão de Extrato em PDF.",
+        "Link de detalhe no menu suspenso da lista de pagamentos: Adicionado o item 'Ver detalhes' em DataTableRowActions.vue navegando para PagamentoShow. O item anterior 'Detalhe da entrada' foi renomeado para 'Detalhe da entrada contábil'.",
+        "Modal ampliado de Ratificação de assembleia — Excesso justificado: O ConfirmDialog de aprovação de excesso agora usa size=\"lg\" para dar espaço ao texto legal.",
+        "Texto do modal de Aprovação de Excesso reescrito (Art. 1135 c.c.): O texto do modal e o emblema do tooltip foram reescritos para cobrir explicitamente os dois cenários previstos no Art. 1135 c.c. (despesa já deliberada ou pagamento urgente pelo administrador).",
+        "Caixa unificada: Títulos e textos dos modais agora seguem a caixa da frase em vez da caixa de título.",
+        "SyncScadenziarioWithFattura — código morto removido: Eliminado o bloco comentado que criava a tarefa F24 no momento da fatura.",
+        "O item de menu de detalhes da entrada contábil parecia desabilitado: Removida a classe que causava uma aparência cinza idêntica ao estado desabilitado.",
         "Configurações de Impressão de PDF: Adicionado um novo painel de configuração global dedicado a impressões. Agora é possível definir uma Nota Legal (ex. profissão exercida de acordo com a Lei 4/2013, NIF, Apólice de Responsabilidade Civil) que aparecerá como rodapé em todos os relatórios gerados.",
         "Assinatura do Administrador: Implementada a possibilidade de enviar a imagem da assinatura do administrador (em formato PNG ou JPG), que será aposta automaticamente no rodapé de documentos oficiais como prestação de contas e demonstrativos de parcelas.",
         "Filtro de Condomínio na Action Inbox Admin: Adicionado um dropdown na barra de navegação superior da página /admin/inbox para filtrar tarefas por condomínio individual. Os cartões KPI (Atrasados/Urgentes, Verificações de Pagamento, Tickets & Manutenção, Total) são atualizados dinamicamente com base no condomínio selecionado.",

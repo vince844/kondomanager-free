@@ -360,6 +360,64 @@ class PagamentoFornitoreController extends Controller
     }
 
     /**
+     * Mostra il dettaglio di un singolo pagamento fornitore.
+     *
+     * Carica il pagamento con tutte le relazioni (scrittura, fatture allocate,
+     * fornitore, conto) e lo passa alla pagina Inertia.
+     *
+     * Guard: il pagamento deve appartenere al condominio della route.
+     */
+    public function show(Condominio $condominio, PagamentoFornitore $pagamento): Response
+    {
+        abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Il pagamento non appartiene a questo condominio.');
+
+        $pagamento->load([
+            'fornitore',
+            'contoCorrente',
+            'scrittura.righe.contoContabile',
+            'scrittura.fatture',
+        ]);
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio      = $this->getEsercizioCorrente($condominio);
+
+        $scritturaFatture = $pagamento->scrittura?->fatture?->map(fn ($f) => [
+            'id'               => $f->id,
+            'numero_documento' => $f->numero_documento,
+            'data_documento'   => $f->data_documento?->format('d/m/Y'),
+            'tipo_documento'   => $f->tipo_documento,
+            'importo_allocato' => $f->pivot->importo_allocato,
+            'tipo_allocazione' => $f->pivot->tipo?->value ?? $f->pivot->tipo,
+        ]) ?? collect();
+
+        return Inertia::render('gestionale/movimenti/pagamenti/PagamentoShow', [
+            'condominio' => $condominio,
+            'condomini'  => $listaCondomini,
+            'esercizio'  => $esercizio,
+            'pagamento'  => (new PagamentoFornitoreResource($pagamento))->resolve(),
+            'scrittura'  => $pagamento->scrittura ? [
+                'id'                 => $pagamento->scrittura->id,
+                'numero_protocollo'  => $pagamento->scrittura->numero_protocollo,
+                'causale'            => $pagamento->scrittura->causale,
+                'tipo_movimento'     => $pagamento->scrittura->tipo_movimento?->value,
+                'data_registrazione' => $pagamento->scrittura->data_registrazione?->format('d/m/Y'),
+                'righe'              => $pagamento->scrittura->righe->map(fn ($r) => [
+                    'id'        => $r->id,
+                    'tipo_riga' => $r->tipo_riga,
+                    'importo'   => $r->importo,
+                    'note'      => $r->note,
+                    'conto'     => $r->contoContabile ? [
+                        'id'     => $r->contoContabile->id,
+                        'codice' => $r->contoContabile->codice,
+                        'nome'   => $r->contoContabile->nome,
+                    ] : null,
+                ]),
+                'fatture' => $scritturaFatture,
+            ] : null,
+        ]);
+    }
+
+    /**
      * Generates and downloads the Supplier Payment Slip in PDF format.
      *
      * @param Condominio $condominio

@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { MoreHorizontal, Eye, RotateCcw, Download, Loader2, AlertTriangle } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, RotateCcw, Download, Loader2, AlertTriangle, BookOpen } from 'lucide-vue-next'
 import { router, useForm } from '@inertiajs/vue3'
 import { usePermission } from '@/composables/permissions'
 
@@ -55,6 +55,14 @@ const downloadDistinta = () => {
     );
 };
 
+// ── Navigazione dettaglio pagamento (beta.9) ────────────────────────────────
+const goToPagamento = () => {
+    router.visit(route(generateRoute('gestionale.pagamenti-fornitori.show'), {
+        condominio: props.condominioId,
+        pagamento: props.pagamento.id,
+    }));
+};
+
 // ── Navigazione dettaglio scrittura (beta.7) ────────────────────────────────
 const goToScrittura = () => {
     if (!props.pagamento.scrittura_contabile_id) return;
@@ -76,10 +84,16 @@ const goToScrittura = () => {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-[200px]">
       
-      <!-- Dettaglio scrittura (beta.7) -->
-      <DropdownMenuItem @click="goToScrittura" :disabled="!pagamento.scrittura_contabile_id">
+      <!-- Dettaglio pagamento (beta.9) -->
+      <DropdownMenuItem @click="goToPagamento">
         <Eye class="mr-2 h-4 w-4" />
-        Dettaglio scrittura
+        Vedi dettaglio
+      </DropdownMenuItem>
+
+      <!-- Dettaglio scrittura contabile (beta.7) -->
+      <DropdownMenuItem @click="goToScrittura" :disabled="!pagamento.scrittura_contabile_id">
+        <BookOpen class="mr-2 h-4 w-4" />
+        Dettaglio scrittura contabile
       </DropdownMenuItem>
 
       <DropdownMenuItem @click="downloadDistinta" :disabled="pagamento.is_storno || pagamento.stato === 'stornato'">
