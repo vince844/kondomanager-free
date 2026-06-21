@@ -9,10 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle } from 'lucide-vue-next';
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
-import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDoubleLock.vue';
-import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
 import vSelect from 'vue-select';
@@ -119,11 +117,12 @@ const props = defineProps<{
     conti: Conto[];
     banche: Banca[];
     immobili: Immobile[];
-    debiti_patrimoniali: DebitoPatrimoniale[];
+    debiti_patrimoniali: any[];
     fatture_pregresse_registrate: any[];
-    fondi_riserva: FondoRiserva[];
+    fondi_riserva: any[];
     capienza_rata_zero: number;
     incassato_rata_zero: number;
+    fattura: any; // La fattura da modificare
 }>();
 
 // ---------------------------------------------------------------------------
@@ -134,30 +133,36 @@ const showOverrideModal = ref(false);
 const showSuccessModal = ref(false);
 
 const form = useForm({
-    fornitore_id:       null as number | null,
-    esercizio_id:       props.esercizio?.id || null,
-    gestione_id:        null as number | null,
-    tipo_documento:     'fattura',
-    is_pregresso:       false,
-    data_competenza_originaria: '',
+    _method: 'PUT',
+    fornitore_id:       props.fattura.fornitore_id,
+    esercizio_id:       props.fattura.esercizio_id,
+    gestione_id:        props.fattura.gestione_id,
+    tipo_documento:     props.fattura.tipo_documento,
+    is_pregresso:       Boolean(props.fattura.is_pregresso),
     saldo_patrimoniale_id: null as number | null,
-    // NUOVI CAMPI PER FATTURA PREGRESSA
     imponibile_pregresso:       0,
     aliquota_iva_pregressa:     22,
-    numero_documento:   '',
-    data_documento:     new Date().toISOString().substring(0, 10),
-    data_scadenza:      '',
-    conto_corrente_id:  null as number | null,
-    modalita_pagamento: 'bonifico',
-    iban_fornitore:     '',
+    numero_documento:   props.fattura.numero_documento || '',
+    data_documento:     props.fattura.data_documento ? props.fattura.data_documento.substring(0, 10) : '',
+    data_scadenza:      props.fattura.data_scadenza ? props.fattura.data_scadenza.substring(0, 10) : '',
+    conto_corrente_id:  props.fattura.conto_corrente_id,
+    modalita_pagamento: props.fattura.modalita_pagamento,
+    iban_fornitore:     props.fattura.iban_fornitore || '',
     dati_extra: {
-        fiscal:     { cig: '', cup: '' },
-        competenza: { dal: '', al: '' },
-        override_budget:          null as any,
+        fiscal:     props.fattura.dati_extra?.fiscal || { cig: '', cup: '' },
+        competenza: props.fattura.dati_extra?.competenza || { dal: '', al: '' },
+        override_budget: null as any,
         log_legale_sopravvenienza: null as any
     },
-    stato_approvazione: 'approvata',
-    righe: [{
+    stato_approvazione: props.fattura.stato_approvazione,
+    righe: props.fattura.righe ? props.fattura.righe.map((r: any) => ({
+        descrizione: r.descrizione || '',
+        conto_id: r.conto_id,
+        immobile_id: r.immobile_id,
+        importo_imponibile: Number(r.importo_imponibile) / 100,
+        aliquota_iva: r.aliquota_iva,
+        is_sopravvenienza: false // Edit non supporta sopravvenienze per fatture esistenti
+    })) : [{
         descrizione: '',
         conto_id: null as number | null,
         immobile_id: null as number | null,
@@ -169,10 +174,12 @@ const form = useForm({
     file: null as File | null,
 });
 
+// Since fornitore is read-only and not passed in props.fornitori
+const selectedFornitore = computed(() => props.fattura.fornitore);
+
 // ---------------------------------------------------------------------------
 // Computed
 // ---------------------------------------------------------------------------
-const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
 const hasSpesePrivate = computed(() => {
     if (!form.righe || !Array.isArray(form.righe)) return false;
@@ -190,7 +197,7 @@ const totali = computed(() => {
         imponibile_ordinario = imponibile;
         iva_ordinaria = iva;
     } else {
-        form.righe.forEach(r => {
+        form.righe.forEach((r: any) => {
             const imp  = Number(r.importo_imponibile) || 0;
             const rIva = imp * (Number(r.aliquota_iva) || 0) / 100;
 
@@ -245,7 +252,7 @@ const budgetImpacts = computed(() => {
         ultimi_movimenti: any[]
     }>();
 
-    form.righe.forEach(r => {
+    form.righe.forEach((r: any) => {
         if (!r.conto_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
@@ -408,35 +415,8 @@ const eccedenzaPregressaEuro = computed(() => {
     return eccedenza > 0.01 ? eccedenza : 0;
 });
 
-/**
- * Entry point unico per l'invio del form.
- *
- * Ordine dei controlli:
- * 1. Spesa imprevista corrente senza dati legali → apre ModalSpesaImprevista
- * 2. Sforo budget senza override → apre ModalOverrideBudget
- * 3. Tutto OK → invia
- *
- * Nota: ModalSopravvenienza (vecchia logica pregressa) è stata rimossa perché
- * il suo trigger (form.coperture) non veniva mai popolato, rendendo il check
- * irraggiungibile. La gestione dei pregressi avviene interamente via WidgetDoubleLock.
- */
 const handleSubmit = () => {
-    // 1. Spesa imprevista CORRENTE
-    const hasSpesaImprevistaCorrente = form.righe.some(r => r.is_sopravvenienza && !r.immobile_id);
-    if (!form.is_pregresso && hasSpesaImprevistaCorrente && !form.dati_extra.log_legale_sopravvenienza) {
-        spesaImprevistaMode.value = 'corrente';
-        showSpesaImprevistaModal.value = true;
-        return;
-    }
-
-    // 2. Eccedenza PREGRESSA (Scenario C — fattura > coperture dichiarate)
-    if (form.is_pregresso && eccedenzaPregressaEuro.value > 0 && !form.dati_extra.log_legale_sopravvenienza) {
-        spesaImprevistaMode.value = 'pregressa';
-        showSpesaImprevistaModal.value = true;
-        return;
-    }
-
-    // 3. Sforo budget CORRENTE
+    // 1. Sforo budget CORRENTE
     if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET' && !form.dati_extra.override_budget) {
         showOverrideModal.value = true;
         return;
@@ -446,16 +426,9 @@ const handleSubmit = () => {
 };
 
 /**
- * Chiamato da ModalSpesaImprevista al confirm.
- *
- * Salva i dati legali, poi rilancia handleSubmit() invece di chiamare
- * doSubmit() direttamente. In questo modo:
- * - Se is_ordinario === true  → override_budget viene settato e handleSubmit passa al punto 3
- * - Se is_ordinario === false → override_budget rimane null; se lo sforo esiste ancora,
- *   handleSubmit lo intercetta al punto 2 e apre ModalOverrideBudget
+ * Chiamato da ModalOverrideBudget al confirm.
  */
 const handleSpesaImprevistaConfirm = (payload: any) => {
-    // La modale ora emette già i campi corretti, non serve più il remap manuale!
     form.dati_extra.log_legale_sopravvenienza = payload;
 
     if (payload.is_ordinario) {
@@ -471,9 +444,6 @@ const handleSpesaImprevistaConfirm = (payload: any) => {
     handleSubmit();
 };
 
-/**
- * Chiamato da ModalOverrideBudget al confirm.
- */
 const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | null; motivazione: string }) => {
     form.dati_extra.override_budget = {
         motivazione:                payload.motivazione,
@@ -533,7 +503,7 @@ const doSubmit = () => {
         // --- FINE FIX ---
 
         return payload;
-    }).post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
+    }).post(route(generateRoute('gestionale.fatture.update'), { condominio: props.condominio.id, fattura: props.fattura.id }), {
         forceFormData: true, 
         preserveScroll: true,
         onSuccess: () => {
@@ -548,7 +518,7 @@ const doSubmit = () => {
 const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Dashboard', href: route(generateRoute('gestionale.index'),         { condominio: props.condominio.id }) },
     { title: 'Fatture',   href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
-    { title: 'Registrazione' },
+    { title: 'Modifica' },
 ]);
 
 const pageGuides = [
@@ -559,13 +529,13 @@ const pageGuides = [
 </script>
 
 <template>
-    <Head title="Registrazione fattura" />
+    <Head title="Modifica fattura" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
-                page-title="Registrazione fattura passiva"
-                page-subtitle="Inserisci i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
+                page-title="Modifica fattura passiva"
+                page-subtitle="Aggiorna i dati nel pannello di sinistra e le voci di dettaglio nel registro a destra."
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :video-url="null"
@@ -627,44 +597,25 @@ const pageGuides = [
 
                     <div class="p-5 flex-1 overflow-y-auto space-y-5">
 
-                        <!-- Fornitore -->
+                        <!-- Fornitore (Read-Only in Edit) -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Fornitore</Label>
-                            <v-select
-                                v-model="form.fornitore_id"
-                                :options="fornitori"
-                                label="ragione_sociale"
-                                :reduce="(f: Fornitore) => f.id"
-                                placeholder="Cerca fornitore..."
-                                class="w-full">
-                                <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
-                                    <div class="flex items-center gap-3 py-1">
-                                        <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
-                                            <Briefcase class="w-4 h-4 text-slate-400" />
-                                        </div>
-                                        <div class="flex flex-col overflow-hidden">
-                                            <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ ragione_sociale }}</span>
-                                            <div class="flex items-center gap-2 mt-0.5">
-                                                <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
-                                                <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
-                                                <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
-                                                <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
-                                                    Ritenuta
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                                <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
-                                    <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
-                                        <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                        <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
-                                        <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none shrink-0">
+                            <div class="flex items-center gap-3 py-2 px-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                                <div class="w-8 h-8 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+                                    <Briefcase class="w-4 h-4 text-slate-400" />
+                                </div>
+                                <div class="flex flex-col overflow-hidden">
+                                    <span class="font-bold text-sm text-slate-800 dark:text-slate-200 truncate">{{ selectedFornitore?.ragione_sociale }}</span>
+                                    <div class="flex items-center gap-2 mt-0.5">
+                                        <span v-if="selectedFornitore?.piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ selectedFornitore.piva }}</span>
+                                        <span v-else-if="selectedFornitore?.codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ selectedFornitore.codice_fiscale }}</span>
+                                        <span v-else class="text-[10px] text-slate-400 italic">Nessuna P.IVA / C.F.</span>
+                                        <span v-if="selectedFornitore?.soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-900/50 dark:text-amber-500 rounded px-1.5 py-0.5 leading-none">
                                             Ritenuta
                                         </span>
                                     </div>
-                                </template>
-                            </v-select>
+                                </div>
+                            </div>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">
@@ -681,17 +632,12 @@ const pageGuides = [
                             />
                         </div>
 
-                        <!-- N. Documento -->
+                        <!-- N. Documento (Read-Only in Edit) -->
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">N. Documento</Label>
-                            <Input v-model="form.numero_documento"
-                                class="h-9 uppercase text-base tracking-widest"
-                                :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors.numero_documento }"
-                                @input="form.clearErrors('numero_documento')"
-                                placeholder="Es. 123/A" />
-                            <p v-if="form.errors.numero_documento" class="text-[11px] text-red-600 font-medium">
-                                {{ form.errors.numero_documento }}
-                            </p>
+                            <div class="h-9 px-3 flex items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md">
+                                <span class="uppercase text-base tracking-widest text-slate-700 dark:text-slate-300">{{ form.numero_documento }}</span>
+                            </div>
                         </div>
 
                         <!-- Date -->
@@ -710,45 +656,6 @@ const pageGuides = [
                                     type="date"
                                     v-model="form.data_scadenza"
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
-                            </div>
-                        </div>
-
-                        <!-- Checkbox pregresso -->
-                        <div class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 flex items-start gap-3 transition-colors"
-                            :class="{ 'bg-amber-50/50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-700/50': form.is_pregresso }">
-                            <div class="flex items-center h-5">
-                                <input type="checkbox" id="is_pregresso" v-model="form.is_pregresso"
-                                    class="w-4 h-4 text-amber-500 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
-                            </div>
-                            <div class="flex flex-col">
-                                <label for="is_pregresso" class="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 cursor-pointer">
-                                    Debito esercizio precedente
-                                </label>
-                                <p v-if="form.is_pregresso" class="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-medium leading-tight">
-                                    Questa spesa non intaccherà il budget corrente. Verrà registrata come debito pregresso nello stato patrimoniale.
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Campi imponibile/iva per pregressi -->
-                        <div v-if="form.is_pregresso" class="grid grid-cols-3 gap-3 p-4 bg-amber-50/30 dark:bg-amber-900/5 border border-amber-100 dark:border-amber-800/30 rounded-lg mt-3">
-                            <div class="col-span-2 space-y-1.5">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Imponibile Lordo</Label>
-                                <MoneyInput
-                                    id="importo_pregresso"
-                                    v-model="form.imponibile_pregresso"
-                                    :money-options="moneyOptions"
-                                    :lazy="false"
-                                    class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3 focus:border-amber-400 focus:ring-amber-400/20"
-                                    placeholder="0,00" />
-                            </div>
-                            <div class="col-span-1 space-y-1.5 relative">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">IVA</Label>
-                                <div class="relative">
-                                    <Input min="0" max="100" v-model="form.aliquota_iva_pregressa"
-                                        class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm focus:border-amber-400 focus:ring-amber-400/20" />
-                                    <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
-                                </div>
                             </div>
                         </div>
 
@@ -837,23 +744,8 @@ const pageGuides = [
                 <!-- ── Pannello destro ── -->
                 <div class="lg:col-span-8 flex flex-col gap-5 relative z-0">
 
-                    <!-- Vista pregressa -->
-                    <div v-if="form.is_pregresso">
-                        <WidgetDoubleLock
-                            :form="form"
-                            :fornitore-id="form.fornitore_id"
-                            :debiti-patrimoniali="debiti_patrimoniali as any"
-                            :fatture-pregresse-registrate="fatture_pregresse_registrate as any"
-                            :conti-spesa="conti as any"
-                            :fondi-riserva="fondi_riserva as any"
-                            :capienza-rata-zero="capienza_rata_zero"
-                            :incassato-rata-zero="incassato_rata_zero"
-                            :totale-fattura-lordo="totaleDocLordoEuro"
-                            :bank-forecast="bankForecast" />
-                    </div>
-
                     <!-- Vista corrente -->
-                    <div v-else class="flex flex-col gap-5">
+                    <div class="flex flex-col gap-5">
 
                         <!-- Registro voci -->
                         <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -959,10 +851,10 @@ const pageGuides = [
                                             <Input v-model="riga.descrizione"
                                                 placeholder="Causale riga..."
                                                 class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
-                                                :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }"
-                                                @input="form.clearErrors(`righe.${idx}.descrizione`)" />
-                                            <p v-if="form.errors[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
-                                                {{ form.errors[`righe.${idx}.descrizione`] }}
+                                                :class="{ 'border-red-500 focus-visible:ring-red-500': (form.errors as any)[`righe.${idx}.descrizione`] }"
+                                                @input="form.clearErrors(`righe.${idx}.descrizione` as any)" />
+                                            <p v-if="(form.errors as any)[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
+                                                {{ (form.errors as any)[`righe.${idx}.descrizione`] }}
                                             </p>
                                         </div>
 
@@ -1002,7 +894,7 @@ const pageGuides = [
                                                     {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
                                                 </span>
                                             </div>
-                                            <Button variant="ghost" size="icon" type="button" @click="removeRiga(idx)"
+                                            <Button variant="ghost" size="icon" type="button" @click="removeRiga(Number(idx))"
                                                 class="h-10 w-10 shrink-0 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 opacity-0 group-hover:opacity-100 transition-all rounded-lg border border-transparent hover:border-rose-100 ml-1">
                                                 <Trash2 class="w-4 h-4" />
                                             </Button>

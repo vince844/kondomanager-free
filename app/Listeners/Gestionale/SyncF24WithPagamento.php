@@ -2,9 +2,11 @@
 
 namespace App\Listeners\Gestionale;
 
+use App\Events\Gestionale\PagamentoAggiornato;
 use App\Events\Gestionale\PagamentoRegistrato;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
+use App\Models\User;
 use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -38,6 +40,11 @@ class SyncF24WithPagamento implements ShouldQueue
         $events->listen(
             PagamentoRegistrato::class,
             [SyncF24WithPagamento::class, 'handle']
+        );
+
+        $events->listen(
+            PagamentoAggiornato::class,
+            [SyncF24WithPagamento::class, 'handleAggiornato']
         );
     }
 
@@ -95,7 +102,7 @@ class SyncF24WithPagamento implements ShouldQueue
                     'title'       => "F24 Ritenuta — {$fornitore->ragione_sociale} ({$condominio->nome})",
                     'start_time'  => $scadenzaF24,
                     'end_time'    => $scadenzaF24->copy()->addHour(),
-                    'created_by'  => null, // evento di sistema, non riconducibile a un utente specifico
+                    'created_by'  => $pagamento->user_id ?? User::first()?->id, // evento di sistema, ma il database richiede un id valido
                     'description' => "Versare ritenuta d'acconto (Cod. {$fornitore->codice_tributo}).\n"
                                    . "Importo: {$importoFormatted} €\n"
                                    . "Pagamento registrato il: {$dataPagamento->format('d/m/Y')}",
@@ -129,6 +136,116 @@ class SyncF24WithPagamento implements ShouldQueue
 
         } catch (\Exception $e) {
             Log::error("SyncF24WithPagamento: errore per pagamento #{$pagamento->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Aggiorna, crea o chiude il task F24 Inbox quando un pagamento viene modificato.
+     *
+     * Casistiche:
+     *  - data_pagamento cambiata e ritenuta > 0 → ricalcola scadenza F24
+     *  - ritenuta da 0 → valore > 0 → crea task F24 (prima non esisteva)
+     *  - ritenuta da valore → 0 → marca task F24 come completato
+     *  - solo importo ritenuta cambiato (non data) → aggiorna importo nel meta
+     */
+    public function handleAggiornato(PagamentoAggiornato $event): void
+    {
+        $pagamento             = $event->pagamento;
+        $importoRitenutaBefore = $event->importoRitenutaBefore;
+        $importoRitenutaAfter  = $pagamento->importo_ritenuta ?? 0;
+
+        // Guard: storno — non dovrebbe mai arrivare qui, ma sicurezza prima di tutto
+        if ($pagamento->pagamento_padre_id !== null) {
+            return;
+        }
+
+        // Caso: ritenuta era > 0, ora è 0 → chiudi il task F24
+        if ($importoRitenutaBefore > 0 && $importoRitenutaAfter <= 0) {
+            Evento::where('meta->context->pagamento_id', $pagamento->id)
+                ->where('meta->type', 'versamento_ritenuta')
+                ->update(['is_completed' => true]);
+
+            InboxService::clearAdminCache();
+
+            Log::info("SyncF24WithPagamento: task F24 chiuso per pagamento #{$pagamento->id} (ritenuta azzerata)");
+            return;
+        }
+
+        // Caso: nessuna ritenuta → nessun F24
+        if ($importoRitenutaAfter <= 0) {
+            return;
+        }
+
+        // Caso: ritenuta è ora > 0 (era 0 o è cambiata, o data è cambiata) → crea/aggiorna
+        // Ricrea il task con la nuova scadenza — updateOrCreate con chiave pagamento_id è idempotente
+        $pagamento->loadMissing(['fornitore', 'contoCorrente']);
+        $condominio = $pagamento->condominio;
+        $fornitore  = $pagamento->fornitore;
+
+        if (!$condominio || !$fornitore) {
+            Log::warning("SyncF24WithPagamento::handleAggiornato: fornitore o condominio mancante per pagamento #{$pagamento->id}");
+            return;
+        }
+
+        $dataPagamento = $pagamento->data_pagamento;
+        if (!$dataPagamento) {
+            return;
+        }
+
+        try {
+            $catAdmin = CategoriaEvento::where('name', 'Scadenze amministrative')->firstOrFail();
+
+            $scadenzaF24 = $dataPagamento->copy()->addMonthNoOverflow()->day(16)->setTime(9, 0);
+            if ($scadenzaF24->isWeekend()) {
+                $scadenzaF24->next('Monday')->setTime(9, 0);
+            }
+
+            $importoFormatted = number_format($importoRitenutaAfter / 100, 2, ',', '.');
+
+            Evento::updateOrCreate(
+                [
+                    'meta->context->pagamento_id' => $pagamento->id,
+                    'meta->type'                  => 'versamento_ritenuta',
+                ],
+                [
+                    'title'        => "F24 Ritenuta — {$fornitore->ragione_sociale} ({$condominio->nome})",
+                    'start_time'   => $scadenzaF24,
+                    'end_time'     => $scadenzaF24->copy()->addHour(),
+                    'created_by'   => $pagamento->user_id ?? User::first()?->id,
+                    'description'  => "Versare ritenuta d'acconto (Cod. {$fornitore->codice_tributo}).\n"
+                                    . "Importo: {$importoFormatted} €\n"
+                                    . "Pagamento aggiornato il: {$dataPagamento->format('d/m/Y')}",
+                    'category_id'  => $catAdmin->id,
+                    'visibility'   => 'hidden',
+                    'is_approved'  => true,
+                    'is_completed' => false,
+                    'meta'         => [
+                        'type'            => 'versamento_ritenuta',
+                        'requires_action' => true,
+                        'is_completed'    => false,
+                        'condominio_nome' => $condominio->nome,
+                        'importo'         => $importoRitenutaAfter,
+                        'fornitore'       => $fornitore->ragione_sociale,
+                        'titolo_azione'   => 'Vedi pagamento',
+                        'action_url'      => route('admin.gestionale.pagamenti-fornitori.show', [
+                            'condominio' => $condominio->id,
+                            'pagamento'  => $pagamento->id,
+                        ]),
+                        'context' => [
+                            'pagamento_id'  => $pagamento->id,
+                            'fornitore_id'  => $fornitore->id,
+                            'is_f24'        => true,
+                        ],
+                    ],
+                ]
+            )->condomini()->syncWithoutDetaching([$condominio->id]);
+
+            InboxService::clearAdminCache();
+
+            Log::info("SyncF24WithPagamento: task F24 aggiornato per pagamento #{$pagamento->id}, scadenza {$scadenzaF24->format('d/m/Y')}");
+
+        } catch (\Exception $e) {
+            Log::error("SyncF24WithPagamento::handleAggiornato: errore per pagamento #{$pagamento->id}: " . $e->getMessage());
         }
     }
 }

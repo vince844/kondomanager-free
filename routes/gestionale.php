@@ -208,6 +208,12 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/fatture/{fattura}', [FatturaPassivaController::class, 'show'])
         ->name('fatture.show');
 
+    Route::get('/fatture/{fattura}/edit', [FatturaPassivaController::class, 'edit'])
+        ->name('fatture.edit');
+
+    Route::put('/fatture/{fattura}', [FatturaPassivaController::class, 'update'])
+        ->name('fatture.update');
+
     Route::delete('/fatture/{fattura}', [FatturaPassivaController::class, 'destroy'])
         ->name('fatture.destroy');
 
@@ -243,6 +249,12 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('/pagamenti-fornitori/{pagamento}', [PagamentoFornitoreController::class, 'show'])
         ->name('pagamenti-fornitori.show');
+
+    Route::get('/pagamenti-fornitori/{pagamento}/edit', [PagamentoFornitoreController::class, 'edit'])
+        ->name('pagamenti-fornitori.edit');
+
+    Route::put('/pagamenti-fornitori/{pagamento}', [PagamentoFornitoreController::class, 'update'])
+        ->name('pagamenti-fornitori.update');
 
     Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
         ->name('pagamenti-fornitori.storno');

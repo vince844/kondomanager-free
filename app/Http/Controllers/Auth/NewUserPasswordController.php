@@ -13,6 +13,12 @@ class NewUserPasswordController extends Controller
     {
         $user = User::findOrFail($request->query('id'));
 
+        // Valida la firma dell'URL per sicurezza
+        if (!$request->hasValidSignature()) {
+            return redirect()->route('login')
+                ->with('error', __('notifications.new_user_created.link_expired'));
+        }
+
         // Se l'utente ha già una password impostata, il link è già stato usato.
         if ($user->password) {
             return redirect()->route('login')

@@ -29,13 +29,13 @@ class UserService
     public function createUser(array $validatedData)
     {
         return DB::transaction(function () use ($validatedData) {
-     
-            $user = $this->userRepository->create([
-                'name' => $validatedData['name'],
-                'email' => $validatedData['email'],
-                'password' => bcrypt(Str::random(16)),
-            ]);
 
+            $user = $this->userRepository->create([
+                'name'     => $validatedData['name'],
+                'email'    => $validatedData['email'],
+                'password' => null,
+            ]);
+    
             $user->assignRole($validatedData['roles']);
             $user->givePermissionTo($validatedData['permissions']);
 

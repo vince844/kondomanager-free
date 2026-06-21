@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { router } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit } from 'lucide-vue-next'
 
 const props = defineProps<{
   fattura: any,
@@ -13,6 +13,13 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission();
+
+const isModificabile = computed(() =>
+  props.fattura.stato_pagamento === 'aperta' &&
+  !props.fattura.dati_extra?.is_stornata &&
+  !props.fattura.is_pregresso &&
+  props.fattura.stato_approvazione !== 'sforo_motivato'
+);
 
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
@@ -110,7 +117,15 @@ const downloadPdf = () => {
         @click="downloadPdf" 
         class="cursor-pointer"
       >
-        <Download class="w-4 h-4 mr-2" /> Scarica PDF
+        <Download class="w-4 h-4 mr-2" /> Scarica documento
+      </DropdownMenuItem>
+      
+      <DropdownMenuItem 
+        v-if="isModificabile"
+        @click="router.visit(route(generateRoute('gestionale.fatture.edit'), { condominio: condominioId, fattura: fattura.id }))" 
+        class="cursor-pointer"
+      >
+        <Edit class="w-4 h-4 mr-2" /> Modifica
       </DropdownMenuItem>
       
      <!--  <DropdownMenuItem 

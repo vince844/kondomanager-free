@@ -924,3 +924,49 @@ it('ritenute dacconto: calcolo pro-quota su pagamento parziale', function () {
     // Anche il secondo pagamento deve avere 100€ di ritenuta
     expect($pagamento2->importo_ritenuta)->toEqual(10000);
 });
+it('aggiorna pagamento riscrivendo record bancario', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiService();
+
+    $fattura = (new App\Services\Gestionale\FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], ['righe' => [['descrizione' => 'Test', 'importo_imponibile' => 1000, 'aliquota_iva' => 22, 'conto_id' => $capitolo->id, 'is_sopravvenienza' => false]]]),
+        $condominio->id
+    );
+
+    $pagamentoData = [
+        'fornitore_id'      => $fornitore->id,
+        'condominio_id'     => $condominio->id,
+        'esercizio_id'      => $esercizio->id,
+        'gestione_id'       => $gestione->id,
+        'conto_corrente_id' => $contoCorrenteId,
+        'data_pagamento'    => now()->format('Y-m-d'),
+        'metodo_pagamento'  => App\Enums\MetodoPagamento::BONIFICO->value,
+        'importo_lordo_cents' => 122000,
+        'importo_netto_cents' => 122000,
+        'allocazioni'       => [
+            [
+                'fattura_id'             => $fattura->id,
+                'tipo'                   => App\Enums\TipoAllocazioneFattura::PAGAMENTO->value,
+                'importo_allocato_cents' => 122000,
+            ]
+        ],
+        'allow_overdraft'   => true,
+    ];
+
+    $service = new App\Services\Gestionale\PagamentoFornitoreService();
+    $pagamento = $service->registraPagamento($pagamentoData);
+
+    $newData = array_merge($pagamentoData, [
+        'causale_bonifico' => 'Modificata',
+        'note_override'    => 'Nota modificata',
+        'data_pagamento'   => now()->addDay()->format('Y-m-d'),
+    ]);
+
+    $pagamentoAggiornato = $service->aggiornaPagamento($pagamento, $newData);
+
+    expect($pagamentoAggiornato->causale_bonifico)->toBe('Modificata');
+    expect($pagamentoAggiornato->note_override)->toBe('Nota modificata');
+    expect($pagamentoAggiornato->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
+    
+    $scrittura = $pagamentoAggiornato->scrittura;
+    expect($scrittura->data_registrazione->toDateString())->toBe(now()->addDay()->toDateString());
+});

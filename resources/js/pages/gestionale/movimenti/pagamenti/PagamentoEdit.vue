@@ -100,6 +100,21 @@ interface Pendenza {
     importo_allocato?: number;
     tipo_allocazione?: 'pagamento' | 'compensazione';
 }
+interface PagamentoFornitore {
+    id: number;
+    fornitore: { id: number, ragione_sociale: string };
+    conto_corrente: { id: number, nome: string, iban?: string };
+    data_pagamento: string;
+    metodo_pagamento: string;
+    iban_beneficiario?: string; // non c'è nella resource, va preso dal conto/fornitore se serviva, lo lasciamo
+    importo_commissione: number;
+    importo_lordo: number;
+    importo_ritenuta: number;
+    importo_netto: number;
+    bonifico_parlante: boolean;
+    tipo_detrazione?: string;
+    note_override?: string;
+}
 
 const props = defineProps<{
     condominio: Condominio;
@@ -109,41 +124,38 @@ const props = defineProps<{
     fornitori: Fornitore[];
     banche: Banca[];
     gestioni: Gestione[];
-    preselected_fornitore_id?: number | null;
-    preselected_fattura_id?: number | null;
+    pagamento: PagamentoFornitore;
 }>();
 
 // ---------------------------------------------------------------------------
 // Form
 // ---------------------------------------------------------------------------
 const form = useForm({
-    fornitore_id:                   props.preselected_fornitore_id || null,
+    fornitore_id:                   props.pagamento.fornitore?.id,
     esercizio_id:                   props.esercizio?.id || null,
-    conto_corrente_id:              null as number | null,
-    data_pagamento:                 new Date().toISOString().substring(0, 10),
-    metodo_pagamento:               'bonifico',
-    iban_beneficiario:              '',
-    importo_commissioni_cents:      0,
-    bonifico_parlante:              false,
-    tipo_detrazione:                null as string | null,
+    conto_corrente_id:              props.pagamento.conto_corrente?.id,
+    data_pagamento:                 props.pagamento.data_pagamento ? new Date(props.pagamento.data_pagamento).toISOString().substring(0, 10) : new Date().toISOString().substring(0, 10),
+    metodo_pagamento:               props.pagamento.metodo_pagamento || 'bonifico',
+    iban_beneficiario:              props.pagamento.iban_beneficiario || '',
+    importo_commissioni_cents:      Math.round((props.pagamento.importo_commissione || 0) * 100),
+    importo_lordo_cents:            props.pagamento.importo_lordo,
+    importo_ritenuta_cents:         props.pagamento.importo_ritenuta,
+    importo_netto_cents:            props.pagamento.importo_netto,
+    bonifico_parlante:              props.pagamento.bonifico_parlante || false,
+    tipo_detrazione:                props.pagamento.tipo_detrazione || null,
     beneficiari_detrazione:         [] as any[],
     allow_overdraft:                false,
     allow_overpayment:              false,
     iban_confermato_manualmente:    false,
     conferma_duplicato_verificato:  false,
-    nota_override:                  null as string | null,
-    allocazioni:                    [] as { fattura_id: number; tipo: string; importo_allocato_cents: number }[],
+    note_override:                  props.pagamento.note_override || null,
+    causale_bonifico:               (props.pagamento as any).causale_bonifico || '',
+    riferimento_bancario:           (props.pagamento as any).riferimento_bancario || '',
 });
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
-
-const pendenze = ref<Pendenza[]>([]);
-const loadingPendenze = ref(false);
-const hasNetting = ref(false);
-const totaleNC = ref(0);
-const totaleFT = ref(0);
 
 // ── Modali successo / IBAN / duplicato (originali) ──
 const showSuccessModal = ref(false);
@@ -203,30 +215,14 @@ const tipiDetrazione = [
 ];
 
 // ---------------------------------------------------------------------------
-// Computed — Totali & Allocazioni
+// Computed — Totali
 // ---------------------------------------------------------------------------
-const totaleAllocatoPagamento = computed(() =>
-    pendenze.value
-        .filter(p => p.selezionata && !p.is_nota_credito)
-        .reduce((sum, p) => sum + (p.importo_allocato || 0), 0)
-);
-
-const totaleAllocatoCompensazione = computed(() =>
-    pendenze.value
-        .filter(p => p.selezionata && p.is_nota_credito)
-        .reduce((sum, p) => sum + Math.abs(p.importo_allocato || 0), 0)
-);
-
-const bonificoEffettivo = computed(() =>
-    Math.max(0, totaleAllocatoPagamento.value - totaleAllocatoCompensazione.value)
-);
-
 const commissioniCents = computed(() =>
     Math.round((Number(form.importo_commissioni_cents) || 0) * 100)
 );
 
 const uscitaCassaTotale = computed(() =>
-    bonificoEffettivo.value + (Number(form.importo_commissioni_cents) || 0)
+    (props.pagamento.importo_netto || 0) / 100 + commissioniCents.value / 100
 );
 
 const bancheNormalizzate = computed(() =>
@@ -245,12 +241,6 @@ const bankForecast = computed(() => {
     return { attuale_cents: attualeCents, post_cents: postCents, isRed: postCents < 0 };
 });
 
-const transactionStatus = computed(() => {
-    if (bankForecast.value?.isRed) return 'WARNING_CASH';
-    if (pendenze.value.some(p => p.selezionata)) return 'SAFE';
-    return 'IDLE';
-});
-
 const isDataPagamentoVecchia = computed(() => {
     if (!form.data_pagamento) return false;
     const diffTime = Math.abs(new Date().getTime() - new Date(form.data_pagamento).getTime());
@@ -258,176 +248,18 @@ const isDataPagamentoVecchia = computed(() => {
     return diffDays > 30;
 });
 
-// IBAN sentinella
-const ibanDiscrepanza = computed(() => {
-    if (!form.iban_beneficiario || !selectedFornitore.value?.iban_principale) return false;
-    const inputClean = form.iban_beneficiario.replace(/\s/g, '').toUpperCase();
-    const anagraficaClean = (selectedFornitore.value.iban_principale || '').replace(/\s/g, '').toUpperCase();
-    return inputClean !== anagraficaClean && inputClean.length >= 15;
-});
-
-const fatturePendentiSoloFT = computed(() =>
-    pendenze.value.filter(p => !p.is_nota_credito)
-);
-
-const noteCreditoCompensabili = computed(() =>
-    pendenze.value.filter(p => p.is_nota_credito)
-);
-
-const documentiSelezionati = computed(() =>
-    pendenze.value.filter(p => p.selezionata).length
-);
-
-// ---------------------------------------------------------------------------
-// Fetch Pendenze (AJAX)
-// ---------------------------------------------------------------------------
-const fetchPendenze = async (fornitoreId: number) => {
-    loadingPendenze.value = true;
-    try {
-        const response = await axios.get(
-            route(generateRoute('gestionale.pagamenti-fornitori.pendenze'), {
-                condominio: props.condominio.id,
-            }),
-            { params: { fornitore_id: fornitoreId } }
-        );
-
-        const data = response.data;
-        pendenze.value = (data.pendenze || []).map((p: any) => ({
-            ...p,
-            selezionata: false,
-            importo_allocato: 0,
-            tipo_allocazione: p.is_nota_credito ? 'compensazione' : 'pagamento',
-        }));
-        hasNetting.value = data.has_netting;
-        totaleNC.value = data.totale_nc;
-        totaleFT.value = data.totale_ft;
-    } catch (e) {
-        console.error('Errore nel caricamento pendenze:', e);
-        pendenze.value = [];
-    } finally {
-        loadingPendenze.value = false;
-    }
-};
-
-// ---------------------------------------------------------------------------
-// Actions
-// ---------------------------------------------------------------------------
-const togglePendenza = (p: Pendenza) => {
-    if (p.stato_approvazione !== 'approvata') return;
-    p.selezionata = !p.selezionata;
-    if (p.selezionata) {
-        p.importo_allocato = p.is_nota_credito ? Math.abs(p.residuo) / 100 : p.residuo / 100;
-    } else {
-        p.importo_allocato = 0;
-    }
-    syncAllocazioni();
-};
-
-const saldaTutto = (p: Pendenza) => {
-    if (p.stato_approvazione !== 'approvata') return;
-    p.selezionata = true;
-    p.importo_allocato = p.is_nota_credito ? Math.abs(p.residuo) / 100 : p.residuo / 100;
-    syncAllocazioni();
-};
-
-const onAllocazioneChange = (p: Pendenza, val: any) => {
-    const num = Number(val) || 0;
-    const maxEuro = p.residuo / 100;
-    p.importo_allocato = Math.min(num, maxEuro);
-    p.selezionata = p.importo_allocato > 0;
-    syncAllocazioni();
-};
-
-// Netting 1-Click: auto-compensa NC sulle FT
-const applyNetting = () => {
-    const ncs = pendenze.value.filter(p => p.is_nota_credito && p.stato_approvazione === 'approvata');
-    const fts = pendenze.value.filter(p => !p.is_nota_credito && p.stato_approvazione === 'approvata').sort((a, b) => {
-        // Priorità: fatture scadute prima
-        if (a.is_scaduta && !b.is_scaduta) return -1;
-        if (!a.is_scaduta && b.is_scaduta) return 1;
-        return (a.data_scadenza || '').localeCompare(b.data_scadenza || '');
-    });
-
-    let creditoDisponibile = 0;
-
-    // 1. Attiva tutte le NC
-    ncs.forEach(nc => {
-        nc.selezionata = true;
-        nc.importo_allocato = Math.abs(nc.residuo) / 100;
-        creditoDisponibile += nc.importo_allocato;
-    });
-
-    // 2. Distribuisci il credito sulle FT più vecchie, poi il resto va in pagamento cash
-    fts.forEach(ft => {
-        const residuoEuro = ft.residuo / 100;
-        ft.selezionata = true;
-        ft.importo_allocato = residuoEuro;
-    });
-
-    syncAllocazioni();
-};
-
-const selezionaTutte = () => {
-    pendenze.value.filter(p => !p.is_nota_credito && p.stato_approvazione === 'approvata').forEach(p => saldaTutto(p));
-};
-
-// Apre il modale di ratifica sforo per una fattura specifica
-const apriModaleApprovazioneSforo = (p: Pendenza) => {
-    sforoTarget.value = p;
-    noteApprovazioneInline.value = '';
-    showApprovaSforoModal.value = true;
-};
-
-// Invia la ratifica al backend e ricarica le pendenze al successo
-const executeApprovaSforoInline = () => {
-    if (!sforoTarget.value) return;
-    router.post(
-        route(generateRoute('gestionale.fatture.approva-sforo'), {
-            condominio: props.condominio.id,
-            fattura: sforoTarget.value.id,
-        }),
-        { note: noteApprovazioneInline.value || null },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                showApprovaSforoModal.value = false;
-                sforoTarget.value = null;
-                // Ricarica le pendenze: la fattura ora appare sbloccata
-                if (form.fornitore_id) fetchPendenze(form.fornitore_id);
-            },
-        }
-    );
-};
-
-const deselezionaTutte = () => {
-    pendenze.value.forEach(p => {
-        p.selezionata = false;
-        p.importo_allocato = 0;
-    });
-    syncAllocazioni();
-};
-
-const syncAllocazioni = () => {
-    form.allocazioni = pendenze.value
-        .filter(p => p.selezionata && (p.importo_allocato || 0) > 0)
-        .map(p => ({
-            fattura_id: p.id,
-            tipo: p.is_nota_credito ? 'compensazione' : 'pagamento',
-            importo_allocato_cents: Math.round((p.importo_allocato || 0) * 100),
-        }));
-};
-
 // ---------------------------------------------------------------------------
 // Submit
 // ---------------------------------------------------------------------------
 const handleSubmit = () => {
-    syncAllocazioni();
 
     form.transform((data) => {
         const payload = JSON.parse(JSON.stringify(data));
         payload.importo_commissioni_cents = Math.round((Number(data.importo_commissioni_cents) || 0) * 100);
+        // Non passiamo fornitore_id per evitare manipolazioni (lato backend è ignorato comunque)
+        delete payload.fornitore_id;
         return payload;
-    }).post(route(generateRoute('gestionale.pagamenti-fornitori.store'), { condominio: props.condominio.id }), {
+    }).put(route(generateRoute('gestionale.pagamenti-fornitori.update'), { condominio: props.condominio.id, pagamento: props.pagamento.id }), {
         preserveScroll: true,
         onSuccess: () => {
             showSuccessModal.value = true;
@@ -516,7 +348,7 @@ const confirmDuplicate = () => {
 // Override saldo insufficiente: l'admin assume responsabilità con nota obbligatoria
 const confirmOverdraft = () => {
     form.allow_overdraft = true;
-    form.nota_override = overdraftNote.value;
+    form.note_override = overdraftNote.value;
     showInsufficientFundsModal.value = false;
     handleSubmit();
 };
@@ -524,34 +356,33 @@ const confirmOverdraft = () => {
 // Override overpayment: l'admin conferma l'eccedenza con nota obbligatoria
 const confirmOverpayment = () => {
     form.allow_overpayment = true;
-    form.nota_override = overpaymentNote.value;
+    form.note_override = overpaymentNote.value;
     showOverpaymentModal.value = false;
     handleSubmit();
 };
 
 // ---------------------------------------------------------------------------
-// Watchers
+// Computed
 // ---------------------------------------------------------------------------
-watch(() => form.fornitore_id, async (newVal) => {
-    if (newVal) {
-        await fetchPendenze(newVal);
-        const f = props.fornitori.find(x => x.id === newVal);
-        if (f) {
-            form.iban_beneficiario = f.iban_principale || '';
-            form.iban_confermato_manualmente = false;
-            form.conferma_duplicato_verificato = false;
-        }
-        
-        if (props.preselected_fattura_id) {
-            const p = pendenze.value.find((x: any) => x.id === props.preselected_fattura_id);
-            if (p && !p.selezionata) {
-                saldaTutto(p);
-            }
-        }
-    } else {
-        pendenze.value = [];
-    }
-}, { immediate: true });
+
+
+const transactionStatus = computed(() => {
+    if (!form.conto_corrente_id) return 'SAFE';
+    const b = bancheNormalizzate.value.find(b => b.id === form.conto_corrente_id);
+    if (!b) return 'SAFE';
+    
+    const postCents = b.saldo_attuale_cents - form.importo_lordo_cents;
+    if (postCents < 0) return 'WARNING_CASH';
+    return 'SAFE';
+});
+
+const ibanDiscrepanza = computed(() => {
+    if (!form.iban_beneficiario) return false;
+    if (!selectedFornitore.value?.iban_principale) return false;
+    const input = form.iban_beneficiario.replace(/\s+/g, '').toUpperCase();
+    const target = selectedFornitore.value.iban_principale.replace(/\s+/g, '').toUpperCase();
+    return input !== target;
+});
 
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
@@ -561,29 +392,27 @@ const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
 // ---------------------------------------------------------------------------
 const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Dashboard', href: route(generateRoute('gestionale.index'), { condominio: props.condominio.id }) },
-    { title: 'Fatture',   href: route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id }) },
-    { title: 'Registra Pagamento' },
+    { title: 'Pagamenti', href: route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id }) },
+    { title: 'Modifica Pagamento' },
 ]);
 
 const pageGuides = [
-    { title: 'Ledger Esecutivo',     description: 'Seleziona il fornitore, poi scegli le fatture da pagare nel registro a destra. Il sistema calcola tutto automaticamente.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
-    { title: 'Smart Netting',        description: 'Se il fornitore ha Note di Credito aperte, un click compensa automaticamente riducendo l\'uscita di cassa.',               icon: Sparkles,       colorVariant: 'amber' as const },
-    { title: 'Sentinella Anti-Frode', description: 'Ogni IBAN viene verificato contro l\'anagrafica. In caso di discrepanza, è richiesta conferma manuale.',                  icon: ShieldCheck,    colorVariant: 'emerald' as const },
+    { title: 'Modifica Veloce',      description: 'Modifica il conto di addebito, la data o le note di un pagamento. Il fornitore e le allocazioni alle fatture non sono modificabili.', icon: Save, colorVariant: 'blue' as const },
 ];
 </script>
 
 <template>
-    <Head title="Registra Pagamento Fornitore" />
+    <Head title="Modifica Pagamento Fornitore" />
     <GestionaleLayout>
         <div class="px-6 py-8 space-y-6">
 
             <PageHeaderGuide
-                page-title="Registra pagamento fornitore"
-                page-subtitle="Seleziona il fornitore nel pannello a sinistra, poi scegli le fatture da pagare nel registro a destra."
+                page-title="Modifica pagamento fornitore"
+                page-subtitle="Aggiorna i dati del pagamento. Non è possibile modificare le allocazioni alle fatture o il fornitore."
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :video-url="null"
-                :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
+                :back-url="route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
             />
 
@@ -617,9 +446,10 @@ const pageGuides = [
                                 label="ragione_sociale"
                                 :reduce="(f: Fornitore) => f.id"
                                 placeholder="Cerca fornitore..."
-                                class="w-full">
+                                class="w-full"
+                                :disabled="true">
                                 <template #option="{ ragione_sociale, piva, codice_fiscale, soggetto_ritenuta }">
-                                    <div class="flex items-center gap-3 py-1">
+                                    <div class="flex items-center gap-3 py-1 opacity-60">
                                         <div class="w-8 h-8 rounded-md bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
                                             <Briefcase class="w-4 h-4 text-slate-400" />
                                         </div>
@@ -628,9 +458,6 @@ const pageGuides = [
                                             <div class="flex items-center gap-2 mt-0.5">
                                                 <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
                                                 <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
-                                                <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none">
-                                                    Ritenuta
-                                                </span>
                                             </div>
                                         </div>
                                     </div>
@@ -638,10 +465,7 @@ const pageGuides = [
                                 <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
                                     <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                         <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                        <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
-                                        <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none shrink-0">
-                                            Ritenuta
-                                        </span>
+                                        <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ form.fornitore_id ? props.fornitori.find(f => f.id === form.fornitore_id)?.ragione_sociale : '' }}</span>
                                     </div>
                                 </template>
                             </v-select>
@@ -752,7 +576,7 @@ const pageGuides = [
                             <Input type="date" v-model="form.data_pagamento" class="h-9 text-sm" />
                             <div v-if="isDataPagamentoVecchia" class="mt-2 flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
                                 <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                                <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                                <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai modificando con una data avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
                             </div>
                         </div>
 
@@ -809,365 +633,60 @@ const pageGuides = [
                                 </Transition>
                             </div>
                         </div>
+
+                        <hr class="border-slate-100 dark:border-slate-800">
+
+                        <!-- Riferimenti Bancari e Note -->
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="space-y-1.5">
+                                    <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Causale Bonifico</Label>
+                                    <Input v-model="form.causale_bonifico" class="h-9 text-sm" placeholder="Causale..." />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Rif. (CRO/TRN)</Label>
+                                    <Input v-model="form.riferimento_bancario" class="h-9 text-sm font-mono" placeholder="CRO / TRN" />
+                                </div>
+                            </div>
+                            <div class="space-y-1.5">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Note interne (opzionali)</Label>
+                                <textarea
+                                    v-model="form.note_override"
+                                    rows="2"
+                                    placeholder="Note interne visualizzate nel gestionale..."
+                                    class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-none dark:bg-slate-900 dark:border-slate-700 dark:text-slate-200"
+                                />
+                            </div>
+                        </div>
+
                     </div>
 
                     <!-- Footer — Riepilogo Uscita Cassa -->
                     <div class="p-5 bg-slate-900 dark:bg-slate-950 text-white border-t border-slate-700 shrink-0 space-y-4">
                         <div class="space-y-2">
-                            <div class="flex justify-between text-xs">
-                                <span class="text-slate-400">Totale Pagamenti</span>
-                                <span>{{ euro(totaleAllocatoPagamento, { fromCents: false }) }}</span>
-                            </div>
-
-                            <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0">
-                                <div v-if="totaleAllocatoCompensazione > 0" class="flex justify-between text-xs pl-2 border-l-2 border-blue-500/50 ml-1">
-                                    <span class="text-blue-400/80">Compensato con NC</span>
-                                    <span class="text-blue-400/80">- {{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</span>
-                                </div>
-                            </Transition>
-
                             <div v-if="Number(form.importo_commissioni_cents) > 0" class="flex justify-between text-xs">
                                 <span class="text-slate-400">Commissioni bancarie</span>
                                 <span>{{ euro(form.importo_commissioni_cents, { fromCents: false }) }}</span>
                             </div>
-
-                            <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
-                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Uscita di Cassa</span>
+                                            <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
+                                <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Importo Pagamento</span>
                                 <span class="font-black text-2xl" :class="uscitaCassaTotale > 0 ? 'text-emerald-400' : 'text-white'">
-                                    {{ euro(uscitaCassaTotale, { fromCents: false }) }}
+                                    {{ euro(props.pagamento.importo_netto) }}
                                 </span>
                             </div>
-                        </div>
 
-                        <Button type="button" :disabled="form.processing || form.allocazioni.length === 0" @click="handleSubmit"
-                            class="w-full h-12 font-black text-sm uppercase tracking-wider rounded-xl gap-2"
-                            :class="transactionStatus === 'WARNING_CASH' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'">
-                            <Save class="w-5 h-5" />
-                            Registra Pagamento
-                        </Button>
-                    </div>
-                </div>
-
-                <!-- ── COLONNA DESTRA — Ledger Esecutivo ── -->
-                <div class="lg:col-span-8 flex flex-col gap-5 relative z-0">
-
-                    <!-- Smart Router Netting Banner -->
-                    <Transition enter-active-class="transition-all duration-500 ease-out" enter-from-class="opacity-0 -translate-y-3 scale-[0.98]" enter-to-class="opacity-100 translate-y-0 scale-100">
-                        <div v-if="hasNetting && form.fornitore_id"
-                            class="bg-gradient-to-r from-amber-50 to-amber-50/60 dark:from-amber-950/30 dark:to-amber-950/10 rounded-xl border border-amber-200 dark:border-amber-800/50 p-4 flex items-center justify-between shadow-sm">
-                            <div class="flex items-center gap-3">
-                                <div class="p-2.5 bg-amber-100 dark:bg-amber-800/40 rounded-xl border border-amber-200/50">
-                                    <Sparkles class="w-5 h-5 text-amber-600 dark:text-amber-400" />
-                                </div>
-                                <div>
-                                    <p class="text-sm font-bold text-amber-900 dark:text-amber-200">Smart Router — Netting 1-Click</p>
-                                    <p class="text-[11px] text-amber-700/80 dark:text-amber-400/80 mt-0.5">
-                                        Questo fornitore ha <strong>{{ euro(totaleNC) }}</strong> in Note di Credito compensabili
-                                        contro <strong>{{ euro(totaleFT) }}</strong> di fatture aperte.
-                                    </p>
-                                </div>
-                            </div>
-                            <Button variant="outline" size="sm" type="button" @click="applyNetting"
-                                class="h-9 px-4 text-[11px] font-black uppercase tracking-wider border-amber-300 bg-white dark:bg-amber-800/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-800/50 shadow-sm transition-all gap-1.5">
-                                <Zap class="w-3.5 h-3.5" /> Compensa Automaticamente
-                            </Button>
-                        </div>
-                    </Transition>
-
-                    <!-- Tabella Documenti Pendenze -->
-                    <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <div class="px-6 py-5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between rounded-t-xl">
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-200">Documenti pendenti</h3>
-                                    <Badge v-if="pendenze.length" variant="secondary" class="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent">
-                                        {{ pendenze.length }} {{ pendenze.length === 1 ? 'Documento' : 'Documenti' }}
-                                    </Badge>
-                                </div>
-                                <p class="text-[11px] text-slate-500 mt-1">
-                                    {{ form.fornitore_id ? 'Seleziona le fatture da pagare e le note di credito da compensare.' : 'Seleziona un fornitore per visualizzare i documenti.' }}
-                                </p>
-                            </div>
-                            <div v-if="pendenze.length" class="flex items-center gap-2">
-                                <Badge v-if="documentiSelezionati > 0" class="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold">
-                                    {{ documentiSelezionati }} selezionat{{ documentiSelezionati === 1 ? 'o' : 'i' }}
-                                </Badge>
-                                <Button variant="outline" size="sm" type="button" @click="selezionaTutte"
-                                    class="h-8 text-[10px] font-bold uppercase border-slate-200 text-slate-600 hover:bg-slate-50 gap-1">
-                                    <Check class="w-3 h-3" /> Tutte
-                                </Button>
-                                <Button variant="ghost" size="sm" type="button" @click="deselezionaTutte"
-                                    class="h-8 text-[10px] font-bold uppercase text-slate-400 hover:text-rose-500 hover:bg-rose-50 gap-1">
-                                    <X class="w-3 h-3" /> Reset
+                            <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <Button type="button" @click="handleSubmit" :disabled="form.processing"
+                                    class="w-full h-12 rounded-xl font-black uppercase tracking-wider text-xs gap-2 transition-all shadow-md bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20">
+                                    <Save class="w-4 h-4" />
+                                    Salva Modifiche
                                 </Button>
                             </div>
                         </div>
-
-                        <!-- Loading -->
-                        <div v-if="loadingPendenze" class="p-12 flex flex-col items-center justify-center gap-3">
-                            <div class="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
-                            <p class="text-xs text-slate-400 font-medium">Caricamento documenti...</p>
-                        </div>
-
-                        <!-- Empty state -->
-                        <div v-else-if="!form.fornitore_id" class="py-16 flex flex-col items-center justify-center text-slate-400 space-y-4 bg-slate-50/30">
-                            <div class="p-5 bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <Search class="w-10 h-10 opacity-20" />
-                            </div>
-                            <div class="text-center">
-                                <p class="font-medium text-sm text-slate-500">Nessun fornitore selezionato</p>
-                                <p class="text-xs text-slate-400 mt-1">Seleziona un fornitore nel pannello a sinistra per iniziare</p>
-                            </div>
-                        </div>
-
-                        <div v-else-if="pendenze.length === 0 && !loadingPendenze" class="py-16 flex flex-col items-center justify-center text-slate-400 space-y-4 bg-slate-50/30">
-                            <div class="p-5 bg-white rounded-2xl shadow-sm border border-slate-100">
-                                <CheckCircle class="w-10 h-10 text-emerald-300" />
-                            </div>
-                            <div class="text-center">
-                                <p class="font-medium text-sm text-slate-500">Nessun documento pendente</p>
-                                <p class="text-xs text-slate-400 mt-1">Tutte le fatture di questo fornitore sono state saldate</p>
-                            </div>
-                        </div>
-
-                        <!-- Tabella pendenze -->
-                        <div v-else class="divide-y divide-slate-100 dark:divide-slate-800/80">
-                            <div v-for="p in pendenze" :key="p.id"
-                                class="px-6 py-4 flex items-center gap-4 group transition-all duration-200"
-                                :class="[
-                                    p.stato_approvazione !== 'approvata' ? 'opacity-60 cursor-not-allowed bg-slate-50/50' : 'cursor-pointer',
-                                    p.selezionata ? 'bg-emerald-50/40 dark:bg-emerald-950/10' : (p.stato_approvazione === 'approvata' ? 'hover:bg-slate-50/50' : ''),
-                                    p.is_nota_credito ? 'border-l-[3px] border-l-blue-400' : '',
-                                    p.is_scaduta && !p.is_nota_credito ? 'border-l-[3px] border-l-rose-400' : ''
-                                ]"
-                                @click="p.stato_approvazione === 'approvata' && togglePendenza(p)">
-
-                                <!-- Checkbox -->
-                                <div class="shrink-0">
-                                    <div class="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all"
-                                        :class="[
-                                            p.selezionata ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-500/30' : 'border-slate-300 dark:border-slate-600',
-                                            p.stato_approvazione !== 'approvata' ? 'opacity-50' : ''
-                                        ]">
-                                        <Check v-if="p.selezionata" class="w-3 h-3" />
-                                    </div>
-                                </div>
-
-                                <!-- Info documento -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-1">
-                                        <Badge :class="p.is_nota_credito
-                                            ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-400'
-                                            : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'"
-                                            class="text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5">
-                                            {{ p.is_nota_credito ? 'NC' : 'FT' }}
-                                        </Badge>
-                                        <span class="font-bold text-sm text-slate-800 dark:text-slate-200">{{ p.numero_documento }}</span>
-                                        <span v-if="p.is_scaduta && !p.is_nota_credito"
-                                            class="text-[8px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 leading-none flex items-center gap-1">
-                                            <Clock class="w-2.5 h-2.5" /> Scaduta
-                                        </span>
-                                        <span v-if="p.stato_pagamento === 'parziale'"
-                                            class="text-[8px] font-black uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 leading-none">
-                                            Parziale
-                                        </span>
-                                        <!-- Badge sforo con Tooltip shadcn (sfondo nero, freccia) -->
-                                        <TooltipProvider v-if="p.stato_approvazione === 'sforo_motivato'" :delay-duration="200">
-                                            <Tooltip>
-                                                <TooltipTrigger as-child>
-                                                    <span
-                                                        class="text-[8px] font-black uppercase tracking-wider text-orange-700 bg-orange-100 border border-orange-300 rounded px-1.5 py-0.5 leading-none cursor-help"
-                                                    >
-                                                        ⚠ Ratifica richiesta
-                                                    </span>
-                                                </TooltipTrigger>
-                                                <TooltipContent side="top" class="max-w-xs text-center">
-                                                    <p class="font-bold mb-1">Spesa in attesa di ratifica</p>
-                                                    <p class="text-[11px] leading-relaxed font-normal opacity-90">La spesa supera il budget approvato. Usa "Approva sforo" per registrare la delibera o la motivazione di urgenza (art. 1135 c.c.).</p>
-                                                </TooltipContent>
-                                            </Tooltip>
-                                        </TooltipProvider>
-                                        <span
-                                            v-else-if="p.stato_approvazione !== 'approvata'"
-                                            class="text-[8px] font-black uppercase tracking-wider text-slate-500 bg-slate-200 border border-slate-300 rounded px-1.5 py-0.5 leading-none"
-                                        >
-                                            Da approvare
-                                        </span>
-                                        <!-- Bottone inline ratifica: visibile solo per sforo_motivato -->
-                                        <button
-                                            v-if="p.stato_approvazione === 'sforo_motivato'"
-                                            type="button"
-                                            @click.stop="apriModaleApprovazioneSforo(p)"
-                                            class="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-wider text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 rounded px-2 py-0.5 leading-none transition-colors shadow-sm"
-                                        >
-                                            <Stamp class="w-2.5 h-2.5" />
-                                            Approva sforo
-                                        </button>
-                                    </div>
-                                    <div class="flex items-center gap-3 text-[11px] text-slate-500">
-                                        <span>{{ p.data_documento }}</span>
-                                        <span v-if="p.data_scadenza_fmt" class="flex items-center gap-1">
-                                            <Clock class="w-3 h-3" /> Scad. {{ p.data_scadenza_fmt }}
-                                        </span>
-                                    </div>
-                                    <p v-if="p.descrizione_righe" class="text-[10px] text-slate-400 mt-1 truncate max-w-[400px]">{{ p.descrizione_righe }}</p>
-                                </div>
-
-                                <!-- Residuo -->
-                                <div class="text-right shrink-0 w-28">
-                                    <span class="text-[9px] font-bold uppercase tracking-wider block mb-0.5"
-                                        :class="p.is_nota_credito ? 'text-blue-500' : 'text-slate-400'">
-                                        {{ p.is_nota_credito ? 'Credito' : 'Residuo' }}
-                                    </span>
-                                    <span class="font-black text-sm block"
-                                        :class="p.is_nota_credito ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-slate-200'">
-                                        {{ p.is_nota_credito ? '' : '' }}{{ euro(p.residuo) }}
-                                    </span>
-                                </div>
-
-                                <!-- Input allocazione -->
-                                <div class="shrink-0 w-32" @click.stop>
-                                    <MoneyInput
-                                        :id="'alloc_' + p.id"
-                                        :modelValue="p.importo_allocato"
-                                        @update:modelValue="p.stato_approvazione === 'approvata' && onAllocazioneChange(p, $event)"
-                                        :disabled="p.stato_approvazione !== 'approvata'"
-                                        :money-options="moneyOptions"
-                                        :lazy="false"
-                                        class="h-9 font-bold text-sm text-right transition-all rounded-md border w-full px-2 outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:bg-slate-100"
-                                        :class="[
-                                            (p.importo_allocato || 0) > 0
-                                                ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700'
-                                                : 'border-slate-200 bg-transparent hover:border-slate-300 text-slate-800',
-                                        ]"
-                                        placeholder="0,00"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Footer registro -->
-                        <div v-if="pendenze.length > 0"
-                            class="py-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-xl flex flex-col sm:flex-row items-end sm:items-center justify-between px-6">
-                            <div>
-                                <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-x-4" enter-to-class="opacity-100 translate-x-0">
-                                    <div v-if="totaleAllocatoCompensazione > 0" class="flex items-center gap-2.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50 px-3 py-2 rounded-lg shadow-sm">
-                                        <div class="bg-blue-100 dark:bg-blue-800/50 p-1 rounded-md">
-                                            <ArrowRightLeft class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                                        </div>
-                                        <div class="text-[11px] text-blue-800 dark:text-blue-300 leading-tight">
-                                            Netting: <strong class="font-black text-blue-900 dark:text-blue-100">{{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</strong> <span class="opacity-80">compensato con NC</span>
-                                        </div>
-                                    </div>
-                                </Transition>
-                            </div>
-
-                            <div class="flex items-center gap-8 pr-2 mt-4 sm:mt-0">
-                                <div class="text-right">
-                                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Fatture</span>
-                                    <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totaleAllocatoPagamento, { fromCents: false }) }}</span>
-                                </div>
-                                <div v-if="totaleAllocatoCompensazione > 0" class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
-                                <div v-if="totaleAllocatoCompensazione > 0" class="text-right">
-                                    <span class="text-[10px] text-blue-500 font-bold uppercase tracking-widest block mb-0.5">NC Comp.</span>
-                                    <span class="font-black text-blue-600 dark:text-blue-400 text-lg">- {{ euro(totaleAllocatoCompensazione, { fromCents: false }) }}</span>
-                                </div>
-                                <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
-                                <div class="text-right">
-                                    <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">Bonifico</span>
-                                    <span class="font-black text-primary text-xl">{{ euro(bonificoEffettivo, { fromCents: false }) }}</span>
-                                </div>
-                            </div>
-                        </div>
                     </div>
-
-                    <!-- Ledger Oscuro — Simulazione Impatto -->
-                    <div v-if="form.allocazioni.length > 0"
-                        class="bg-slate-900 dark:bg-slate-950 text-white rounded-xl border shadow-lg overflow-hidden transition-all duration-300"
-                        :class="transactionStatus === 'WARNING_CASH' ? 'border-amber-500/30' : 'border-slate-700'">
-
-                        <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between bg-slate-800/40">
-                            <div class="flex items-center gap-2">
-                                <Receipt class="w-4 h-4 text-emerald-400" />
-                                <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Riepilogo Operazione</span>
-                            </div>
-                            <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black uppercase"
-                                :class="{
-                                    'bg-amber-500/20 text-amber-400': transactionStatus === 'WARNING_CASH',
-                                    'bg-emerald-500/20 text-emerald-400': transactionStatus === 'SAFE',
-                                }">
-                                <span class="w-1.5 h-1.5 rounded-full mr-1"
-                                    :class="{
-                                        'bg-amber-500 animate-pulse': transactionStatus === 'WARNING_CASH',
-                                        'bg-emerald-500': transactionStatus === 'SAFE',
-                                    }"></span>
-                                {{ transactionStatus === 'WARNING_CASH' ? 'Attenzione Cassa' : 'Tutto OK' }}
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 divide-x divide-slate-700/50">
-                            <!-- Dettaglio allocazioni -->
-                            <div class="p-5">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Dettaglio Allocazioni</p>
-                                <div class="space-y-2">
-                                    <div v-for="p in pendenze.filter(x => x.selezionata)" :key="p.id"
-                                        class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
-                                        <div class="flex-1 mr-4">
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                                                    :class="p.is_nota_credito ? 'bg-blue-500/20 text-blue-400' : 'bg-slate-700 text-slate-400'">
-                                                    {{ p.is_nota_credito ? 'NC' : 'FT' }}
-                                                </span>
-                                                <span class="font-medium text-slate-200">{{ p.numero_documento }}</span>
-                                            </div>
-                                        </div>
-                                        <div class="text-right shrink-0">
-                                            <span class="font-bold" :class="p.is_nota_credito ? 'text-blue-400' : 'text-white'">
-                                                {{ p.is_nota_credito ? '- ' : '' }}{{ euro((p.importo_allocato || 0) * 100) }}
-                                            </span>
-                                            <div class="text-[9px] text-slate-500 font-medium mt-0.5">
-                                                {{ p.is_nota_credito ? 'Compensazione' : 'Pagamento' }}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Previsione cassa -->
-                            <div class="p-5">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-slate-500 mb-4">Previsione Cassa</p>
-                                <div v-if="bankForecast" class="space-y-3">
-                                    <div class="space-y-2">
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-slate-400">Saldo attuale</span>
-                                            <span class="text-white font-bold">{{ euro(bankForecast.attuale_cents) }}</span>
-                                        </div>
-                                        <div class="flex justify-between text-xs">
-                                            <span class="text-slate-400">Uscita prevista</span>
-                                            <span class="text-rose-400 font-bold">- {{ euro(uscitaCassaTotale, { fromCents: false }) }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="pt-3 border-t border-slate-700 space-y-1">
-                                        <p class="text-[9px] text-slate-500 uppercase font-bold">Saldo post-pagamento</p>
-                                        <p class="font-black text-2xl" :class="bankForecast.isRed ? 'text-rose-500' : 'text-emerald-400'">
-                                            {{ euro(bankForecast.post_cents) }}
-                                        </p>
-                                        <div class="h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
-                                            <div class="h-full rounded-full transition-all"
-                                                :class="bankForecast.isRed ? 'bg-rose-500' : 'bg-emerald-500'"
-                                                :style="{ width: Math.min(Math.max((bankForecast.post_cents / Math.max(bankForecast.attuale_cents, 1)) * 100, 0), 100) + '%' }">
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-else class="py-6 text-center text-slate-600 text-xs">
-                                    Seleziona un conto nel pannello sinistro
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
                 </div>
+
+                <!-- ── COLONNA DESTRA — RIMOSSA PERCHE' IN EDIT LE ALLOCAZIONI NON SONO MODIFICABILI ── -->
             </div>
         </div>
 
@@ -1239,9 +758,9 @@ const pageGuides = [
                     </p>
                     <div class="flex flex-col gap-3">
                         <Button
-                            @click="() => { form.reset(); pendenze = []; showSuccessModal = false; }"
+                            @click="() => { showSuccessModal = false; }"
                             class="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-emerald-600/20 transition-all">
-                            Registra un altro pagamento
+                            Chiudi
                         </Button>
                         <Button
                             variant="ghost"
@@ -1253,64 +772,6 @@ const pageGuides = [
                 </div>
             </div>
         </Teleport>
-
-        <!-- Modale Ratifica Assembleare Sforo (inline da PagamentoNew) — stesso stile ConfirmDialog -->
-        <ConfirmDialog
-            v-model="showApprovaSforoModal"
-            title="Ratifica assembleare — Sforo motivato"
-            confirm-text="Conferma ratifica"
-            variant="default"
-            size="lg"
-            :disabled="noteApprovazioneInline.trim().length < 10"
-            @confirm="executeApprovaSforoInline"
-        >
-            <div class="space-y-4">
-
-                <!-- Contesto legale -->
-                <div class="bg-orange-50 border border-orange-200 text-orange-800 p-3 rounded-lg flex gap-3 items-start">
-                    <ShieldCheck class="w-5 h-5 shrink-0 mt-0.5 text-orange-600" />
-                    <div>
-                        <p class="font-bold text-orange-900">Ratifica assembleare (Art. 1135 c.c.)</p>
-                        <p class="text-xs mt-1 leading-relaxed">
-                            Questa fattura supera il budget approvato dall'assemblea.
-                        </p>
-                        <ul class="text-xs mt-2 space-y-1 leading-relaxed list-none">
-                            <li>• Se la spesa è già stata deliberata, indica nel campo note il riferimento al verbale.</li>
-                            <li>• In caso di lavori urgenti, per evitare un pregiudizio al condominio l'amministratore può procedere al pagamento, dandone comunicazione all'assemblea nella prima convocazione utile. In tal caso annota qui la motivazione, es.: <em>«Pagamento effettuato per urgenza dall'amministratore — [breve descrizione]»</em>.</li>
-                        </ul>
-                        <p class="text-xs mt-2 leading-relaxed opacity-80">
-                            La ratifica resterà segnalata nella Inbox operativa fino all'approvazione in assemblea.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Fattura in oggetto -->
-                <div v-if="sforoTarget" class="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Fattura in oggetto</p>
-                    <p class="text-sm font-bold text-slate-800">{{ sforoTarget.numero_documento }}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">{{ sforoTarget.data_documento }}</p>
-                </div>
-
-                <!-- Note -->
-                <div class="space-y-1.5">
-                    <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex justify-between">
-                        <span>Riferimento verbale / Note <span class="text-rose-500">*</span></span>
-                        <span class="font-normal text-slate-400 normal-case tracking-normal ml-1" :class="{'text-rose-500 font-bold': noteApprovazioneInline.trim().length < 10}">
-                            {{ noteApprovazioneInline.trim().length < 10 ? `(minimo 10 caratteri, attuali: ${noteApprovazioneInline.trim().length})` : '(obbligatorio)' }}
-                        </span>
-                    </label>
-                    <textarea
-                        v-model="noteApprovazioneInline"
-                        rows="3"
-                        placeholder="Es: Delibera assembleare del 15/05/2025 – Verbale n. 3/2025 – Ratifica spesa urgente manutenzione ascensore..."
-                        class="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 resize-none"
-                    />
-                    <p class="text-[10px] text-slate-400 leading-relaxed">
-                        Il sistema registrerà automaticamente data e autore dell'approvazione nell'audit trail della fattura.
-                    </p>
-                </div>
-            </div>
-        </ConfirmDialog>
 
         <!-- ════════════════════════════════════════════════════════════════ -->
         <!-- MODALI ERRORI DI DOMINIO                                        -->

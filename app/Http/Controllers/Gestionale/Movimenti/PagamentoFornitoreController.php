@@ -12,8 +12,10 @@ use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
+use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StorePagamentoFornitoreRequest;
+use App\Http\Requests\Gestionale\Movimenti\UpdatePagamentoFornitoreRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Fornitore;
@@ -415,6 +417,133 @@ class PagamentoFornitoreController extends Controller
                 'fatture' => $scritturaFatture,
             ] : null,
         ]);
+    }
+
+    /**
+     * Mostra il form per la modifica di un pagamento fornitore confermato.
+     *
+     * Prepara i dati necessari per il form semplificato (banche e gestione).
+     * Le guardie di modificabilità sono demandate al service.
+     *
+     * @param Condominio $condominio
+     * @param PagamentoFornitore $pagamento
+     * @return Response
+     */
+    public function edit(Condominio $condominio, PagamentoFornitore $pagamento): Response
+    {
+        abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        $pagamento->load(['fornitore', 'contoCorrente', 'scrittura.fatture']);
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio      = $this->getEsercizioCorrente($condominio);
+
+        // Banche e casse con saldo calcolato dal giornale
+        $banche = Cassa::where('condominio_id', $condominio->id)
+            ->where('attiva', true)
+            ->where('tipo', '!=', 'fondo')
+            ->withSum(['movimenti as totale_entrate' => function ($q) {
+                $q->where('tipo_riga', 'dare');
+            }], 'importo')
+            ->withSum(['movimenti as totale_uscite' => function ($q) {
+                $q->where('tipo_riga', 'avere');
+            }], 'importo')
+            ->get()
+            ->map(function ($cassa) {
+                $entrate = $cassa->totale_entrate ?? 0;
+                $uscite  = $cassa->totale_uscite ?? 0;
+                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
+                $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+
+                return [
+                    'id'            => $cassa->conto_contabile_id,
+                    'cassa_id'      => $cassa->id,
+                    'nome'          => $cassa->nome,
+                    'tipo'          => $cassa->tipo,
+                    'iban'          => $cassa->contoCorrente?->iban ?? null,
+                    'saldo_attuale' => $saldoAttuale,
+                ];
+            });
+
+        return Inertia::render('gestionale/movimenti/pagamenti/PagamentoEdit', [
+            'condominio' => $condominio,
+            'condomini'  => $listaCondomini,
+            'esercizio'  => $esercizio,
+            'pagamento'  => new PagamentoFornitoreResource($pagamento),
+            'banche'     => $banche,
+        ]);
+    }
+
+    /**
+     * Aggiorna un pagamento fornitore confermato.
+     *
+     * Delega l'aggiornamento e la validazione di integrità (overpayment) al PagamentoFornitoreService.
+     *
+     * @param UpdatePagamentoFornitoreRequest $request
+     * @param Condominio $condominio
+     * @param PagamentoFornitore $pagamento
+     * @return RedirectResponse
+     */
+    public function update(UpdatePagamentoFornitoreRequest $request, Condominio $condominio, PagamentoFornitore $pagamento): RedirectResponse
+    {
+        abort_if($pagamento->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        try {
+            $this->service->aggiornaPagamento(
+                $pagamento,
+                $request->validated()
+            );
+
+            return redirect()
+                ->route('admin.gestionale.pagamenti-fornitori.index', ['condominio' => $condominio->id])
+                ->with($this->flashSuccess('Pagamento aggiornato con successo.'));
+
+        } catch (PagamentoModificaVietataException $e) {
+            return back()->with($this->flashError($e->getMessage()));
+
+        } catch (IbanDiscrepanzaException $e) {
+            return back()->withErrors(['iban_discrepanza' => $e->getMessage()]);
+
+        } catch (PossibilePagamentoDuplicatoException $e) {
+            return back()->withErrors(['possibile_duplicato' => $e->getMessage()]);
+
+        } catch (InsufficientFundsException $e) {
+            return back()->withErrors([
+                'insufficient_funds'      => $e->getMessage(),
+                'insufficient_funds_data' => json_encode([
+                    'saldo_cents'      => $e->saldoCents,
+                    'necessario_cents' => $e->necessarioCents,
+                    'scopertura_cents' => $e->scoperturaCents,
+                ]),
+            ]);
+
+        } catch (OverpaymentException $e) {
+            return back()->withErrors([
+                'overpayment'      => $e->getMessage(),
+                'overpayment_data' => json_encode([
+                    'allocato_cents' => $e->allocatoCents,
+                    'residuo_cents'  => $e->residuoCents,
+                    'num_fattura'    => $e->numFattura,
+                ]),
+            ]);
+
+        } catch (FiscalYearClosedException $e) {
+            return back()->withErrors(['fiscal_year_closed' => $e->getMessage()]);
+
+        } catch (IllegalCashAmountException $e) {
+            return back()->withErrors(['illegal_cash' => $e->getMessage()]);
+
+        } catch (FatturaNonApprovataException $e) {
+            return back()->withErrors(['fattura_non_approvata' => $e->getMessage()]);
+
+        } catch (AllocazioniInconsistentiException $e) {
+            return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
+
+        } catch (\Exception $e) {
+            Log::error("Errore modifica pagamento ID {$pagamento->id}: " . $e->getMessage());
+            Log::error('Traccia: ' . $e->getTraceAsString());
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
     }
 
     /**

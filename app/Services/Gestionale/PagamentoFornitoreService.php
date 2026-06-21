@@ -8,8 +8,10 @@ use App\Enums\StatoPagamentoFornitore;
 use App\Enums\TipoAllocazioneFattura;
 use App\Enums\TipoDetrazione;
 use App\Enums\TipoMovimentoContabile;
+use App\Events\Gestionale\PagamentoAggiornato;
 use App\Events\Gestionale\PagamentoRegistrato;
 use App\Events\Gestionale\PagamentoStornato;
+use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
@@ -377,6 +379,211 @@ class PagamentoFornitoreService
 
             throw $e;
         }
+    }
+
+    /**
+     * Aggiorna un pagamento fornitore confermato, ricreando le righe della scrittura contabile.
+     *
+     * Permesso solo su pagamenti originali (pagamento_padre_id IS NULL) non stornati,
+     * il cui esercizio di scrittura è ancora aperto.
+     * Per tutti gli altri casi usare stornaPagamento().
+     *
+     * Campi modificabili: importo_lordo/ritenuta/netto, data_pagamento, metodo_pagamento,
+     * conto_corrente_id, causale_bonifico, riferimento_bancario, note_override.
+     * Campi immutabili: fornitore_id, allocazioni fatture, uuid, idempotency_key,
+     * numero_protocollo scrittura.
+     *
+     * Effetti collaterali:
+     *  - Dispatch PagamentoAggiornato → SyncF24WithPagamento::handleAggiornato()
+     *    aggiorna/crea/chiude il task F24 Inbox se importo_ritenuta o data_pagamento cambia.
+     *  - ricalcolaStatoFattura() su tutte le fatture collegate.
+     *
+     * @param PagamentoFornitore $pagamento  Pagamento da modificare.
+     * @param array              $data       Dati validati da UpdatePagamentoFornitoreRequest.
+     *
+     * @throws PagamentoModificaVietataException
+     * @throws OverpaymentException
+     */
+    public function aggiornaPagamento(PagamentoFornitore $pagamento, array $data): PagamentoFornitore
+    {
+        // ── Guard composita ─────────────────────────────────────────────────
+        if ($pagamento->pagamento_padre_id !== null) {
+            throw new PagamentoModificaVietataException(
+                'I record di storno non sono modificabili direttamente.'
+            );
+        }
+
+        if ($pagamento->stato === StatoPagamentoFornitore::STORNATO) {
+            throw new PagamentoModificaVietataException(
+                'Il pagamento è stato stornato: non modificabile.'
+            );
+        }
+
+        $scrittura = $pagamento->scrittura;
+        if (!$scrittura) {
+            throw new PagamentoModificaVietataException(
+                'Scrittura contabile mancante: impossibile procedere.'
+            );
+        }
+
+        $statoEsercizio = DB::table('esercizi')
+            ->where('id', $scrittura->esercizio_id)
+            ->value('stato');
+
+        if ($statoEsercizio === 'chiuso') {
+            throw new PagamentoModificaVietataException(
+                'Il pagamento appartiene a un esercizio chiuso: usa lo storno.'
+            );
+        }
+
+        // ── Snapshot before (per evento PagamentoAggiornato) ─────────────────
+        $dataPagamentoBefore    = $pagamento->data_pagamento?->format('Y-m-d');
+        $importoRitenutaBefore  = $pagamento->importo_ritenuta ?? 0;
+
+        // ── Importi nuovi ────────────────────────────────────────────────────
+        $nuovoImportoLordo    = (int) $data['importo_lordo_cents'];
+        $nuovoImportoRitenuta = (int) ($data['importo_ritenuta_cents'] ?? 0);
+        $nuovoImportoNetto    = (int) $data['importo_netto_cents'];
+        $nuovoConto           = (int) $data['conto_corrente_id'];
+        $nuovaData            = $data['data_pagamento'];
+        $nuovoMetodo          = MetodoPagamento::from($data['metodo_pagamento']);
+
+        // ── Validazione residuo post-modifica (overpayment) ──────────────────
+        // Recupera le fatture collegate e verifica che il nuovo importo non ecceda
+        // il residuo disponibile + quanto già allocato da questo pagamento.
+        $scrittura->loadMissing('fatture');
+        $fatture = $scrittura->fatture;
+
+        $allowOverpayment = (bool) ($data['allow_overpayment'] ?? false);
+
+        foreach ($fatture as $fattura) {
+            // Importo che questo pagamento stava allocando su questa fattura
+            $allocatoCorrente = (int) $fattura->pivot->importo_allocato;
+
+            // Residuo attuale escludendo l'allocazione corrente
+            $residuoSenzaCorrente = $fattura->residuo + $allocatoCorrente;
+
+            // Il nuovo importo netto totale viene distribuito proporzionalmente
+            // (per semplicità: caso singola fattura — multi-fattura non modificabile)
+            if (abs($nuovoImportoNetto) > abs($residuoSenzaCorrente) && ! $allowOverpayment) {
+                throw new OverpaymentException(
+                    sprintf(
+                        "Overpayment su fattura %s (id %d): si alloca %s€ ma il residuo è %s€.",
+                        $fattura->numero_documento ?? "#{$fattura->id}",
+                        $fattura->id,
+                        number_format($nuovoImportoNetto / 100, 2, ',', '.'),
+                        number_format($residuoSenzaCorrente / 100, 2, ',', '.')
+                    ),
+                    allocatoCents: (int) $nuovoImportoNetto,
+                    residuoCents:  (int) $residuoSenzaCorrente,
+                    numFattura:    $fattura->numero_documento ?? "#{$fattura->id}"
+                );
+            }
+        }
+
+        // ── Transazione atomica ──────────────────────────────────────────────
+        return DB::transaction(function () use (
+            $pagamento, $scrittura, $fatture, $data,
+            $nuovoImportoLordo, $nuovoImportoRitenuta, $nuovoImportoNetto,
+            $nuovoConto, $nuovaData, $nuovoMetodo,
+            $dataPagamentoBefore, $importoRitenutaBefore
+        ) {
+            $condominioId = $pagamento->condominio_id;
+
+            // Lock pessimistico sulle fatture collegate (stesso pattern di registraPagamento)
+            $fattureIds = $fatture->pluck('id')->sort()->values();
+            FatturaPassiva::whereIn('id', $fattureIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            // 1. Elimina righe scrittura esistenti
+            $scrittura->righe()->delete();
+
+            // 2. Elimina pivot fattura_scrittura (eccetto il tipo 'competenza' che non esiste qui)
+            FatturaScrittura::where('scrittura_contabile_id', $scrittura->id)
+                ->whereIn('tipo', [
+                    TipoAllocazioneFattura::PAGAMENTO->value,
+                    TipoAllocazioneFattura::COMPENSAZIONE->value,
+                ])
+                ->delete();
+
+            // 3. Aggiorna testata scrittura
+            $scrittura->update([
+                'data_registrazione' => $nuovaData,
+                'data_competenza'    => $nuovaData,
+            ]);
+
+            // 4. Aggiorna testata PagamentoFornitore
+            $pagamento->update([
+                'importo_lordo'        => $nuovoImportoLordo,
+                'importo_ritenuta'     => $nuovoImportoRitenuta,
+                'importo_netto'        => $nuovoImportoNetto,
+                'data_pagamento'       => $nuovaData,
+                'metodo_pagamento'     => $nuovoMetodo,
+                'conto_corrente_id'    => $nuovoConto,
+                'causale_bonifico'     => $data['causale_bonifico'] ?? $pagamento->causale_bonifico,
+                'riferimento_bancario' => $data['riferimento_bancario'] ?? $pagamento->riferimento_bancario,
+                'note_override'        => $data['note_override'] ?? $pagamento->note_override,
+                'iban_beneficiario'    => $data['iban_beneficiario'] ?? $pagamento->iban_beneficiario,
+            ]);
+
+            // 5. Ricrea righe dare/avere (stesso schema di registraPagamento)
+            $contoDebiti   = $this->trovaConto($condominioId, 'debiti_fornitori');
+            $cassaId       = Cassa::where('conto_contabile_id', $nuovoConto)->value('id');
+            $fornitore     = Fornitore::with('referenti')->findOrFail($pagamento->fornitore_id);
+            $anagraficaPrincipale = $fornitore->referenti()->first();
+
+            // DARE: chiusura debito fatture
+            $scrittura->righe()->create([
+                'conto_contabile_id' => $contoDebiti->id,
+                'tipo_riga'          => 'dare',
+                'importo'            => $nuovoImportoNetto,
+                'anagrafica_id'      => $anagraficaPrincipale?->id,
+            ]);
+
+            // AVERE: uscita cassa/banca
+            $scrittura->righe()->create([
+                'conto_contabile_id' => $nuovoConto,
+                'cassa_id'           => $cassaId,
+                'tipo_riga'          => 'avere',
+                'importo'            => $nuovoImportoNetto,
+            ]);
+
+            // 6. Double-Entry Validator
+            DoubleEntryValidator::validateOrFail($scrittura->id);
+
+            // 7. Ricrea pivot fattura_scrittura con nuovo importo
+            foreach ($fatture as $fattura) {
+                $tipoVecchio = $fattura->pivot->tipo;
+                $fattura->scritture()->attach($scrittura->id, [
+                    'tipo'             => is_object($tipoVecchio) ? $tipoVecchio->value : $tipoVecchio,
+                    'importo_allocato' => $nuovoImportoNetto,
+                ]);
+            }
+
+            // Incrementa change counter
+            FatturaPassiva::whereIn('id', $fattureIds)->increment('versione_allocazioni');
+
+            // 8. Ricalcola stato fatture
+            $fattureFresche = FatturaPassiva::whereIn('id', $fattureIds)->get();
+            foreach ($fattureFresche as $fattura) {
+                $this->ricalcolaStatoFattura($fattura);
+            }
+
+            // 9. Audit trail
+            Log::info("PagamentoFornitore #{$pagamento->id} modificato da utente #" . (Auth::id() ?? 0), [
+                'importo_ritenuta_before' => $importoRitenutaBefore,
+                'importo_ritenuta_after'  => $nuovoImportoRitenuta,
+                'data_pagamento_before'   => $dataPagamentoBefore,
+                'data_pagamento_after'    => $nuovaData,
+            ]);
+
+            // 10. Dispatch evento (after commit — listener $afterCommit = true)
+            event(new PagamentoAggiornato($pagamento->fresh(), $dataPagamentoBefore, $importoRitenutaBefore));
+
+            return $pagamento->fresh();
+        });
     }
 
     /**

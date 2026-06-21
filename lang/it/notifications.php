@@ -45,6 +45,7 @@ return [
         'action'    => 'Imposta password',
         'line_2'    => 'Questo link scadrà tra tre giorni.',
         'password_already_set' => 'La password è già stata impostata. Effettua il login con le tue credenziali.',
+        'link_expired' => 'Il link di invito è scaduto o non è più valido. Contatta l\'amministratore per ricevere un nuovo invito.',
     ],
 
     // Approvazione comunicazione (ApproveComunicazioneNotification)

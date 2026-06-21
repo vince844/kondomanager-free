@@ -486,3 +486,40 @@ it('blocca eliminazione se piano rate ha pagamenti', function () {
     // Se la riga è ancora nel DB, il test passa.
     expect(\App\Models\Gestionale\FatturaPassiva::find($fattura->id))->not->toBeNull();
 });
+it('aggiorna fattura aperta riscrivendo il ledger', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Lavori',
+            'importo_imponibile' => 1000,
+            'aliquota_iva'       => 22,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+    ]);
+
+    $service = new FatturaPassivaService();
+    $fattura = $service->registraFattura($data, $condominio->id);
+
+    $newData = array_merge($data, [
+        'data_documento' => now()->addDay()->toDateString(),
+        'righe' => [[
+            'descrizione'        => 'Lavori extra',
+            'importo_imponibile' => 2000,
+            'aliquota_iva'       => 10,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+    ]);
+
+    $fatturaAggiornata = $service->aggiornaFattura($fattura, $newData);
+
+    expect($fatturaAggiornata->importo_imponibile)->toEqual(200000);
+    expect($fatturaAggiornata->importo_iva)->toEqual(20000);
+    expect($fatturaAggiornata->totale_documento)->toEqual(220000);
+
+    $scrittura = $fatturaAggiornata->scritture->first();
+    assertQuadraturaPerfetta($scrittura->id);
+    expect($scrittura->righe->where('tipo_riga', 'avere')->sum('importo'))->toEqual(220000);
+});

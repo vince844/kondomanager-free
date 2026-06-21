@@ -45,6 +45,7 @@ return [
         'action'    => 'Definir senha',
         'line_2'    => 'Este link expirará em três dias.',
         'password_already_set' => 'A sua senha já foi definida. Inicie sessão com as suas credenciais.',
+        'link_expired' => 'O link de convite expirou ou já não é válido. Contacte o administrador para receber um novo convite.',
     ],
 
     // Comunicação pendente de aprovação (ApproveComunicazioneNotification)

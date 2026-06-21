@@ -159,6 +159,7 @@ Sviluppato in 4 fasi parallelizzabili.
 - Storico interventi con costi linkati alla contabilità
 - Fornitore/manutentore con anagrafica fiscale completa
 - Dashboard scadenze + reminder via email
+- **Integrazione Ciclo Passivo (Workflow Segnalazioni → Lavori → Inbox):** Alla chiusura di un intervento o lavoro generato da una segnalazione, il sistema crea automaticamente un task nell'Inbox dell'amministratore ("Attesa Fattura"). Questo task guiderà l'amministratore a sollecitare la fattura e a registrarla in tempo, prevenendo lo sforamento dei 30 giorni di legge (Art. 1130 c.c.).
 
 ---
 

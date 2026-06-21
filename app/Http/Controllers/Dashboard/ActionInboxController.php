@@ -80,6 +80,9 @@ class ActionInboxController extends Controller
                 }
                 // -----------------------------
 
+                $status = $this->getTaskStatus($task);
+                $daysPending = $status === 'expired' ? (int) floor(now()->diffInDays($task->start_time)) : 0;
+
                 return [
                     'id'           => $task->id,
                     'title'        => $task->title,
@@ -90,7 +93,8 @@ class ActionInboxController extends Controller
                     'amount'       => $task->meta['importo_dichiarato'] 
                                    ?? $task->meta['totale_rata'] 
                                    ?? null,
-                    'status'       => $this->getTaskStatus($task),
+                    'status'       => $status,
+                    'days_pending' => $daysPending,
                     'context'      => [
                         // Ora qui avrai il nome corretto
                         'anagrafica_nome' => $nomeAnagrafica, 

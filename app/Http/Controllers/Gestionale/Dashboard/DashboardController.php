@@ -368,6 +368,7 @@ class DashboardController extends Controller
                     'type'         => $task->tipo?->value ?? $task->meta['type'] ?? 'generic',
                     'action_url'   => $task->meta['action_url'] ?? null,
                     'status'       => $task->start_time->isPast() ? 'expired' : 'scheduled',
+                    'days_pending' => $task->start_time->isPast() ? (int) floor(now()->diffInDays($task->start_time)) : 0,
                     'context'      => [
                         'anagrafica_nome' => $nomeAnagrafica, 
                     ],

@@ -403,7 +403,7 @@ const getDateLabel = (dateStr: string | null) => {
                                         {{ getDateLabel(task.date) }}
                                     </span>
                                     <span v-if="task.status === 'expired'" class="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mt-0.5">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span> SCADUTO
+                                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse inline-block"></span> SCADUTO {{ task.days_pending > 0 ? `DA ${task.days_pending} GIORN${task.days_pending === 1 ? 'O' : 'I'}` : '' }}
                                     </span>
                                     <span v-else class="text-[11px] text-slate-400 mt-1 capitalize">
                                         {{ new Date(task.date).toLocaleDateString('it-IT', { weekday: 'short' }) }}

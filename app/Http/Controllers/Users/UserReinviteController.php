@@ -32,8 +32,11 @@ class UserReinviteController extends Controller
 
         try {
 
-            $user = User::where('email', $email)->first();
+            $user = User::where('email', $email)->firstOrFail();
             
+            // Svuota la password fittizia (se presente) per i vecchi utenti inviati prima della modifica
+            $user->update(['password' => null]);
+
             $user->notify(new NewUserEmailNotification($user));
     
             return to_route('utenti.index')->with(

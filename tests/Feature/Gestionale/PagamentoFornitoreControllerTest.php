@@ -100,6 +100,7 @@ test('pagamento fattura con ritenuta: il listener F24 viene triggerato', functio
                     'importo_allocato_cents' => 102000,
                 ]
             ],
+            'importo_ritenuta_cents' => 20000,
             'allow_overdraft'    => true,
         ]);
 
@@ -123,6 +124,8 @@ test('pagamento fattura con ritenuta: il listener F24 viene triggerato', functio
         dump("PAGAMENTO_ID: " . $pagamento->id);
         dump("IMPORTO_RITENUTA: " . $pagamento->importo_ritenuta);
         dump("FATTURA_ID: " . $fattura->id);
+        dump("EVENTI_COUNT: " . \App\Models\Evento::count());
+        dump("EVENTI: " . \App\Models\Evento::all()->toJson());
     }
 
     expect($task)->not->toBeNull();
@@ -218,4 +221,49 @@ test('compensazione nota di credito: netting a 3 record pivot e invariante di ca
     $sommaPagamenti = $pagamento->scrittura->fatture()->wherePivot('tipo', 'pagamento')->sum('importo_allocato');
     
     expect((int)$cassaUscita)->toEqual((int)$sommaPagamenti);
+});
+
+test('update pagamento confermato aggiorna i campi mutabili', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fattura = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id'       => $fornitore->id,
+            'esercizio_id'       => $esercizio->id,
+            'conto_corrente_id'  => $contoCorrenteId,
+            'data_pagamento'     => now()->toDateString(),
+            'metodo_pagamento'   => App\Enums\MetodoPagamento::BONIFICO->value,
+            'allocazioni'        => [
+                [
+                    'fattura_id'             => $fattura->id,
+                    'tipo'                   => App\Enums\TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ]
+            ],
+            'bonifico_parlante'  => false,
+            'allow_overdraft'    => true,
+        ]);
+
+    $pagamento = App\Models\Gestionale\PagamentoFornitore::first();
+
+    $response = $this->actingAs($this->user)
+        ->put(route('admin.gestionale.pagamenti-fornitori.update', [$condominio, $pagamento]), [
+            'conto_corrente_id'   => $contoCorrenteId,
+            'data_pagamento'      => now()->addDay()->toDateString(),
+            'metodo_pagamento'    => App\Enums\MetodoPagamento::BONIFICO->value,
+            'importo_lordo_cents' => $pagamento->importo_lordo,
+            'importo_netto_cents' => $pagamento->importo_netto,
+            'importo_ritenuta_cents' => $pagamento->importo_ritenuta,
+            'causale_bonifico'    => 'Modifica test causale',
+            'note_override'       => 'Nota aggiunta post',
+        ]);
+
+    $response->assertStatus(302);
+    $response->assertSessionHasNoErrors();
+
+    $pagamento->refresh();
+    expect($pagamento->causale_bonifico)->toBe('Modifica test causale');
+    expect($pagamento->note_override)->toBe('Nota aggiunta post');
+    expect($pagamento->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
 });

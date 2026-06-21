@@ -50,8 +50,9 @@ class StorePagamentoFornitoreRequest extends FormRequest
             'iban_beneficiario' => ['nullable', 'string', 'max:34'],
             'causale_bonifico'  => ['nullable', 'string', 'max:1000'],
 
-            // --- COMMISSIONI ---
+            // --- COMMISSIONI E RITENUTE ---
             'importo_commissioni_cents' => ['nullable', 'integer', 'min:0'],
+            'importo_ritenuta_cents'    => ['nullable', 'integer', 'min:0'],
 
             // --- ALLOCAZIONI (multi-fattura) ---
             'allocazioni'                        => ['required', 'array', 'min:1'],

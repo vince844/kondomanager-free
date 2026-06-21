@@ -45,6 +45,7 @@ return [
         'action'    => 'Set password',
         'line_2'    => 'This link will expire in three days.',
         'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
+        'link_expired' => 'The invitation link has expired or is no longer valid. Please contact the administrator to receive a new invitation.',
     ],
 
     // Communication pending approval (ApproveComunicazioneNotification)

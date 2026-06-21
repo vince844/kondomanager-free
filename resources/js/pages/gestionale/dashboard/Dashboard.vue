@@ -73,6 +73,7 @@ const props = defineProps<{
       description: string;
       action_url: string | null;
       status: string;
+      days_pending?: number;
       context: { anagrafica_nome: string | null }
     }>;
   };
@@ -506,7 +507,7 @@ const confirmReject = () => {
                                                                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> DA VERIFICARE
                                                             </span>
                                                             <span v-else-if="task.status === 'expired'" class="text-red-500 flex items-center gap-1">
-                                                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> SCADUTO
+                                                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> SCADUTO {{ (task.days_pending ?? 0) > 0 ? `DA ${task.days_pending ?? 0} GIORN${(task.days_pending ?? 0) === 1 ? 'O' : 'I'}` : '' }}
                                                             </span>
                                                             <span v-else class="text-emerald-500 flex items-center gap-1">
                                                                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> DA FARE

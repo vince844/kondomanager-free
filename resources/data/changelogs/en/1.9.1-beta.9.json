@@ -24,6 +24,8 @@
         "Admin Action Inbox Redesign: Complete layout refactoring of the /admin/inbox page to align with the management system design system. Removed the dark hero header; adopted the standard pattern with label + bold title. The 4 filter cards now follow the style of the admin dashboard KPI cards (decorative background icon, footer with arrow, dynamic colored border). The condominium filter is integrated in the top-bar on the right next to the navigation button.",
         "Task Urgency Ordering: Overdue tasks always appear at the top of the list, followed by future tasks in ascending chronological order, regardless of the active filter.",
         "Action Button Consistency in Inbox: All icon buttons (Complete, Reject) follow the same square visual pattern with border and shadow. Text buttons (Register, Resolve) use the same rectangular container with border and white background.",
-        "Installments Plan Details UI/UX Improvements: Optimized the page interface. Action bar buttons now collapse to icons only on laptop screens to prevent horizontal scrolling. Integrated the new uniform header guide with breadcrumbs and moved the deliberation date badge into a convenient interactive tooltip to save vertical space."
+        "Installments Plan Details UI/UX Improvements: Optimized the page interface. Action bar buttons now collapse to icons only on laptop screens to prevent horizontal scrolling. Integrated the new uniform header guide with breadcrumbs and moved the deliberation date badge into a convenient interactive tooltip to save vertical space.",
+        "Password Creation Bug: Fixed a critical bug preventing newly invited users from setting their password. New users now receive a null password field instead of a random string.",
+        "Expired Invitation Links: Added explicit UX handling and restored the security check on expired and/or altered links for password creation and reinvitation."
     ]
 }

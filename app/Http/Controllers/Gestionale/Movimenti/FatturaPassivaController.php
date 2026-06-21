@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Http\Controllers\Controller;
 use App\Enums\StatoPagamentoFattura;
+use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
+use App\Http\Requests\Gestionale\Movimenti\UpdateFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Documento;
@@ -587,6 +589,112 @@ class FatturaPassivaController extends Controller
         } catch (\Exception $e) {
             Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: " . $e->getMessage());
             return back()->with($this->flashError('Errore di sistema durante l\'eliminazione.'));
+        }
+    }
+
+    /**
+     * Mostra il form per la modifica di una fattura passiva aperta.
+     *
+     * Prepara gli stessi dati di create() ma pre-popolati con la fattura esistente.
+     * Le guard di modificabilità sono lato service; qui rendiamo il form se la
+     * fattura è aperta (check veloce) e lasciamo al service il controllo completo.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return Response
+     */
+    public function edit(Condominio $condominio, FatturaPassiva $fattura): Response
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture']);
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio      = $this->getEsercizioCorrente($condominio);
+
+        return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
+            'condominio' => $condominio,
+            'fattura'    => $fattura,
+            'esercizio'  => $esercizio,
+            'condomini'  => $listaCondomini,
+            'gestioni'   => $condominio->gestioni()
+                ->where('gestioni.attiva', true)
+                ->with('esercizi:id')
+                ->get()
+                ->map(function ($gestione) {
+                    return [
+                        'id'            => $gestione->id,
+                        'nome'          => $gestione->nome,
+                        'tipo'          => $gestione->tipo,
+                        'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
+                    ];
+                }),
+            'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+                ->with('parent')
+                ->whereDoesntHave('sottoconti')
+                ->get()
+                ->map(function ($conto) {
+                    return [
+                        'id'          => $conto->id,
+                        'nome'        => $conto->nome,
+                        'parent_nome' => $conto->parent ? $conto->parent->nome : null,
+                        '_sort_key'   => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
+                    ];
+                })
+                ->sortBy('_sort_key')
+                ->values(),
+            'banche' => Cassa::where('condominio_id', $condominio->id)
+                ->where('attiva', true)
+                ->where('tipo', '!=', 'fondo')
+                ->get()
+                ->map(fn($c) => [
+                    'id'   => $c->conto_contabile_id,
+                    'nome' => $c->nome,
+                ]),
+            'immobili' => Immobile::where('condominio_id', $condominio->id)
+                ->where('attivo', true)
+                ->select('id', 'interno', 'nome')
+                ->orderBy('interno')
+                ->get()
+                ->map(fn($i) => [
+                    'id'    => $i->id,
+                    'label' => 'Int. ' . $i->interno . ' — ' . $i->nome,
+                ]),
+        ]);
+    }
+
+    /**
+     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     *
+     * Delega tutta la logica a FatturaPassivaService::aggiornaFattura().
+     * Le guard di modificabilità sono nel service.
+     *
+     * @param UpdateFatturaRequest $request
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function update(UpdateFatturaRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        try {
+            $this->service->aggiornaFattura(
+                $fattura,
+                $request->validated(),
+                $request->file('file')
+            );
+
+            return redirect()
+                ->route('admin.gestionale.fatture.index', ['condominio' => $condominio->id])
+                ->with($this->flashSuccess('Fattura aggiornata con successo.'));
+
+        } catch (FatturaModificaVietataException $e) {
+            return back()->with($this->flashError($e->getMessage()));
+
+        } catch (\Exception $e) {
+            Log::error("Errore modifica fattura ID {$fattura->id}: " . $e->getMessage());
+            return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
 

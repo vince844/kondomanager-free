@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { MoreHorizontal, Eye, RotateCcw, Download, Loader2, AlertTriangle, BookOpen } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, RotateCcw, Download, Loader2, AlertTriangle, BookOpen, Edit } from 'lucide-vue-next'
 import { router, useForm } from '@inertiajs/vue3'
 import { usePermission } from '@/composables/permissions'
 
@@ -15,6 +15,11 @@ const props = defineProps<{
 }>()
 
 const { generateRoute } = usePermission()
+
+const isModificabile = computed(() =>
+  !props.pagamento.pagamento_padre_id &&
+  props.pagamento.stato !== 'stornato'
+);
 
 // ── Storno modal state ───────────────────────────────────────────────────────
 const isStornoModalOpen = ref(false);
@@ -88,6 +93,16 @@ const goToScrittura = () => {
       <DropdownMenuItem @click="goToPagamento">
         <Eye class="mr-2 h-4 w-4" />
         Vedi dettaglio
+      </DropdownMenuItem>
+
+      <!-- Modifica pagamento -->
+      <DropdownMenuItem 
+        v-if="isModificabile"
+        @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.edit'), { condominio: condominioId, pagamento: pagamento.id }))"
+        class="cursor-pointer"
+      >
+        <Edit class="mr-2 h-4 w-4" />
+        Modifica
       </DropdownMenuItem>
 
       <!-- Dettaglio scrittura contabile (beta.7) -->
