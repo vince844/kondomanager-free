@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
+use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Enums\StatoPianoRate;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
@@ -158,7 +159,12 @@ class PianoRateController extends Controller
      */
     public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio)
     {
+        $request->validate([
+            'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+        ]);
         $validated = $request->validated();
+        $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
+        $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
         try {
             DB::beginTransaction();
@@ -372,9 +378,11 @@ class PianoRateController extends Controller
             $statistiche = [];
             if (!empty($validated['genera_subito'])) {
                 $statistiche = app(GeneratePianoRateAction::class)->execute(
-                    $pianoRate, 
-                    $applicareSaldi, 
-                    $saldiConfigCents
+                    pianoRate: $pianoRate, 
+                    forzaApplicazioneSaldi: $applicareSaldi, 
+                    saldiConfig: $saldiConfigCents,
+                    accettaScoperti: $accettaScoperti,
+                    notaScoperti: $notaScoperti
                 );
             }
 
@@ -404,6 +412,9 @@ class PianoRateController extends Controller
             DB::commit();
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
 
+        } catch (ScopertiNonAccettatiException $e) {
+            DB::rollBack();
+            return back()->withInput()->with('scoperti_warning', $e->getScoperti());
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -868,7 +879,10 @@ class PianoRateController extends Controller
             }
 
             $pianoRate->rate()->delete();
-            app(GeneratePianoRateAction::class)->execute($pianoRate, null); 
+            app(GeneratePianoRateAction::class)->execute(
+                pianoRate: $pianoRate,
+                accettaScoperti: true
+            ); 
             
             if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
                 PianoRateStatusUpdated::dispatch(

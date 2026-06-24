@@ -1,0 +1,8 @@
+{
+    "features": [
+        "ScopertoWarning UI Component: Added an interface that detects missing active roles (e.g. tenants) in units during allocation, calculating uncovered amounts in real time.",
+        "Saved Motivation for Uncovered Amounts: In order to forcefully generate allocations containing unassigned amounts, the administrator must provide a mandatory note (> 10 chars) which is historically persisted and displayed as a banner.",
+        "Role Fallback Tracking: Improved traceability of the fallback calculation cascade. The system now exposes the exact missing role (e.g. usufructuary or tenant), enriched with the actual Unit and Account names.",
+        "Silent Exception & Gatekeeper: Introduced ScopertiNonAccettatiException which safely blocks the controller logic warning the frontend, but is deliberately ignored by system logs."
+    ]
+}

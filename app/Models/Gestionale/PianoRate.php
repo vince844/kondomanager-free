@@ -37,6 +37,7 @@ class PianoRate extends Model
         'data_inizio',
         'attivo',
         'note',
+        'nota_scoperti',
         'stato',
         // --- CAMPI DELIBERA E AUDIT ---
         'data_delibera_assemblea',

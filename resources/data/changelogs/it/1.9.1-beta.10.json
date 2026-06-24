@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Componente UI ScopertoWarning: Inserita interfaccia che rileva se in alcune unità mancano i soggetti attivi per il riparto (es. inquilini) e calcola in tempo reale gli scoperti.",
+        "Salvataggio Motivazione Scoperti: Per poter forzare e generare il riparto addossando gli scoperti, l'amministratore deve inserire una nota obbligatoria (> 10 caratteri) che verrà persistita e mostrata storicamente come banner sul piano rate generato.",
+        "Risoluzione a Cascata: Migliorata la tracciabilità della cascata di calcolo. Invece di segnalare un generico \"cascata esaurita\", il sistema espone esattamente il ruolo mancante (es. usufruttuario o inquilino), arricchito dai nomi effettivi di Immobile e Conto.",
+        "Eccezione Silenziosa e Gatekeeper: Introdotta ScopertiNonAccettatiException che blocca in sicurezza la logica del controller avvisando il frontend, ignorata volutamente dai log di sistema."
+    ]
+}

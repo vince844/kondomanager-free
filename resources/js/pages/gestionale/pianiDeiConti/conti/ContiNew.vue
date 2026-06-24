@@ -9,6 +9,8 @@ import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock, P
 import Alert from "@/components/Alert.vue";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
+import OperazioniContiGuide from '@/components/guides/OperazioniContiGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
 import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDeiConti.vue'
@@ -54,6 +56,18 @@ const tabellaDaRimuovere        = ref<number | null>(null)
 const showModalAssociaTabella   = ref(false)
 const showModalRimuoviTabella   = ref(false)
 const tabellaDaModificare       = ref<TabellaAssociata | null>(null)
+const showGuideUsufrutto        = ref(false)
+const showGuideOperazioni       = ref(false)
+
+const textGuidesList = [
+  { id: 'operazioni', title: 'Guida: Operazioni e Struttura' },
+  { id: 'usufrutto', title: 'Guida: Ruoli e Usufrutto' },
+]
+
+const openGuide = (id: string) => {
+  if (id === 'operazioni') showGuideOperazioni.value = true;
+  if (id === 'usufrutto') showGuideUsufrutto.value = true;
+}
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -262,7 +276,9 @@ const printRiparto = () => {
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-        back-text="Piani dei conti"
+        back-text="Torna ai piani dei conti"
+        :text-guides="textGuidesList"
+        @open-text-guide="openGuide"
       >
         <template #actions>
           <div class="flex items-center gap-2">
@@ -447,4 +463,8 @@ const printRiparto = () => {
     />
 
   </GestionaleLayout>
+
+  <RipartoUsufruttoGuide v-model:open="showGuideUsufrutto" />
+  <OperazioniContiGuide v-model:open="showGuideOperazioni" />
+
 </template>

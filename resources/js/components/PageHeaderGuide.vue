@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft } from 'lucide-vue-next';
+import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft, BookOpen } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
@@ -23,6 +23,9 @@ const props = defineProps<{
   pageTitle: string;
   pageSubtitle?: string;
   videoUrl?: string | null;
+  hasTextGuide?: boolean;
+  textGuideTitle?: string;
+  textGuides?: { id: string, title: string, icon?: string }[];
   guides: GuideItem[];
   breadcrumbs?: Breadcrumb[];
   
@@ -36,6 +39,8 @@ const props = defineProps<{
   backUrl?: string | null;
   backText?: string;
 }>();
+
+defineEmits(['open-text-guide']);
 
 const colorStyles = {
   blue: 'bg-blue-100/50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200/50 dark:border-blue-800/50',
@@ -176,8 +181,6 @@ function selectEsercizio(esercizioId: number | string) {
           </Link>
         </template> 
 
-        <slot name="actions"></slot>
-
         <Link 
             v-if="backUrl"
             :href="backUrl"
@@ -191,6 +194,37 @@ function selectEsercizio(esercizioId: number | string) {
           <PlayCircle class="w-3.5 h-3.5" />
           Video guida
         </a>
+
+        <!-- Menu Guide Multiple -->
+        <DropdownMenu v-if="textGuides && textGuides.length > 0">
+          <DropdownMenuTrigger class="inline-flex h-8 items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-colors dark:bg-indigo-950/30 dark:text-indigo-400 outline-none">
+            <BookOpen class="w-3.5 h-3.5" />
+            Guide
+            <ChevronDown class="w-3.5 h-3.5 opacity-70" />
+          </DropdownMenuTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuContent align="end" class="min-w-[200px]">
+              <DropdownMenuLabel class="text-xs font-bold text-slate-500 uppercase tracking-wider">Guide disponibili</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                v-for="guide in textGuides" 
+                :key="guide.id" 
+                @click="$emit('open-text-guide', guide.id)"
+                class="cursor-pointer text-sm font-medium"
+              >
+                {{ guide.title }}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenuPortal>
+        </DropdownMenu>
+
+        <!-- Bottone singola guida (legacy support) -->
+        <button v-else-if="hasTextGuide" @click="$emit('open-text-guide')" class="inline-flex h-8 items-center gap-2 text-xs font-bold px-3 py-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 transition-colors dark:bg-indigo-950/30 dark:text-indigo-400">
+          <BookOpen class="w-3.5 h-3.5" />
+          {{ textGuideTitle || 'Guida' }}
+        </button>
+
+        <slot name="actions"></slot>
 
       </div>
     </div>

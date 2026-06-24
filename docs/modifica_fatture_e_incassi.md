@@ -224,7 +224,40 @@ Il razionale è il principio della **controparte esterna** (§3.1): si blinda es
 
 ---
 
+## 10. Piano di Transizione (Migrazione futura al modello storno-auto)
+
+Essendo l'implementazione della v1.9.1 basata su un modello CRUD tradizionale (mutazione in-place distruttiva) per ragioni di rilascio, la migrazione futura (es. v1.9.2 o v2.0) al modello descritto in questo documento sarà facilitata dai seguenti fattori:
+
+### 10.1 La migrazione del Database sarà additiva
+Per introdurre le novità della guida, in futuro si dovrà solo fare una migrazione Laravel molto semplice, che non toccherà i dati esistenti ma aggiungerà le colonne di lineage:
+
+```php
+$table->uuid('correction_chain_id')->nullable();
+$table->boolean('is_corrente')->default(true); // Fondamentale: i dati vecchi diventano automaticamente 'correnti'
+$table->foreignId('storno_di_id')->nullable();
+```
+Impostando `is_corrente` a `true` di default, tutto il pregresso della 1.9.1 funzionerà al volo (i record vecchi diventeranno automaticamente la "versione viva"). Non ci sarà corruzione storica perché il DB attuale non contiene errori tracciati.
+
+### 10.2 Laravel Global Scopes sulle letture
+La preoccupazione più grande passando a un modello in cui i dati non si cancellano più è l'impatto sulle query di lettura. In Laravel, sarà sufficiente aggiungere un Global Scope al modello `ScritturaContabile`:
+
+```php
+protected static function booted()
+{
+    static::addGlobalScope('corrente', function (Builder $builder) {
+        $builder->where('is_corrente', true);
+    });
+}
+```
+Con poche righe, tutte le dashboard, i bilanci e i partitari continueranno a funzionare ignorando magicamente il "rumore" degli storni.
+
+### 10.3 Il refactoring sarà localizzato
+Il passaggio logico richiederà di rimettere mano quasi esclusivamente ai Service di modifica (es. `FatturaPassivaService::aggiornaFattura` e `PagamentoFornitoreService::aggiornaPagamento`), trasformando le `delete()` in `insert()` di segno opposto. Il resto dell'app non richiederà variazioni strutturali.
+
+---
+
 ## Storico revisioni
 
+- **rev. 3** — Aggiunto piano di transizione per facilitare la migrazione futura dal modello CRUD v1.9.1 al modello ledger-centric definitivo (§10).
 - **rev. 2** — Integrata la review architetturale: principio della controparte esterna come razionale delle soglie (§3.1); catena di correzione `correction_chain_id` + `is_corrente` (§2.1, §8); audit log operativo separato dal ledger, su modello `Evento` (§5); granularità delle attribuzioni leggera/riallocazione/propagante (§6.5, §4.2); soglia importo su fattura parzialmente pagata `>= totale_allocato` con implementazione differita (§4.1, §8).
 - **rev. 1** — Versione iniziale: storno-sotto-il-cofano, soglie esercizio/riconciliazione/F24, field-level lock, regole campo per campo, MutabilityPolicy.

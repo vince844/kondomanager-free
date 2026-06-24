@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
 use App\Actions\PianoRate\SyncOrphanChaptersAction;
+use App\Enums\StatoPianoRate;
+use App\Events\Gestionale\PianoRateStatusUpdated;
+use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
@@ -11,6 +14,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -31,7 +35,11 @@ class PianoRateGenerationController extends Controller
         $validated = $request->validate([
             'orphan_ids' => 'nullable|array',
             'orphan_ids.*' => 'integer|exists:conti,id',
+            'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
         ]);
+
+        $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
+        $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
         // 1. Check Pagamenti (Blocco Totale)
         $haPagamenti = $pianoRate->rate()
@@ -71,21 +79,25 @@ class PianoRateGenerationController extends Controller
             $vecchioStato = $pianoRate->stato;
             
             // Svuotiamo l'inbox dai vecchi eventi orfani
-            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
-                \App\Events\Gestionale\PianoRateStatusUpdated::dispatch(
-                    $condominio, $esercizio, $pianoRate, \Illuminate\Support\Facades\Auth::user(), 
-                    $vecchioStato, \App\Enums\StatoPianoRate::BOZZA
+            if ($vecchioStato === StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    $vecchioStato, StatoPianoRate::BOZZA
                 );
             }
 
             $pianoRate->rate()->delete();
-            $stats = $generateAction->execute($pianoRate);
+            $stats = $generateAction->execute(
+                pianoRate: $pianoRate,
+                accettaScoperti: $accettaScoperti,
+                notaScoperti: $notaScoperti
+            );
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
-            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
-                \App\Events\Gestionale\PianoRateStatusUpdated::dispatch(
-                    $condominio, $esercizio, $pianoRate, \Illuminate\Support\Facades\Auth::user(), 
-                    \App\Enums\StatoPianoRate::BOZZA, $vecchioStato
+            if ($vecchioStato === StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    StatoPianoRate::BOZZA, $vecchioStato
                 );
             }
 
@@ -98,6 +110,9 @@ class PianoRateGenerationController extends Controller
 
             return back()->with($this->flashSuccess($msg));
 
+        } catch (ScopertiNonAccettatiException $e) {
+            DB::rollBack();
+            return back()->with('scoperti_warning', $e->getScoperti());
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore rigenerazione piano rate", ['error' => $e->getMessage()]);

@@ -50,6 +50,7 @@ class PianoRateResource extends JsonResource
             'data_delibera_assemblea'       => $this->data_delibera_assemblea?->format('Y-m-d'),
             'numero_verbale'                => $this->numero_verbale,
             'nota_approvazione'             => $this->nota_approvazione,
+            'nota_scoperti'                 => $this->nota_scoperti,
             'tipo_autorizzazione'           => $this->tipo_autorizzazione,
             'motivazione_autorizzazione'    => $this->motivazione_autorizzazione,
             'approvato_da_user_id'          => $this->approvato_da_user_id,

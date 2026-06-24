@@ -21,6 +21,7 @@ import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, 
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
+import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from "@/components/ui/button";
@@ -65,8 +66,9 @@ const openSpaccato = (item: any) => {
 
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
-const page = usePage<{ flash: { message?: Flash } }>();
+const page = usePage<{ flash: { message?: Flash, scoperti_warning?: ScopertoCents[] } }>();
 const flashMessage = computed(() => page.props.flash.message);
+const scopertiWarning = computed<ScopertoCents[] | null>(() => page.props.flash?.scoperti_warning ?? null);
 
 const localeCode = computed(() => {
     const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
@@ -372,7 +374,10 @@ const confirmRecalculate = () => {
     isRecalculateAlertOpen.value = true;
 };
 
+const isProcessingRecalculate = ref(false);
+
 const executeRecalculate = () => {
+    isProcessingRecalculate.value = true;
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
@@ -382,6 +387,32 @@ const executeRecalculate = () => {
         onSuccess: () => {
             isRecalculateAlertOpen.value = false;
             showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato.', false);
+        },
+        onFinish: () => {
+            isProcessingRecalculate.value = false;
+        }
+    });
+};
+
+const handleProcedi = (nota: string) => {
+    isProcessingRecalculate.value = true;
+    router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
+        condominio: props.condominio.id, 
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id 
+    }), { 
+        orphan_ids: selectedOrphanIds.value,
+        accetta_scoperti: true,
+        nota_scoperti: nota
+    }, { 
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            isRecalculateAlertOpen.value = false;
+            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con motivazione per le quote scoperte.', false);
+        },
+        onFinish: () => {
+            isProcessingRecalculate.value = false;
         }
     });
 };
@@ -613,6 +644,23 @@ const printScadenziario = (modalita: 'anagrafica' | 'immobile' | 'entrambi') => 
 
           <div v-if="flashMessage" class="animate-in fade-in slide-in-from-top-4 duration-300">
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
+
+          <ScopertoWarning
+              v-if="scopertiWarning"
+              :scoperti="scopertiWarning"
+              :processing="isProcessingRecalculate"
+              @procedi="handleProcedi"
+              class="mb-4"
+          />
+
+          <div
+              v-if="pianoRate.nota_scoperti"
+              class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700
+                     dark:bg-slate-900/30 px-4 py-3 text-xs text-slate-600 dark:text-slate-400"
+          >
+              <span class="font-medium">ℹ️ Questo piano rate contiene quote non assegnate.</span>
+              <span class="ml-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
           </div>
 
           <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">

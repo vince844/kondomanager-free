@@ -58,9 +58,7 @@ conservazione dei registri da indicare). Si aggancia naturalmente alle **Stampe 
 
 **Quadro normativo.** Il registro di contabilità (art. 1130 n. 7) è documento obbligatorio:
 annotazione cronologica dei movimenti **entro 30 giorni**. L'estratto conto bancario ne è
-semmai il *supporto*, non il sostituto (l'idea "i 30 giorni li assolve l'estratto conto",
-diffusa nei corsi, è interpretazione difendibile ma non pacifica — unica parte eventualmente
-da verificare con un legale, ma non cambia la conclusione tecnica).
+semmai il *supporto*, non il sostituto (punto AMACI — vedi sotto).
 
 **Punto chiave.** Nessuna norma impone che il giornale *del software* sia tecnicamente
 immodificabile. L'obbligo è **tenere** il registro e **annotare in tempo**, non il divieto di
@@ -76,6 +74,71 @@ digitato richiede storno + riscrittura, pura perdita di tempo).
 **Coerenza interna.** Il Treasury Guardian deriva la liquidità *dal giornale* ("il libro è la
 verità"): motivo in più per blindare i dati **finalizzati**, non per bloccare la correzione di
 un errore fresco.
+
+**Riscontro beta — motivazione pratica.** Un beta-tester ha esplicitato quello che molti
+amministratori vivono: «l'immutabilità assoluta è troppo — capita spesso di fare errori di
+digitazione e dover fare storno + riscrittura, è una pura perdita di tempo». Questo riscontro
+*rafforza* la scelta a soglia: non è un compromesso, è la risposta corretta al flusso di
+lavoro reale. Il blocco scatta solo dove protegge qualcosa di concreto (storico definitivo,
+riconciliato, bilancio approvato), non su ogni singola digitazione.
+
+**Chiarimento sul threshold per i pagamenti — i "30 giorni" del beta-tester.** L'amministratore
+usa i 30 giorni come *proxy intuitivo di freschezza*: «sono ancora nel periodo di registrazione
+lecita, perché devo stornare invece di correggere?». Non esiste una norma che attribuisca una
+finestra di modifica di 30 giorni — l'art. 1130 n. 7 parla di obbligo di *annotazione entro
+30 giorni dall'evento*, non di finestra di correzione. Il feedback punta però a un problema
+reale di design: il punto di cristallizzazione corretto per un pagamento **non è il salvataggio**
+ma la **riconciliazione con l'estratto conto**. Prima di quella, il dato è ancora "in volo".
+
+**Threshold corretto per i pagamenti:**
+
+| Stato del pagamento | Modificabile? | Motivazione |
+|---|---|---|
+| Registrato, non riconciliato, periodo aperto | **Sì** | Nessun dato definitivo dipende ancora da questa riga |
+| Riconciliato con estratto conto | **No → storno** | Punto di cristallizzazione reale |
+| Incluso in bilancio approvato | **No → storno** | Più forte: delibera assembleare |
+| Stornato | **No** | È già storia |
+
+**✅ [RISOLTO] Feature 4 — Modifica Pagamento pre-riconciliazione.** Questa feature è la
+conseguenza diretta del threshold corretto. Quasi tutti i gestionali condominiali trattano la
+registrazione di pagamento come immutabile appena salvata — per eredità della mentalità del
+software contabile classico, non per obbligo di legge. Offrire la modifica fino alla riconcilia-
+zione è una differenza concreta nel flusso quotidiano: l'amministratore la sente il primo giorno,
+non la cerca in un feature list. **È un elemento di differenziazione reale rispetto ai competitor.**
+
+Cosa è modificabile:
+
+| Campo | Modificabile? | Note |
+|---|---|---|
+| Importo | ✅ Sì | Ricalcola scritture in transazione atomica |
+| Data pagamento | ✅ Sì | Aggiorna scadenzario/F24 (listener `SyncF24WithPagamento`) |
+| Metodo pagamento / conto | ✅ Sì | Cambia il conto di liquidità nelle scritture |
+| Note / riferimento | ✅ Sì | Solo testo, nessun effetto contabile |
+| Fornitore | ❌ No | Cambia la semantica del documento — storno |
+| Fattura collegata | ❌ No | Storno + nuovo pagamento |
+
+Impatto tecnico: `aggiornaPagamento()` transazionale in `PagamentoFornitoreService` (pattern
+identico a `aggiornaFattura()` già previsto per Feature 2) — valida soglia → aggiorna testata →
+elimina vecchie scritture → ricrea → Double-Entry Validator. Audit trail: log della modifica
+con valori before/after (non una scrittura di storno, una riga di audit). Il listener
+`SyncF24WithPagamento` si aggancia all'evento `PagamentoAggiornato` per ricalcolare la scadenza
+F24 se cambia `data_pagamento`. Frontend: voce "Modifica" visibile nella DataTable solo se
+il pagamento è modificabile (`riconciliato = false AND gestione_aperta = true`).
+
+**Stato.** Sviluppata e implementata (precedendo Feature 1). Endpoint `update` su `PagamentoFornitoreController`, service `aggiornaPagamento` transazionale e UI dedicata `PagamentoEdit.vue`. Classificazione: feature media, alto valore percepito.
+
+**Sul punto AMACI — "i 30 giorni li assolve l'estratto conto".** La tesi — diffusa nei corsi —
+è che l'obbligo di registrazione entro 30 gg sia già assolto dall'estratto conto bancario,
+essendo tutti i movimenti transitati per banca. È una posizione **difendibile nei condomini
+interamente bancati**, ma non universale: basta un singolo movimento *per cassa* (es.
+raccomandata pagata in contanti, rimborsata poi con un bonifico all'amministratore) per far
+emergere un movimento che sull'estratto conto non compare come spesa condominiale diretta.
+Il giornale lo registra esplicitamente; l'estratto conto, in quel caso, no.
+**Conclusione tecnica:** il punto AMACI è un'interpretazione operativamente comoda ma non
+pacifica; non cambia né il quadro normativo né la decisione di design. Se un legale volesse
+convalidarla, il perimetro esatto da verificare è proprio il trattamento dei movimenti per
+cassa e degli eventuali rimborsi spese. Per Kondomanager resta invariato: il giornale è
+il documento primario, l'estratto conto è un supporto.
 
 ---
 
@@ -270,13 +333,13 @@ dell'amministratore — e senza falsi allarmi sulle tabelle legittimamente diver
 
 ---
 
-### Bug 2 — Modifica sottoconto: campo codice non visibile dopo salvataggio (da verificare)
+### ✅ [RISOLTO] Bug 2 — Modifica sottoconto: campo codice non visibile dopo salvataggio
 
-**Ipotesi.** Possibile problema di timing del `watch` con `immediate: true` se `props.conto`
-arriva già popolato prima del mount — verificare che `codice` sia trasmesso nel JSON per i
-sottoconti tramite `ContoResource` ricorsivamente.
+**Causa.** Il campo codice non veniva persistito/recuperato in quanto mancante nel `$fillable` del modello.
 
-**Stato.** Da riprodurre sul campo e confermare.
+**Fix.** Aggiornato il `$fillable` di `Conto.php` includendo la colonna `codice`.
+
+**Stato:** Risolto nella 1.9.1-beta.9.
 
 ---
 
@@ -331,7 +394,7 @@ aliquota sull'imponibile (include accise, contributi, arrotondamenti). Il form f
 
 ---
 
-### Feature 2 — Modifica fattura passiva pre-pagamento
+### ✅ [RISOLTO] Feature 2 — Modifica fattura passiva pre-pagamento
 
 **Segnalazione.** Non esiste `update()` nel controller — eliminazione e ricreazione da zero.
 
@@ -344,15 +407,14 @@ Fattura modificabile se e solo se:
 
 Cosa è modificabile: testata, righe, allegato. **NON modificabile:** fornitore.
 
-**Impatto tecnico.**
+**Impatto tecnico (Implementato).**
 - Route: `PUT /fatture/{fattura}` → `FatturaPassivaController::update()`
 - Service: `aggiornaFattura()` transazionale (valida → aggiorna testata → elimina vecchie
   scritture → ricrea → Double-Entry Validator)
-- Frontend: `FatturaRegisterEdit.vue` o `FatturaRegisterNew.vue` con prop `editMode`
+- Frontend: `FatturaRegisterEdit.vue` creato e integrato
 - DataTable: voce "Modifica" visibile solo se modificabile
 
-**Ordine consigliato:** Feature 1 prima di Feature 2 (il form di modifica dovrà
-supportare IVA manuale). **Classificazione:** Feature importante. Stimata: 2–3 sessioni.
+**Stato.** Sviluppata e implementata (prima di Feature 1, scavalcando l'ordine consigliato). Classificazione: Feature importante.
 
 ---
 
@@ -513,7 +575,8 @@ persistita.
 - Acconti, anticipi admin, compensazione pura, assegni → v1.9.2
 - Export SEPA Pain.001.001.03 → v1.9.3
 - Feature 1 (IVA manuale bollette) → da schedulare
-- Feature 2 (Modifica fattura pre-pagamento) → dopo Feature 1
+- [x] Feature 2 (Modifica fattura pre-pagamento) → completata
+- [x] Feature 4 (Modifica pagamento) → completata
 
 ---
 

@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 /**
  * Servizio per il calcolo delle quote di spesa/entrata per ogni gestione.
  *
- * VERSION: 1.9.5-hotfix1 (DIAGNOSTIC LOGGING)
+ * VERSION: 1.9.6 (CASCADE RESOLUTION + SCOPERTO BUCKET)
  *
  * =========================================================================
  * ARCHITETTURA DEL RULE ENGINE (Motore di Ripartizione)
@@ -27,16 +27,27 @@ class CalcoloQuoteService
     private ?Gestione $gestioneCorrente = null;
     private array $pivotOverrides = [];
     private ?\Carbon\Carbon $pianoRateCreatedAt = null;
+    
+    /** @var array Accumulatore per le quote non assegnabili per mancanza di anagrafiche attive */
+    private array $scopertiAccumulati = [];
 
     // =========================================================================
     // MOTORE ORDINARIO
     // =========================================================================
 
+    /**
+     * Calcola le quote per un'intera gestione (preventivo o rateizzazione).
+     *
+     * @param Gestione $gestione La gestione di riferimento
+     * @param PianoRate|null $pianoRate Opzionale piano rate per determinare il momento di validità degli overrides
+     * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
+     */
     public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null): array
     {
         $this->gestioneCorrente = $gestione;
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
+        $this->scopertiAccumulati = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
@@ -91,7 +102,7 @@ class CalcoloQuoteService
             return [];
         }
 
-        Log::info("=== INIZIO CALCOLO QUOTE ORDINARIO V1.9.5 ===", [
+        Log::info("=== INIZIO CALCOLO QUOTE ORDINARIO V1.9.6 ===", [
             'piano_rate_id' => $pianoRate?->id,
             'overrides'     => count($this->pivotOverrides),
             'conti_caricati' => $conti->count(),
@@ -130,8 +141,15 @@ class CalcoloQuoteService
     // MOTORE STRAORDINARIO
     // =========================================================================
 
+    /**
+     * Calcola le quote per una rateizzazione di fatture straordinarie.
+     *
+     * @param PianoRate $pianoRate Il piano rate contenente le fatture straordinarie
+     * @return array Quote calcolate, raggruppate per anagrafica_id e immobile_id
+     */
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
     {
+        $this->scopertiAccumulati = [];
         $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
 
         if (empty($fattureIds)) {
@@ -190,10 +208,25 @@ class CalcoloQuoteService
         return $totali;
     }
 
+    /**
+     * @return array Dati relativi agli importi scoperti durante il calcolo.
+     */
+    public function getScoperti(): array
+    {
+        return $this->scopertiAccumulati;
+    }
+
     // =========================================================================
     // METODI PRIVATI
     // =========================================================================
 
+    /**
+     * Esegue un addebito diretto forzato su un singolo immobile (es. addebito personale).
+     *
+     * @param int $immobileId L'ID dell'immobile
+     * @param int $importoCents L'importo in centesimi
+     * @param array &$totali Array in cui accumulare la quota
+     */
     private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali): void
     {
         $proprietari = DB::table('anagrafica_immobile')
@@ -239,6 +272,12 @@ class CalcoloQuoteService
         }
     }
 
+    /**
+     * Processa iterativamente una collezione di conti e calcola la ripartizione su ognuno.
+     *
+     * @param Collection $conti La collezione di conti da elaborare
+     * @param array &$totali Array in cui accumulare i risultati
+     */
     private function processaConti(Collection $conti, array &$totali): void
     {
         foreach ($conti as $conto) {
@@ -323,9 +362,18 @@ class CalcoloQuoteService
         }
     }
 
+    /**
+     * Algoritmo core: Ripartisce l'importo di un conto sugli immobili collegati alle tabelle,
+     * risolvendo la cascata del ruolo e mantenendo traccia degli scoperti.
+     *
+     * @param Conto $conto Conto di spesa da ripartire
+     * @param int $importoConto Importo in centesimi
+     * @param array &$totali Array in cui accumulare i risultati
+     */
     private function distribuisciSuTabelle(Conto $conto, int $importoConto, array &$totali): void
     {
-        $weights = [];
+        $weights      = [];
+        $pesiScoperti = [];
 
         // [DIAG] Nessuna tabella millesimale collegata al conto
         if ($conto->tabelleMillesimali->isEmpty()) {
@@ -405,17 +453,42 @@ class CalcoloQuoteService
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto);
 
-                    // Rule Engine Livello 3: Fallback legale al proprietario
-                    if ($anagrafiche->isEmpty() && in_array($rip->soggetto, ['inquilino', 'usufruttuario'])) {
-                        Log::debug("distribuisciSuTabelle: nessun {$rip->soggetto} attivo per immobile ID={$immobile->id}, fallback al proprietario.");
-                        $anagrafiche = $immobile->anagrafiche
-                            ->where('pivot.attivo', true)
-                            ->where('pivot.tipologia', 'proprietario');
+                    // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura)
+                    if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
+                        $catenaGodimento = ['inquilino', 'comodatario', 'usufruttuario', 'proprietario'];
+                        $catenaCapitale  = ['nuda_proprietario', 'proprietario'];
+
+                        $catena = in_array($rip->soggetto, $catenaCapitale, true)
+                            ? $catenaCapitale
+                            : $catenaGodimento;
+
+                        $start     = array_search($rip->soggetto, $catena, true);
+                        $candidati = $start === false ? $catena : array_slice($catena, $start + 1);
+
+                        foreach ($candidati as $ruoloFallback) {
+                            $anagrafiche = $immobile->anagrafiche
+                                ->where('pivot.attivo', true)
+                                ->where('pivot.tipologia', $ruoloFallback);
+
+                            if ($anagrafiche->isNotEmpty()) {
+                                Log::debug("distribuisciSuTabelle: ruolo '{$rip->soggetto}' assente su immobile "
+                                    . "ID={$immobile->id}, risolto a cascata su '{$ruoloFallback}'.");
+                                break;
+                            }
+                        }
                     }
 
-                    // [DIAG] Nessuna anagrafica attiva per questo immobile e ruolo
+                    // Tracciamento e bucket dello scoperto se cascata esaurita
                     if ($anagrafiche->isEmpty()) {
-                        Log::warning("distribuisciSuTabelle: nessuna anagrafica attiva con ruolo '{$rip->soggetto}' (né fallback proprietario) per immobile ID={$immobile->id}. Quota non assegnata.", [
+                        $pesiScoperti[] = [
+                            'immobile_id'     => $immobile->id,
+                            'tabella_id'      => $tabella->id,
+                            'ruolo_richiesto' => $rip->soggetto,
+                            'peso'            => $weightRip,
+                        ];
+                        Log::warning("distribuisciSuTabelle: cascata esaurita — nessun soggetto "
+                            . "per ruolo '{$rip->soggetto}' su immobile ID={$immobile->id}. "
+                            . "Peso {$weightRip} tracciato come scoperto.", [
                             'conto_id'    => $conto->id,
                             'tabella_id'  => $tabella->id,
                             'immobile_id' => $immobile->id,
@@ -438,8 +511,8 @@ class CalcoloQuoteService
             }
         }
 
-        // [DIAG] Pesi finali vuoti: nessuna quota sarà generata per questo conto
-        if (empty($weights)) {
+        // Pesi finali vuoti: nessuna quota sarà generata per questo conto (se neanche pesiScoperti è popolato)
+        if (empty($weights) && empty($pesiScoperti)) {
             Log::warning("distribuisciSuTabelle: nessun peso calcolato per conto ID={$conto->id} ('{$conto->nome}'). Importo {$importoConto} centesimi NON distribuito. Causa probabile: tabelle millesimali vuote o anagrafiche mancanti.", [
                 'conto_id'    => $conto->id,
                 'conto_nome'  => $conto->nome,
@@ -448,14 +521,47 @@ class CalcoloQuoteService
             return;
         }
 
-        $pesoTotale = array_sum($weights);
-        if ($pesoTotale <= 0.0) return;
+        $pesoSoggetti = array_sum($weights);
+        $pesoScopertoTotale = array_sum(array_column($pesiScoperti, 'peso'));
+        
+        $pesoTotaleInclScoperto = $pesoSoggetti + $pesoScopertoTotale;
+        
+        if ($pesoTotaleInclScoperto <= 0.0) return;
 
-        foreach ($weights as $key => $w) {
-            $weights[$key] = $w / $pesoTotale;
+        // Tracciatura degli importi scoperti
+        if (!empty($pesiScoperti)) {
+            foreach ($pesiScoperti as $ps) {
+                $importoScoperto = (int) round(abs($importoConto) * ($ps['peso'] / $pesoTotaleInclScoperto));
+                if ($importoScoperto > 0) {
+                    $this->scopertiAccumulati[] = [
+                        'immobile_id'     => $ps['immobile_id'],
+                        'conto_id'        => $conto->id,
+                        'tabella_id'      => $ps['tabella_id'],
+                        'ruolo_richiesto' => $ps['ruolo_richiesto'],
+                        'importo'         => $importoScoperto,
+                    ];
+                }
+            }
         }
 
-        $importiDistributi = $this->distribuisciImporto($weights, $importoConto);
+        if (empty($weights)) return; // Se tutto è scoperto, non procediamo con la distribuzione penny-perfect
+
+        // Peso normalizzato solo sui soggetti reali; l'importo da distribuire è già al netto dello scoperto,
+        // garantendo che la somma dei pesi dia un risultato congruo con l'importo decurtato.
+        
+        $importoDaDistribuirePennyPerfect = abs($importoConto);
+        if ($pesoScopertoTotale > 0.0) {
+            $totaleScopertoInt = (int) round(abs($importoConto) * ($pesoScopertoTotale / $pesoTotaleInclScoperto));
+            $importoDaDistribuirePennyPerfect = abs($importoConto) - $totaleScopertoInt;
+        }
+
+        $importoContoSegno = $importoConto < 0 ? -$importoDaDistribuirePennyPerfect : $importoDaDistribuirePennyPerfect;
+
+        foreach ($weights as $key => $w) {
+            $weights[$key] = $w / $pesoSoggetti; // Qui normalizziamo a 1 per il penny-perfect sull'importo decurtato
+        }
+
+        $importiDistributi = $this->distribuisciImporto($weights, $importoContoSegno);
 
         foreach ($importiDistributi as $key => $importoCentesimi) {
             [$aid, $iid] = array_map('intval', explode('|', $key));
@@ -467,6 +573,14 @@ class CalcoloQuoteService
         }
     }
 
+    /**
+     * Distribuisce un importo totale basandosi su un array di pesi normalizzati,
+     * garantendo una ripartizione "penny-perfect" senza perdita o creazione di centesimi.
+     *
+     * @param array $weights Array di pesi normalizzati (somma = 1)
+     * @param int $importoTotale Importo totale da distribuire in centesimi
+     * @return array Importi penny-perfect calcolati
+     */
     private function distribuisciImporto(array $weights, int $importoTotale): array
     {
         $result = [];

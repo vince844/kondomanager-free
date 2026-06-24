@@ -53,7 +53,7 @@ Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 
 ## v1.10 — Foundation Release
 
-Release che porta a maturità l'infrastruttura contabile.
+Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del motore di riparto, completa l'anagrafica immobiliare (Iniziativa B Fase 1) e introduce la **risoluzione a cascata del ruolo** con il relativo **warning di coerenza-ruoli**.
 
 - **Voci di accantonamento** con `fondo_target_id`, bifurcation incasso, `delibera_id` nullable;
   fix coverage entry per ancorare la copertura a `voce_spesa_id` (debito tecnico da `FatturaPassivaService`)
@@ -66,7 +66,7 @@ Release che porta a maturità l'infrastruttura contabile.
   contestualmente alla valorizzazione di `origine_tipo`.
   // TODO(trigger:v1.10-voci-accantonamento)
 - **Giroconti** tra conti correnti e fondi
-- **Registrazione a regolazione immediata** — scrittura ledger-native senza Fattura a monte (costo → banca/cassa in scrittura unica) per utenze, bolli, commissioni bancarie, F24, piccole spese; fornitore opzionale come tag analitico; guard rail su ritenuta/split payment. Stesso primitivo dei Giroconti: `Scrittura` classificata via `RegistrazioneType`, nessuna riga pivot. Fondamenta per la riconciliazione bancaria (v1.16).
+- **Registrazione a regolazione immediata** (vedi [`registrazione_e_regolazione_immediata.md`](registrazione_e_regolazione_immediata.md)) — scrittura ledger-native senza Fattura a monte (costo → banca/cassa in scrittura unica) per utenze, bolli, commissioni bancarie, F24, piccole spese; fornitore opzionale come tag analitico; guard rail su ritenuta/split payment. Stesso primitivo dei Giroconti: `Scrittura` classificata via `RegistrazioneType`, nessuna riga pivot. Fondamenta per la riconciliazione bancaria (v1.16).
 - **Stato Patrimoniale operativo** con scritture di chiusura
 - **Estratto conto / situazione di cassa** — vista dei movimenti per conto corrente e cassa, derivata dalle scritture (read-model, non primitivo di scrittura)
 - **Bilanciatore Fondi** — verifica copertura liquida, morosità per immobile, quota segue immobile
@@ -80,24 +80,35 @@ Release che porta a maturità l'infrastruttura contabile.
   > e `StoreIncassoRateAction`: la tracciabilità per immobile è già garantita a DB.*
 - **Dashboard Intelligence:**
   - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*
-  - Radar Salute Contabile — validatore millesimi + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
+  - **Radar Salute Contabile** — validatore millesimi + **detector coerenza-ruoli (quota scoperta)** + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
 - **Backup Management**
 - **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
-- **Iniziativa A — Tabelle Millesimali avanzate:**
+- **Iniziativa A — Tabelle Millesimali avanzate + motore (Livello 1 + cascata)** (vedi [`tabelle_millesimali.md`](tabelle_millesimali.md)):
   - Supporto Art. 1124 c.c. (scale e ascensori)
   - Tipo `manuale` aggiunto all'enum
   - Tabelle manuali con quote relative
   - Filtri scala/palazzina in `QuoteList.vue`
   - Contatore totale live + colonna percentuale effettiva
   - Warning giallo non-bloccante su deviazione somma millesimi da 1000
-- **Iniziativa B Fase 1 — Anagrafica Immobiliare:**
+  - **Risoluzione a cascata del ruolo** (sostituisce il fallback piatto in `CalcoloQuoteService::distribuisciSuTabelle`):
+    godimento `inquilino → comodatario → usufruttuario → proprietario`;
+    capitale `nuda proprietà → proprietario` (classe unica).
+    Default per natura della spesa (art. 1004/1005), non per coefficiente fiscale.
+    Spec: [`cascata_risoluzione_ruolo_coerenza_ruoli.md`](cascata_risoluzione_ruolo_coerenza_ruoli.md).
+  - **Warning coerenza-ruoli (quota scoperta):** avviso non-bloccante + importo scoperto quando la cascata è esaurita; override con nota obbligatoria (pattern Validatore Coerenza Millesimi). Sorgente UI: Radar Salute Contabile.
+  - **Anteprima riparto con risoluzione esplicita:** il soggetto risolto è mostrato prima della generazione e congelato nel riparto.
+- **Iniziativa B Fase 1 — Anagrafica Immobiliare** (vedi [`evoluzione_anagrafica_e_motore_riparto.md`](evoluzione_anagrafica_e_motore_riparto.md)):
   - Campi catastali completi, vani decimali
-  - Flag `in_bilancio`, `quota_detrazione`, tabella `aliquote_detrazione`
+  - **Estensione ruoli:** `nuda_proprietario`, `comodatario` (enum `anagrafica_immobile.tipologia` e `conto_tabella_ripartizioni.soggetto`)
+  - Flag `in_bilancio`, `quota_detrazione`
+  - **Tabella `aliquote_detrazione` a due assi** (`categoria_intervento` × `tipo_uso` nullable); seed 5 righe spese 2025 (50/36/36/65/75). ⚠️ **Aliquote 2026 da verificare prima del seed di produzione.**
   - Alert maggiore età sul registro anagrafico
   - Tabella `forniture_immobile` con POD (energia), PDR (gas), seriali contatori
   - `codice_cliente`, `intestatario_id`, `valid_from`/`valid_to` per storico subentri
+  - Correzione copy in pagina associazione anagrafica (includere Usufruttuario e nuovi ruoli)
+  - **Verifica:** esiste un meccanismo che pone `attivo = false` allo scadere di `data_fine`? In assenza → observer/job (slittabile a v1.11).
 
 ---
 
@@ -106,12 +117,21 @@ Release che porta a maturità l'infrastruttura contabile.
 - Normalizzazione `piani_rate_capitoli` con comando Artisan
 - Popolamento `rate_quote.riga_fattura_id` e `voce_id`
 - Attivazione `stato_legale_aggiornato_at` su modifica stato legale
-- **Motore Riparto Unificato:**
+- **Recupero Scoperti Pregressi (Feature Automazione):**
+  - Creazione tabella dedicata `scoperti_pregressi` per storicizzare gli importi orfani calcolati e scartati dal motore (oggi salvati solo testualmente in `nota_scoperti`).
+  - Gestione Lifecycle dello scoperto: tracciabilità stato (aperto/recuperato), collegamento all'utente (chiudibile automaticamente all'emissione della rata riparatrice o manualmente).
+  - Integrazione in `PianiRateNew.vue`: rilevamento automatico e check per inglobare/sanare gli scoperti in un nuovo piano rate appena l'anagrafica mancante viene censita sull'immobile.
+- **Motore Riparto Unificato (Livello 2 completo)** (vedi [`evoluzione_anagrafica_e_motore_riparto.md`](evoluzione_anagrafica_e_motore_riparto.md)):
   - Livello 1 — quota per immobile (millesimi o quote relative)
-  - Livello 2 — distribuzione tra soggetti per ruolo (proprietario/inquilino/usufruttuario)
+  - Livello 2 — distribuzione tra soggetti per ruolo (proprietario/inquilino/usufruttuario/nuda proprietà/comodatario)
+  - **Override per-immobile** delle ripartizioni: nuova tabella `quote_tabella_ripartizioni`
+  - **Cascata a generazione** (estesa dalla v1.10) + **distribuzione `quota_bilancio` rinormalizzata entro il ruolo**
+  - **`quota_bilancio`** come peso entro il ruolo (migrazione: copia da `quota`; poi `NOT NULL`)
+  - **Validazione anti-orfano completa** (versione piena del warning v1.10)
   - Supporto tabelle statiche (millesimi) e dinamiche (consumi acqua/calore per periodo)
   - Versioning con `periodo_id` + snapshot alla chiusura
-- `quota_bilancio` + per-immobile override
+  - Test di regressione: default identico al comportamento precedente
+- UI gestione override per-immobile
 
 **Cleanup tecnici:**
 - Temporal check in `Conto::getHasRateEmesseAttribute`
@@ -122,7 +142,7 @@ Release che porta a maturità l'infrastruttura contabile.
 
 ## v1.12 — DNA Fiscale Fornitore
 
-Sviluppato in 4 fasi parallelizzabili.
+Sviluppato in 4 fasi parallelizzabili (vedi specifica [`anagrafica-fornitore.md`](anagrafica-fornitore.md)).
 
 ### Fase A — Anagrafica base
 - Campi obbligatori e validatori
@@ -148,9 +168,9 @@ Sviluppato in 4 fasi parallelizzabili.
 
 ---
 
-## v1.13 — Modulo Manutenzioni
+## v1.13 — Modulo Manutenzioni (incluso Segnalazioni)
 
-*Sequenziato dopo v1.12 per sfruttare i dati DNA Fiscale del fornitore.*
+*Sequenziato dopo v1.12 per sfruttare i dati DNA Fiscale del fornitore. (Vedi anche [`modulo_commenti_sengalazioni.md`](modulo_commenti_sengalazioni.md)).*
 
 - Registro beni condominiali (caldaie, ascensori, antenne, ecc.)
 - Pivot `asset_immobile` per interventi su singole unità
@@ -178,6 +198,8 @@ Sviluppato in 4 fasi parallelizzabili.
 ---
 
 ## v1.15 — Water Metering Module
+
+*(Vedi specifica completa: [`water_metering_module.md`](water_metering_module.md))*
 
 - Contatori come entità (supporto multi-contatore per unità)
 - Letture con `origine` enum: manuale, CSV import, API, MQTT, telelettura
@@ -215,11 +237,13 @@ Sviluppato in 4 fasi parallelizzabili.
 
 ## v1.18 — Reporting Suite
 
+*(Vedi specifica: [`layer-reporting-consuntivo.md`](layer-reporting-consuntivo.md))*
+
 - Report personalizzabili
 - Export avanzati (Excel, PDF formattati)
 - Prospetti per assemblea
 - Analytics di condominio
-- **Pagina Treasury Guardian** — vista distesa e operativa del widget di dashboard, drill-down per singolo condominio. Il widget compatto risponde a *"devo preoccuparmi?"*, questa pagina a *"cosa faccio?"*.
+- **Pagina Treasury Guardian** (vedi [`treasury_guardian_report_page.md`](treasury_guardian_report_page.md) e [`treasury_guardian_widget.md`](treasury_guardian_widget.md)) — vista distesa e operativa del widget di dashboard, drill-down per singolo condominio. Il widget compatto risponde a *"devo preoccuparmi?"*, questa pagina a *"cosa faccio?"*.
   - Accesso da pulsante dedicato sul widget compatto in dashboard
   - Grafico proiezione di cassa a 30 giorni (scenari ottimistico, pessimistico, saldo attuale)
   - Pannello "Perché è a rischio" — fatture in scadenza, morosità impattanti, anomalie
@@ -314,7 +338,7 @@ Distribuzione esplicita dei resti nei calcoli. Nessun arrotondamento silenzioso.
 DARE = AVERE sempre. Validato programmaticamente con `DoubleEntryValidator::validateOrFail()` su ogni scrittura prima del commit.
 
 ### 5. Snapshot immutabili
-I dati anagrafici al momento del pagamento sono congelati in JSON con `schema_version`. Modifiche future all'anagrafica non alterano lo snapshot storico.
+I dati anagrafici al momento del pagamento sono congelati in JSON con `schema_version`. Modifiche future all'anagrafica non alterano lo snapshot storico. **Estensione riparto:** anche la risoluzione a cascata del ruolo è congelata nel riparto generato — l'attribuzione esplicita, non la regola, è la verità.
 
 ### 6. Read model materializzati
 Stati derivati (es. `stato_pagamento` su fattura) sono cache di calcoli, non dati autoritativi. Comando Artisan di riconciliazione disponibile per ricalcolarli.
@@ -329,7 +353,7 @@ UUID `idempotency_key` con UNIQUE constraint + wrapper `try/catch` su `QueryExce
 Ogni modulo ha una suite Pest che deve passare al 100% prima del deploy in produzione. Property-based test per invarianti di sistema (quadratura, cash = pivot pagamento).
 
 ### 10. Backed Enums + VARCHAR(50)
-Vocabolario di dominio in PHP Backed Enum, persistito come `VARCHAR(50)` con cast Eloquent. Niente `ENUM` MySQL su tabelle che evolveranno.
+Vocabolario di dominio in PHP Backed Enum, persistito come `VARCHAR(50)` con cast Eloquent. Niente `ENUM` MySQL su tabelle che evolveranno. *(Vale anche per i ruoli `tipologia`/`soggetto`: l'aggiunta di `nuda_proprietario` e `comodatario` è un cambio di Backed Enum + VARCHAR, non un `ALTER` su `ENUM` MySQL.)*
 
 ---
 
@@ -338,8 +362,50 @@ Vocabolario di dominio in PHP Backed Enum, persistito come `VARCHAR(50)` con cas
 - **Backend:** Laravel 12, PHP 8.2+, Eloquent ORM, Pest (testing)
 - **Frontend:** Vue 3, Inertia.js, Tailwind CSS, Chart.js
 - **Database:** MySQL 8.0.33 (produzione), SQLite in-memory (test)
-- **Standard contabili:** Partita Doppia, Art. 1124/1135 c.c., IVA/ritenute/F24/770
+- **Standard contabili:** Partita Doppia, Art. 1124/1135 c.c., riparto godimento/capitale art. 1004/1005 c.c., IVA/ritenute/F24/770
 - **Standard pagamenti:** SEPA Pain.001.001.03, CBI italiana, PSD2 SCA/OTP
+
+---
+
+## Indice della Documentazione (Knowledge Base)
+
+Nel progetto sono presenti numerosi documenti di design e specifiche tecniche all'interno della cartella `docs/`. Ecco un indice per orientarsi rapidamente sugli sviluppi passati e futuri:
+
+### 🏗 Architettura e Decisioni Tecniche
+- [`note_tecniche_e_decisioni.md`](note_tecniche_e_decisioni.md) — Il registro delle decisioni architetturali principali (ADR).
+- [`architettura_ciclo_passivo.md`](architettura_ciclo_passivo.md) — Design system per la gestione del ciclo passivo.
+- [`architettura_eventi_inbox.md`](architettura_eventi_inbox.md) — Funzionamento del sistema ad eventi e dell'inbox notifiche.
+- [`architettura_mail_system.md`](architettura_mail_system.md) — Struttura per l'invio delle email e template.
+- [`architettura_saldi_iniziali.md`](architettura_saldi_iniziali.md) — Regole per l'impostazione dei saldi all'avvio di un condominio.
+- [`security_cron_scheduler.md`](security_cron_scheduler.md) — Gestione della sicurezza e dei job schedulati (cron).
+
+### 💰 Contabilità, Fatture e Incassi
+- [`pagamenti_fatture.md`](pagamenti_fatture.md) — Logica e stati per il pagamento ai fornitori (cuore della v1.9).
+- [`modifica_fatture_e_incassi.md`](modifica_fatture_e_incassi.md) — Guida per il refactoring verso il ledger append-only e storni-auto.
+- [`registrazione_fatture_passive.md`](registrazione_fatture_passive.md) — Specifiche di inserimento e partita doppia fatture.
+- [`registrazione_e_regolazione_immediata.md`](registrazione_e_regolazione_immediata.md) — Spese senza fattura e giroconti (v1.10).
+- [`registrazione_incasso_rata.md`](registrazione_incasso_rata.md) — Flusso e scritture per la registrazione degli incassi.
+- [`gestione_debiti_pregressi.md`](gestione_debiti_pregressi.md) — Trattamento contabile delle pendenze di esercizi passati.
+- [`layer-reporting-consuntivo.md`](layer-reporting-consuntivo.md) — Specifiche del motore di reporting e bilancio.
+- [`treasury_guardian_widget.md`](treasury_guardian_widget.md) & [`treasury_guardian_report_page.md`](treasury_guardian_report_page.md) — Design dell'intelligenza finanziaria e widget di cassa.
+
+### 🏢 Anagrafiche, Riparto e Tabelle
+- [`evoluzione_anagrafica_e_motore_riparto.md`](evoluzione_anagrafica_e_motore_riparto.md) — Design per l'anagrafica avanzata (v1.10/v1.11).
+- [`cascata_risoluzione_ruolo_coerenza_ruoli.md`](cascata_risoluzione_ruolo_coerenza_ruoli.md) — Algoritmo per addebitare la spesa al soggetto corretto (nuda proprietà, inquilino, ecc.).
+- [`tabelle_millesimali.md`](tabelle_millesimali.md) — Gestione tecnica delle tabelle di ripartizione.
+- [`guida_preventivi_rate_capitoli.md`](guida_preventivi_rate_capitoli.md) — Gestione del bilancio preventivo.
+- [`logica_piani_rate.md`](logica_piani_rate.md) & [`creazione_piano_rate.md`](creazione_piano_rate.md) — Gestione scadenze e generazione rate.
+- [`anagrafica-fornitore.md`](anagrafica-fornitore.md) — Specifiche del DNA Fiscale Fornitori (v1.12).
+
+### 🛠 Strumenti, Utility e Moduli Speciali
+- [`modulo_commenti_sengalazioni.md`](modulo_commenti_sengalazioni.md) — Specifiche per la gestione dei ticket e segnalazioni (v1.13).
+- [`water_metering_module.md`](water_metering_module.md) — Specifica del modulo lettura contatori acqua (v1.15).
+- [`aggiornamento_universale.md`](aggiornamento_universale.md) — Strategie per gli aggiornamenti over-the-air del software.
+- [`import_migrazione_dati.md`](import_migrazione_dati.md) — Procedure per importare condomini da altri gestionali.
+
+### ⚙️ Installazione e Deployment (Guide Utente)
+- `docker_local_dev.*.md` — Setup ambiente di sviluppo tramite Docker (multi-lingua).
+- `synology_nas_install.*.md` — Guida per installare Kondomanager sui server Synology (multi-lingua).
 
 ---
 
@@ -351,4 +417,4 @@ Hai un'idea per una feature? Vuoi anticipare qualcosa nella roadmap? Apri una is
 
 ---
 
-*Ultimo aggiornamento: in fase v1.9.1*
+*Ultimo aggiornamento: in fase v1.9.1 — rev. con risoluzione a cascata e coerenza-ruoli (v1.10), motore unificato e override per-immobile (v1.11).*
