@@ -654,13 +654,20 @@ const printScadenziario = (modalita: 'anagrafica' | 'immobile' | 'entrambi') => 
               class="mb-4"
           />
 
+          
           <div
               v-if="pianoRate.nota_scoperti"
               class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700
                      dark:bg-slate-900/30 px-4 py-3 text-xs text-slate-600 dark:text-slate-400"
           >
-              <span class="font-medium">ℹ️ Questo piano rate contiene quote non assegnate.</span>
+              <span class="font-medium">Questo piano rate contiene quote non assegnate.</span>
               <span class="ml-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
+              <span v-if="!isRecalculateBlocked" class="block mt-1 text-blue-600 dark:text-blue-400">
+                  → Censisci le anagrafiche mancanti, poi usa il tasto <strong>Ricalcola</strong> per includere le unità nel piano.
+              </span>
+              <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
+                  → Le rate sono già emesse. La quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
+              </span>
           </div>
 
           <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">

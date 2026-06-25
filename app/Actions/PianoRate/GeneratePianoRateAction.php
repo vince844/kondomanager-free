@@ -2,6 +2,7 @@
 
 namespace App\Actions\PianoRate;
 
+use App\Enums\EventoTipo;
 use App\Models\Evento;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
@@ -9,6 +10,7 @@ use App\Models\Gestionale\Conto;
 use App\Models\Immobile;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Services\CalcoloQuoteService;
+use App\Services\Gestionale\InboxService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -93,10 +95,50 @@ class GeneratePianoRateAction
             throw new ScopertiNonAccettatiException($scopertiArricchiti);
         }
 
-        // Se accettaScoperti è true, persiste la nota
+        // Se accettaScoperti è true, persiste la nota e crea task inbox promemoria
         if (!empty($scoperti) && $accettaScoperti && $notaScoperti) {
             $pianoRate->nota_scoperti = $notaScoperti;
             $pianoRate->save();
+
+            // Calcola l'importo totale degli scoperti per il messaggio
+            $importoScopertiCents = array_sum(array_column($scoperti, 'importo'));
+            $importoFormattato    = '€ ' . number_format($importoScopertiCents / 100, 2, ',', '.');
+
+            // Trova il condominio attraverso la catena di relazioni
+            $condominioId = $pianoRate->gestione?->esercizio?->condominio_id
+                ?? $pianoRate->gestione?->esercizio?->condominio?->id;
+
+            // Crea il task inbox — rimane aperto finché l'admin non lo chiude manualmente
+            try {
+                $pianoRate->loadMissing('gestione.esercizio');
+                $condominioId = $pianoRate->gestione?->esercizio?->condominio_id;
+
+                InboxService::createTask(
+                    tipo: EventoTipo::SCOPERTO_DOCUMENTATO,
+                    title: "Quote non assegnate — {$pianoRate->nome}",
+                    description: "{$importoFormattato} in quote non assegnabili per unità senza anagrafiche attive. "
+                        . "Motivazione registrata: \"{$notaScoperti}\". "
+                        . "Azione: censire le anagrafiche mancanti. Il recupero avverrà con addebito manuale o a conguaglio.",
+                    scadenza: now(),
+                    createdByUserId: $pianoRate->created_by ?? 1,
+                    condominioId: $condominioId,
+                    context: [
+                        'piano_rate_id'   => $pianoRate->id,
+                        'piano_rate_nome' => $pianoRate->nome,
+                        'importo_cents'   => $importoScopertiCents,
+                    ],
+                    actionUrl: '/gestionale/' . ($condominioId ?? '') . '/esercizi/' . ($pianoRate->gestione?->esercizio?->id ?? '') . '/piani-rate/' . $pianoRate->id,
+                    priorita: 'alta'
+                );
+
+                Log::info("GeneratePianoRate: Task inbox SCOPERTO_DOCUMENTATO creato per piano ID={$pianoRate->id}, importo={$importoScopertiCents} cents.");
+            } catch (\Throwable $e) {
+                // Non bloccare la generazione se il task inbox fallisce
+                Log::warning("GeneratePianoRate: Impossibile creare task inbox per scoperto documentato.", [
+                    'piano_rate_id' => $pianoRate->id,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
         }
 
         // =========================================================================

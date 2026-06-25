@@ -117,10 +117,11 @@ Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del 
 - Normalizzazione `piani_rate_capitoli` con comando Artisan
 - Popolamento `rate_quote.riga_fattura_id` e `voce_id`
 - Attivazione `stato_legale_aggiornato_at` su modifica stato legale
-- **Recupero Scoperti Pregressi (Feature Automazione):**
+- **Recupero Scoperti Pregressi (Feature Automazione)** (vedi [`scoperto-quote-senza-destinatario.md`](scoperto-quote-senza-destinatario.md)):
   - Creazione tabella dedicata `scoperti_pregressi` per storicizzare gli importi orfani calcolati e scartati dal motore (oggi salvati solo testualmente in `nota_scoperti`).
   - Gestione Lifecycle dello scoperto: tracciabilità stato (aperto/recuperato), collegamento all'utente (chiudibile automaticamente all'emissione della rata riparatrice o manualmente).
   - Integrazione in `PianiRateNew.vue`: rilevamento automatico e check per inglobare/sanare gli scoperti in un nuovo piano rate appena l'anagrafica mancante viene censita sull'immobile.
+  - **Chiusura automatica del task inbox:** oggi il task `SCOPERTO_DOCUMENTATO` rimane aperto finché l'admin non lo chiude manualmente. In v1.11, quando viene emesso un addebito manuale o si chiude l'esercizio conguagliando l'importo per l'immobile interessato, il sistema chiude automaticamente il task inbox corrispondente.
 - **Motore Riparto Unificato (Livello 2 completo)** (vedi [`evoluzione_anagrafica_e_motore_riparto.md`](evoluzione_anagrafica_e_motore_riparto.md)):
   - Livello 1 — quota per immobile (millesimi o quote relative)
   - Livello 2 — distribuzione tra soggetti per ruolo (proprietario/inquilino/usufruttuario/nuda proprietà/comodatario)

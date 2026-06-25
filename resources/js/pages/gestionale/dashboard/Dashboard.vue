@@ -8,7 +8,7 @@ import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench } from 'lucide-vue-next';
+import { AlertTriangle, CheckCircle2, ArrowRight, X, Wallet, Info, Lightbulb, LayoutDashboard, Zap, ShieldAlert, Inbox, TriangleAlert, CalendarClock, Loader2, XCircle, TrendingDown, User, ArrowDownToLine, ArrowUpFromLine, Banknote, MessageSquare, Wrench, BookOpen } from 'lucide-vue-next';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -32,6 +32,7 @@ const props = defineProps<{
     percentuale: number;
     is_completo: boolean;
     has_sforo: boolean;
+    has_scoperti_documentati?: boolean;
     orfani: Array<{ 
         id: number; 
         nome: string; 
@@ -90,7 +91,7 @@ const pageGuides = [
   { title: 'Inbox Condominiale', description: 'Gestisci le richieste e i task specifici di questo fabbricato. Le azioni rapide ti permettono di rispondere subito ai condòmini.', icon: Inbox, colorVariant: 'emerald' as const }
 ];
 
-type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'surplus' | 'integrated' | 'aligned';
+type StatoCopertura = 'loading' | 'misaligned' | 'deficit' | 'documented' | 'surplus' | 'integrated' | 'aligned';
 
 // FIX: Il backend ora invia il pianificato GIA' PURIFICATO dalle spese private.
 const pianificatoCondiviso = computed(() => {
@@ -116,7 +117,12 @@ const statoCopertura = computed<StatoCopertura>(() => {
     if (props.pianiDisallineati && props.pianiDisallineati.length > 0) return 'misaligned';
 
     // Il Deficit ora scatta se c'è anche solo 1 euro di buco operativo reale, ignorando eventuali surplus di altre voci
-    if (totaleScopertoOperativo.value > 0) return 'deficit';   
+    if (totaleScopertoOperativo.value > 0) {
+        // Se il buco è già stato documentato consapevolmente dall'admin, non mostrare allarme
+        // ATTENZIONE: vale solo se non ci sono nuove voci intere da finanziare (scoperto_count === 0)
+        if (props.copertura.has_scoperti_documentati && props.copertura.scoperto_count === 0) return 'documented';
+        return 'deficit';
+    }
 
     if (props.copertura.orfani.some(o => ['conguaglio', 'fondo_riserva'].includes(o.strategia))) return 'integrated';
     
@@ -127,11 +133,12 @@ const statoCopertura = computed<StatoCopertura>(() => {
 
 const tooltipStato = computed(() => {
     switch (statoCopertura.value) {
-        case 'misaligned': return "URGENTE: Uno o più piani rate non sono più allineati con il preventivo.";
-        case 'deficit': return "Attenzione: Le rate emesse non coprono il fabbisogno reale. Rischio mancanza liquidità.";
-        case 'surplus': return "Stai incassando più del fabbisogno reale (preventivo + fatture). Verifica arrotondamenti.";
-        case 'integrated': return "Ottimo lavoro. Hai emesso rate integrative o usato fondi sufficienti a coprire gli sforamenti di budget registrati.";
-        case 'aligned': return "Il piano rate copre esattamente il preventivo di spesa originale.";
+        case 'misaligned':  return "URGENTE: Uno o più piani rate non sono più allineati con il preventivo.";
+        case 'deficit':     return "Attenzione: Le rate emesse non coprono il fabbisogno reale. Rischio mancanza liquidità.";
+        case 'documented':  return "Fabbisogno scoperto documentato: l'amministratore ha registrato la motivazione. Verificare le anagrafiche mancanti.";
+        case 'surplus':     return "Stai incassando più del fabbisogno reale (preventivo + fatture). Verifica arrotondamenti.";
+        case 'integrated':  return "Ottimo lavoro. Hai emesso rate integrative o usato fondi sufficienti a coprire gli sforamenti di budget registrati.";
+        case 'aligned':     return "Il piano rate copre esattamente il preventivo di spesa originale.";
         default: return "";
     }
 });
@@ -144,6 +151,9 @@ const suggerimentoOperativo = computed(() => {
             return "Il preventivo è aumentato. Vai nel Piano Rate e clicca 'Ricalcola' per aggiornare le rate. Se le rate sono già emesse, crea una nuova voce di spesa per la differenza.";
         }
     }
+    if (statoCopertura.value === 'documented') {
+        return "Il fabbisogno scoperto è stato registrato con motivazione. Censisci l'anagrafica mancante: l'importo sarà recuperato a conguaglio o tramite addebito manuale.";
+    }
     if (statoCopertura.value === 'surplus') {
         return "Stai incassando più del necessario. Verifica se ci sono arrotondamenti eccessivi o voci duplicate nei piani rate. Se hai modificato il preventivo, ricorda di ricalcolare le rate per allineare tutto.";
     }
@@ -155,7 +165,7 @@ const percentualeFormattata = computed(() => {
     const totaleCoperto = pianificatoCondiviso.value + (props.copertura.virtuale || 0);
     const rawPct = (totaleCoperto / props.copertura.preventivo) * 100;
 
-    if (statoCopertura.value === 'deficit' || statoCopertura.value === 'misaligned') {
+    if (statoCopertura.value === 'deficit' || statoCopertura.value === 'documented' || statoCopertura.value === 'misaligned') {
         if (rawPct >= 99.9) return '99.9'; 
         return rawPct.toFixed(1);
     }
@@ -244,17 +254,19 @@ const confirmReject = () => {
                                                 :class="{
                                                     'bg-red-50 text-red-700 border-red-100 hover:bg-red-100': statoCopertura === 'misaligned',
                                                     'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100': statoCopertura === 'deficit',
+                                                    'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100': statoCopertura === 'documented',
                                                     'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100': statoCopertura === 'surplus',
                                                     'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100': statoCopertura === 'integrated',
                                                     'bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100': statoCopertura === 'aligned'
                                                 }">
                                                 <span class="flex h-1.5 w-1.5 rounded-full" 
-                                                    :class="{'bg-red-500 animate-pulse': statoCopertura === 'misaligned', 'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
-                                                <span v-if="statoCopertura === 'misaligned'">DISALLINEATO</span>
-                                                <span v-else-if="statoCopertura === 'deficit'">SOTTO COPERTURA</span>
-                                                <span v-else-if="statoCopertura === 'surplus'">ECCEDENZA</span>
-                                                <span v-else-if="statoCopertura === 'integrated'">INTEGRATO</span>
-                                                <span v-else>ALLINEATO</span>
+                                                    :class="{'bg-red-500 animate-pulse': statoCopertura === 'misaligned', 'bg-amber-500 animate-pulse': statoCopertura === 'deficit', 'bg-slate-400': statoCopertura === 'documented', 'bg-blue-500': statoCopertura === 'surplus', 'bg-indigo-500': statoCopertura === 'integrated', 'bg-emerald-500': statoCopertura === 'aligned'}"></span>
+                                                <span v-if="statoCopertura === 'misaligned'">Disallineato</span>
+                                                <span v-else-if="statoCopertura === 'deficit'">Fabbisogno scoperto</span>
+                                                <span v-else-if="statoCopertura === 'documented'">Scoperto documentato</span>
+                                                <span v-else-if="statoCopertura === 'surplus'">Eccedenza</span>
+                                                <span v-else-if="statoCopertura === 'integrated'">Integrato</span>
+                                                <span v-else>Allineato</span>
                                             </div>
                                         </TooltipTrigger>
                                         <TooltipContent><p class="text-xs">{{ tooltipStato }}</p></TooltipContent>
@@ -413,11 +425,21 @@ const confirmReject = () => {
                             <div v-else-if="statoCopertura === 'deficit'" class="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-lg p-3 mt-4">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-[10px] font-bold text-amber-700 uppercase flex items-center gap-1">
-                                        <AlertTriangle class="w-3 h-3" /> Mancano {{ euro(totaleScopertoOperativo) }}
+                                        <AlertTriangle class="w-3 h-3" /> Fabbisogno scoperto: {{ euro(totaleScopertoOperativo) }}
                                     </span>
-                                    <span class="text-[9px] text-amber-600/70" v-if="copertura.scoperto_count > 0">{{ copertura.scoperto_count }} voci scoperte</span>
+                                    <span class="text-[9px] text-amber-600/70" v-if="copertura.scoperto_count > 0">{{ copertura.scoperto_count }} voci</span>
                                 </div>
                                 <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight mb-2 border-l-2 border-amber-300 pl-2">
+                                    {{ suggerimentoOperativo }}
+                                </div>
+                            </div>
+
+                            <div v-else-if="statoCopertura === 'documented'" class="bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-lg p-3 mt-4">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <BookOpen class="w-3.5 h-3.5 text-slate-500" />
+                                    <span class="text-[10px] font-bold text-slate-600 uppercase tracking-wide">Scoperto documentato</span>
+                                </div>
+                                <div class="text-[10px] text-slate-600 dark:text-slate-400 leading-tight border-l-2 border-slate-300 pl-2">
                                     {{ suggerimentoOperativo }}
                                 </div>
                             </div>
@@ -435,11 +457,11 @@ const confirmReject = () => {
 
                         <div class="mt-auto border-t border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
                         <span class="text-[10px] text-slate-400 font-medium">
-                            {{ statoCopertura === 'misaligned' ? 'Azione critica' : statoCopertura === 'deficit' ? 'Azione richiesta' : statoCopertura === 'surplus' ? 'Verifica consigliata' : 'Tutto in ordine' }}
+                            {{ statoCopertura === 'misaligned' ? 'Azione critica' : statoCopertura === 'deficit' ? 'Azione richiesta' : statoCopertura === 'documented' ? 'Ricorda di recuperarla' : statoCopertura === 'surplus' ? 'Verifica consigliata' : 'Tutto in ordine' }}
                         </span>
                         
                         <Button
-                            v-if="copertura.orfani.length > 0 && statoCopertura !== 'misaligned'"
+                            v-if="copertura.orfani.length > 0 && statoCopertura !== 'misaligned' && statoCopertura !== 'documented'"
                             @click="showOrphansModal = true"
                             variant="outline"
                             size="sm"
@@ -454,7 +476,7 @@ const confirmReject = () => {
                                 :variant="statoCopertura === 'surplus' || statoCopertura === 'integrated' ? 'outline' : 'default'"
                                 :class="{'border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300': statoCopertura === 'surplus', 'border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-300': statoCopertura === 'integrated', 'bg-red-600 hover:bg-red-700 text-white': statoCopertura === 'misaligned'}"
                             >
-                                {{ statoCopertura === 'deficit' || statoCopertura === 'misaligned' ? 'Gestisci piani rate' : 'Vai ai piani rate' }}
+                                {{ statoCopertura === 'deficit' || statoCopertura === 'misaligned' || statoCopertura === 'documented' ? 'Gestisci piani rate' : 'Vai ai piani rate' }}
                                 <ArrowRight class="w-3 h-3" />
                             </Button>
                         </Link>

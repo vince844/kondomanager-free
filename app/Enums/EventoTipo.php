@@ -18,4 +18,5 @@ enum EventoTipo: string
     case RATIFICA_SFORO = 'ratifica_sforo';
     case CONVOCAZIONE_URGENZA = 'convocazione_urgenza';
     case PIANIFICA_RIPIANAMENTO_DEFICIT = 'pianifica_ripianamento_deficit';
+    case SCOPERTO_DOCUMENTATO = 'scoperto_documentato';
 }

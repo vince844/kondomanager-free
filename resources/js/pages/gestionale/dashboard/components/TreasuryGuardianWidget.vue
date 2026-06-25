@@ -57,7 +57,7 @@ const widgetTheme = computed(() => {
                 text: 'text-red-700 dark:text-red-400',
                 icon: 'text-red-600',
                 badgeBg: 'bg-red-100 text-red-800',
-                title: 'Rischio Ingiunzione',
+                title: 'Rischio ingiunzione',
                 desc: 'La liquidità non copre le uscite previste nei prossimi 30 giorni.'
             };
         case 'giallo':
@@ -67,7 +67,7 @@ const widgetTheme = computed(() => {
                 text: 'text-amber-700 dark:text-amber-400',
                 icon: 'text-amber-500',
                 badgeBg: 'bg-amber-100 text-amber-800',
-                title: 'Esposizione Rischio',
+                title: 'Esposizione rischio',
                 desc: 'In assenza di nuovi incassi, il conto andrà in rosso.'
             };
         case 'verde':
@@ -78,7 +78,7 @@ const widgetTheme = computed(() => {
                 text: 'text-emerald-700 dark:text-emerald-400',
                 icon: 'text-emerald-500',
                 badgeBg: 'bg-emerald-100 text-emerald-800',
-                title: 'Finanziariamente Sano',
+                title: 'Finanziariamente sano',
                 desc: 'Il saldo di c/c copre abbondantemente le uscite del mese.'
             };
     }

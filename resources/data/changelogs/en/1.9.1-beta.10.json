@@ -3,6 +3,9 @@
         "ScopertoWarning UI Component: Added an interface that detects missing active roles (e.g. tenants) in units during allocation, calculating uncovered amounts in real time.",
         "Saved Motivation for Uncovered Amounts: In order to forcefully generate allocations containing unassigned amounts, the administrator must provide a mandatory note (> 10 chars) which is historically persisted and displayed as a banner.",
         "Role Fallback Tracking: Improved traceability of the fallback calculation cascade. The system now exposes the exact missing role (e.g. usufructuary or tenant), enriched with the actual Unit and Account names.",
-        "Silent Exception & Gatekeeper: Introduced ScopertiNonAccettatiException which safely blocks the controller logic warning the frontend, but is deliberately ignored by system logs."
+        "Silent Exception & Gatekeeper: Introduced ScopertiNonAccettatiException which safely blocks the controller logic warning the frontend, but is deliberately ignored by system logs.",
+        "Automatic Inbox Task: Automatically generates a prioritized task in the Admin Inbox when unassigned quotes are forcefully accepted, ensuring they are not forgotten.",
+        "New 'DOCUMENTED SHORTFALL' Widget State: The Budget Coverage widget now displays a neutral badge instead of a warning for documented missing quotes, prioritizing real anomalies and new subsequent unallocated expenses.",
+        "Fix: Updated widget terminology to 'UNFUNDED REQUIREMENT' for better accounting accuracy and operational clarity."
     ]
 }

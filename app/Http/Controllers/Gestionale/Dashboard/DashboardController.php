@@ -340,6 +340,14 @@ class DashboardController extends Controller
                 'scoperto_count'     => collect($vociScoperte)
                                             ->whereNotIn('strategia', ['conguaglio', 'fondo_riserva'])
                                             ->count(),
+                // True se nell'esercizio esiste almeno un piano rate con quota orfana
+                // documentata dall'admin (nota_scoperti non nulla). Usato dal widget
+                // per mostrare lo stato "QUOTA APERTA" invece del generico allarme.
+                'has_scoperti_documentati' => $esercizio
+                    ? PianoRate::whereIn('gestione_id', $esercizio->gestioni->pluck('id'))
+                        ->whereNotNull('nota_scoperti')
+                        ->exists()
+                    : false,
             ];
         }
 
