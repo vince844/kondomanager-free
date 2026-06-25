@@ -124,7 +124,7 @@ defineEmits(['update:open']);
             <div class="p-4 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800/50 flex gap-3">
               <AlertTriangle class="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <div class="text-[13px] text-red-800 dark:text-red-200/90 leading-relaxed">
-                <strong>Nota operativa:</strong> la motivazione viene salvata sul piano rate ed è visibile nel dettaglio. L'importo scoperto non viene però registrato come quota contabile — non avendo un soggetto a cui intestarlo, il sistema lo documenta ma non lo contabilizza. Se in seguito l'anagrafica viene censita e si vuole recuperare la quota, il percorso attuale è creare un piano straordinario ad personam per quell'immobile. In una versione futura questo passaggio sarà automatizzato.
+                <strong>Nota operativa:</strong> la motivazione viene salvata sul piano rate ed è visibile nel dettaglio. L'importo scoperto non viene però registrato come quota contabile — non avendo un soggetto a cui intestarlo, il sistema lo documenta ma non lo contabilizza. Se in seguito l'anagrafica viene censita, non bisogna creare finte fatture per recuperare i soldi: il sistema assegnerà la quota al condomino in automatico a fine anno in sede di <strong>conguaglio</strong>, oppure potrai recuperarla tramite un addebito manuale.
               </div>
             </div>
           </section>
