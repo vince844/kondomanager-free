@@ -57,7 +57,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 
 - Sistema di aggiornamento automatico da pannello amministratore
 - Gestione anagrafiche condomini e fornitori del condominio
-- Gestione segnalazioni guasti del condominio
+- Gestione segnalazioni guasti con modulo chat/commenti integrato
 - Bacheca condominiale digitale per le comunicazioni
 - Archivio documenti e categorie del condominio
 - Agenda scadenze con gestione ricorrenze
@@ -95,7 +95,16 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Widget Treasury Guardian per l'analisi predittiva della liquidità a 30 giorni
 - Motore a cascata dinamico (Inquilino → Usufruttuario → Proprietario) conforme al Codice Civile
 - Gestione intelligente scoperti documentati per unità immobiliari vuote
-- Suite documentale PDF nativa (Riparti, Scadenziari, Distinte) con firma amministratore
+
+### Suite documentale e Stampe PDF
+
+- Motore di rendering 100% nativo in formato PDF senza dipendenze esterne
+- Personalizzazione dei documenti con l'inserimento della firma dell'amministratore e note legali a piè di pagina
+- **Distinta Preventivo / Piano dei Conti:** stampa completa di capitoli, sottoconti e importi preventivati
+- **Ripartizione Spese:** documento che illustra la ripartizione del piano dei conti sulle tabelle millesimali
+- **Riparto Bilancio per Tabella (Piano Rate):** documento dettagliato (A4/A3) che incrocia unità immobiliari, soggetti (proprietario, inquilino, ecc.) e tabelle millesimali
+- **Prospetto Rate e Scadenziari:** con aggregazione dinamica per Condòmino o per Unità Immobiliare
+- **Distinta Pagamento Fornitore:** riepilogo importi con causali e dettagli per bonifici parlanti
 
 ---
 
@@ -368,7 +377,7 @@ Questo progetto è rilasciato sotto licenza [AGPL-3.0](https://github.com/vince8
 - [Amnit Haldar](https://github.com/amit-eiitech) - Per il suo prezioso contributo sulla creazione dell'installazione guidata
 - [k3ntinhu](https://github.com/k3ntinhu) - Per il suo prezioso contributo sulla configurazione di Docker container e la comunità portoghese
 - [Stefano B](https://github.com/borghiste) - Per aver segnalato e risolto un bug di sicurezza
-- Tutti i contributori e sviluppatori della community open source e gli utenti del forum ufficiale di Kondomanager
+- Tutti i contributori e sviluppatori della community open source.
 
 ### Sostenitori Patreon:
 - **[Fabio Lembo Luscari]** — grazie per il tuo supporto e per credere nel progetto! 

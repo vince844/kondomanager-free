@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, usePage, InfiniteScroll } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { House, TriangleAlert, CalendarClock, HardDrive, Bell, ArrowRight, AlertCircle, Mail, X, Check, Loader2 } from 'lucide-vue-next';
+import { House, TriangleAlert, CalendarClock, HardDrive, Bell, ArrowRight, AlertCircle, Mail, X, Check, Loader2, Heart } from 'lucide-vue-next';
 import SegnalazioniList from '@/components/segnalazioni/SegnalazioniList.vue';
 import ComunicazioniList from '@/components/comunicazioni/ComunicazioniList.vue';
 import DocumentiList from '@/components/documenti/DocumentiList.vue';
@@ -55,6 +55,9 @@ const showNewsletterBanner = ref(false);
 const isSubscribing = ref(false);
 const isSuccess = ref(false);
 
+// ─── LOGICA PATREON BANNER ───
+const showPatreonBanner = ref(false);
+
 const userEmail = computed(() => (page.props.auth as any).user?.email);
 const isDemo = computed(() => (page.props as any).is_demo || false);
 
@@ -71,6 +74,14 @@ onMounted(() => {
     if (!isDemo.value && !shouldHide) {
         showNewsletterBanner.value = true;
     }
+
+    // --- Patreon ---
+    const patreonHideUntil = localStorage.getItem('hide_kondomanager_patreon_until');
+    const shouldHidePatreon = patreonHideUntil && Date.now() < parseInt(patreonHideUntil);
+
+    if (!isDemo.value && !shouldHidePatreon) {
+        showPatreonBanner.value = true;
+    }
 });
 
 const closeBanner = () => {
@@ -80,6 +91,15 @@ const closeBanner = () => {
     const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
     const hideUntilDate = Date.now() + thirtyDaysInMs;
     localStorage.setItem('hide_kondomanager_newsletter_until', hideUntilDate.toString());
+};
+
+const closePatreonBanner = () => {
+    showPatreonBanner.value = false;
+    
+    // Nascondi per 30 giorni (Snooze)
+    const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+    const hideUntilDate = Date.now() + thirtyDaysInMs;
+    localStorage.setItem('hide_kondomanager_patreon_until', hideUntilDate.toString());
 };
 
 const subscribe = () => {
@@ -172,8 +192,10 @@ const navigateToDocumenti = () => {
                     </Link>
                 </div>
             </div>
-            <!-- ── NEWSLETTER BANNER ── -->
-            <div v-if="showNewsletterBanner" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 p-5 pr-12 md:pr-14 shadow-sm flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5 transition-all">
+            <!-- ── BANNERS CONTAINER ── -->
+            <div class="flex flex-col gap-3">
+                <!-- ── NEWSLETTER BANNER ── -->
+            <div v-if="showNewsletterBanner" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-700 to-indigo-800 p-3 pr-12 md:pr-14 shadow-sm flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5 transition-all">
                 <div class="absolute -right-10 -top-10 opacity-10 pointer-events-none">
                     <Mail class="w-40 h-40" />
                 </div>
@@ -187,14 +209,14 @@ const navigateToDocumenti = () => {
                         <p class="text-blue-100 text-xs mt-0.5 max-w-2xl">
                             Iscriviti alla newsletter per ricevere in anteprima gli aggiornamenti tecnici e l'accesso ai nuovi moduli e tutte le novità sullo sviluppo futuro di Kondomanager.
                         </p>
+                        <p class="text-blue-200/80 text-[10px] mt-2 font-medium">
+                            Le comunicazioni verranno inviate all'indirizzo: <strong class="text-white">{{ userEmail }}</strong>
+                        </p>
                     </div>
                 </div>
                 
                 <div class="flex flex-col items-start xl:items-end gap-2 relative z-10 w-full xl:w-auto shrink-0">
                     <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <span class="text-blue-100 text-xs font-medium">
-                            Ricevi avvisi su: <strong class="text-white">{{ userEmail }}</strong>
-                        </span>
                         
                         <button 
                             @click="subscribe" 
@@ -218,6 +240,40 @@ const navigateToDocumenti = () => {
                 <button @click="closeBanner" class="absolute top-2 right-2 p-1.5 text-white/50 hover:text-white transition-colors rounded-md hover:bg-white/10 z-20">
                     <X class="w-4 h-4" />
                 </button>
+            </div>
+            <!-- ───────────────────────── -->
+
+            <!-- ── PATREON BANNER ── -->
+            <div v-if="showPatreonBanner" class="relative overflow-hidden rounded-xl bg-gradient-to-r from-orange-500/10 via-red-500/10 to-rose-500/10 border border-orange-200/50 dark:border-orange-500/20 p-3 pr-12 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all hover:shadow-sm">
+                
+                <div class="absolute -right-12 -top-12 opacity-[0.04] dark:opacity-10 text-orange-600 dark:text-orange-400 pointer-events-none">
+                    <Heart class="w-52 h-52" />
+                </div>
+
+                <div class="flex items-center gap-3 relative z-10">
+                    <div class="bg-orange-500/20 p-2 rounded-lg shrink-0">
+                        <Heart class="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 dark:text-slate-200 text-sm">Unisciti a chi ha deciso di contribuire!</h3>
+                        <div class="text-slate-600 dark:text-slate-400 text-xs mt-0.5 space-y-1">
+                            <p>Kondomanager cresce grazie alla sua community. Sostieni il software libero e open source.</p>
+                            <p class="text-[10px] text-slate-500 italic">
+                                Nota: se preferisci fare una donazione "una tantum" invece dell'abbonamento mensile, puoi attivare un abbonamento e cancellarlo subito dopo l'iscrizione.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <a href="https://www.patreon.com/KondoManager" target="_blank" class="shrink-0 w-full sm:w-auto relative z-10">
+                    <Button size="sm" class="h-8 text-xs bg-orange-600 hover:bg-orange-700 text-white font-bold gap-1.5 w-full sm:w-auto border-none shadow-sm">
+                        Supportaci su Patreon <ArrowRight class="w-3.5 h-3.5" />
+                    </Button>
+                </a>
+                
+                <button @click="closePatreonBanner" class="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors rounded-md hover:bg-slate-200/50 dark:hover:bg-slate-700/50 z-20">
+                    <X class="w-4 h-4" />
+                </button>
+            </div>
             </div>
             <!-- ───────────────────────── -->
 
@@ -294,7 +350,10 @@ const navigateToDocumenti = () => {
                     </div>
                     <div class="p-5 relative z-10 space-y-2">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Archiviazione</p>
-                        <p class="text-3xl font-black text-slate-700 dark:text-slate-200">{{ stats.storage.used_formatted }}</p>
+                         <p class="text-3xl font-black text-slate-700 dark:text-slate-200">
+                            {{ stats.storage.used_formatted.split(' ')[0] }}
+                            <span class="text-lg font-bold text-slate-400 dark:text-slate-500 ml-0.5">{{ stats.storage.used_formatted.split(' ')[1] }}</span>
+                        </p>
                         <div v-if="storagePercent !== null">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-[9px] text-slate-400 font-semibold uppercase">Utilizzo</span>

@@ -55,6 +55,7 @@ return [
         'manage'                => 'Manage',
         'settings'              => 'Settings',
         'update_now'            => 'Update now',
+                'discover_patreon'      => 'Discover Patreon',
         'back_to_settings'      => 'Settings',
         'mail_host'             => 'SMTP Server (Host)',
         'mail_port'             => 'SMTP Port',
@@ -150,7 +151,9 @@ return [
         'security_warning_title'                  => 'IP security active',
         'security_warning_description'            => 'The system only accepts calls from the official cron-job.org IP addresses. If you use another service, this configuration will not work.',
         'logs_settings_title'                     => 'Audit & System Logs',
-        'logs_settings_description'               => 'View the history of sent emails, user activity and system logs.',
+        'patreon_title'                         => 'Support us on Patreon',
+        'patreon_desc'                          => 'Join the community and support the Open Source development of Kondomanager.',
+        'logs_settings_description'             => 'View the history of sent emails, user activity and system logs.',
     ],
 
     /* ------------------------------------------------------------------

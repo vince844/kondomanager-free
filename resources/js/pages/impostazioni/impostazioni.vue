@@ -4,7 +4,7 @@ import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
-import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer } from 'lucide-vue-next'
+import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -101,6 +101,16 @@ const apps = computed(() => [
         : trans('impostazioni.dialogs.updates_desc_latest'),
     href: '/system/upgrade',
     highlight: updateAvailable.value, 
+  },
+  {
+    name: 'impostazioni.dialogs.patreon_title',
+    logo: Heart,
+    desc: 'impostazioni.dialogs.patreon_desc',
+    href: 'https://www.patreon.com/KondoManager',
+    isExternal: true,
+    highlight: true, 
+    staticIcon: true,
+    actionLabel: 'impostazioni.label.discover_patreon'
   }
 ])
 
@@ -142,7 +152,7 @@ const apps = computed(() => [
               <component 
                 :is="app.logo" 
                 class="h-5 w-5" 
-                :class="{ 'animate-spin-slow': app.highlight }"
+                :class="{ 'animate-spin-slow': app.highlight && !app.staticIcon }"
               />
             </div>
           </ItemMedia>
@@ -158,7 +168,7 @@ const apps = computed(() => [
               </span>
             </ItemTitle>
             <ItemDescription class="text-[13px] leading-tight mt-0.5">
-              {{ app.highlight ? app.desc : trans(app.desc) }}
+              {{ app.name === 'impostazioni.dialogs.updates_title' ? app.desc : trans(app.desc) }}
             </ItemDescription>
           </ItemContent>
           
@@ -185,8 +195,11 @@ const apps = computed(() => [
                   : 'hover:bg-slate-900 hover:text-white dark:hover:bg-slate-100 dark:hover:text-slate-900'
               ]"
             >
-              <Link :href="app.href">
-                {{ app.highlight ? trans('impostazioni.label.update_now') : trans('impostazioni.label.manage') }}
+              <a v-if="app.isExternal" :href="app.href" target="_blank" rel="noopener noreferrer">
+                {{ app.actionLabel ? trans(app.actionLabel) : (app.highlight ? trans('impostazioni.label.update_now') : trans('impostazioni.label.manage')) }}
+              </a>
+              <Link v-else :href="app.href">
+                {{ app.actionLabel ? trans(app.actionLabel) : (app.highlight ? trans('impostazioni.label.update_now') : trans('impostazioni.label.manage')) }}
               </Link>
             </Button>
           </ItemActions>

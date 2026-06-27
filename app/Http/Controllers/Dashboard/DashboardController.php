@@ -38,7 +38,7 @@ class DashboardController extends Controller
             'scadenze_imminenti'  => $this->recurrenceService->getEventsInNextDays(days: 7)->count(),
             'storage' => [
                 'used_bytes'     => Documento::sum('file_size') ?? 0,
-                'used_formatted' => FileHelper::formatBytes(Documento::sum('file_size') ?? 0),
+                'used_formatted' => FileHelper::formatBytes(Documento::sum('file_size') ?? 0, 2, true),
                 'total_files'    => Documento::count(),
             ],
         ];

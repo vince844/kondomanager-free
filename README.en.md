@@ -52,7 +52,7 @@ You can view a demo of the project at the following address:
 
 - Automatic update system from administrator panel
 - Management of condominium and supplier records
-- Condominium fault reporting management
+- Condominium fault reporting management with integrated chat/comments module
 - Digital condominium bulletin board for communications
 - Document archive and condominium categories
 - Deadline calendar with recurrence management
@@ -80,7 +80,16 @@ You can view a demo of the project at the following address:
 - Treasury Guardian widget for 30-day predictive liquidity analysis
 - Dynamic cascading engine (Tenant → Usufructuary → Owner) in compliance with the Civil Code
 - Smart management of documented shortfalls for vacant units
-- Native PDF document suite (Allocations, Schedules, Payment slips) with administrator signature
+
+### Document Suite and PDF Reports
+
+- 100% native PDF rendering engine with no external dependencies
+- Document customization with administrator signature upload and legal footnotes
+- **Budget / Chart of Accounts Slip:** complete printout of chapters, sub-accounts, and budgeted amounts
+- **Expense Allocation:** document illustrating the allocation of the chart of accounts across millesimal tables
+- **Budget Allocation by Table (Installments):** detailed document (A4/A3) crossing properties, subjects (owners, tenants, etc.) and millesimal tables
+- **Installment Schedules:** dynamic aggregation by Resident or Property
+- **Supplier Payment Slips:** payment summaries with details for bank transfers
 
 ---
 

@@ -72,7 +72,13 @@ const displayStats = {
 
       <div class="flex items-baseline gap-2">
         <span :class="['text-3xl font-black', item.numberColor]">
-          {{ item.format(stats[key as keyof typeof stats] ?? 0) }}
+          {{ String(item.format(stats[key as keyof typeof stats] ?? 0)).split(' ')[0] }}
+          <span 
+            v-if="String(item.format(stats[key as keyof typeof stats] ?? 0)).split(' ')[1]" 
+            class="text-lg font-bold opacity-60 ml-0.5"
+          >
+            {{ String(item.format(stats[key as keyof typeof stats] ?? 0)).split(' ')[1] }}
+          </span>
         </span>
       </div>
     </div>

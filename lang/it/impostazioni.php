@@ -22,7 +22,6 @@ return [
     'mail_status' => [
         'database' => 'Configurazione da Database',
         'env'      => 'Configurazione .env',
-        'log'      => 'Modalità Sicura (Log)',
     ],
 
     /* ------------------------------------------------------------------
@@ -55,6 +54,7 @@ return [
         'manage'                => 'Gestisci',
         'settings'              => 'Impostazioni',
         'update_now'            => 'Aggiorna ora',
+        'discover_patreon'      => 'Scopri Patreon',
         'back_to_settings'      => 'Impostazioni',
         'mail_host'             => 'Server SMTP (Host)',
         'mail_port'             => 'Porta SMTP',
@@ -144,6 +144,8 @@ return [
         'security_warning_title'                => 'Sicurezza IP attiva',
         'security_warning_description'          => 'Il sistema accetta chiamate solo dagli IP ufficiali di cron-job.org. Se usi un altro servizio, questa configurazione non funzionerà.',
         'logs_settings_title'                   => 'Audit & Logs di Sistema',
+        'patreon_title'                         => 'Supportaci su Patreon',
+        'patreon_desc'                          => 'Unisciti alla community e sostieni lo sviluppo di Kondomanager.',
         'logs_settings_description'             => 'Visualizza lo storico delle email inviate, le attività degli utenti e i log di sistema.',
     ],
 

@@ -65,13 +65,10 @@ function selectCondominio(id: string | number) {
   const condIndex = segments.findIndex((s) => s === props.condominio!.id.toString());
   if (condIndex !== -1) segments[condIndex] = id.toString();
 
-  const isGestionePage = segments.includes('gestioni');
-  const isContiPage = segments.includes('conti');
-  if ((isGestionePage || isContiPage) && selected?.esercizio_aperto?.id) {
-    const esercizioIndex = segments.findIndex((s, i) => segments[i - 1] === 'esercizi');
-    if (esercizioIndex !== -1) {
-      segments[esercizioIndex] = selected.esercizio_aperto.id.toString();
-    }
+  // Se l'URL corrente contiene un id esercizio, aggiorniamolo a quello aperto del nuovo condominio
+  const esercizioIndex = segments.findIndex((s, i) => segments[i - 1] === 'esercizi');
+  if (esercizioIndex !== -1 && selected?.esercizio_aperto?.id) {
+    segments[esercizioIndex] = selected.esercizio_aperto.id.toString();
   }
   router.visit(segments.join('/'), { preserveState: false, preserveScroll: true });
 }

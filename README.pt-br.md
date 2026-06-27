@@ -52,7 +52,7 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 
 - Sistema de atualização automática a partir do painel de administrador
 - Gestão de cadastros de condomínios e fornecedores do condomínio
-- Gestão de reportes de avarias do condomínio
+- Gestão de reportes de avarias com módulo de chat/comentários integrado
 - Quadro de avisos digital do condomínio para comunicações
 - Arquivo de documentos e categorias do condomínio
 - Agenda de prazos com gestão de recorrências
@@ -80,7 +80,16 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Widget Treasury Guardian para análise preditiva de liquidez a 30 dias
 - Mecanismo em cascata dinâmico (Inquilino → Usufrutuário → Proprietário) em conformidade com o Código Civil
 - Gestão inteligente de descobertos documentados para unidades vazias
-- Suíte de documentos PDF nativa (Repartições, Cronogramas, Guias) com assinatura do administrador
+
+### Suíte de Documentos e Relatórios PDF
+
+- Mecanismo de renderização PDF 100% nativo, sem dependências externas
+- Personalização de documentos com upload da assinatura do administrador e notas de rodapé legais
+- **Guia de Orçamento / Plano de Contas:** impressão completa de capítulos, subcontas e valores orçamentados
+- **Repartição de Despesas:** documento que ilustra a repartição do plano de contas nas tabelas de frações ideais
+- **Repartição de Orçamento por Tabela (Prestações):** documento detalhado (A4/A3) cruzando imóveis, sujeitos (proprietário, inquilino, etc.) e tabelas de frações ideais
+- **Cronogramas de Prestações:** agregação dinâmica por Condómino ou Imóvel
+- **Guias de Pagamento a Fornecedores:** resumo de valores e detalhes para transferências bancárias
 
 ---
 
