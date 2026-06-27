@@ -3,6 +3,7 @@
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
+use App\Http\Controllers\Impostazioni\ImpostazioniStampeController;
 use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
@@ -21,6 +22,12 @@ Route::middleware('auth')->group(function () {
 
     Route::post('impostazioni/generali', [ImpostazioniGeneraliController::class, 'store'])
         ->name('impostazioni.generali.store');
+
+    Route::get('impostazioni/stampe', [ImpostazioniStampeController::class, 'index'])
+        ->name('impostazioni.stampe');
+
+    Route::post('impostazioni/stampe', [ImpostazioniStampeController::class, 'store'])
+        ->name('impostazioni.stampe.store');
 
     Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
         ->name('impostazioni.cron'); 

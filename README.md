@@ -1,9 +1,9 @@
 [![Read in English](https://img.shields.io/badge/Read_in-English-red.svg)](README.en.md)
 [![Leggi in Italiano](https://img.shields.io/badge/Leggi_in-Italiano-green.svg)](README.md)
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
-[![Generic badge](https://img.shields.io/badge/Version-1.9.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![Generic badge](https://img.shields.io/badge/Version-1.9.1-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
-[![Forum](https://img.shields.io/badge/Forum-Comunità-orange.svg)](https://forum.karibusana.org/)
+[![Forum](https://img.shields.io/badge/Forum-Comunità-orange.svg)](https://kondomanager.short.gy/km-forum)
 [![GitHub stars](https://img.shields.io/github/stars/vince844/kondomanager-free?style=social)](https://github.com/vince844/kondomanager-free/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/vince844/kondomanager-free?style=social)](https://github.com/vince844/kondomanager-free/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/vince844/kondomanager-free)](https://github.com/vince844/kondomanager-free/issues)
@@ -57,7 +57,7 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 
 - Sistema di aggiornamento automatico da pannello amministratore
 - Gestione anagrafiche condomini e fornitori del condominio
-- Gestione segnalazioni guasti del condominio
+- Gestione segnalazioni guasti con modulo chat/commenti integrato
 - Bacheca condominiale digitale per le comunicazioni
 - Archivio documenti e categorie del condominio
 - Agenda scadenze con gestione ricorrenze
@@ -91,6 +91,20 @@ Puoi visualizzare una demo del progetto andando al seguente indirizzo:
 - Financial X-Ray: spaccato finanziario per condòmino con dettaglio per unità immobiliare
 - Dashboard Audit con semaforo contabile e rilevamento voci orfane
 - Smart inbox intelligente per scadenze in agenda interattive
+- Modulo pagamento fatture fornitori con bonifici cumulativi, storno e Ledger immutabile
+- Widget Treasury Guardian per l'analisi predittiva della liquidità a 30 giorni
+- Motore a cascata dinamico (Inquilino → Usufruttuario → Proprietario) conforme al Codice Civile
+- Gestione intelligente scoperti documentati per unità immobiliari vuote
+
+### Suite documentale e Stampe PDF
+
+- Motore di rendering 100% nativo in formato PDF senza dipendenze esterne
+- Personalizzazione dei documenti con l'inserimento della firma dell'amministratore e note legali a piè di pagina
+- **Distinta Preventivo / Piano dei Conti:** stampa completa di capitoli, sottoconti e importi preventivati
+- **Ripartizione Spese:** documento che illustra la ripartizione del piano dei conti sulle tabelle millesimali
+- **Riparto Bilancio per Tabella (Piano Rate):** documento dettagliato (A4/A3) che incrocia unità immobiliari, soggetti (proprietario, inquilino, ecc.) e tabelle millesimali
+- **Prospetto Rate e Scadenziari:** con aggregazione dinamica per Condòmino o per Unità Immobiliare
+- **Distinta Pagamento Fornitore:** riepilogo importi con causali e dettagli per bonifici parlanti
 
 ---
 
@@ -109,11 +123,11 @@ Per installare KondoManager, il tuo ambiente server deve soddisfare i seguenti r
 
 La documentazione completa di KondoManager è disponibile all'indirizzo:
 
-**[www.kondomanager.com/docs](https://www.kondomanager.com/docs)**
+**[www.kondomanager.com/docs](https://kondomanager.com/docs)**
 
 Trovi guide dettagliate su:
 
-- [Installazione e configurazione iniziale](https://www.kondomanager.com/docs/installation.html)
+- [Installazione e configurazione iniziale](https://kondomanager.com/docs/installation.html)
 - Configurazione email e cron job
 - Modulo contabilità e piano dei conti
 - Gestione piani rate e incassi
@@ -132,7 +146,7 @@ Per gli utenti meno esperti o per installazioni veloci su hosting condivisi (cPa
 3. Apri il browser all'indirizzo: `https://tuosito.com/index.php`.
 4. Segui la procedura guidata a schermo.
 
-Per maggiori dettagli, visita la [guida ufficiale all'installazione](https://www.kondomanager.com/docs/installation.html) oppure il nostro [canale YouTube](https://www.youtube.com/@Kondomanager).
+Per maggiori dettagli, visita la [guida ufficiale all'installazione](https://kondomanager.com/docs/installation.html) oppure il nostro [canale YouTube](https://www.youtube.com/@Kondomanager).
 
 ### 2. Aggiornamento automatico da pannello amministratore
 
@@ -186,7 +200,7 @@ La configurazione salvata dal pannello ha **precedenza** sul file `.env` e può 
 
 ---
 
-### 3. Aggiornamento manuale dalla versione 1.8.0 alla 1.9.0
+### 3. Aggiornamento manuale dalla versione 1.9.0 alla 1.9.1
 
 1. Assicurati di avere un backup del `database` e dei file della cartella `storage`
 2. Scarica il [file di aggiornamento](https://kondomanager.short.gy/km-installer) dal sito ufficiale di Kondomanager
@@ -313,7 +327,7 @@ php artisan tinker
 
 Hai domande sull'installazione, vuoi condividere la tua esperienza o cercare aiuto da altri utenti? Unisciti alla community ufficiale di KondoManager:
 
-**[Forum ufficiale KondoManager](https://forum.karibusana.org/)**
+**[Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)**
 
 Il forum è il posto giusto per:
 - chiedere supporto tecnico e consigli di configurazione
@@ -328,7 +342,7 @@ Il forum è il posto giusto per:
 Chi volesse contribuire a far crescere il progetto è sempre il benvenuto!
 
 Per poter contribuire, si consiglia di seguire le indicazioni descritte all'interno della [documentazione ufficiale](https://github.com/vince844/kondomanager-free/blob/main/CONTRIBUTING). 
-Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://forum.karibusana.org/)
+Se volete contribuire attivamente con semplici migliorie o correzioni potete [cercare tra le issues](https://github.com/vince844/kondomanager-free/issues) aperte oppure apri un nuovo argomento sul [Forum ufficiale KondoManager](https://kondomanager.short.gy/km-forum)
 
 ---
 
@@ -342,7 +356,7 @@ Sviluppare un software open source richiede molto impegno e dedizione. Ti sarò 
 
 ## Feedback & Supporto
 
-- **Community:** Unisciti al [forum ufficiale](https://forum.karibusana.org/) per confrontarti con altri utenti e ricevere supporto dalla community.
+- **Community:** Unisciti al [forum ufficiale](https://kondomanager.short.gy/km-forum) per confrontarti con altri utenti e ricevere supporto dalla community.
 - **Bug e richieste:** Usa la sezione ["Issues" o "Discussions"](https://github.com/vince844/kondomanager-free/issues) di questa repository.
 - **Supporto dedicato:** Per richieste di personalizzazione o supporto professionale, usa il [modulo contatti](https://dev.karibusana.org/gestionale-condominio-contatti.html) sul sito ufficiale.
 
@@ -367,5 +381,6 @@ Questo progetto è rilasciato sotto licenza [AGPL-3.0](https://github.com/vince8
 
 ### Sostenitori Patreon:
 - **[Fabio Lembo Luscari]** — grazie per il tuo supporto e per credere nel progetto! 
+- **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — grazie per il tuo supporto e per credere nel progetto! 
 
 ---

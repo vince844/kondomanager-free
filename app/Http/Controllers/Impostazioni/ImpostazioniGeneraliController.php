@@ -37,6 +37,7 @@ class ImpostazioniGeneraliController extends Controller
             'default_condominio_id'    => $user->userPreferences->default_condominio_id,
             'condomini'                => Condominio::select('id','nome')->get(),
             'default_user_role'        => (string) $settings->default_user_role,
+            'force_comment_moderation' => (bool) $settings->force_comment_moderation,
             'roles'                    => $roles,
         ]);
     }
@@ -58,6 +59,7 @@ class ImpostazioniGeneraliController extends Controller
             $settings->user_frontend_registration = $validated['user_frontend_registration'];
             $settings->language = $validated['language'];
             $settings->default_user_role = $validated['default_user_role'];
+            $settings->force_comment_moderation = $validated['force_comment_moderation'];
             $settings->save();
 
             $userPreferences = $user->userPreferences;

@@ -8,11 +8,16 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
+use App\Enums\EventoTipo;
 use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\Gestionale\PianoRate;
+use App\Models\Condominio;
+use App\Models\Esercizio;
+use App\Models\User;
 
 class SyncScadenziarioWithPianoRate implements ShouldQueue
 {
@@ -29,7 +34,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         }
     }
 
-    private function createEvents($pianoRate, $condominio, $esercizio, $user)
+    private function createEvents(PianoRate $pianoRate, Condominio $condominio, Esercizio $esercizio, User $user)
     {
         Log::info("Inizio creazione eventi...");
 
@@ -62,55 +67,56 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     'pianoRate'  => $pianoRate->id
                 ]);
 
-                $eventoAdmin = Evento::firstOrCreate(
-                    ['title' => "Emettere rata {$rata->numero_rata} - {$condominio->nome}", 'start_time' => $dataPromemoria],
-                    [
-                        'created_by'  => $user->id,
-                        'description' => "Ricordati di emettere le rate per il condominio {$condominio->nome}.",
-                        'end_time'    => $dataPromemoria->copy()->addHour(),
-                        'category_id' => $catAdmin->id,
-                        'visibility'  => VisibilityStatus::HIDDEN->value, 
-                        'is_approved' => true,
-                        'meta' => [
-                            'type' => 'emissione_rata',
+                // Evita duplicati usando where
+                $esisteAdmin = Evento::where('tipo', EventoTipo::EMISSIONE_RATA->value)
+                    ->whereJsonContains('meta->context->rata_id', $rata->id)
+                    ->exists();
+
+                if (!$esisteAdmin) {
+                    InboxService::createTask(
+                        tipo: EventoTipo::EMISSIONE_RATA,
+                        title: "Emettere rata {$rata->numero_rata} - {$condominio->nome}",
+                        description: "Ricordati di emettere le rate per il condominio {$condominio->nome}.",
+                        scadenza: $dataPromemoria,
+                        createdByUserId: $user->id,
+                        condominioId: $condominio->id,
+                        context: ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
+                        actionUrl: $urlEmissione,
+                        extraMeta: [
                             'is_emitted' => false,
-                            'requires_action' => true, 
                             'gestione' => $nomeGestione,
                             'condominio_nome' => $condominio->nome,
                             'totale_rata' => $rata->importo_totale,
                             'numero_rata' => $rata->numero_rata,
-                            'action_url' => $urlEmissione,
-                            'context' => ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
-                        ],
-                    ]
-                );
-                $eventoAdmin->condomini()->syncWithoutDetaching([$condominio->id]);
+                        ]
+                    );
+                }
 
                 // --- 1-BIS. EVENTO ADMIN CHECK ---
                 $dataCheck = $rata->data_scadenza->copy()->addDays(4)->setTime(9, 0); 
                 $urlIncassi = route('admin.gestionale.movimenti-rate.create', ['condominio' => $condominio->id]);
-                $eventoCheck = Evento::firstOrCreate(
-                    ['title' => "Verifica incassi - Rata {$rata->numero_rata} ({$condominio->nome})", 'start_time' => $dataCheck],
-                    [
-                        'created_by' => $user->id,
-                        'end_time' => $dataCheck->copy()->addHour(),
-                        'description' => "Controlla l'estratto conto per verificare gli incassi relativi alla rata n. {$rata->numero_rata}.",
-                        'category_id' => $catAdmin->id, 
-                        'visibility' => VisibilityStatus::HIDDEN->value,
-                        'is_approved' => true,
-                        'meta' => [
-                            'type' => 'controllo_incassi',
-                            'requires_action' => true,
+                $esisteCheck = Evento::where('tipo', EventoTipo::CONTROLLO_INCASSI->value)
+                    ->whereJsonContains('meta->context->rata_id', $rata->id)
+                    ->exists();
+
+                if (!$esisteCheck) {
+                    InboxService::createTask(
+                        tipo: EventoTipo::CONTROLLO_INCASSI,
+                        title: "Verifica incassi - Rata {$rata->numero_rata} ({$condominio->nome})",
+                        description: "Controlla l'estratto conto per verificare gli incassi relativi alla rata n. {$rata->numero_rata}.",
+                        scadenza: $dataCheck,
+                        createdByUserId: $user->id,
+                        condominioId: $condominio->id,
+                        context: ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
+                        actionUrl: $urlIncassi,
+                        extraMeta: [
                             'condominio_nome' => $condominio->nome,
                             'numero_rata' => $rata->numero_rata,
                             'gestione' => $nomeGestione,
                             'totale_rata' => $rata->importo_totale,
-                            'action_url' => $urlIncassi,
-                            'context' => ['piano_rate_id' => $pianoRate->id, 'rata_id' => $rata->id],
-                        ],
-                    ]
-                );
-                $eventoCheck->condomini()->syncWithoutDetaching([$condominio->id]);
+                        ]
+                    );
+                }
 
                 // --- 2. EVENTI CONDÒMINI (CALCOLO BLINDATO V1.9) ---
                 $quotePerAnagrafica = $rata->rateQuote->groupBy('anagrafica_id');
@@ -197,10 +203,10 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                         'is_approved' => true,
                         'timezone'    => config('app.timezone'),
                         'meta'        => [
-                            'type'              => 'scadenza_rata_condomino',
+                            'type'              => EventoTipo::SCADENZA_RATA_CONDOMINO->value,
                             'is_emitted'        => false, 
                             'requires_action'   => false, 
-                            'status'            => 'pending',
+                            'status'            => $importoVal <= 0 ? 'paid' : 'pending',
                             'importo_originale' => $importoVal,
                             'importo_pagato'    => 0,
                             'importo_restante'  => $importoVal,
@@ -215,6 +221,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                                 'rata_id'       => $rata->id
                             ],
                         ],
+                        'tipo' => EventoTipo::SCADENZA_RATA_CONDOMINO,
                     ]);
 
                     $eventoUser->anagrafiche()->attach($anagraficaId);
@@ -227,7 +234,7 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
         Log::info("Listener: Eventi creati con successo.");
     }
 
-    private function deleteEvents($pianoRate, $user)
+    private function deleteEvents(PianoRate $pianoRate, User $user)
     {
         Log::info("Cancellazione eventi...");
         Evento::whereJsonContains('meta->context->piano_rate_id', $pianoRate->id)->delete();

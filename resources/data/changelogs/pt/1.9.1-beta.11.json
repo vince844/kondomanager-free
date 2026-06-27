@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Relatório de Repartição por Tabela × Sujeito: Introduzido o documento de repartição mais detalhado da suite de impressão. A partir do plano de prestações, o botão 'Repartição por Tabela' gera um PDF horizontal (A4 até 5 tabelas, A3 além disso) que mostra para cada fração e cada sujeito (Proprietário, Inquilino, Usufrutuário, Nua Propriedade, Comodatário) a quota milésima e o valor repartido em cada tabela configurada no plano de contas. Inclui cabeçalho premium com indicadores resumo, barra de totais por tipo de sujeito com percentagens, cor de destaque por papel em cada linha, coluna de percentagem sobre o total e referência à deliberação e ata. Nenhuma migração necessária.",
+        "Alinhamento do Layout das Páginas de Tabelas: As páginas TabelleNew, TabelleEdit e QuoteList foram redesenhadas para seguir o design system do gestionale. Cada página apresenta agora o componente PageHeaderGuide com guias contextuais, formulários organizados em secções Card com borda tracejada e botões de ação no fundo da página com tipografia em maiúsculas.",
+        "Lista de Tabelas — Coluna Denominação Enriquecida: A coluna Denominação na lista de tabelas milésimas apresenta agora um layout rico com ícone colorido, título, notas e chamada para ação 'Gerir Quotas →'. Ao clicar no nome da tabela, acede diretamente à gestão dos milésimos sem necessitar do menu de contexto.",
+        "Correção: Resolvido um bug de condição de corrida no modal de edição de subcontas em que a percentagem do proprietário era sempre reposta a 100% ao reabrir a mesma subconta, ignorando o valor guardado legitimamente (ex: 0% para despesas totalmente a cargo do inquilino).",
+        "Correção: Corrigidos erros TypeScript em TabelleEdit (TS2740) e QuoteList (TS7053, TS2345) relacionados com a ligação das opções dos selects e com a indexação dinâmica dos erros do formulário."
+    ]
+}

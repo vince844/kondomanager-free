@@ -161,36 +161,56 @@ pagamenti_fornitori
 ├── id                           BIGINT UNSIGNED AUTO_INCREMENT
 ├── uuid                         CHAR(36) UNIQUE NOT NULL    -- ID pubblico (privacy/export/PSD2/webhook)
 ├── scrittura_contabile_id       BIGINT UNSIGNED FK UNIQUE  -- 1:1 vincolante
+├── condominio_id                BIGINT UNSIGNED FK          -- denormalizzato per scoping query
 ├── fornitore_id                 BIGINT UNSIGNED FK
 ├── conto_corrente_id            BIGINT UNSIGNED FK → conti_contabili (banca/cassa)
 ├── 
-├── data_pagamento               DATE NOT NULL
-├── metodo_pagamento             VARCHAR(50) NOT NULL    -- cast MetodoPagamento::class
-├── iban_destinatario            VARCHAR(34) NULL        -- snapshot dalla fattura
-├── causale_bonifico             TEXT                    -- auto-generata, modificabile
-├── riferimento_bancario         VARCHAR(50) NULL        -- CRO/TRN bonifico
+├── -- Importi in centesimi (snapshot immutabile del momento del pagamento)
+├── importo_lordo                BIGINT NOT NULL             -- imponibile + IVA non detraibile
+├── importo_ritenuta             BIGINT DEFAULT 0            -- ritenuta d'acconto (versata via F24)
+├── importo_netto                BIGINT NOT NULL             -- lordo - ritenuta = bonificato
+├── importo_commissione          BIGINT DEFAULT 0            -- commissioni bancarie
 ├── 
-├── -- Snapshot anagrafica fornitore (audit fiscale storico)
-├── fornitore_snapshot           JSON NOT NULL           -- {ragione_sociale,piva,cf,iban,indirizzo}
+├── metodo_pagamento             VARCHAR(50) NOT NULL    -- cast MetodoPagamento::class
+├── data_pagamento               DATE NOT NULL
+├── data_valuta                  DATE NULL               -- data valuta banca (può differire)
+├── iban_beneficiario            VARCHAR(34) NULL        -- snapshot IBAN fornitore
+├── causale_bonifico             TEXT NULL                -- auto-generata, modificabile
+├── riferimento_bancario         VARCHAR(50) NULL        -- CRO/TRN bonifico
 ├── 
 ├── -- Bonifico Parlante (detrazioni fiscali)
 ├── bonifico_parlante            BOOLEAN DEFAULT false
 ├── tipo_detrazione              VARCHAR(50) NULL        -- cast TipoDetrazione::class
-├── beneficiari_detrazione       JSON NULL               -- {schema_version, metodo, tabella_base, beneficiari[...], motivo_override}
 ├── 
-├── importo_commissioni          BIGINT DEFAULT 0        -- centesimi
-├── 
-├── -- Storno
+├── -- Storno (pattern self-referential)
 ├── stato                        VARCHAR(50) DEFAULT 'confermato'  -- cast StatoPagamentoFornitore::class
-├── scrittura_storno_id          BIGINT UNSIGNED NULL FK → scritture_contabili
+├── pagamento_padre_id           BIGINT UNSIGNED NULL FK → pagamenti_fornitori (self-ref)
 ├── motivo_storno                TEXT NULL
+├── storno_cross_esercizio       BOOLEAN DEFAULT FALSE
+├── esercizio_storno_id          BIGINT UNSIGNED NULL FK → esercizi
 ├── 
-├── -- Audit
+├── -- Idempotenza
+├── idempotency_key              CHAR(36) NULL UNIQUE    -- previene doppi inserimenti
+├── 
+├── -- Snapshot e audit
+├── fornitore_snapshot           JSON NULL               -- {schema_version,ragione_sociale,piva,cf,iban,...}
+├── beneficiari_detrazione       JSON NULL               -- condòmini con diritto a detrazione fiscale
 ├── user_id                      BIGINT UNSIGNED FK → users
 ├── created_at, updated_at
 ├── INDEX(fornitore_id, data_pagamento)
 └── INDEX(stato)
 ```
+
+**Note architetturali sugli importi separati:**
+- `importo_lordo`, `importo_ritenuta`, `importo_netto` sono dati intrinseci al momento del pagamento, immutabili
+- Necessari in v1.9.1 per: Bonifico Parlante, Distinta Pagamento, calcolo F24 ritenuta proporzionale
+- `importo_netto = importo_lordo - importo_ritenuta` è il valore effettivamente bonificato
+
+**Pattern storno (self-referential `pagamento_padre_id`):**
+- Lo storno crea un NUOVO record con `pagamento_padre_id` → pagamento originale
+- Il record originale viene aggiornato: `stato = 'stornato'`, `motivo_storno = '...'`
+- Entrambi mantengono il proprio `scrittura_contabile_id` (1:1)
+- Navigazione: `$pagamento->storno()` via HasOne, `$storno->padre()` via BelongsTo
 
 ### 4.2bis Estensioni alla tabella `scritture_contabili`
 
@@ -382,29 +402,47 @@ Da qui in avanti l'enum vive in PHP, il DB è agnostico, gli ALTER ENUM scompaio
 ```php
 class PagamentoFornitore extends Model
 {
+    protected $table = 'pagamenti_fornitori';
+    protected $guarded = ['id'];
+
     protected $casts = [
-        'data_pagamento' => 'date',
-        'bonifico_parlante' => 'boolean',
+        'data_pagamento'         => 'date',
+        'data_valuta'            => 'date',
+        'metodo_pagamento'       => MetodoPagamento::class,
+        'stato'                  => StatoPagamentoFornitore::class,
+        'tipo_detrazione'        => TipoDetrazione::class,
+        'bonifico_parlante'      => 'boolean',
+        'storno_cross_esercizio' => 'boolean',
+        'fornitore_snapshot'     => 'array',
         'beneficiari_detrazione' => 'array',
-        'importo_commissioni' => 'integer',
+        'importo_lordo'          => 'integer',
+        'importo_ritenuta'       => 'integer',
+        'importo_netto'          => 'integer',
+        'importo_commissione'    => 'integer',
     ];
 
-    // Relazioni
-    public function scrittura()       => belongsTo(ScritturaContabile::class);
-    public function scritturaStorno() => belongsTo(ScritturaContabile::class, 'scrittura_storno_id');
+    // Relazioni core
+    public function scrittura()       => belongsTo(ScritturaContabile::class, 'scrittura_contabile_id');
+    public function condominio()      => belongsTo(Condominio::class);
     public function fornitore()       => belongsTo(Fornitore::class);
     public function contoCorrente()   => belongsTo(ContoContabile::class, 'conto_corrente_id');
     public function user()            => belongsTo(User::class);
     public function documenti()       => morphMany(Documento::class, 'documentable');
     
-    // Fatture toccate (attraverso pivot)
+    // Storno (self-referential)
+    public function padre()           => belongsTo(PagamentoFornitore::class, 'pagamento_padre_id');
+    public function storno()          => hasOne(PagamentoFornitore::class, 'pagamento_padre_id');
+    public function esercizioStorno() => belongsTo(Esercizio::class, 'esercizio_storno_id');
+    
+    // Fatture toccate (delegate via scrittura → pivot)
     public function fatture()
     {
         return $this->scrittura->fatture(); // delegato
     }
     
     // Scope
-    public function scopeConfermati($q) => $q->where('stato', 'confermato');
+    public function scopeConfermati($q) => $q->where('stato', StatoPagamentoFornitore::CONFERMATO);
+    public function scopeStornati($q)   => $q->where('stato', StatoPagamentoFornitore::STORNATO);
 }
 ```
 
@@ -506,7 +544,7 @@ class PagamentoFornitoreService
     'conto_corrente_id' => 33,
     'data_pagamento' => '2026-05-10',
     'metodo_pagamento' => 'bonifico',
-    'iban_destinatario' => 'IT60X0542811101000000123456',
+    'iban_beneficiario' => 'IT60X0542811101000000123456',
     'allocazioni' => [
         ['fattura_id' => 42, 'tipo' => 'pagamento', 'importo_allocato_cents' => 80000],
         ['fattura_id' => 42, 'tipo' => 'compensazione', 'importo_allocato_cents' => 20000],
@@ -679,7 +717,7 @@ DB::transaction(function () use ($data) {
         'conto_corrente_id'      => $data['conto_corrente_id'],
         'data_pagamento'         => $data['data_pagamento'],
         'metodo_pagamento'       => MetodoPagamento::from($data['metodo_pagamento']),
-        'iban_destinatario'      => $data['iban_destinatario'] ?? null,
+        'iban_beneficiario'      => $data['iban_beneficiario'] ?? null,
         'causale_bonifico'       => $data['causale_bonifico'] 
             ?? $this->generaCausaleBonifico(/* ... */),
         
@@ -702,7 +740,7 @@ DB::transaction(function () use ($data) {
             ? TipoDetrazione::from($data['tipo_detrazione']) 
             : null,
         'beneficiari_detrazione' => $data['beneficiari_detrazione'] ?? null,
-        'importo_commissioni'    => $data['importo_commissioni_cents'] ?? 0,
+        'importo_commissione'    => $data['importo_commissioni_cents'] ?? 0,
         'stato'                  => StatoPagamentoFornitore::CONFERMATO,
         'user_id'                => auth()->id(),
     ]);
@@ -870,16 +908,36 @@ try {
             ]);
         }
 
-        // 7. AGGIORNA PAGAMENTO ORIGINALE
-        $pagamento->update([
-            'stato'                  => StatoPagamentoFornitore::STORNATO,
-            'scrittura_storno_id'    => $scritturaStorno->id,
+        // 7. CREA RECORD STORNO (self-referential → pagamento_padre_id)
+        $pagamentoStorno = PagamentoFornitore::create([
+            'uuid'                   => Str::uuid()->toString(),
+            'scrittura_contabile_id' => $scritturaStorno->id,
+            'condominio_id'          => $pagamento->condominio_id,
+            'fornitore_id'           => $pagamento->fornitore_id,
+            'conto_corrente_id'      => $pagamento->conto_corrente_id,
+            'importo_lordo'          => $pagamento->importo_lordo,
+            'importo_ritenuta'       => $pagamento->importo_ritenuta,
+            'importo_netto'          => $pagamento->importo_netto,
+            'importo_commissione'    => $pagamento->importo_commissione,
+            'metodo_pagamento'       => $pagamento->metodo_pagamento,
+            'data_pagamento'         => now()->toDateString(),
+            'iban_beneficiario'      => $pagamento->iban_beneficiario,
+            'stato'                  => StatoPagamentoFornitore::CONFERMATO,
+            'pagamento_padre_id'     => $pagamento->id,  // ← self-ref al padre
             'motivo_storno'          => $motivo,
             'storno_cross_esercizio' => $crossEsercizio,
-            'esercizio_storno_id'    => $esercizioTarget->id,
+            'esercizio_storno_id'    => $crossEsercizio ? $esercizioTarget->id : null,
+            'fornitore_snapshot'     => $pagamento->fornitore_snapshot,
+            'user_id'                => auth()->id(),
         ]);
 
-        // 8. INCREMENT versione_allocazioni + RICALCOLA STATO FATTURE
+        // 8. MARCA PAGAMENTO ORIGINALE COME STORNATO
+        $pagamento->update([
+            'stato'        => StatoPagamentoFornitore::STORNATO,
+            'motivo_storno' => $motivo,
+        ]);
+
+        // 9. INCREMENT versione_allocazioni + RICALCOLA STATO FATTURE
         FatturaPassiva::whereIn('id', $pagamento->fatture->pluck('id'))
             ->increment('versione_allocazioni');
         
@@ -887,7 +945,7 @@ try {
             $this->ricalcolaStatoFattura($f);  // robusto (non lancia eccezioni)
         }
 
-        // 9. EVENTI
+        // 10. EVENTI
         event(new PagamentoStornato($pagamento, $motivo, $crossEsercizio));
 
         return $pagamento->fresh();
@@ -898,13 +956,12 @@ try {
 }
 ```
 
-**Modifiche schema per supportare cross-esercizio:**
+**Pattern storno self-referential (già incluso nello schema 4.2):**
+- Il record di storno ha `pagamento_padre_id = ID_originale`
+- Il record originale viene marcato `stato = 'stornato'`
+- Navigazione: `$pagamento->storno` (HasOne), `$storno->padre` (BelongsTo)
 
-```sql
-pagamenti_fornitori (aggiungere)
-├── storno_cross_esercizio   BOOLEAN DEFAULT FALSE
-└── esercizio_storno_id      BIGINT UNSIGNED NULL FK → esercizi
-```
+**Cross-esercizio:** le colonne `storno_cross_esercizio` e `esercizio_storno_id` sono già nello schema base (sez. 4.2).
 
 **Perché Variante B1 (riapertura debito) e non B2 (sopravvenienze pure):**
 
@@ -1332,7 +1389,7 @@ public function rules(): array
         'conto_corrente_id' => ['required', 'exists:conti_contabili,id'],
         'data_pagamento' => ['required', 'date', 'before_or_equal:today'],
         'metodo_pagamento' => ['required', Rule::in(['bonifico','contanti','assegno','rid_sdd','altro'])],
-        'iban_destinatario' => ['nullable', 'required_if:metodo_pagamento,bonifico', 'string', 'max:34'],
+        'iban_beneficiario' => ['nullable', 'required_if:metodo_pagamento,bonifico', 'string', 'max:34'],
         
         'allocazioni' => ['required', 'array', 'min:1'],
         'allocazioni.*.fattura_id' => ['required', 'exists:fatture_passive,id'],
@@ -1381,7 +1438,7 @@ Implementate dentro `validaInput()` perché coinvolgono coerenza cross-field:
 
 6. **Capienza conto**: se `verificaCapienza()['ok'] === false` e nessun flag `allow_overdraft` → `InsufficientFundsException`
 
-7. **IBAN discrepanza** (Sentinella Anti-Frode): se `iban_destinatario` ≠ `fornitore.iban` corrente → `IbanDiscrepanzaException` (bypass con flag `iban_confermato_manualmente: true`)
+7. **IBAN discrepanza** (Sentinella Anti-Frode): se `iban_beneficiario` ≠ `fornitore.iban` corrente → `IbanDiscrepanzaException` (bypass con flag `iban_confermato_manualmente: true`)
 
 8. **Duplicato recente** (scoring-based, non blocco grossolano): il detector calcola un *risk score* su base segnali, non blocca semplicemente "stessa fattura entro 7 giorni" (che genererebbe falsi positivi su pagamenti parziali successivi legittimi).
 
@@ -1714,7 +1771,7 @@ Approccio: usare `faker` per generare input randomici, ripetere ciascun test 50-
 
 ---
 
-## Appendice — Roadmap di contesto
+## Appendice A — Roadmap di contesto
 
 - **v1.9.1** (questo documento) — Pagamento Fatture MVP
 - **v1.9.2** — Pagamento Fatture Avanzato (acconti, anticipi admin, assegni, abbuoni)
@@ -1722,6 +1779,150 @@ Approccio: usare `faker` per generare input randomici, ripetere ciascun test 50-
 - **v1.11** — Recupero Crediti + motore riparto unificato
 - **v1.12** — DNA Fiscale Fornitore (Reverse Charge, Split Payment, ritenute, DURC)
 - **v1.16** — Treasury & Cash Flow (riconciliazione bancaria, RID/SDD passivi)
+
+---
+
+## Appendice B — Verifica allineamento Partita Doppia
+
+> Audit eseguito il 2026-05-20 contro il codebase v1.9.1-dev.
+> Verifica che il modulo Pagamento Fatture sia coerente con il sistema di contabilità in partita doppia esistente.
+
+### B.1 Piano dei Conti — Conti di sistema disponibili
+
+Il `CondominioService.ensureDefaultConti()` crea tutti i conti necessari per v1.9.1:
+
+| Ruolo | Codice | Tipo | Categoria | Usato per pagamenti |
+|-------|--------|------|-----------|---------------------|
+| `debiti_fornitori` | 2201 | passivo | debiti | ✅ DARE (chiusura debito) |
+| `spese_bancarie` | 6003 | costo | costi | ✅ DARE (commissioni) |
+| `debiti_erario_ritenute` | 2202 | passivo | debiti | ✅ DARE (chiusura ritenuta al pagamento F24) |
+| `cassa` | 1001 | attivo | liquidità | ⚠️ Solo contanti — per banca serve la `Cassa` con `tipo=banca` |
+| `iva_acquisti` | 1201 | attivo | crediti | No (v1.12 Reverse Charge) |
+| `iva_vendite` | 2203 | passivo | debiti | No (v1.12 Reverse Charge) |
+
+Tutti i conti necessari per `registraPagamento` sono presenti. ✅
+
+### B.2 Ciclo completo — Registrazione Fattura → Pagamento → F24
+
+#### Step 1: Registrazione fattura (FatturaPassivaService — già funzionante)
+
+Esempio: Fattura 1.000€ + IVA 220€ = 1.220€ totale, ritenuta 4% su imponibile = 40€, netto 1.180€
+
+```
+DARE  Costi per Servizi (6001)    1.220 €   ← costo nel CE
+AVERE Debiti v/Fornitori (2201)   1.180 €   ← netto a pagare
+AVERE Debiti v/Erario (2202)         40 €   ← ritenuta trattenuta
+                                  ─────────
+                           Σ DARE = 1.220
+                          Σ AVERE = 1.220  ✅ Quadra
+```
+
+Pivot: `fattura_scrittura` → `tipo = 'competenza'`, `importo_allocato = 1.220`
+
+#### Step 2: Pagamento fornitore (PagamentoFornitoreService — da implementare)
+
+L'admin paga 1.180€ al fornitore + 5€ commissione:
+
+```
+DARE  Debiti v/Fornitori (2201)   1.180 €   ← chiude il debito
+DARE  Spese Bancarie (6003)           5 €   ← costo commissione
+AVERE Banca C/C (cassa tipo=banca) 1.185 €  ← uscita effettiva
+                                  ─────────
+                           Σ DARE = 1.185
+                          Σ AVERE = 1.185  ✅ Quadra
+```
+
+Pivot: `fattura_scrittura` → `tipo = 'pagamento'`, `importo_allocato = 1.180`
+
+#### Step 3: Pagamento F24 ritenuta (futuro evento SyncF24WithPagamento)
+
+```
+DARE  Debiti v/Erario (2202)         40 €   ← chiude il debito verso erario
+AVERE Banca C/C                      40 €   ← uscita per F24
+                                  ─────────
+                           Σ DARE = 40
+                          Σ AVERE = 40  ✅ Quadra
+```
+
+### B.3 Netting (Fattura + Nota Credito)
+
+```
+Esempio: FT 1.000€ + NC 200€ → bonifico 800€
+
+DARE  Debiti v/Fornitori  1.000 €   ← chiude debito fattura
+AVERE Banca                 800 €   ← cash out reale
+AVERE Debiti v/Fornitori    200 €   ← consuma il credito dalla NC
+
+Σ DARE = 1.000
+Σ AVERE = 1.000  ✅ Quadra
+```
+
+Il Debiti v/Fornitori appare sia in DARE (1.000) che in AVERE (200). Effetto netto: riduzione debito di 800€ = uscita di cassa. ✅
+
+### B.4 Storno — Scrittura inversa
+
+```
+Storno del pagamento 1.180€ + 5€ commissioni:
+
+DARE  Banca C/C             1.185 €   ← rientro cassa
+AVERE Debiti v/Fornitori     1.180 €   ← riapre il debito
+AVERE Spese Bancarie             5 €   ← storno costo commissioni
+
+Σ DARE = 1.185
+Σ AVERE = 1.185  ✅ Quadra
+```
+
+Pivot storno: `tipo = 'pagamento'`, `importo_allocato = -1.180` (negativo, annulla l'originale)
+
+### B.5 Punto critico: `cassa_id` nelle righe scritture
+
+**Stato attuale:** il codice esistente (`StoreIncassoRateAction`, `FatturaPassivaController`) popola **sempre** `cassa_id` nelle righe che toccano i conti di liquidità:
+
+```php
+// StoreIncassoRateAction.php — pattern esistente
+$scritturaIncasso->righe()->create([
+    'conto_contabile_id' => $cassa->conto_contabile_id,
+    'cassa_id'           => $cassa->id,           // ← sempre valorizzato
+    'tipo_riga'          => 'dare',
+    'importo'            => $importoCentesimi,
+]);
+```
+
+La `Cassa` calcola il saldo aggregando le righe tramite `conto_contabile_id` (non `cassa_id`), quindi **funzionalmente il saldo è corretto** anche senza `cassa_id`. Tuttavia, il `cassa_id` serve per:
+1. Consistenza di pattern con tutto il codice esistente
+2. `EstrattoContoAnagraficaController` che filtra `whereNull('cassa_id')` per escludere movimenti bancari
+3. Future riconciliazione bancaria (v1.16) dove `cassa_id` identifica il conto fisico
+
+**Fix da applicare in `registraPagamento` (Fase 2):**
+
+```php
+// Trovare la Cassa associata al conto contabile selezionato
+$cassa = Cassa::where('conto_contabile_id', $data['conto_corrente_id'])->first();
+
+$scrittura->righe()->create([
+    'conto_contabile_id' => $data['conto_corrente_id'],
+    'cassa_id'           => $cassa?->id,  // coerenza con incassi
+    'tipo_riga'          => 'avere',
+    'importo'            => $uscitaCassa,
+]);
+```
+
+### B.6 DoubleEntryValidator
+
+Il sistema ha già `DoubleEntryValidator::validateOrFail()` in `app/Services/Gestionale/DoubleEntryValidator.php`, usato da `FatturaPassivaService`. Il service `PagamentoFornitoreService` deve riusare lo stesso validatore dopo la creazione delle righe, prima di procedere con le operazioni pivot.
+
+### B.7 Matrice di allineamento
+
+| Area | Stato | Note |
+|------|-------|------|
+| Piano dei Conti (ruoli di sistema) | ✅ | Tutti i conti necessari presenti in `ensureDefaultConti()` |
+| Struttura `righe_scritture` | ✅ | DARE/AVERE, importo centesimi, FK conto_contabile |
+| Quadratura pagamento semplice | ✅ | DARE debiti + spese = AVERE banca |
+| Quadratura netting FT+NC | ✅ | Debiti in DARE e AVERE, differenza = cash |
+| Quadratura storno | ✅ | Scrittura inversa, pivot negativo |
+| DoubleEntryValidator | ✅ | Già presente, da riusare |
+| `cassa_id` nelle righe | ⚠️ | La guida non lo popola — **da aggiungere nel service** |
+| Convenzione `importo` testata | ✅ | = uscita cassa (documentato in sez. 7.5) |
 
 ---
 

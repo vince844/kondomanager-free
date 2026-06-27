@@ -1,7 +1,7 @@
 [![Read in English](https://img.shields.io/badge/Read_in-English-red.svg)](README.en.md)
 [![Leggi in Italiano](https://img.shields.io/badge/Leggi_in-Italiano-green.svg)](README.md)
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
-[![Generic badge](https://img.shields.io/badge/Version-1.8.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![Generic badge](https://img.shields.io/badge/Version-1.9.1-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 
 # KondoManager - Software Gratuito e de Código Aberto para Gestão de Condomínios
@@ -52,7 +52,7 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 
 - Sistema de atualização automática a partir do painel de administrador
 - Gestão de cadastros de condomínios e fornecedores do condomínio
-- Gestão de reportes de avarias do condomínio
+- Gestão de reportes de avarias com módulo de chat/comentários integrado
 - Quadro de avisos digital do condomínio para comunicações
 - Arquivo de documentos e categorias do condomínio
 - Agenda de prazos com gestão de recorrências
@@ -76,6 +76,20 @@ Pode visualizar uma demonstração do projeto no seguinte endereço:
 - Emissão inteligente de prestações
 - Extrato de conta do cadastro
 - Caixa de entrada inteligente para prazos interativos na agenda
+- Módulo de pagamento de faturas de fornecedores com transferências em massa, estornos e Ledger imutável
+- Widget Treasury Guardian para análise preditiva de liquidez a 30 dias
+- Mecanismo em cascata dinâmico (Inquilino → Usufrutuário → Proprietário) em conformidade com o Código Civil
+- Gestão inteligente de descobertos documentados para unidades vazias
+
+### Suíte de Documentos e Relatórios PDF
+
+- Mecanismo de renderização PDF 100% nativo, sem dependências externas
+- Personalização de documentos com upload da assinatura do administrador e notas de rodapé legais
+- **Guia de Orçamento / Plano de Contas:** impressão completa de capítulos, subcontas e valores orçamentados
+- **Repartição de Despesas:** documento que ilustra a repartição do plano de contas nas tabelas de frações ideais
+- **Repartição de Orçamento por Tabela (Prestações):** documento detalhado (A4/A3) cruzando imóveis, sujeitos (proprietário, inquilino, etc.) e tabelas de frações ideais
+- **Cronogramas de Prestações:** agregação dinâmica por Condómino ou Imóvel
+- **Guias de Pagamento a Fornecedores:** resumo de valores e detalhes para transferências bancárias
 
 ---
 
@@ -101,7 +115,7 @@ Para utilizadores menos experientes ou para instalações rápidas em alojamento
 3. Abra o navegador no endereço: `https://seusite.com/index.php`.
 4. Siga o procedimento guiado no ecrã.
 
-Para mais detalhes, visite o [guia oficial de instalação](https://www.kondomanager.com/docs/installation.html) ou o nosso [canal YouTube](https://www.youtube.com/@Kondomanager)
+Para mais detalhes, visite o [guia oficial de instalação](https://kondomanager.com/docs/installation.html) ou o nosso [canal YouTube](https://www.youtube.com/@Kondomanager)
 
 ### 2. Atualização Automática a partir do Painel de Administrador
 
@@ -127,9 +141,9 @@ Certifique-se de usar o caminho absoluto para o executável PHP v8.2+, por exemp
 
 No exemplo anterior, substitua "ea-php99" pela versão PHP atribuída ao domínio que deseja utilizar. Verifique no MultiPHP Manager a versão PHP efetivamente atribuída a um domínio.
 
-### 3. Atualização da Versão 1.7.0 para 1.8.0
+### 3. Atualização da Versão 1.9.0 para 1.9.1
 
-As atualizações automáticas estão disponíveis a partir da versão 1.8.0, portanto, se ainda estiver a utilizar a versão 1.7.0 e quiser atualizar, deve seguir os seguintes passos:
+As atualizações automáticas estão disponíveis a partir da versão 1.9.0, portanto, se ainda estiver a utilizar a versão 1.9.0 e quiser atualizar, deve seguir os seguintes passos:
 
 1. Certifique-se de ter uma cópia de segurança da `base de dados` e dos ficheiros da pasta `storage`
 2. Descarregue o [ficheiro de atualização](https://kondomanager.short.gy/km-installer) do site oficial do Kondomanager
@@ -291,5 +305,9 @@ Este projeto é lançado sob a licença [AGPL-3.0](https://github.com/vince844/k
 - [k3ntinhu](https://github.com/k3ntinhu) - Pela sua valiosa contribuição na configuração de contentores Docker e pela comunidade portuguesa
 - [Stefano B](https://github.com/borghiste) - Por ter reportado e corrigido um erro de segurança
 - Todos os contribuidores e programadores da comunidade de código aberto.
+
+### Apoiadores do Patreon:
+- **[Fabio Lembo Luscari]** — obrigado pelo seu apoio e por acreditar no projeto!
+- **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — obrigado pelo seu apoio e por acreditar no projeto!
 
 ---

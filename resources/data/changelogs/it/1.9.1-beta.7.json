@@ -1,0 +1,24 @@
+{
+    "features": [
+        "Chiarezza Visiva nei Pagamenti Stornati: Migliorata la distinzione visiva tra pagamenti originali (annullati) e operazioni di storno (compensazioni) nella lista pagamenti, evitando ambiguità.",
+        "Filtros Rapidi sulle Card Statistiche: Le card di riepilogo finanziario nella scheda pagamenti sono ora cliccabili, permettendo di filtrare istantaneamente la tabella per ritenute d'acconto o operazioni stornate.",
+        "Flusso di Registrazione Ottimizzato: Dopo aver registrato un nuovo pagamento, la schermata di successo reindirizza ora correttamente alla lista dei pagamenti effettuati invece che alle fatture, ottimizzando il flusso di lavoro.",
+        "Allineamento Globale Interfaccia (UI): Il design system interattivo delle card statistiche è stato esteso in modo uniforme alle liste Fatture Passive e Incassi Rate, introducendo filtri rapidi e transizioni visive coerenti su tutto il ciclo passivo e attivo.",
+        "Miglioramenti Interfaccia (UI/UX) nei Documenti Contabili: Risolti i problemi di sovrapposizione del testo in note lunghe e IBAN nella pagina di dettaglio, integrando la visualizzazione responsiva dell'Audit Trail per le approvazioni legali.",
+        "Infrastruttura Documentale PDF Nativa: Aggiunta la funzionalità di generazione e download del PDF della Distinta di Pagamento Fornitore, basata su template nativi.",
+        "Refactoring PSR-4 Eccezioni: Completato il refactoring architetturale delle eccezioni di sistema per rispettare integralmente gli standard PSR-4.",
+        "Visualizzazione Dettaglio Incasso Rate: Aggiunta la vista in sola lettura per esplorare analiticamente la composizione di un incasso rata, evidenziando se pagato tramite versamento o compensazione del credito.",
+        "Ottimizzazione Tooltip Tabelle: Sostituiti i tooltip testuali nativi con HoverCard interattivi (Shadcn) per una lettura immediata e ricca del dettaglio importi nelle tabelle Fatture Passive e Pagamenti Fornitori.",
+        "Stampe Scadenziario e Riparti (PDF): Rilasciata la suite di stampe ufficiali per i piani rate (Scadenziario / Prospetto Rate) e per il piano dei conti (Distinta Preventivo e Ripartizione Spese). I layout includono intestazioni con riferimenti legali e design printer-friendly.",
+        "Scelta Multipla Aggregazione PDF: L'amministratore ora può decidere dinamicamente se esportare il Prospetto Rate raggruppandolo Per Condòmino, Per Unità Immobiliare, o combinando entrambe le viste in un unico documento PDF multi-pagina.",
+        "Test di Integrità e Quadratura PDF: Integrata una test suite completa dedicata ai controller di stampa che garantisce incroci perfetti: ogni importo mostrato sui PDF deve combaciare rigorosamente con i totali presenti a database, bloccando preventivamente eventuali disallineamenti di stampa.",
+        "Fix Sicurezza URL Firmati: Sostituito l'indirizzo email con l'ID utente nei link crittografati per inviti e reset password, risolvendo definitivamente un errore 403 causato dalla decodifica automatica del carattere '@' da parte di browser e client email.",
+        "Miglioramento UX Scadenza Link: Estesa la validità dei link per l'accettazione degli inviti e per la creazione della password da 60 minuti a 3 giorni, offrendo più tempo agli utenti per completare la registrazione.",
+        "Ottimizzazione UI Piano dei Conti: Raggruppati i pulsanti di stampa (Distinta Base e Ripartizione) all'interno di un unico menu a tendina 'Stampe' per preservare lo spazio e mantenere il layout pulito su schermi piccoli.",
+        "Allineamento UI Documenti: Uniformato il design delle pagine di caricamento e modifica documenti (DocumentiNew, DocumentiEdit) allo standard del gestionale (AppLayout, PageHeaderGuide).",
+        "Ottimizzazione Tabelle Documenti: Risolto un RangeError sul formato date in ambiente di produzione, aggiunta la traduzione mancante dei badge di visibilità (Pubblico/Privato) e rinominata la colonna 'Data' in 'Caricato il' per maggiore chiarezza.",
+        "Fix Bug Visualizzazione Allegati Fatture: Corretto un problema nella vista Dettaglio Fattura (FatturaShow) che impediva la corretta visualizzazione del nome e della dimensione dei documenti allegati a causa di proprietà disallineate col modello dati.",
+        "Fix Bug Upload Allegati Nuove Fatture: Risolto un bug critico in fase di registrazione nuova fattura che causava la perdita del documento allegato durante l'invio del modulo a causa di una conversione JSON che distruggeva l'oggetto File.",
+        "Fix Autocompilazione Pagamenti da Inbox Operativa: Risolto un problema per cui cliccando 'Risolvi' su un task di pagamento dalla Inbox Operativa il modulo di pagamento non veniva precompilato. Il sistema ora deduce automaticamente il fornitore a partire dalla fattura passata."
+    ]
+}

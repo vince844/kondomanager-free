@@ -8,7 +8,7 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import Heading from '@/components/Heading.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Separator } from '@/components/ui/separator';
@@ -17,10 +17,11 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
 import PianoRateSpaccatoSheet from '@/components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue';
-import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel } from "lucide-vue-next";
+import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer, ShieldCheck, CalendarDays, TableProperties } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
+import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from "@/components/ui/button";
@@ -65,8 +66,9 @@ const openSpaccato = (item: any) => {
 
 const switchState = ref(props.pianoRate.stato === 'approvato');
 const isProcessingStatus = ref(false);
-const page = usePage<{ flash: { message?: Flash } }>();
+const page = usePage<{ flash: { message?: Flash, scoperti_warning?: ScopertoCents[] } }>();
 const flashMessage = computed(() => page.props.flash.message);
+const scopertiWarning = computed<ScopertoCents[] | null>(() => page.props.flash?.scoperti_warning ?? null);
 
 const localeCode = computed(() => {
     const raw = String((page.props as any).locale ?? 'pt').toLowerCase();
@@ -80,7 +82,10 @@ const approvalDatePickerLocale = computed(() => {
     return 'pt'; // Default per portoghese
 });
 
-const approvalDateFormat = computed(() => (localeCode.value === 'pt' ? 'dd/MM/yyyy' : 'yyyy-MM-dd'));
+const approvalDateFormat = computed(() => {
+    if (localeCode.value === 'it' || localeCode.value === 'pt') return 'dd/MM/yyyy';
+    return 'yyyy-MM-dd';
+});
 const showApprovazioneModal = ref(false);
 
 const formApprovazione = ref({
@@ -369,7 +374,10 @@ const confirmRecalculate = () => {
     isRecalculateAlertOpen.value = true;
 };
 
+const isProcessingRecalculate = ref(false);
+
 const executeRecalculate = () => {
+    isProcessingRecalculate.value = true;
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id,
@@ -379,6 +387,32 @@ const executeRecalculate = () => {
         onSuccess: () => {
             isRecalculateAlertOpen.value = false;
             showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato.', false);
+        },
+        onFinish: () => {
+            isProcessingRecalculate.value = false;
+        }
+    });
+};
+
+const handleProcedi = (nota: string) => {
+    isProcessingRecalculate.value = true;
+    router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
+        condominio: props.condominio.id, 
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id 
+    }), { 
+        orphan_ids: selectedOrphanIds.value,
+        accetta_scoperti: true,
+        nota_scoperti: nota
+    }, { 
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            isRecalculateAlertOpen.value = false;
+            showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con motivazione per le quote scoperte.', false);
+        },
+        onFinish: () => {
+            isProcessingRecalculate.value = false;
         }
     });
 };
@@ -511,6 +545,27 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Dettaglio', href: '#' },
 ]);
 
+const pageGuides = [
+  {
+    title: 'Verifica Dati',
+    description: 'Controlla che i capitoli di spesa siano allineati ai preventivi prima di procedere. Se noti discrepanze, usa la funzione "Ricalcola".',
+    icon: CalendarDays,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: 'Approvazione',
+    description: 'Passa il piano in stato Approvato registrando i dati della delibera. Questa operazione "congela" le quote e ti permette di emettere le rate in contabilità.',
+    icon: ShieldCheck,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: 'Stato Incassi',
+    description: 'Monitora costantemente il saldo netto. Le rate emesse possono essere incassate dalla sezione Prima Nota o importando i movimenti bancari.',
+    icon: PieChart,
+    colorVariant: 'amber' as const
+  }
+];
+
 interface DettaglioStats {
     spesa: number;
     saldo: number;
@@ -552,35 +607,76 @@ const executePublishSilent = () => {
     });
 };
 
+const printScadenziario = (modalita: 'anagrafica' | 'immobile' | 'entrambi') => {
+    const url = route('admin.gestionale.esercizi.piani-rate.print-scadenziario', {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    }) + '?modalita=' + modalita;
+    window.open(url, '_blank');
+}
+
+const printRipartoTabelle = () => {
+    const url = route('admin.gestionale.esercizi.piani-rate.print-riparto-tabelle', {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    });
+    window.open(url, '_blank');
+}
+
 </script>
 
 <template>   
 
   <Head title="Dettaglio piano rate" />
 
-  <GestionaleLayout :breadcrumbs="breadcrumbs">
-    <div class="px-4 py-6">
-      <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white">
+  <GestionaleLayout>
+    <div class="px-6 py-8 space-y-3">
+      
+      <PageHeaderGuide
+        :page-title="`${props.pianoRate.nome}`"
+        page-subtitle="Situazione aggiornata delle rate e dei pagamenti."
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        :condominio="props.condominio"
+        :esercizio="props.esercizio"
+        :backUrl="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })"
+        backText="Torna alla lista"
+      >
+      </PageHeaderGuide>
+
+      <div class="w-full">
         <section class="w-full space-y-6">
 
-          <Heading 
-            :title="`Piano rate: ${props.pianoRate.nome}`" 
-            description="Situazione aggiornata delle rate e dei pagamenti."
-          />
 
-          <div 
-              v-if="props.pianoRate.stato === 'approvato' && props.pianoRate.data_delibera_assemblea" 
-              class="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[11px] font-medium shadow-sm animate-in fade-in zoom-in duration-300"
-          >
-              <Gavel class="w-3.5 h-3.5" />
-              <span>Delibera del <strong>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</strong></span>
-              <span v-if="props.pianoRate.numero_verbale" class="pl-2 ml-1 border-l border-emerald-300 font-bold uppercase tracking-wider">
-                  {{ props.pianoRate.numero_verbale }}
-              </span>
-          </div>
 
           <div v-if="flashMessage" class="animate-in fade-in slide-in-from-top-4 duration-300">
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
+
+          <ScopertoWarning
+              v-if="scopertiWarning"
+              :scoperti="scopertiWarning"
+              :processing="isProcessingRecalculate"
+              @procedi="handleProcedi"
+              class="mb-4"
+          />
+
+          
+          <div
+              v-if="pianoRate.nota_scoperti"
+              class="rounded-md border border-slate-200 bg-slate-50 dark:border-slate-700
+                     dark:bg-slate-900/30 px-4 py-3 text-xs text-slate-600 dark:text-slate-400"
+          >
+              <span class="font-medium">Questo piano rate contiene quote non assegnate.</span>
+              <span class="ml-1">Motivazione registrata: "{{ pianoRate.nota_scoperti }}"</span>
+              <span v-if="!isRecalculateBlocked" class="block mt-1 text-blue-600 dark:text-blue-400">
+                  → Censisci le anagrafiche mancanti, poi usa il tasto <strong>Ricalcola</strong> per includere le unità nel piano.
+              </span>
+              <span v-else class="block mt-1 text-amber-600 dark:text-amber-500">
+                  → Le rate sono già emesse. La quota di questa unità dovrà essere recuperata con un addebito manuale o in sede di conguaglio di fine anno.
+              </span>
           </div>
 
           <div v-if="!switchState" class="rounded-md bg-amber-50 p-4 border border-amber-200 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
@@ -612,8 +708,8 @@ const executePublishSilent = () => {
 
                 <div class="w-px h-5 bg-gray-300 hidden sm:block shrink-0"></div>
 
-                <!-- PULSANTI — scroll orizzontale su mobile -->
-                <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5">
+                <!-- PULSANTI -->
+                <div class="flex items-center gap-2 overflow-x-auto w-full scrollbar-none pb-0.5 whitespace-nowrap">
 
                     <!-- SWITCH APPROVATO/BOZZA -->
                     <HoverCard :open-delay="200">
@@ -650,7 +746,7 @@ const executePublishSilent = () => {
                                     </span>
                                 </button>
                                 <Label 
-                                    class="text-sm font-medium whitespace-nowrap cursor-pointer select-none"
+                                    class="hidden 2xl:inline-block text-sm font-medium whitespace-nowrap cursor-pointer select-none"
                                     :class="{'opacity-50 cursor-not-allowed': isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))}"
                                     @click="!(isProcessingStatus || (switchState && props.ratePure.some(r => r.is_emessa))) && toggleStatoPiano(!switchState)"
                                 >
@@ -689,6 +785,37 @@ const executePublishSilent = () => {
                         </HoverCardContent>
                     </HoverCard>
 
+                    <!-- BADGE DELIBERA -->
+                    <HoverCard v-if="switchState && props.pianoRate.data_delibera_assemblea">
+                        <HoverCardTrigger as-child>
+                            <div class="inline-flex items-center gap-2 px-2.5 h-8 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md text-[11px] font-medium shadow-sm shrink-0 transition-all duration-300 cursor-help">
+                                <Gavel class="w-3.5 h-3.5" />
+                                <span>Delibera <strong>{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</strong></span>
+                            </div>
+                        </HoverCardTrigger>
+                        <HoverCardContent class="w-80 z-50">
+                            <div class="space-y-3">
+                                <h4 class="text-sm font-semibold flex items-center gap-2 text-emerald-800">
+                                    <Gavel class="w-4 h-4 text-emerald-600" /> Dettagli approvazione
+                                </h4>
+                                <div class="text-sm space-y-2 text-slate-600">
+                                    <div v-if="props.pianoRate.numero_verbale" class="flex border-b border-slate-100 pb-1 gap-1">
+                                        <span class="text-slate-500">N. verbale:</span>
+                                        <span class="font-bold">{{ props.pianoRate.numero_verbale }}</span>
+                                    </div>
+                                    <div class="flex border-b border-slate-100 pb-1 gap-1">
+                                        <span class="text-slate-500">Data delibera:</span>
+                                        <span class="font-bold">{{ toItalian(props.pianoRate.data_delibera_assemblea) }}</span>
+                                    </div>
+                                    <div v-if="props.pianoRate.nota_approvazione" class="pt-1">
+                                        <span class="text-slate-500 block text-xs mb-1">Note o riferimenti:</span>
+                                        <p class="text-xs bg-slate-50 p-2 rounded border border-slate-100 text-slate-700">{{ props.pianoRate.nota_approvazione }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </HoverCardContent>
+                    </HoverCard>
+
                     <div class="w-px h-5 bg-gray-300 shrink-0"></div>
 
                     <!-- SELEZIONA TUTTE -->
@@ -699,9 +826,9 @@ const executePublishSilent = () => {
                                 class="h-8 px-3 border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 bg-white shrink-0"
                                 @click="toggleSelectAll(!isAllSelected)"
                             >
-                                <CheckCircle2 v-if="!isAllSelected" class="w-4 h-4 sm:mr-2" />
-                                <XCircle v-else class="w-4 h-4 sm:mr-2" />
-                                <span class="hidden sm:inline">{{ isAllSelected ? 'Deseleziona' : 'Seleziona tutte' }}</span>
+                                <CheckCircle2 v-if="!isAllSelected" class="w-4 h-4 2xl:mr-2" />
+                                <XCircle v-else class="w-4 h-4 2xl:mr-2" />
+                                <span class="hidden 2xl:inline">{{ isAllSelected ? 'Deseleziona' : 'Seleziona tutte' }}</span>
                             </Button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
@@ -728,9 +855,9 @@ const executePublishSilent = () => {
                                     :class="{'pointer-events-none': selectedRateIds.length === 0}"
                                     @click="openEmissionModal"
                                 >
-                                    <Wallet class="w-4 h-4 sm:mr-2" />
-                                    <span class="hidden sm:inline">Emetti ({{ selectedRateIds.length }})</span>
-                                    <span class="sm:hidden text-xs">{{ selectedRateIds.length }}</span>
+                                    <Wallet class="w-4 h-4 2xl:mr-2" />
+                                    <span class="hidden 2xl:inline">Emetti ({{ selectedRateIds.length }})</span>
+                                    <span class="2xl:hidden text-xs">{{ selectedRateIds.length }}</span>
                                 </Button>
                             </span>
                         </HoverCardTrigger>
@@ -773,8 +900,8 @@ const executePublishSilent = () => {
                     <HoverCard v-if="props.has_unpublished_rates">
                         <HoverCardTrigger as-child>
                             <Button variant="outline" class="h-8 px-3 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-sm transition-all shrink-0" @click="executePublishSilent">
-                                <BellRing class="w-4 h-4 sm:mr-2" />
-                                <span class="hidden sm:inline">Pubblica nascoste</span>
+                                <BellRing class="w-4 h-4 2xl:mr-2" />
+                                <span class="hidden 2xl:inline">Pubblica nascoste</span>
                             </Button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
@@ -790,6 +917,64 @@ const executePublishSilent = () => {
 
                     <div class="w-px h-5 bg-gray-300 shrink-0"></div>
 
+                    <!-- STAMPE PDF -->
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                                <Printer class="w-4 h-4" />
+                                <span class="hidden 2xl:inline">Stampe PDF</span>
+                                <ChevronDown class="w-3 h-3 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-56 shadow-xl rounded-xl border-slate-100 p-1.5">
+                            <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                                Scadenziario Rate
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem 
+                                @click="printScadenziario('anagrafica')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Per condòmino</div>
+                                    <div class="text-[10px] text-slate-400">1 riga per intestatario</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                                @click="printScadenziario('immobile')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Per unità immobiliare</div>
+                                    <div class="text-[10px] text-slate-400">1 riga per immobile</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                                @click="printScadenziario('entrambi')"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Entrambi i prospetti</div>
+                                    <div class="text-[10px] text-slate-400">Condòmino + immobile in un PDF</div>
+                                </div>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold mt-1">
+                                Riparti e Bilancio
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem 
+                                @click="printRipartoTabelle()"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-emerald-50 focus:bg-emerald-50 text-slate-700">
+                                <TableProperties class="w-3.5 h-3.5 text-emerald-600" />
+                                <div>
+                                    <div class="text-xs font-medium">Riparto per Tabella</div>
+                                    <div class="text-[10px] text-slate-400">Spese raggruppate per tabella</div>
+                                </div>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
                     <!-- RICALCOLA / SINCRONIZZA -->
                     <HoverCard>
                         <HoverCardTrigger as-child>
@@ -803,7 +988,7 @@ const executePublishSilent = () => {
                                         : 'border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary'"
                                 >
                                     <RotateCw class="w-4 h-4" :class="{'text-amber-600': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}" />
-                                    <span class="hidden sm:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}">
+                                    <span class="hidden 2xl:inline" :class="{'text-amber-700 font-bold': (copertura?.scoperto_count ?? 0) > 0 && !isRecalculateBlocked}">
                                         {{ (copertura?.scoperto_count ?? 0) > 0 ? 'Sincronizza' : 'Ricalcola' }}
                                     </span>
                                 </Button>
@@ -833,8 +1018,8 @@ const executePublishSilent = () => {
                     <HoverCard>
                         <HoverCardTrigger as-child>
                             <Button variant="outline" class="h-8 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white shrink-0" @click="isSpostaSpesaOpen = true">
-                                <ArrowRightLeft class="w-4 h-4 sm:mr-2" />
-                                <span class="hidden sm:inline">Sposta spesa</span>
+                                <ArrowRightLeft class="w-4 h-4 2xl:mr-2" />
+                                <span class="hidden 2xl:inline">Sposta spesa</span>
                             </Button>
                         </HoverCardTrigger>
                         <HoverCardContent class="w-80 z-50">
@@ -850,16 +1035,6 @@ const executePublishSilent = () => {
                         </HoverCardContent>
                     </HoverCard>
 
-                    <div class="w-px h-5 bg-gray-300 shrink-0"></div>
-
-                    <!-- LISTA -->
-                    <Link 
-                        :href="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })" 
-                        class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-white h-8 px-3 hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap shrink-0"
-                    >
-                        <List class="w-4 h-4 sm:mr-1" />
-                        <span class="hidden sm:inline">Lista</span>
-                    </Link>
 
                 </div>
             </div>

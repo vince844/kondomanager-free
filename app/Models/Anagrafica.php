@@ -88,7 +88,7 @@ class Anagrafica extends Model
             ->withTimestamps();
     }
 
-    public function saldi()
+    public function saldi(): HasMany
     {
         return $this->hasMany(Saldo::class, 'anagrafica_id');
     }
@@ -114,6 +114,27 @@ class Anagrafica extends Model
     {
         // Punta alla tabella 'righe_scritture' dove anagrafica_id è uguale all'ID di questa anagrafica
         return $this->hasMany(RigaScrittura::class, 'anagrafica_id');
+    }
+
+    /**
+     * Route notifications for the mail channel.
+     *
+     * @param  \Illuminate\Notifications\Notification  $notification
+     * @return array|string
+     */
+    public function routeNotificationForMail($notification)
+    {
+        $emails = [];
+        
+        if (!empty($this->email)) {
+            $emails[] = $this->email;
+        }
+        
+        if (!empty($this->email_secondaria)) {
+            $emails[] = $this->email_secondaria;
+        }
+        
+        return $emails;
     }
 
 

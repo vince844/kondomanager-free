@@ -52,7 +52,7 @@ import { Head, Link } from '@inertiajs/vue3';
       <main class="flex w-full max-w-[335px] flex-col-reverse overflow-hidden rounded-lg lg:max-w-4xl lg:flex-row">
         
         <!-- Testo a sinistra -->
-        <div class="flex-1 rounded-bl-lg rounded-br-lg bg-white p-6 pb-12 text-[13px] leading-[20px] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] dark:bg-[#161615] dark:text-[#EDEDEC] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d] lg:rounded-br-none lg:rounded-tl-lg lg:p-20">
+        <div class="flex-1 rounded-bl-lg rounded-br-lg bg-white p-6 pb-12 text-[13px] leading-[20px] shadow-[inset_0px_0px_0px_1px_rgba(26,26,0,0.16)] dark:bg-[#161615] dark:text-[#EDEDEC] dark:shadow-[inset_0px_0px_0px_1px_#fffaed2d] lg:rounded-br-none lg:rounded-tl-lg lg:p-10">
           <h1 class="mb-1 font-medium text-lg">Per iniziare</h1>
           <p class="mb-4 text-[#706f6c] dark:text-[#A1A09A]">
             KondoManager è un software di gestione condominiale open source gratuito, progettato per semplificare l'amministrazione dei condomini.
@@ -91,6 +91,34 @@ import { Head, Link } from '@inertiajs/vue3';
               Accedi al portale
             </Link>
           </div>
+
+          <!-- Mini-footer interno alla card -->
+          <div class="mt-8 border-t border-[#1914001a] pt-5 text-xs text-[#706f6c] dark:border-[#3E3E3A] dark:text-[#A1A09A]">
+            <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+              <span>
+                Powered by 
+                <a 
+                  href="https://www.kondomanager.com" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  class="font-semibold transition-colors hover:text-[#1b1b18] hover:underline dark:hover:text-[#EDEDEC]"
+                >
+                  KondoManager
+                </a> 
+              </span>
+              
+              <!-- Il separatore visibile solo su schermi più grandi -->
+              <span class="hidden sm:inline-block">—</span>
+              
+              <a 
+                href="https://github.com/KondoManager" 
+                target="_blank" 
+                class="transition-colors hover:text-[#1b1b18] hover:underline dark:hover:text-[#EDEDEC]"
+              >
+                Software Open Source (AGPL-3.0)
+              </a>
+            </div>
+          </div>
         </div>
 
         <!-- Logo a destra (o sopra su mobile) -->
@@ -108,4 +136,5 @@ import { Head, Link } from '@inertiajs/vue3';
 
     <div class="h-14.5 hidden lg:block"></div>
   </div>
+
 </template>

@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Smart Payment Error Handling: introduced 7 new intelligent modals (wide max-w-xl design) for proactive domain exception management during supplier payments, providing clear communication and guiding the administrator on how to proceed (e.g., Anti-Money Laundering Cash Limits, Closed Fiscal Year, Inconsistent Allocations).",
+        "Responsibility Audit Trail and Legal Protection: overriding critical blocks (such as bank account overdrafts or assembly ratification) now strictly requires an explicit motivation (minimum 10 characters) which is permanently persisted in the audit log to protect the professional.",
+         "Fixed a critical bug in Cash capacity calculation: the system now correctly includes the initial balance along with current journal entries, eliminating false positives in the insufficient funds modals."
+    ]
+}
+

@@ -19,7 +19,7 @@ export const columns: ColumnDef<Evento>[] = [
     header: ({ column }) => h(DataTableColumnHeader, { column, title: 'Data scadenza' }),
     cell: ({ row }) => {
       // No color, just the date
-      return h('div', { class: 'font-normal text-gray-800' }, row.original.occurs_at);
+      return h('div', { class: 'font-normal text-gray-800 dark:text-slate-200' }, row.original.occurs_at);
     },
   },
   {
@@ -77,7 +77,7 @@ export const columns: ColumnDef<Evento>[] = [
           ])
         : null;
 
-      return h('div', { class: 'flex items-center gap-2 font-medium text-gray-900' }, [
+      return h('div', { class: 'flex items-center gap-2 font-medium text-gray-900 dark:text-slate-200' }, [
         h(IconComponent, { class: `w-4 h-4 ${iconColor}` }),
         shieldIcon,
         h('span', {}, row.getValue('title')),
@@ -144,7 +144,7 @@ export const columns: ColumnDef<Evento>[] = [
             key: 'more-condomini',
             title: `+${remainingCount} altri condomini`,
             class: `
-              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
+              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 dark:text-slate-200 text-xs font-bold
               flex items-center justify-center border border-white shadow
             `,
             style: `
@@ -197,7 +197,7 @@ export const columns: ColumnDef<Evento>[] = [
           key: `${item.nome}-${index}`,
           title: tooltip,
           class: `
-            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 text-xs font-bold
+            absolute w-8 h-8 rounded-full bg-gray-200 text-gray-800 dark:text-slate-200 text-xs font-bold
             flex items-center justify-center border border-white shadow
           `,
           style: `
@@ -215,7 +215,7 @@ export const columns: ColumnDef<Evento>[] = [
             key: 'more-anagrafiche',
             title: `+${remainingCount} altre persone`,
             class: `
-              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 text-xs font-bold
+              absolute w-8 h-8 rounded-full bg-gray-300 text-gray-800 dark:text-slate-200 text-xs font-bold
               flex items-center justify-center border border-white shadow
             `,
             style: `

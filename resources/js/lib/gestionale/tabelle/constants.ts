@@ -1,4 +1,4 @@
-import { Percent, Flame, Droplets } from 'lucide-vue-next';
+import { Percent, Flame, Droplets, ArrowUpDown, Layers, Sun, Star, MoreHorizontal } from 'lucide-vue-next';
 import type { StatusType } from '@/types/gestionale/tabelle';
 
 export const typeConstants: StatusType[] = [
@@ -11,8 +11,8 @@ export const typeConstants: StatusType[] = [
   { 
     value: 'ascensore', 
     label: 'Ascensore',
-    icon: Percent, 
-    colorClass: 'text-green-500 bg-transparent'
+    icon: ArrowUpDown, 
+    colorClass: 'text-indigo-500 bg-transparent'
   },
   { 
     value: 'riscaldamento', 
@@ -29,20 +29,25 @@ export const typeConstants: StatusType[] = [
   { 
     value: 'scale', 
     label: 'Scale',
-    icon: Percent, 
-    colorClass: 'text-green-500 bg-transparent'
+    icon: Layers, 
+    colorClass: 'text-purple-500 bg-transparent'
+  },
+  { 
+    value: 'lastrico', 
+    label: 'Lastrico',
+    icon: Sun, 
+    colorClass: 'text-amber-500 bg-transparent'
   },
   { 
     value: 'speciale', 
     label: 'Speciale',
-    icon: Percent, 
-    colorClass: 'text-green-500 bg-transparent'
+    icon: Star, 
+    colorClass: 'text-pink-500 bg-transparent'
   },
   { 
     value: 'altro', 
     label: 'Altro',
-    icon: Percent, 
-    colorClass: 'text-green-500 bg-transparent'
+    icon: MoreHorizontal, 
+    colorClass: 'text-slate-500 bg-transparent'
   }
 ];
-  

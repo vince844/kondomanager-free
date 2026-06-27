@@ -1,7 +1,8 @@
 <script setup lang="ts">
 
 import { computed, ref, watch, onMounted } from 'vue';
-import { Head, useForm, Link, router } from '@inertiajs/vue3';
+import { Head, useForm, Link, router, usePage } from '@inertiajs/vue3';
+import ScopertoWarning, { type ScopertoCents } from '@/components/gestionale/pianiRate/ScopertoWarning.vue';
 import axios from 'axios';
 import vSelect from 'vue-select';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
@@ -145,6 +146,11 @@ const weekdays = [
   { label: 'Domenica', value: 'SU' }
 ]
 
+// Legge il flash dalla sessione Inertia
+const scopertiWarning = computed<ScopertoCents[] | null>(
+    () => usePage<{ flash: { scoperti_warning?: ScopertoCents[] } }>().props.flash?.scoperti_warning ?? null
+)
+
 const form = useForm({
   tipo: 'ordinario',
   origine: '',
@@ -165,7 +171,9 @@ const form = useForm({
   capitoli_config: [] as any[],
   fatture_config: [] as any[], 
   tipo_autorizzazione: '',
-  motivazione_autorizzazione: ''
+  motivazione_autorizzazione: '',
+  accetta_scoperti: false as boolean,
+  nota_scoperti: '' as string,
 })
 
 // --- LETTURA DEEP-LINK DA DASHBOARD ---
@@ -418,6 +426,12 @@ const totaleStraordinarioSelezionatoFormatted = computed(() => {
   return euro(tot);
 });
 
+const handleProcedi = (nota: string) => {
+  form.accetta_scoperti = true
+  form.nota_scoperti    = nota
+  submit()
+}
+
 const submit = () => {
   // 1. Prepariamo i capitoli solo se siamo in ordinario
   form.capitoli_config = form.tipo === 'ordinario' 
@@ -442,6 +456,7 @@ const submit = () => {
     { condominio: props.condominio.id, esercizio: props.esercizio.id }
   )), {
     preserveScroll: true,
+    preserveState: true,
     onSuccess: () => {
       router.flushAll()
     },
@@ -970,6 +985,14 @@ const submit = () => {
 
           </CardContent>
         </Card>
+
+        <ScopertoWarning
+            v-if="scopertiWarning"
+            :scoperti="scopertiWarning"
+            :processing="form.processing"
+            @procedi="handleProcedi"
+            class="mb-4"
+        />
 
         <div class="flex items-center justify-end gap-3 pt-2">
           <Link

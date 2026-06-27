@@ -4,8 +4,11 @@ namespace App\Services\Gestionale;
 
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
+use App\Enums\StatoPagamentoFattura;
 use App\Events\Gestionale\FatturaRegistrata;
+use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Models\CategoriaDocumento;
+use App\Models\Evento;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
@@ -15,6 +18,8 @@ use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class FatturaPassivaService
 {
@@ -141,7 +146,7 @@ class FatturaPassivaService
                 'importo_ritenuta'   => $ritenuta * $moltiplicatore,
                 'totale_documento'   => $totaleDoc * $moltiplicatore,
                 'netto_a_pagare'     => $netto,
-                'stato_pagamento'    => 'aperta',
+                'stato_pagamento'    => StatoPagamentoFattura::APERTA,
                 'stato_approvazione' => $statoApprovazione,
                 'modalita_pagamento' => $data['modalita_pagamento'],
                 'iban_fornitore'     => $data['iban_fornitore'] ?? null,
@@ -431,6 +436,319 @@ class FatturaPassivaService
             event(new FatturaRegistrata($fattura, Auth::id() ?? 1));
 
             return $fattura;
+        });
+    }
+
+    /**
+     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     *
+     * Permessa solo per fatture ordinarie completamente aperte (nessun pagamento,
+     * nessuna sopravvenienza, non pregresse, non in sforo pendente, esercizio aperto).
+     * Per tutti gli altri casi è obbligatorio lo storno.
+     *
+     * Effetti collaterali:
+     *  - Se `data_scadenza` cambia → aggiorna start_time del task Inbox `pagamento_fornitore`
+     *  - Il numero_protocollo è immutabile (identificativo contabile)
+     *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
+     *
+     * @param FatturaPassiva $fattura La fattura da aggiornare (con relazioni caricate).
+     * @param array $data I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
+     * @param UploadedFile|null $file Nuovo allegato (opzionale). Se presente sostituisce il precedente.
+     * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
+     */
+    public function aggiornaFattura(FatturaPassiva $fattura, array $data, ?UploadedFile $file = null): FatturaPassiva
+    {
+        // ── Guard composita ─────────────────────────────────────────────────
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            throw new FatturaModificaVietataException(
+                'La fattura ha già un pagamento registrato. Usa lo storno.'
+            );
+        }
+
+        if ($fattura->dati_extra['is_stornata'] ?? false) {
+            throw new FatturaModificaVietataException('Fattura già stornata: non modificabile.');
+        }
+
+        $statoEsercizio = DB::table('esercizi')->where('id', $fattura->esercizio_id)->value('stato');
+        if ($statoEsercizio === 'chiuso') {
+            throw new FatturaModificaVietataException(
+                'La fattura appartiene a un esercizio chiuso: usa lo storno.'
+            );
+        }
+
+        if ($fattura->is_pregresso) {
+            throw new FatturaModificaVietataException(
+                'Le fatture pregresse non sono modificabili direttamente: usa lo storno.'
+            );
+        }
+
+        if ($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists()) {
+            throw new FatturaModificaVietataException(
+                'La fattura ha coperture di sopravvenienza: usa lo storno.'
+            );
+        }
+
+        if ($fattura->stato_approvazione === 'sforo_motivato') {
+            throw new FatturaModificaVietataException(
+                'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.'
+            );
+        }
+
+        // Controllo piano rate (replica del controllo in destroy())
+        $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
+        if ($pivotPlan) {
+            $piano = \App\Models\Gestionale\PianoRate::find($pivotPlan->piano_rate_id);
+            if ($piano instanceof \App\Models\Gestionale\PianoRate) {
+                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))->exists();
+                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
+                if ($hasPagamenti || $hasEmissioni) {
+                    throw new FatturaModificaVietataException(
+                        'La fattura è in un piano straordinario con rate già emesse: usa lo storno.'
+                    );
+                }
+                $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
+                if ($stato === 'approvato') {
+                    throw new FatturaModificaVietataException(
+                        'La fattura è in un piano approvato: usa lo storno.'
+                    );
+                }
+            }
+        }
+
+        // ── Snapshot before (per audit trail e aggiornamento Inbox) ─────────
+        $dataScadenzaBefore = $fattura->data_scadenza?->format('Y-m-d');
+        $importoBefore      = $fattura->netto_a_pagare;
+
+        // ── Transazione atomica ──────────────────────────────────────────────
+        return DB::transaction(function () use ($fattura, $data, $file, $dataScadenzaBefore, $importoBefore) {
+
+            // 1. Pulizia scritture esistenti (identico a destroy())
+            $fattura->load('righe', 'documenti', 'scritture', 'coperture');
+            $scritture = $fattura->scritture;
+
+            $fattura->scritture()->detach();
+
+            foreach ($scritture as $scrittura) {
+                $scrittura->righe()->delete();
+                $scrittura->forceDelete();
+            }
+
+            // 2. Pulizia righe fattura
+            $fattura->righe()->delete();
+
+            // 3. Aggiorna testata fattura (campi modificabili — protocollo e fornitore sono immutabili)
+            $fattura->update([
+                'numero_documento'   => $data['numero_documento'],
+                'data_documento'     => $data['data_documento'],
+                'data_scadenza'      => $data['data_scadenza'],
+                'modalita_pagamento' => $data['modalita_pagamento'],
+                'iban_fornitore'     => $data['iban_fornitore'] ?? null,
+                'conto_corrente_id'  => $data['conto_corrente_id'] ?? $fattura->conto_corrente_id,
+            ]);
+
+            // 4. Ricalcola imponibile, IVA e ritenuta dalle nuove righe
+            $fornitore      = Fornitore::with('referenti')->findOrFail($fattura->fornitore_id);
+            $isNotaCredito  = ($fattura->tipo_documento === 'nota_credito');
+            $moltiplicatore = $isNotaCredito ? -1 : 1;
+
+            $imponibileTotale = 0;
+            $ivaTotale        = 0;
+            $righeProcessate  = [];
+
+            foreach ($data['righe'] as $rigaInput) {
+                $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
+                $aliq    = (float) $rigaInput['aliquota_iva'];
+                $ivaRiga = (int) round(($impRiga * $aliq) / 100);
+
+                $imponibileTotale += $impRiga;
+                $ivaTotale        += $ivaRiga;
+
+                $contoIdRiga = $rigaInput['conto_id'] ?? null;
+                if (!empty($rigaInput['immobile_id'])) {
+                    $contoIdRiga = null;
+                }
+
+                $righeProcessate[] = [
+                    'descrizione'        => $rigaInput['descrizione'],
+                    'importo_imponibile' => $impRiga * $moltiplicatore,
+                    'aliquota_iva'       => $aliq,
+                    'importo_iva'        => $ivaRiga * $moltiplicatore,
+                    'conto_id'           => $contoIdRiga,
+                    'immobile_id'        => $rigaInput['immobile_id'] ?? null,
+                    'is_sopravvenienza'  => false, // bloccato a monte
+                ];
+            }
+
+            // Ritenuta
+            $ritenuta     = 0;
+            $datiRitenuta = null;
+            $applicaRitenuta = $fornitore->soggetto_ritenuta && ($data['applica_ritenuta'] ?? true);
+            if ($applicaRitenuta) {
+                $base     = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
+                $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
+                $datiRitenuta = [
+                    'imponibile_calcolo' => $base,
+                    'aliquota'           => $fornitore->perc_ritenuta,
+                    'codice_tributo'     => $fornitore->codice_tributo,
+                ];
+            }
+
+            $totaleDoc = $imponibileTotale + $ivaTotale;
+            $netto     = ($totaleDoc - $ritenuta) * $moltiplicatore;
+
+            // 5. Aggiorna importi sulla fattura
+            $datiExtra = $fattura->dati_extra ?? [];
+            $datiExtra['fiscal']['ritenuta_details'] = $datiRitenuta;
+
+            $fattura->update([
+                'importo_imponibile' => $imponibileTotale * $moltiplicatore,
+                'importo_iva'        => $ivaTotale * $moltiplicatore,
+                'importo_ritenuta'   => $ritenuta * $moltiplicatore,
+                'totale_documento'   => $totaleDoc * $moltiplicatore,
+                'netto_a_pagare'     => $netto,
+                'dati_extra'         => $datiExtra,
+            ]);
+
+            // 6. Ricrea righe
+            $fattura->righe()->createMany($righeProcessate);
+
+            // 7. Ricrea scrittura contabile con la stessa logica di registraFattura()
+            $contoDebiti = ContoContabile::where('condominio_id', $fattura->condominio_id)
+                ->where('ruolo', 'debiti_fornitori')
+                ->firstOrFail();
+
+            $contoCreditiCondomini = ContoContabile::where('condominio_id', $fattura->condominio_id)
+                ->where('ruolo', 'crediti_condomini')
+                ->firstOrFail();
+
+            $scrittura = ScritturaContabile::create([
+                'condominio_id'      => $fattura->condominio_id,
+                'esercizio_id'       => $fattura->esercizio_id,
+                'gestione_id'        => $data['gestione_id'] ?? $fattura->scritture()->withTrashed()->first()?->gestione_id,
+                'data_registrazione' => now(),
+                'data_competenza'    => $fattura->data_documento,
+                'numero_protocollo'  => $fattura->numero_protocollo, // immutabile
+                'causale'            => "Ft. {$fattura->numero_documento} - {$fornitore->ragione_sociale} [modifica]",
+                'tipo_movimento'     => 'fattura_acquisto',
+                'stato'              => 'registrata',
+            ]);
+
+            // Righe DARE
+            $anagraficaPrincipale = $fornitore->referenti()->first();
+
+            foreach ($righeProcessate as $riga) {
+                $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
+
+                if (!empty($riga['immobile_id'])) {
+                    $scrittura->righe()->create([
+                        'conto_contabile_id' => $contoCreditiCondomini->id,
+                        'tipo_riga'          => 'dare',
+                        'importo'            => $importoLordoRiga,
+                        'voce_spesa_id'      => null,
+                        'immobile_id'        => $riga['immobile_id'],
+                        'note'               => 'Anticipazione spesa ad personam (Art. 63)',
+                    ]);
+                } elseif (!empty($riga['conto_id'])) {
+                    $contoBudget = Conto::find($riga['conto_id']);
+                    if ($contoBudget && $contoBudget->conto_contabile_id) {
+                        $scrittura->righe()->create([
+                            'conto_contabile_id' => $contoBudget->conto_contabile_id,
+                            'tipo_riga'          => 'dare',
+                            'importo'            => $importoLordoRiga,
+                            'voce_spesa_id'      => $riga['conto_id'],
+                        ]);
+                    } else {
+                        throw new \Exception("Integrità compromessa: manca l'ancoraggio in Partita Doppia per il capitolo di spesa.");
+                    }
+                } else {
+                    throw new \Exception("Integrità compromessa: impossibile allocare la riga (nessun immobile e nessun conto associato).");
+                }
+            }
+
+            // Riga AVERE — Debito verso Fornitore
+            $scrittura->righe()->create([
+                'conto_contabile_id' => $contoDebiti->id,
+                'tipo_riga'          => 'avere',
+                'importo'            => abs($netto),
+                'anagrafica_id'      => $anagraficaPrincipale?->id,
+            ]);
+
+            // Riga AVERE — Debito verso Erario (se ritenuta)
+            if ($ritenuta > 0) {
+                $contoErario = ContoContabile::where('condominio_id', $fattura->condominio_id)
+                    ->where('ruolo', 'debiti_erario_ritenute')
+                    ->firstOrFail();
+
+                $scrittura->righe()->create([
+                    'conto_contabile_id' => $contoErario->id,
+                    'tipo_riga'          => 'avere',
+                    'importo'            => abs($ritenuta),
+                    'anagrafica_id'      => $anagraficaPrincipale?->id,
+                    'note'               => "Ritenuta d'acconto fattura fornitore",
+                ]);
+            }
+
+            // Inverti righe se nota di credito
+            if ($isNotaCredito) {
+                DB::table('righe_scritture')
+                    ->where('scrittura_id', $scrittura->id)
+                    ->update([
+                        'tipo_riga' => DB::raw("CASE WHEN tipo_riga = 'dare' THEN 'avere' ELSE 'dare' END"),
+                    ]);
+            }
+
+            // 8. Double-Entry Validator
+            DoubleEntryValidator::validateOrFail($scrittura->id);
+
+            // 9. Attach pivot competenza
+            $fattura->scritture()->attach($scrittura->id, [
+                'importo_allocato' => abs($totaleDoc),
+                'tipo'             => 'competenza',
+            ]);
+
+            // 10. Gestione allegato: nuovo file → elimina vecchio → salva
+            if ($file) {
+                foreach ($fattura->documenti as $doc) {
+                    if (Storage::disk('local')->exists($doc->path)) {
+                        Storage::disk('local')->delete($doc->path);
+                    }
+                    $doc->delete();
+                }
+
+                $path = $file->storeAs('documenti/' . $fattura->condominio_id, $file->hashName(), 'local');
+                $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
+
+                $fattura->documenti()->create([
+                    'name'         => $file->getClientOriginalName(),
+                    'description'  => 'Fattura passiva n. ' . $fattura->numero_documento,
+                    'path'         => $path,
+                    'mime_type'    => $file->getMimeType(),
+                    'file_size'    => $file->getSize(),
+                    'created_by'   => Auth::id() ?? 1,
+                    'is_published' => false,
+                    'is_approved'  => true,
+                    'category_id'  => $categoriaFatture?->id,
+                ]);
+            }
+
+            // 11. Aggiorna task Inbox `pagamento_fornitore` se data_scadenza cambiata
+            $nuovaScadenza = $fattura->fresh()->data_scadenza;
+            if ($nuovaScadenza && $dataScadenzaBefore !== $nuovaScadenza->format('Y-m-d')) {
+                Evento::where('meta->context->fattura_id', $fattura->id)
+                    ->where('meta->type', 'pagamento_fornitore')
+                    ->where('is_completed', false)
+                    ->update(['start_time' => $nuovaScadenza->setTime(9, 0)]);
+            }
+
+            // 12. Audit trail
+            Log::info("FatturaPassiva #{$fattura->id} modificata da utente #" . (Auth::id() ?? 0), [
+                'netto_a_pagare_before' => $importoBefore,
+                'netto_a_pagare_after'  => $fattura->fresh()->netto_a_pagare,
+                'data_scadenza_before'  => $dataScadenzaBefore,
+                'data_scadenza_after'   => $nuovaScadenza?->format('Y-m-d'),
+            ]);
+
+            return $fattura->fresh();
         });
     }
 

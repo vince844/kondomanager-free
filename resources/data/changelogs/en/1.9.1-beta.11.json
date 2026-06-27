@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Apportionment Report by Table × Subject: Introduced the most detailed apportionment document in the print suite. From the payment plan, the 'Apportionment by Table' button generates a landscape PDF (A4 up to 5 tables, A3 beyond) showing for each unit and each subject (Owner, Tenant, Usufructuary, Bare Owner, Borrower) the millennial share and the apportioned amount for each table configured in the chart of accounts. Includes a premium header with summary pills, a breakdown bar by subject type with percentages, role color accent on each row, a percentage-of-total column, and deliberation/minutes reference. No migration required.",
+        "Layout Alignment for Table Pages: The TabelleNew, TabelleEdit and QuoteList pages have been redesigned to match the gestionale design system. Each page now features the PageHeaderGuide component with contextual guides, forms organized in dashed-border Card sections, and action buttons at the bottom with uppercase typography.",
+        "Table List — Enriched Name Column: The Denomination column in the millennial tables list now shows a rich layout with colored icon, title, notes and a 'Manage Shares →' call-to-action. Clicking the table name navigates directly to the share management page without going through the dropdown menu.",
+        "Fix: Resolved a race condition bug in the subconto editing modal that always reset the owner percentage to 100% when reopening the same subconto, ignoring the legitimately saved value (e.g. 0% for expenses entirely charged to the tenant).",
+        "Fix: Corrected TypeScript errors in TabelleEdit (TS2740) and QuoteList (TS7053, TS2345) related to select option binding and dynamic form error indexing."
+    ]
+}

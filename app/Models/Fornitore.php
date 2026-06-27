@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Builder;
 
 class Fornitore extends Model
 {
@@ -126,9 +127,20 @@ class Fornitore extends Model
     }
 
     /**
-     * Scope per filtrare i fornitori attivi.
+     * Relazione Polimorfica: Documenti associati al fornitore.
      */
-    public function scopeAttivi($query)
+    public function documenti(): MorphMany
+    {
+        return $this->morphMany(Documento::class, 'documentable');
+    }
+
+    /**
+     * Scope per filtrare i fornitori attivi.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeAttivi(Builder $query): Builder
     {
         return $query->where('stato', 'attivo');
     }

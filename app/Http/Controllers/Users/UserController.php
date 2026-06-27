@@ -10,7 +10,6 @@ use App\Http\Resources\PermissionResource;
 use App\Http\Resources\RoleResource;
 use App\Http\Resources\User\EditUserResource;
 use App\Http\Resources\User\IndexUserResource;
-use App\Http\Resources\User\UserResource;
 use App\Models\Anagrafica;
 use App\Models\User;
 use App\Notifications\NewUserEmailNotification;
@@ -71,7 +70,7 @@ class UserController extends Controller
             'name'     => ['sometimes', 'string', 'max:255'], 
         ]);
     
-        $users = User::query()
+        $users = User::with('anagrafica')
             ->when($validated['name'] ?? false, function ($query, $name) {
                 $query->where('name', 'like', "%{$name}%");
             })
@@ -108,9 +107,7 @@ class UserController extends Controller
         Gate::authorize('create', User::class);
 
         return Inertia::render('utenti/NuovoUtente',[
-          /*   'roles'       => RoleResource::collection(Role::all()), */
             'roles'       => RoleResource::collection(Role::with('permissions')->get()),
-            
             'permissions' => PermissionResource::collection(Permission::all()),
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
         ]);

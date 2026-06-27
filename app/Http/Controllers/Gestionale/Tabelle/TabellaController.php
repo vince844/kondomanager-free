@@ -35,6 +35,7 @@ class TabellaController extends Controller
         $tabelle = $condominio
             ->tabelle()
             ->with(['palazzina', 'scala'])
+            ->withCount(['quote', 'conti'])
             ->when($validated['nome'] ?? false, function ($query, $name) {
                 $query->where('nome', 'like', "%{$name}%");
             })
@@ -143,10 +144,7 @@ class TabellaController extends Controller
                 'exception' => $e
             ]);
 
-            return to_route('admin.gestionale.tabelle.quote.index', [
-                'condominio' => $condominio->id,
-                'tabella'    => $tabella->id,
-            ])->with(
+            return back()->with(
                 $this->flashError(__('gestionale.error_create_tabella'))
             );
         }
@@ -216,6 +214,12 @@ class TabellaController extends Controller
     public function destroy(Condominio $condominio, Tabella $tabella): RedirectResponse
     {
          try {
+
+            if ($tabella->conti()->exists()) {
+                return back()->with(
+                    $this->flashError("Impossibile eliminare: la tabella è associata ad una o più voci di spesa.")
+                );
+            }
 
             $tabella->delete();
 

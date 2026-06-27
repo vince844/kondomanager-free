@@ -37,13 +37,15 @@ return [
         'line_2'    => 'Este convite expirará dentro de três dias.',
     ],
 
-    // Nuovo utente creato dall'amministratore (NewUserEmailNotification)
+    // Novo usuário criado pelo administrador (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Bem-vindo ao :appName',
         'greeting'  => 'Olá :name,',
-        'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link seguinte para definir a sua palavra-passe.',
-        'action'    => 'Definir palavra-passe',
-        'line_2'    => 'Este link expirará em 60 minutos.',
+        'line_1'    => 'O administrador do condomínio criou o seu perfil. Clique no link a seguir para definir a sua senha.',
+        'action'    => 'Definir senha',
+        'line_2'    => 'Este link expirará em três dias.',
+        'password_already_set' => 'A sua senha já foi definida. Inicie sessão com as suas credenciais.',
+        'link_expired' => 'O link de convite expirou ou já não é válido. Contacte o administrador para receber um novo convite.',
     ],
 
     // Comunicação pendente de aprovação (ApproveComunicazioneNotification)
@@ -139,6 +141,36 @@ return [
         'priority'    => 'Prioridade',
         'status'      => 'Estado',
         'action'      => 'Ver ticket',
+    ],
+
+    // Novo comentário
+    'new_ticket_comment' => [
+        'subject'  => 'Novo comentário em: :entity',
+        'greeting' => 'Olá!',
+        'line_1'   => ':user deixou um novo comentário:',
+        'action'   => 'Ver a notificação',
+        'line_2'   => 'Está a receber este email porque está envolvido nesta notificação.',
+    ],
+
+    // Comentário aprovado
+    'approved_ticket_comment' => [
+        'subject' => 'O seu comentário foi aprovado',
+        'line_1'  => 'O seu comentário sobre :entity foi aprovado e publicado.',
+        'action'  => 'Ver a notificação',
+    ],
+
+    // Comentário pendente
+    'pending_ticket_comment' => [
+        'subject' => 'Novo comentário para aprovação em :entity',
+        'line_1'  => ':user escreveu um comentário em ":title" que requer aprovação.',
+        'line_2'  => 'Inicie sessão para aprovar ou rejeitar o comentário.',
+        'action'  => 'Ver a notificação',
+    ],
+
+    // Comentário eliminado
+    'deleted_ticket_comment' => [
+        'subject' => 'O seu comentário foi removido',
+        'line_1'  => 'O seu comentário sobre :entity foi removido ou ocultado por um administrador.',
     ],
 
     // Stringhe comuni a tutte le notifiche

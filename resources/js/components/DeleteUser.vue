@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import { trans } from 'laravel-vue-i18n';
 
 // Components
 import HeadingSmall from '@/components/HeadingSmall.vue';
@@ -44,39 +45,38 @@ const closeModal = () => {
 
 <template>
     <div class="space-y-6">
-        <HeadingSmall title="Elimina account" description="Elimina il tuo account e tutti i dati ad esso associati" />
+        <HeadingSmall :title="trans('settings.delete_user.title')" :description="trans('settings.delete_user.description')" />
         <div class="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10">
             <div class="relative space-y-0.5 text-red-600 dark:text-red-100">
-                <p class="font-medium">Attenzione</p>
-                <p class="text-sm">Per favore procedi con attenzione, questa azione non è reversibile.</p>
+                <p class="font-medium">{{ trans('settings.delete_user.warning_title') }}</p>
+                <p class="text-sm">{{ trans('settings.delete_user.warning_description') }}</p>
             </div>
             <Dialog>
                 <DialogTrigger as-child>
-                    <Button variant="destructive">Elimina account</Button>
+                    <Button variant="destructive">{{ trans('settings.delete_user.button') }}</Button>
                 </DialogTrigger>
                 <DialogContent>
                     <form class="space-y-6" @submit="deleteUser">
                         <DialogHeader class="space-y-3">
-                            <DialogTitle>Sei sicuro di volere eliminare il tuo account?</DialogTitle>
+                            <DialogTitle>{{ trans('settings.delete_user.confirm_title') }}</DialogTitle>
                             <DialogDescription>
-                                Una volta che il tuo account sarà eliminato, tutti i dati ad esso associati verranno anche eliminati permanentemente. 
-                                Per favore inserisci la tua passsword per confermare l'eliminazione permanente del tuo account.
+                                {{ trans('settings.delete_user.confirm_description') }}
                             </DialogDescription>
                         </DialogHeader>
 
                         <div class="grid gap-2">
-                            <Label for="password" class="sr-only">Password</Label>
-                            <Input id="password" type="password" name="password" ref="passwordInput" v-model="form.password" placeholder="Password" />
+                            <Label for="password" class="sr-only">{{ trans('settings.delete_user.password') }}</Label>
+                            <Input id="password" type="password" name="password" ref="passwordInput" v-model="form.password" :placeholder="trans('settings.delete_user.password_placeholder')" />
                             <InputError :message="form.errors.password" />
                         </div>
 
                         <DialogFooter class="gap-2">
                             <DialogClose as-child>
-                                <Button variant="secondary" @click="closeModal"> Cancella </Button>
+                                <Button variant="secondary" @click="closeModal"> {{ trans('settings.delete_user.cancel') }} </Button>
                             </DialogClose>
 
                             <Button variant="destructive" :disabled="form.processing">
-                                <button type="submit">Elimina account</button>
+                                <button type="submit">{{ trans('settings.delete_user.button') }}</button>
                             </Button>
                         </DialogFooter>
                     </form>

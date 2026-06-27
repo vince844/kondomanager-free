@@ -31,7 +31,7 @@ const topbarNavItems: LinkItem[] = [
   {
     type: 'link',
     icon: Wallet,
-    title: 'Situazione Debitoria',
+    title: 'Situazione debitoria',
     href:  generatePath('fornitori/:fornitore/situazione-debitoria', { fornitore: fornitore.value.id }),
   },
   {   

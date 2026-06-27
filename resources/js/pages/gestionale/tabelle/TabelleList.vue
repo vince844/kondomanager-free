@@ -1,14 +1,14 @@
 <script setup lang="ts">
 
 import { computed } from "vue";
-import { Head, usePage } from "@inertiajs/vue3";
+import { Head, usePage, Link } from "@inertiajs/vue3";
 import GestionaleLayout from "@/layouts/GestionaleLayout.vue";
 import DataTable from "@/components/gestionale/tabelle/DataTable.vue";
 import { getColumns } from "@/components/gestionale/tabelle/columns";
 import Alert from "@/components/Alert.vue";
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
-import { PieChart, Scale, TableProperties } from 'lucide-vue-next';
+import { PieChart, Scale, TableProperties, Plus } from 'lucide-vue-next';
 import type { Flash } from "@/types/flash";
 import type { Tabella } from "@/types/gestionale/tabelle";
 import type { Building } from "@/types/buildings";
@@ -21,7 +21,7 @@ const props = defineProps<{
   meta: PaginationMeta;
 }>();
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 
 const columns = computed(() => getColumns(props.condominio));
 

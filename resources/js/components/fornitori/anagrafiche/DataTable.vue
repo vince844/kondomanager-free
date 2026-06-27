@@ -4,11 +4,10 @@ import type { ColumnDef } from '@tanstack/vue-table'
 import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from '@/components/ui/table'
 import {FlexRender,getCoreRowModel,useVueTable } from '@tanstack/vue-table'
 import DataTableToolbar from '@/components/fornitori/anagrafiche/DataTableToolbar.vue'
-import type { Anagrafica } from '@/types/anagrafiche'
 
 const props = defineProps<{
-  columns: ColumnDef<Anagrafica, any>[],
-  data: Anagrafica[],
+  columns: ColumnDef<TData, TValue>[],
+  data: TData[],
 }>()
 
 const table = useVueTable({

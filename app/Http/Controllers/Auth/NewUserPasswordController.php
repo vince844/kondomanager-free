@@ -11,13 +11,22 @@ class NewUserPasswordController extends Controller
 {
     public function showResetForm(Request $request)
     {
-        // Validate signed URL
+        $user = User::findOrFail($request->query('id'));
+
+        // Valida la firma dell'URL per sicurezza
         if (!$request->hasValidSignature()) {
-            abort(403);
-        } 
+            return redirect()->route('login')
+                ->with('error', __('notifications.new_user_created.link_expired'));
+        }
+
+        // Se l'utente ha già una password impostata, il link è già stato usato.
+        if ($user->password) {
+            return redirect()->route('login')
+                ->with('status', __('notifications.new_user_created.password_already_set'));
+        }
 
         return inertia('auth/NewUserCreatePassword', [
-            'email' => $request->query('email'),
+            'email' => $user->email,
         ]);
     }
 

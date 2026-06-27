@@ -2,6 +2,7 @@
 
 namespace App\Listeners\Gestionale;
 
+use App\Enums\StatoPagamentoFattura;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\FatturaRegistrata;
 use App\Helpers\MoneyHelper;
@@ -52,14 +53,17 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                 'is_approved' => true,
                 'meta'        => [
                     'type'             => 'pagamento_fornitore',
-                    'requires_action'  => ($fattura->stato_pagamento !== 'pagata'),
-                    'is_completed'     => ($fattura->stato_pagamento === 'pagata'),
+                    'requires_action'  => ($fattura->stato_pagamento !== StatoPagamentoFattura::PAGATA),
+                    'is_completed'     => ($fattura->stato_pagamento === StatoPagamentoFattura::PAGATA),
                     'condominio_nome'  => $condominio->nome,
                     'importo'          => $fattura->netto_a_pagare,
                     'fornitore'        => $fornitore->ragione_sociale,
                     'numero_documento' => $fattura->numero_documento,
                     'titolo_azione'    => 'Registra pagamento',
-                    'action_url'       => $urlAzione,
+                    'action_url'       => route('admin.gestionale.pagamenti-fornitori.create', [
+                        'condominio' => $condominio->id,
+                        'fattura_id' => $fattura->id,
+                    ]),
                     'context'          => [
                         'fattura_id'   => $fattura->id,
                         'fornitore_id' => $fornitore->id,
@@ -213,47 +217,8 @@ class SyncScadenziarioWithFattura implements ShouldQueue
             }
         }
 
-        // --- EVENTO RITENUTA (solo se presente) ---
-        // Lo sposteremo nel futuro listener FatturaPagata che creeremo nel modulo Tesoreria (V 1.11), così il sistema genererà l'evento dell'F24 solo nel momento in cui c'è l'effettivo esborso finanziario
-     /*    if ($fattura->importo_ritenuta > 0) {
-            $scadenzaRitenuta = $fattura->data_documento->copy()
-                ->addMonth()
-                ->day(16)
-                ->setTime(9, 0);
-
-            if ($scadenzaRitenuta->isWeekend()) {
-                $scadenzaRitenuta->next('Monday')->setTime(9, 0);
-            }
-
-            Evento::updateOrCreate(
-                [
-                    'meta->context->fattura_id' => $fattura->id,
-                    'meta->type'                => 'versamento_ritenuta',
-                ],
-                [
-                    'title'       => "F24 Ritenuta - {$fornitore->ragione_sociale}",
-                    'start_time'  => $scadenzaRitenuta,
-                    'end_time'    => $scadenzaRitenuta->copy()->addHour(),
-                    'created_by'  => $userId,
-                    'description' => "Versare ritenuta Cod. {$fornitore->codice_tributo}.\nImporto: "
-                                     . number_format($fattura->importo_ritenuta / 100, 2, ',', '.') . ' €',
-                    'category_id' => $catAdmin->id,
-                    'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
-                    'is_approved' => true,
-                    'meta'        => [
-                        'type'            => 'versamento_ritenuta',
-                        'requires_action' => true,
-                        'condominio_nome' => $condominio->nome,
-                        'importo'         => $fattura->importo_ritenuta,
-                        'titolo_azione'   => 'Vedi F24',
-                        'action_url'      => $urlAzione,
-                        'context'         => [
-                            'fattura_id' => $fattura->id,
-                            'is_f24'     => true,
-                        ],
-                    ],
-                ]
-            )->condomini()->syncWithoutDetaching([$condominio->id]);
-        } */
+        // NOTA: il task F24/Ritenuta NON viene creato qui.
+        // La ritenuta matura fiscalmente al momento del PAGAMENTO, non della fattura.
+        // Il task viene creato da SyncF24WithPagamento listener su evento PagamentoRegistrato.
     }
 }

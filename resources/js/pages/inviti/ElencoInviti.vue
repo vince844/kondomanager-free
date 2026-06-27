@@ -7,6 +7,7 @@ import { Head, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Alert from "@/components/Alert.vue";
 import UtentiLayout from '@/layouts/utenti/Layout.vue';
+import { trans } from 'laravel-vue-i18n';
 import type { Invito } from '@/types/inviti';
 import type { Flash } from '@/types/flash';
 import type { BreadcrumbItem } from '@/types';
@@ -31,10 +32,14 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 <template>
     
-    <AppLayout :breadcrumbs="breadcrumbs">
-        <Head title="Elenco utenti registrati" />
+    <AppLayout :breadcrumbs="[]">
+        <Head :title="trans('users.header.list_invites_head')" />
 
-        <UtentiLayout>
+        <UtentiLayout
+            :page-title="trans('users.header.list_invites_head')"
+            :page-subtitle="trans('users.header.list_invites_description')"
+            :breadcrumbs="breadcrumbs"
+        >
 
             <div v-if="flashMessage" class="py-4">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />

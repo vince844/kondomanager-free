@@ -5,7 +5,7 @@ import DataTableColumnHeader from './DataTableColumnHeader.vue';
 import { usePermission } from "@/composables/permissions";
 import { Badge }  from '@/components/ui/badge';
 import { trans } from 'laravel-vue-i18n';
-import AnagraficheStack from '@/components/buildings/AnagraficheStack.vue';
+import AnagraficheStack from '@/components/AnagraficheStack.vue';
 import { Building2, ArrowRight } from 'lucide-vue-next'; 
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { Building } from '@/types/buildings';

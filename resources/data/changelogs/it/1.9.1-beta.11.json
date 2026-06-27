@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Stampa Riparto Bilancio Preventivo per Tabella × Soggetto: Introdotto il documento di riparto più dettagliato della suite stampe. Dal piano rate, il pulsante 'Riparto per Tabella' genera un PDF landscape (A4 fino a 5 tabelle, A3 oltre) che mostra per ogni unità e per ogni soggetto (Proprietario, Inquilino, Usufruttuario, Nuda Proprietà, Comodatario) la quota millesimale e l'importo ripartito su ciascuna tabella configurata nel piano dei conti. Include intestazione con pillole riepilogative, barra sommario per tipo soggetto con percentuali, colore per ruolo su ogni riga, colonna percentuale sul totale, riferimento delibera e verbale. Nessuna migrazione necessaria.",
+        "Allineamento Layout Pagine Tabelle: Le pagine TabelleNew, TabelleEdit e QuoteList sono state ridisegnate per aderire al design system del gestionale. Ogni pagina presenta ora il componente PageHeaderGuide con guide contestuali, form organizzati in sezioni Card con bordo tratteggiato e bottoni di azione in fondo alla pagina con tipografia uppercase.",
+        "Lista Tabelle — Colonna Denominazione Arricchita: La colonna Denominazione nella lista delle tabelle millesimali mostra ora un layout ricco con icona colorata, titolo, nota e Call-To-Action 'Gestione Quote →'. Cliccando il nome si accede direttamente alla gestione dei millesimi senza passare per il menu a tendina.",
+        "Fix: Risolto un bug di race condition nel modale di modifica dei sottoconti per cui la quota del proprietario veniva sempre ripristinata al 100% alla riapertura del medesimo sottoconto, ignorando il valore salvato (es. 0% per spese totalmente a carico dell'inquilino).",
+        "Fix: Corretti errori TypeScript in TabelleEdit (TS2740) e QuoteList (TS7053, TS2345) relativi al binding delle opzioni delle select e all'indicizzazione dinamica degli errori del form."
+    ]
+}

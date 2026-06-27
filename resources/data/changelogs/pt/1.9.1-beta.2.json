@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Ratificação assemblear de faturas com superação motivada (Art. 1135 Código Civil italiano): as faturas registadas com superação motivada — despesas urgentes que excedem o orçamento deliberado — apresentam agora um badge laranja interativo com tooltip profissional de fundo preto que orienta o administrador sobre o motivo do bloqueio do pagamento e o que fazer. Um botão 'Aprovar superação' inline desbloqueia diretamente a partir da página de Pagamento a Fornecedores, abrindo um modal de ratificação com campo de notas para o registo de auditoria (número de ata, referência da deliberação). A mesma ação está acessível a partir do menu de ações da Lista de Faturas Registadas. Após confirmação, o sistema transita o estado de 'superação_motivada' para 'aprovada', guarda automaticamente no registo de auditoria a data, o autor e as notas, e recarrega as pendências instantaneamente sem sair da página.",
+        "Proteção legal do administrador no ciclo passivo: o bloqueio de pagamento em faturas não ratificadas é agora comunicado de forma clara em vez de silenciosa, reduzindo pedidos de suporte e documentando formalmente a conformidade com o Art. 1135 do Código Civil antes de cada transferência bancária."
+    ]
+}

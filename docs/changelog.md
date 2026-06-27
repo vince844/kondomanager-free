@@ -1,669 +1,889 @@
 # Changelog
 
-Tutte le modifiche notevoli a questo progetto saranno documentate in questo file.
+Tutte le modifiche rilevanti a Kondomanager sono documentate in questo file.
 
-## [1.9.29] - Piano Rate Engine Fixes & Snapshot Architecture
+Il formato segue [Keep a Changelog](https://keepachangelog.com/it/1.0.0/)
+e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
-### Bugfix: Calcolo Totale Piano Rate (Filtro Snapshot)
+---
 
-**Contesto:** Il sistema utilizza un filtro di "fotografia temporale" (snapshot) durante il calcolo del piano rate per evitare che i sottoconti aggiunti successivamente alla sua creazione ne gonfino l'importo.
-**Problema:** Se la struttura del piano dei conti veniva popolata in un momento successivo (es. tramite la migrazione automatica della v1.9), il filtro escludeva completamente interi capitoli di spesa (come "Manutenzione Ordinaria") perché tutti i suoi sottoconti risultavano creati dopo il piano rate. Questo portava a un totale rate inferiore al preventivo (es. 4.610€ anziché 9.600€).
-**Soluzione:** Aggiunto un fallback in `CalcoloQuoteService`: se il filtro snapshot esclude tutti i figli, ma esiste un importo totale già congelato (override) nella tabella pivot `piano_rate_capitoli`, il sistema usa ora tutti i figli correnti per distribuire l'importo corretto, preservando la quadratura senza gonfiare il preventivo.
+## [1.9.1] — Smart Treasury & Passive Cycle
 
-### Ottimizzazione: Deep Eager Loading Motore di Calcolo
+> **Stable release.**
+> Ciclo passivo completo, pagamento delle fatture, storno pagamenti (Ledger immutabile), widget Treasury Guardian, motore a cascata per usufruttuari, gestione unità vuote (scoperti documentati) e suite completa di stampe PDF ufficiali (Riparti e Scadenziari).
+>
+> 12 beta release (beta.1 → beta.12) prima della stable.
 
-**Problema:** Il `CalcoloQuoteService` caricava le relazioni in modo superficiale. Durante la discesa ricorsiva nei sottoconti, Laravel era costretto a eseguire il lazy loading delle tabelle millesimali per ogni singola voce. Nelle versioni di Laravel con `preventLazyLoading(true)` questo generava un Fatal Error, o in alternativa causava un elevato numero di query (N+1 problem).
+---
+
+### [1.9.1-beta.12] - Restyling Tabelle & Sicurezza Dati
+
+### Miglioramenti UI/UX
+- **Restyling Lista Tabelle Millesimali:** L'elenco delle tabelle è stato completamente riprogettato per migliorare leggibilità e densità delle informazioni.
+  - Sostituite le icone generiche con icone colorate specifiche per ogni tipologia (Ascensore, Scale, Lastrico, Riscaldamento, ecc.).
+  - Fusa la colonna Palazzina/Scala in un'unica colonna "Palazzina / Scala". Per le tabelle generali, compare un chiaro badge verde "INTERO CONDOMINIO".
+  - Nuova colonna **Unità Associate**: mostra il conteggio esatto delle proprietà associate alla tabella.
+  - Nuova colonna **Stato**: mostra con un indicatore visivo se una tabella è "In uso" (associata a voci di spesa) oppure "Orfana".
+
+### Hardening
+- **Prevenzione Cancellazione Tabelle in Uso:** Inserito un blocco sia frontend (alert giallo informativo immediato) che backend (`destroy`) che impedisce l'eliminazione accidentale di tabelle millesimali qualora siano già state associate a voci di spesa, proteggendo l'integrità dei dati storici.
+
+### Corretto
+- **Falla Matematica nel Riparto per Tabella:** Risolto un grave bug logico in `RipartoTabelleService` che alterava il calcolo delle percentuali e quote di ripartizione. La funzione divideva erroneamente il peso dell'anagrafica per l'importo monetario (`$importo`), causando quote sballate e totali incoerenti sul documento di stampa. Il calcolo ora accumula correttamente i pesi puri prima della distribuzione proporzionale "penny-perfect".
+- **Bug Creazione Tabella (`undefined variable $tabella`):** Risolto un crash nel controller che si verificava qualora il salvataggio a database di una nuova tabella andasse in errore. Il `catch` ora esegue un fallback pulito tramite `back()` ripristinando il modulo e mostrando l'errore, invece di tentare un redirect su risorsa inesistente.
+- **Dinamismo Intestazioni PDF:** Sistemate le intestazioni dinamiche dei PDF dei riparti, che ora riportano l'esatta unità di misura della tabella considerata (`mill. ‰`, `quote`, `pers.`, `kW`, `mc.`).
+
+---
+
+### [1.9.1-beta.11] - Allineamento Layout Tabelle & Hotfix Modale Sottoconti & Riparto per Tabella
+
+### Aggiunto
+- **Stampa Riparto Bilancio Preventivo per Tabella × Soggetto:** Introdotto il documento di riparto più dettagliato della suite stampe. Accessibile dal piano rate con il pulsante "Riparto per Tabella", genera un PDF landscape con formato adattivo (A4 fino a 5 tabelle, A3 oltre) che mostra per ogni unità immobiliare e per ogni soggetto (Proprietario, Inquilino, Usufruttuario, Nuda Proprietà, Comodatario) la quota millesimale e l'importo ripartito su ciascuna tabella millesimale configurata nel piano dei conti. Il documento include: intestazione premium con pillole riepilogative (n° unità, soggetti, totale €), barra sommario per tipo soggetto con percentuali, accent color per ruolo su ogni riga, colonna percentuale sul totale condominio, indicazione del piano per ogni appartamento, riferimento delibera e verbale assembleare (se compilati), riga totali con sfondo navy, legenda ruoli e note legali (art. 1123 c.c.). Il calcolo distribuisce gli importi reali delle rate emesse in proporzione ai pesi delle tabelle millesimali configurate, rispettando la cascata di risoluzione del ruolo del soggetto (identica al motore `CalcoloQuoteService`). Nessuna migration necessaria.
+
+### Miglioramenti UI/UX
+- **Allineamento Layout Pagine Tabelle:** Le pagine `TabelleNew`, `TabelleEdit` e `QuoteList` sono state completamente ridisegnate per aderire al design system uniforme del gestionale. Ogni pagina presenta ora il componente `PageHeaderGuide` con guide contestuali, form organizzati in sezioni Card con bordo tratteggiato (`border-dashed`) e bottoni di azione in fondo al form con tipografia `uppercase tracking-widest`.
+- **Lista Tabelle — Colonna Denominazione Arricchita:** La colonna "Denominazione" nella lista delle tabelle millesimali mostra ora un layout "ricco" con icona colorata, titolo, nota e Call-To-Action "Gestione Quote →". Cliccando il nome della tabella si accede direttamente alla pagina di gestione dei millesimi (`QuoteList`), rendendo superfluo il passaggio per il menu a tendina.
+
+### Corretto
+- **Regressione Bug Modale Sottoconti — Quota Proprietario sempre al 100%:** Risolto un bug di race condition nel `ModalModificaConto`. Dopo un salvataggio, `resetForm()` impostava `percentuale_proprietario = 100`. Se l'utente riapriva il **medesimo** sottoconto (stessa reference Vue), il `watch(props.conto)` non si riattivava lasciando il campo bloccato a 100%. Corretto estraendo la logica di idratazione in `populateFormFromConto()` e richiamandola esplicitamente anche nel `watch(props.show)` a ogni apertura del modale.
+- **TS Error TabelleEdit — `options` su v-select:** Corretti due errori TypeScript (TS2740) per cui `condominio.palazzine` e `condominio.scale` venivano passati come `options` alla `v-select` anziché le props dirette `palazzine` e `scale`.
+- **TS Errors QuoteList — Indicizzazione `form.errors` e tipo indice:** Corretti due errori TS7053 sull'accesso dinamico a `form.errors` con chiavi template-literal (es. `` `quote.${idx}.valore` ``) tramite cast a `Record<string, string>`. Corretto inoltre un errore TS2345 sul tipo dell'argomento `index` in `removeImmobile` (ora accetta `number | string` con conversione esplicita).
+
+### Hardening
+- **Compatibilità PHP 8.4 e 8.5 (Configurazione Database):** Sostituito il controllo statico della versione PHP (`PHP_VERSION_ID`) nel file `config/database.php` con un controllo dinamico e retro-compatibile tramite `defined('\Pdo\Mysql::ATTR_SSL_CA')`. Questo elimina definitivamente il *deprecation warning* (`Constant PDO::MYSQL_ATTR_SSL_CA is deprecated`) che compariva su console durante il `composer install` sui server che utilizzano già PHP 8.4, garantendo aggiornamenti silenziosi e senza interruzioni.
+
+---
+
+
+
+### [1.9.1-beta.10] - ScopertoWarning & Coerenza Ruoli
+
+### Aggiunto
+- **Componente UI ScopertoWarning:** Inserita interfaccia che rileva se in alcune unità mancano i soggetti attivi per il riparto (es. inquilini) e calcola in tempo reale gli scoperti. 
+- **Salvataggio Motivazione Scoperti:** Per poter forzare e generare il riparto addossando gli scoperti, l'amministratore deve inserire una nota obbligatoria (> 10 caratteri) che verrà persistita e mostrata storicamente come banner sul piano rate generato.
+- **Risoluzione a Cascata:** Migliorata la tracciabilità della cascata di calcolo. Invece di segnalare un generico "cascata esaurita", il sistema espone esattamente il `ruolo_richiesto` mancante (es. usufruttuario o inquilino), arricchito dai nomi effettivi di Immobile e Conto.
+- **Eccezione Silenziosa e Gatekeeper:** Introdotta `ScopertiNonAccettatiException` che blocca in sicurezza la logica del controller avvisando il frontend, ignorata volutamente da Sentry e loghi di sistema.
+- **Task Inbox Automatico per Scoperti Documentati:** Quando l'amministratore accetta forzatamente uno scoperto e inserisce la motivazione, il sistema crea automaticamente un task prioritario nell'Admin Inbox con titolo "Quote non assegnate — [nome piano]", importo scoperto e istruzioni operative. Il task rimane aperto nel widget inbox della dashboard finché non viene chiuso manualmente, rendendo impossibile dimenticarsi dell'unità orfana.
+- **Widget Copertura Bilancio — Nuovo stato "SCOPERTO DOCUMENTATO":** Introdotto un quarto stato `documented` nel Validatore Budget della dashboard. Se il buco di copertura è stato documentato consapevolmente (nota_scoperti presente), il widget mostra ora il badge neutro slate **SCOPERTO DOCUMENTATO** al posto del generico allarme ambra **FABBISOGNO SCOPERTO**. La logica garantisce che eventuali nuove spese inserite a posteriori abbiano la priorità, facendo riaccendere l'allarme ambra finché non vengono rateizzate.
+
+### Risolto
+- **DashboardController QueryException:** Risolto bug (Internal Server Error) nel `DashboardController` che tentava di filtrare i `piani_rate` tramite la colonna inesistente `esercizio_id` invece di passare per le `gestioni` collegate all'esercizio.
+- **Terminologia widget rinominata:** "SOTTO COPERTURA" → **"FABBISOGNO SCOPERTO"** per aderenza al lessico contabile, eliminando l'ambiguità del termine precedente che evocava contesti investigativi piuttosto che amministrativi.
+
+### Hardening
+- **Compatibilità PHP 8.4 (Auto-Update Engine):** Inserito un fix preventivo nel bridge di installazione (`index.php`) per gestire l'impostazione errata `session.gc_divisor = 0` riscontrata su alcuni hosting condivisi. A differenza di PHP 8.3 che emetteva solo un warning, PHP 8.4 lancia una `ValueError` irreversibile. Il sistema intercetta ora questa configurazione e la neutralizza a runtime forzando `session.gc_divisor = 1000`, evitando crash silenti durante gli aggiornamenti over-the-air.
+
+---
+
+### [1.9.1-beta.9] - Hotfix UI Piano dei Conti & Action Inbox Upgrade + Completamento Controller Pagamenti
+
+### Aggiunto
+- **Compliance Alert (Art. 1130 c.c.):** Aggiunto un banner giallo di avvertimento non bloccante in `FatturaRegisterNew`, `FatturaRegisterEdit`, `PagamentoNew` e `PagamentoEdit` se l'amministratore tenta di registrare un movimento con una data antecedente a 30 giorni rispetto a oggi. L'avviso educa e responsabilizza, senza impedire l'operatività.
+- **Admin Inbox — Conteggio Giorni Sospeso:** La inbox globale dell'amministratore e il widget nella dashboard condominio mostrano ora i giorni esatti di ritardo (es: "SCADUTO DA X GIORNI") calcolati in tempo reale rispetto alla data di scadenza delle operazioni, migliorando drasticamente la percezione dell'urgenza e del tempo trascorso.
+- **Endpoint dettaglio pagamento fornitore:** Aggiunto il metodo `show()` in `PagamentoFornitoreController` con guard di appartenenza al condominio, eager loading completo delle relazioni (fornitore, conto, scrittura con righe e fatture allocate) e rendering Inertia verso la pagina `PagamentoShow`. La route `GET /pagamenti-fornitori/{pagamento}` è ora registrata in `gestionale.php` (`pagamenti-fornitori.show`), completando la mappa CRUD del modulo pagamenti.
+- **Prop `size` su `ConfirmDialog`:** Il componente condiviso `ConfirmDialog.vue` supporta ora una prop `size` con quattro taglie (`sm`, `md`, `lg`, `xl`) che sovrascrive la larghezza di default `max-w-lg` tramite `cn()`. Il valore di default rimane `md` — nessun impatto sugli oltre 20 utilizzi esistenti.
+- **F24 Refactor — `SyncF24WithPagamento` listener:** Creato il listener `SyncF24WithPagamento` (auto-discovery via `subscribe()`, `$afterCommit = true`) che crea il task "F24 Ritenuta" nell'Admin Inbox al momento del **pagamento** effettivo, non della registrazione fattura. La scadenza è calcolata al 16 del mese successivo a `data_pagamento`, spostata al lunedì se cade di weekend. Il listener è idempotente (`updateOrCreate`) con guard su `importo_ritenuta <= 0` e su record di storno (`pagamento_padre_id !== null`).
+- **Pagina dettaglio pagamento fornitore (`PagamentoShow`):** Creata la pagina Vue `PagamentoShow.vue` con layout `GestionaleLayout`, `PageHeaderGuide`, riepilogo importi (lordo, netto, ritenuta, commissioni), partita doppia della scrittura collegata, fatture saldate con link click-through e pulsante "Distinta PDF".
+- **Link dettaglio nel dropdown lista pagamenti:** Aggiunta voce "Vedi dettaglio" nel `DataTableRowActions.vue` che naviga a `PagamentoShow`. La precedente voce "Dettaglio scrittura" è rinominata "Dettaglio scrittura contabile" e spostata in posizione secondaria.
+
+### Miglioramenti UI/UX
+- **Modal "Ratifica assembleare — Sforo motivato" allargato:** Il `ConfirmDialog` di approvazione sforo usa ora `size="lg"` (`max-w-2xl`) per dare respiro al testo legale.
+- **Dicitura modal Approva Sforo riscritta (Feature 3, Art. 1135 c.c.):** Il testo del modal e del tooltip badge "⚠ Ratifica richiesta" è stato riscritto per coprire esplicitamente i due scenari previsti dall'art. 1135 c.c.: spesa già deliberata in assemblea (con rif. verbale) e pagamento d'urgenza dell'amministratore (con motivazione obbligatoria). Nessun campo nuovo, nessuna colonna, nessun JSON aggiunto.
+- **Case uniformato:** Titoli e testi dei modali seguono ora sentence case invece di title case.
+
+### Corretto
+- **Bug Creazione Password:** Risolto un bug critico che impediva ai nuovi utenti invitati di impostare la propria password. I nuovi utenti ricevono ora un campo password `null` anziché una stringa casuale, permettendo al sistema di distinguere il primo accesso e reindirizzando al login con messaggio specifico solo a password effettivamente impostata.
+- **Link Inviti Scaduti:** Aggiunta gestione UX esplicita (messaggio flash) e ripristinato il controllo di sicurezza (`hasValidSignature()`) sui link scaduti e/o alterati per la creazione password e reinvito.
+- **`SyncScadenziarioWithFattura` — codice morto rimosso:** Eliminato il blocco commentato (42 righe) che creava il task F24 al momento della fattura. La logica corretta vive ora in `SyncF24WithPagamento`.
+- **Voce menu "Dettaglio scrittura contabile" appariva disabilitata:** Il `class="text-slate-500"` sul `DropdownMenuItem` causava un aspetto grigio identico allo stato `:disabled`. Rimosso.
+
+### Aggiunto
+- **Impostazioni Stampe PDF:** Aggiunto un nuovo pannello di configurazione globale dedicato alle stampe. È ora possibile definire una Nota Legale (es. professione esercitata ex l. 4/2013, P.IVA, Polizza RC) che apparirà come piè di pagina in tutti i prospetti generati.
+- **Firma Amministratore:** Implementata la possibilità di caricare l'immagine della firma dell'amministratore (in formato PNG o JPG), che verrà apposta automaticamente in calce ai documenti ufficiali come rendiconti e prospetti rate.
+- **Filtro Condominio su Action Inbox Admin:** Aggiunto un dropdown nella barra di navigazione superiore per filtrare la lista dei task per singolo condominio. Le KPI card (Scaduti, Verifiche incassi, Ticket, Totale) si aggiornano dinamicamente in base al condominio selezionato.
+- **InfiniteScroll su Action Inbox Admin:** La paginazione statica è stata sostituita con il caricamento infinito (`Inertia::scroll`), coerentemente con il widget nella dashboard del gestionale.
+
+### Corretto
+- **Bug critico — Pulsante "Risolvi" inerte su Action Inbox Admin:** Il tasto "Risolvi" non eseguiva alcuna azione su task privi di `action_url` perché la funzione `completeTask()` era assente dalla pagina admin. La pagina gestionale (widget dashboard) era già corretta; la pagina admin `/admin/inbox` non era mai stata allineata. Ora il pulsante ✅ (completa task) è sempre visibile per tutti i task; il link "Risolvi →" appare in aggiunta solo se è presente un `action_url`.
+- **Conteggi KPI non filtrati:** Le card dei conteggi nella Action Inbox admin mostravano sempre i totali globali anche selezionando un condominio specifico. Il controller ora ricalcola i conteggi filtrati per condominio direttamente nel backend quando `condominio_id` è specificato.
+- **Dropdown Capitoli Padre:** Risolto un bug nell'interfaccia di inserimento e modifica dei conti per cui il menu a tendina "Capitolo padre" non si aggiornava istantaneamente dopo la creazione di un nuovo capitolo, costringendo l'utente a ricaricare la pagina. Ora la cache del componente si invalida e si sincronizza automaticamente al salvataggio.
+- **Modifica Ripartizione Proprietario a 0%:** Risolto un bug nel modale di modifica dei sottoconti che forzava visivamente la quota del proprietario al 100% in apertura, ignorando il salvataggio legittimo di una quota pari allo 0% (es. per spese totalmente a carico dell'inquilino).
+- **Rimozione Errori Validazione Dinamici:** Risolto un problema di usabilità nel modale di creazione e modifica dei conti in cui gli errori rossi di validazione per i campi "Tabella Millesimale" e "Capitolo Padre" rimanevano visibili anche dopo che l'utente aveva selezionato un valore valido dalla tendina. Gli errori ora scompaiono in tempo reale al variare della selezione.
+- **Causale Bonifico Parlante:** Risolto un fatal error durante la registrazione di un pagamento con bonifico parlante causato da una chiamata a un metodo inesistente nell'Enum delle detrazioni. La causale bancaria fiscale viene ora generata correttamente e troncata entro i limiti SEPA.
+- **Formattazione Data Modale Approvazione:** Risolto un bug nella modale di approvazione del piano rate che forzava la selezione della data in formato americano (yyyy-mm-dd) anziché italiano.
+- **Falso 403 su Pagamenti in Hosting Condivisi:** Risolto un bug critico (Accesso negato / La scrittura non appartiene a questo condominio) che impediva il download della distinta e lo storno dei pagamenti su server di produzione che non utilizzano `mysqlnd`. Introdotto il cast esplicito a `integer` nei modelli Eloquent per garantire la corretta validazione dei permessi.
+
+### Miglioramenti UI/UX
+- **Redesign Action Inbox Admin:** Refactoring completo del layout della pagina `/admin/inbox` per allinearlo al design system del gestionale. Rimosso l'header hero scuro; adottato il pattern standard `px-6 py-8` con label + `h1 font-black`. Le 4 card filtro seguono ora lo stile delle KPI card della dashboard admin (icona decorativa in background, footer con freccia, bordo dinamico colorato). Il filtro condominio è integrato nel top-bar a destra accanto al pulsante "Dashboard".
+- **Ordinamento Task per Urgenza:** I task scaduti appaiono sempre in cima alla lista, seguiti dai futuri in ordine cronologico crescente, indipendentemente dal filtro attivo.
+- **Uniformità Pulsanti Azioni:** Tutti i pulsanti icona (✅ Completa, ✗ Rifiuta) seguono lo stesso pattern visivo (`w-8 h-8 rounded-md border shadow-sm`). I pulsanti testuali (Registra →, Risolvi →) usano lo stesso container `h-8 px-3 border bg-white`.
+- **Dettaglio Piano Rate:** Ottimizzata l'interfaccia della pagina. I pulsanti della barra delle azioni diventano a scomparsa testuale (solo icona) sugli schermi dei portatili per evitare scorrimenti orizzontali. Integrato il nuovo header guida con breadcrumb unificate e spostato il badge della data di delibera in un comodo tooltip interattivo per risparmiare spazio verticale.
+
+---
+
+### [1.9.1-beta.8] - Modulo Commenti per Segnalazioni Guasto
+
+### Aggiunto
+- **Nuovo Modulo Commenti per le Segnalazioni Guasto**: Aggiunta la possibilità per amministratori, condòmini e fornitori di comunicare direttamente all'interno della singola segnalazione guasto.
+- **Forza Moderazione Commenti**: Nuova impostazione globale per obbligare tutti i commenti degli utenti standard e fornitori all'approvazione obbligatoria dell'amministratore, ignorando i permessi di auto-pubblicazione.
+- **Sicurezza e Permessi per i Commenti**: Isolamento completo dei ruoli con controlli severi. Gli amministratori possono moderare o nascondere commenti, mentre gli utenti standard e fornitori possono aggiungere, modificare o cancellare esclusivamente i propri commenti relativi ai propri condomini.
+- **Notifiche in Tempo Reale**: Integrazione di notifiche automatiche in app e via email ogni volta che viene aggiunto o aggiornato un commento sulla segnalazione in carico.
+
+### Miglioramenti Tecnici
+- **Inbox Centralizzata e Polimorfismo**: Ristrutturazione di `ActionInboxController` e `InboxService` per la gestione dinamica delle azioni utente. Introdotto un costruttore universale (`createTask()`) basato sull'enum `EventoTipo`.
+- **Resilienza delle Migrazioni (Windows/Shared Hosting)**: Aggiunto `set_time_limit(0)` e pattern di cleanup idempotente (`cleanupPartialMigration()`) alle migrazioni pesanti per prevenire blocchi dovuti a timeout PHP.
+- **Sicurezza Infrastruttura di Testing**: Introdotto un fail-safe globale in `TestCase.php` che blocca l'esecuzione accidentale dei test sul database reale, imponendo l'uso di SQLite in-memory.
+- **UI/UX Inbox**: Integrazione delle icone dinamiche (basate sul tipo di evento) nel widget e nella Action Inbox del gestionale.
+
+### Importante
+- **Nota per gli sviluppatori**: Dopo aver aggiornato il codice all'ultima versione e aver eseguito le migrazioni, è necessario lanciare il comando `php artisan db:seed --class=RolesAndPermissionsSeeder` per generare a database i nuovi permessi inseriti a sistema.
+
+### Corretto
+- **Falsi positivi Pendenze Utente (Rata Zero & Rimanenze)**: Risolto un bug critico che manteneva visibili le rate nella dashboard del condòmino anche dopo il saldo. Il sistema ora contrassegna automaticamente come pagate (`status = 'paid'`) le quote inziali a zero o in credito puro (es. Rata Zero azzerata) fin dal momento della loro emissione, evitando che restino perennemente nello scadenziario.
+- **Prevenzione Segnalazioni a Zero**: Inserito un blocco frontend e backend che impedisce ai condòmini di segnalare un pagamento per rate con importo rimanente pari a zero, sostituendo il pulsante con un messaggio informativo di "Nessun pagamento richiesto".
+
+---
+
+### [1.9.1-beta.7] - Filtri Interattivi, Chiarezza Visiva e Tracciabilità UI
+
+### Aggiunto
+- **Filtri Interattivi sulle Card (Smart Stats)**: Le card riepilogative nella lista pagamenti ("Con Ritenuta d'Acconto" e "Operazioni Stornate") sono diventate interattive. Cliccandole, applicano o rimuovono istantaneamente il filtro corrispondente sulla tabella dati sottostante (`has_ritenuta` o `stato=stornato`), velocizzando la ricerca in elenchi molto corposi.
+- **Allineamento Globale UI Dashboard**: L'interfaccia interattiva delle card statistiche (Smart Stats) è stata estesa alle viste "Fatture Passive" e "Incassi Rate", garantendo totale coerenza visiva e logica. Le card per filtrare "Fatture Aperte", "Da Ratificare" (Fatture) e "Stornati" (Incassi) adottano ora lo stesso design system con highlight ring attivi (`ring-2`) e gestiscono dinamicamente lo state di disabilitazione.
+- **Integrazione Audit Ratifica in Dettaglio Scrittura**: Inclusa la visibilità delle note di audit (Art. 1135 c.c.) all'interno della vista di dettaglio della Scrittura Contabile, permettendo ai revisori di vedere l'intero ciclo di vita e la giustificazione legale dell'approvazione spesa.
+- **Infrastruttura Documentale PDF Nativa**: Installata e integrata la libreria `mpdf/mpdf` per la generazione lato server di documenti PDF complessi (senza dipendenze esterne come Node o Chrome).
+- **Distinta di Pagamento Fornitore (PDF)**: Creazione di layout e stili master per PDF (su formato A4) e implementazione del download della Distinta di Pagamento, completa di causale, totali e informazioni sul bonifico parlante.
+- **Visualizzazione Dettaglio Incasso Rate**: Aggiunta la vista in sola lettura per esplorare analiticamente la composizione di un incasso rata, evidenziando se pagato tramite versamento contanti/bonifico o compensazione del credito.
+- **Ottimizzazione Tooltip Tabelle**: Sostituiti i tooltip testuali nativi con HoverCard interattivi (Shadcn) per una lettura immediata e ricca del dettaglio importi nelle tabelle Fatture Passive e Pagamenti Fornitori.
+- **Stampe Scadenziario e Riparti (PDF)**: Rilasciata la suite di stampe ufficiali per i piani rate (Scadenziario / Prospetto Rate) e per il piano dei conti (Distinta Preventivo e Ripartizione Spese). I layout includono intestazioni con riferimenti legali e design "printer-friendly" (su formati A4 Portrait/Landscape).
+- **Scelta Multipla Aggregazione PDF**: L'amministratore ora può decidere dinamicamente dal menu a discesa se esportare il Prospetto Rate raggruppandolo "Per Condòmino", "Per Unità Immobiliare", o combinando entrambe le viste in un unico documento PDF multi-pagina. I totali del documento "Per Condòmino" riflettono esattamente la logica della UI aggregando automaticamente la somma degli immobili appartenenti allo stesso proprietario.
+- **Test di Integrità e Quadratura PDF**: Integrata una test suite completa (Pest) dedicata ai controller di stampa che garantisce incroci perfetti: ogni importo mostrato sui PDF (es. calcolo totale da preventivo, esclusione di conti tecnici, raggruppamento anagrafiche) deve combaciare rigorosamente con i totali presenti a database, bloccando preventivamente eventuali disallineamenti di stampa.
+- **Fix Sicurezza URL Firmati**: Sostituito l'indirizzo email con l'ID utente nei link crittografati per inviti e reset password, risolvendo definitivamente un errore 403 causato dalla decodifica automatica del carattere `@` da parte di browser e client email in Laravel 11.
+- **Miglioramento UX Scadenza Link**: Estesa la validità dei link per l'accettazione degli inviti e per la creazione della password da 60 minuti a 3 giorni, offrendo più tempo agli utenti per completare la registrazione.
+- **Ottimizzazione UI Piano dei Conti**: Raggruppati i pulsanti di stampa (Distinta Base e Ripartizione) all'interno di un unico menu a tendina "Stampe" per preservare lo spazio e mantenere il layout pulito su schermi piccoli.
+
+### Refactoring & Ottimizzazioni
+- **PSR-4 Compliance Exceptions**: Eseguito un refactoring architetturale delle eccezioni di dominio dei pagamenti. Diviso il macro-file `Exceptions.php` in 10 file di eccezione singoli e rimosso l'autoload manuale da `composer.json`, risolvendo in modo definitivo i warning dell'autoloader e rispettando gli standard PSR-4.
+
+### Corretto
+- **Ambiguità Visiva tra Originali e Storni**: Risolta la confusione causata dalla sovrapposizione visiva degli stati. I pagamenti che sono stati annullati mostrano ora il badge "Originale Stornato" barrato, mentre i nuovi movimenti di compensazione (le operazioni di storno vere e proprie) mostrano il badge "Storno Confermato". Solo sui normali pagamenti confermati appare l'opzione "Storna pagamento" nel dropdown.
+- **Workflow Modale di Successo**: Dopo la registrazione di un pagamento (PagamentoNew), il pulsante "Torna all'elenco" reindirizza ora correttamente alla lista dei pagamenti (`gestionale.pagamenti-fornitori.index`) invece di rimandare all'elenco fatture, garantendo continuità operativa.
+- **Hardening UI su Testi Estesi**: Risolto un bug di rendering nella vista Scrittura Contabile (`Show.vue`) che causava l'overflow e la sovrapposizione del layout in presenza di stringhe senza spazi lunghe (es. IBAN) o di testi descrittivi prolissi (note di audit). Aggiunti container con troncamento, interruzione parola e scrollbar verticale limitato in altezza (`max-h-32 overflow-y-auto`).
+- **Allineamento UI Documenti**: Uniformato il design delle pagine di caricamento e modifica documenti fornitori (`DocumentiNew.vue`, `DocumentiEdit.vue`) allo standard del gestionale, sostituendo i layout sparsi con componenti coerenti (`AppLayout`, `PageHeaderGuide`).
+- **Ottimizzazione Tabelle Documenti**: Risolto un `RangeError` sul formato date in ambiente di produzione, aggiunta la traduzione mancante dei badge di visibilità (Pubblico/Privato) e rinominata la colonna 'Data' in 'Caricato il' per maggiore chiarezza per l'utente finale (`columns.ts`).
+- **Visualizzazione Allegati Fatture Esistenti**: Corretto un problema nella vista Dettaglio Fattura (`FatturaShow.vue`) che impediva la corretta visualizzazione del nome e della dimensione dei documenti allegati a causa di proprietà disallineate col modello dati.
+- **Upload Allegati Nuove Fatture**: Risolto un bug critico in fase di registrazione nuova fattura (`FatturaRegisterNew.vue`) che causava la perdita del documento allegato durante l'invio del modulo a causa di una conversione JSON che distruggeva l'oggetto File prima del passaggio al backend.
+- **Autocompilazione Pagamenti da Inbox Operativa**: Risolto un problema per cui cliccando 'Risolvi' su un task di pagamento dalla Inbox Operativa il modulo di pagamento non veniva precompilato. Il sistema ora deduce automaticamente il fornitore a partire dalla fattura passata nell'URL (`PagamentoFornitoreController`).
+
+---
+
+### [1.9.1-beta.6] - Storno Pagamenti e Ledger Immutabile
+### Aggiunto
+- **Storno Pagamenti (Ledger Immutabile)**: Modulo completo (backend e UI) per l'annullamento di pagamenti errati o respinti (es. insoluti bancari). Il sistema garantisce l'integrità contabile registrando una scrittura inversa append-only, riaprendo automaticamente le fatture coinvolte e ripristinando la cassa, senza cancellare record storici.
+- **Storni Cross-Esercizio**: Gestione intelligente degli storni su bilanci chiusi. Se l'esercizio del pagamento originale è chiuso, il sistema non permette la modifica retroattiva ma registra l'operazione di storno nell'esercizio corrente aperto, salvaguardando i saldi storici consolidati.
+- **Sincronizzazione Action Inbox e Pagamenti**: Implementato un nuovo listener (`SyncScadenziarioWithPagamento`) che collega la registrazione e lo storno dei pagamenti ai task amministrativi dell'Inbox. La registrazione di un pagamento ora segna automaticamente come completato il task "Pagare fornitore", rimuovendolo dalle urgenze dell'amministratore, mentre uno storno lo riapre immediatamente, ripristinandone la priorità. 
+- **UX Ottimizzata Action Inbox**: Risolvendo il task di pagamento dall'Inbox, l'utente viene reindirizzato automaticamente al modulo di registrazione pagamento pre-compilato, azzerando i tempi di ricerca e garantendo un'esperienza fluida.
+- **Test Automatici Contabili**: Aggiunta un'ampia suite di test automatici per le logiche di storno avanzato, inclusi storni di pagamenti cumulativi multi-fattura e storni complessi compensati con Note di Credito (netting), garantendo quadratura perfetta DARE/AVERE, oltre a test automatizzati per il ciclo di vita dei task nell'Admin Inbox.
+
+### Corretto
+- **Compatibilità SQL Strict Mode (`ONLY_FULL_GROUP_BY`)**: Risolto l'errore 1055 nel modulo Treasury Guardian che bloccava la dashboard su server MySQL 8.0 o configurazioni strict. Il refactoring elimina i `GROUP BY` manuali, delegando il calcolo delle allocazioni a Laravel tramite aggregazioni Eloquent (`withSum`).
+
+---
+
+### [1.9.1-beta.5] - Treasury Guardian Widget MVP
+### Aggiunto
+- **Treasury Guardian Widget MVP**: Implementato il nuovo widget predittivo di tesoreria nella dashboard. Il sistema calcola automaticamente la proiezione dello scoperto di liquidità a 30 giorni, fornendo una classificazione del rischio (Verde, Giallo, Rosso) basata sulle fatture in scadenza e le rate emesse.
+- **Call-to-Action Dinamiche (Smart UX)**: Le azioni suggerite si adattano ora al contesto di cassa. Il widget suggerisce di "Emettere Nuove Rate" in caso di esposizione al rischio senza incassi attesi, e di "Verificare o Sollecitare Incassi" se ci sono versamenti potenzialmente non registrati, con descrizioni leggibili (multi-line).
+
+### Corretto
+- **Quadratura Liquidità e Saldi Iniziali**: Risolto un disallineamento tra il calcolo del widget e il bilancio di verifica. Il motore ora somma correttamente il `saldo_iniziale` di cassa ai movimenti contabili di liquidità.
+- **Calcolo Esatto degli Incassi Attesi**: Corretto l'algoritmo di stima degli incassi (rate in arrivo). Il sistema ora estrae esclusivamente i movimenti in AVERE (pagamenti ricevuti) evitando sovrastime derivanti dall'emissione in partita doppia, garantendo una stima predittiva perfetta al centesimo.
+- **Statistiche Ritenute d'Acconto**: Corretto un problema statistico nella dashboard dei pagamenti che manteneva a zero il conteggio delle ritenute d'acconto. Il sistema calcola ora la ritenuta proporzionalmente al momento della registrazione del pagamento.
+- **Action Inbox per Piani Straordinari & Sync**: Esteso il supporto della Action Inbox ai Piani Rate Straordinari (generazione immediata task di emissione rate e verifica incassi) e risolto un bug che non eliminava i vecchi eventi in caso di rigenerazione totale di un piano rate approvato.
+
+---
+
+### [1.9.1-beta.4] - Smart Error Handling Pagamenti
+### Aggiunto
+- **Smart Error Handling Pagamenti**: Nuovi modali intelligenti e contestuali per la gestione delle eccezioni di dominio durante il pagamento fornitori.
+- **Audit Trail Responsabilità**: Tracciamento obbligatorio delle note di override per decisioni critiche (es. scoperto di conto, overpayment) ai sensi dell'art. 1129 c.c.
+- **Sentinelle di Partita Doppia**: Controlli rigorosi e informativi su allocazioni inconsistenti e violazione del tetto contanti (D.Lgs. 231/2007).
+
+### Corretto
+- **Fix calcolo capienza Cassa**: Risolto un bug critico nel backend che ignorava il `saldo_iniziale` della Cassa nel calcolo del saldo corrente per il controllo fondi.
+
+---
+
+### [1.9.1-beta.3] — Dettaglio Fattura & Flusso Pagamento Rapido
+
+> Aggiunta pagina di dettaglio fattura con visualizzazione completa di voci, importi, scadenze, documenti allegati, audit trail per l'Art. 1135 c.c., e possibilità di procedere immediatamente al pagamento.
+
+### Funzionalità — Dettaglio Fattura
+
+- **Pagina Dettaglio Fattura Passiva:** Aggiunta la vista dedicata per ispezionare tutti gli estremi della fattura. È presente il riepilogo documenti, importi (imponibile/iva), scadenza, badge stato approvazione e stato pagamento. Mostra il dettaglio delle righe contabilizzate, incrociando i capitoli di spesa del piano dei conti.
+- **Audit Trail Ratifica Assembleare:** Se la fattura è stata approvata in seguito a uno "sforo motivato" (Art. 1135 c.c.), la pagina di dettaglio espone ora una sezione di Audit Trail (banner in evidenza) con autore, orario di approvazione e nota verbale.
+- **Flusso "Paga Ora":** Un pulsante verde in corrispondenza dei badge ("Paga Fattura") consente di saltare immediatamente alla pagina di registrazione pagamento, auto-selezionando il fornitore e marcando l'intera fattura per il saldo in un solo click, con caricamento istantaneo delle pendenze residue.
+- **Ritenute d'Acconto:** Aggiunta una nota riepilogativa nel dettaglio fattura se il compenso è soggetto a ritenuta d'acconto, incluse le specifiche dell'aliquota (%) e del tributo assegnato.
+- **Approvazione base:** Possibilità di passare lo stato da "Da Approvare" ad "Approvata" direttamente dal menu azioni riga (per fatture interne che non costituiscono sforo motivato), permettendone il rapido sblocco per il saldo.
+
+---
+
+### [1.9.1-beta.2] — Ratifica Assembleare Sforo Motivato & Legal Compliance
+
+> Implementa il flusso di approvazione legale per le fatture registrate con sforo motivato (Art. 1135 c.c.),
+> rendendo il ciclo passivo completamente operativo e conforme per gli studi di amministrazione professionale.
+
+### Funzionalità — Ratifica Assembleare Sforo Motivato
+
+- **Nuovo endpoint `POST /fatture/{fattura}/approva-sforo`:** Aggiunto metodo `approvaSforo()` in `FatturaPassivaController` che gestisce la transizione legale `sforo_motivato → approvata`. Il metodo include guard di stato, validazione note (max 1000 caratteri) e salvataggio automatico dell'audit trail in `dati_extra.ratifica_assembleare` (note, timestamp ISO8601, ID autore).
+
+- **Audit trail permanente:** Ogni ratifica salva in `dati_extra`: data e ora dell'approvazione, ID dell'utente che ha confermato, e note libere con riferimento alla delibera assembleare. Il log server (`laravel.log`) registra ogni transizione per tracciabilità completa.
+
+- **Bottone "Approva sforo" inline in Pagina Pagamento Fornitori:** Le fatture in sforo motivato mostrano nella riga pendenze un bottone arancione "Approva sforo". Al click si apre una modale di ratifica (`ConfirmDialog`) con contesto legale Art. 1135, riepilogo della fattura in oggetto, e campo note facoltativo. Alla conferma, lo stato cambia istantaneamente e le pendenze vengono ricaricate senza cambiare pagina — la fattura diventa selezionabile per il pagamento.
+
+- **Voce "Ratifica Assembleare" nel menu azioni Lista Fatture:** Aggiunta al componente `DataTableRowActions.vue` una voce arancione nel dropdown `⋯`, visibile esclusivamente per fatture con `stato_approvazione === 'sforo_motivato'`. Apre lo stesso modale di ratifica con identico audit trail.
+
+- **Tooltip professionale sfondo nero (reka-ui/shadcn):** Il badge "⚠ Ratifica richiesta" nella pagina Pagamento Fornitori è ora avvolto dal componente `Tooltip` di reka-ui con sfondo nero e freccia, che spiega all'amministratore il motivo legale del blocco (`Art. 1135 c.c.`) e le istruzioni per procedere. Sostituisce il tooltip nativo OS-level che era grezzo e non in linea con lo stile del gestionale.
+
+### Motivazione Legale
+
+> Le fatture con sforo motivato rappresentano spese urgenti sostenute oltre il budget deliberato dall'assemblea. L'Art. 1135 c.c. obbliga l'amministratore a convocare l'assemblea per ratificare formalmente la spesa prima del pagamento. Il blocco precedente era corretto ma silenzioso — senza comunicazione e senza via d'uscita dall'interfaccia, generando confusione operativa e richieste di supporto. Questa release documenta il blocco, spiega il perché e fornisce lo strumento per risolverlo, proteggendo legalmente l'amministratore.
+
+---
+
+### [1.9.1-beta.1] — Registro Pagamenti Fornitori, Statistiche Incassi & Hardening UI/UX
+
+### Funzionalità — Registro Pagamenti Fornitori (Nuovo Modulo)
+
+- **Nuovo Controller & Risorsa Backend:** Creato `PagamentoFornitoreController` e implementata `PagamentoFornitoreResource` per esporre e formattare i dati dei pagamenti verso i fornitori, completi di impaginazione e statistiche.
+- **Nuova Interfaccia Registro Uscite:** Sviluppata la vista `PagamentoRegisterList.vue` con il componente dedicato `PagamentiDataTable.vue`. Colonne: Fornitore, Conto Addebito, Data Pagamento, Metodo & Importo, Stato.
+- **Statistiche Finanziarie in Tempo Reale:** Tre card analitiche nell'header del registro:
+  1. **Uscite Totali** — Somma totale delle uscite registrate nell'esercizio corrente.
+  2. **Ritenute d'Acconto** — Conteggio dei pagamenti soggetti a ritenuta per il monitoraggio degli F24.
+  3. **Operazioni Stornate** — Conteggio delle transazioni annullate o stornate.
+- **Filtri Avanzati:** Pannello di controllo `DataTableToolbar.vue` con ricerca testuale debouncata dei fornitori e menu di selezione per metodo di pagamento (Bonifico, Assegno, Contanti, MAV, ecc.).
+
+### Funzionalità — Statistiche in Lista Incassi Rate
+
+- **Widget di Riepilogo Incassi:** Estese le card statistiche alla schermata `IncassoRateList.vue`:
+  1. **Incassi Totali** — Conteggio complessivo degli incassi registrati sul condominio.
+  2. **Incassato Mese** — Totale delle operazioni andate a buon fine nel mese solare corrente.
+  3. **Incassi Stornati** — Numero di operazioni stornate o annullate.
+- **Backend Integration:** Aggiornato `IncassoRateController@index` per calcolare queste statistiche in tempo reale tramite query ottimizzate.
+
+### Hardening — Compatibilità Database PHP 8.5
+
+- **Adattamento `PDO::MYSQL_ATTR_SSL_CA` per PHP 8.5:** In PHP 8.5 la costante `PDO::MYSQL_ATTR_SSL_CA` è stata spostata nel nuovo namespace dedicato `\Pdo\Mysql::ATTR_SSL_CA`. Aggiornato `config/database.php` per entrambe le connessioni `mysql` e `mariadb` con un controllo adattivo a runtime (`PHP_VERSION_ID >= 80500`) che seleziona automaticamente la costante corretta, mantenendo la retrocompatibilità con PHP 8.4 e precedenti.
+
+### Bugfix & Hardening TypeScript
+
+- **Risoluzione Casing Conflict macOS:** Risolto bug bloccante del compilatore TypeScript per discrepanze maiuscole/minuscole tra `DataTable.vue` e `Datatable.vue` dovute alla cache del file system macOS. La cartella dei componenti è stata rinominata in `pagamenti_fornitori`.
+- **Fix SelectItem Empty Value (Shadcn UI):** Risolto crash a runtime di `SelectItem` (Shadcn/Radix-vue) che vietava stringhe vuote `""` come valore. Introdotto il valore speciale `"all"` per l'opzione "Tutti i metodi", mappato correttamente a stringa vuota nella chiamata API.
+- **Fix Firma Evento `onMetodoChange`:** Risolto errore di digitazione `Type '(val: string) => void' is not assignable to type '(value: AcceptableValue) => any'` in `DataTableToolbar.vue`.
+- **Fix GuideItem `colorVariant`:** Sostituito il colore non supportato `"rose"` con `"slate"` in `PagamentoRegisterList.vue` per conformarsi ai vincoli del tipo unione accettato da `PageHeaderGuide`.
+
+---
+
+## [1.9.0] — Accounting Intelligence Core
+
+> **Stable release.**
+> Introduce il motore contabile avanzato: ancoraggio atomico dei piani rate,
+> dashboard di audit in tempo reale, gestione sopravvenienze passive,
+> ripartizione mista ad personam, ciclo passivo completo e conformità Art. 1130-bis c.c.
+>
+> 27 beta release (beta.3 → beta.29) prima della stable.
+
+---
+
+### [1.9.0-beta.29] — Piano Rate Engine Fixes & Snapshot Architecture
+
+#### Bugfix — Calcolo Totale Piano Rate (Filtro Snapshot)
+
+**Problema:** Se la struttura del piano dei conti veniva popolata in un momento successivo (es. tramite la migrazione automatica della v1.9), il filtro snapshot escludeva completamente interi capitoli di spesa perché tutti i suoi sottoconti risultavano creati dopo il piano rate. Totale rate inferiore al preventivo (es. 4.610 € anziché 9.600 €).
+
+**Soluzione:** Aggiunto un fallback in `CalcoloQuoteService`: se il filtro snapshot esclude tutti i figli ma esiste un importo già congelato (override) nella pivot `piano_rate_capitoli`, il sistema usa tutti i figli correnti per distribuire l'importo corretto, preservando la quadratura senza gonfiare il preventivo.
+
+#### Ottimizzazione — Deep Eager Loading Motore di Calcolo
+
+**Problema:** `CalcoloQuoteService` caricava le relazioni in modo superficiale. Durante la discesa ricorsiva nei sottoconti, Laravel eseguiva il lazy loading delle tabelle millesimali per ogni singola voce. Con `preventLazyLoading(true)` generava un Fatal Error; in alternativa causava un elevato numero di query (N+1 problem).
+
 **Soluzione:** Implementato il Deep Eager Loading (`sottoconti.tabelleMillesimali...`) direttamente all'avvio del calcolo, riducendo drasticamente le query e prevenendo crash.
 
-### Hardening: Fallback Divisione Equa (Penny-Perfect)
+#### Hardening — Fallback Divisione Equa (Penny-Perfect)
 
-**Problema:** Se un capitolo padre aveva dei sottoconti, ma il totale del loro budget era 0 (es. struttura creata manualmente o non ancora valorizzata), l'importo congelato del padre veniva ignorato silenziosamente e andava perso.
-**Soluzione:** Aggiunto un comportamento di emergenza in `CalcoloQuoteService`: se il budget totale dei figli è zero, l'importo del padre viene distribuito in parti uguali tra i figli, garantendo sempre che l'intero budget allocato venga ripartito sulle rate.
+**Problema:** Se un capitolo padre aveva sottoconti con budget totale pari a 0 (struttura creata manualmente o non ancora valorizzata), l'importo congelato del padre veniva ignorato silenziosamente.
 
-### Architettura: Snapshot Puro per i Capitoli Orfani
+**Soluzione:** Se il budget totale dei figli è zero, l'importo del padre viene distribuito in parti uguali tra i figli, garantendo che l'intero budget allocato venga sempre ripartito.
 
-**Problema (Debito Tecnico):** L'azione `SyncOrphanChaptersAction` associava i nuovi capitoli orfani al piano rate inserendoli nella pivot con importo `NULL`. Questo forzava il motore a leggere il valore "live" dal preventivo, rompendo il principio di immutabilità (snapshot) necessario per la corretta chiusura dell'esercizio futuro.
-**Soluzione:** Sostituita la logica con un calcolo "Snapshot Puro". Durante la sincronizzazione, il sistema esegue ora una somma ricorsiva del preventivo effettivo (filtrando i conti tecnici) e salva il valore esatto nella pivot, congelandolo definitivamente per mantenere la coerenza storica anche in caso di future modifiche al preventivo.
+#### Architettura — Snapshot Puro per i Capitoli Orfani
 
-## [1.9.28] - Migration Resilience & Collation Fix (Hosting Condivisi)
+**Problema (debito tecnico):** `SyncOrphanChaptersAction` inseriva i nuovi capitoli orfani nella pivot con importo `NULL`, forzando il motore a leggere il valore "live" dal preventivo e rompendo il principio di immutabilità necessario per la corretta chiusura dell'esercizio.
 
-### Hardening: Pattern Idempotente `cleanupPartialMigration` sulle Migration Critiche
-
-**Contesto:** Su hosting condivisi (es. Netsons, SiteGround, Aruba) con PHP-FPM, oppure su ambiente Windows, il `max_execution_time` del webserver può interrompere una migration `ALTER TABLE` a metà esecuzione. La successiva esecuzione automatica del comando `migrate` (lanciato da `SystemUpgradeController`) trovava colonne parzialmente create e andava in crash con errori `Duplicate column name` o `Can't DROP ... check it exists`. Il pattern `cleanupPartialMigration` rende ogni migration auto-riparante: prima di aggiungere colonne, verifica e rimuove quelle orfane lasciate dall'esecuzione precedente.
-
-**Problema specifico risolto in questa release:** La migration `add_fornitore_and_description_to_saldi_table` applicava `dropForeign` + `dropIndex` in sequenza fissa, assumendo che l'indice composito `idx_saldi_condominio_fornitore` esistesse sempre quando `fornitore_id` era presente. Se il timeout avveniva *dopo* `ADD COLUMN fornitore_id` ma *prima* di `ADD INDEX idx_saldi_condominio_fornitore`, il cleanup esplodeva su `dropIndex` con "Can't drop index ... check it exists". Lo stesso rischio esisteva nel `down()`.
-
-**File Modificati (3 migration):**
-
-* **`2026_03_16_223813_add_fornitore_and_description_to_saldi_table`** — Aggiunta guard `information_schema.STATISTICS` prima di ogni `dropIndex('idx_saldi_condominio_fornitore')`, sia nel `cleanupPartialMigration()` che nel `down()`. L'indice viene droppato solo se la query su `STATISTICS` conferma che esiste effettivamente. Aggiunto import `DB`. Stesso pattern già presente correttamente in `hardening_legale_e_tracciabilita_fatture`.
-
-* **`2026_03_27_160203_add_mastri_costo_e_ripara_voci_orfane`** — Refactoring della data migration da pattern N+1 (`whereHas` con subquery correlata) a `DB::join()` che sfrutta gli indici FK esistenti su `conti.piano_conto_id`. Aggiunto `set_time_limit(0)` in cima all'`up()` per prevenire il timeout su ambienti Windows/hosting condiviso. Loop su `Condominio` convertito da `all()` a `lazy()` (cursor DB) per eliminare il rischio OOM su installazioni con molti condomini.
-
-* **`2026_04_19_072947_hardening_legale_e_tracciabilita_fatture`** — Già conforme al pattern: la guard `information_schema.STATISTICS` era presente per `idx_recupero_crediti` su `rate_quote`. Nessuna modifica necessaria; è la migration di riferimento che ha ispirato il fix della saldi.
-
-**Invarianti garantiti:** Nessuna modifica allo schema finale delle tabelle. Il comportamento su installazioni pulite (primo deploy) è identico. Le guard `information_schema` sono a costo zero su DB già corretti.
+**Soluzione:** Durante la sincronizzazione, il sistema esegue una somma ricorsiva del preventivo effettivo (filtrando i conti tecnici) e salva il valore esatto nella pivot, congelandolo definitivamente.
 
 ---
 
-### Bug Fix Critico: Collation Mismatch MySQL su Hosting Condivisi (Error 1267)
+### [1.9.0-beta.28] — Migration Resilience & Collation Fix (Hosting Condivisi)
 
-**Problema:** Il dashboard di produzione su Netsons (e hosting analoghi con MySQL 5.7/8.0 su `utf8mb3_general_ci`) crashava con `SQLSTATE[HY000]: General error: 1267 Illegal mix of collations (utf8mb3_general_ci,COERCIBLE) and (utf8mb3_unicode_ci,COERCIBLE) for operation '='`. Il crash avveniva ad ogni caricamento della dashboard (ogni 8 minuti, come da log).
+#### Hardening — Pattern Idempotente `cleanupPartialMigration`
 
-**Causa Radice:** `JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type'))` restituisce una stringa con la **collation della connessione** (`utf8mb3_general_ci` su Netsons), mentre i letterali stringa PHP confrontati (`'emissione_rata'`, `'scadenza_rata_condomino'`, ecc.) ereditavano la collation della colonna `meta` della tabella `eventi` (`utf8mb3_unicode_ci`). Entrambe le sorgenti avevano lo stesso livello di coercizione (`COERCIBLE`), quindi MySQL non poteva risolvere il conflitto autonomamente e lanciava l'errore 1267.
+**Problema:** Su hosting condivisi (Netsons, SiteGround, Aruba) con PHP-FPM o su ambiente Windows, il `max_execution_time` può interrompere una migration `ALTER TABLE` a metà. La successiva esecuzione trovava colonne parzialmente create e crashava con `Duplicate column name` o `Can't DROP ... check it exists`.
 
-**Soluzione:** Wrapping sistematico di tutti i risultati `JSON_UNQUOTE` con `CONVERT(... USING utf8mb4)`, che forza la reinterpretazione in un charset univoco prima del confronto, eliminando l'ambiguità di coercizione.
+**Soluzione:** Il pattern `cleanupPartialMigration` rende ogni migration auto-riparante: prima di aggiungere colonne, verifica e rimuove quelle orfane lasciate dall'esecuzione precedente.
 
-**File Modificati (3):**
+**File modificati (3):**
 
-* **`app/Services/RecurrenceService`** — Refactoring completo delle query JSON su tabella `eventi`. Tutti i confronti `where('meta->type', ...)` / `where('meta->status', ...)` convertiti in `whereRaw("CONVERT(JSON_UNQUOTE(JSON_EXTRACT(...)) USING utf8mb4) = ?", [...])` con binding parametrizzato. Sostituito `where('meta->requires_action', true)` con `whereJsonContains('meta->requires_action', true)` per uniformità. Aggiunto null-check su `$user` in `isAdmin()`. Refactoring `getUserScopedRecurringEvents` e `expandRecurringEvent` per leggibilità. Corretti tutti i punti in `applyFilters()` compreso il filtro `exclude_type`.
+- **`2026_03_16_223813_add_fornitore_and_description_to_saldi_table`** — Guard `information_schema.STATISTICS` prima di ogni `dropIndex('idx_saldi_condominio_fornitore')`, sia nel `cleanupPartialMigration()` che nel `down()`.
+- **`2026_03_27_160203_add_mastri_costo_e_ripara_voci_orfane`** — Refactoring da N+1 a `DB::join()`. Aggiunto `set_time_limit(0)`. Loop `Condominio` convertito da `all()` a `lazy()` per eliminare il rischio OOM.
+- **`2026_04_19_072947_hardening_legale_e_tracciabilita_fatture`** — Già conforme; nessuna modifica. È la migration di riferimento che ha ispirato il fix della saldi.
 
-* **`app/Services/Gestionale/InboxService`** — Aggiunto `CONVERT(... USING utf8mb4)` ai due confronti `JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type'))` dentro `selectRaw` di `getCounts()`. I confronti con `'verifica_pagamento'` e `'segnalazione_guasto'` erano vulnerabili allo stesso identico errore 1267.
+#### Bugfix Critico — Collation Mismatch MySQL (Error 1267)
 
-* **`app/Http/Resources/Gestionale/PianiRate/PianoRateResource`** — Refactoring del `whereRaw` nella clausola `has_saldi`: il confronto `!= '0'` e il check `IS NOT NULL` erano concatenati in una singola stringa grezza. Separati in due `whereRaw` distinti dentro un `orWhere(closure)` per leggibilità e manutenibilità. Nota: il confronto con `'0'` subisce un cast numerico implicito da MySQL e non è soggetto a 1267; la modifica è di qualità, non di sicurezza.
+**Problema:** Il dashboard di produzione su Netsons (MySQL 5.7/8.0 su `utf8mb3_general_ci`) crashava con `SQLSTATE[HY000]: General error: 1267 Illegal mix of collations` ad ogni caricamento.
 
-**File non modificati (già sicuri):** Tutti i Listener (`SyncScadenziarioWithFattura`, `AggiornaScadenziarioCondomino`, `CompletaEventoScadenziario`, `SyncScadenziarioWithPianoRate`), i Controller (`ActionInboxController`, `DashboardController`, `SituazioneDebitoriaController`, `StornoIncassoController`), il Model `Evento` e `GeneratePianoRateAction` usano `whereJsonContains` o `where('meta->...')` — la sintassi Laravel che passa i valori come binding PDO, immune al problema di collation.
+**Causa radice:** `JSON_UNQUOTE(JSON_EXTRACT(meta, '$.type'))` restituisce una stringa con la collation della connessione (`utf8mb3_general_ci`), mentre i letterali stringa PHP confrontati ereditavano la collation della colonna `meta` (`utf8mb3_unicode_ci`). Entrambe le sorgenti avevano lo stesso livello di coercizione (`COERCIBLE`), quindi MySQL non poteva risolvere il conflitto autonomamente.
 
-## [1.9.27] - Tabelle Millesimali Multi-Coefficiente & Copertura Straordinaria Granulare
+**Soluzione:** Wrapping sistematico di tutti i risultati `JSON_UNQUOTE` con `CONVERT(... USING utf8mb4)`.
 
-### Funzionalità: Gestione Multi-Tabella con Coefficienti Controllati
+**File modificati (3):**
 
-**Contesto:** Fino a questa versione era possibile associare più tabelle millesimali a una voce di spesa, ma il coefficiente della tabella creata al momento dell'inserimento restava bloccato al 100% senza possibilità di modifica. Questo rendeva impossibile scenari reali come "50% Tabella Generale + 50% Tabella Scale".
+- **`RecurrenceService`** — Tutti i confronti `where('meta->type', ...)` convertiti in `whereRaw("CONVERT(JSON_UNQUOTE(...) USING utf8mb4) = ?", [...])`. Sostituito `where('meta->requires_action', true)` con `whereJsonContains`.
+- **`InboxService`** — Aggiunto `CONVERT(... USING utf8mb4)` ai confronti JSON in `getCounts()`.
+- **`PianoRateResource`** — Refactoring del `whereRaw` nella clausola `has_saldi`: separati in due `whereRaw` distinti dentro un `orWhere(closure)`.
 
-**File Modificati (7):**
-
-* **`AssociaTabellaController`** — Aggiunto blocco hard: prima di creare una nuova associazione, il sistema verifica che `somma_coefficienti_esistenti + nuovo_coefficiente ≤ 100`. In caso di violazione la richiesta viene rigettata con messaggio esplicito che indica il residuo disponibile.
-
-* **`AggiornaTabellaController`** *(nuovo)* — Controller invocabile via `PUT` per modificare `coefficiente` e ripartizioni per soggetto di un'associazione esistente. Applica lo stesso blocco hard escludendo dal calcolo la riga corrente (`WHERE id != $contoTabella->id`) per evitare falsi positivi quando si modifica l'unica tabella al 100%.
-
-* **`routes/gestionale.php`** — Aggiunta route `PUT esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}` con nome `esercizi.piani-conti.conti.aggiorna-tabella`.
-
-* **`DettaglioConto.vue`** — Ogni riga della tabella "Ripartizione ordinaria" espone ora un bottone ✏️ edit (accanto all'esistente 🗑️ elimina). L'header della card mostra una barra visiva della somma dei coefficienti (arancione se parziale, verde se 100%) e il bottone "Aggiungi" diventa disabilitato con tooltip esplicativo quando la somma raggiunge il 100%, guidando l'utente a modificare prima una tabella esistente. Layout tabella rifattorizzato: nome con `truncate` + tooltip per testi lunghi, badge percentuali compatti (`h-5 px-1.5 text-[11px]`), larghezze colonne fisse.
-
-* **`ModalAssociaTabella.vue`** — Supporto modalità dual-mode (crea / modifica). In edit mode il dropdown tabella è sostituito da un campo bloccato con il nome. In entrambe le modalità il campo coefficiente mostra un badge "max X% disponibile", è pre-compilato con il residuo e il `max` dell'input è vincolato al massimo consentito. Il bottone submit resta disabilitato finché coefficiente e somma percentuali soggetti non sono validi.
-
-* **`Index.vue`** — Unica istanza `ModalAssociaTabella` condivisa per crea e modifica. `onAggiungiTabella` azzera `tabellaDaModificare` (→ crea), `onModificaTabella` la popola (→ edit). Il callback `gestisciTabella` smista su `router.post` o `router.put` in base al flag `_isEdit`. Aggiunto `computed residuoDisponibile` passato come prop alla modale.
+**File non modificati (già sicuri):** Tutti i Listener, i Controller (`DashboardController`, `SituazioneDebitoriaController`, ecc.), `Evento` e `GeneratePianoRateAction` usano `whereJsonContains` o `where('meta->...')` — immuni al problema di collation.
 
 ---
 
-### Bug Fix: Copertura Piani Straordinari Tracciabile e Collegabile
+### [1.9.0-beta.27] — Tabelle Millesimali Multi-Coefficiente & Copertura Straordinaria Granulare
 
-**Problema:** Nella card "Analisi Copertura" del dettaglio voce, la riga relativa ai piani rate straordinari veniva generata come fallback generico (`$mancanteStraordinario`) senza `piano_rate_id`, rendendo impossibile il collegamento diretto al piano. Il nome mostrato era la concatenazione di tutti i piani straordinari della gestione, indipendentemente da quale coprisse effettivamente quella voce.
+#### Funzionalità — Gestione Multi-Tabella con Coefficienti Controllati
 
-**Causa Radice:** `BudgetCoverageService` Step 3 calcola la copertura straordinaria attraverso `piano_rate_fatture → righe_fattura → conto_id`, ma questa copertura non lascia traccia in `piano_rate_capitoli`. Quando `ContoResource` cercava di spiegare `$impegnato` guardando `$this->pianiRate()` (che usa `piano_rate_capitoli`), il gap rimaneva inesplicato e veniva tappato dal fallback.
+**Problema:** Era possibile associare più tabelle millesimali a una voce di spesa, ma il coefficiente restava bloccato al 100% senza possibilità di modifica. Impossibile gestire scenari reali come "50% Tabella Generale + 50% Tabella Scale".
 
-**File Modificati (3):**
+**File modificati (7):**
 
-* **`PianoContiController::show()`** — Replica la logica dello Step 3 del `BudgetCoverageService` (stessa query su `righe_fattura`, stessa proporzione `importo_riga / totale_fattura * importo_collegato`) per costruire `$pianiStraordinariMap`: una mappa `conto_id → [{id, nome, stato, importo}]` granulare per piano. Se lo stesso conto è coperto da due piani straordinari distinti, entrambi appaiono come entry separate. La mappa viene passata a `ContoResource::$pianiStraordinariMap`.
+- **`AssociaTabellaController`** — Blocco hard: `somma_coefficienti_esistenti + nuovo_coefficiente ≤ 100`. In caso di violazione la richiesta viene rigettata con il residuo disponibile.
+- **`AggiornaTabellaController`** *(nuovo)* — Controller `PUT` per modificare `coefficiente` di un'associazione esistente. Applica lo stesso blocco hard escludendo la riga corrente.
+- **`routes/gestionale.php`** — Aggiunta route `PUT esercizi/{esercizio}/.../aggiorna-tabella/{tabella}`.
+- **`DettaglioConto.vue`** — Barra visiva della somma coefficienti (arancione se parziale, verde se 100%). Bottone "Aggiungi" disabilitato con tooltip quando la somma raggiunge il 100%.
+- **`ModalAssociaTabella.vue`** — Supporto dual-mode (crea / modifica). Badge "max X% disponibile" sul campo coefficiente.
+- **`Index.vue`** — Istanza `ModalAssociaTabella` condivisa. Callback `gestisciTabella` smista su `router.post` o `router.put` in base al flag `_isEdit`.
 
-* **`ContoResource`** — Aggiunta proprietà statica `$pianiStraordinariMap`. Il blocco `$mancanteStraordinario` ora ha due percorsi: se la mappa contiene dati produce una riga per ogni piano straordinario con `piano_rate_id` reale; se è vuota (dati storici privi di `importo_collegato`) cade nel fallback esistente con `piano_rate_id: null`. Aggiunto `piano_rate_id` a tutti e quattro i punti di costruzione di `$dettaglioPiani` (copertura null, esplicita, indiretta, straordinaria).
+#### Bugfix — Copertura Piani Straordinari Tracciabile e Collegabile
 
-* **`DettaglioConto.vue`** — Il nome del piano rate nella tabella di analisi copertura è ora un `<InertiaLink>` cliccabile quando `item.piano_rate_id` è valorizzato, testo semplice altrimenti. Risolve anche un conflitto di nome con l'icona `Link` di lucide-vue-next, ora importata come `InertiaLink`.
+**Problema:** La riga "Analisi Copertura" relativa ai piani rate straordinari veniva generata come fallback generico senza `piano_rate_id`, rendendo impossibile il collegamento diretto al piano.
 
-**Invarianti garantiti:** Nessuna migration necessaria. Il fallback generico viene mantenuto per compatibilità con dati storici privi di `importo_collegato` sul pivot `piano_rate_fatture`. La suite di test, la logica contabile e il Penny-Perfect Algorithm rimangono invariati.
+**Causa radice:** `BudgetCoverageService` Step 3 calcola la copertura straordinaria attraverso `piano_rate_fatture → righe_fattura → conto_id`, ma questa copertura non lascia traccia in `piano_rate_capitoli`. Il gap rimaneva inesplicato e veniva tappato dal fallback.
 
-## [1.9.26] - Piano Rate Snapshot Engine (Bug Fix)
+**File modificati (3):**
 
-### Bug Fix Critico: Isolamento Temporale dei Piani Rate
+- **`PianoContiController::show()`** — Costruisce `$pianiStraordinariMap`: mappa `conto_id → [{id, nome, stato, importo}]` granulare per piano.
+- **`ContoResource`** — Produce una riga per ogni piano straordinario con `piano_rate_id` reale; cade nel fallback solo per dati storici privi di `importo_collegato`.
+- **`DettaglioConto.vue`** — Il nome del piano è ora un `<InertiaLink>` cliccabile quando `item.piano_rate_id` è valorizzato.
 
-**Problema:** L'aggiunta di una nuova voce di spesa come sottoconto di un capitolo già incluso in un piano rate attivo causava l'inclusione automatica e silenziosa della nuova voce nel piano esistente. Il bug si manifestava esclusivamente su voci aggiunte come figlie di un capitolo padre già presente in `piano_rate_capitoli` — le voci standalone non erano affette.
-
-**Causa Radice:** Il sistema non aveva il concetto di "snapshot temporale". I sottoconti venivano sempre letti dinamicamente dalla relazione Eloquent al momento del calcolo, includendo qualsiasi figlio aggiunto dopo la creazione del piano rate.
-
-**File Modificati (4):**
-
-* **`CalcoloQuoteService`** — Nel path con override del padre (pivot `importo` NOT NULL), i sottoconti vengono ora filtrati per `created_at <= piano_rate.created_at` prima di distribuire proporzionalmente il budget. I figli aggiunti dopo sono invisibili al calcolo delle quote.
-
-* **`BudgetCoverageService`** — STEP 1 del `calcolaCoperturaReale()`: il push-down del budget dai padri ai figli applica lo stesso filtro temporale, escludendo i nuovi sottoconti dalla coverage map. Risolve la barra verde "gonfiata" nell'albero dei conti.
-
-* **`PianoRateController::store`** — I nuovi piani rate ora salvano in `piano_rate_capitoli` gli ID delle **foglie** (sottoconti esistenti al momento della creazione) anziché l'ID del padre. Questo rende il problema strutturalmente impossibile per i piani futuri, indipendentemente dal filtro `created_at`.
-
-* **`PianoRateResource`** — La serializzazione del campo `figli_names` e il calcolo di `importo_originale` applicano lo stesso snapshot temporale, eliminando dal frontend i nomi e gli importi dei sottoconti aggiunti dopo.
-
-**Invarianti garantiti:** Nessuna migration necessaria. La logica per i piani straordinari, il calcolo saldi, il Penny-Perfect Algorithm e tutta la suite di test esistente rimangono invariati.
-
-## [1.9.25] - ERP Accounting Engine & Reverse Ledger (Latest)
-
-### Architettura ERP (Il Filtro Invertitore)
-* **Single Source of Truth Contabile:** Rifattorizzato interamente il core del `FatturaPassivaService` per l'emissione delle Note di Credito (Storni). Abbandonata la logica ibrida basata su moltiplicatori matematici e ternari condizionali.
-* **Paradigma "Write-Then-Reverse":** Il motore ora elabora le Note di Credito applicando la *Regola d'Oro* dei gestionali Enterprise. La Partita Doppia viene generata sempre come se fosse una fattura passiva standard (valori assoluti positivi, Costi in DARE, Debiti in AVERE). Solo all'ultimo millisecondo, un "Filtro Invertitore" interviene capovolgendo chirurgicamente i segni (DARE diventa AVERE e viceversa), garantendo un determinismo matematico assoluto e zero edge-case.
-
-### Sicurezza e Integrità (Il Guardiano Contabile)
-* **Double-Entry Validator:** Introdotto un sistema di validazione di quadratura insuperabile. Un istante prima di finalizzare il `DB::transaction`, il sistema calcola la somma esatta al centesimo del DARE e dell'AVERE. Qualsiasi sbilancio blocca fisicamente la transazione (Rollback totale), impedendo il salvataggio di scritture corrotte nel database.
-* **Audit Trail & Graceful Degradation:** In caso di sbilancio bloccato dal Validatore, il sistema scrive un log `CRITICAL` con l'impronta esatta dell'errore (User ID, importi, differenza) a uso dei dev. All'amministratore viene restituito un messaggio UI elegante tramite blocco `try/catch`, evitando crash di sistema (schermate 500).
-
-### Compliance Fiscale e Fondi (Critical Fixes)
-* **Storno Ritenute d'Acconto:** Risolto un bug fiscale critico che escludeva il calcolo della ritenuta d'acconto durante la generazione delle Note di Credito. Ora lo storno inverte correttamente il debito verso l'Erario (DARE), garantendo che la fattura annullata non generi falsi obblighi di versamento F24.
-* **Integrità Reportistica Fondi:** Modificata la registrazione delle coperture (`fattura_coperture`). Le Note di Credito ora registrano l'utilizzo dei Fondi di Riserva o delle Sopravvenienze con segno negativo. Questo garantisce che le query di reportistica sommino correttamente `1000€ (Fattura) + (-1000€) (Storno) = 0€`, mantenendo i saldi dei fondi perfettamente intatti.
-* **Pulizia Conti Fantasma (Garbage Collection):** Il controller di eliminazione fisica delle fatture (`FatturaPassivaController@destroy`) ora intercetta e distrugge automaticamente i "Conti Imprevisto" orfani creati dinamicamente dalle sopravvenienze, mantenendo l'Albero dei Conti pulito da voci inutilizzate.
-
-### Testing & Quality Assurance (Enterprise Grade)
-* **Test Suite Alignment (100% Pass Rate):** Aggiornati i test storici (`DashboardFinancialTest` e `BudgetCoverageServiceTest`) per supportare le nuove logiche strutturali introdotte in v1.9 (distribuzione equa Push-Down del budget e lettura parziali su tabelle Pivot `piano_rate_conto`).
-* **Copertura Edge-Case Totale:** Aggiunti test di quadratura granulari. Coperta la casistica "Spesa Imprevista Pura" verificando la corretta genesi del conto dinamico on-the-fly e la corretta registrazione nel Mastro `sopravvenienze_passive` (Art. 1130-bis).
-* **Agnostic Migrations per DB In-Memory:** Rifattorizzati gli script di migrazione storici (`piani_rate`, `saldi`, `scritture_contabili`). Ora tollerano perfettamente le esecuzioni veloci su SQLite (in RAM) per i test Pest, eseguendo le query raw (`ALTER TABLE ... ENUM`, `information_schema`) esclusivamente in ambiente di produzione MySQL/MariaDB.
-
-Per testare run php artisan test --filter="Scenario|fattura|nota di credito|fondo|mista"
-
-## [1.9.24] - Historical Debt Management & Financial UI
-
-### UI Finanziaria Avanzata (Widget Double Lock)
-* **Triplice Spaccato Finanziario:** Ridisegnato il pannello di controllo per la registrazione delle fatture pregresse. L'interfaccia guida ora l'amministratore attraverso tre "Card" analitiche indipendenti:
-    1.  **Quadratura (Scarto Economico):** Calcola la differenza tra il totale della fattura e il debito storico riconosciuto a bilancio, isolando il valore esatto che richiede una giustificazione (Rata Integrativa, Conguaglio o Fondo).
-    2.  **Liquidità Arretrati (Deficit Finanziario):** Confronta il debito storico con la reale capienza della "Rata 0" incassata dai condòmini. Adotta un colore ambra informativo (non bloccante) per avvisare se i morosi stanno costringendo il condominio ad attingere alla liquidità ordinaria.
-    3.  **Impatto Cassa (Netto Bancario):** Mostra la proiezione esatta del saldo di conto corrente post-operazione.
-* **Risoluzione Conflitto Cognitivo:** Separati visivamente gli allarmi. Lo "Scarto Economico" (che blocca il salvataggio) è ora rosso ed evidenziato, mentre il "Deficit Finanziario" (che è un problema di riscossione, non contabile) è stato declassato ad avviso informativo, riducendo drasticamente il carico cognitivo per l'utente.
-
-### Precisione Operativa & Legale
-* **Calcolo Bonifico Netto (UX):** La card "Impatto Cassa" ora scorpora intelligentemente le Ritenute d'Acconto dal totale del documento. Il sistema mostra all'amministratore l'esatto importo del bonifico netto da disporre in banca, evitando confusione tra il costo a bilancio (lordo) e l'uscita reale di cassa.
-* **Filtro Conti Liquidi:** Il menu a tendina "Conto Addebito" è stato blindato. Ora filtra alla radice il database mostrando esclusivamente i conti liquidi (Banche, Poste, Cassa Contanti), impedendo all'utente di selezionare erroneamente un Fondo Patrimoniale come origine del pagamento materiale.
-* **Data di Origine e Prescrizione:** Aggiunto il campo "Data di origine del debito" per le fatture pregresse. L'interfaccia calcola in tempo reale l'anzianità del debito e, se supera i 5 anni, fa scattare un alert rosso di "Rischio Prescrizione" (Art. 2948 c.c.), tutelando legalmente l'operato dell'amministratore.
-
-## [1.9.23] - Dashboard Intelligence & Clean Ledger (Latest)
-
-### Dashboard & Deficit Operativo (UX Finanziaria)
-* **Disaccoppiamento Delta Globale / Deficit Operativo:** Rivoluzionata la logica del widget di copertura. La barra di avanzamento continua a mostrare la salute globale del bilancio, ma il box di allerta ("Mancano € X") calcola ora lo **Scoperto Operativo Reale**. Il sistema somma al centesimo solo le spese scoperte che richiedono l'emissione di rate, ignorando i fondi avanzati in altri capitoli stagni.
-* **Pulizia Cognitiva:** Rimosso il widget ridondante delle "Fatture in sospeso" dalla vista principale della Dashboard. L'interfaccia torna a essere un macro-indicatore pulito, delegando l'operatività di dettaglio alla modale dedicata.
-
-### Audit Spese Scoperte (Modale "Financial X-Ray")
-* **Separazione Semantica Rigorosa:** La modale di Audit divide ora nettamente le anomalie: da una parte le "Fatture in sospeso" (Imprevisti e Art. 63), dall'altra i normali "Sforamenti Budget Preventivo". Imprevisti e spese ordinarie non vengono più mischiati.
-* **Esploso Fattura (Line-Level Breakdown):** Le fatture miste fuori budget mostrano il dettaglio riga per riga. L'amministratore vede a colpo d'occhio cosa compete al Condominio (Parte comune) e cosa al singolo proprietario (Addebito personale Art. 63, con indicazione dell'unità immobiliare).
-* **Smart Routing (Finanzia Spesa):** Ogni card fattura include un bottone operativo che reindirizza l'utente al wizard del Piano Rate (Straordinario o Integrativo), auto-popolando il "carrello" tramite Deep-Link nell'URL (`?tipo=straordinario&origine=dashboard&gestione_id=...&fatture[]=...`).
-
-### Piano dei Conti (Clean Ledger UI)
-* **Separazione Visiva Albero dei Conti:** Riprogettata l'interfaccia `ContiNew.vue`. Il preventivo ora divide l'albero in due sezioni distinte: "Preventivo deliberato" (modificabile) e "Sopravvenienze e imprevisti" (sola lettura).
-* **Sdoppiamento Totali Intelligente:** Il Controller calcola e separa alla radice il totale del preventivo ordinario da quello degli imprevisti. L'header della pagina mostra due badge distinti (es. *Preventivo: € 5.000* | *Sopravv: € 134*), evitando di gonfiare artificialmente il valore deliberato in assemblea.
-* **Badge Legale Art. 1130-bis c.c.:** Nel dettaglio delle voci tecniche (`DettaglioConto.vue`), compare ora un banner di avviso color ambra. Spiega all'amministratore che la voce è stata generata automaticamente da una fattura imprevista, bloccandone la modifica manuale a tutela della coerenza contabile.
-* **Resource Hardening:** Aggiunto il flag `is_tecnico` direttamente nella `ContoResource` per permettere al frontend di smistare e proteggere le voci di spesa in tempo reale.
-
-### Core Logic & Type Hardening (Bugfixes)
-* **Inertia.js FormData Sanitization:** Risolto un bug critico di perdita dati (es. `immobile_id` che spariva) durante il salvataggio delle fatture passive. Introdotto un `form.transform` che "igienizza" l'array delle righe prima del POST multipart, forzando il casting rigoroso in `Number` o `null`.
-* **TypeScript Hardening:** Risolto conflitto di tipi (`Type 'number' is not assignable to type 'string'`) nell'intercettazione dei Deep-Link URL per la pre-selezione della `gestione_id`.
-* **Prevenzione Falsi Positivi Booleani:** Blindata l'estrazione delle fatture orfane nel Controller. La query SQL ora intercetta correttamente i fallback numerici (`0`) delle colonne booleane (`is_rateizzata`) nativi nei database MySQL/SQLite, garantendo che nessuna spesa venga ignorata dal radar.
-* **Intellisense Fix:** Corretto un falso positivo nel Controller dei Piani Rate (`Undefined method 'rate'`) applicando il Type Hinting rigoroso (`instanceof`) sul modello Eloquent.
-
-### Hardening Legale & Tracciabilità (Backend Core)
-* **Migrazione Unificata:** Nuova migrazione che aggiunge `is_tecnico` su `conti`, 
-  `origine_tipo`/`stato_legale`/`stato_legale_aggiornato_at`/`riga_fattura_id`/`voce_id` 
-  su `rate_quote`, `is_rateizzata` su `righe_fattura`, e `contesto_creazione` su `piani_rate`. 
-  Include data migration retroattiva (D1-D5) per marcare i record esistenti.
-* **Conti Tecnici (Shadow Accounts):** Le sopravvenienze passive generate dal 
-  `FatturaPassivaService` nascono ora con `is_tecnico=true`. Invisibili al wizard 
-  ordinario, escluse dal dropdown capitoli, mostrate solo nel consuntivo (Art. 1130-bis c.c.).
-* **Scope `visibili()` su Model Conto:** Nuovo scope riusabile che filtra `is_tecnico=false`. 
-  Applicato su `FetchCapitoliContiController`, `FetchCapitoliPerGestioneController`, 
-  e `PianoRateController::store()` (emissione globale + sposta spesa).
-* **Euristica `origine_tipo`/`stato_legale` su Rate Quote:** 
-  `GenerateRateQuotesAction` popola automaticamente l'origine della quota 
-  (`condominiale` vs `ad_personam`) e lo stato legale (`certo` vs `contestabile`) 
-  in base al tipo di piano e alla presenza di `immobile_id`.
-* **Semaforo Dashboard (`is_rateizzata`):** Le righe fattura vengono marcate 
-  `is_rateizzata=true` alla creazione del piano straordinario e riaccese a `false` 
-  alla cancellazione, alimentando il widget "Fatture scoperte".
-* **Contesto Creazione Piano Rate:** Nuovo campo enum `contesto_creazione` 
-  (`preventivo_iniziale`/`integrazione_dashboard`/`libero_manuale`) per tracciare 
-  la genesi di ogni piano rate.
-
-### Fix Deep-Link Pre-selezione Fatture
-* **Race Condition Inertia/URL:** Risolto bug critico in `PianiRateNew.vue` dove 
-  Inertia sovrascriveva i parametri URL prima che il componente potesse leggerli. 
-  Gli ID fatture vengono ora salvati in una ref dedicata durante `onMounted`, 
-  sopravvivendo alla riscrittura URL del router.
-* **Compatibilità formato array URL:** Fix parsing parametri `fatture[]` vs 
-  `fatture[0]` (encoding differente tra browser/Inertia).
+**Invarianti garantiti:** Nessuna migration necessaria.
 
 ---
 
-## [1.9.22] - Fund Governance & Audit-Ready Resources (Latest)
+### [1.9.0-beta.26] — Piano Rate Snapshot Engine
 
-### Governance Patrimoniale (Legal Compliance)
-* **Motore a Regole Giuridiche:** Rivoluzionata la gestione dei Fondi di Riserva. Il sistema non salva più semplici "etichette testuali", ma mappa la reale natura giuridica del fondo (`sottotipo_fondo`: Generico, Vincolato per Lavori, Accantonamento TFR, Morosità).
-* **Audit Trail e Sblocco in Deroga:** I fondi vincolati nascono bloccati di default per impedire distrazioni di cassa accidentali. È stato introdotto un interruttore di "Sblocco d'emergenza" (`is_override_assemblea`) che richiede obbligatoriamente l'inserimento degli estremi della delibera o della giustificazione legale, blindando l'operato dell'amministratore in caso di revisione contabile.
-* **Single Source of Truth (Flag Derivati):** Eliminata la persistenza di stati incoerenti nel database. L'attributo `is_utilizzabile_per_imprevisti` è ora calcolato dinamicamente in tempo reale dal Modello Eloquent in base alla natura del fondo e all'eventuale sblocco manuale.
+#### Bugfix Critico — Isolamento Temporale dei Piani Rate
 
-### Enterprise Data Table (Risorse e Fondi)
-* **Allineamento Matematico (Tabular Nums):** Riprogettata la colonna dei saldi. L'utilizzo di font `tabular-nums` e allineamento a destra garantisce un incolonnamento perfetto dei decimali, offrendo una leggibilità pari a quella di un estratto conto bancario.
-* **Semantica degli Stati Avanzata:** La tabella riconosce e traduce visivamente gli stati complessi del database in etichette chiare per il revisore: "Libero" (Verde), "Vincolato" (Rosso) e "Sbloccato in deroga" (Viola), aggregando le logiche di override in un'unica vista immediata.
-* **Smart Truncation & Type Hardening:** Introdotto il troncamento intelligente a 40 caratteri per i testi descrittivi lunghi (evitando la rottura del layout su schermi piccoli). Sostituiti i cast generici (`any`) con interfacce TypeScript rigorose (`TipoCassa`, `SottotipoFondo`) per garantire la validazione a compile-time su tutto il frontend.
+**Problema:** L'aggiunta di una nuova voce di spesa come sottoconto di un capitolo già incluso in un piano rate attivo causava l'inclusione automatica e silenziosa della nuova voce nel piano esistente.
 
-## [1.9.21] - The Financial X-Ray & Single Source of Truth (Latest)
+**Causa radice:** Il sistema non aveva il concetto di "snapshot temporale". I sottoconti venivano sempre letti dinamicamente dalla relazione Eloquent al momento del calcolo.
 
-### Spaccato Finanziario Trasparente (Tenant Wallet UX)
-* **Pannello Laterale "X-Ray" (Sheet):** Aggiunta un'interfaccia a scorrimento laterale nel dettaglio del Piano Rate. L'amministratore può ora aprire lo "scontrino matematico" di ogni singolo condòmino con un solo click.
-* **Scomposizione Dinamica dei Debiti:** Il sistema smonta l'importo totale della rata spiegando matematicamente la provenienza di ogni centesimo. Mostra all'istante quanto deriva dalle quote millesimali ordinarie, quanto da eventuali spese private dirette (Art. 63) e quanto da saldi pregressi.
-* **Raggruppamento per Immobile:** Se un condòmino possiede più unità immobiliari (es. Appartamento 1A e Box 1C), lo spaccato finanziario divide elegantemente i calcoli per ogni singola unità, eliminando la necessità di fare calcoli mentali durante le spiegazioni telefoniche.
+**File modificati (4):**
 
-### Motore Finanziario e UI/UX
-* **Azioni Contestuali (Dropdown Menu):** Pulita la tabella principale dei Piani Rate. Il bottone per aprire lo spaccato finanziario è stato integrato in un elegante menu a tendina (tre puntini verticali) posizionato direttamente nella colonna fissa del "Saldo". Questa scelta architetturale prepara la UI ad accogliere future azioni rapide (es. Invia Sollecito, Stampa Ricevuta) senza mai "sporcare" o allargare la griglia dati.
-* **Badge "Integrazione" Frazionale:** Il tooltip delle rate nella tabella principale riconosce ora gli importi generati da ripartizioni miste o arrotondamenti per quadratura.
-* **Correzione Penny-Perfect (Fallback Zero-Quota):** Il motore di calcolo quote `CalcoloQuoteService` è stato blindato contro i dati anagrafici incompleti. Se il sistema rileva che i comproprietari di un immobile hanno quote millesimali a zero (o non inserite nel DB), non innesca più il paradosso del Penny-Perfect, ma applica automaticamente una divisione equa e perfetta (es. 50% e 50% per due soggetti), garantendo sempre la corretta distribuzione degli addebiti diretti (Spese Ad Personam).
+- **`CalcoloQuoteService`** — Sottoconti filtrati per `created_at <= piano_rate.created_at` prima di distribuire proporzionalmente il budget.
+- **`BudgetCoverageService`** — STEP 1 di `calcolaCoperturaReale()`: il push-down del budget applica lo stesso filtro temporale.
+- **`PianoRateController::store`** — I nuovi piani rate salvano in `piano_rate_capitoli` gli ID delle foglie esistenti al momento della creazione.
+- **`PianoRateResource`** — La serializzazione di `figli_names` e il calcolo di `importo_originale` applicano lo stesso snapshot temporale.
 
-## [1.9.20] - The Extraordinary Engine & Polymorphic UI (Latest)
-
-### Piani Rate Straordinari (Il Bivio & Art. 1135 c.c.)
-* **Architettura a Doppio Binario (Il Bivio):** Rivoluzionata la creazione dei piani rate. Il sistema ora gestisce nativamente due scenari diametralmente opposti:
-    1.  **Ordinario:** Basato sul bilancio preventivo e sui capitoli di spesa.
-    2.  **Straordinario (Novità):** Slegato dal preventivo, si alimenta direttamente dal "Carrello Fatture" per finanziare spese impreviste o lavori urgenti.
-* **Carrello Fatture Dinamico:** Nuova interfaccia per la selezione delle sopravvenienze passive. L'amministratore può selezionare singole fatture fuori budget e stabilire l'importo esatto da finanziare per ciascuna.
-* **Scudo Legale Obbligatorio:** Inserita una barriera di validazione (`CreatePianoRateRequest`) che impedisce la creazione di rate straordinarie senza i requisiti normativi. Richiede obbligatoriamente di specificare se l'azione è coperta da "Delibera Assembleare" o dettata da "Urgenza", includendo gli estremi a tutela dell'amministratore.
-
-### Polimorfismo Contabile & Dashboard Intelligence
-* **Polimorfismo delle Risorse (Single Source of Truth):** Implementato un trucco architetturale nella `PianoRateResource`. Le fatture straordinarie vengono "mascherate" e formattate dinamicamente come se fossero capitoli di spesa. Questo garantisce che tutto l'ecosistema frontend (grafici, tabelle, dettagli) continui a funzionare perfettamente senza dover duplicare o riscrivere il codice Javascript.
-* **Widget "Sforo Recuperato" (100% Integrato):** La Dashboard è ora consapevole dei piani straordinari. Se una spesa imprevista viene finanziata tramite un piano straordinario, il widget del fabbisogno reale riconosce la quadratura matematica, elimina l'allarme di disallineamento e fa comparire il badge blu **"INTEGRATO - Sforo Recuperato"**.
-* **Smart Push-Down Straordinario:** Il motore `BudgetCoverageService` è stato potenziato (Step 3). Intercetta i soldi incassati dai piani straordinari, risale alle righe contabili delle singole fatture collegate, e "inietta" la copertura direttamente nel nodo dell'Albero dei Conti corrispondente (es. "Imprevisto Mario Rossi"), colorando la barra di avanzamento al 100% (Smeraldo).
-
-### Motore "Penny-Perfect" & Ripartizione Mista
-* **Supporto Fatture Miste (Condominio + Ad Personam):** Il motore di calcolo quote elabora perfettamente fatture che contengono sia spese comuni (da ripartire per millesimi) sia addebiti personali diretti a specifici immobili (`immobile_id`).
-* **Quadratura Frazionale Assoluta:** L'algoritmo distribuisce il debito gestendo i resti decimali sulle prime rate (es. 3 rate da 6,62€ e 9 rate da 6,60€). Garantisce che il totale richiesto ai condòmini corrisponda spaccato al centesimo al totale del documento fiscale lordo, senza generare micro-sbilanciamenti a fine anno.
-
-## [1.9.19] - The Triple Recovery Strategy & Reserve Fund Engine (Latest)
-
-### Gestione Intelligente Sforamenti (Il Tridente)
-* **Neutralizzazione Finanziaria:** Introdotta la possibilità di gestire gli sforamenti di budget (Audit Trail) attraverso tre strategie distinte e mutualmente esclusive, garantendo la flessibilità necessaria per ogni urgenza (Art. 1135 c.c.):
-    1.  **Attesa Conguaglio:** Lo sforo viene registrato come debito "silenzioso" che verrà richiesto automaticamente ai condòmini solo a chiusura esercizio.
-    2.  **Rata Integrativa:** Il sistema mantiene l'allerta attiva per guidare l'amministratore verso l'emissione immediata di un piano rate straordinario per recuperare liquidità.
-    3.  **Fondo di Riserva:** La strategia più avanzata. Permette di "assorbire" istantaneamente lo sforo attingendo a un fondo patrimoniale preesistente (es. Fondo Morosità, Riserva o TFR), evitando di generare nuovi debiti per i condòmini.
-
-### Integrazione Contabile Fondi (Deep Ledger)
-* **Automazione Partita Doppia:** L'utilizzo del Fondo Riserva non è più solo una scelta gestionale, ma genera ora scritture contabili reali e bilanciate nel Libro Giornale. 
-* **Giroconto Tecnico:** Il `FatturaPassivaService` è stato istruito per generare automaticamente una coppia di righe extra: **AVERE** sul mastro della Cassa/Fondo (per scaricare la disponibilità) e **DARE** sul mastro delle Sopravvenienze (per pareggiare la spesa fuori preventivo).
-* **Deep Scan Ready:** Grazie a questa integrazione, il modulo di "Audit Integrità" ora rileva e visualizza correttamente la movimentazione dei fondi patrimoniali, garantendo che il bilancio di verifica quadri al centesimo.
-
-### Dashboard & Visual Intelligence 2.0
-* **Badge Semantici Avanzati:** La modale "Audit Spese Scoperte" è stata dotata di un nuovo set di indicatori cromatici:
-    * 🟢 **Verde Smeraldo [Coperto da Fondo]:** Indica una spesa fuori budget che è stata già neutralizzata finanziariamente.
-    * 🟣 **Indaco [Sforo Autorizzato]:** Indica uno sforo destinato al conguaglio di fine anno.
-    * 🟠 **Ambra [Emetti Rate]:** Indica una spesa che richiede azione immediata sul piano rate.
-* **Stato "Bilancio Integrato":** Il widget principale di copertura ora riconosce gli sfori "scudati" (Fondi o Conguaglio). Se tutte le spese scoperte hanno una strategia assegnata, il widget assume lo stato **INTEGRATO**, segnalando all'amministratore che la situazione è sotto controllo.
-
-### Risorse e Cassa (Real-Time Balancing)
-* **Calcolo Saldo Dinamico (Iniziale + DARE - AVERE):** Rivoluzionata la visualizzazione della tabella "Risorse e Fondi". Il saldo mostrato non è più un dato statico preso dalla tabella `casse`, ma viene ricalcolato in tempo reale interrogando l'intero Libro Giornale.
-* **Sincronizzazione Mastri:** La tabella Risorse ora funge da "specchio" fedele dei mastri contabili. Ogni spesa pagata tramite Fondo Riserva decrementa istantaneamente il saldo visibile nella pagina delle risorse, eliminando discrepanze tra gestione e contabilità pura.
-
-## [1.9.18] - Mixed Allocation & Dynamic Ledger (Latest)
-
-### Ripartizione Mista e Addebiti Personali
-* **Spaccatura Fattura (Line-Level Splitting):** Rivoluzionato il motore di registrazione delle fatture passive. È ora possibile suddividere un singolo documento fiscale in infinite righe di dettaglio, assegnando a ciascuna una logica di ripartizione indipendente.
-* **Addebito Diretto su Unità (`immobile_id`):** Risolto definitivamente il problema dei "lavori privati" (es. rifacimento balcone esclusivo all'interno di una fattura condominiale). L'amministratore può ora assegnare una specifica riga di spesa a una singola unità immobiliare. Il motore ignorerà i millesimi per quella riga, addebitando il 100% dell'importo al proprietario interessato sul prossimo piano rate.
-* **Fine delle Tabelle Fittizie:** Eliminata la necessità di creare "tabelle millesimali finte" (es. 1000/1000 su un singolo condomino) o di registrare fatture fittizie per gestire le spese ad personam.
-
-### Sopravvenienze Passive (Spese Fuori Preventivo)
-* **Gestione Imprevisti "On-the-Fly":** Aggiunto un interruttore dinamico "⚡ Spesa imprevista (non in preventivo)" su ogni singola riga durante la registrazione della fattura.
-* **Auto-Routing Contabile:** Spuntando la casella, il sistema disabilita la selezione dal preventivo ordinario e dirotta automaticamente l'importo sul conto istituzionale "Sopravvenienze Passive" nel Libro Giornale (Partita Doppia). 
-* **Bilanci Trasparenti (Art. 1130-bis c.c.):** Le spese d'emergenza non inquinano più il budget dei capitoli ordinari (es. "Manutenzione Varie"). Nel consuntivo di fine anno, l'assemblea vedrà una voce chiara e separata per tutti gli imprevisti, garantendo massima trasparenza e zero sforzi mnemonici per l'amministratore.
-
-### Database Fortification & UI Safety
-* **Filtro "Fortezza" sul Piano dei Conti:** Implementato un blocco di sicurezza bidirezionale (Frontend + Backend) che impedisce la registrazione di spese su "Macro-Capitoli" (nodi padre) o su voci orfane.
-* **Smart Dropdown:** Il menu a tendina in Vue.js ora valuta in tempo reale la validità contabile della voce (`conto_contabile_id !== null`), ingrigendo le opzioni non valide e guidando l'utente verso una compilazione sempre corretta.
-* **Backend Hard-Lock:** Il `FatturaPassivaService` lancia ora un'eccezione bloccante se rileva un tentativo di forzatura su un conto privo di Mastro in Partita Doppia, garantendo la quadratura matematica del database in ogni scenario.
-
-## [1.9.17] - Legal Guardian & UI Precision (Latest)
-
-### Conformità Legale (Gate Legale Art. 1135 c.c.)
-* **Workflow di Approvazione Blindato:** Implementato un blocco normativo che impedisce di rendere esecutivo un Piano Rate (e di emettere le scadenze) senza una delibera formale.
-* **Modale Delibera Assembleare:** La transizione da "Bozza" ad "Approvato" attiva ora una modale dedicata per registrare la Data della Delibera, il Numero del Verbale e le Note esplicative.
-* **Audit Trail Integrato:** Il database ora traccia automaticamente in background quale utente amministratore ha approvato il piano e il timestamp esatto dell'operazione (`approvato_il`, `approvato_da_user_id`).
-* **Badge Legale Visivo:** Aggiunto un indicatore semantico (con icona a martelletto) nell'intestazione del Piano Rate. Mostra a colpo d'occhio i dati della delibera, garantendo la trasparenza e lo "scudo legale" della ripartizione.
-* **Ripristino Sicuro (Bozza):** Il ritorno allo stato "Bozza" cancella in automatico i dati della delibera e l'audit trail, obbligando a una nuova registrazione in caso di modifiche strutturali al piano.
-
-### Smart Sync & Backend Optimization
-* **Filtro Zero-Importo (Backend):** Ottimizzato il calcolo delle voci di spesa "Orfane" (`FatturaPassivaService` / `PianoRateController`). Il sistema ora esclude automaticamente i capitoli a 0,00€, prevenendo falsi allarmi di sincronizzazione nel frontend.
-* **Fix Query Builder:** Sostituito l'operatore array instabile con l'istruzione nativa `whereNotIn` per il calcolo delle coperture, garantendo precisione assoluta nell'identificazione delle spese scoperte.
-* **Pulsante Azione Dinamico:** Il tasto di manutenzione del piano rate si trasforma intelligentemente. Diventa un tasto arancione "Sincronizza" se ci sono nuove voci scoperte, o un tasto standard "Ricalcola" se è solo necessario aggiornare le quote in base a nuovi millesimi o preventivi.
-
-### UX & Bugfixes (Tooltips e Radix UI)
-* **HoverCard Context-Aware:** I tooltip di sistema ora "parlano" con l'utente. Il testo e il titolo del fumetto cambiano dinamicamente spiegando esattamente cosa farà il bottone ("Sincronizza e ricalcola" vs "Ricalcolo piano rate").
-* **Spiegazione Blocchi Dinamica:** Se il ricalcolo è bloccato, il tooltip non si limita a disattivare il bottone, ma avvisa proattivamente l'amministratore dell'ostacolo esatto (es. *"Disabilitato: annulla prima gli incassi registrati"* oppure *"annulla prima le emissioni"*).
-* **Fix Posizionamento Radix UI:** Risolto un fastidioso bug di "salto" dei tooltip (HoverCard che comparivano in alto a sinistra a coordinate `0,0`). Rimossi i conflitti con `pointer-events-none` sui bottoni disabilitati e forzato l'ancoraggio con `side="bottom"`, garantendo un posizionamento fluttuante perfetto e solido in ogni condizione.
-* **Sincronizzazione Stato UI:** Risolto un potenziale glitch visivo sulla levetta di approvazione. Se l'utente annulla l'inserimento della delibera, lo switch Vue torna istantaneamente e fedelmente allo stato reale letto dal database.
-
-# [1.9.16] - Accounting Intelligence & Precision (Latest)
-
-## Potenziamento del Motore Finanziario
-
-### Motore Finanziario in Centesimi (MoneyHelper)
-- **Rimosso l'uso dei float nativi di PHP** per i calcoli finanziari sensibili
-- **Integrata la classe `MoneyHelper`** in tutto il ciclo di incasso
-- **Precisione assoluta garantita** - eliminati definitivamente i bug di arrotondamento nel bilancio
-- Tutte le operazioni monetarie operano ora a livello centesimale per una precisione impeccabile
-
-### Ordinamento Visivo a Cascata (Waterfall)
-- **Riprogettata la visualizzazione dei movimenti** nell'Estratto Conto Anagrafica
-- All'interno della stessa operazione, i movimenti in **DARE** (Addebiti/Prelievi dal Salvadanaio) ora precedono visivamente quelli in **AVERE** (Incassi/Compensazioni)
-- Risulta in una **curva del saldo logica** e priva di "falsi rossi" nella visualizzazione
-
-### Single Source of Truth (Pivot Engine)
-- **Ottimizzato il processo di salvataggio delle quote**
-- **Eliminati gli aggiornamenti manuali ridondanti** (`update()`) sui record delle quote
-- Il ricalcolo dello stato ora si affida **interamente ai dati registrati nella tabella pivot**
-- Garantisce **massime performance e integrità dei dati** attraverso un'architettura semplificata
-
-### Gestione Debiti Pregressi e Double Lock (Input Fatture 2.0)
-- **Implementata l'architettura logica e contabile** per la gestione dei "Debiti Pregressi" (fatture ereditate da esercizi precedenti).
-- **Meccanismo Double Lock:** Garantisce la perfetta quadratura tra competenza economica (conto economico), situazione patrimoniale e liquidità reale (cassa).
-- **Gestione automatizzata di 5 scenari reali:**
-    1.  **Copertura Totale:** Fattura pregressa coperta interamente da Rata 0.
-    2.  **Crisi di Liquidità:** Fattura coperta a bilancio, ma con cassa insufficiente (Semaforo Giallo/Alert Cassa).
-    3.  **Proiettile Vagante (Sopravvenienza):** Fattura senza copertura convertita automaticamente in nuova spesa corrente (Sopravvenienza), con assegnazione guidata della Tabella Millesimale e Fornitore.
-    4.  **Copertura Mista (Split):** Fattura coperta parzialmente dai saldi pregressi e parzialmente inserita come spesa corrente (Sopravvenienza).
-    5.  **Fondo di Riserva:** Utilizzo di accantonamenti pregressi (es. TFR) per estinguere il debito senza gravare sul bilancio corrente.
-
-### Correzioni di Bug
-
-#### Fix Race Condition "NON PAGATA"
-- Risolto un bug temporale nel ricalcolo degli stati durante le compensazioni
-- **Spostata la chiamata `ricalcolaStato()`** per eseguire **dopo** l'effettivo `attach()` dei pagamenti
-- Le rate chiuse tramite credito vengono ora etichettate correttamente come **"PAGATA" in tempo reale**
-
-#### Fix Sbilanciamento Incassi Misti
-- Introdotto il **controllo rigoroso `$budgetCashCents`** in `StoreIncassoRateAction`
-- Il sistema ora **impedisce alla scrittura di cassa di consumare debito virtuale**
-- Crea lo spazio appropriato per la scrittura di storno e completa **la partita doppia in modo perfettamente bilanciato**
+**Invarianti garantiti:** Nessuna migration necessaria.
 
 ---
 
-*Questa release garantisce che ogni operazione finanziaria mantenga un'integrità perfetta, dalle transazioni individuali agli estratti conto completi.*
+### [1.9.0-beta.25] — ERP Accounting Engine & Reverse Ledger
 
-### [1.9.15] Tenant Experience & UI
-* **Smart Wallet (Salvadanaio Condòmino):** Completamente ridisegnato il widget per l'utilizzo dei crediti pregressi. Adotta ora un design pulito e professionale (stile "Digital Wallet"), con un breakdown matematico trasparente che mostra il costo della rata, il credito applicato e il nuovo totale da versare.
-* **Credito Puro (Zero-Payment):** Ripristinata e migliorata la "Card Trionfale" blu/azzurra per le rate che generano un credito netto a favore del condòmino. Il sistema nasconde automaticamente le istruzioni per il bonifico e i bottoni di pagamento, indicando chiaramente che non è richiesta alcuna azione.
-* **Sincronizzazione Dinamica UI:** L'interfaccia dell'app del condòmino reagisce ora istantaneamente a *qualsiasi* azione dell'amministratore (incasso, incasso parziale, storno, annullamento emissione), ricalcolando in tempo reale lo stato (Pagato, Parziale, In attesa) e l'importo residuo al centesimo.
+#### Architettura — Il Filtro Invertitore (Note di Credito)
 
-### [1.9.14] Accounting Engine & Sync (Ciclo Attivo)
-* **Motore di Storno "Self-Healing":** Sviluppato il sistema di annullamento incassi (Storno). L'architettura esegue una fotografia preventiva dei soggetti coinvolti, inverte la partita doppia (generando una scrittura di rettifica) e ripristina chirurgicamente il debito sulle quote originali. Immediatamente dopo, il Tenant Portal del condòmino viene aggiornato, rimuovendo la spunta verde di "Rata Saldata" e ripristinando la richiesta di pagamento.
-* **Onboarding Silenzioso (Gestione Iniziata):** Risolto un bug critico nel rilascio delle "Rate Silenziose". Ora, quando l'amministratore pubblica le rate (dopo aver magari registrato decine di incassi pregressi di nascosto), il sistema filtra ed elabora i pagamenti *esclusivamente* per la singola anagrafica, evitando di sovrascrivere l'estratto conto del singolo utente con il debito dell'intero condominio.
-* **Prevenzione Falsi Positivi JSON:** Reso impermeabile il frontend Vue ai problemi di serializzazione dei dati JSON provenienti da MySQL. Il flag di emissione (`is_emitted`) viene ora interpretato correttamente a prescindere dal tipo di dato (booleano, intero o stringa), garantendo lo sblocco immediato dei pulsanti di pagamento alla pubblicazione della rata.
+- **Paradigma "Write-Then-Reverse":** Il core di `FatturaPassivaService` per le Note di Credito abbandona la logica ibrida basata su moltiplicatori matematici. La Partita Doppia viene generata sempre come per una fattura passiva standard (valori assoluti positivi). Un "Filtro Invertitore" finale capovolge chirurgicamente i segni (DARE↔AVERE).
 
-### [1.9.13] Bugfixes & Ottimizzazioni
-* **Fix Popup di Storno:** Corretto un errore che mostrava "€ 0,00" nel dialog di conferma dello storno. Il frontend ora riconverte correttamente i decimali del backend in centesimi prima di passarli al formattatore di valuta.
-* **Fix Vue Warnings:** Aggiunta la prop `esercizi` mancante nel controller della lista incassi, eliminando i warning in console e migliorando la stabilità del rendering.
-* **Protezione Query Relazionali:** Sostituite le fragili query dirette su campi JSON nidificati (`whereIn` su meta JSON) con costrutti logici multi-tipo più robusti, garantendo che gli eventi vengano sempre intercettati e aggiornati durante storni e annullamenti.
+#### Sicurezza — Il Guardiano Contabile
 
-## [1.9.12] Tenant Experience & Payment Loops
+- **Double-Entry Validator:** Un istante prima di finalizzare il `DB::transaction`, il sistema calcola la somma esatta di DARE e AVERE. Qualsiasi sbilancio blocca fisicamente la transazione (Rollback totale) e scrive un log `CRITICAL` con User ID, importi e differenza.
 
-**Zero-Anxiety UI & Rassicurazione Visiva**
-* **Debito Pregresso non "Scaduto":** La Rata 0 (che rappresenta il saldo dell'anno precedente) non viene più etichettata con il badge rosso di allarme "Scaduta". Adotta ora un design dedicato color ambra con la dicitura "Debito Pregresso" e l'icona "Storico", eliminando la frustrazione visiva per i documenti di competenza passata.
-* **Positive Feedback Loop (Rata Saldata):** Una volta che l'amministratore registra l'incasso, la rata non scompare più disorientando l'utente. Nel widget delle scadenze compare un rassicurante badge verde "Pagamento Ricevuto". Aprendo il dettaglio, il condòmino viene accolto da un box trionfale "Rata Saldata", avendo l'immediata certezza che i suoi soldi sono stati contabilizzati.
-* **Pulizia Istruzioni Obsolete:** Nelle rate con stato "Pagato", il sistema nasconde automaticamente il testo descrittivo con le istruzioni per il bonifico e rimuove i pulsanti di segnalazione, garantendo un'interfaccia pulita, inequivocabile e priva di inviti ad azioni inutili.
+#### Bugfix — Compliance Fiscale e Fondi
 
-**Dispute Resolution & Logiche di Sblocco**
-* **Self-Healing Loop (Pagamenti Rifiutati):** Se l'amministratore rifiuta una segnalazione di incasso (es. bonifico non arrivato in banca), la modale mostra il motivo del rifiuto e *riattiva* dinamicamente i controlli. Il bottone di azione diventa rosso e cambia la dicitura in "Ho ri-effettuato il pagamento (Segnala di nuovo)", permettendo all'utente di risolvere la disputa in totale autonomia.
-* **Smart Visibility Bypass:** Risolto un "falso positivo" che manteneva bloccati i pulsanti di pagamento con la dicitura "Pagamento non ancora attivo" sulle nuove emissioni. Il frontend ora applica un'euristica intelligente: se la rata appare nella bacheca del condòmino, i pagamenti vengono sbloccati istantaneamente, ignorando i flag di sistema usati per l'emissione silenziosa lato admin.
+- **Storno Ritenute d'Acconto:** Risolto bug fiscale critico che escludeva il calcolo della ritenuta d'acconto durante la generazione delle Note di Credito.
+- **Integrità Reportistica Fondi:** Le Note di Credito registrano l'utilizzo dei Fondi con segno negativo: `1.000 € (Fattura) + (−1.000 €) (Storno) = 0 €`.
+- **Garbage Collection Conti Fantasma:** `FatturaPassivaController@destroy` distrugge automaticamente i "Conti Imprevisto" orfani creati dalle sopravvenienze.
 
-## [1.9.11] Time-Travel Accounting (Debito Esercizio Precedente)
-* **Caricamento Fatture Pregresse:** Introdotta la possibilità vitale di registrare nel gestionale le fatture datate negli anni passati (es. fattura 2025 caricata nel 2026) senza inquinare il bilancio dell'anno in corso.
-* **Smart Date Check (Rilevatore di Competenza):** Quando l'amministratore inserisce la data del documento, l'interfaccia Vue riconosce in millisecondi se la fattura appartiene a un esercizio chiuso. Appare automaticamente un nuovo "Scudo Giallo" (Debito Esercizio Precedente) pronto per essere attivato.
-* **Esenzione Budget Attiva:** Attivando l'opzione "Debito Pregresso", il sistema disinnesca in automatico l'allarme "Sforamento Budget". Il gestionale comprende che essendo una spesa vecchia, non ha alcun senso confrontarla con il preventivo dell'anno corrente, evitando stress e falsi allarmi (Audit Trail).
-* **Partita Doppia Invisibile:** Il motore `FatturaPassivaService` è stato istruito a deviare questi importi. Invece di addebitare la spesa sui capitoli ordinari (Conto Economico), il debito viene forzato silenziosamente sul conto patrimoniale di sistema **"Fondo Passate Gestioni"**.
-* **Cash Flow Lineare:** Questo aggiornamento chiude perfettamente il cerchio con la "Rata 0": i soldi incassati dai vecchi morosi rimpinguano il Fondo Passate Gestioni, mentre i bonifici fatti ai fornitori per le fatture pregresse svuotano lo stesso fondo. Il bilancio quadra al centesimo e il debito sparisce magicamente dallo scadenzario.
-* **UI "Pregresso" Globale:** Aggiunto un badge dedicato `[Archive Pregresso]` nella Data Table principale delle fatture passive. L'amministratore può distinguere a colpo d'occhio i debiti correnti dagli strascichi delle gestioni passate.
+#### Testing
 
-## [1.9.10] - Silent Emission & Inbox Zero (Zero-Anxiety Update)
+- **Test Suite Alignment (100% Pass Rate):** Aggiornati `DashboardFinancialTest` e `BudgetCoverageServiceTest`.
+- **Agnostic Migrations per SQLite:** Le migration storiche tollerano le esecuzioni su SQLite in RAM per i test Pest, eseguendo le query raw esclusivamente in ambiente MySQL/MariaDB.
 
-Questa release introduce potenti strumenti di controllo sul flusso di lavoro dell'amministratore, chiudendo le "finestre di vulnerabilità" comunicative con i condòmini e automatizzando la pulizia della scrivania virtuale (Inbox).
-
-### 🤫 Emissione Silenziosa (Finestra di Vulnerabilità)
-* **Pubblicazione Differita:** Introdotta la possibilità di disaccoppiare l'atto contabile (emissione in prima nota) dall'atto comunicativo (visibilità e notifiche).
-* **Toggle "Rendi visibile e invia notifiche":** Nella modale di emissione rate, l'amministratore può ora togliere la spunta per effettuare un'emissione "in incognito". Le scritture contabili vengono generate, ma i condòmini non ricevono avvisi e non vedono le nuove scadenze sull'App.
-* **Allineamenti Excel senza panico:** Questa funzione è vitale per caricare massivamente pagamenti pregressi (catch-up) senza generare allarmi ingiustificati di "rata scaduta" sui telefoni dei condòmini.
-* **Pulsante "Pubblica Nascoste":** Un nuovo bottone intelligente (che compare automaticamente solo se ci sono rate congelate) permette di sbloccare la visibilità globale e inviare tutte le notifiche in un colpo solo, a lavoro di riconciliazione ultimato.
-* **HoverCard Guida Context-Aware:** L'intera toolbar del Piano Rate è stata arricchita con componenti `HoverCard` che spiegano dinamicamente lo stato in cui si trova il piano (Bozza, Approvato, Bloccato) e guidano l'utente sulle azioni possibili, eliminando i "punti ciechi" cognitivi.
-
-### 🧹 Inbox Zero (Automazione Task Admin)
-* **Smart Task Killer:** Implementata una logica di disinnesco automatico per i task amministrativi obsoleti.
-* **Uccisione Mirata (`verifica_pagamento`):** Quando l'amministratore registra un incasso che porta a zero il debito di un condòmino, il sistema intercetta l'evento e cancella all'istante il fastidioso promemoria di verifica per quella specifica persona.
-* **Uccisione Globale (`controllo_incassi`):** Se il pagamento registrato completa l'incasso del 100% dell'intera rata per tutto il condominio, il sistema "killa" in automatico anche il task generico di controllo della rata.
-* **Cache Buster Integrato:** Entrambe le operazioni forzano uno svuotamento del contatore in tempo reale, garantendo che il badge numerico rosso sulla campanella sparisca all'istante, mantenendo la Inbox pulita e focalizzata solo sulle reali urgenze.
-
-## [1.9.9] - Tenant Wallet UX & Smart Intent Sync
-
-Questa release chiude il cerchio del sistema "Smart Wallet", estendendo le potenzialità della gestione crediti direttamente all'area riservata dei condòmini. È stato introdotto un sistema di "Comunicazione di Intenti" che permette al condomino di decidere attivamente come usare i propri fondi, mantenendo l'amministratore in totale controllo della contabilità.
-
-### 🤝 Smart Intent Sync (Ponte Condòmino-Admin)
-* **Frontend Condòmino (Il Salvadanaio):** Se un condòmino vanta un credito pregresso (su Rata 0), la modale di pagamento della rata mostra ora un widget interattivo ("Il tuo Salvadanaio"). Il sistema calcola matematicamente se il credito è sufficiente a coprire l'intera rata o se è necessaria un'integrazione tramite bonifico, mostrando i totali parziali con estrema chiarezza.
-* **Dichiarazione di Compensazione:** Il condòmino può ora cliccare su pulsanti specifici per notificare all'amministratore la volontà di usare il credito (es. "Salda con il credito" o "Ho pagato la differenza"). 
-* **Inbox Admin Contestuale:** L'evento generato nella Inbox dell'amministratore non mostra più il totale nominale della rata, ma esplicita testualmente l'intento (es. *"Il condòmino ha richiesto di usare 100€ del suo salvadanaio, aspetta un bonifico di 12,48€"*).
-* **Guida Operativa Visiva:** Cliccando sulla notifica, la pagina di registrazione incasso (`IncassoRateNew`) rileva automaticamente l'intento di compensazione tramite parametro URL (`intent_usa_credito`) e mostra un Alert Giallo strategico, guidando l'amministratore a cliccare sul tasto "Usa Credito" per completare la quadratura.
-
-### 🧠 Ottimizzazioni Architetturali & Bug Fixes
-* **Lazy Loading dei Saldi Pregressi:** Ottimizzato il Listener `SyncScadenziarioWithPianoRate`. Il backend ora interroga il database alla ricerca di crediti su Rata 0 *solo ed esclusivamente* se il piano rate corrente è configurato con la strategia `metodo_distribuzione === 'rata_zero'`, azzerando query inutili per i piani a spalmatura.
-* **Bugfix "Paradosso Arretrati" (`EventModal`):** Risolto un falso positivo visivo nell'area condòmini. Aprendo il dettaglio di una Rata 0 a credito, il sistema non mostra più l'alert arancione ingannevole relativo ad altre rate ordinarie non ancora saldate (ramanzina inappropriata su un documento di credito). L'alert arretrati compare ora solo sulle vere rate a debito.
-* **Data Scadenza Notifiche Admin:** Il Task "Verifica Incasso" generato dal click del condòmino imposta ora il suo `start_time` al momento esatto del click (`now()`), garantendo la sua apparizione immediata e istantanea in cima alla Inbox dell'amministratore.
-
-## [1.9.8] - Smart Wallet & Payment Intelligence
-
-Questa release rivoluziona l'esperienza di incasso rate e la gestione dei crediti pregressi. Abbandonando vecchie logiche di alterazione visiva dei residui, la piattaforma adotta ora un approccio "Single Source of Truth" supportato da un vero e proprio "Portafoglio Virtuale" (Wallet) a disposizione dell'amministratore, garantendo quadratura contabile assoluta e massima flessibilità operativa.
-
-### 💰 Smart Wallet (Gestione Compensazioni Reali)
-* **Single Source of Truth:** La pagina di registrazione incassi mostra ora gli importi nominali esatti delle rate (allineati perfettamente ai PDF e all'App dei condòmini), eliminando la logica del finto "Waterfall" sul frontend che generava confusione visiva.
-* **Pulsante "Compensa Credito":** L'amministratore può ora attingere a crediti precedenti (Rata 0 negativa) tramite un pulsante dedicato. I fondi virtuali si sommano ai contanti versati in tempo reale, aumentando la "potenza di fuoco" disponibile per saldare i debiti aperti.
-* **Prelievo Intelligente (Smart Withdrawal):** Se un credito pregresso (es. 200€) è superiore alla rata da pagare (es. 112€), il sistema non "brucia" l'intero salvadanaio, ma preleva in automatico solo l'esatto importo necessario (112€), mantenendo il resto a disposizione per incassi futuri.
-* **Anteprima Scrittura Dinamica:** Il widget di riepilogo riconosce l'utilizzo del credito e mostra diciture specifiche (es. *"Credito rimanente nel salvadanaio: € 88,00"*), garantendo che l'amministratore sappia esattamente cosa verrà registrato in contabilità prima ancora di salvare.
-
-### 🧠 Logiche di Base e Architettura
-* **Refactoring Modulo Incassi (`IncassoRateNew`):** Il componente Vue è stato completamente riprogettato con un'architettura chirurgica. Separazione netta tra stato, calcoli matematici isolati (`math.parse`) e azioni di sistema, eliminando oltre 100 righe di codice ridondante e garantendo una reattività immediata dell'interfaccia.
-* **Ottimizzazione Tasto "Scadute":** La logica di autoselezione delle rate in ritardo è stata potenziata. Ora include correttamente le rate che scadono nella giornata odierna ("Oggi") e forza l'aggiornamento visivo immediato della UI senza perdere il focus.
-* **Tipizzazione Rigorosa (TypeScript):** Estese e aggiornate le interfacce contabili (`Rata`, `DettaglioQuotaRata`) per supportare nativamente le nuove stringhe compresse dei nomi e i ruoli dei proprietari, garantendo una build a zero errori.
-
-### 🎨 UI/UX Enhancements (Maschera Incassi)
-* **Feedback Cromatico Istantaneo:** I residui in tabella utilizzano ora classi semantiche Tailwind avanzate: **Verde sgargiante** per i crediti a favore del condomino, **Rosso acceso** per i debiti pregressi urgenti, e grigio standard per l'amministrazione ordinaria.
-* **Lettura Tabella Pivot Avanzata:** Il tooltip nero ("scontrino") ora interroga direttamente la tabella pivot per estrapolare dinamicamente il ruolo del pagante e mostrare badge dedicati (es. `[P]` per Proprietario, `[I]` per Inquilino), senza appesantire la query principale.
-* **Smart Truncation & Hover Text:** In presenza di unità immobiliari con molteplici eredi (es. "Rossi, Bianchi + altri 18"), la UI comprime automaticamente la stringa per non rompere il layout della tabella. Passando il mouse sul nome (con cursore "help"), viene svelato il tooltip nativo con l'elenco completo di tutti i comproprietari.
-* **Filtro "Mostra solo scadute":** Aggiunto un interruttore dinamico sopra la tabella per nascondere le rate future, mantenendo sempre "appuntata" in cima l'eventuale Rata 0 per non perdere mai di vista i saldi storici.
-* **Input Protections:** I campi degli importi (MoneyInput) si disabilitano e vanno in "fade-out" quando la rata è esattamente a zero o è un credito puro, evitando errori di digitazione e registrazioni di "incassi su incassi". 
-
----
-## [1.9.7] - Visual Harmony & Smart Filters
-
-Continua il processo di modernizzazione e pulizia dell'interfaccia utente. Questa release uniforma il design system dei moduli operativi (Comunicazioni, Segnalazioni, Documenti e Agenda) e introduce filtri di ricerca avanzati e persistenti per una gestione multi-condominio più fluida.
-
-### 🎨 UI/UX Redesign & Visual Harmony
-* **Widget Guide Contestuali:** Aggiunto il nuovo componente `PageHeaderGuide` in tutte le pagine indice dei moduli operativi (Bacheca, Guasti, Archivio, Scadenze). L'header ora accoglie l'utente con breadcrumbs puliti e card informative dinamiche che spiegano "a colpo d'occhio" le funzionalità chiave del modulo, migliorando l'onboarding.
-* **Statistiche Semantiche (Pastel Design):** Refactoring completo dei moduli statistici (`ComunicazioniStats`, `SegnalazioniStats`, `DocumentiStats`, `EventiStats`). Abbandonate le "Card" generiche in favore di contenitori flat con fondini color pastello a opacità ridotta. I colori (Rosso, Ambra, Smeraldo, Blu, Violetto, Rosa) sono ora assegnati semanticamente per comunicare istantaneamente il livello di urgenza (es. scadenze e guasti) o la classificazione del dato (es. spazio cloud).
-* **Interattività Visiva:** I widget cliccabili (come le statistiche dell'Agenda che fungono da filtro) ora presentano un micro-feedback visivo al passaggio del mouse (sollevamento e ombra) per indicare chiaramente la loro interattività.
-* **Tabelle "Card Style":** Tutte le DataTables (liste dati) sono state incapsulate in moderni contenitori smussati (`rounded-2xl`) con ombre leggere (`shadow-sm`), allineando il design a quello della nuova Dashboard Contabile.
-
-### 🧠 Smart Filters & Backend Logic
-* **Filtro "Condominio" Persistente:** Introdotto un nuovo selettore a tendina all'interno delle Toolbar delle tabelle (Segnalazioni e Documenti) che permette di filtrare rapidamente i record appartenenti a uno specifico fabbricato. Il sistema ora salva e mantiene lo stato del filtro anche dopo il ricaricamento dei dati.
-* **Dynamic Clear Button:** Il pulsante "Svuota filtri" nelle DataTables ora è intelligente: compare a schermo solo se l'utente ha effettivamente applicato almeno un criterio di ricerca (testo, priorità, stato, o condominio).
-* **Backend Query Fix:** Corretta un'anomalia nei Service Layer (`SegnalazioneService` e `DocumentoService`). Aggiunte le istruzioni SQL mancanti per processare correttamente l'array `condominio_id` proveniente dal frontend, implementando query ottimizzate (`whereIn` per le relazioni 1:N e `whereHas` per le relazioni N:N) che garantiscono risultati istantanei e precisi.
-
-## [1.9.6] - Active Budget Guardian & UI Refinements
-
-Questa release potenzia ulteriormente la "torre di controllo" dell'amministratore, introducendo un guardiano attivo sulla coerenza dei dati e migliorando la User Experience durante la compilazione dei preventivi.
-
-### 🛡️ Active Budget Guardian (Validatore Disallineamenti)
-* **Prevenzione Errori Strutturali:** La Dashboard ora monitora attivamente le modifiche retroattive al piano dei conti. Se l'amministratore modifica l'importo di una spesa (o di un suo sottoconto) *dopo* aver già generato il piano rate, il sistema intercetta immediatamente l'incoerenza.
-* **Allarmi Gerarchici:** Introdotta una "cascata di priorità" negli avvisi della Dashboard:
-    1. 🔴 **Priorità Massima (Disallineamento):** Segnala i piani rate che necessitano di un ricalcolo urgente per evitare di richiedere quote errate ai condòmini.
-    2. 🟠 **Priorità Secondaria (Voci Orfane):** Segnala la presenza di nuove spese a preventivo non ancora assegnate a nessun piano di ripartizione.
-* **Azione Diretta:** I banner di allarme includono pulsanti operativi (es. "Apri", "Analizza Voci") che portano l'utente esattamente dove serve per risolvere l'anomalia.
-
-### 🎨 UI/UX Refinements (Piano dei Conti)
-* **Total Budget Badge:** Aggiunto un badge dinamico nell'intestazione della pagina "Gestione Spese" che mostra in tempo reale la somma totale matematica del preventivo, offrendo un colpo d'occhio immediato sul "peso" del bilancio.
-* **Smart Edit Modal:** La modale di modifica delle singole voci di spesa è stata riprogettata:
-    * Integra ora i selettori per "Fornitore Suggerito" e "Natura Spesa (Fiscale)" per allinearla alla creazione.
-    * Disabilita in automatico gli alert di sistema focus-stealing che causavano fastidiosi highlight neri sui testi all'apertura.
-    * Include box informativi contestuali che spiegano esattamente *perché* un importo è bloccato (Hard Lock vs Soft Lock) e *come* l'utente può sbloccarlo.
-* **Protezione Soft Lock Avanzata:** L'algoritmo che impedisce di abbassare l'importo di una voce al di sotto di quanto già impegnato ora utilizza un pattern di fallback sicuro, risolvendo i conflitti con i valori di "inclusione totale" (NULL) nella tabella pivot.
-
-## [1.9.5] - Smart Waterfall & Transparent Ledger
-
-Questa release perfeziona il cuore dell'Accounting Core introducendo il calcolo a cascata per i saldi pregressi e una riconciliazione automatica per gli incassi cumulativi. L'interfaccia dell'Estratto Conto è stata riprogettata per garantire il 100% del rigore matematico senza sacrificare la chiarezza per l'utente finale.
-
-### 🧠 Smart Waterfall Logic (Distribuzione a Cascata)
-* **Pianificazione Intelligente Saldi:** Quando un'anagrafica possiede più immobili (es. Appartamento + Box) e vanta un credito o un debito dall'esercizio precedente, il motore di generazione Piani Rate ora lo distribuisce a cascata. Il credito viene usato per azzerare la quota del primo immobile, e il residuo scivola automaticamente a copertura del secondo, evitando la generazione di "rate negative" o anomalie contabili.
-* **Incassi Cumulativi Automatici:** Il motore di registrazione incassi (`StoreIncassoRateAction`) è stato riscritto. Ora l'amministratore può inserire un singolo bonifico globale: sarà il sistema a scomporlo automaticamente, saldando le quote dei vari immobili in ordine progressivo fino all'esaurimento dei fondi.
-
-### 📊 Estratto Conto: Transparent Ledger
-* **Matematica Inviolabile:** La tabella dei movimenti contabili ora mostra esclusivamente gli importi puri in Dare/Avere (escludendo figurativamente i debiti pregressi dall'importo visivo). Questo garantisce che la colonna "Saldo Progressivo" sia matematicamente ineccepibile in ogni istante.
-* **UI/UX Esplicativa:** Per giustificare le discrepanze tra la spesa nominale e l'incasso reale (dovute a crediti/debiti degli anni precedenti), l'Estratto Conto utilizza lo snapshot salvato nel database per generare scritte esplicative dinamiche (es. *"👉 Include recupero debito pregresso: € 100"*).
-* **Tooltip Contabili:** Il dettaglio a comparsa nell'estratto conto scompone visivamente la quota pura dal saldo usato, mostrando il calcolo esatto che ha generato il totale da saldare per la specifica rata.
-
-### 🛡️ Retrocompatibilità (Legacy Support)
-* **Graceful Fallback:** Le logiche di estrazione visiva riconoscono automaticamente le rate generate con la versione 1.8 (prive di snapshot JSON) elaborandole in modalità standard, garantendo totale retrocompatibilità senza errori a schermo.
-
-## [1.9.4] - Visual Intelligence & Dashboard Audit
-
-Questa release completa il ciclo "Accounting Core" introducendo un livello di **Intelligenza Visiva** senza precedenti. Il sistema non si limita a calcolare i numeri, ma ora "spiega" all'amministratore la provenienza dei fondi tramite badge semantici, icone intuitive e colori contestuali. Inoltre, la Dashboard è stata calibrata per eliminare falsi positivi contabili.
-
-### 🎨 Visual Intelligence (Smart Radar)
-
-* **Semantic Fund Tracking:** Il dettaglio della voce di spesa (`ContoResource`) ora riconosce e classifica visivamente la fonte del budget:
-    * 🎯 **Diretta (Target):** Fondi assegnati specificamente alla voce.
-    * ↳ **Da Capitolo (Downstream):** Fondi ereditati dal capitolo padre tramite logica *Smart Push-Down*.
-    * 📈 **Spostamento (Trending Up):** Fondi provenienti da una riallocazione manuale (badge Viola).
-    * 🔀 **Mista (Merge):** Combinazione di più fonti.
-* **Gestione "Overbudget Sano":**
-    * Introdotta la distinzione tra **Eccedenza Critica** (Rosso) ed **Extra Budget Gestito** (Viola).
-    * Se una voce supera il preventivo a causa di uno spostamento volontario (es. "Rottura Cancello"), la barra diventa viola e non genera allarme, segnalando un'operazione contabile consapevole.
-* **Badge "Squircle" Moderni:** Refactoring completo della UI dei badge (`AlberoDeiConti` e `DettaglioConto`). Abbandonato lo stile "pillola" per un design squadrato (`rounded-md`) coerente con il design system Shadcn/Linear, arricchito da icone `Lucide` parlanti.
-
-### 🧠 Core Logic & Dashboard
-
-* **Smart Dashboard Reconciliation:**
-    * Risolto il "Paradosso del Bilancio": il Controller della dashboard ora applica una validazione gerarchica.
-    * Se il **Delta Globale** del bilancio è a pareggio (tolleranza < 5€), il sistema ignora i micro-deficit delle singole voci (spesso coperti dai fondi padre), sopprimendo la modale "Audit spese scoperte" e mostrando il widget verde "Bilancio Allineato".
-* **Logic "Equal Deficit Distribution":**
-    * Perfezionato l'algoritmo di *Push-Down* nella Resource. I fondi del padre vengono distribuiti equamente tra i figli che presentano un *deficit matematico* (Preventivo > Fissi), ignorando correttamente i flag "Jolly" (`NULL`) che avrebbero altrimenti escluso voci legittime dalla ripartizione.
-
-### 🛠️ Refactoring Tecnico
-
-* **Currency Composable:** Introdotto `useCurrencyFormatter.ts` per centralizzare la logica di formattazione monetaria (spazi non divisibili, gestione centesimi), eliminando codice duplicato nei componenti Vue.
-* **CSS Cleanup:** Rimossa interamente la sezione `<style>` legacy (300+ righe) dai componenti di dettaglio conto, migrando tutto a classi utility Tailwind native per una manutenibilità superiore.
+```bash
+php artisan test --filter="Scenario|fattura|nota di credito|fondo|mista"
+```
 
 ---
 
-## [1.9.3] - Penny Perfect & Smart Push-Down
+### [1.9.0-beta.24] — Historical Debt Management & Financial UI
 
-Questa release rifinisce il motore "Accounting Intelligence Core" (v1.9) introducendo la precisione assoluta nei calcoli e una gestione intelligente dei capitoli raggruppati.
+#### Funzionalità — UI Finanziaria Avanzata (Widget Double Lock)
 
-### 🧠 Accounting Core Intelligence: Evolution
+Pannello di registrazione delle fatture pregresse con tre Card analitiche indipendenti:
 
-* **Frazionamento Voci di Spesa (Partial Budgeting):**
-    * Introdotta la possibilità di includere nei Piani Rate solo una quota parte dell'importo totale di una voce di spesa (es. richiedere un acconto di 400€ su una spesa da 1.000€).
-    * Il sistema traccia automaticamente il "Residuo Disponibile" per i piani successivi e impedisce il superamento del budget preventivato.
-* **Algoritmo "Penny Perfect" (Quadratura Centesimale):**
-    * Il motore di calcolo delle quote (`CalcoloQuoteService`) è stato riscritto per eliminare gli errori di arrotondamento.
-    * Implementata logica di quadratura: l'ultimo beneficiario di una ripartizione assorbe matematicamente l'eventuale resto, garantendo che la somma delle quote corrisponda al 100% dell'importo speso, al centesimo.
-* **Logica "Smart Folder Push-Down":**
-    * Supporto avanzato per i "Capitoli Contenitore" (Folder) nei piani rate parziali.
-    * Se si assegna un importo forzato a un Capitolo Padre (es. "Spese Generali: 200€") che non ha tabella millesimale propria, il sistema calcola automaticamente il rapporto proporzionale rispetto al preventivo originale e "spinge" l'override sui sottoconti figli, distribuendo l'importo corretto in base alle loro tabelle specifiche.
-* **Gestione Piani Integrativi (No-Duplicate Balance):**
-    * Introdotta logica decisionale ibrida (Controller + DB) nell'Action di generazione.
-    * Il sistema ora distingue tra "Primo Piano" (che applica i saldi pregressi) e "Piani Integrativi" (che contengono solo le nuove spese), prevenendo la duplicazione dei debiti/crediti iniziali.
-* **Sposta Spesa (Budget Reallocation):**
-    * Introdotta la possibilità di spostare quote di budget tra diverse voci di spesa all'interno della stessa gestione (es. spostare 100€ dal "Compenso Amministratore" alla "Manutenzione Giardino").
-    * **Audit Trail:** Ogni spostamento viene tracciato nella nuova tabella `budget_movements`, registrando l'autore dell'operazione, la data, l'importo e la causale.
-    * **History Popover:** Implementata un'icona "Storico" (🕒) dinamica nel Piano Rate che permette di visualizzare la "genesi" dell'importo attuale (es. Originale 300€ - 100€ spostati = Attuale 200€).
-    * **Protezione Bidirezionale:** Il sistema impedisce la rimozione di voci di spesa dal piano rate se sono coinvolte in uno spostamento pendente (sia come sorgente che come destinazione), garantendo l'integrità del bilancio.
+1. **Quadratura (Scarto Economico):** Differenza tra totale fattura e debito storico a bilancio. Blocca il salvataggio se non quadra (rosso).
+2. **Liquidità Arretrati (Deficit Finanziario):** Confronto tra debito storico e capienza della Rata 0. Avviso informativo non bloccante (ambra).
+3. **Impatto Cassa (Netto Bancario):** Proiezione esatta del saldo di conto corrente post-operazione.
 
-### 🐛 Bug Fixes & Refactoring
+#### Funzionalità — Precisione Operativa & Legale
 
-* **Correzione Ricorsione Override:** Risolto un bug critico nel calcolo dei piani parziali dove l'importo del padre si sommava erroneamente a quello dei figli. Ora l'override sul nodo padre interrompe correttamente la ricorsione.
-* **Tooltip Saldi Intelligenti:** Il frontend ora mostra i dettagli dei saldi (pallini rossi/blu) solo se il piano rate specifico li include effettivamente (basandosi sullo snapshot delle regole di calcolo), evitando confusione nei piani integrativi.
-* **Fix Totali Widget Copertura:** La risorsa API ora calcola il totale del piano rate leggendo correttamente gli importi parziali dalla tabella pivot, allineando il widget di copertura con il reale valore delle rate generate.
-* **Mass Assignment Protection:** Aggiunti `saldo_applicato` e `nota_saldo` al modello `Gestione` per permettere il corretto salvataggio dello stato dei saldi.
+- **Calcolo Bonifico Netto:** La card "Impatto Cassa" scorporo le Ritenute d'Acconto, mostrando l'esatto importo del bonifico netto da disporre in banca.
+- **Filtro Conti Liquidi:** Il menu "Conto Addebito" mostra esclusivamente Banche, Poste, Cassa Contanti.
+- **Prescrizione Quinquennale:** Se la "Data di origine del debito" supera i 5 anni, scatta un alert rosso "Rischio Prescrizione" (Art. 2948 c.c.).
 
 ---
 
-## [1.9.0] - Accounting Intelligence Core
+### [1.9.0-beta.23] — Dashboard Intelligence & Clean Ledger
 
-Questa release rappresenta il più grande aggiornamento strutturale al motore contabile di Kondomanager.
-Con la v1.9.0 introduciamo l'**Audit Intelligence**: un sistema di controllo attivo che garantisce l'integrità matematica tra Preventivo e Piani Rate.
-Abbiamo eliminato l'astrazione dei piani rate: ora ogni voce di spesa è "ancorata" atomicamente, prevenendo duplicazioni, ammanchi e errori di ripartizione.
+#### Funzionalità — Dashboard & Deficit Operativo
 
-Inoltre, questa versione abbatte le barriere tecniche, introducendo la piena compatibilità con hosting condivisi (come Altervista), gestione avanzata dei Cron Job e configurazioni email semplificate.
+- **Scoperto Operativo Reale:** Il box allerta ("Mancano € X") somma solo le spese scoperte che richiedono l'emissione di rate, ignorando i fondi avanzati in altri capitoli stagni.
+- **Pulizia Cognitiva:** Rimosso il widget ridondante "Fatture in sospeso" dalla vista principale.
 
-### 🧠 New Feature: Accounting Core Intelligence
+#### Funzionalità — Audit Spese Scoperte (Modale "Financial X-Ray")
 
-Il nuovo motore contabile introduce livelli di sicurezza avanzati per "blindare" il bilancio condominiale:
+- **Separazione Semantica:** "Fatture in sospeso" (Imprevisti e Art. 63) separate dagli "Sforamenti Budget Preventivo".
+- **Esploso Fattura (Line-Level Breakdown):** Le fatture miste fuori budget mostrano il dettaglio riga per riga (Parte comune vs Art. 63 con indicazione dell'unità).
+- **Smart Routing:** Deep-Link al wizard Piano Rate con auto-popolamento (`?tipo=straordinario&origine=dashboard&gestione_id=...&fatture[]=...`).
 
-* **Ancoraggio Atomico & Gerarchico:** I piani rate vengono collegati a specifici capitoli di spesa tramite una tabella pivot.
-    * *Auto-Popolamento:* I piani globali vengono ancorati automaticamente a tutte le spese correnti.
-    * *Gerarchia:* Il selettore capitoli supporta la logica Padre/Figlio con indicatori visivi di stato.
-* **Collision Detection (Anti-Double Billing):** Il sistema impedisce matematicamente di inserire la stessa voce di spesa in due piani rate attivi contemporaneamente.
-* **Double-Lock Strategy (Lucchetto sui Saldi):**
-    * *Protezione Saldo Applicato:* Al momento della creazione di un Piano Rate, il sistema impegna in modo irreversibile il saldo dell’esercizio precedente.
-    * *Hard-Lock:* Blocco a livello di Controller per impedire tentativi di duplicazione addebito su altre gestioni.
-* **Dashboard Audit & Copertura:** Nuova widget "Semaforo Contabile" nella dashboard. Confronta in tempo reale il Preventivo vs Pianificato e segnala le voci "Orfane".
-* **Sincronizzazione Intelligente (Smart Sync):** Workflow guidato per integrare le voci orfane nei piani rate esistenti con selezione granulare.
-* **Blocco Cancellazione Preventivo:** Protezione a livello di `ContoController` per impedire l'eliminazione di voci ancorate a piani attivi.
+#### Funzionalità — Piano dei Conti (Clean Ledger UI)
 
-### 🛠️ System & Hosting Compatibility
+- **Separazione Visiva Albero dei Conti:** "Preventivo deliberato" (modificabile) vs "Sopravvenienze e imprevisti" (sola lettura).
+- **Sdoppiamento Totali:** Header con due badge distinti (es. *Preventivo: € 5.000* | *Sopravv: € 134*).
+- **Badge Legale Art. 1130-bis c.c.:** Banner ambra nel dettaglio delle voci tecniche.
 
-Abbiamo reso Kondomanager installabile ovunque, dai server dedicati agli hosting gratuiti.
+#### Bugfix — Core Logic & Type Hardening
 
-* **Database Flexibility:** Configurazione `.env` per supportare charset diversi da `utf8mb4` (compatibilità legacy MySQL/Altervista).
-* **Hosting Condiviso & HTTPS:** Logica avanzata per forzare HTTPS e gestire i reverse proxies (`TRUSTED_PROXIES`), risolvendo loop di redirect.
-* **Gestione Cron Job Remoti:** Attivazione dei processi pianificati (Queue Work) tramite chiamata HTTP esterna sicura con token cifrato.
-* **Configurazione SMTP via UI:** Configurazione server di posta direttamente da pannello, senza editare file `.env`.
+- **Inertia.js FormData Sanitization:** Risolto perdita dati di `immobile_id`. Introdotto `form.transform` con casting rigoroso in `Number` o `null`.
+- **Race Condition Inertia/URL:** Gli ID fatture vengono ora salvati in una ref dedicata durante `onMounted`, sopravvivendo alla riscrittura URL del router.
+- **Prevenzione Falsi Positivi Booleani:** La query SQL intercetta correttamente i fallback numerici (`0`) delle colonne booleane (`is_rateizzata`) su MySQL/SQLite.
 
-### 🚀 Improvements
+#### Backend — Hardening Legale & Tracciabilità
 
-* **UX Potenziata (No-Jump & Design System):**
-    * *Filtro Capitoli:* Caricamento asincrono e disabilitazione input per evitare "salti" visivi della pagina.
-    * *Coerenza Design:* Adozione completa dei pattern Shadcn/UI (checkbox opachi, toggle moderni) su tutta l'interfaccia.
-* **Logica Condizionale Saldi:** Il selettore "Distribuzione Saldo Iniziale" appare solo se il sistema rileva effettivi arretrati recuperabili.
-* **Admin Inbox Notifiche:** Badge visivo sul pulsante Admin Inbox per le notifiche di "Pagamento Effettuato".
-* **Log Email:** Sistema di logging per tracciare lo stato di invio delle email.
-* **Logica "Financial Waterfall":** Aggiornamento del Trait per rilevare con precisione quando un saldo pregresso è incorporato nella rata corrente.
-
-### 🐛 Bug Fixes
-
-* **CRITICO - Cross-Condominium Pollution:** Risolto un bug grave nel calcolo degli arretrati che aggregava erroneamente i debiti dello stesso proprietario su condomini diversi.
-* **Duplicazione Saldi:** Risolto problema che impegnava irreversibilmente il saldo dell'esercizio precedente alla creazione del piano rate (ora gestito dinamicamente).
-* **Pulizia Rate Orfane:** Implementata logica automatica per ignorare rate collegate a piani cancellati o gestioni obsolete.
-* **Validazione Obbligatoria Tabelle:** Introdotta logica rigorosa per le voci di spesa (singole o sottoconti). Il campo "Tabella Millesimale" è ora obbligatorio per garantire che ogni spesa abbia sempre un criterio di ripartizione certo.
+- **Migrazione Unificata:** `is_tecnico` su `conti`; `origine_tipo`, `stato_legale`, `stato_legale_aggiornato_at`, `riga_fattura_id`, `voce_id` su `rate_quote`; `is_rateizzata` su `righe_fattura`; `contesto_creazione` su `piani_rate`. Include data migration retroattiva (D1–D5).
+- **Scope `visibili()` su Model Conto:** Filtra `is_tecnico=false`. Applicato su `FetchCapitoliContiController`, `FetchCapitoliPerGestioneController` e `PianoRateController::store()`.
+- **Euristica `origine_tipo` / `stato_legale`:** `GenerateRateQuotesAction` popola automaticamente `condominiale` vs `ad_personam` e `certo` vs `contestabile`.
+- **Semaforo Dashboard (`is_rateizzata`):** `true` alla creazione del piano straordinario, `false` alla cancellazione.
+- **Contesto Creazione Piano Rate:** Enum `contesto_creazione` — `preventivo_iniziale` / `integrazione_dashboard` / `libero_manuale`.
 
 ---
 
-## [1.8.0] - The "Smart Assistant" Update
+### [1.9.0-beta.22] — Fund Governance & Audit-Ready Resources
 
-Questa release segna un cambio di paradigma per Kondomanager. Abbiamo lavorato intensamente per trasformare il gestionale da un semplice archivio dati a un **Assistente Proattivo**.
+#### Funzionalità — Governance Patrimoniale (Legal Compliance)
 
-Con la nuova **Smart Activity Inbox**, il sistema lavora per te: il calendario non è più statico, ma suggerisce in modo intelligente le scadenze imminenti e le azioni richieste.
-Inoltre, introduciamo gli **Aggiornamenti Frontend**, permettendo anche agli utenti su hosting condivisi (o con poca esperienza di terminale) di mantenere il software aggiornato con un semplice click.
+- **Motore a Regole Giuridiche:** Il sistema mappa la natura giuridica del fondo (`sottotipo_fondo`: Generico, Vincolato per Lavori, Accantonamento TFR, Morosità).
+- **Audit Trail e Sblocco in Deroga:** I fondi vincolati nascono bloccati di default. `is_override_assemblea` richiede obbligatoriamente gli estremi della delibera o della giustificazione legale.
+- **Single Source of Truth:** `is_utilizzabile_per_imprevisti` è calcolato dinamicamente dal Modello Eloquent.
 
-### ✨ New Features
+#### Funzionalità — Enterprise Data Table (Risorse e Fondi)
 
-#### Core & Automazione
-* **Smart Activity Inbox:** Il nuovo motore eventi trasforma il calendario in un assistente virtuale. Il sistema ora genera e suggerisce eventi collegati alla generazione e ai pagamenti delle rate, permettendo una gestione proattiva delle scadenze.
-* **Aggiornamenti Automatici da Frontend:** Nuova funzione dedicata agli utenti che hanno usato l'installazione guidata. È ora possibile aggiornare Kondomanager direttamente dal pannello di amministrazione senza accedere alla console del server.
-* **Condominio di Default al Login:** Nelle impostazioni generali, gli amministratori possono ora impostare un condominio specifico da aprire automaticamente al login. Ogni utente (admin o collaboratore) può personalizzare questa scelta, ottimizzando il flusso di lavoro.
+- **Allineamento Matematico:** Colonna saldi con `tabular-nums` e allineamento a destra.
+- **Semantica degli Stati:** "Libero" (Verde), "Vincolato" (Rosso), "Sbloccato in deroga" (Viola).
+- **Smart Truncation & Type Hardening:** Troncamento a 40 caratteri. Sostituiti i cast `any` con interfacce TypeScript rigorose (`TipoCassa`, `SottotipoFondo`).
 
-#### Contabilità & Gestione
-* **Gestione Fornitori:** Aggiunto modulo completo per la creazione e gestione delle anagrafiche fornitori.
-* **Casse del Condominio:** Nuova funzionalità per creare e gestire le risorse finanziarie e le casse condominiali.
-* **Emissione Rate Evoluta (Capitoli di Spesa):** Introdotta la possibilità di emettere rate parziali o mirate selezionando specifici capitoli di spesa (es. generare rate solo per "Scala A").
-* **Piani Rate Multipli:** Evoluzione della logica contabile. Ogni gestione mantiene un singolo piano dei conti, ma ora può supportare **più piani rate**, offrendo massima flessibilità.
-* **Registrazione Pagamento Rate:** Nuova interfaccia dedicata per la registrazione rapida dei pagamenti.
-* **Ottimizzazione Incassi Multi-gestione:** Supporto avanzato per pagamenti che coprono più gestioni, con riconciliazione virtuale visibile nei report.
-* **Estratto Conto:** Aggiunta la visualizzazione dell'estratto conto direttamente nell'anagrafica del condòmino.
-* **Statistiche Dashboard:** Nuovi moduli statistici sulla home page amministratore per un controllo immediato dell'andamento gestionale.
+---
 
-#### Internazionalizzazione
-Kondomanager diventa globale. Abbiamo aggiunto il supporto completo per le lingue **Inglese** e **Portoghese** in tutto l'ecosistema:
-* Traduzione completa delle **Impostazioni Generali** e dell'interfaccia **Frontend**.
-* Traduzione modulo **Comunicazioni in Bacheca**.
-* Traduzione modulo **Autenticazione e Registrazione**.
-* Traduzione delle **Notifiche Email** transazionali.
-* Traduzione modulo **Documenti/Archivio** del condominio.
-* Traduzione modulo **Segnalazioni Guasti**.
+### [1.9.0-beta.21] — The Financial X-Ray & Single Source of Truth
 
-#### DevOps
-* **Supporto Docker:** Aggiunta guida ufficiale e file di configurazione per il deploy di Kondomanager tramite Docker (Special thanks to @k3ntinhu).
+#### Funzionalità — Spaccato Finanziario Trasparente (Tenant Wallet UX)
 
-### 🚀 Improvements
+- **Pannello "X-Ray" (Sheet):** Interfaccia a scorrimento laterale con lo "scontrino matematico" di ogni condòmino.
+- **Scomposizione Dinamica dei Debiti:** Quote millesimali ordinarie, spese private dirette (Art. 63) e saldi pregressi.
+- **Raggruppamento per Immobile:** Divide i calcoli per ogni singola unità immobiliare.
 
-* **Nuovo Menu "Rubrica":** Riorganizzazione della Topbar. La voce "Anagrafiche" diventa "Rubrica" e integra un menu a tendina per l'accesso rapido sia ai Condòmini che ai Fornitori.
-* **Visualizzazione Permessi Rapida:** Le tabelle *Utenti* e *Ruoli* ora mostrano direttamente i permessi associati nelle colonne, evitando di dover entrare in modifica per verificarli.
-* **Gestione Intelligente Permessi:** Migliorata la logica di assegnazione e revoca permessi durante la modifica di un Utente o di un Ruolo.
-* **Smart Associazione Immobili:** Nel menu a tendina per associare un'anagrafica a un immobile, il sistema ora mostra *solo* le anagrafiche già presenti nel condominio ma *non ancora associate* a quell'immobile specifico, prevenendo duplicazioni errate.
-* **Filtro Preventivi nel Piano dei Conti:** Durante la creazione di un nuovo piano dei conti, il controller ora filtra e mostra solo le gestioni che non hanno ancora un preventivo associato.
-* **Integrazione Widget Eventi:** Il widget eventi nella dashboard utente è stato collegato alla nuova *Smart Activity Inbox* per mostrare le notifiche intelligenti.
-* **UX Piani Rate:** Migliorata la visualizzazione e le funzioni operative all'interno della gestione piani rate.
+#### Funzionalità — UI/UX
 
-### 🐛 Bug Fixes
+- **Azioni Contestuali (Dropdown Menu):** Bottone spaccato integrato in un menu a tre puntini nella colonna "Saldo".
+- **Correzione Penny-Perfect (Fallback Zero-Quota):** Se i comproprietari hanno quote millesimali a zero, il sistema applica automaticamente una divisione equa (es. 50%/50%).
 
-* **Valori negativi:** Risolto un bug che impediva l'inserimento di valori negativi nelle maschere di input delle anagrafiche associate all'immobile (utile per conguagli o crediti pregressi).
-* **Registrazione utenti invitati:** Risolto un problema che impediva agli utenti invitati via email di completare la registrazione se l'opzione "Registrazione pubblica" era disabilitata nelle impostazioni generali.
-* **Sicurezza password:** Implementato controllo per impedire il riutilizzo della password corrente durante la procedura di cambio password (Special thanks to @borghiste - Issue #30).
+---
+
+### [1.9.0-beta.20] — The Extraordinary Engine & Polymorphic UI
+
+#### Funzionalità — Piani Rate Straordinari (Il Bivio & Art. 1135 c.c.)
+
+- **Architettura a Doppio Binario:**
+  1. **Ordinario** — Basato sul bilancio preventivo.
+  2. **Straordinario** — Slegato dal preventivo, si alimenta dal "Carrello Fatture".
+- **Scudo Legale Obbligatorio:** `CreatePianoRateRequest` richiede "Delibera Assembleare" o "Urgenza" con gli estremi.
+
+#### Funzionalità — Polimorfismo Contabile & Dashboard Intelligence
+
+- **Polimorfismo delle Risorse:** `PianoRateResource` maschera le fatture straordinarie come capitoli di spesa. Tutto l'ecosistema frontend continua a funzionare senza duplicazioni.
+- **Widget "Sforo Recuperato":** Badge blu **"INTEGRATO — Sforo Recuperato"** quando una sopravvenienza viene finanziata.
+- **Smart Push-Down Straordinario:** `BudgetCoverageService` (Step 3) inietta la copertura direttamente nel nodo dell'Albero dei Conti, colorando la barra al 100% (Smeraldo).
+
+#### Funzionalità — Motore Penny-Perfect & Ripartizione Mista
+
+- **Supporto Fatture Miste:** Spese comuni (millesimi) + addebiti personali diretti (`immobile_id`) nella stessa fattura.
+- **Quadratura Frazionale Assoluta:** I resti decimali vengono assorbiti sulle prime rate (es. 3 rate da 6,62 € e 9 da 6,60 €). Corrispondenza al centesimo con il documento fiscale garantita.
+
+---
+
+### [1.9.0-beta.19] — The Triple Recovery Strategy & Reserve Fund Engine
+
+#### Funzionalità — Gestione Intelligente Sforamenti (Il Tridente)
+
+Tre strategie distinte e mutualmente esclusive per gli sforamenti di budget (Art. 1135 c.c.):
+
+1. **Attesa Conguaglio** — Debito "silenzioso" da richiedere a chiusura esercizio.
+2. **Rata Integrativa** — Allarme attivo verso l'emissione di un piano rate straordinario.
+3. **Fondo di Riserva** — Assorbe istantaneamente lo sforo attingendo a un fondo patrimoniale preesistente.
+
+#### Funzionalità — Integrazione Contabile Fondi
+
+- **Automazione Partita Doppia:** L'utilizzo del Fondo Riserva genera scritture contabili reali nel Libro Giornale: **AVERE** sul mastro Cassa/Fondo, **DARE** sul mastro Sopravvenienze.
+
+#### Funzionalità — Dashboard & Visual Intelligence 2.0
+
+- 🟢 **Verde Smeraldo [Coperto da Fondo]** — Spesa già neutralizzata finanziariamente.
+- 🟣 **Indaco [Sforo Autorizzato]** — Sforo destinato al conguaglio di fine anno.
+- 🟠 **Ambra [Emetti Rate]** — Spesa che richiede azione immediata.
+- **Stato "Bilancio Integrato":** Se tutte le spese scoperte hanno una strategia assegnata, il widget mostra **INTEGRATO**.
+
+#### Funzionalità — Risorse e Cassa (Real-Time Balancing)
+
+- **Calcolo Saldo Dinamico:** `Iniziale + DARE − AVERE` ricalcolato in tempo reale dal Libro Giornale, eliminando discrepanze tra gestione e contabilità pura.
+
+---
+
+### [1.9.0-beta.18] — Mixed Allocation & Dynamic Ledger
+
+#### Funzionalità — Ripartizione Mista e Addebiti Personali
+
+- **Spaccatura Fattura (Line-Level Splitting):** Un singolo documento fiscale può essere suddiviso in infinite righe di dettaglio, ciascuna con logica di ripartizione indipendente.
+- **Addebito Diretto su Unità (`immobile_id`):** Una riga di spesa può essere assegnata a una singola unità. Il motore ignora i millesimi e addebita il 100% al proprietario interessato.
+- **Fine delle Tabelle Fittizie:** Eliminata la necessità di creare tabelle millesimali finte (es. 1000/1000 su un singolo condomino) per le spese ad personam.
+
+#### Funzionalità — Sopravvenienze Passive
+
+- **Gestione Imprevisti "On-the-Fly":** Interruttore "⚡ Spesa imprevista" su ogni riga della fattura. Il sistema dirotta l'importo su "Sopravvenienze Passive" nel Libro Giornale.
+- **Bilanci Trasparenti (Art. 1130-bis c.c.):** Le spese d'emergenza non inquinano i capitoli ordinari. Nel consuntivo l'assemblea vede una voce separata per tutti gli imprevisti.
+
+#### Hardening — Database Fortification & UI Safety
+
+- **Filtro "Fortezza" sul Piano dei Conti:** Blocco bidirezionale (Frontend + Backend) che impedisce la registrazione su Macro-Capitoli (nodi padre) o su voci orfane.
+- **Backend Hard-Lock:** `FatturaPassivaService` lancia un'eccezione bloccante se rileva un tentativo su un conto privo di Mastro in Partita Doppia.
+
+---
+
+### [1.9.0-beta.17] — Legal Guardian & UI Precision
+
+#### Funzionalità — Conformità Legale (Gate Legale Art. 1135 c.c.)
+
+- **Workflow di Approvazione Blindato:** Blocco normativo che impedisce di rendere esecutivo un Piano Rate senza delibera formale.
+- **Modale Delibera Assembleare:** La transizione "Bozza" → "Approvato" richiede Data Delibera, Numero Verbale e Note.
+- **Audit Trail:** Tracciamento automatico di `approvato_il` e `approvato_da_user_id`.
+- **Badge Legale Visivo:** Indicatore semantico nell'intestazione del Piano Rate (icona a martelletto).
+- **Ripristino Sicuro:** Il ritorno allo stato "Bozza" cancella automaticamente i dati della delibera e l'audit trail.
+
+#### Ottimizzazione — Smart Sync & Backend
+
+- **Filtro Zero-Importo:** Il sistema esclude automaticamente i capitoli a 0,00 €, prevenendo falsi allarmi di sincronizzazione.
+- **Pulsante Azione Dinamico:** Arancione "Sincronizza" se ci sono nuove voci scoperte, standard "Ricalcola" altrimenti.
+
+#### Bugfix — UX & Radix UI
+
+- **Fix Posizionamento HoverCard:** Risolto bug di "salto" a coordinate `0,0`. Forzato l'ancoraggio con `side="bottom"`.
+- **Sincronizzazione Stato UI:** Se l'utente annulla l'inserimento della delibera, lo switch Vue torna istantaneamente allo stato reale del database.
+
+---
+
+### [1.9.0-beta.16] — Accounting Intelligence & Precision
+
+#### Funzionalità — Motore Finanziario in Centesimi (MoneyHelper)
+
+- Rimosso l'uso dei float nativi PHP per i calcoli finanziari. Integrata la classe `MoneyHelper` in tutto il ciclo di incasso.
+
+#### Funzionalità — Gestione Debiti Pregressi e Double Lock
+
+- **Meccanismo Double Lock:** Quadratura perfetta tra competenza economica, situazione patrimoniale e liquidità reale.
+- **5 scenari gestiti:** Copertura Totale · Crisi di Liquidità · Proiettile Vagante (Sopravvenienza) · Copertura Mista (Split) · Fondo di Riserva.
+
+#### Funzionalità — Ordinamento Visivo a Cascata (Waterfall)
+
+- I movimenti **DARE** (Addebiti) precedono visivamente quelli in **AVERE** (Incassi), garantendo una curva del saldo priva di "falsi rossi".
+
+#### Bugfix
+
+- **Race Condition "NON PAGATA":** `ricalcolaStato()` spostata per eseguire *dopo* l'effettivo `attach()` dei pagamenti.
+- **Sbilanciamento Incassi Misti:** Introdotto il controllo `$budgetCashCents` in `StoreIncassoRateAction` per impedire alla scrittura di cassa di consumare debito virtuale.
+
+---
+
+### [1.9.0-beta.15] — Tenant Experience & UI
+
+- **Smart Wallet (Salvadanaio Condòmino):** Design "Digital Wallet" con breakdown matematico trasparente (costo rata, credito applicato, nuovo totale).
+- **Credito Puro (Zero-Payment):** Card blu per le rate che generano credito netto. Istruzioni per il bonifico e pulsanti di pagamento nascosti automaticamente.
+- **Sincronizzazione Dinamica UI:** L'area condòmini reagisce istantaneamente a qualsiasi azione dell'amministratore (incasso, storno, annullamento emissione).
+
+---
+
+### [1.9.0-beta.14] — Accounting Engine & Sync (Ciclo Attivo)
+
+- **Motore di Storno "Self-Healing":** Fotografia preventiva dei soggetti coinvolti, inversione della partita doppia e ripristino chirurgico del debito sulle quote originali.
+- **Onboarding Silenzioso:** Risolto bug critico nel rilascio delle "Rate Silenziose": il sistema filtra i pagamenti esclusivamente per la singola anagrafica.
+- **Prevenzione Falsi Positivi JSON:** Il flag `is_emitted` viene interpretato correttamente a prescindere dal tipo di dato (booleano, intero o stringa).
+
+---
+
+### [1.9.0-beta.13] — Bugfixes & Ottimizzazioni
+
+- **Fix Popup di Storno:** Corretto importo "€ 0,00" nel dialog di conferma. Il frontend riconverte correttamente i decimali in centesimi.
+- **Fix Vue Warnings:** Aggiunta la prop `esercizi` mancante nel controller lista incassi.
+- **Protezione Query Relazionali:** Sostituiti i fragili `whereIn` su campi JSON nidificati con costrutti logici multi-tipo più robusti.
+
+---
+
+### [1.9.0-beta.12] — Tenant Experience & Payment Loops
+
+- **Debito Pregresso non "Scaduto":** La Rata 0 usa un design ambra dedicato con la dicitura "Debito Pregresso" invece del badge rosso "Scaduta".
+- **Positive Feedback Loop (Rata Saldata):** Badge verde "Pagamento Ricevuto" e box trionfale "Rata Saldata" dopo la registrazione dell'incasso.
+- **Self-Healing Loop (Pagamenti Rifiutati):** Se l'amministratore rifiuta una segnalazione, la modale riattiva i controlli con il bottone "Ho ri-effettuato il pagamento (Segnala di nuovo)".
+- **Smart Visibility Bypass:** Risolto falso positivo che manteneva bloccati i pulsanti di pagamento con "Pagamento non ancora attivo".
+
+---
+
+### [1.9.0-beta.11] — Time-Travel Accounting (Debito Esercizio Precedente)
+
+- **Caricamento Fatture Pregresse:** Registrazione di fatture datate in anni passati senza inquinare il bilancio dell'anno in corso.
+- **Smart Date Check:** L'interfaccia Vue riconosce automaticamente le fatture di esercizi chiusi e mostra lo "Scudo Giallo" (Debito Esercizio Precedente).
+- **Esenzione Budget Attiva:** Attivando "Debito Pregresso", il sistema disinnesca l'allarme "Sforamento Budget".
+- **Partita Doppia Invisibile:** `FatturaPassivaService` devia gli importi sul conto **"Fondo Passate Gestioni"** invece dei capitoli ordinari.
+- **Badge `[Archive Pregresso]`** nella Data Table principale delle fatture passive.
+
+---
+
+### [1.9.0-beta.10] — Silent Emission & Inbox Zero
+
+#### Funzionalità — Emissione Silenziosa
+
+- **Toggle "Rendi visibile e invia notifiche":** Emissione "in incognito" — scritture contabili generate, condòmini non notificati. Essenziale per caricare massivamente pagamenti pregressi senza generare allarmi.
+- **Pulsante "Pubblica Nascoste":** Compare automaticamente solo se ci sono rate congelate. Sblocca la visibilità globale e invia tutte le notifiche in un colpo solo.
+- **HoverCard Context-Aware:** Spiega dinamicamente lo stato del piano (Bozza, Approvato, Bloccato) e le azioni possibili.
+
+#### Funzionalità — Inbox Zero
+
+- **Uccisione Mirata (`verifica_pagamento`):** Quando un incasso porta a zero il debito di un condòmino, il promemoria di verifica viene cancellato all'istante.
+- **Uccisione Globale (`controllo_incassi`):** Se il pagamento completa il 100% dell'incasso dell'intera rata, il task generico di controllo viene rimosso automaticamente.
+- **Cache Buster Integrato:** Il badge numerico rosso sulla campanella sparisce all'istante.
+
+---
+
+### [1.9.0-beta.9] — Tenant Wallet UX & Smart Intent Sync
+
+#### Funzionalità — Smart Intent Sync (Ponte Condòmino-Admin)
+
+- **Il Salvadanaio:** Widget interattivo che calcola se il credito è sufficiente a coprire l'intera rata o se è necessaria un'integrazione tramite bonifico.
+- **Dichiarazione di Compensazione:** Il condòmino notifica la volontà di usare il credito (es. "Salda con il credito" o "Ho pagato la differenza").
+- **Inbox Admin Contestuale:** L'evento generato esplicita testualmente l'intento (es. *"Il condòmino ha richiesto di usare 100 € del suo salvadanaio, aspetta un bonifico di 12,48 €"*).
+- **Guida Operativa Visiva:** `IncassoRateNew` rileva l'intento di compensazione tramite `intent_usa_credito` nell'URL e mostra un Alert Giallo strategico.
+
+#### Bugfix
+
+- **Lazy Loading Saldi Pregressi:** `SyncScadenziarioWithPianoRate` interroga il database per i crediti su Rata 0 solo se `metodo_distribuzione === 'rata_zero'`.
+- **Bugfix "Paradosso Arretrati":** L'alert arretrati compare ora solo sulle vere rate a debito, non sulle Rata 0 a credito.
+
+---
+
+### [1.9.0-beta.8] — Smart Wallet & Payment Intelligence
+
+#### Funzionalità — Smart Wallet
+
+- **Single Source of Truth:** Importi nominali esatti allineati a PDF e App condòmini.
+- **Pulsante "Compensa Credito":** Se il credito supera la rata, il sistema preleva solo l'esatto importo necessario (Smart Withdrawal), mantenendo il resto nel salvadanaio.
+- **Anteprima Scrittura Dinamica:** Mostra diciture specifiche (es. *"Credito rimanente nel salvadanaio: € 88,00"*) prima di salvare.
+
+#### Funzionalità — UI/UX Maschera Incassi
+
+- **Feedback Cromatico:** Verde sgargiante per crediti, rosso acceso per debiti pregressi urgenti.
+- **Smart Truncation & Hover Text:** Nomi compressi automaticamente con tooltip per l'elenco completo dei comproprietari.
+- **Filtro "Mostra solo scadute":** Include le rate che scadono nella giornata odierna. Mantiene sempre "appuntata" la Rata 0.
+- **Input Protections:** I campi importo si disabilitano quando la rata è a zero o è un credito puro.
+
+---
+
+### [1.9.0-beta.7] — Visual Harmony & Smart Filters
+
+#### UI/UX — Design System
+
+- **Widget Guide Contestuali (`PageHeaderGuide`):** Header con breadcrumbs e card informative dinamiche in tutti i moduli operativi.
+- **Statistiche Semantiche (Pastel Design):** Colori semantici per urgenza (Rosso, Ambra, Smeraldo, Blu, Violetto, Rosa).
+- **Tabelle "Card Style":** DataTables in contenitori `rounded-2xl` con `shadow-sm`.
+
+#### Funzionalità — Smart Filters & Backend
+
+- **Filtro "Condominio" Persistente:** Selettore a tendina con stato salvato dopo il ricaricamento.
+- **Dynamic Clear Button:** Compare solo se è applicato almeno un criterio di ricerca.
+- **Backend Query Fix:** Aggiunte istruzioni SQL mancanti in `SegnalazioneService` e `DocumentoService` (`whereIn` per 1:N, `whereHas` per N:N).
+
+---
+
+### [1.9.0-beta.6] — Active Budget Guardian & UI Refinements
+
+#### Funzionalità — Active Budget Guardian
+
+- **Allarmi Gerarchici:**
+  1. 🔴 **Disallineamento** — Piano rate da ricalcolare urgentemente.
+  2. 🟠 **Voci Orfane** — Nuove spese a preventivo non assegnate a nessun piano.
+- **Azione Diretta:** I banner di allarme includono pulsanti operativi (es. "Apri", "Analizza Voci").
+
+#### UI/UX — Piano dei Conti
+
+- **Total Budget Badge:** Badge dinamico nell'header con la somma totale del preventivo.
+- **Smart Edit Modal:** Integra selettori "Fornitore Suggerito" e "Natura Spesa (Fiscale)". Box informativi contestuali per Hard Lock vs Soft Lock.
+
+---
+
+### [1.9.0-beta.5] — Smart Waterfall & Transparent Ledger
+
+#### Funzionalità — Smart Waterfall Logic
+
+- **Pianificazione Intelligente Saldi:** I crediti/debiti pregressi su più immobili vengono distribuiti a cascata, evitando "rate negative".
+- **Incassi Cumulativi Automatici:** `StoreIncassoRateAction` scompone automaticamente un singolo bonifico globale, saldando le quote in ordine progressivo.
+
+#### Funzionalità — Estratto Conto: Transparent Ledger
+
+- **Matematica Inviolabile:** La tabella dei movimenti mostra esclusivamente gli importi puri in Dare/Avere.
+- **UI/UX Esplicativa:** Scritte dinamiche (es. *"👉 Include recupero debito pregresso: € 100"*).
+- **Graceful Fallback:** Le rate generate con la v1.8 (prive di snapshot JSON) vengono elaborate in modalità standard per totale retrocompatibilità.
+
+---
+
+### [1.9.0-beta.4] — Visual Intelligence & Dashboard Audit
+
+#### Funzionalità — Visual Intelligence (Smart Radar)
+
+- **Semantic Fund Tracking:** 🎯 Diretta · ↳ Da Capitolo · 📈 Spostamento (Viola) · 🔀 Mista.
+- **Gestione "Overbudget Sano":** Distinzione tra Eccedenza Critica (Rosso) ed Extra Budget Gestito (Viola).
+- **Badge "Squircle":** Design `rounded-md` con icone Lucide.
+
+#### Funzionalità — Core Logic & Dashboard
+
+- **Smart Dashboard Reconciliation:** Se il Delta Globale è a pareggio (tolleranza < 5 €), la modale "Audit spese scoperte" viene soppressa e compare il widget verde "Bilancio Allineato".
+- **Equal Deficit Distribution:** I fondi del padre vengono distribuiti equamente tra i figli in deficit matematico.
+
+#### Refactoring
+
+- **Currency Composable:** `useCurrencyFormatter.ts` centralizza la logica di formattazione monetaria.
+- **CSS Cleanup:** Rimossa la sezione `<style>` legacy (300+ righe) dai componenti di dettaglio conto.
+
+---
+
+### [1.9.0-beta.3] — Penny Perfect & Smart Push-Down
+
+#### Funzionalità — Accounting Core Intelligence: Evolution
+
+- **Frazionamento Voci di Spesa (Partial Budgeting):** Inclusione nei Piani Rate di solo una quota parte dell'importo totale (es. acconto di 400 € su 1.000 €). Il sistema traccia il "Residuo Disponibile" per i piani successivi.
+- **Algoritmo "Penny Perfect":** Il motore `CalcoloQuoteService` garantisce che la somma delle quote corrisponda al 100% dell'importo al centesimo. Il resto decimale viene assorbito dall'ultimo beneficiario.
+- **Logica "Smart Folder Push-Down":** Se si assegna un importo forzato a un Capitolo Padre, il sistema calcola automaticamente il rapporto proporzionale e "spinge" l'override sui sottoconti figli.
+- **Piani Integrativi (No-Duplicate Balance):** Distinzione tra "Primo Piano" (applica i saldi pregressi) e "Piani Integrativi" (solo nuove spese).
+- **Sposta Spesa (Budget Reallocation):** Spostamento quote di budget tra voci della stessa gestione. Audit Trail nella tabella `budget_movements`. History Popover con la genesi dell'importo (es. *Originale 300 € − 100 € spostati = Attuale 200 €*). Protezione bidirezionale contro la rimozione di voci coinvolte in uno spostamento pendente.
+
+#### Bugfix
+
+- **Correzione Ricorsione Override:** L'importo del padre non si somma più erroneamente a quello dei figli nel calcolo dei piani parziali.
+- **Fix Totali Widget Copertura:** La risorsa API legge correttamente gli importi parziali dalla tabella pivot.
+- **Mass Assignment Protection:** Aggiunti `saldo_applicato` e `nota_saldo` al modello `Gestione`.
+
+---
+
+### [1.9.0] — Base Release *(Accounting Intelligence Core)*
+
+#### Funzionalità — Accounting Core Intelligence
+
+- **Ancoraggio Atomico & Gerarchico:** I piani rate vengono collegati a specifici capitoli di spesa tramite tabella pivot. Auto-popolamento per i piani globali. Selettore capitoli con logica Padre/Figlio.
+- **Collision Detection (Anti-Double Billing):** Il sistema impedisce matematicamente di inserire la stessa voce di spesa in due piani rate attivi contemporaneamente.
+- **Double-Lock Strategy:** Protezione saldo applicato + Hard-Lock a livello Controller per impedire duplicazioni su altre gestioni.
+- **Dashboard Audit & Copertura:** Widget "Semaforo Contabile" — Preventivo vs Pianificato in tempo reale con segnalazione delle voci "Orfane".
+- **Sincronizzazione Intelligente (Smart Sync):** Workflow guidato per integrare le voci orfane nei piani rate esistenti.
+- **Blocco Cancellazione Preventivo:** Protezione in `ContoController` per impedire l'eliminazione di voci ancorate a piani attivi.
+
+#### Funzionalità — System & Hosting Compatibility
+
+- **Database Flexibility:** Supporto charset diversi da `utf8mb4` (compatibilità legacy MySQL/Altervista).
+- **Hosting Condiviso & HTTPS:** Logica per forzare HTTPS e gestire i reverse proxies (`TRUSTED_PROXIES`).
+- **Gestione Cron Job Remoti:** Attivazione processi pianificati tramite chiamata HTTP esterna sicura con token cifrato.
+- **Configurazione SMTP via UI:** Configurazione server di posta direttamente da pannello, senza editare `.env`.
+
+#### Bugfix
+
+- **CRITICO — Cross-Condominium Pollution:** Risolto bug grave nel calcolo degli arretrati che aggregava erroneamente i debiti dello stesso proprietario su condomini diversi.
+- **Duplicazione Saldi:** Risolto problema che impegnava irreversibilmente il saldo alla creazione del piano rate.
+- **Pulizia Rate Orfane:** Logica automatica per ignorare rate collegate a piani cancellati o gestioni obsolete.
+- **Validazione Obbligatoria Tabelle:** Il campo "Tabella Millesimale" è ora obbligatorio per ogni voce di spesa.
+
+---
+
+## [1.8.0] — The Smart Assistant Update
+
+> Cambio di paradigma: Kondomanager passa da semplice archivio dati ad **Assistente Proattivo**.
+> La nuova Smart Activity Inbox genera e suggerisce scadenze in modo intelligente.
+> Introdotti gli aggiornamenti frontend per hosting condivisi senza accesso alla console.
+
+### Funzionalità — Core & Automazione
+
+- **Smart Activity Inbox:** Il nuovo motore eventi trasforma il calendario in un assistente virtuale. Il sistema genera e suggerisce eventi collegati alla generazione e ai pagamenti delle rate per una gestione proattiva delle scadenze.
+- **Aggiornamenti Automatici da Frontend:** Aggiornamento di Kondomanager direttamente dal pannello di amministrazione, senza accedere alla console del server. Dedicato agli utenti dell'installazione guidata.
+- **Condominio di Default al Login:** Nelle impostazioni generali è possibile impostare un condominio da aprire automaticamente al login. Personalizzabile per ogni utente (admin o collaboratore).
+
+### Funzionalità — Contabilità & Gestione
+
+- **Gestione Fornitori:** Modulo completo per la creazione e gestione delle anagrafiche fornitori.
+- **Casse del Condominio:** Creazione e gestione delle risorse finanziarie e delle casse condominiali.
+- **Emissione Rate Evoluta (Capitoli di Spesa):** Possibilità di emettere rate parziali o mirate selezionando specifici capitoli di spesa (es. generare rate solo per "Scala A").
+- **Piani Rate Multipli:** Ogni gestione mantiene un singolo piano dei conti ma può supportare più piani rate.
+- **Registrazione Pagamento Rate:** Nuova interfaccia dedicata per la registrazione rapida dei pagamenti.
+- **Ottimizzazione Incassi Multi-gestione:** Supporto per pagamenti che coprono più gestioni, con riconciliazione virtuale visibile nei report.
+- **Estratto Conto:** Visualizzazione dell'estratto conto direttamente nell'anagrafica del condòmino.
+- **Statistiche Dashboard:** Nuovi moduli statistici nella home page amministratore.
+
+### Funzionalità — Internazionalizzazione
+
+Aggiunto il supporto completo per **Inglese** e **Portoghese**:
+
+- Impostazioni Generali e interfaccia Frontend.
+- Modulo Comunicazioni in Bacheca.
+- Modulo Autenticazione e Registrazione.
+- Notifiche Email transazionali.
+- Modulo Documenti/Archivio.
+- Modulo Segnalazioni Guasti.
+
+### Funzionalità — DevOps
+
+- **Supporto Docker:** Guida ufficiale e file di configurazione per il deploy tramite Docker. *(Thanks @k3ntinhu)*
+
+### Miglioramenti
+
+- **Nuovo Menu "Rubrica":** La voce "Anagrafiche" diventa "Rubrica" con menu a tendina per accesso rapido a Condòmini e Fornitori.
+- **Visualizzazione Permessi Rapida:** Le tabelle Utenti e Ruoli mostrano direttamente i permessi associati nelle colonne.
+- **Gestione Intelligente Permessi:** Migliorata la logica di assegnazione e revoca permessi durante la modifica di Utente o Ruolo.
+- **Smart Associazione Immobili:** Il menu a tendina mostra solo le anagrafiche presenti nel condominio ma non ancora associate a quell'immobile specifico, prevenendo duplicazioni.
+- **Filtro Preventivi nel Piano dei Conti:** Il controller mostra solo le gestioni che non hanno ancora un preventivo associato.
+- **Integrazione Widget Eventi:** Il widget eventi nella dashboard è collegato alla Smart Activity Inbox.
+- **UX Piani Rate:** Migliorata la visualizzazione e le funzioni operative nella gestione piani rate.
+
+### Bugfix
+
+- **Valori Negativi:** Risolto bug che impediva l'inserimento di valori negativi nelle maschere di input delle anagrafiche associate all'immobile (utile per conguagli o crediti pregressi).
+- **Registrazione Utenti Invitati:** Risolto problema che impediva agli utenti invitati via email di completare la registrazione con la registrazione pubblica disabilitata.
+- **Sicurezza Password:** Implementato controllo per impedire il riutilizzo della password corrente durante il cambio password. *(Thanks @borghiste — Issue #30)*
+
+---

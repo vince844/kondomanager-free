@@ -5,6 +5,7 @@ import { Archive, AlertTriangle, CheckCircle, Clock, FileMinus, RotateCcw, Paper
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { FatturaPassiva } from '@/types/gestionale/fatture'
 import type { ColumnDef } from '@tanstack/vue-table'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 
 const { euro } = useCurrencyFormatter(); 
 
@@ -76,7 +77,7 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
             h('span', { class: 'font-bold text-sm text-slate-900 truncate' }, fornitoreNome),
 
             // Riga 2: Numero e Metadati (raggruppati correttamente in un div flex)
-            h('div', { class: 'text-xs text-slate-400 font-mono flex items-center' }, documentMetaElements),
+            h('div', { class: 'text-xs text-slate-400 flex items-center' }, documentMetaElements),
 
             // Riga 3: Badge (solo se presenti)
             badgeRow.length > 0
@@ -213,45 +214,63 @@ export const createColumns = (condominioId: number): ColumnDef<FatturaPassiva>[]
         const isNota = totaleDoc < 0;
         const isStornata = fattura.dati_extra?.is_stornata === true;
 
-        // Creiamo il testo dello "Scontrino" per il tooltip
-        const scontrino = 
-            `DETTAGLIO IMPORTI\n\n` +
-            `Imponibile: ${euro(imponibile)}\n` +
-            `IVA: ${euro(iva)}\n` +
-            `Totale Lordo: ${euro(totaleDoc)}\n` +
-            (ritenuta > 0 ? `Ritenuta Acconto: -${euro(ritenuta)}\n` : '') +
-            `----------------------\n` +
-            `Da bonificare: ${euro(netto)}`;
+        // Righe per il tooltip strutturato
+        const rows: Array<{ label: string; value: string; bold?: boolean; textClass?: string; bgClass?: string }> = [
+            { label: 'Imponibile', value: euro(imponibile) },
+            { label: 'IVA', value: euro(iva) },
+            { label: 'Totale Lordo', value: euro(totaleDoc), bold: true },
+        ];
+        if (ritenuta > 0) {
+            rows.push({ label: 'Ritenuta Acconto', value: `-${euro(ritenuta)}`, textClass: 'text-rose-600' });
+        }
+        rows.push({ label: 'Da bonificare', value: euro(netto), bold: true, bgClass: 'bg-emerald-50 border border-emerald-100', textClass: 'text-emerald-700' });
 
-        return h('div', { 
-            // Aggiungiamo 'group' e 'cursor-help' per indicare che c'è un tooltip
-            class: 'flex flex-col items-end group cursor-help',
-            title: scontrino // Tooltip nativo super pulito
-        }, [
-            // 1. IL LORDO (In grande, per la coerenza del Budget)
-            h('span', { 
-                class: `font-black text-sm whitespace-nowrap transition-colors ${
-                    isStornata 
-                        ? 'text-slate-400 line-through' 
-                        : (isNota ? 'text-emerald-600' : 'text-slate-900 group-hover:text-indigo-600')
-                }` 
-            }, euro(totaleDoc)),
-            
-            // 2. IL NETTO / BONIFICO (In piccolo, ma SOLO se c'è ritenuta, altrimenti è uguale al lordo e sporca la UI)
-            ritenuta > 0 && !isStornata
-                ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100' }, `Bonifico: ${euro(netto)}`)
-                : null,
-            
-            // Etichetta "Accredito" (solo per note di credito)
-            isNota && !isStornata
-                ? h('span', { class: 'text-[9px] text-emerald-500 font-bold uppercase tracking-wide mt-0.5' }, 'Accredito')
-                : null,
-            
-            // Etichetta "Annullato" (per gli storni)
-            isStornata
-                ? h('span', { class: 'text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-0.5' }, 'Annullato')
-                : null
-        ]);
+        return h(HoverCard, null, {
+            default: () => [
+                h(HoverCardTrigger, { asChild: false }, {
+                    default: () => h('div', { 
+                        class: 'flex flex-col group cursor-help'
+                    }, [
+                        // 1. IL LORDO
+                        h('span', { 
+                            class: `font-black text-sm whitespace-nowrap transition-colors ${
+                                isStornata 
+                                    ? 'text-slate-400 line-through' 
+                                    : (isNota ? 'text-emerald-600' : 'text-slate-900 group-hover:text-indigo-600')
+                            }` 
+                        }, euro(totaleDoc)),
+                        
+                        // 2. IL NETTO / BONIFICO
+                        ritenuta > 0 && !isStornata
+                            ? h('span', { class: 'text-[10px] text-amber-600 font-bold mt-0.5 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100' }, `Bonifico: ${euro(netto)}`)
+                            : null,
+                        
+                        // Etichetta "Accredito"
+                        isNota && !isStornata
+                            ? h('span', { class: 'text-[9px] text-emerald-500 font-bold uppercase tracking-wide mt-0.5' }, 'Accredito')
+                            : null,
+                        
+                        // Etichetta "Annullato"
+                        isStornata
+                            ? h('span', { class: 'text-[9px] text-slate-400 font-bold uppercase tracking-wide mt-0.5' }, 'Annullato')
+                            : null
+                    ])
+                }),
+                h(HoverCardContent, { class: 'w-56 p-0 shadow-xl border-gray-200 z-50', side: 'top', align: 'end', sideOffset: 5 }, {
+                    default: () => h('div', { class: 'flex flex-col' }, [
+                        h('div', { class: 'px-3 py-2 bg-gray-50 border-b border-gray-100 rounded-t-md' }, [
+                            h('span', { class: 'text-[10px] font-bold text-gray-500 uppercase tracking-wider' }, 'Dettaglio Importi')
+                        ]),
+                        h('div', { class: 'p-2 space-y-1' }, rows.map(r => 
+                            h('div', { class: `flex items-center justify-between text-xs px-2 py-1.5 rounded-md ${r.bgClass || 'bg-white'}` }, [
+                                h('span', { class: `font-medium text-slate-600` }, r.label),
+                                h('span', { class: `${r.bold ? 'font-bold' : ''} ${r.textClass || 'text-slate-900'}` }, r.value)
+                            ])
+                        ))
+                    ])
+                })
+            ]
+        });
     },
   },
   {

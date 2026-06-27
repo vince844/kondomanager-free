@@ -35,10 +35,14 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 
 <template>
     
-    <AppLayout :breadcrumbs="breadcrumbs">
+    <AppLayout :breadcrumbs="[]">
         <Head :title="trans('users.header.list_users_head')" />
 
-        <UtentiLayout>
+        <UtentiLayout
+            :page-title="trans('users.header.list_users_head')"
+            :page-subtitle="trans('users.layout.heading_description')"
+            :breadcrumbs="breadcrumbs"
+        >
 
             <div v-if="flashMessage" class="py-4">
                 <Alert :message="flashMessage.message" :type="flashMessage.type" />

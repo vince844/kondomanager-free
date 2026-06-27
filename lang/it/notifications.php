@@ -43,7 +43,9 @@ return [
         'greeting'  => 'Salve :name,',
         'line_1'    => 'L\'amministratore di condominio ha creato il tuo profilo. Clicca sul seguente link per impostare la tua password.',
         'action'    => 'Imposta password',
-        'line_2'    => 'Questo link scadrà in 60 minuti.',
+        'line_2'    => 'Questo link scadrà tra tre giorni.',
+        'password_already_set' => 'La password è già stata impostata. Effettua il login con le tue credenziali.',
+        'link_expired' => 'Il link di invito è scaduto o non è più valido. Contatta l\'amministratore per ricevere un nuovo invito.',
     ],
 
     // Approvazione comunicazione (ApproveComunicazioneNotification)
@@ -120,25 +122,55 @@ return [
 
     // Approvazione ticket (ApproveSegnalazioneNotification)
     'approve_ticket' => [
-        'subject'     => 'Nuovo ticket da approvare',
+        'subject'     => 'Nuova segnalazione da approvare',
         'greeting'    => 'Salve :name',
-        'line_1'      => "L'utente :user ha creato un nuovo ticket guasto per il condominio.",
-        'line_2'      => "Il ticket è in attesa di approvazione perché l'utente che l'ha inviato non ha permessi sufficienti per pubblicarlo.",
+        'line_1'      => "L'utente :user ha creato una nuova segnalazione guasto per il condominio.",
+        'line_2'      => "La segnalazione guasto è in attesa di approvazione perché l'utente che l'ha inviato non ha permessi sufficienti per pubblicarlo.",
         'object'      => 'Oggetto',
         'priority'    => 'Priorità',
         'status'      => 'Stato',
-        'action'      => 'Visualizza ticket',
+        'action'      => 'Visualizza segnalazione',
     ],
 
     // Nuovo ticket (NewSegnalazioneNotification)
     'new_ticket' => [
-        'subject'     => 'Nuovo ticket guasto',
+        'subject'     => 'Nuova segnalazione guasto',
         'greeting'    => 'Salve :name',
-        'line_1'      => "L'utente :user ha creato un nuovo ticket guasto.",
+        'line_1'      => "L'utente :user ha creato una nuova segnalazione guasto.",
         'object'      => 'Oggetto',
         'priority'    => 'Priorità',
         'status'      => 'Stato',
-        'action'      => 'Visualizza ticket',
+        'action'      => 'Visualizza segnalazione',
+    ],
+
+    // Nuovo commento
+    'new_ticket_comment' => [
+        'subject'  => 'Nuovo commento su: :entity',
+        'greeting' => 'Salve!',
+        'line_1'   => ':user ha lasciato un nuovo commento:',
+        'action'   => 'Visualizza la segnalazione',
+        'line_2'   => 'Ricevi questa email perché sei coinvolto in questa segnalazione.',
+    ],
+
+    // Commento approvato
+    'approved_ticket_comment' => [
+        'subject' => 'Il tuo commento è stato approvato',
+        'line_1'  => 'Il tuo commento sulla :entity è stato approvato e pubblicato.',
+        'action'  => 'Visualizza segnalazione',
+    ],
+
+    // Commento in attesa di approvazione
+    'pending_ticket_comment' => [
+        'subject' => 'Nuovo commento da moderare su :entity',
+        'line_1'  => ':user ha scritto un commento in ":title" che richiede approvazione.',
+        'line_2'  => 'Accedi per approvare o rifiutare il commento.',
+        'action'  => 'Visualizza Segnalazione',
+    ],
+
+    // Commento eliminato
+    'ddeleted_ticket_comment' => [
+        'subject' => 'Un tuo commento è stato rimosso',
+        'line_1'  => 'Il tuo commento sulla :entity è stato rimosso o nascosto da un amministratore.',
     ],
 
     // Stringhe comuni a tutte le notifiche

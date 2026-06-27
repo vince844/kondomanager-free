@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import MoneyInput from '@/components/MoneyInput.vue';
 import { 
     Wallet, Plus, Trash2, AlertTriangle, 
     Building2, Calendar, Info, Euro,
@@ -53,7 +54,18 @@ const showAddModal = ref(false);
 const form = useForm({
     condominio_id: null as number | null,
     descrizione: '',
-    importo: 0, 
+    importo: '', 
+});
+
+const moneyOptions = ref({
+  prefix: '',              
+  suffix: '',              
+  thousands: '.',          
+  decimal: ',',          
+  precision: 2, 
+  disableNegative: false,         
+  allowBlank: false,
+  masked: true 
 });
 
 const totalDebito = computed(() => {
@@ -68,8 +80,8 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const pageGuides = [
   {
-    title: 'Double Lock Engine',
-    description: 'I debiti inseriti qui alimentano il sistema di copertura patrimoniale durante la registrazione delle fatture.',
+    title: 'Controllo Pagamenti',
+    description: 'I debiti inseriti qui autorizzano il sistema a registrare e saldare le relative fatture pregresse.',
     icon: ShieldAlert,
     colorVariant: 'amber' as const
   },
@@ -88,7 +100,7 @@ const pageGuides = [
 ];
 
 const submit = () => {
-    form.post(route('admin.fornitori.situazione-debitoria.store', props.fornitore.id), {
+    form.post(route('admin.fornitori.situazione-debitoria.store' as any, { fornitore: props.fornitore.id } as any), {
         onSuccess: () => {
             showAddModal.value = false;
             form.reset();
@@ -98,7 +110,7 @@ const submit = () => {
 
 const deleteDebito = (id: number) => {
     if (confirm('Rimuovere questa pendenza? L\'operazione inciderà sulla quadratura del bilancio di apertura.')) {
-        form.delete(route('admin.fornitori.situazione-debitoria.destroy', [props.fornitore.id, id]));
+        form.delete(route('admin.fornitori.situazione-debitoria.destroy' as any, { fornitore: props.fornitore.id, debito: id } as any));
     }
 };
 </script>
@@ -113,7 +125,7 @@ const deleteDebito = (id: number) => {
       </div>
 
       <PageHeaderGuide
-        :page-title="`Debiti Pregressi: ${fornitore.ragione_sociale}`"
+        :page-title="`Debiti pregressi: ${fornitore.ragione_sociale}`"
         :page-subtitle="`Gestione pendenze ereditate da esercizi precedenti · Esposizione Totale: ${euro(totalDebito)}`"
         :guides="pageGuides"
         :breadcrumbs="breadcrumbs"
@@ -122,8 +134,8 @@ const deleteDebito = (id: number) => {
         back-text="Torna ai dettagli"
       >
         <template #actions>
-          <Button @click="showAddModal = true" class="gap-2 bg-slate-800 hover:bg-slate-700">
-            <Plus class="w-3 h-3" /> Aggiungi pendenza
+          <Button @click="showAddModal = true" size="sm" class="h-8 text-xs gap-2 bg-slate-800 hover:bg-slate-700">
+            <Plus class="w-3.5 h-3.5" /> Aggiungi pendenza
           </Button>
         </template>
       </PageHeaderGuide>
@@ -133,6 +145,20 @@ const deleteDebito = (id: number) => {
           
           <div class="grid grid-cols-1 gap-6 pb-16">
             
+            <div class="p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-start gap-4">
+              <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div class="space-y-2">
+                <h4 class="text-sm font-bold text-amber-900 dark:text-amber-200">Come funziona la gestione dei debiti pregressi?</h4>
+                <p class="text-xs text-amber-800/80 dark:text-amber-400/80 leading-relaxed">
+                  Questa sezione serve a dichiarare le pendenze accumulate negli anni precedenti verso questo fornitore.
+                </p>
+                <ul class="text-xs text-amber-800/80 dark:text-amber-400/80 space-y-1 list-disc list-inside">
+                  <li><strong>Stato Patrimoniale:</strong> Ogni importo inserito diventa una passività nel bilancio di apertura. Inserisci solo debiti reali (es. approvati da delibere o verbali di consegna).</li>
+                  <li><strong>Controllo sui pagamenti:</strong> Per garantire che i bilanci quadrino sempre, il sistema ti permetterà di registrare e saldare fatture degli anni passati solo se il relativo debito è stato prima dichiarato in questa sezione.</li>
+                </ul>
+              </div>
+            </div>
+
             <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
               <div class="px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center">
                 <h2 class="text-[11px] font-bold uppercase tracking-widest text-slate-500">Pendenze Registrate</h2>
@@ -196,16 +222,6 @@ const deleteDebito = (id: number) => {
               </div>
             </div>
 
-            <div class="p-5 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl flex items-start gap-4">
-              <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div class="space-y-1">
-                <h4 class="text-sm font-bold text-amber-900 dark:text-amber-200">Avviso sulla Quadratura Contabile</h4>
-                <p class="text-xs text-amber-800/80 dark:text-amber-400/80 leading-relaxed">
-                  L'inserimento di un debito pregresso influisce sullo Stato Patrimoniale. Assicurati che l'importo sia supportato da una delibera o da un verbale di passaggio consegne. Il sistema utilizzerà questi record per validare il "Double Lock" durante la registrazione delle fatture passive del 2026.
-                </p>
-              </div>
-            </div>
-
           </div>
 
         </FornitoreLayout>
@@ -248,7 +264,7 @@ const deleteDebito = (id: number) => {
             <Label class="text-[11px] font-black uppercase text-slate-500">Importo Lordo (€)</Label>
             <div class="relative">
               <Euro class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input type="number" step="0.01" v-model="form.importo" class="pl-10 font-black text-xl h-12" placeholder="0,00" />
+              <MoneyInput v-model="form.importo" :money-options="moneyOptions" class="pl-10 font-black text-xl h-12" placeholder="0,00" />
             </div>
             <p class="text-[9px] text-slate-400 italic">Inserisci l'importo dovuto. Il sistema lo caricherà come passività.</p>
           </div>

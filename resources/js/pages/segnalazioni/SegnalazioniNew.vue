@@ -67,7 +67,7 @@ const form = useForm({
     priority: '',
     stato: '',
     condominio_id: '',
-    can_comment: false as boolean,
+    can_comment: true as boolean,
     is_featured: false as boolean,
     is_published: true,
     anagrafiche: [],

@@ -109,7 +109,7 @@ return [
         'title'              => 'Titolo',
         'buildings'          => 'Condomini',
         'residents'          => 'Anagrafiche',
-        'visibility'         => 'Visibilidade',
+        'visibility'         => 'Visibilità',
         'approved_tooltip'   => 'Approvata - clicca per rimuovere approvazione',
         'unapproved_tooltip' => 'Non approvata - clicca per approvare',
         'clear_all_filters'  => 'Resetta tutti i filtri',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -13,12 +13,22 @@ import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem } from '@/types';
 import type { Segnalazione } from '@/types/segnalazioni';
 import '@vuepic/vue-datepicker/dist/main.css';
+import ListaCommenti from '@/components/commenti/ListaCommenti.vue';
 
 const props = defineProps<{
   segnalazione: Segnalazione | any;
+  commenti_config: {
+    can_comment: boolean;
+    can_create: boolean;
+    can_moderate: boolean;
+    can_publish: boolean;
+  };
 }>();  
 
 const { hasPermission, generateRoute } = usePermission();
+
+const page = usePage();
+const currentUserId = computed(() => (page.props.auth as any).user.id);
 
 // Estrazione sicura dei metadati da visualizzare nella sidebar
 const priorityItem = computed(() => {
@@ -137,6 +147,19 @@ const pageGuides = computed(() => [
                         <div class="prose prose-slate dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
                             {{ props.segnalazione.description }}
                         </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Sezione Commenti -->
+                <Card class="border-dashed shadow-sm bg-white dark:bg-slate-950">
+                    <CardContent class="pt-3">
+                        <ListaCommenti 
+                            :segnalazione-id="props.segnalazione.id"
+                            :commenti="props.segnalazione.commenti || []"
+                            :commenti-in-attesa="props.segnalazione.commentiInAttesa || []"
+                            :commenti-config="props.commenti_config"
+                            :current-user-id="currentUserId"
+                        />
                     </CardContent>
                 </Card>
             </div>

@@ -1,0 +1,11 @@
+{
+    "features": [
+        "Componente de UI ScopertoWarning: Adicionada uma interface que deteta a falta de papéis ativos (ex: inquilinos) nas frações durante a alocação, calculando os montantes a descoberto em tempo real.",
+        "Motivação Guardada para Valores Descobertos: Para forçar e gerar as alocações com montantes não atribuídos, o administrador deve obrigatoriamente fornecer uma nota (> 10 caracteres) que será guardada e exibida como aviso no histórico.",
+        "Rastreabilidade da Cascata de Papéis: Melhorada a rastreabilidade da cascata do cálculo. O sistema agora expõe exatamente o papel em falta (ex: usufrutuário ou inquilino), enriquecido com os nomes da Fração e da Conta correspondente.",
+        "Exceção Silenciosa e Gatekeeper: Introduzida a ScopertiNonAccettatiException que bloqueia com segurança a lógica do controlador avisando o frontend, sendo deliberadamente ignorada pelos registos do sistema.",
+        "Tarefa Automática na Caixa de Entrada: Geração automática de uma tarefa na Admin Inbox quando valores em falta são aceites de forma forçada, para não serem esquecidos.",
+        "Novo estado 'DESCOBERTO DOCUMENTADO' no Widget: O widget de Cobertura mostra agora um ícone neutro em vez de alarme para valores em falta já documentados, priorizando anomalias reais ou despesas adicionadas posteriormente.",
+        "Fix: Atualizada a terminologia do widget para 'NECESSIDADE POR FINANCIAR' para maior rigor contabilístico e clareza operacional."
+    ]
+}

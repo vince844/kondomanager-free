@@ -2,9 +2,14 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\CategoriaEventoEnum;
+use App\Enums\EventoTipo;
 use App\Models\User;
 use App\Models\Evento;
 use App\Enums\Role;
+use App\Enums\VisibilityStatus;
+use App\Models\CategoriaEvento;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -15,17 +20,76 @@ use Illuminate\Support\Facades\Cache;
 class InboxService
 {
     /**
+     * Crea un task per l'Admin Inbox in modo centralizzato e sicuro.
+     * Gestisce in automatico category_id, visibility, e requires_action.
+     */
+    public static function createTask(
+        EventoTipo $tipo,
+        string $title,
+        string $description,
+        Carbon $scadenza,
+        int $createdByUserId,
+        ?int $condominioId = null,
+        array $context = [],
+        ?string $actionUrl = null,
+        array $extraMeta = [],
+        ?string $eventableType = null,
+        ?int $eventableId = null,
+        string $priorita = 'normale'
+    ): Evento {
+        $catAdmin = CategoriaEvento::firstOrCreate(
+            ['name' => CategoriaEventoEnum::SCADENZE_AMMINISTRATIVE->value],
+            ['description' => 'Auto']
+        );
+
+        $meta = array_merge([
+            'type' => $tipo->value,
+            'requires_action' => true,
+            'action_url' => $actionUrl,
+            'context' => $context,
+        ], $extraMeta);
+
+        $evento = Evento::create([
+            'title' => $title,
+            'description' => $description,
+            'start_time' => $scadenza,
+            'end_time' => $scadenza->copy()->addHour(),
+            'created_by' => $createdByUserId,
+            'category_id' => $catAdmin->id,
+            'visibility' => VisibilityStatus::HIDDEN->value,
+            'is_approved' => true,
+            'tipo' => $tipo,
+            'meta' => $meta,
+            'eventable_type' => $eventableType,
+            'eventable_id' => $eventableId,
+            'priorita' => $priorita,
+        ]);
+
+        if ($condominioId) {
+            $evento->condomini()->syncWithoutDetaching([$condominioId]);
+        }
+
+        self::clearAdminCache();
+
+        return $evento;
+    }
+
+    /**
      * Invalida la cache dei conteggi per tutto lo staff amministrativo.
      * Da invocare ogni volta che un task viene creato, completato, eliminato 
      * o modificato (es. registrazione incassi, emissione rate, rifiuti segnalazioni).
      */
     public static function clearAdminCache(): void
     {
-        // Recuperiamo solo gli ID per massimizzare le performance della query
-        $adminIds = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->pluck('id');
-        
-        foreach ($adminIds as $id) {
-            Cache::forget("inbox_count_{$id}");
+        try {
+            // Recuperiamo solo gli ID per massimizzare le performance della query
+            $adminIds = User::role([Role::AMMINISTRATORE->value, Role::COLLABORATORE->value])->pluck('id');
+            
+            foreach ($adminIds as $id) {
+                Cache::forget("inbox_count_{$id}");
+            }
+        } catch (\Spatie\Permission\Exceptions\RoleDoesNotExist $e) {
+            // Ignoriamo in ambiente di testing se il seeder dei ruoli non è stato eseguito
         }
     }
 

@@ -28,16 +28,5 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
       />
     </div>
 
-    <div class="flex flex-col gap-2 w-full sm:flex-row sm:justify-end">
-      <Link
-          as="button"
-          :href="'/impostazioni'"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-        >
-          <Settings class="w-4 h-4" />
-          <span>Impostazioni</span>
-      </Link>
-    </div>
-
   </div>
 </template>

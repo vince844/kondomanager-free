@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Página de Detalhe de Fatura de Fornecedor: adicionada vista dedicada para inspecionar todos os detalhes da fatura. Resume o fornecedor, valores (tributável/IVA), data de vencimento, selo de estado de aprovação, estado de pagamento e um detalhamento dos itens contabilizados. Também expõe a Trilha de Auditoria de Ratificação do Conselho (banner destacado com o autor, horário de aprovação e notas da reunião) se a fatura teve origem em uma despesa não orçada.",
+        "Fluxo 'Pagar Agora': adicionado um botão dedicado no detalhe da fatura que permite saltar imediatamente para a página de registo de pagamento. Auto-seleciona o fornecedor e marca automaticamente a fatura para liquidação rápida, com carregamento instantâneo dos montantes pendentes.",
+        "Aprovação Rápida: capacidade de transitar o estado de 'A Aprovar' para 'Aprovada' diretamente no menu de ações da linha para faturas internas, sem ter de passar pelo modal de ratificação legal, permitindo o seu rápido desbloqueio."
+    ]
+}

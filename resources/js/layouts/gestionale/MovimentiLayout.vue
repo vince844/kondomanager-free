@@ -29,8 +29,7 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
         type:  'link',
         icon:  LogOut,
         title: 'Pagamenti fornitori',
-        href:  '#',
-        badge: 'In sviluppo',
+        href:   generatePath('gestionale/:condominio/pagamenti-fornitori', { condominio: condominio.value.id }),
     },
     {
         type:  'link',

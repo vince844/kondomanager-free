@@ -25,6 +25,8 @@ class TabellaResource extends JsonResource
             'note'               => $this->note,
             'quota'              => $this->quota,
             'numero_decimali'    => $this->numero_decimali,
+            'immobili_count'     => $this->whenCounted('quote'),
+            'conti_count'        => $this->whenCounted('conti'),
             'palazzina'          => new PalazzinaResource($this->whenLoaded('palazzina')),
             'scala'              => new ScalaResource($this->whenLoaded('scala')),
         ];
