@@ -5,6 +5,7 @@ import { router, Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal, Percent } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Tabella } from '@/types/gestionale/tabelle'
@@ -14,6 +15,7 @@ const { tabella, condominio } = defineProps<{ tabella: Tabella, condominio: Buil
 
 const tabellaID = ref<number | null>(null)
 const isAlertOpen = ref(false)
+const isCannotDeleteAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
@@ -23,8 +25,17 @@ function handleDelete(targetTabella: Tabella) {
   tabellaID.value = targetTabella.id
   isDropdownOpen.value = false
   setTimeout(() => {
-    isAlertOpen.value = true
+    if ((targetTabella.conti_count ?? 0) > 0) {
+      isCannotDeleteAlertOpen.value = true
+    } else {
+      isAlertOpen.value = true
+    }
   }, 200)
+}
+
+function closeWarningModal() {
+  isCannotDeleteAlertOpen.value = false
+  tabellaID.value = null
 }
 
 function closeModal() {
@@ -105,5 +116,20 @@ function deleteTabella() {
     :loading="isDeleting"
     @confirm="deleteTabella"
   />
+
+  <AlertDialog :open="isCannotDeleteAlertOpen" @update:open="isCannotDeleteAlertOpen = $event">
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle class="text-amber-600">Impossibile eliminare la tabella</AlertDialogTitle>
+        <AlertDialogDescription class="text-sm text-slate-600">
+          Questa tabella è attualmente associata a una o più voci di spesa nei preventivi o consuntivi. Non puoi eliminarla per preservare l'integrità dei dati contabili storici.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      
+      <AlertDialogFooter>
+        <AlertDialogAction class="bg-amber-600 hover:bg-amber-700 focus:ring-amber-600" @click="closeWarningModal">Ho capito</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
 
 </template>

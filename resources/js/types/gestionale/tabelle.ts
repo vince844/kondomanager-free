@@ -25,6 +25,8 @@ export interface Tabella {
   condominio: Building
   palazzina: Palazzina;
   scala: Scala;
+  immobili_count?: number;
+  conti_count?: number;
 }
 
 export interface StatusType {

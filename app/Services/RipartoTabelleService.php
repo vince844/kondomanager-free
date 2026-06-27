@@ -435,7 +435,7 @@ class RipartoTabelleService
                         if (!isset($weights[$tabella->id])) {
                             $weights[$tabella->id] = [];
                         }
-                        $weights[$tabella->id][$key] = ($weights[$tabella->id][$key] ?? 0.0) + $parteSuTabella * $pesoAnag / $importo;
+                        $weights[$tabella->id][$key] = ($weights[$tabella->id][$key] ?? 0.0) + $parteSuTabella * $pesoAnag;
                     }
                 }
             }

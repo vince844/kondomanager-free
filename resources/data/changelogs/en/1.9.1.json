@@ -9,6 +9,8 @@
         "Comments and chat on fault reports: administrators, residents, and suppliers can now share updates directly within the fault report card. There is also an option to subject comments to mandatory moderation by the administrator.",
         "Motivated overrun approval flow (art. 1135 c.c.): a guided procedure to ratify unexpected out-of-budget expenses. Just one click to enter the urgency motivation (or meeting minutes details) and immediately unlock the invoice for payment, in full legal compliance.",
         "New native PDF document suite: generate and download supplier payment slips, schedules, and installment summaries aggregated by resident or unit directly from the management system. You can also upload your signature image and legal notes to be printed at the bottom of all documents.",
-        "Action inbox getting smarter: your 'to-do' list has been enhanced. It now calculates exact days of delay and automatically manages the opening and closing of tasks: when you settle an invoice, the 'to pay' task disappears on its own!"
+        "Action inbox getting smarter: your 'to-do' list has been enhanced. It now calculates exact days of delay and automatically manages the opening and closing of tasks: when you settle an invoice, the 'to pay' task disappears on its own!",
+        "New design and security for millesimal tables: the list of tables is now much clearer, with custom icons by type and real-time counters. Furthermore, we have strengthened security: it will no longer be possible to accidentally delete a table if it has already been used in past budgets, safeguarding your accounting forever.",
+        "Infallible allocation engine: we fixed an internal math bug that, in very rare cases, skewed the expense percentages on the PDF reports of the budget allocations. Now penny-perfect precision is guaranteed on every single millesimal or share, with dynamic headers that reflect your true units of measurement."
     ]
 }

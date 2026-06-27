@@ -1,10 +1,11 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
+import { computed, watch, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import TabelleGuide from '@/components/guides/TabelleGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Plus, LoaderCircle, Table, Layers, Settings, Info } from 'lucide-vue-next';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import vSelect from "vue-select";
 import type { Building } from '@/types/buildings';
 import type { BreadcrumbItem } from '@/types';
@@ -51,6 +53,8 @@ const unitaMisura = [
 ];
 
 const { generatePath, generateRoute } = usePermission();
+
+const showGuide = ref(false);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -97,6 +101,12 @@ const submit = () => {
     preserveScroll: true,
   });
 };
+
+watch(() => form.tipologia, (newVal) => {
+  if (newVal === 'ascensore' && form.quota === 'millesimi') {
+    form.quota = 'quote';
+  }
+});
 </script>
 
 <template>
@@ -112,6 +122,9 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/tabelle', { condominio: props.condominio.id })"
         back-text="Torna all'elenco"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="showGuide = true"
       >
       </PageHeaderGuide>
 
@@ -125,7 +138,9 @@ const submit = () => {
           <CardContent class="space-y-6">
             <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
               <div class="sm:col-span-3">
-                <Label for="nome">Nome tabella</Label>
+                <div class="flex items-center h-5">
+                  <Label for="nome">Nome tabella</Label>
+                </div>
                 <Input
                   id="nome"
                   class="mt-1 bg-white dark:bg-slate-950 w-full"
@@ -137,7 +152,31 @@ const submit = () => {
               </div>
 
               <div class="sm:col-span-3">
-                <Label for="tipologia">Tipologia</Label>
+                <div class="flex items-center gap-1 h-5">
+                  <Label for="tipologia">Tipologia</Label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer flex items-center">
+                        <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="space-y-3">
+                        <h4 class="text-sm font-semibold flex items-center gap-2">
+                          <Info class="w-4 h-4" /> Tipo tabella
+                        </h4>
+                        <div class="text-sm space-y-2 text-slate-500">
+                          <ul class="list-disc pl-4 space-y-1 text-xs">
+                            <li><strong>Standard:</strong> La tipica tabella generale, di proprietà o scale.</li>
+                            <li><strong>Ascensore:</strong> Il 50/50 (Art. 1124) non è calcolato in automatico. Inserisci i valori finali. (Consigliato: Quote).</li>
+                            <li><strong>Riscaldamento / Acqua:</strong> Per le spese termiche e idriche.</li>
+                            <li><strong>Lastrico / Speciale:</strong> Per organizzare ripartizioni particolari (es. 1/3 e 2/3, oppure tetti, corselli box).</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
                 <v-select
                   class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
                   :options="tipologieTabelle"
@@ -150,7 +189,30 @@ const submit = () => {
               </div>
 
               <div class="sm:col-span-3">
-                <Label for="quota">Unità di misura</Label>
+                <div class="flex items-center gap-1 h-5">
+                  <Label for="quota">Unità di misura</Label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer flex items-center">
+                        <Info class="w-3.5 h-3.5 text-slate-400 hover:text-indigo-500 transition-colors" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50">
+                      <div class="space-y-3">
+                        <h4 class="text-sm font-semibold flex items-center gap-2">
+                          <Info class="w-4 h-4" /> Quale scegliere?
+                        </h4>
+                        <div class="text-sm space-y-2 text-slate-500">
+                          <ul class="list-disc pl-4 space-y-1 text-xs">
+                            <li><strong>Millesimi:</strong> Il classico calcolo su base 1.000.</li>
+                            <li><strong>Quote:</strong> Utile se ripartisci in parti proporzionali (es. 1 quota al PT, 2 quote al piano 1). Il totale può essere qualsiasi numero.</li>
+                            <li><strong>Persone / Metri cubi:</strong> Ripartizione a consumo o teste.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
                 <v-select
                   class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
                   :options="unitaMisura"
@@ -163,7 +225,9 @@ const submit = () => {
               </div>
 
               <div class="sm:col-span-3">
-                <Label for="numero_decimali">Numero decimali</Label>
+                <div class="flex items-center h-5">
+                  <Label for="numero_decimali">Numero decimali</Label>
+                </div>
                 <v-select
                   id="numero_decimali"
                   class="mt-1 bg-white dark:bg-slate-950 text-sm w-full"
@@ -175,7 +239,9 @@ const submit = () => {
               </div>
 
               <div class="sm:col-span-6">
-                <Label for="descrizione">Descrizione</Label>
+                <div class="flex items-center h-5">
+                  <Label for="descrizione">Descrizione</Label>
+                </div>
                 <Textarea
                   id="descrizione"
                   class="mt-1 bg-white dark:bg-slate-950 block w-full"
@@ -268,9 +334,9 @@ const submit = () => {
                     <HoverCardContent class="w-80 z-50">
                       <div class="flex justify-between space-x-4">
                         <div class="space-y-1">
-                          <h4 class="text-sm font-semibold">Associazione Automatica</h4>
+                          <h4 class="text-sm font-semibold">Inserimento massivo</h4>
                           <p class="text-sm">
-                            Selezionando questa opzione, tutti gli immobili già presenti nel condominio verranno automaticamente associati a questa tabella con quota 0.
+                            Selezionando questa opzione, dopo aver salvato la tabella si aprirà una nuova schermata che mostra tutti gli immobili del condominio, permettendoti di inserire massivamente tutte le quote e i parametri in un solo passaggio.
                           </p>
                         </div>
                       </div>
@@ -304,6 +370,9 @@ const submit = () => {
       </form>
     </div>
   </GestionaleLayout>
+
+  <TabelleGuide v-model:open="showGuide" />
+
 </template>
 
 <style src="vue-select/dist/vue-select.css"></style>

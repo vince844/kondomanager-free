@@ -184,8 +184,18 @@
         {{-- Riga 2: mill. / importo sub-header --}}
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }}; font-weight: normal; font-size: {{ $fontTiny }};">
             @foreach($tabelle as $tabId => $tabInfo)
+                @php
+                    $etichetteUnita = [
+                        'millesimi' => 'mill. ‰',
+                        'quote'     => 'quote',
+                        'persone'   => 'pers.',
+                        'kwatt'     => 'kW',
+                        'mtcubi'    => 'mc.',
+                    ];
+                    $labelUnita = $etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote';
+                @endphp
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wQuota }}%; opacity: 0.9;">
-                    mill. {{ $tabInfo['quota_tipo'] === 'millesimi' ? '‰' : 'q.' }}
+                    {{ $labelUnita }}
                 </th>
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wImporto }}%; opacity: 0.9;">
                     importo €
@@ -398,7 +408,7 @@
             <span style="color: #c07a30; font-weight: bold;">U</span> Usufruttuario &nbsp;
             <span style="color: #2a8050; font-weight: bold;">I</span> Inquilino
             <br>
-            Gli importi sono in Euro (€). Le quote ‰ sono quelle registrate nelle tabelle di ripartizione. La colonna <em>% TOT.</em> indica la percentuale di ogni soggetto sul totale del piano rate.
+            Gli importi sono in Euro (€). Le quote ‰ sono quelle registrate nelle tabelle di ripartizione. Le colonne contrassegnate con 'q.' indicano quote proporzionali, non millesimi. La colonna <em>% TOT.</em> indica la percentuale di ogni soggetto sul totale del piano rate.
         </td>
         <td style="width: 25%; vertical-align: bottom; font-size: {{ $fontTiny }}; color: #666; text-align: right;">
             Stampato il {{ now()->format('d/m/Y') }} alle {{ now()->format('H:i') }}

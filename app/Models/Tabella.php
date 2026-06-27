@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Gestionale\Conto;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -56,6 +57,11 @@ class Tabella extends Model
     public function palazzina()
     {
         return $this->belongsTo(Palazzina::class);
+    }
+
+    public function conti()
+    {
+        return $this->belongsToMany(Conto::class, 'conto_tabella_millesimale');
     }
 
     // Relazione con la scala
