@@ -155,6 +155,9 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-scadenziario', [PianoRatePrintController::class, 'scadenziario'])
         ->name('esercizi.piani-rate.print-scadenziario');
 
+    Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-riparto-tabelle', [PianoRatePrintController::class, 'ripartoTabelle'])
+        ->name('esercizi.piani-rate.print-riparto-tabelle');
+
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');
 

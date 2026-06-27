@@ -85,6 +85,7 @@ Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del 
 - **Backup Management**
 - **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
+- **Rateazione per origine e quadratura al centesimo** (vedi [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md)): rateazione per origine di addebito (es. preventivo, saldo iniziale, fondo) su scadenze multiple, quadratura al centesimo bidimensionale (per-immobile-first) e predisposizione al calcolo esatto dei subentri.
 - **Iniziativa A — Tabelle Millesimali avanzate + motore (Livello 1 + cascata)** (vedi [`tabelle_millesimali.md`](tabelle_millesimali.md)):
   - Supporto Art. 1124 c.c. (scale e ascensori)
   - Tipo `manuale` aggiunto all'enum
@@ -283,7 +284,30 @@ Sviluppato in 4 fasi parallelizzabili (vedi specifica [`anagrafica-fornitore.md`
 - Template comunicazioni (convocazioni assemblea, circolari)
 - Distribuzione documenti via email/PEC
 - Workflow interni (approvazione spese, delibere)
-- Suite stampa completa (riparti, rendiconti, estratti conto, prospetti)
+- **Suite stampa completa** (riparti, rendiconti, estratti conto, prospetti)
+
+### Suite Stampe — Riparto per Tabella × Soggetto
+
+*(Specifica completa: [`stampa_riparto_per_condomino.md`](stampa_riparto_per_condomino.md))*
+
+La stampa **Prospetto Completo** (tutte le unità × tutte le tabelle) è già implementata da v1.9.x.
+In v1.21 si aggiungono le due varianti per il condòmino:
+
+- **Opzione A — Estratto Personale PDF multi-pagina**: un unico PDF A4 Portrait con una
+  sezione per ogni soggetto separata da page-break. L'amministratore stampa e distribuisce
+  fisicamente. Nessuna dipendenza aggiuntiva. Stimata: 2–3 sessioni.
+
+- **Opzione B — ZIP con PDF individuali**: un archivio `.zip` contenente un PDF per ogni
+  soggetto, nominato `riparto_{anno}_Int{N}_{Cognome}.pdf`, pronto per l'invio email
+  individuale. Richiede `ext-zip` PHP. Per >50 soggetti: job asincrono con notifica
+  Inbox. Stimata: 3–5 sessioni. Prepara il terreno per l'invio automatico in v1.22.
+
+  > *Nessuna migration necessaria — tutti i dati sono già in `rate_quote`,
+  > `quote_tabella`, `conto_tabella_millesimale`.*
+
+- **Riparto per tabella × soggetto (documento trasparenza prioritario per migranti da Danea)**:
+  il dato è già in DB — è solo presentazione. Priorità alta per amministratori che migrano
+  da Danea/Gestionale.it (vedi note_tecniche).
 
 ---
 
@@ -394,8 +418,10 @@ Nel progetto sono presenti numerosi documenti di design e specifiche tecniche al
 - [`evoluzione_anagrafica_e_motore_riparto.md`](evoluzione_anagrafica_e_motore_riparto.md) — Design per l'anagrafica avanzata (v1.10/v1.11).
 - [`cascata_risoluzione_ruolo_coerenza_ruoli.md`](cascata_risoluzione_ruolo_coerenza_ruoli.md) — Algoritmo per addebitare la spesa al soggetto corretto (nuda proprietà, inquilino, ecc.).
 - [`tabelle_millesimali.md`](tabelle_millesimali.md) — Gestione tecnica delle tabelle di ripartizione.
+- [`stampa_riparto_per_condomino.md`](stampa_riparto_per_condomino.md) — Spec estensione stampa riparto: Opzione A (PDF multi-pagina) e Opzione B (ZIP individuale) per il condòmino (v1.21).
 - [`guida_preventivi_rate_capitoli.md`](guida_preventivi_rate_capitoli.md) — Gestione del bilancio preventivo.
 - [`logica_piani_rate.md`](logica_piani_rate.md) & [`creazione_piano_rate.md`](creazione_piano_rate.md) — Gestione scadenze e generazione rate.
+- [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md) — Rateazione per origine e quadratura al centesimo (v1.10).
 - [`anagrafica-fornitore.md`](anagrafica-fornitore.md) — Specifiche del DNA Fiscale Fornitori (v1.12).
 
 ### 🛠 Strumenti, Utility e Moduli Speciali

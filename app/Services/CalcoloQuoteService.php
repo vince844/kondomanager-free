@@ -455,7 +455,7 @@ class CalcoloQuoteService
 
                     // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura)
                     if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
-                        $catenaGodimento = ['inquilino', 'comodatario', 'usufruttuario', 'proprietario'];
+                        $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
                         $catenaCapitale  = ['nuda_proprietario', 'proprietario'];
 
                         $catena = in_array($rip->soggetto, $catenaCapitale, true)

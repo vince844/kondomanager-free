@@ -8,6 +8,7 @@ use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Services\PDF\PdfService;
 use App\Services\PianoRateQuoteService;
+use App\Services\RipartoTabelleService;
 use Illuminate\Http\Request;
 
 class PianoRatePrintController extends Controller
@@ -80,6 +81,59 @@ class PianoRatePrintController extends Controller
         $mpdf->SetHeader($condominio->nome . '||Scadenziario Rate – ' . $pianoRate->nome);
 
         return response($mpdf->Output('prospetto_rate.pdf', 'I'))
+            ->header('Content-Type', 'application/pdf');
+    }
+
+    // -------------------------------------------------------------------------
+    // RIPARTO PER TABELLA × SOGGETTO
+    // -------------------------------------------------------------------------
+
+    /**
+     * Stampa il Riparto Bilancio Preventivo per Tabella × Soggetto.
+     *
+     * Per ogni unità immobiliare e ogni soggetto (Proprietario / Inquilino /
+     * Usufruttuario / Comodatario) mostra la quota millesimale e l'importo
+     * ripartito su ciascuna tabella millesimale configurata nel piano dei conti.
+     *
+     * Orientamento: Landscape, formato adattivo (A4-L fino a 6 tabelle, A3-L oltre).
+     */
+    public function ripartoTabelle(
+        Request $request,
+        Condominio $condominio,
+        Esercizio $esercizio,
+        PianoRate $pianoRate,
+        PdfService $pdfService,
+        RipartoTabelleService $ripartoService
+    ) {
+        $matrice = $ripartoService->buildMatrice($pianoRate);
+
+        $nTabelle = count($matrice['tabelle']);
+
+        // Adatta formato pagina al numero di tabelle:
+        // ≤ 5 tabelle → A4 Landscape (297 × 210 mm)
+        // 6-8 tabelle → A3 Landscape (420 × 297 mm)
+        // > 8 tabelle → A3 Landscape con font ridotto (gestito nella view)
+        $formato = $nTabelle > 5 ? 'A3-L' : 'A4-L';
+
+        $data = [
+            'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'pianoRate'  => $pianoRate,
+            'matrice'    => $matrice,
+            'nTabelle'   => $nTabelle,
+        ];
+
+        $mpdf = $pdfService->generate('pdf.gestionale.riparto_tabelle', $data, [
+            'format'      => $formato,
+            'orientation' => 'L',
+            'margin_top'  => 32,
+            'margin_left' => 8,
+            'margin_right'=> 8,
+        ]);
+
+        $mpdf->SetHeader($condominio->nome . '||Riparto per Tabella – ' . $pianoRate->nome);
+
+        return response($mpdf->Output('riparto_tabelle.pdf', 'I'))
             ->header('Content-Type', 'application/pdf');
     }
 

@@ -74,6 +74,9 @@ watch(
   (newVal) => {
     if (newVal && props.conto) {
       fetchCapitoliConti(props.condominioId, props.pianoContoId)
+      // Re-idrata il form ogni volta che il modale si apre, anche se lo stesso
+      // conto è già selezionato (stessa reference, il watch su conto non scatterebbe)
+      populateFormFromConto(props.conto)
     }
   },
 )
@@ -99,31 +102,43 @@ const getPercentualeBySoggetto = (conto: Conto, soggetto: 'proprietario' | 'inqu
   return Number(ripartizioni.find((r) => r.soggetto === soggetto)?.percentuale || 0)
 }
 
+const populateFormFromConto = (newConto: Conto) => {
+  form.nome = newConto.nome
+  form.codice = newConto.codice || ''
+  form.default_fornitore_id = newConto.default_fornitore_id || null
+  form.tipo_spesa = newConto.tipo_spesa || 'standard'
+  form.tipo = newConto.tipo
+  form.descrizione = newConto.descrizione || ''
+  form.note = newConto.note || ''
+  form.parent_id = newConto.parent_id
+
+  form.tabella_millesimale_id = newConto.tabelle_millesimali?.[0]?.tabella_id ?? null
+
+  // Usa ?? null per distinguere il 0 salvato legittimamente dal "nessuna ripartizione trovata".
+  // getPercentualeBySoggetto restituisce 0 anche se non esiste la ripartizione, quindi
+  // usiamo un check sull'esistenza della riga per evitare di forzare 100 su conti senza tabella.
+  const ripartizioni = newConto.tabelle_millesimali?.[0]?.ripartizioni || []
+  const hasPropRipartizione = ripartizioni.some((r) => r.soggetto === 'proprietario')
+
+  form.percentuale_proprietario = hasPropRipartizione
+    ? getPercentualeBySoggetto(newConto, 'proprietario')
+    : (ripartizioni.length === 0 ? 100 : 0)
+  form.percentuale_inquilino = getPercentualeBySoggetto(newConto, 'inquilino')
+  form.percentuale_usufruttuario = getPercentualeBySoggetto(newConto, 'usufruttuario')
+
+  isCapitolo.value = isContoCapitolo.value
+  isSottoConto.value = !!newConto.parent_id
+  form.isCapitolo = isContoCapitolo.value
+  form.isSottoConto = !!newConto.parent_id
+
+  form.importo = !isContoCapitolo.value ? newConto.importo : ''
+}
+
 watch(
   () => props.conto,
   (newConto) => {
     if (!newConto) return
-
-    form.nome = newConto.nome
-    form.codice = newConto.codice || ''
-    form.default_fornitore_id = newConto.default_fornitore_id || null
-    form.tipo_spesa = newConto.tipo_spesa || 'standard'
-    form.tipo = newConto.tipo
-    form.descrizione = newConto.descrizione || ''
-    form.note = newConto.note || ''
-    form.parent_id = newConto.parent_id
-
-    form.tabella_millesimale_id = newConto.tabelle_millesimali?.[0]?.tabella_id ?? null
-    form.percentuale_proprietario = getPercentualeBySoggetto(newConto, 'proprietario') ?? 100
-    form.percentuale_inquilino = getPercentualeBySoggetto(newConto, 'inquilino')
-    form.percentuale_usufruttuario = getPercentualeBySoggetto(newConto, 'usufruttuario')
-
-    isCapitolo.value = isContoCapitolo.value
-    isSottoConto.value = !!newConto.parent_id
-    form.isCapitolo = isContoCapitolo.value
-    form.isSottoConto = !!newConto.parent_id
-
-    form.importo = !isContoCapitolo.value ? newConto.importo : ''
+    populateFormFromConto(newConto)
   },
   { immediate: true },
 )

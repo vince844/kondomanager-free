@@ -43,20 +43,8 @@ class PdfService
 
         $mpdf = new Mpdf($finalConfig);
         
-        // Add dynamic footer with legal text from settings and page numbering
-        $footerText = trim($settings->nota_legale_stampe ?? '');
-        
-        $footerHtml = '
-            <div style="border-top: 1px solid #ddd; padding-top: 5px; font-size: 8pt; font-weight: normal; color: #555;">
-                <table width="100%" style="border-collapse: collapse;">
-                    <tr>
-                        <td style="text-align: left; width: 80%; white-space: nowrap; overflow: hidden;">' . htmlspecialchars($footerText) . '</td>
-                        <td style="text-align: right; width: 20%;">Pagina {PAGENO} di {nbpg}</td>
-                    </tr>
-                </table>
-            </div>
-        ';
-        $mpdf->SetHTMLFooter($footerHtml);
+        // Add nota legale to data so views can use it in their HTML footers
+        $data['nota_legale_stampe'] = trim($settings->nota_legale_stampe ?? '');
 
         // Prepare signature path for the view
         $data['firma_stampe_absolute_path'] = null;

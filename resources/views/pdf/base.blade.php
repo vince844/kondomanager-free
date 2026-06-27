@@ -22,6 +22,26 @@
 
     <sethtmlpageheader name="KondoHeader" page="O" value="on" show-this-page="1" />
 
+    <htmlpagefooter name="KondoFooter">
+        <div style="border-top: 1px solid #c0ccd8; padding-top: 4px;
+                    font-size: 7pt; color: #666; font-family: dejavusans, sans-serif;">
+            <table style="width: 100%;">
+                <tr>
+                    <td style="text-align: left; width: 75%;">
+                        @if(!empty($nota_legale_stampe))
+                            {{ $nota_legale_stampe }}
+                        @endif
+                    </td>
+                    <td style="text-align: right; width: 25%;">
+                        Pagina {PAGENO} di {nbpg}
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </htmlpagefooter>
+
+    <sethtmlpagefooter name="KondoFooter" page="ALL" value="on" />
+
     <div class="content">
         @yield('content')
 

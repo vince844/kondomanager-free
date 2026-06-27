@@ -15,6 +15,33 @@ use Illuminate\Support\Facades\DB;
 uses(RefreshDatabase::class);
 
 /**
+ * Test della Cascata di Risoluzione del Ruolo nel Motore di Riparto.
+ *
+ * Verifica il Rule Engine Livello 3 in CalcoloQuoteService::distribuisciSuTabelle().
+ * Spec di riferimento: docs/cascata_risoluzione_ruolo_coerenza_ruoli.md §2.3
+ *
+ * TABELLA DEI CASI:
+ * ┌───┬─────────────────────────────────────────────┬──────────────────────────────┬────────────────────────┐
+ * │ # │ Composizione immobile                       │ Tabella (coeff. su ruolo)    │ Chi paga               │
+ * ├───┼─────────────────────────────────────────────┼──────────────────────────────┼────────────────────────┤
+ * │ 1 │ proprietario + usufruttuario                │ usufruttuario 100%           │ usufruttuario          │
+ * │ 2 │ proprietario(=nudo) + usufruttuario, no inq │ inquilino 100% (ordinaria)   │ usufruttuario ← IL BUG │
+ * │ 3 │ proprietario + inquilino                    │ inquilino 100% (ordinaria)   │ inquilino              │
+ * │ 4 │ solo proprietario                           │ inquilino 100% (ordinaria)   │ proprietario           │
+ * │ 5 │ proprietario(=nudo) + usufruttuario         │ proprietario 100%            │ proprietario           │
+ * │ 8 │ due comproprietari quota 50/50              │ proprietario 100%            │ split 50/50            │
+ * └───┴─────────────────────────────────────────────┴──────────────────────────────┴────────────────────────┘
+ *
+ * Il caso #2 è il bug principale risolto in v1.9.1-beta.10:
+ * - PRIMA (Bug): Se un conto puntava all'Inquilino, in assenza di inquilino
+ *   il sistema falliva la ricerca ricadendo erroneamente sul Proprietario, ignorando
+ *   l'Usufruttuario e violando l'art. 1004 del Codice Civile.
+ * - DOPO (Fix): È stata introdotta la catena ['inquilino', 'usufruttuario', 'proprietario'].
+ *   Il sistema la scorre sequenzialmente: non trovando l'inquilino,
+ *   trova l'usufruttuario e addebita a lui la quota (passando il test).
+ */
+
+/**
  * Crea lo scenario base con un Condominio, Gestione, PianoConto, Tabella,
  * e un Conto collegato alla tabella con uno specifico coefficiente/soggetto.
  */

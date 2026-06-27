@@ -49,7 +49,7 @@
                     @endphp
                     <td style="padding: 4px; text-align: right; border: 1px solid #dce3ea;">
                         @if($importo > 0)
-                            {{ number_format($importo / 100, 2, ',', '.') }}
+                            € {{ number_format($importo / 100, 2, ',', '.') }}
                         @else
                             <span style="color: #bbb;">—</span>
                         @endif
@@ -57,7 +57,7 @@
                 @endforeach
 
                 <td style="padding: 4px; text-align: right; border: 1px solid #b0c4de; font-weight: bold; background-color: #edf2f8; color: #1e3a5f;">
-                    {{ number_format($row['totale'] / 100, 2, ',', '.') }}
+                    € {{ number_format($row['totale'] / 100, 2, ',', '.') }}
                 </td>
             </tr>
             @php $granTotale += $row['totale']; @endphp
@@ -71,11 +71,11 @@
             </td>
             @foreach($colonneRate as $numero => $datiRata)
                 <td style="padding: 5px 4px; text-align: right; border: 1px solid #b0c4de;">
-                    {{ number_format($totaliPerRata[$numero] / 100, 2, ',', '.') }}
+                    € {{ number_format($totaliPerRata[$numero] / 100, 2, ',', '.') }}
                 </td>
             @endforeach
             <td style="padding: 5px 4px; text-align: right; border: 2px solid #1e3a5f; background-color: #c8d8ee; color: #1e3a5f;">
-                {{ number_format($granTotale / 100, 2, ',', '.') }}
+                € {{ number_format($granTotale / 100, 2, ',', '.') }}
             </td>
         </tr>
     </tfoot>
