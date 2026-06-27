@@ -12,14 +12,35 @@ use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\Request;
 
+/**
+ * Controller responsible for handling the reversal (storno) of an installment collection (incasso rata).
+ * 
+ * This controller prepares the necessary data and delegates the actual accounting reversal 
+ * to the StornoIncassoRateAction. It also handles the restoration of the users' installment schedule 
+ * (scadenziario) and resurrects any related global control tasks for the administrator.
+ */
 class StornoIncassoController extends Controller
 {
     use HandleFlashMessages;
 
-    public function __invoke(Request $request, Condominio $condominio, ScritturaContabile $scrittura, StornoIncassoRateAction $action) 
+    /**
+     * Handle the incoming request to reverse an installment collection.
+     *
+     * @param \Illuminate\Http\Request $request The incoming HTTP request.
+     * @param \App\Models\Condominio $condominio The condominium context.
+     * @param string|int $scrittura The ID of the accounting entry (ScritturaContabile) to reverse.
+     * @param \App\Actions\Gestionale\Movimenti\StornoIncassoRateAction $action The action that performs the ledger reversal.
+     * @return \Illuminate\Http\RedirectResponse
+     *
+     * @throws \Symfony\Component\HttpKernel\Exception\HttpException If the entry does not belong to the condominium.
+     * @throws \Illuminate\Database\Eloquent\ModelNotFoundException If the accounting entry cannot be found.
+     */
+    public function __invoke(Request $request, Condominio $condominio, string|int $scrittura, StornoIncassoRateAction $action) 
     {
+        $scrittura = ScritturaContabile::findOrFail($scrittura);
+
         // 1. Sicurezza: verifichiamo che la scrittura appartenga al condominio corrente
-        if ($scrittura->condominio_id !== $condominio->id) {
+        if ((int) $scrittura->condominio_id !== (int) $condominio->id) {
             abort(403, 'Azione non autorizzata su questo condominio.');
         }
 

@@ -41,7 +41,7 @@ ini_set('memory_limit', '512M');
 // 2. BRIDGE VALIDATION (CRITICAL)
 // ============================================================================
 
-function logTech($msg) {
+function logTech(string $msg) {
     @file_put_contents(__DIR__ . '/install.log', '[' . date('Y-m-d H:i:s') . '] ' . $msg . PHP_EOL, FILE_APPEND);
 }
 
@@ -97,7 +97,7 @@ if (empty($bridge['package']['version'])) {
 define('PACKAGE_URL',     $bridge['package']['url']);
 define('PACKAGE_HASH',    $bridge['package']['hash']);
 define('APP_VERSION',     $bridge['package']['version']);
-define('MIN_PHP_VERSION', $bridge['requirements']['php'] ?? '8.2.0');
+define('MIN_PHP_VERSION', $bridge['requirements']['php'] ?? '8.4.0');
 
 // Exclude items (preserved on server - NOT touched)
 $excludeItems = $bridge['package']['exclude'] ?? [
@@ -148,6 +148,7 @@ $langs = [
         'step_rollback' => 'ERRORE! Ripristino backup...',
         'err_generic' => 'Errore: %s',
         'err_csrf' => 'Token di sicurezza non valido.',
+        'err_php' => 'Richiesto PHP %s o superiore (rilevato %s). Aggiorna PHP dal pannello hosting.',
         'msg_rollback_ok' => 'Backup ripristinato correttamente.',
         'msg_rollback_ko' => 'ATTENZIONE: Rollback fallito. Verifica manualmente.',
     ],
@@ -170,6 +171,7 @@ $langs = [
         'step_rollback' => 'ERROR! Restoring backup...',
         'err_generic' => 'Error: %s',
         'err_csrf' => 'Invalid security token.',
+        'err_php' => 'PHP %s or higher is required (detected %s). Please upgrade PHP.',
         'msg_rollback_ok' => 'Backup restored successfully.',
         'msg_rollback_ko' => 'WARNING: Rollback failed. Check manually.',
     ]
@@ -179,7 +181,7 @@ function getLang() {
     return substr($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'en', 0, 2) === 'it' ? 'it' : 'en';
 }
 
-function t($key, ...$args) {
+function t(string $key, mixed ...$args) {
     global $langs;
     $txt = $langs[getLang()][$key] ?? $key;
     if (empty($args)) $args = [APP_VERSION];
@@ -190,7 +192,7 @@ function t($key, ...$args) {
 // 5. HELPER FUNCTIONS
 // ============================================================================
 
-function safeRmdir($dir) {
+function safeRmdir(string $dir) {
     if (!is_dir($dir)) return false;
     $it = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -230,7 +232,7 @@ function performRollback() {
     return true;
 }
 
-function sendProgress($pct, $msg, $status='current', $replace=false) {
+function sendProgress(float|int $pct, string $msg, string $status='current', bool $replace=false) {
     global $nonce;
     $pct = round($pct);
     $msg = addslashes($msg);
@@ -279,10 +281,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         <h2><?= t('welcome') ?></h2>
         <div class="version">v<?= htmlspecialchars(APP_VERSION) ?></div>
         <p><?= sprintf(t('tagline'), APP_VERSION) ?></p>
-        <form method="post">
-            <input type="hidden" name="token" value="<?= $_SESSION['token'] ?>">
-            <button type="submit" class="btn"><?= t('btn_text') ?></button>
-        </form>
+        <?php if (version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')): ?>
+            <div style="background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 24px; font-weight: bold; font-size: 14px;">
+                <?= sprintf(t('err_php'), MIN_PHP_VERSION, PHP_VERSION) ?>
+            </div>
+        <?php else: ?>
+            <form method="post">
+                <input type="hidden" name="token" value="<?= $_SESSION['token'] ?>">
+                <button type="submit" class="btn"><?= t('btn_text') ?></button>
+            </form>
+        <?php endif; ?>
     </div>
 </body>
 </html>
@@ -358,6 +366,10 @@ try {
     // PHASE 1: DOWNLOAD
     // ============================================================================
     
+    if (version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')) {
+        throw new Exception(sprintf(t('err_php'), MIN_PHP_VERSION, PHP_VERSION));
+    }
+
     sendProgress(10, sprintf(t('step_down'), APP_VERSION));
     
     $fp = fopen(ZIP_FILE, 'wb');

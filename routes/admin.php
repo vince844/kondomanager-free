@@ -20,6 +20,7 @@ use App\Http\Controllers\Fornitori\FornitoreController;
 use App\Http\Controllers\Fornitori\FornitoreSituazioneDebitoriaController;
 use App\Http\Controllers\Newsletter\NewsletterController;
 use App\Http\Controllers\Notifications\NotificationPreferenceController;
+use App\Http\Controllers\Segnalazioni\CommentoController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneApprovalController;
 use App\Http\Controllers\Segnalazioni\SegnalazioneController;
 use App\Http\Middleware\CheckForPendingUpdates;
@@ -94,7 +95,8 @@ Route::prefix('admin')->as('admin.')
     Route::resource('categorie', CategoriaDocumentoController::class)
         ->parameters([
             'categorie' => 'categoria'
-        ]);
+        ])
+        ->except(['store']);
 
     Route::resource('eventi', EventoController::class)
         ->parameters([
@@ -111,7 +113,30 @@ Route::prefix('admin')->as('admin.')
         ->parameters([
             'segnalazioni' => 'segnalazione'
         ]);
-    
+
+    /*
+    |--------------------------------------------------------------------------
+    | Commenti Segnalazioni Routes
+    |--------------------------------------------------------------------------
+    */
+    Route::post('segnalazioni/{segnalazione}/commenti', [CommentoController::class, 'store'])
+        ->name('segnalazioni.commenti.store');
+
+    Route::patch('segnalazioni/{segnalazione}/commenti/toggle', [CommentoController::class, 'toggle'])
+        ->name('segnalazioni.commenti.toggle');
+
+    Route::patch('commenti/{commento}', [CommentoController::class, 'update'])
+        ->name('commenti.update');
+
+    Route::delete('commenti/{commento}', [CommentoController::class, 'destroy'])
+        ->name('commenti.destroy');
+
+    Route::post('commenti/{commento}/approva', [CommentoController::class, 'approva'])
+        ->name('commenti.approva');
+
+    Route::post('commenti/{commento}/modera', [CommentoController::class, 'modera'])
+        ->name('commenti.modera');
+
     Route::resource('comunicazioni', ComunicazioneController::class)
         ->parameters([
             'comunicazioni' => 'comunicazione'
@@ -120,9 +145,10 @@ Route::prefix('admin')->as('admin.')
     Route::resource('documenti', DocumentoController::class)
         ->parameters([
             'documenti' => 'documento'
-        ]);
+        ])
+        ->except(['update']);
 
-    Route::post('documenti/{documento}', [DocumentoController::class, 'update'])
+    Route::match(['put', 'patch', 'post'], 'documenti/{documento}', [DocumentoController::class, 'update'])
         ->name('documenti.update');
 
     Route::get('documenti/{documento}/download', [DocumentoController::class, 'download'])

@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Supplier Invoice Detail Page: added a dedicated view to inspect all invoice details. It summarizes the supplier, amounts (taxable/VAT), due date, approval status badge, payment status, and a breakdown of accounted items. It also exposes the Board Ratification Audit Trail (highlighted banner with author, approval time, and meeting notes) if the invoice originated from an unbudgeted expense.",
+        "'Pay Now' Flow: added a dedicated button within the invoice detail that allows you to jump immediately to the payment registration page. It auto-selects the supplier and automatically marks the invoice for quick settlement, with instant loading of pending amounts.",
+        "Quick Approval: ability to transition the status from 'To Approve' to 'Approved' directly from the row actions menu for internal invoices, without having to go through the legal ratification modal, allowing for their rapid unblocking."
+    ]
+}

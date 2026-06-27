@@ -1,16 +1,15 @@
-<script setup lang="ts">
+<script setup lang="ts" generic="TData">
 
 import { Link, usePage } from '@inertiajs/vue3';
 import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
 import { Permission }  from "@/enums/Permission";
 import type { Table } from '@tanstack/vue-table';
-import type { Anagrafica } from '@/types/anagrafiche';
 import type { Fornitore } from '@/types/fornitori';
 
-interface DataTableToolbarProps {
-  table: Table<Anagrafica>
-}
+defineProps<{
+  table: Table<TData>
+}>()
 
 const { hasPermission, generateRoute, generatePath } = usePermission();
 const page = usePage<{ fornitore: Fornitore}>()

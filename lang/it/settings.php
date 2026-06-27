@@ -2,23 +2,23 @@
 
 return [
     'layout' => [
-        'title' => 'Definições',
-        'description' => 'Gestão do seu perfil e das definições da conta',
+        'title' => 'Impostazioni',
+        'description' => 'Gestione del tuo profilo e delle impostazioni dell\'account',
         'nav' => [
             'profile' => 'Profilo',
-            'password' => 'Palavra-passe',
-            'two_factor' => 'Proteção 2FA',
-            'notifications' => 'Notificações',
-            'appearance' => 'Aspeto',
+            'password' => 'Password',
+            'two_factor' => 'Sicurezza 2FA',
+            'notifications' => 'Notifiche',
+            'appearance' => 'Aspetto',
         ],
     ],
 
     'appearance' => [
-        'title' => 'Definições de aspeto',
-        'description' => 'Atualize as definições de aspeto da aplicação',
+        'title' => 'Impostazioni aspetto',
+        'description' => 'Aggiorna le impostazioni relative all\'aspetto dell\'applicazione',
         'tabs' => [
-            'light' => 'Claro',
-            'dark' => 'Escuro',
+            'light' => 'Chiaro',
+            'dark' => 'Scuro',
             'system' => 'Sistema',
         ],
     ],
@@ -53,18 +53,18 @@ return [
     ],
 
     'notifications' => [
-        'title' => 'Definições de notificações',
-        'heading' => 'Definições de notificações',
-        'description' => 'Selecione abaixo as notificações por email que pretende receber',
-        'empty' => 'Não existem notificações por email disponíveis para selecionar.',
-        'save' => 'Guardar preferências',
+        'title' => 'Impostazioni notifiche',
+        'heading' => 'Impostazioni notifiche',
+        'description' => 'Seleziona di seguito le notifiche via email che desideri ricevere',
+        'empty' => 'Non ci sono notifiche email disponibili da selezionare.',
+        'save' => 'Salva preferenze',
     ],
 
     'two_factor' => [
         'title'                 => 'Autenticazione a due fattori',
         'heading'               => 'Autenticazione a due fattori',
         'description'           => 'Gestione delle impostazioni per l\'autenticazione a due fattori (2FA)',
-        'disabled'              => 'Desabilitato',
+        'disabled'              => 'Disabilitato',
         'enabled'               => 'Attivato',
         'enable'                => 'Attiva',
         'disable'               => 'Disattiva 2FA',
@@ -93,15 +93,62 @@ return [
     ],
 
     'delete_user' => [
-        'title' => 'Eliminar conta',
-        'description' => 'Elimine a sua conta e todos os dados associados',
-        'warning_title' => 'Atenção',
-        'warning_description' => 'Prossiga com cuidado, esta ação é irreversível.',
-        'button' => 'Eliminar conta',
-        'confirm_title' => 'Tem a certeza de que pretende eliminar a sua conta?',
-        'confirm_description' => 'Depois de eliminar a sua conta, todos os dados associados serão removidos permanentemente. Introduza a sua palavra-passe para confirmar a eliminação permanente.',
-        'password' => 'Palavra-passe',
-        'password_placeholder' => 'Palavra-passe',
-        'cancel' => 'Cancelar',
+        'title' => 'Elimina account',
+        'description' => 'Elimina il tuo account e tutti i dati associati',
+        'warning_title' => 'Attenzione',
+        'warning_description' => 'Procedi con cautela, questa operazione è irreversibile.',
+        'button' => 'Elimina account',
+        'confirm_title' => 'Sei sicuro di voler eliminare il tuo account?',
+        'confirm_description' => 'Una volta eliminato l\'account, tutti i dati associati verranno rimossi in modo permanente. Inserisci la tua password per confermare l\'eliminazione.',
+        'password' => 'Password',
+        'password_placeholder' => 'Password',
+        'cancel' => 'Annulla',
+    ],
+
+    'notification_types' => [
+        'new_communication' => [
+            'label' => 'Nuova comunicazione bacheca',
+            'description' => 'Ricevi una notifica quando viene creata una nuova comunicazione',
+        ],
+        'approved_communication' => [
+            'label' => 'Comunicazione bacheca approvata',
+            'description' => 'Ricevi una notifica quando viene approvata la comunicazione da te inviata',
+        ],
+        'new_ticket' => [
+            'label' => 'Nuova segnalazione guasto',
+            'description' => 'Ricevi una notifica quando viene creata una nuova segnalazione guasto',
+        ],
+        'approved_ticket' => [
+            'label' => 'Segnalazione guasto approvata',
+            'description' => 'Ricevi una notifica quando viene approvata la segnalazione guasto da te inviata',
+        ],
+        'new_archive_document' => [
+            'label' => 'Nuovo documento in archivio',
+            'description' => 'Ricevi una notifica quando viene pubblicato un nuovo documento in archivio',
+        ],
+        'approved_archive_document' => [
+            'label' => 'Documento in archivio approvato',
+            'description' => 'Ricevi una notifica quando viene approvato un documento in archivio da te inviato',
+        ],
+        'new_comment' => [
+            'label' => 'Nuovo commento',
+            'description' => 'Ricevi una notifica quando viene aggiunto un commento a una segnalazione a cui partecipi',
+        ],
+        'comment_approved' => [
+            'label' => 'Commento approvato',
+            'description' => 'Ricevi una notifica quando un tuo commento in attesa viene approvato',
+        ],
+        'comment_deleted' => [
+            'label' => 'Commento eliminato o nascosto',
+            'description' => 'Ricevi una notifica quando un tuo commento viene eliminato o nascosto',
+        ],
+        'new_user' => [
+            'label' => 'Nuovo utente registrato',
+            'description' => 'Ricevi una notifica quando un nuovo utente si registra',
+        ],
+        'comment_under_moderation' => [
+            'label' => 'Commento da moderare',
+            'description' => 'Ricevi una notifica quando un nuovo commento richiede la tua approvazione',
+        ],
     ],
 ];

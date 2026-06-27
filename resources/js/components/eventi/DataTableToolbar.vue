@@ -124,9 +124,8 @@ const formattedRange = computed(() => {
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full mb-3 mt-4">
-    <!-- Left Section: Filters -->
-    <div class="flex flex-col space-y-2 w-full lg:flex-row lg:items-center lg:space-y-0 lg:space-x-2">
+  <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
       <!-- Search and Category Filters -->
       <div class="flex items-center space-x-2">
         <Input
@@ -188,7 +187,7 @@ const formattedRange = computed(() => {
       v-if="hasPermission([Permission.CREATE_EVENTS])"
       as="button"
       :href="route(generateRoute('eventi.create'))"
-      class="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90 order-last lg:order-none lg:ml-auto"
+      class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
       <Plus class="w-4 h-4" />
       <span>Crea</span>

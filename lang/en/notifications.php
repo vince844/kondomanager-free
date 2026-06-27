@@ -37,13 +37,15 @@ return [
         'line_2'    => 'This invitation will expire in three days.',
     ],
     
-    // New user created by administrator (NewUserEmailNotification)
+    // New user created by admin (NewUserEmailNotification)
     'new_user_created' => [
         'subject'   => 'Welcome to :appName',
         'greeting'  => 'Hello :name,',
-        'line_1'    => 'The condominium administrator has created your profile. Click the link below to set your password.',
-        'action'    => 'Set Password',
-        'line_2'    => 'This link will expire in 60 minutes.',
+        'line_1'    => 'The condominium administrator has created your profile. Click the following link to set your password.',
+        'action'    => 'Set password',
+        'line_2'    => 'This link will expire in three days.',
+        'password_already_set' => 'Your password has already been set. Please log in with your credentials.',
+        'link_expired' => 'The invitation link has expired or is no longer valid. Please contact the administrator to receive a new invitation.',
     ],
 
     // Communication pending approval (ApproveComunicazioneNotification)
@@ -139,6 +141,36 @@ return [
         'priority'    => 'Priority',
         'status'      => 'Status',
         'action'      => 'View ticket',
+    ],
+
+    // New comment
+    'new_ticket_comment' => [
+        'subject'  => 'New comment on: :entity',
+        'greeting' => 'Hello!',
+        'line_1'   => ':user has left a new comment:',
+        'action'   => 'View the report',
+        'line_2'   => 'You are receiving this email because you are involved in this report.',
+    ],
+
+    // Approved comment
+    'approved_ticket_comment' => [
+        'subject' => 'Your comment has been approved',
+        'line_1'  => 'Your comment on the :entity has been approved and published.',
+        'action'  => 'View the report',
+    ],
+
+    // Pending comment
+    'pending_ticket_comment' => [
+        'subject' => 'New comment pending approval on :entity',
+        'line_1'  => ':user wrote a comment on ":title" that requires approval.',
+        'line_2'  => 'Log in to approve or reject the comment.',
+        'action'  => 'View the report',
+    ],
+
+    // Deleted comment
+    'deleted_ticket_comment' => [
+        'subject' => 'Your comment has been removed',
+        'line_1'  => 'Your comment on the :entity has been removed or hidden by an administrator.',
     ],
 
     // Common strings for all notifications

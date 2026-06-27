@@ -62,6 +62,18 @@ class Rata extends Model
         return $this->hasMany(RataQuote::class, 'rata_id');
     }
 
+    /**
+     * Righe scritture di tipo 'avere' collegate a questa rata.
+     *
+     * Usata con withSum('incassi', 'importo') per calcolare il totale
+     * incassato come subquery, evitando GROUP BY + aggregazione manuale.
+     */
+    public function incassi(): HasMany
+    {
+        return $this->hasMany(RigaScrittura::class, 'rata_id')
+                     ->where('tipo_riga', 'avere');
+    }
+
     // === SCOPES ===
     public function scopeBozza($query)
     {

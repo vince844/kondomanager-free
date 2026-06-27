@@ -59,18 +59,9 @@ watchDebounced(
         as="a"
         :href="route('utenti.create')"
       >
-        <UserPlus class="w-4 h-4"/>
+        <UserPlus class="w-3.5 h-3.5"/>
         <span>{{ trans('users.actions.new_user') }}</span>
       </Button>
-
-      <Link
-        as="button"
-        :href="'/impostazioni'"
-        class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-      >
-        <Settings class="w-4 h-4" />
-        <span>{{ trans('impostazioni.label.settings') }}</span>
-      </Link>
     </div>
   </div>
 

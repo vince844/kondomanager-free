@@ -9,12 +9,14 @@ interface Props {
 const { class: containerClass = '' } = defineProps<Props>();
 
 const { appearance, updateAppearance } = useAppearance();
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 
-const tabs = [
-    { value: 'light', Icon: Sun, label: 'Light' },
-    { value: 'dark', Icon: Moon, label: 'Dark' },
-    { value: 'system', Icon: Monitor, label: 'System' },
-] as const;
+const tabs = computed(() => [
+    { value: 'light' as const, Icon: Sun, label: trans('settings.appearance.tabs.light') },
+    { value: 'dark' as const, Icon: Moon, label: trans('settings.appearance.tabs.dark') },
+    { value: 'system' as const, Icon: Monitor, label: trans('settings.appearance.tabs.system') },
+]);
 </script>
 
 <template>

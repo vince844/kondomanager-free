@@ -3,11 +3,13 @@ import { router } from '@inertiajs/vue3'
 import DropdownAction from '@/components/users/DataTableRowActions.vue'
 import DataTableColumnHeader from '@/components/users/DataTableColumnHeader.vue'
 import PermissionsDialog from '@/components/PermissionsDialog.vue'
-import { ShieldCheck } from 'lucide-vue-next'
+import { ShieldCheck, UserX, ShieldX } from 'lucide-vue-next'
 import { roleClasses, defaultRoleClass, statusClasses } from '@/composables/useBadges'
 import { useBadges } from '@/composables/useBadges'
 import { usePermissionsList } from '@/composables/usePermissionsList'
 import { trans } from 'laravel-vue-i18n'
+import AnagraficheStack from '@/components/AnagraficheStack.vue'
+import { Badge } from '@/components/ui/badge'
 import type { ColumnDef } from '@tanstack/vue-table'
 import type { User } from '@/types/users'
 
@@ -81,24 +83,22 @@ export const columns: ColumnDef<User>[] = [
         ? trans('users.table.verified_tooltip')
         : trans('users.table.unverified_tooltip')
 
-      return h('div', { class: 'flex items-center space-x-2' }, [
+      return h('div', { class: 'flex items-center space-x-3' }, [
         h('div', {
-          class: 'cursor-pointer',
+          class: 'cursor-pointer shrink-0 mt-0.5 self-start',
           title: tooltip,
           onClick: toggleVerification,
         }, [
           h(ShieldCheck, {
-            class: user.email_verified_at ? 'w-4 h-4 text-green-500' : 'w-4 h-4 text-red-500',
+            class: user.email_verified_at ? 'w-4 h-4 text-emerald-500' : 'w-4 h-4 text-slate-300 dark:text-slate-600',
           })
         ]),
-        h('span', { class: 'font-bold' }, user.name),
+        h('div', { class: 'flex flex-col' }, [
+          h('span', { class: 'font-bold text-slate-900 dark:text-slate-100 leading-tight' }, user.name),
+          h('span', { class: 'text-xs text-slate-500 dark:text-slate-400 lowercase' }, user.email),
+        ]),
       ])
     },
-  },
-  {
-    accessorKey: 'email',
-    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.email') }), 
-    cell: ({ row }) => h('div', { class: 'lowercase' }, row.getValue('email')),
   },
   {
     accessorKey: 'roles',
@@ -133,13 +133,38 @@ export const columns: ColumnDef<User>[] = [
       const total = permissions?.length || 0
       
       if (total === 0) {
-        return h('span', { 
-          class: statusClasses.none
-        }, trans('users.table.no_permissions'))
+        return h(Badge, { 
+          variant: 'outline',
+          class: 'text-slate-400 rounded dark:text-slate-500 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-none font-normal flex items-center gap-1.5 w-fit'
+        }, () => [
+          h(ShieldX, { class: 'w-3 h-3' }),
+          trans('users.empty_state.no_assigned_permissions')
+        ])
       }
       
       return h(UserPermissionsDialog, { user })
     }
+  },
+  {
+    accessorKey: 'anagrafica',
+    header: ({ column }) => h(DataTableColumnHeader, { column, title: trans('users.table.anagrafica') }),
+    cell: ({ row }) => {
+      const anagrafica = row.original.anagrafica;
+      if (!anagrafica) {
+        return h(Badge, { 
+          variant: 'outline',
+          class: 'text-slate-400 rounded dark:text-slate-500 border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shadow-none font-normal flex items-center gap-1.5 w-fit'
+        }, () => [
+          h(UserX, { class: 'w-3 h-3' }),
+          trans('users.table.no_anagrafica')
+        ])
+      }
+      return h(AnagraficheStack, { 
+        anagrafiche: [anagrafica],
+        title: trans('users.label.resident'),
+        description: trans('users.tooltip.resident_drawer_desc')
+      });
+    },
   },
   {
     accessorKey: 'suspended_at',

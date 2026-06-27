@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Pagina Dettaglio Fattura Passiva: aggiunta vista dedicata per ispezionare tutti gli estremi della fattura. Riepiloga fornitore, importi (imponibile/iva), scadenza, badge stato approvazione, stato pagamento e dettaglio righe contabilizzate. Espone inoltre l'Audit Trail Ratifica Assembleare (banner in evidenza con autore, orario di approvazione e nota verbale) se la fattura derivava da uno sforo motivato.",
+        "Flusso 'Paga Ora': aggiunto un pulsante dedicato all'interno del dettaglio fattura che consente di saltare immediatamente alla pagina di registrazione pagamento. Auto-seleziona il fornitore e marca in automatico la fattura per il saldo rapido, con caricamento istantaneo delle pendenze.",
+        "Approvazione Rapida: possibilità di passare lo stato da 'Da Approvare' ad 'Approvata' direttamente dal menu azioni della lista per le fatture interne, senza dover passare per la modale di ratifica legale, permettendone il rapido sblocco."
+    ]
+}

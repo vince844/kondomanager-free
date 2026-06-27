@@ -28,6 +28,12 @@ return [
      | ------------------------------------------------------------------ */
     'header' => [
         'list_users_head'                    => 'Lista de utilizadores',
+        'list_roles_head'                    => 'Gestão de Papéis',
+        'list_roles_description'             => 'Defina e gira os níveis de acesso para cada tipo de utilizador.',
+        'list_permissions_head'              => 'Lista de Permissões',
+        'list_permissions_description'       => 'Visualize todas as permissões disponíveis na aplicação.',
+        'list_invites_head'                  => 'Lista de Convites',
+        'list_invites_description'           => 'Monitorize os convites enviados a novos colaboradores e o seu estado.',
         'edit_user_head'                     => 'Editar utilizador',
         'new_user_head'                      => 'Criar novo utilizador',
         'new_user_title'                     => 'Criar novo utilizador',
@@ -43,10 +49,12 @@ return [
      | Table
      | ------------------------------------------------------------------ */
     'table' => [
-        'name'               => 'Nome completo',
+        'name'               => 'Nome e apelido',
         'email'              => 'Endereço de correio eletrónico',
-        'role'               => 'Papel',
+        'role'               => 'Função',
         'permissions'        => 'Permissões',
+        'anagrafica'         => 'Registo',
+        'no_anagrafica'      => 'Sem registo',
         'status'             => 'Estado',
         'suspended'          => 'Suspenso',
         'active'             => 'Ativo',
@@ -103,6 +111,7 @@ return [
         'role_line_2' => 'As permissões associadas ao papel serão herdadas automaticamente.',
         'resident'    => 'Selecione o registo a associar ao utilizador. O registo associado poderá aceder ao sistema com as credenciais do utilizador criado e consultar os seus dados e os relacionados.',
         'permissions' => 'Selecione permissões específicas a atribuir ao utilizador além das herdadas do papel selecionado.',
+        'resident_drawer_desc' => 'Detalhes do registo associado a este utilizador.',
     ],
 
     /* ------------------------------------------------------------------
@@ -143,7 +152,19 @@ return [
      | Layout
      | ------------------------------------------------------------------ */
     'layout' => [
-        'heading_title'       => 'Gestão de utilizadores',
-        'heading_description' => 'A seguir uma lista dos utilizadores registados, papéis, permissões e convites',
+        'heading_title'       => 'Gestão de Utilizadores',
+        'heading_description' => 'Abaixo encontra-se uma lista de utilizadores registados, papéis, permissões e convites',
+    ],
+
+    /* ------------------------------------------------------------------
+     | Guides
+     | ------------------------------------------------------------------ */
+    'guides' => [
+        'users_title' => 'Utilizadores e Acessos',
+        'users_desc'  => 'Faça a gestão de quem tem acesso à plataforma e respetivos registos.',
+        'roles_title' => 'Papéis e Permissões',
+        'roles_desc'  => 'Defina os níveis de autorização para proteger dados sensíveis.',
+        'invites_title' => 'Convites',
+        'invites_desc'  => 'Envie e gira convites para novos colaboradores.',
     ],
 ];

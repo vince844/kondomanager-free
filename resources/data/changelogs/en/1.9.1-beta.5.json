@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Treasury Guardian Widget MVP: introduced the new predictive treasury assistant on the dashboard that calculates liquidity overdraft at 30 days and classifies risk (Green, Yellow, Red).",
+        "Dynamic Call-to-Actions (Smart UX): the widget proactively suggests contextual actions based on the cash flow scenario (e.g. 'Issue New Installments' or 'Check or Remind Inflows').",
+        "Liquidity and Initial Balances Reconciliation: resolved misalignment between the widget and the trial balance by incorporating the initial cash balance into the available liquidity calculation.",
+        "Exact Expected Inflows Calculation: corrected the inflow estimation algorithm to exclusively extract actual payments received in double-entry bookkeeping, guaranteeing flawless financial projections.",
+        "Withholding Tax Statistics: fixed a statistical issue in the payments dashboard that kept the withholding tax count at zero, now calculating it proportionally at the time of payment registration.",
+        "Action Inbox for Extraordinary Plans & Sync: extended Action Inbox support to Extraordinary Installment Plans (immediate generation of tasks for installment issuance and inflow checks) and resolved a bug that failed to delete old events upon full regeneration of an approved plan."
+    ]
+}

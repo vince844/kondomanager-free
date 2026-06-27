@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Eventi\Utenti;
 
 use App\Http\Controllers\Controller;
 use App\Models\Evento;
-use App\Enums\VisibilityStatus;
+use App\Enums\EventoTipo;
 use App\Services\Gestionale\InboxService;
 use App\Helpers\MoneyHelper; 
 use Illuminate\Http\Request;
@@ -79,33 +79,30 @@ class PaymentReportingController extends Controller
                 $descrizioneTask = "Il condòmino {$nomeAnagrafica} ha segnalato di aver pagato l'intero importo di {$importoFormat}.\n\nVerifica l'estratto conto bancario e registra l'incasso.";
             }
 
-            // 5. Crea Task Admin
-            $adminEvent = Evento::create([
-                'title'       => "Verifica Incasso: {$evento->title}",
-                'description' => $descrizioneTask,
-                'start_time'  => now(),
-                'end_time'    => now()->addHour(),
-                'created_by'  => Auth::id(),
-                'category_id' => $evento->category_id,
-                'visibility'  => VisibilityStatus::HIDDEN->value, 
-                'is_approved' => true,
-                'meta'        => [
-                    'type'            => 'verifica_pagamento',
-                    'requires_action' => true,
+            // 5. Crea Task Admin tramite Builder
+            $adminEvent = InboxService::createTask(
+                tipo: EventoTipo::VERIFICA_PAGAMENTO,
+                title: "Verifica Incasso: {$evento->title}",
+                description: $descrizioneTask,
+                scadenza: now(),
+                createdByUserId: Auth::id(),
+                condominioId: $condominioId,
+                context: [
+                    'related_event_id' => $evento->id,
+                    'rata_id'          => $meta['context']['rata_id'] ?? null,
+                    'piano_rate_id'    => $meta['context']['piano_rate_id'] ?? null,
+                    'anagrafica_id'    => $anagrafica?->id
+                ],
+                actionUrl: null, // Assegnato dopo
+                extraMeta: [
                     'intent_usa_credito' => $intentUsaCredito,
-                    'context'         => [
-                        'related_event_id' => $evento->id,
-                        'rata_id'          => $meta['context']['rata_id'] ?? null,
-                        'piano_rate_id'    => $meta['context']['piano_rate_id'] ?? null,
-                        'anagrafica_id'    => $anagrafica?->id
-                    ],
                     'condominio_nome'    => $meta['condominio_nome'] ?? '',
                     'importo_dichiarato' => $importoBancaCentesimi, // Quello atteso in banca
-                    'action_url'         => null 
-                ]
-            ]);
+                ],
+                eventableType: $evento->eventable_type,
+                eventableId: $evento->eventable_id
+            );
 
-            if ($condominioId) $adminEvent->condomini()->attach($condominioId);
             if ($anagrafica) $adminEvent->anagrafiche()->attach($anagrafica->id);
 
             // 6. Genera Link Operativo per aprire IncassoRateNew.vue
@@ -129,10 +126,6 @@ class PaymentReportingController extends Controller
                 $adminMeta['action_url'] = route('admin.gestionale.movimenti-rate.create', $actionUrlParams);
                 $adminEvent->update(['meta' => $adminMeta]);
             }
-
-            // 7. CACHE BUSTER INTELLIGENTE
-            InboxService::clearAdminCache();
-
         });
 
         return back()->with('success', 'Segnalazione inviata con successo.');

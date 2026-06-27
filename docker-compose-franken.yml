@@ -1,0 +1,44 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/frankenphp/Dockerfile
+    container_name: kondo_app_franken
+    ports:
+      - "8889:80"
+    volumes:
+      - ./:/var/www
+    environment:
+      - SERVER_NAME=:80
+      - APP_RUNTIME=Laravel\Octane\FrankenPHP\Runtime
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: kondo_db
+    environment:
+      MYSQL_DATABASE: kondomanager_dev
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+  worker:
+    build:
+      context: .
+      dockerfile: docker/frankenphp/Dockerfile
+    container_name: kondo_worker_franken
+    volumes:
+      - ./:/var/www
+    ports:
+      - "9002:9001" # Mappato su 9002 per evitare conflitti con la stack Standard
+    environment:
+      - SERVER_NAME=:80
+    entrypoint: ["/var/www/docker/frankenphp/worker-entrypoint.sh"]
+    command: ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+    depends_on:
+      - db
+
+volumes:
+  dbdata:

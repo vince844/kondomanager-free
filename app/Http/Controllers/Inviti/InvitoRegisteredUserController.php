@@ -25,13 +25,9 @@ class InvitoRegisteredUserController extends Controller
      */
     public function show(Request $request): Response
     {
-        if (! $request->hasValidSignature()) {
-            abort(403);
-        }
+        $invito = Invito::findOrFail($request->query('id'));
 
-        $invito = Invito::where('email', $request->query('email'))->first();
-
-        if (! $invito || $invito->isExpired() || $invito->isAccepted()) {
+        if ($invito->isExpired() || $invito->isAccepted()) {
             abort(403);
         }
 

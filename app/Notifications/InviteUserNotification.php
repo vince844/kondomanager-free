@@ -47,8 +47,8 @@ class InviteUserNotification extends LocalizedNotification implements ShouldQueu
     {
         $signedUrl = URL::temporarySignedRoute(
             'invito.register',
-            Carbon::now()->addMinutes(60),
-            ['email' => $this->invito->email] 
+            Carbon::now()->addDays(3),
+            ['id' => $this->invito->id] 
         );
 
         return (new MailMessage)

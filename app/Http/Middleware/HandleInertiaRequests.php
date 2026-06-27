@@ -41,6 +41,7 @@ class HandleInertiaRequests extends Middleware
 
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
+                'scoperti_warning' => fn () => $request->session()->get('scoperti_warning'),
             ],
 
             'csrf_token' => fn () => $request->user() 

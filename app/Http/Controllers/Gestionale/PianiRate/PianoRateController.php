@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
 use App\Actions\PianoRate\GeneratePianoRateAction;
+use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Enums\StatoPianoRate;
 use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\PianoRateStatusUpdated;
@@ -158,7 +159,12 @@ class PianoRateController extends Controller
      */
     public function store(CreatePianoRateRequest $request, Condominio $condominio, Esercizio $esercizio)
     {
+        $request->validate([
+            'nota_scoperti' => 'required_if:accetta_scoperti,true|nullable|string|min:10',
+        ]);
         $validated = $request->validated();
+        $accettaScoperti = (bool) $request->boolean('accetta_scoperti', false);
+        $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
         try {
             DB::beginTransaction();
@@ -372,9 +378,11 @@ class PianoRateController extends Controller
             $statistiche = [];
             if (!empty($validated['genera_subito'])) {
                 $statistiche = app(GeneratePianoRateAction::class)->execute(
-                    $pianoRate, 
-                    $applicareSaldi, 
-                    $saldiConfigCents
+                    pianoRate: $pianoRate, 
+                    forzaApplicazioneSaldi: $applicareSaldi, 
+                    saldiConfig: $saldiConfigCents,
+                    accettaScoperti: $accettaScoperti,
+                    notaScoperti: $notaScoperti
                 );
             }
 
@@ -385,9 +393,28 @@ class PianoRateController extends Controller
                 $pianoRate->setRelation('gestione', $gestione);
             }
 
+            // --- BUG FIX SCADENZIARIO ---
+            // I piani straordinari nascono già in stato APPROVATO, bypassando updateStato().
+            // Dobbiamo dispatchare l'evento manualmente affinché vengano creati gli avvisi
+            // per amministratore e condòmini (controllo incassi, solleciti, ecc).
+            if ($tipoPiano === 'straordinario' && !empty($validated['genera_subito'])) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio,
+                    $esercizio,
+                    $pianoRate,
+                    Auth::user(),
+                    StatoPianoRate::BOZZA,
+                    StatoPianoRate::APPROVATO
+                );
+            }
+            // ----------------------------
+
             DB::commit();
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche);
 
+        } catch (ScopertiNonAccettatiException $e) {
+            DB::rollBack();
+            return back()->withInput()->with('scoperti_warning', $e->getScoperti());
         } catch (\Throwable $e) {
             DB::rollBack();
             Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -841,9 +868,28 @@ class PianoRateController extends Controller
             
             // Sgancia il capitolo, elimina le rate attuali e le ricalcola
             $pianoRate->capitoli()->detach($capitoloId);
-            $pianoRate->rate()->delete();
             
-            app(GeneratePianoRateAction::class)->execute($pianoRate, null); 
+            $vecchioStato = $pianoRate->stato;
+            
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    $vecchioStato, \App\Enums\StatoPianoRate::BOZZA
+                );
+            }
+
+            $pianoRate->rate()->delete();
+            app(GeneratePianoRateAction::class)->execute(
+                pianoRate: $pianoRate,
+                accettaScoperti: true
+            ); 
+            
+            if ($vecchioStato === \App\Enums\StatoPianoRate::APPROVATO) {
+                PianoRateStatusUpdated::dispatch(
+                    $condominio, $esercizio, $pianoRate, Auth::user(), 
+                    \App\Enums\StatoPianoRate::BOZZA, $vecchioStato
+                );
+            }
             
             DB::commit();
             return back()->with($this->flashSuccess("Voce rimossa e ricalcolata."));

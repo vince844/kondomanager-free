@@ -292,6 +292,13 @@ const transactionStatus = computed(() => {
     return 'SAFE';
 });
 
+const isDataDocumentoVecchia = computed(() => {
+    if (!form.data_documento) return false;
+    const diffTime = Math.abs(new Date().getTime() - new Date(form.data_documento).getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 30;
+});
+
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
 );
@@ -483,7 +490,11 @@ const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | n
 
 const doSubmit = () => {
     form.transform((data) => {
-        const payload = JSON.parse(JSON.stringify(data)); 
+        const payload = {
+            ...data,
+            dati_extra: JSON.parse(JSON.stringify(data.dati_extra)),
+            coperture: data.coperture ? JSON.parse(JSON.stringify(data.coperture)) : []
+        }; 
         
         payload.righe = payload.righe.map((r: any) => ({
             ...r,
@@ -685,11 +696,15 @@ const pageGuides = [
 
                         <!-- Date -->
                         <div class="grid grid-cols-2 gap-3">
-                            <div class="space-y-1.5">
+                            <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data *</Label>
                                 <Input type="date" v-model="form.data_documento" class="h-9 text-sm" />
+                                <div v-if="isDataDocumentoVecchia" class="mt-2 flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                                    <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                                    <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
+                                </div>
                             </div>
-                            <div class="space-y-1.5">
+                            <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">Scadenza *</Label>
                                 <Input
                                     type="date"

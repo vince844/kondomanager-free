@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Http\Controllers\Controller;
+use App\Enums\StatoPagamentoFattura;
+use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
+use App\Http\Requests\Gestionale\Movimenti\UpdateFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Documento;
@@ -29,6 +32,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Controller per la gestione delle Fatture Passive (Ciclo Passivo).
@@ -74,9 +78,9 @@ class FatturaPassivaController extends Controller
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         $stats = [
-            'totale_aperte'       => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', 'aperta')->count(),
+            'totale_aperte'       => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->count(),
             'totale_sfori'        => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_approvazione', 'sforo_motivato')->count(),
-            'importo_da_pagare'   => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', 'aperta')->sum('netto_a_pagare'),
+            'importo_da_pagare'   => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->sum('netto_a_pagare'),
         ];
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterList', [
@@ -470,7 +474,7 @@ class FatturaPassivaController extends Controller
         // --- FINE FIX ---
 
         // 1. IL MURO CONTABILE
-        if ($fattura->stato_pagamento !== 'aperta') {
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
             return back()->with($this->flashError(
                 'Operazione negata: La fattura risulta pagata o parzialmente saldata. ' .
                 'Per mantenere la coerenza del libro giornale, devi usare la funzione "Storna".'
@@ -533,7 +537,7 @@ class FatturaPassivaController extends Controller
                     unset($datiExtraOriginali['stornata_da_id']);
                     
                     $fatturaOriginale->update([
-                        'stato_pagamento' => 'aperta',
+                        'stato_pagamento' => StatoPagamentoFattura::APERTA,
                         'dati_extra'      => $datiExtraOriginali
                     ]);
                 }
@@ -586,6 +590,220 @@ class FatturaPassivaController extends Controller
             Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: " . $e->getMessage());
             return back()->with($this->flashError('Errore di sistema durante l\'eliminazione.'));
         }
+    }
+
+    /**
+     * Mostra il form per la modifica di una fattura passiva aperta.
+     *
+     * Prepara gli stessi dati di create() ma pre-popolati con la fattura esistente.
+     * Le guard di modificabilità sono lato service; qui rendiamo il form se la
+     * fattura è aperta (check veloce) e lasciamo al service il controllo completo.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return Response
+     */
+    public function edit(Condominio $condominio, FatturaPassiva $fattura): Response
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture']);
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio      = $this->getEsercizioCorrente($condominio);
+
+        return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
+            'condominio' => $condominio,
+            'fattura'    => $fattura,
+            'esercizio'  => $esercizio,
+            'condomini'  => $listaCondomini,
+            'gestioni'   => $condominio->gestioni()
+                ->where('gestioni.attiva', true)
+                ->with('esercizi:id')
+                ->get()
+                ->map(function ($gestione) {
+                    return [
+                        'id'            => $gestione->id,
+                        'nome'          => $gestione->nome,
+                        'tipo'          => $gestione->tipo,
+                        'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
+                    ];
+                }),
+            'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+                ->with('parent')
+                ->whereDoesntHave('sottoconti')
+                ->get()
+                ->map(function ($conto) {
+                    return [
+                        'id'          => $conto->id,
+                        'nome'        => $conto->nome,
+                        'parent_nome' => $conto->parent ? $conto->parent->nome : null,
+                        '_sort_key'   => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
+                    ];
+                })
+                ->sortBy('_sort_key')
+                ->values(),
+            'banche' => Cassa::where('condominio_id', $condominio->id)
+                ->where('attiva', true)
+                ->where('tipo', '!=', 'fondo')
+                ->get()
+                ->map(fn($c) => [
+                    'id'   => $c->conto_contabile_id,
+                    'nome' => $c->nome,
+                ]),
+            'immobili' => Immobile::where('condominio_id', $condominio->id)
+                ->where('attivo', true)
+                ->select('id', 'interno', 'nome')
+                ->orderBy('interno')
+                ->get()
+                ->map(fn($i) => [
+                    'id'    => $i->id,
+                    'label' => 'Int. ' . $i->interno . ' — ' . $i->nome,
+                ]),
+        ]);
+    }
+
+    /**
+     * Aggiorna una fattura passiva aperta, ricreando le scritture contabili.
+     *
+     * Delega tutta la logica a FatturaPassivaService::aggiornaFattura().
+     * Le guard di modificabilità sono nel service.
+     *
+     * @param UpdateFatturaRequest $request
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function update(UpdateFatturaRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        try {
+            $this->service->aggiornaFattura(
+                $fattura,
+                $request->validated(),
+                $request->file('file')
+            );
+
+            return redirect()
+                ->route('admin.gestionale.fatture.index', ['condominio' => $condominio->id])
+                ->with($this->flashSuccess('Fattura aggiornata con successo.'));
+
+        } catch (FatturaModificaVietataException $e) {
+            return back()->with($this->flashError($e->getMessage()));
+
+        } catch (\Exception $e) {
+            Log::error("Errore modifica fattura ID {$fattura->id}: " . $e->getMessage());
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Approva una fattura in stato "da_approvare" (flusso interno).
+     *
+     * Transizione: da_approvare → approvata.
+     * Differisce dalla ratifica sforo perché non richiede motivazioni legali.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function approva(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        if ($fattura->stato_approvazione !== 'da_approvare') {
+            return back()->with($this->flashError(
+                'Operazione non valida: questa fattura non è in stato "da approvare".'
+            ));
+        }
+
+        $fattura->update(['stato_approvazione' => 'approvata']);
+
+        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID " . Auth::id());
+
+        return back()->with($this->flashSuccess('Fattura approvata con successo.'));
+    }
+
+    /**
+     * Registra la ratifica assembleare di una fattura in sforo motivato (Art. 1135 c.c.).
+     *
+     * Transizione: sforo_motivato → approvata.
+     * La fattura diventa selezionabile per il pagamento in PagamentoNew.
+     * I dati dell'approvazione (note, timestamp, utente) vengono salvati in dati_extra
+     * per garantire l'audit trail della delibera assembleare.
+     *
+     * @param Request $request
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return RedirectResponse
+     */
+    public function approvaSforo(Request $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
+    {
+        // Guard: solo fatture in sforo_motivato possono essere ratificate
+        if ($fattura->stato_approvazione !== 'sforo_motivato') {
+            return back()->with($this->flashError(
+                'Operazione non valida: questa fattura non è in stato "sforo motivato".'
+            ));
+        }
+
+        $request->validate([
+            'note' => 'nullable|string|max:1000',
+        ]);
+
+        $datiExtra = $fattura->dati_extra ?? [];
+        $datiExtra['ratifica_assembleare'] = [
+            'note'           => $request->input('note'),
+            'approvato_il'   => now()->toIso8601String(),
+            'approvato_da'   => Auth::id(),
+        ];
+
+        $fattura->update([
+            'stato_approvazione' => 'approvata',
+            'dati_extra'         => $datiExtra,
+        ]);
+
+        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID " . Auth::id());
+
+        return back()->with($this->flashSuccess(
+            'Fattura ratificata con successo. Può ora essere pagata.'
+        ));
+    }
+
+    /**
+     * Mostra il dettaglio della singola fattura passiva.
+     *
+     * Include le righe di dettaglio, i documenti allegati e le informazioni
+     * sull'eventuale ratifica dello sforo motivato.
+     *
+     * @param Condominio $condominio
+     * @param FatturaPassiva $fattura
+     * @return Response
+     */
+    public function show(Condominio $condominio, FatturaPassiva $fattura): Response
+    {
+        $fattura->load([
+            'fornitore',
+            'righe.conto.parent',
+            'documenti'
+        ]);
+
+        // Caricamento del nome utente che ha ratificato se presente
+        $utenteRatifica = null;
+        if (!empty($fattura->dati_extra['ratifica_assembleare']['approvato_da'])) {
+            $utenteRatifica = DB::table('users')
+                ->where('id', $fattura->dati_extra['ratifica_assembleare']['approvato_da'])
+                ->value('name');
+        }
+
+        $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
+        return Inertia::render('gestionale/movimenti/fatture/FatturaShow', [
+            'condominio' => new CondominioResource($condominio),
+            'fattura' => $fattura,
+            'utenteRatifica' => $utenteRatifica,
+            'esercizio' => $esercizio,
+            'condomini' => $listaCondomini,
+        ]);
     }
 
     /**

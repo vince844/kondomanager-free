@@ -1,11 +1,12 @@
 <script setup lang="ts">
 
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Link, Head, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Plus, LoaderCircle, Info, UserCheck, CalendarDays, Coins } from 'lucide-vue-next';
 import { Label } from '@/components/ui/label';
@@ -33,6 +34,8 @@ const props = defineProps<{
 
 const { generatePath, generateRoute } = usePermission();
 const { toBackend } = useDateConverter();
+
+const showGuide = ref(false);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -105,6 +108,9 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/immobili/:immobile/anagrafiche', { condominio: props.condominio.id, immobile: props.immobile.id })"
         back-text="Annulla e torna all'elenco"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="showGuide = true"
       />
 
       <ImmobileLayout>
@@ -340,6 +346,9 @@ const submit = () => {
    </div>
 
   </GestionaleLayout>
+
+  <RipartoUsufruttoGuide v-model:open="showGuide" />
+
 </template>
 
 <style src="vue-select/dist/vue-select.css"></style>

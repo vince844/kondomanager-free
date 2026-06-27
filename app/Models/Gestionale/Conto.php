@@ -6,6 +6,7 @@ use App\Models\Fornitore;
 use App\Models\Tabella;
 use Database\Factories\Gestionale\ContoFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
@@ -20,6 +21,7 @@ class Conto extends Model
         'conto_contabile_id',
         'default_fornitore_id',
         'parent_id',
+        'codice',
         'nome',
         'descrizione',
         'tipo',                 
@@ -47,7 +49,7 @@ class Conto extends Model
      * SCOPE: Filtra le voci che DEVONO finire nel Piano Rate Ordinario
      * Regola: Deve essere una spesa collettiva (millesimale) di gestione corrente.
      */
-    public function scopeForPianoOrdinario($query)
+    public function scopeForPianoOrdinario(Builder $query): Builder
     {
         return $query->where('tipo_ripartizione', 'millesimale')
                      ->where('origine_decisionale', 'gestione_corrente');
@@ -57,7 +59,7 @@ class Conto extends Model
      * SCOPE: Filtra le voci che DEVONO finire nel Piano Rate Straordinario (Wallet)
      * Regola: Se c'è una delibera specifica OPPURE se la ripartizione è privata/non standard.
      */
-    public function scopeForPianoStraordinario($query)
+    public function scopeForPianoStraordinario(Builder $query): Builder
     {
         return $query->where(function ($q) {
             $q->where('origine_decisionale', 'delibera_assembleare')
@@ -69,7 +71,7 @@ class Conto extends Model
      * SCOPE: Esclude i conti tecnici (sopravvenienze generate on-the-fly).
      * Usato dal wizard Piano Ordinario e dal PDF preventivo deliberato.
      */
-    public function scopeVisibili($query)
+    public function scopeVisibili(Builder $query): Builder
     {
         return $query->where('is_tecnico', false);
     }

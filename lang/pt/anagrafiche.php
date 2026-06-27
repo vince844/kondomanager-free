@@ -106,6 +106,9 @@ return [
     'tooltip' => [
         'buildings_header'      => 'Selecionar e associar condomínios',
         'buildings_description' => 'Pode selecionar um ou mais condomínios para associar a este registo. Isto permitirá que o registo visualize os dados dos condomínios associados.',
+        'system_notifications'  => 'Notificações de sistema',
+        'primary_email_desc'    => 'Todas as notificações do sistema para este registo (ex. novos tickets) serão enviadas para este endereço. O endereço de correio eletrónico que o utilizador associado utiliza para iniciar sessão pode ser diferente.',
+        'secondary_email_desc'  => 'Endereço adicional para receber uma cópia das notificações de sistema enviadas para este registo.',
     ],
 
     /* ------------------------------------------------------------------

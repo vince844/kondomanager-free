@@ -6,8 +6,8 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Settings } from 'lucide-vue-next'
-import Heading from '@/components/Heading.vue'
+import { Settings, Globe, Building2, ShieldCheck } from 'lucide-vue-next'
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
 import { trans, wTrans, isLoaded, loadLanguageAsync } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
@@ -16,7 +16,7 @@ import type { GeneralSettings } from '@/types/GeneralSettings'
 /* -------------------------------------------------
  * Types
  * ------------------------------------------------- */
-type SupportedLanguage = 'it' | 'en' | 'pt'
+type SupportedLanguage = 'it' | 'en' | 'pt' | 'es'
 
 /* -------------------------------------------------
  * Page / State
@@ -26,11 +26,32 @@ const flashMessage = computed(() => page.props.flash?.message)
 const translationsLoaded = ref(false)
 
 /* -------------------------------------------------
- * Breadcrumbs
+ * Breadcrumbs & Guides
  * ------------------------------------------------- */
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: trans('impostazioni.label.settings'), href: '/impostazioni' },
   { title: trans('impostazioni.header.general_settings_title'), href: '/impostazioni/generali' },
+])
+
+const pageGuides = computed(() => [
+  {
+    title: trans('impostazioni.guides.language_title'),
+    description: trans('impostazioni.guides.language_desc'),
+    icon: Globe,
+    colorVariant: 'blue' as const
+  },
+  {
+    title: trans('impostazioni.guides.access_title'),
+    description: trans('impostazioni.guides.access_desc'),
+    icon: Building2,
+    colorVariant: 'emerald' as const
+  },
+  {
+    title: trans('impostazioni.guides.security_title'),
+    description: trans('impostazioni.guides.security_desc'),
+    icon: ShieldCheck,
+    colorVariant: 'amber' as const
+  }
 ])
 
 /* -------------------------------------------------
@@ -42,6 +63,7 @@ const languageLabels = computed<
   it: wTrans('impostazioni.placeholder.language.it'),
   en: wTrans('impostazioni.placeholder.language.en'),
   pt: wTrans('impostazioni.placeholder.language.pt'),
+  es: wTrans('impostazioni.placeholder.language.es'),
 }))
 
 /* -------------------------------------------------
@@ -66,6 +88,7 @@ const form = useForm({
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
+  force_comment_moderation: Boolean(page.props.force_comment_moderation),
 })
 
 /* -------------------------------------------------
@@ -109,13 +132,18 @@ const submit = () => {
 </script>
 
 <template>
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout :breadcrumbs="[]">
     <Head :title="trans('impostazioni.header.general_settings_title')" />
 
-    <div class="px-4 py-6">
-      <Heading
-        :title="trans('impostazioni.header.general_settings_title')"
-        :description="trans('impostazioni.header.general_settings_description')"
+    <div class="px-4 py-6 space-y-6">
+      <PageHeaderGuide
+        :page-title="trans('impostazioni.header.general_settings_title')"
+        :page-subtitle="trans('impostazioni.header.general_settings_description')"
+        :guides="pageGuides"
+        :breadcrumbs="breadcrumbs"
+        back-url="/impostazioni"
+        :back-text="trans('impostazioni.label.settings')"
+        :video-url="null"
       />
 
       <div v-if="flashMessage" class="py-2">
@@ -123,18 +151,7 @@ const submit = () => {
       </div>
 
       <form @submit.prevent="submit">
-        <Card class="border shadow-none p-4">
-          <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
-            <Link
-              as="button"
-              href="/impostazioni"
-              class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-            >
-              <Settings class="w-4 h-4" />
-              <span>{{ trans('impostazioni.label.settings') }}</span>
-            </Link>
-          </div>
-
+        <Card class="border shadow-none p-4 mt-6">
           <CardContent class="space-y-4 p-0">
             <!-- LANGUAGE -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
@@ -159,6 +176,7 @@ const submit = () => {
                       <SelectItem value="it">{{ languageLabels.it.value }}</SelectItem>
                       <SelectItem value="en">{{ languageLabels.en.value }}</SelectItem>
                       <SelectItem value="pt">{{ languageLabels.pt.value }}</SelectItem>
+                      <SelectItem value="es">{{ languageLabels.es.value }}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -248,6 +266,19 @@ const submit = () => {
                   {{ form.errors.default_user_role }}
                 </p>
               </div>
+            </div>
+
+            <!-- MODERAZIONE COMMENTI -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.force_comment_moderation_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.force_comment_moderation_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.force_comment_moderation" />
             </div>
 
           </CardContent>

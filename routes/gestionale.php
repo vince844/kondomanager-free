@@ -10,9 +10,12 @@ use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
+use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoIncassoController;
+use App\Http\Controllers\Gestionale\Movimenti\StornoPagamentoController;
 use App\Http\Controllers\Gestionale\Palazzine\PalazzinaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
@@ -20,11 +23,13 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
+use App\Http\Controllers\Gestionale\PianiConti\PianoContiPrintController;
 use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
 use App\Http\Controllers\Gestionale\PianiRate\EmissioneRateController;
 use App\Http\Controllers\Gestionale\PianiRate\EstrattoContoAnagraficaController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchCapitoliPerGestioneController;
 use App\Http\Controllers\Gestionale\PianiRate\FetchFattureStraordinarieController;
+use App\Http\Controllers\Gestionale\PianiRate\PianoRatePrintController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateController;
 use App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController;
 use App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController;
@@ -118,6 +123,12 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'    => 'esercizio',
             'piani-conti' => 'pianoConto'
         ]);
+        
+    Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-distinta', [PianoContiPrintController::class, 'distinta'])
+        ->name('esercizi.piani-conti.print-distinta');
+
+    Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-riparto', [PianoContiPrintController::class, 'riparto'])
+        ->name('esercizi.piani-conti.print-riparto');
     
     Route::resource('esercizi.piani-conti.conti', ContoController::class)
         ->parameters([
@@ -140,6 +151,12 @@ Route::prefix('/gestionale/{condominio}')
             'esercizi'   => 'esercizio',
             'piani-rate' => 'pianoRate',
         ]);
+
+    Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-scadenziario', [PianoRatePrintController::class, 'scadenziario'])
+        ->name('esercizi.piani-rate.print-scadenziario');
+
+    Route::get('esercizi/{esercizio}/piani-rate/{pianoRate}/print-riparto-tabelle', [PianoRatePrintController::class, 'ripartoTabelle'])
+        ->name('esercizi.piani-rate.print-riparto-tabelle');
 
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');
@@ -176,7 +193,7 @@ Route::prefix('/gestionale/{condominio}')
         ->parameters(['movimenti-rate' => 'scrittura']);
 
     Route::post('movimenti-rate/{scrittura}/storno', StornoIncassoController::class)
-    ->name('movimenti-rate.storno');
+        ->name('movimenti-rate.storno');
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
@@ -194,12 +211,58 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/fatture/{fattura}', [FatturaPassivaController::class, 'show'])
         ->name('fatture.show');
 
+    Route::get('/fatture/{fattura}/edit', [FatturaPassivaController::class, 'edit'])
+        ->name('fatture.edit');
+
+    Route::put('/fatture/{fattura}', [FatturaPassivaController::class, 'update'])
+        ->name('fatture.update');
+
     Route::delete('/fatture/{fattura}', [FatturaPassivaController::class, 'destroy'])
         ->name('fatture.destroy');
 
     Route::post('/fatture/{fattura}/storno', StornoFatturaController::class)
         ->name('fatture.storno');
     
+    // --- APPROVAZIONE BASE: transizione da_approvare → approvata ---
+    Route::post('/fatture/{fattura}/approva', [FatturaPassivaController::class, 'approva'])
+        ->name('fatture.approva');
+    
+    // --- RATIFICA SFORO: transizione sforo_motivato → approvata dopo delibera assembleare ---
+    Route::post('/fatture/{fattura}/approva-sforo', [FatturaPassivaController::class, 'approvaSforo'])
+        ->name('fatture.approva-sforo');
+    
     Route::get('/fatture/{fattura}/download/{documento}', [FatturaPassivaController::class, 'download'])
         ->name('fatture.download');
+    
+    // --- CICLO PASSIVO: PAGAMENTI (v1.9.1) ---
+    Route::get('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'index'])
+        ->name('pagamenti-fornitori.index');
+        
+    Route::get('/pagamenti-fornitori/create', [PagamentoFornitoreController::class, 'create'])
+        ->name('pagamenti-fornitori.create');
+
+    Route::post('/pagamenti-fornitori', [PagamentoFornitoreController::class, 'store'])
+        ->name('pagamenti-fornitori.store');
+
+    Route::get('/pagamenti-fornitori/pendenze', [PagamentoFornitoreController::class, 'pendenze'])
+        ->name('pagamenti-fornitori.pendenze');
+
+    Route::get('/pagamenti-fornitori/{pagamento}/distinta', [PagamentoFornitoreController::class, 'distinta'])
+        ->name('pagamenti-fornitori.distinta');
+
+    Route::get('/pagamenti-fornitori/{pagamento}', [PagamentoFornitoreController::class, 'show'])
+        ->name('pagamenti-fornitori.show');
+
+    Route::get('/pagamenti-fornitori/{pagamento}/edit', [PagamentoFornitoreController::class, 'edit'])
+        ->name('pagamenti-fornitori.edit');
+
+    Route::put('/pagamenti-fornitori/{pagamento}', [PagamentoFornitoreController::class, 'update'])
+        ->name('pagamenti-fornitori.update');
+
+    Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
+        ->name('pagamenti-fornitori.storno');
+
+    // --- DETTAGLIO SCRITTURA CONTABILE (v1.9.1-beta.7) ---
+    Route::get('/scritture/{scrittura}', [ScritturaContabileController::class, 'show'])
+        ->name('scritture.show');
 });

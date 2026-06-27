@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\EventoTipo;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,6 +28,10 @@ class Evento extends Model
         'meta',
         'is_completed',
         'completed_at',
+        'tipo',
+        'eventable_type',
+        'eventable_id',
+        'priorita',
     ];
 
     protected $casts = [
@@ -35,6 +40,7 @@ class Evento extends Model
         'meta'       => 'array',
         'is_completed' => 'boolean',
         'completed_at' => 'datetime',
+        'tipo' => EventoTipo::class,
     ];
 
     public function categoria()
@@ -65,6 +71,23 @@ class Evento extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Relazione polimorfica generica verso l'entità che ha scatenato l'evento.
+     */
+    public function eventable()
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * Normalizza NULL a 'normale' in modo che il codice applicativo
+     * riceva sempre una stringa valida per la priorità.
+     */
+    public function getPrioritaAttribute(?string $value): string
+    {
+        return $value ?? 'normale';
     }
 
     /**

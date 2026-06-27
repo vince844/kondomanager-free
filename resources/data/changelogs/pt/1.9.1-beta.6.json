@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Estorno de Pagamentos (Ledger Imutável): Módulo completo (backend e interface) para o cancelamento de pagamentos incorretos ou rejeitados (ex: transferências bancárias devolvidas). O sistema garante a integridade contábil registrando um lançamento inverso do tipo append-only, reabrindo automaticamente as faturas afetadas e restaurando o saldo do caixa, sem excluir registros históricos.",
+        "Estornos Inter-Exercícios: Gestão inteligente de estornos em balanços encerrados. Se o exercício contábil do pagamento original estiver fechado, o sistema não permite modificações retroativas, mas registra a operação de estorno no exercício atual aberto, protegendo os saldos históricos consolidados.",
+        "Sincronização Action Inbox e Pagamentos: Implementado um novo listener que conecta o registro e o estorno de pagamentos às tarefas administrativas na Inbox, resolvendo-as ou reabrindo-as automaticamente.",
+        "UX Otimizada na Action Inbox: Ao resolver uma tarefa de pagamento a partir da Inbox, o utilizador é redirecionado automaticamente para o formulário de registo de pagamento pré-preenchido.",
+        "Testes Automáticos Contábeis: Adicionada uma ampla suíte de testes automáticos para lógicas avançadas de estorno, garantindo o equilíbrio perfeito entre débitos e créditos, além de testes automatizados para o ciclo de vida das tarefas na Admin Inbox.",
+        "Compatibilidade com SQL Strict Mode (ONLY_FULL_GROUP_BY): Resolvido o erro 1055 (Syntax error or access violation) no módulo Treasury Guardian que causava travamentos no aplicativo em servidores MySQL 8.0 ou configurações rigorosas. A refatoração agora aproveita o ORM Eloquent para delegar agregações ao Laravel via subconsultas, eliminando joins legados incompatíveis."
+    ]
+}

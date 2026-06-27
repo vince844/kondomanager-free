@@ -22,9 +22,10 @@ class ImmobileAnagraficaResource extends JsonResource
             : null; 
 
         return [
-            'id'        => $this->id,
-            'nome'      => $this->nome,
-            'indirizzo' => $this->indirizzo,
+            'id'             => $this->id,
+            'nome'           => $this->nome,
+            'indirizzo'      => $this->indirizzo,
+            'codice_fiscale' => $this->codice_fiscale,
             'pivot' => [
                 'tipologia'       => $this->pivot->tipologia,
                 'quota'           => $this->pivot->quota,

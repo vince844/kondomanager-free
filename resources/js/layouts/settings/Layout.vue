@@ -7,45 +7,46 @@ import { Link } from '@inertiajs/vue3';
 import { usePermission } from "@/composables/permissions";
 import { ScanFace, KeyRound, BellRing, UserRound, MonitorSmartphone } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
+import { trans } from 'laravel-vue-i18n';
+import { computed } from 'vue';
 
 const props = defineProps<{ contentClass?: string }>();
 const contentClass = props.contentClass || 'max-w-xl';
 
 const { generatePath } = usePermission();
 
-const sidebarNavItems: LinkItem[] = [
+const sidebarNavItems = computed<LinkItem[]>(() => [
     {
         type: 'link',
         icon: UserRound,
-        title: 'Profilo',
+        title: trans('settings.layout.nav.profile'),
         href: '/settings/profile',
     },
     {
         type: 'link',
         icon: KeyRound,
-        title: 'Password',
+        title: trans('settings.layout.nav.password'),
         href: '/settings/password',
     },
     {
         type: 'link',
         icon: ScanFace,
-        title: 'Protezione 2FA',
+        title: trans('settings.layout.nav.two_factor'),
         href: '/settings/two-factor',
     },
     {
         type: 'link',
         icon: BellRing,
-        title: 'Notifiche',
+        title: trans('settings.layout.nav.notifications'),
         href: generatePath('settings/notifications'),
     },
     {
         type: 'link',
         icon: MonitorSmartphone,
-        title: 'Aspetto',
+        title: trans('settings.layout.nav.appearance'),
         href: '/settings/appearance',
     }
-   
-];
+]);
 
 const currentPath = window.location.pathname;
 
@@ -53,7 +54,7 @@ const currentPath = window.location.pathname;
 
 <template>
     <div class="px-4 py-6">
-        <Heading title="Impostazioni" description="Gestione del tuo tuo profilo e impostazioni account" />
+        <Heading :title="trans('settings.layout.title')" :description="trans('settings.layout.description')" />
 
         <div class="flex flex-col space-y-8 md:space-y-0 lg:flex-row lg:space-x-5 lg:space-y-0">
             <aside class="w-full max-w-xl lg:w-48">

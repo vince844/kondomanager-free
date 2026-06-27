@@ -15,11 +15,33 @@ use Recurr\Transformer\ArrayTransformer;
 use Recurr\Transformer\ArrayTransformerConfig;
 use Recurr\Transformer\Constraint\BetweenConstraint;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * Service per la gestione e l'espansione degli eventi e delle loro ricorrenze.
+ *
+ * Questa classe si occupa di unire eventi singoli (one-time) ed eventi ricorrenti 
+ * (basati su RRULE) per un dato intervallo temporale. Gestisce inoltre lo scoping
+ * dei permessi e della visibilità: discrimina tra la visualizzazione completa
+ * per gli Amministratori (con task operativi come l'emissione delle rate) e la 
+ * visualizzazione limitata per i Condòmini (filtrata per anagrafica e condominio).
+ */
 class RecurrenceService
 {
     private const MAX_DAYS = 365;
 
+    /**
+     * Recupera gli eventi (singoli e ricorrenti) per i prossimi giorni, unificati.
+     * Applica controlli di visibilità in base al ruolo (Admin vs Condòmino).
+     *
+     * @param int $days Giorni di ricerca (default 7)
+     * @param array $filters Filtri (date_from, date_to, search, category_id, ecc.)
+     * @param int|null $page Pagina per impaginazione
+     * @param int|null $perPage Elementi per pagina
+     * @param Anagrafica|null $anagrafica Anagrafica dell'utente loggato
+     * @param Collection|null $condominioIds ID dei condomini associati
+     * @return Collection|LengthAwarePaginator
+     */
     public function getEventsInNextDays(
         int $days = 7,
         array $filters = [],
@@ -47,10 +69,14 @@ class RecurrenceService
             : $combined;
     }
 
+    /**
+     * Recupera eventi singoli (non ricorrenti) per l'Admin, con visibilità globale.
+     */
     private function getOneTimeEvents(Carbon $start, Carbon $end, array $filters): Collection
     {
         $query = Evento::query()
             ->whereNull('recurrence_id')
+            ->where('visibility', '!=', 'hidden')
             ->with('categoria', 'condomini', 'anagrafiche');
 
         $query->where(function ($q) use ($start, $end) {
@@ -74,6 +100,9 @@ class RecurrenceService
         });
     }
 
+    /**
+     * Recupera eventi ricorrenti con filtri di visibilità per l'utente (condòmino/fornitore).
+     */
     private function getUserScopedRecurringEvents(Carbon $s, Carbon $e, array $f, ?Anagrafica $a, ?Collection $c): Collection
     {
         $q = Evento::query()
@@ -95,6 +124,10 @@ class RecurrenceService
         return $q->get()->flatMap(fn($ev) => $this->expandRecurringEvent($ev, $s, $e, $f));
     }
 
+    /**
+     * Recupera eventi singoli con filtri di visibilità per l'utente (condòmino/fornitore).
+     * Esclude le scadenze rate già saldate da oltre 30 giorni.
+     */
     private function getUserScopedOneTimeEvents(
         Carbon $start,
         Carbon $end,
@@ -151,10 +184,14 @@ class RecurrenceService
         });
     }
 
+    /**
+     * Recupera ed espande gli eventi ricorrenti per l'Admin (visibilità globale).
+     */
     private function getRecurringEvents(Carbon $start, Carbon $end, array $filters): Collection
     {
         $query = Evento::query()
             ->whereNotNull('recurrence_id')
+            ->where('visibility', '!=', 'hidden')
             ->with(['ricorrenza', 'categoria', 'condomini', 'anagrafiche']);
 
         $this->applyFilters($query, $filters);
@@ -162,6 +199,9 @@ class RecurrenceService
         return $query->get()->flatMap(fn($event) => $this->expandRecurringEvent($event, $start, $end, $filters));
     }
 
+    /**
+     * Crea un clone "virtuale" dell'evento originale posizionato nella data della ricorrenza.
+     */
     private function buildOccurrenceClone(Evento $original, Carbon $occursAt): Evento
     {
         $clone = $original->replicate();
@@ -177,6 +217,9 @@ class RecurrenceService
         return $clone;
     }
 
+    /**
+     * Espande una singola RRULE in una Collection di eventi clone (occorrenze reali).
+     */
     private function expandRecurringEvent(Evento $event, Carbon $start, Carbon $end, array $filters): Collection
     {
         $rec = $event->ricorrenza;
@@ -222,12 +265,18 @@ class RecurrenceService
         }
     }
 
+    /**
+     * Verifica se un'occorrenza è valida, cioè se non ricade in un'eccezione (es. cancellata).
+     */
     private function isNotException(Evento $event, array $exceptions): bool
     {
         return !in_array($event->occurs_at->format('Y-m-d H:i:s'), $exceptions);
     }
 
-    private function applyFilters($query, array $filters): void
+    /**
+     * Applica filtri testuali o per categoria alla query Builder degli Eventi.
+     */
+    private function applyFilters(Builder $query, array $filters): void
     {
         if (!empty($filters['title'])) {
             $query->where('title', 'like', '%' . $filters['title'] . '%');
@@ -253,6 +302,9 @@ class RecurrenceService
         }
     }
 
+    /**
+     * Filtra manualmente a valle (in memory) se le ricorrenze espansive devono essere filtrate per testo.
+     */
     private function passesSearchFilter(Evento $event, ?string $search): bool
     {
         if (empty($search)) return true;
@@ -261,6 +313,9 @@ class RecurrenceService
             || str_contains(strtolower($event->description ?? ''), $search);
     }
 
+    /**
+     * Trasforma una Collection unificata in un Paginator per il frontend.
+     */
     private function paginateResults(Collection $items, int $page, int $perPage): LengthAwarePaginator
     {
         return new LengthAwarePaginator(
@@ -272,6 +327,9 @@ class RecurrenceService
         );
     }
 
+    /**
+     * Recupera le statistiche in tempo reale (badge numerici) per la dashboard dell'Admin.
+     */
     public function getUpcomingStats(): array
     {
         return [
@@ -282,11 +340,17 @@ class RecurrenceService
         ];
     }
 
+    /**
+     * Helper per il conteggio veloce degli eventi in scadenza nei prossimi X giorni.
+     */
     private function countEventsInNextDays(int $days): int
     {
         return $this->getEventsInNextDays($days)->count();
     }
 
+    /**
+     * Conta gli eventi operativi (es. pagamenti o commenti) scaduti e non processati negli ultimi 7 giorni.
+     */
     public function countExpiredEventsLast7Days(): int
     {
         $now   = Carbon::now();
@@ -299,6 +363,9 @@ class RecurrenceService
             ->count();
     }
 
+    /**
+     * Verifica se l'utente attualmente autenticato ha i privilegi di Amministratore o Collaboratore.
+     */
     private function isAdmin(): bool
     {
         $user = Auth::user();

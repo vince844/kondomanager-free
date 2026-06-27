@@ -320,6 +320,59 @@ class CondominioService
             ]
         );
 
+        // J. Spese Bancarie (Conto Economico > Costi Operativi)
+        //    Usato in v1.9.1: commissioni sui bonifici ai fornitori.
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'spese_bancarie'],
+            [
+                'parent_id'   => null,
+                'codice'      => '6003',
+                'nome'        => 'Spese Bancarie',
+                'descrizione' => 'Commissioni su bonifici, spese tenuta conto e oneri bancari',
+                'tipo'        => ContoContabileTipo::COSTO->value,
+                'categoria'   => ContoContabileCategoria::COSTI->value,
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
+            ]
+        );
+ 
+        // K. IVA Acquisti (Attivo > Crediti)
+        //    Non usato in v1.9.1. Preparato per v1.12 Fase B (Reverse Charge N6.x).
+        //    Nel RC: DARE IVA Acquisti (credito verso erario) / AVERE IVA Vendite.
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'iva_acquisti'],
+            [
+                'parent_id'   => $attivoRoot->id,
+                'codice'      => '1201',
+                'nome'        => 'IVA Acquisti',
+                'descrizione' => 'IVA a credito su acquisti (usato per Reverse Charge in v1.12)',
+                'tipo'        => ContoContabileTipo::ATTIVO->value,
+                'categoria'   => ContoContabileCategoria::CREDITI->value,
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
+            ]
+        );
+ 
+        // L. IVA Vendite (Passivo > Debiti)
+        //    Non usato in v1.9.1. Preparato per v1.12 Fase B (Reverse Charge N6.x).
+        //    Nel RC: DARE IVA Acquisti / AVERE IVA Vendite (debito verso erario).
+        ContoContabile::firstOrCreate(
+            ['condominio_id' => $condominio->id, 'ruolo' => 'iva_vendite'],
+            [
+                'parent_id'   => $passivoRoot->id,
+                'codice'      => '2203',
+                'nome'        => 'IVA Vendite',
+                'descrizione' => 'IVA a debito (usato per Reverse Charge in v1.12)',
+                'tipo'        => ContoContabileTipo::PASSIVO->value,
+                'categoria'   => ContoContabileCategoria::DEBITI->value,
+                'di_sistema'  => true,
+                'attivo'      => true,
+                'livello'     => 1,
+            ]
+        );
+
         Log::info("Piano Conti creato correttamente per '{$condominio->nome}'");
     }
 }

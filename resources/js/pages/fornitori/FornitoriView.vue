@@ -132,8 +132,7 @@ const statoDot = computed(() => {
           <Link
             as="button"
             :href="generatePath('fornitori/:fornitore/edit', { fornitore: props.fornitore.id })"
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 dark:bg-slate-700 border border-transparent shadow-sm text-xs font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors cursor-pointer"
-   
+            class="inline-flex h-8 items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 dark:bg-slate-700 border border-transparent shadow-sm text-xs font-medium text-white hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors cursor-pointer"
           >
             <Pencil class="w-3.5 h-3.5" />
             Modifica dati

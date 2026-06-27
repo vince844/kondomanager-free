@@ -5,9 +5,12 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock } from 'lucide-vue-next'
+import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock, Printer, ChevronDown } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import RipartoUsufruttoGuide from '@/components/guides/RipartoUsufruttoGuide.vue';
+import OperazioniContiGuide from '@/components/guides/OperazioniContiGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
 import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDeiConti.vue'
@@ -53,6 +56,18 @@ const tabellaDaRimuovere        = ref<number | null>(null)
 const showModalAssociaTabella   = ref(false)
 const showModalRimuoviTabella   = ref(false)
 const tabellaDaModificare       = ref<TabellaAssociata | null>(null)
+const showGuideUsufrutto        = ref(false)
+const showGuideOperazioni       = ref(false)
+
+const textGuidesList = [
+  { id: 'operazioni', title: 'Guida: Operazioni e Struttura' },
+  { id: 'usufrutto', title: 'Guida: Ruoli e Usufrutto' },
+]
+
+const openGuide = (id: string) => {
+  if (id === 'operazioni') showGuideOperazioni.value = true;
+  if (id === 'usufrutto') showGuideUsufrutto.value = true;
+}
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -232,6 +247,21 @@ const rimuoviTabella = () => {
     onSuccess: () => { showModalRimuoviTabella.value = false; tabellaDaRimuovere.value = null }
   })
 }
+const printDistinta = () => {
+  window.open(route('admin.gestionale.esercizi.piani-conti.print-distinta', {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+    pianoConto: props.pianoConti.id
+  }), '_blank');
+}
+
+const printRiparto = () => {
+  window.open(route('admin.gestionale.esercizi.piani-conti.print-riparto', {
+    condominio: props.condominio.id,
+    esercizio: props.esercizio.id,
+    pianoConto: props.pianoConti.id
+  }), '_blank');
+}
 </script>
 
 <template>
@@ -246,10 +276,46 @@ const rimuoviTabella = () => {
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
-        back-text="Piani dei conti"
+        back-text="Torna ai piani dei conti"
+        :text-guides="textGuidesList"
+        @open-text-guide="openGuide"
       >
         <template #actions>
           <div class="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <button class="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 shadow-sm hover:bg-slate-50 text-[10px] font-bold uppercase tracking-widest text-slate-700 transition-colors">
+                  <Printer class="w-3.5 h-3.5" />
+                  <span class="hidden sm:inline">Stampe</span>
+                  <ChevronDown class="w-3 h-3 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="w-48 shadow-xl rounded-xl border-slate-100 p-1.5">
+                <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                  Documenti
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator class="bg-slate-100" />
+                <DropdownMenuItem
+                  @click="printDistinta"
+                  class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                >
+                  <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                  <div>
+                    <div class="text-xs font-medium">Distinta base</div>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  @click="printRiparto"
+                  class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                >
+                  <Printer class="w-3.5 h-3.5 text-indigo-500" />
+                  <div>
+                    <div class="text-xs font-medium">Ripartizione spese</div>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <button
               @click="showModalNew = true"
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
@@ -397,4 +463,8 @@ const rimuoviTabella = () => {
     />
 
   </GestionaleLayout>
+
+  <RipartoUsufruttoGuide v-model:open="showGuideUsufrutto" />
+  <OperazioniContiGuide v-model:open="showGuideOperazioni" />
+
 </template>

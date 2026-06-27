@@ -10,6 +10,8 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Dashboard\WidgetManager;
+use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -20,8 +22,10 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget): Response
     {
+        $widgetManager->register($treasuryWidget);
+
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;
         $pianiDisallineati = [];
@@ -336,6 +340,14 @@ class DashboardController extends Controller
                 'scoperto_count'     => collect($vociScoperte)
                                             ->whereNotIn('strategia', ['conguaglio', 'fondo_riserva'])
                                             ->count(),
+                // True se nell'esercizio esiste almeno un piano rate con quota orfana
+                // documentata dall'admin (nota_scoperti non nulla). Usato dal widget
+                // per mostrare lo stato "QUOTA APERTA" invece del generico allarme.
+                'has_scoperti_documentati' => $esercizio
+                    ? PianoRate::whereIn('gestione_id', $esercizio->gestioni->pluck('id'))
+                        ->whereNotNull('nota_scoperti')
+                        ->exists()
+                    : false,
             ];
         }
 
@@ -361,9 +373,10 @@ class DashboardController extends Controller
                     'title'        => $task->title,
                     'description'  => $task->description, 
                     'date'         => $task->start_time->toISOString(),
-                    'type'         => $task->meta['type'] ?? 'generic',
+                    'type'         => $task->tipo?->value ?? $task->meta['type'] ?? 'generic',
                     'action_url'   => $task->meta['action_url'] ?? null,
                     'status'       => $task->start_time->isPast() ? 'expired' : 'scheduled',
+                    'days_pending' => $task->start_time->isPast() ? (int) floor(now()->diffInDays($task->start_time)) : 0,
                     'context'      => [
                         'anagrafica_nome' => $nomeAnagrafica, 
                     ],
@@ -378,6 +391,7 @@ class DashboardController extends Controller
             'copertura'         => $copertura,
             'fattureScoperte'   => $fattureScoperte,
             'pianiDisallineati' => $pianiDisallineati,
+            'widgets'           => $widgetManager->getPayloads($condominio->id),
             'inboxTasks'        => Inertia::scroll($inboxTasks)
         ]);
     }

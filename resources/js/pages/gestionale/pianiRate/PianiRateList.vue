@@ -86,6 +86,7 @@ const pageGuides = [
 
           <div class="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm p-4">
              <DataTable 
+                :key="props.condominio.id + '-' + (props.esercizio?.id || '0')"
                 :columns="createColumns(props.condominio, props.esercizio)" 
                 :meta="props.meta" 
                 :condominio="props.condominio"

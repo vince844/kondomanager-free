@@ -39,11 +39,10 @@ class NewUserEmailNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
 
-        // Generate a signed URL (valid for 60 minutes) WITHOUT token
         $resetUrl = URL::temporarySignedRoute(
             'password.new',
-            Carbon::now()->addMinutes(60),
-            ['email' => $this->user->email]
+            Carbon::now()->addDays(3),
+            ['id' => $this->user->id]
         );
 
         return (new MailMessage)

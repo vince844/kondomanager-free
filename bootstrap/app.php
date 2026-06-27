@@ -21,6 +21,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        
+        // env() è necessario qui: config() non è ancora disponibile durante il bootstrap.
+        // Default: null (nessun proxy accettato = sicuro per VPS nude).
+        $trustedProxies = env('TRUSTED_PROXIES');
+        if ($trustedProxies === '*') {
+            $middleware->trustProxies(at: '*');
+        } elseif ($trustedProxies) {
+            $proxies = array_map('trim', explode(',', $trustedProxies));
+            $middleware->trustProxies(at: $proxies);
+        }
 
         $middleware->web(append: [
             CheckForPendingUpdates::class,
@@ -47,7 +57,15 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         
-        $exceptions->render(function (InvalidSignatureException $e) {
+        $exceptions->render(function (InvalidSignatureException $e, \Illuminate\Http\Request $request) {
+
+            // DEBUG LOGGING PER IL 403 DEL FIRMATARIO (Temporaneo)
+            \Illuminate\Support\Facades\Log::error('403 Invalid Signature', [
+                'request_url' => $request->url(),
+                'query_string' => $request->server->get('QUERY_STRING'),
+                'is_secure' => $request->isSecure(),
+                'proxies' => \Illuminate\Http\Request::getTrustedProxies(),
+            ]);
 
             return response()->view('errors.403', [
                 'exception' => new Exception(__('errors.403.invalid_signature'),)

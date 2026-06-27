@@ -249,7 +249,7 @@ class UpdateService
         // Verifica PHP PRIMA di scrivere qualsiasi file:
         // se l'utente è su una versione incompatibile, blocchiamo qui con un
         // messaggio leggibile nella UI Laravel, senza rischio di deploy parziale.
-        $minPhp = $release['requirements']['php'] ?? '8.2.0';
+        $minPhp = $release['requirements']['php'] ?? '8.4.0';
 
         if (version_compare(PHP_VERSION, $minPhp, '<')) {
             throw new \Exception(
@@ -284,7 +284,7 @@ class UpdateService
                 ],
             ],
             'requirements' => $release['requirements'] ?? [
-                'php'        => '8.2.0',
+                'php'        => '8.4.0',
                 'extensions' => ['zip', 'curl', 'bcmath', 'xml', 'fileinfo', 'posix'],
             ],
         ];

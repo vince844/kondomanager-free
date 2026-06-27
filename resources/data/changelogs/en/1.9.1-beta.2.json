@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Assembly ratification for invoices with motivated overspend (Art. 1135 Civil Code): invoices registered with motivated overspend — urgent expenses exceeding the approved budget — now display an interactive orange badge with a professional dark-background tooltip explaining why payment is blocked and what to do. An inline 'Approve overspend' button unlocks the invoice directly from the Supplier Payments page, opening a ratification modal with a notes field for the audit trail (minutes reference, resolution details). The same action is accessible from the action menu on the Registered Invoices list. On confirmation, the system transitions the status from 'motivated_overspend' to 'approved', automatically saves the timestamp, author, and notes to the audit trail, and reloads the pending invoices instantly without leaving the page.",
+        "Legal protection for the property manager in the passive cycle: the payment block on non-ratified invoices is now clearly communicated rather than silent, reducing support requests and formally documenting compliance with Art. 1135 Civil Code before every bank transfer."
+    ]
+}

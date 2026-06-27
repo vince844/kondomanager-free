@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Segnalazioni;
 
 use App\Events\Segnalazioni\NotifyUserOfCreatedSegnalazione;
+use App\Enums\Permission;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Segnalazione\CreateSegnalazioneRequest;
 use App\Http\Requests\Segnalazione\SegnalazioneIndexRequest;
@@ -12,6 +13,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Segnalazioni\SegnalazioneResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Evento;
 use App\Models\Segnalazione;
 use App\Services\SegnalazioneService;
 use App\Traits\HandleFlashMessages;
@@ -43,7 +45,7 @@ class SegnalazioneController extends Controller
      * It first authorizes the user for the given segnalazione and then retrieves the list of segnalazioni using the `segnalazioneService`.
      * The results are returned to the frontend via an Inertia.js response with pagination data and filters.
      *
-     * @param  \App\Http\Requests\SegnalazioneIndexRequest  $request  The request object containing the filter parameters.
+     * @param  \App\Http\Requests\Segnalazione\SegnalazioneIndexRequest  $request  The request object containing the filter parameters.
      * @param  \App\Models\Segnalazione $segnalazione  The segnalazione model instance used for authorization.
      * @return \Inertia\Response Returns the rendered Inertia.js response with segnalazioni data, pagination, and filters.
      */
@@ -104,7 +106,7 @@ class SegnalazioneController extends Controller
      * upon successful creation.
      * If an error occurs during the creation process, it will roll back the transaction and log the error.
      *
-     * @param  \App\Http\Requests\CreateSegnalazioneRequest  $request  The request object containing validated data for the segnalazione.
+     * @param  \App\Http\Requests\Segnalazione\CreateSegnalazioneRequest  $request  The request object containing validated data for the segnalazione.
      * @param  \App\Models\Segnalazione  $segnalazione  The segnalazione model used for authorization.
      * @return \Illuminate\Http\RedirectResponse A redirect response to the segnalazioni index with a success or error message.
      * 
@@ -159,10 +161,43 @@ class SegnalazioneController extends Controller
     {
         Gate::authorize('view', $segnalazione);
 
+        $user = request()->user();
+        $canModerate = $user->hasPermissionTo(Permission::APPROVE_COMMENTS_SEGNALAZIONI->value)
+                    || $user->hasPermissionTo(Permission::ACCESS_ADMIN_PANEL->value);
+
+        // Chiudi l'evento di moderazione/commento nell'Admin Inbox se aperto
+        if ($canModerate) {
+            Evento::where('tipo', 'commento')
+                ->where('eventable_type', $segnalazione->getMorphClass())
+                ->where('eventable_id', $segnalazione->id)
+                ->where('is_completed', false)
+                ->update([
+                    'is_completed' => true,
+                    'completed_at' => now(),
+                ]);
+        }
+
+        $segnalazioneCaricata = Segnalazione::with([
+            'createdBy.anagrafica',
+            'assignedTo',
+            'condominio',
+            'anagrafiche',
+            'commenti.autore.anagrafica',
+        ])->findOrFail($segnalazione->id);
+
+        // Per i moderatori, carica anche i commenti in attesa e nascosti
+        if ($canModerate) {
+            $segnalazioneCaricata->load('commentiInAttesa.autore.anagrafica');
+        }
+
         return Inertia::render('segnalazioni/SegnalazioniView', [
-            'segnalazione' => new SegnalazioneResource(
-                Segnalazione::with('createdBy.anagrafica',  'assignedTo', 'condominio', 'anagrafiche')->findOrFail($segnalazione->id)
-            ),
+            'segnalazione' => new SegnalazioneResource($segnalazioneCaricata),
+            'commenti_config' => [
+                'can_comment'     => (bool) $segnalazione->can_comment,
+                'can_create'      => $user->hasPermissionTo(Permission::COMMENT_SEGNALAZIONI->value),
+                'can_moderate'    => $canModerate,
+                'can_publish'     => $user->hasPermissionTo(Permission::PUBLISH_COMMENTS_SEGNALAZIONI->value),
+            ],
         ]);
     }
 

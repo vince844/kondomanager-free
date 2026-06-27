@@ -32,18 +32,10 @@ const isFiltered = computed(() => props.table.getState().columnFilters.length > 
     <div class="flex flex-col gap-2 w-full sm:flex-row sm:justify-end">
       <!-- Right Section: Button (force it to the right) -->
       <Button class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors">
-        <Send class="w-4 h-4" />
+        <Send class="w-3.5 h-3.5" />
         <Link :href="route('inviti.create')">Nuovo invito</Link>
       </Button>
 
-      <Link
-          as="button"
-          :href="'/impostazioni'"
-          class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
-        >
-          <Settings class="w-4 h-4" />
-          <span>Impostazioni</span>
-      </Link>
     </div>
 
   </div>

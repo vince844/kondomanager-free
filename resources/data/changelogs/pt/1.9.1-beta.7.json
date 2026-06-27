@@ -1,0 +1,24 @@
+{
+    "features": [
+        "Clareza Visual em Pagamentos Estornados: Melhoria na distinção visual entre pagamentos originais (cancelados) e operações de estorno (reversões) na lista de pagamentos, evitando ambiguidades.",
+        "Filtros Rápidos em Cartões de Estatísticas: Os cartões de resumo financeiro na aba de pagamentos agora são clicáveis, permitindo filtrar a tabela instantaneamente por retenções na fonte ou operações estornadas.",
+        "Fluxo de Registo Otimizado: Após registar um novo pagamento, o ecrã de sucesso redireciona agora corretamente para a lista de pagamentos efetuados em vez de faturas, otimizando o fluxo de trabalho.",
+        "Alinhamento Global de Interface (UI): O design interativo dos cartões de estatísticas foi estendido de forma uniforme às listas de Faturas e Recebimentos de Quotas, introduzindo filtros rápidos e transições visuais consistentes em todo o sistema.",
+        "Melhorias de Interface (UI/UX) em Documentos Contábeis: Corrigidos problemas de sobreposição de texto em notas longas e IBANs na página de detalhes, integrando visualização responsiva da trilha de auditoria (Audit Trail) para aprovações legais.",
+        "Infraestrutura de Documentos PDF Nativa: Adicionada a capacidade de gerar e baixar o Recibo de Pagamento a Fornecedores (Distinta) em formato PDF, com base em templates nativos.",
+        "Refatoração de Exceções PSR-4: Concluída a refatoração arquitetônica das exceções do sistema para conformidade total com os padrões PSR-4.",
+        "Visualização Detalhada de Recebimentos de Quotas: Adicionada uma vista de leitura analítica para explorar a composição de um recebimento de quota, destacando se foi pago através de pagamento direto ou compensação de crédito.",
+        "Otimização de Tooltips em Tabelas: Substituição das tooltips nativas de texto por HoverCards interativos (Shadcn) para uma leitura imediata e rica de valores nas tabelas de Faturas e Pagamentos.",
+        "Impressões de Vencimentos e Rateios (PDF): Lançada a suíte oficial de impressões para planos de quotas (Mapa de Vencimentos / Prospeto de Quotas) e para o plano de contas (Orçamento e Rateio de Despesas). Os layouts incluem cabeçalhos com referências legais e design adaptado para impressão.",
+        "Múltiplas Opções de Agregação em PDF: O administrador pode agora decidir dinamicamente se exporta o Prospeto de Quotas agrupado 'Por Condómino', 'Por Fração', ou combinando ambas as vistas num único documento PDF com várias páginas.",
+        "Testes de Integridade e Quadratura de PDF: Integrada uma suíte de testes abrangente dedicada aos controladores de impressão que garante verificações cruzadas perfeitas: cada montante apresentado nos PDFs deve corresponder rigorosamente aos totais na base de dados, prevenindo eventuais desalinhamentos na impressão.",
+        "Correção de Segurança em URLs Assinados: Substituição do endereço de e-mail pelo ID do utilizador em links encriptados para convites e redefinições de senha, resolvendo definitivamente um erro 403 causado pela descodificação automática do caractere '@' por navegadores e clientes de e-mail.",
+        "Melhoria de UX na Validade de Links: Extensão da validade dos links para aceitação de convites e definição de senhas de 60 minutos para 3 dias, dando aos utilizadores mais tempo para concluir o registo.",
+        "Otimização da UI do Plano de Contas: Agrupamento dos botões de impressão (Orçamento e Rateio) num único menu suspenso 'Impressões' para poupar espaço e manter um layout limpo em ecrãs menores.",
+        "Alinhamento da Interface de Documentos: Padronizado o design das páginas de upload e edição de documentos (DocumentiNew, DocumentiEdit) para o padrão do sistema (AppLayout, PageHeaderGuide).",
+        "Otimização da Tabela de Documentos: Corrigido um RangeError na formatação de data em produção, adicionadas as traduções ausentes dos crachás de visibilidade (Público/Privado) e renomeada a coluna 'Data' para 'Carregado em' para maior clareza.",
+        "Correção na Exibição de Anexos de Faturas Existentes: Corrigido um problema na visualização de Detalhes da Fatura (FatturaShow) que impedia a exibição correta dos nomes e tamanhos dos documentos anexados devido a propriedades desalinhadas com o modelo de dados.",
+        "Correção no Upload de Anexos de Novas Faturas: Resolvido um bug crítico durante o registro de novas faturas que causava a perda do documento anexado durante o envio do formulário devido a uma conversão JSON que destruía o objeto File.",
+        "Correção de Autopreenchimento de Pagamento na Caixa de Entrada Operacional: Resolvido um problema em que clicar em 'Resolver' em uma tarefa de pagamento da Caixa de Entrada Operacional não preenchia automaticamente o formulário de pagamento. O sistema agora infere automaticamente o fornecedor a partir da fatura passada."
+    ]
+}
