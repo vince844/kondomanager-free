@@ -1,7 +1,7 @@
 [![Read in English](https://img.shields.io/badge/Read_in-English-red.svg)](README.en.md)
 [![Leggi in Italiano](https://img.shields.io/badge/Leggi_in-Italiano-green.svg)](README.md)
 [![Leia em Português](https://img.shields.io/badge/Leia_em-Português-yellow.svg)](README.pt-br.md)
-[![Generic badge](https://img.shields.io/badge/Version-1.8.0-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
+[![Generic badge](https://img.shields.io/badge/Version-1.9.1-blue.svg)](https://github.com/vince844/kondomanager-free/releases)
 [![License](https://img.shields.io/badge/License-AGPL_3.0-blue.svg)](https://opensource.org/licenses/AGPL-3.0)
 
 # KondoManager - Free and Open Source Condominium Management Software
@@ -76,6 +76,11 @@ You can view a demo of the project at the following address:
 - Smart installment issuance
 - Account statement
 - Smart inbox for interactive calendar deadlines
+- Supplier invoice payment module with bulk transfers, reversals and immutable Ledger
+- Treasury Guardian widget for 30-day predictive liquidity analysis
+- Dynamic cascading engine (Tenant → Usufructuary → Owner) in compliance with the Civil Code
+- Smart management of documented shortfalls for vacant units
+- Native PDF document suite (Allocations, Schedules, Payment slips) with administrator signature
 
 ---
 
@@ -101,7 +106,7 @@ For less experienced users or for quick installations on shared hosting (cPanel,
 3. Open your browser at: `https://yoursite.com/index.php`.
 4. Follow the on-screen guided procedure.
 
-For more details, visit the [official installation guide](https://www.kondomanager.com/docs/installation.html) or our [YouTube channel](https://www.youtube.com/@Kondomanager)
+For more details, visit the [official installation guide](https://kondomanager.com/docs/installation.html) or our [YouTube channel](https://www.youtube.com/@Kondomanager)
 
 ### 2. Automatic Update from Administrator Panel
 
@@ -127,9 +132,9 @@ Make sure to use the absolute path to the PHP v8.2+ executable, for example
 
 In the previous example, replace "ea-php99" with the PHP version assigned to the domain you want to use. Check in MultiPHP Manager for the PHP version actually assigned to a domain.
 
-### 3. Update manually from Version 1.7.0 to 1.8.0
+### 3. Update manually from Version 1.9.0 to 1.9.1
 
-Automatic updates are available starting from version 1.8.0, so if you are still using version 1.7.0 and want to update, you must follow these steps:
+Automatic updates are available starting from version 1.9.0, so if you are still using version 1.9.0 and want to update, you must follow these steps:
 
 1. Make sure you have a backup of the `database` and files in the `storage` folder
 2. Download the [update file](https://kondomanager.short.gy/km-installer) from the official Kondomanager website
@@ -291,5 +296,9 @@ This project is released under [AGPL-3.0](https://github.com/vince844/kondomanag
 - [k3ntinhu](https://github.com/k3ntinhu) - For his valuable contribution to Docker container configuration and the Portuguese community
 - [Stefano B](https://github.com/borghiste) - For reporting and fixing a security bug
 - All contributors and developers of the open source community.
+
+### Patreon Supporters:
+- **[Fabio Lembo Luscari]** — thank you for your support and for believing in the project!
+- **[Mittelcom](https://www.amministrazionitedaldimorea.it/)** — thank you for your support and for believing in the project!
 
 ---

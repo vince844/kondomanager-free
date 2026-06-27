@@ -1,0 +1,14 @@
+{
+    "features": [
+        "New supplier invoice payment module: it is now possible to record and settle outgoings to suppliers. The system supports full and partial payments, bulk transfers across multiple invoices, and direct offset with credit notes.",
+        "Payment reversals and accounting security: in the event of an error or unpaid bank transfer, the system allows you to cancel a payment with a single click. Instead of deleting data, Kondomanager generates a reverse entry (reversal), maintaining historical accounting integrity and automatically reopening the involved invoices.",
+        "Treasury guardian (smart treasury): a new predictive widget on the dashboard calculates the liquidity shortfall over 30 days. It alerts you with a traffic light system (green, yellow, red) about cash risks and suggests concrete actions like 'Issue new installments' or 'Chase payments'.",
+        "New cascading engine for usufructuaries and tenants: say goodbye to duplicating millesimal tables! You can now set a table to 100% for the tenant: the system will automatically look for one. If the unit is vacant, the charge will pass to the usufructuary or, if absent, to the owner. Full compliance with the civil code.",
+        "Smart management of vacant units (shortfalls): if a unit has no registered owners, the system will no longer halt with an error. You can force the allocation by justifying the 'shortfall' with a note (e.g., 'Awaiting deed'). Kondomanager will create an automatic task to remind you to recover the orphaned amount.",
+        "New allocation report by table and subject (PDF): the ultimate allocation document. It generates a panoramic PDF report (A4 or A3) that cross-references every single unit and subject (owners, tenants, etc.) with all the tables in the chart of accounts, calculating exact shares to the cent.",
+        "Comments and chat on fault reports: administrators, residents, and suppliers can now share updates directly within the fault report card. There is also an option to subject comments to mandatory moderation by the administrator.",
+        "Motivated overrun approval flow (art. 1135 c.c.): a guided procedure to ratify unexpected out-of-budget expenses. Just one click to enter the urgency motivation (or meeting minutes details) and immediately unlock the invoice for payment, in full legal compliance.",
+        "New native PDF document suite: generate and download supplier payment slips, schedules, and installment summaries aggregated by resident or unit directly from the management system. You can also upload your signature image and legal notes to be printed at the bottom of all documents.",
+        "Action inbox getting smarter: your 'to-do' list has been enhanced. It now calculates exact days of delay and automatically manages the opening and closing of tasks: when you settle an invoice, the 'to pay' task disappears on its own!"
+    ]
+}

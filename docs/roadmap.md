@@ -7,13 +7,14 @@
 
 ## Stato corrente
 
-**In sviluppo:** `v1.9.1` — Pagamento Fatture MVP
+**Rilasciato:** `v1.9.1` — Smart Treasury & Passive Cycle
+**In sviluppo:** `v1.9.2` — Pagamenti Avanzati
 
 ---
 
 ## v1.9.x — Pagamenti
 
-### v1.9.1 — Pagamento Fatture MVP *(in lavorazione)*
+### v1.9.1 — Smart Treasury & Passive Cycle *(Rilasciato)*
 
 Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 
