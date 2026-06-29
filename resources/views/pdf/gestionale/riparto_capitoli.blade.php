@@ -1,30 +1,29 @@
 @extends('pdf.base')
 
-@section('title', 'Riparto Bilancio per Tabella')
+@section('title', 'Riparto Bilancio per Capitolo di Spesa')
 
 @section('content')
 @php
     use Illuminate\Support\Str;
 
-    $tabelle      = $matrice['tabelle'];
+    $capitoli      = $matrice['capitoli'];
     $righe        = $matrice['righe'];
     $granTotale   = $matrice['gran_totale'];
-    $totPerTab    = $matrice['tot_per_tabella'];
-    $totQuotaTab  = $matrice['tot_quota_per_tabella'];
-    $nTab         = count($tabelle);
+    $totPerCap    = $matrice['tot_per_capitolo'];
+    $nCap         = count($capitoli);
 
     // ── Font adattivo ────────────────────────────────────────────────────────
-    $fontBase  = $nTab > 8 ? '5.5pt' : ($nTab > 5 ? '6pt'   : '7pt');
-    $fontSmall = $nTab > 8 ? '4.5pt' : ($nTab > 5 ? '5pt'   : '6pt');
-    $fontTiny  = $nTab > 8 ? '4pt'   : ($nTab > 5 ? '4.5pt' : '5.5pt');
+    $fontBase  = $nCap > 8 ? '5.5pt' : ($nCap > 5 ? '6pt'   : '7pt');
+    $fontSmall = $nCap > 8 ? '4.5pt' : ($nCap > 5 ? '5pt'   : '6pt');
+    $fontTiny  = $nCap > 8 ? '4pt'   : ($nCap > 5 ? '4.5pt' : '5.5pt');
 
     // ── Larghezze colonne (%) ────────────────────────────────────────────────
     $wApp    = 5;
-    $wNome   = $nTab > 5 ? 18 : 22;
+    $wNome   = $nCap > 5 ? 18 : 22;
     $wRuolo  = 5;
-    $wTotSogg= $nTab > 5 ? 8 : 10;
+    $wTotSogg= $nCap > 5 ? 8 : 10;
     $wPct    = 5;
-    $wTotApt = $nTab > 5 ? 8 : 10;
+    $wTotApt = $nCap > 5 ? 8 : 10;
     $wFixed  = $wApp + $wNome + $wRuolo + $wTotSogg + $wPct + $wTotApt;
     $wTabCols = 100 - $wFixed;
     // Le larghezze interne verranno calcolate per ogni blocco (chunk)
@@ -40,7 +39,6 @@
     $sepLine = '#dce3ea'; // bordi interni tbody
 
     // ── Pre-calcola % per soggetto ───────────────────────────────────────────
-    // Array [ "aid|iid" => percentuale_su_gran_totale ]
     $pctSoggetti = [];
     foreach ($righe as $immobileId => $riga) {
         foreach ($riga['soggetti'] as $aid => $sogg) {
@@ -59,15 +57,12 @@
         }
     }
 
-    // ── Conta unità e soggetti ────────────────────────────────────────────────
     $nUnita    = count($righe);
     $nSoggetti = array_sum(array_map(fn($r) => count($r['soggetti']), $righe));
 
-    // ── Riferimento delibera (se presente) ───────────────────────────────────
     $dataDelibera = $pianoRate->data_delibera_assemblea?->format('d/m/Y') ?? null;
     $numVerbale   = $pianoRate->numero_verbale ?? null;
 
-    // ── Nomi ruoli leggibili ──────────────────────────────────────────────────
     $nomiRuoli = [
         'proprietario'      => 'Proprietari',
         'usufruttuario'     => 'Usufruttuari',
@@ -78,7 +73,7 @@
 {{-- INTESTAZIONE DOCUMENTO --}}
 <div style="margin-bottom: 14px; border-bottom: 2px solid {{ $navy }}; padding-bottom: 8px;">
     <h2 style="margin: 0; padding: 0; font-size: 13pt; color: {{ $navy }}; letter-spacing: 0.5px;">
-        RIPARTO BILANCIO PREVENTIVO PER TABELLA E SOGGETTO
+        RIPARTO BILANCIO PREVENTIVO PER CAPITOLO E SOGGETTO
     </h2>
     <div style="font-size: 8.5pt; color: #444; margin-top: 3px;">
         Piano rate: <strong>{{ $pianoRate->nome }}</strong> &nbsp;|&nbsp;
@@ -126,22 +121,21 @@
 </table>
 @endif
 
-@if (empty($tabelle) || empty($righe))
+@if (empty($capitoli) || empty($righe))
     <p style="color: #888; font-style: italic; text-align: center; margin-top: 40px;">
-        Nessun dato disponibile. Verificare che il piano rate abbia rate emesse e che il piano
-        dei conti abbia tabelle millesimali configurate.
+        Nessun dato disponibile.
     </p>
 @else
 
 @php
-    // Dividiamo le tabelle in blocchi di max 6 colonne per pagina
-    $chunksTabelle = array_chunk($tabelle, 6, true);
+    // Dividiamo i capitoli in blocchi di max 6 colonne per pagina
+    $chunksCapitoli = array_chunk($capitoli, 6, true);
 @endphp
 
-@foreach($chunksTabelle as $chunkIndex => $tabelleChunk)
+@foreach($chunksCapitoli as $chunkIndex => $capitoliChunk)
     @php
-        $nTabChunk = count($tabelleChunk);
-        $wPerTab  = $nTabChunk > 0 ? max(5, $wTabCols / $nTabChunk) : 50;
+        $nCapChunk = count($capitoliChunk);
+        $wPerTab  = $nCapChunk > 0 ? max(5, $wTabCols / $nCapChunk) : 50;
         $wQuota   = $wPerTab * 0.44;
         $wImporto = $wPerTab - $wQuota;
     @endphp
@@ -150,7 +144,7 @@
         <pagebreak />
         <div style="margin-bottom: 14px; border-bottom: 2px solid {{ $navy }}; padding-bottom: 8px;">
             <h2 style="margin: 0; padding: 0; font-size: 13pt; color: {{ $navy }}; letter-spacing: 0.5px;">
-                RIPARTO BILANCIO PREVENTIVO PER TABELLA E SOGGETTO (Pagina {{ $chunkIndex + 1 }} di {{ count($chunksTabelle) }})
+                RIPARTO BILANCIO PREVENTIVO PER CAPITOLO E SOGGETTO (Pagina {{ $chunkIndex + 1 }} di {{ count($chunksCapitoli) }})
             </h2>
         </div>
     @endif
@@ -162,7 +156,7 @@
 
     {{-- ── THEAD ─────────────────────────────────────────────────────────── --}}
     <thead>
-        {{-- Riga 1: nomi tabelle --}}
+        {{-- Riga 1: nomi capitoli --}}
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }};">
             <th rowspan="2" style="padding: 4px 3px; border: 1px solid {{ $navyMid }}; width: {{ $wApp }}%;
                                     text-align: center; vertical-align: middle;">
@@ -177,10 +171,10 @@
                 Ruolo
             </th>
 
-            @foreach($tabelleChunk as $tabId => $tabInfo)
+            @foreach($capitoliChunk as $capId => $capInfo)
                 <th colspan="2" style="padding: 4px 3px; border: 1px solid {{ $navyMid }}; width: {{ $wPerTab }}%;
                                         text-align: center; font-size: {{ $fontSmall }}; white-space: nowrap; overflow: hidden;">
-                    {{ Str::limit($tabInfo['nome'], $nTab > 6 ? 12 : 22) }}
+                    {{ Str::limit($capInfo['nome'], $nCap > 6 ? 12 : 22) }}
                 </th>
             @endforeach
 
@@ -203,19 +197,9 @@
 
         {{-- Riga 2: mill. / importo sub-header --}}
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }}; font-weight: normal; font-size: {{ $fontTiny }};">
-            @foreach($tabelleChunk as $tabId => $tabInfo)
-                @php
-                    $etichetteUnita = [
-                        'millesimi' => 'mill. ‰',
-                        'quote'     => 'quote',
-                        'persone'   => 'pers.',
-                        'kwatt'     => 'kW',
-                        'mtcubi'    => 'mc.',
-                    ];
-                    $labelUnita = $etichetteUnita[$tabInfo['quota_tipo']] ?? 'quote';
-                @endphp
+            @foreach($capitoliChunk as $capId => $capInfo)
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wQuota }}%; opacity: 0.9;">
-                    {{ $labelUnita }}
+                    {{ $capInfo['quota_label'] }}
                 </th>
                 <th style="padding: 2px 2px; border: 1px solid {{ $navyMid }}; text-align: right; width: {{ $wImporto }}%; opacity: 0.9;">
                     importo €
@@ -244,7 +228,6 @@
                     $isFirst  = $loop->first;
                     $isLast   = $loop->last;
 
-                    // Ruolo → colore accent sinistra
                     $accentColori = [
                         'P'  => '#2a5080',
                         'NP' => '#7a56a8',
@@ -261,7 +244,7 @@
 
                 <tr style="background-color: {{ $bgRow }};">
 
-                    {{-- ── Colonna App. (rowspan) ─────────────────────── --}}
+                    {{-- ── Colonna App. ─────────────────────── --}}
                     @if($isFirst)
                         <td rowspan="{{ $nSoggettiImmobile }}"
                             style="padding: 3px 2px; border: 1px solid {{ $sepLine }};
@@ -298,22 +281,20 @@
                         {{ $soggetto['ruolo'] }}
                     </td>
 
-                    {{-- ── Dati per tabella ────────────────────────── --}}
-                    @foreach($tabelleChunk as $tabId => $tabInfo)
+                    {{-- ── Dati per capitolo ────────────────────────── --}}
+                    @foreach($capitoliChunk as $capId => $capInfo)
                         @php
-                            $datiTab  = $soggetto['per_tabella'][$tabId] ?? null;
+                            $datiTab  = $soggetto['per_capitolo'][$capId] ?? null;
                             $quota    = $datiTab ? $datiTab['quota'] : null;
                             $importo  = $datiTab ? $datiTab['importo'] : 0;
-                            $decimali = $tabInfo['decimali'] ?? 3;
                             $hasData  = !is_null($quota) && $importo > 0;
                         @endphp
 
-                        {{-- quota ‰ (Stampata solo sulla prima riga dell'immobile, unificata) --}}
                         @if($isFirst)
                             @php
                                 $totImmTab = 0;
                                 foreach($rigaImmobile['soggetti'] as $sogg) {
-                                    $totImmTab += ($sogg['per_tabella'][$tabId]['importo'] ?? 0);
+                                    $totImmTab += ($sogg['per_capitolo'][$capId]['importo'] ?? 0);
                                 }
                                 $hasQuota = !is_null($quota) && $totImmTab > 0;
                             @endphp
@@ -322,14 +303,13 @@
                                        color: {{ $hasQuota ? '#555' : '#ddd' }};
                                        background-color: {{ $hasQuota ? 'transparent' : '#fafafa' }}; vertical-align: middle;">
                                 @if(!is_null($quota))
-                                    {{ number_format((float)$quota, $decimali, ',', '.') }}
+                                    {{ number_format((float)$quota, 3, ',', '.') }}
                                 @else
                                     —
                                 @endif
                             </td>
                         @endif
 
-                        {{-- importo --}}
                         <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                    text-align: right; background-color: {{ $bgRow }};
                                    color: {{ $navy }}; font-size: {{ $fontBase }};">
@@ -341,14 +321,12 @@
                         </td>
                     @endforeach
 
-                    {{-- ── Totale Soggetto ─────────────────────────────── --}}
                     <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                text-align: right; font-weight: bold; font-size: {{ $fontSmall }};
                                color: {{ $navy }}; background-color: #fafafa;">
                         € {{ number_format($soggetto['totale'] / 100, 2, ',', '.') }}
                     </td>
 
-                    {{-- ── % sul totale ─────────────────────────────── --}}
                     <td style="padding: 2px 3px; border: 1px solid {{ $sepLine }};
                                text-align: right; font-size: {{ $fontTiny }};
                                color: #666; background-color: #f0f5fa;">
@@ -364,33 +342,28 @@
                             € {{ number_format($rigaImmobile['totale_immobile'] / 100, 2, ',', '.') }}
                         </td>
                     @endif
-
                 </tr>
             @endforeach
 
-            {{-- Separatore visivo tra appartamenti --}}
             @if(!$loop->last)
-                <tr><td colspan="{{ 6 + ($nTabChunk * 2) }}"
+                <tr><td colspan="{{ 6 + ($nCapChunk * 2) }}"
                         style="padding: 0; height: 3px; background-color: {{ $sepLine }}; border: none;"></td></tr>
             @endif
         @endforeach
 
-        {{-- ── RIGA TOTALI (inserita nel tbody per compatibilità mPDF) ───────── --}}
         <tr style="font-weight: bold; color: #1a1a1a; font-size: {{ $fontBase }};">
             <td colspan="3" align="left" style="padding: 5px 6px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }};
                                     text-align: left; font-size: {{ $fontSmall }}; letter-spacing: 0.5px; background-color: #f7f9fb;">
                 Totali generali
             </td>
 
-            @foreach($tabelleChunk as $tabId => $tabInfo)
+            @foreach($capitoliChunk as $capId => $capInfo)
                 @php
-                    $totQ = $totQuotaTab[$tabId] ?? 0;
-                    $totI = $totPerTab[$tabId] ?? 0;
-                    $decimali = $tabInfo['decimali'] ?? 3;
+                    $totI = $totPerCap[$capId] ?? 0;
                 @endphp
                 <td align="right" style="padding: 5px 2px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
-                    {{ number_format((float)$totQ, $decimali, ',', '.') }}
+                    
                 </td>
                 <td align="right" style="padding: 5px 3px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                             font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
@@ -398,13 +371,11 @@
                 </td>
             @endforeach
 
-            {{-- Totale soggetto (Gran Totale) --}}
             <td align="right" style="padding: 5px 3px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                         font-size: {{ $fontSmall }}; background-color: #f7f9fb;">
                 € {{ number_format($granTotale / 100, 2, ',', '.') }}
             </td>
 
-            {{-- % totale (sempre 100%) --}}
             <td align="right" style="padding: 5px 3px; border: 1px solid {{ $navyMid }}; border-top: 2px solid {{ $navy }}; text-align: right;
                         font-size: {{ $fontTiny }}; background-color: #f7f9fb;">
                 100%
@@ -416,7 +387,6 @@
             </td>
         </tr>
     </tbody>
-
 </table>
 
 @endforeach

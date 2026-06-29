@@ -17,7 +17,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalSpostaSpesa from '@/components/gestionale/pianiRate/ModalSpostaSpesa.vue';
 import BudgetHistoryPopover from '@/components/gestionale/pianiRate/BudgetHistoryPopover.vue';
 import PianoRateSpaccatoSheet from '@/components/gestionale/pianiRate/PianoRateSpaccatoSheet.vue';
-import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer, ShieldCheck, CalendarDays, TableProperties } from "lucide-vue-next";
+import { MoreVertical, Mail, ReceiptText, BellRing, List, Layers, CheckCircle2, AlertCircle, Clock, History, AlertTriangle, Ban, PieChart, Coins, RotateCw, Info, Wallet, Lock, RotateCcw, XCircle, Trash2, ChevronDown, ChevronUp, ArrowRightLeft, Gavel, Printer, ShieldCheck, CalendarDays, TableProperties, FileText } from "lucide-vue-next";
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import Alert from "@/components/Alert.vue";
@@ -625,6 +625,15 @@ const printRipartoTabelle = () => {
     window.open(url, '_blank');
 }
 
+const printRipartoCapitoli = () => {
+    const url = route('admin.gestionale.esercizi.piani-rate.print-riparto-capitoli', {
+        condominio: props.condominio.id,
+        esercizio: props.esercizio.id,
+        pianoRate: props.pianoRate.id
+    });
+    window.open(url, '_blank');
+}
+
 </script>
 
 <template>   
@@ -970,6 +979,16 @@ const printRipartoTabelle = () => {
                                 <div>
                                     <div class="text-xs font-medium">Riparto per Tabella</div>
                                     <div class="text-[10px] text-slate-400">Spese raggruppate per tabella</div>
+                                </div>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem 
+                                @click="printRipartoCapitoli()"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-amber-50 focus:bg-amber-50 text-slate-700">
+                                <FileText class="w-3.5 h-3.5 text-amber-600" />
+                                <div>
+                                    <div class="text-xs font-medium">Riparto per Capitolo</div>
+                                    <div class="text-[10px] text-slate-400">Spese calcolate per capitolo esatto</div>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

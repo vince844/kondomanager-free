@@ -8,6 +8,7 @@ use App\Models\Esercizio;
 use App\Models\Gestionale\PianoRate;
 use App\Services\PDF\PdfService;
 use App\Services\PianoRateQuoteService;
+use App\Services\RipartoCapitoliService;
 use App\Services\RipartoTabelleService;
 use Illuminate\Http\Request;
 
@@ -134,6 +135,49 @@ class PianoRatePrintController extends Controller
         $mpdf->SetHeader($condominio->nome . '||Riparto per Tabella – ' . $pianoRate->nome);
 
         return response($mpdf->Output('riparto_tabelle.pdf', 'I'))
+            ->header('Content-Type', 'application/pdf');
+    }
+
+    /**
+     * Stampa il Riparto Bilancio Preventivo per Capitolo di Spesa × Soggetto (Modello Danea).
+     *
+     * Per ogni unità immobiliare e ogni soggetto mostra l'importo calcolato 
+     * su ciascun capitolo di spesa (conto foglia).
+     */
+    public function ripartoCapitoli(
+        Request $request,
+        Condominio $condominio,
+        Esercizio $esercizio,
+        PianoRate $pianoRate,
+        PdfService $pdfService,
+        RipartoCapitoliService $ripartoService
+    ) {
+        $matrice = $ripartoService->buildMatrice($pianoRate);
+
+        $nCapitoli = count($matrice['capitoli']);
+
+        // Adatta formato pagina al numero di capitoli:
+        $formato = $nCapitoli > 5 ? 'A3-L' : 'A4-L';
+
+        $data = [
+            'condominio' => $condominio,
+            'esercizio'  => $esercizio,
+            'pianoRate'  => $pianoRate,
+            'matrice'    => $matrice,
+            'nCapitoli'  => $nCapitoli,
+        ];
+
+        $mpdf = $pdfService->generate('pdf.gestionale.riparto_capitoli', $data, [
+            'format'      => $formato,
+            'orientation' => 'L',
+            'margin_top'  => 32,
+            'margin_left' => 8,
+            'margin_right'=> 8,
+        ]);
+
+        $mpdf->SetHeader($condominio->nome . '||Riparto per Capitolo di Spesa – ' . $pianoRate->nome);
+
+        return response($mpdf->Output('riparto_capitoli.pdf', 'I'))
             ->header('Content-Type', 'application/pdf');
     }
 

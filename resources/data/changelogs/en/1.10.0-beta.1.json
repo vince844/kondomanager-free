@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Cron & heartbeat settings panel: added a new view to monitor the health of the system scheduler in real-time with a visual 'Heartbeat' widget.",
+        "Budget allocation report by chapter: introduced a new PDF document that analytically groups allocated expenses by expense chapters, showing exact shares for each unit and subject.",
+        "Automatic PDF report pagination: overly wide PDF reports (with many tables or chapters) are now dynamically split across multiple horizontal pages to ensure perfect readability.",
+        "Mixed extraordinary installment plans support: it is now possible to aggregate both costs derived from linked invoices and those from manually added expense chapters into a single extraordinary plan.",
+        "Improved 'catch-all' logic: general installment plans now automatically exclude all expense items already assigned to other active partial installment plans, preventing the risk of double billing.",
+        "Optimizations for developers and sysadmins: added the official guide for configuring cron jobs on Plesk, implemented Docker support for the local scheduler, and introduced an automated test suite to certify the allocation engine."
+    ]
+}

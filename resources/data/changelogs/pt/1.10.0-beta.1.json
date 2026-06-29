@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Painel de configurações cron e heartbeat: adicionada uma nova visualização para monitorar a integridade do agendador do sistema em tempo real com um widget visual 'Heartbeat'.",
+        "Relatório de alocação de orçamento por capítulo: introduzido um novo documento em PDF que agrupa analiticamente as despesas alocadas por capítulos de despesas, mostrando as cotas exatas para cada unidade e sujeito.",
+        "Paginação automática de relatórios em PDF: relatórios em PDF muito largos (com muitas tabelas ou capítulos) agora são divididos dinamicamente em várias páginas horizontais para garantir uma legibilidade perfeita.",
+        "Suporte a planos de parcelamento extraordinários mistos: agora é possível agregar tanto os custos derivados de faturas vinculadas quanto os de capítulos de despesas adicionados manualmente em um único plano extraordinário.",
+        "Lógica 'catch-all' aprimorada: planos de parcelamento gerais agora excluem automaticamente todos os itens de despesa já atribuídos a outros planos de parcelamento parciais ativos, evitando o risco de cobrança dupla.",
+        "Otimizações para desenvolvedores e administradores de sistema: adicionado o guia oficial para configuração de cron jobs no Plesk, implementado suporte Docker para o agendador local e introduzida uma suíte de testes automatizados para certificar o mecanismo de alocação."
+    ]
+}

@@ -85,10 +85,20 @@ class CalcoloQuoteService
                 'sottoconti.sottoconti',
             ]);
 
+        $contiImpegnatiIds = [];
         if (!empty($capitoliIds)) {
             $query->whereIn('id', $capitoliIds);
         } else {
             $query->whereNull('parent_id');
+            if ($pianoRate) {
+                $contiImpegnatiIds = \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')
+                    ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
+                    ->where('piani_rate.gestione_id', $gestione->id)
+                    ->where('piani_rate.attivo', true)
+                    ->where('piani_rate.id', '!=', $pianoRate->id)
+                    ->pluck('conto_id')
+                    ->toArray();
+            }
         }
 
         $conti = $query->get();
@@ -108,7 +118,8 @@ class CalcoloQuoteService
             'conti_caricati' => $conti->count(),
         ]);
 
-        $this->processaConti($conti, $totali);
+        $processatiIds = [];
+        $this->processaConti($conti, $totali, $contiImpegnatiIds, $processatiIds);
 
         // [DIAG] Riepilogo delta: importo pianificato vs importo effettivamente distribuito
         $totaleOverrides   = array_sum($this->pivotOverrides);
@@ -278,9 +289,12 @@ class CalcoloQuoteService
      * @param Collection $conti La collezione di conti da elaborare
      * @param array &$totali Array in cui accumulare i risultati
      */
-    private function processaConti(Collection $conti, array &$totali): void
+    private function processaConti(Collection $conti, array &$totali, array $contiImpegnatiIds = [], array &$processatiIds = []): void
     {
         foreach ($conti as $conto) {
+            if (in_array($conto->id, $contiImpegnatiIds)) continue;
+            if (in_array($conto->id, $processatiIds)) continue;
+            $processatiIds[] = $conto->id;
 
             $hasOverride = isset($this->pivotOverrides[$conto->id]);
 
@@ -331,7 +345,7 @@ class CalcoloQuoteService
                         $this->pivotOverrides[$figlio->id] = $quotaFiglio;
                     }
 
-                    $this->processaConti($sottocontiFiltrati, $totali);
+                    $this->processaConti($sottocontiFiltrati, $totali, $contiImpegnatiIds, $processatiIds);
                     continue;
                 }
 
@@ -357,7 +371,7 @@ class CalcoloQuoteService
             }
 
             if ($conto->sottoconti && $conto->sottoconti->count() > 0) {
-                $this->processaConti($conto->sottoconti, $totali);
+                $this->processaConti($conto->sottoconti, $totali, $contiImpegnatiIds, $processatiIds);
             }
         }
     }

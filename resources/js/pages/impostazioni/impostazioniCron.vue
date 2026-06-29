@@ -13,6 +13,8 @@ const props = defineProps({
     enabled: Boolean,
     webhookUrl: String,
     allowedIps: Array,
+    lastHeartbeat: Number,
+    lastHeartbeatSource: String,
 });
 
 const form = useForm({
@@ -42,6 +44,23 @@ const copyToClipboard = () => {
     copied.value = true;
     setTimeout(() => copied.value = false, 2000);
 };
+
+import { computed } from 'vue';
+
+const isCronActive = computed(() => {
+    if (!props.lastHeartbeat) return false;
+    const now = Math.floor(Date.now() / 1000);
+    // Consider active if heartbeat is within the last 3 minutes (180 seconds)
+    return (now - props.lastHeartbeat) <= 180;
+});
+
+const lastHeartbeatRelative = computed(() => {
+    if (!props.lastHeartbeat) return 'Mai eseguito';
+    const seconds = Math.floor(Date.now() / 1000) - props.lastHeartbeat;
+    if (seconds < 60) return `${seconds} sec fa`;
+    const mins = Math.floor(seconds / 60);
+    return `${mins} min fa`;
+});
 </script>
 
 <template>
@@ -59,7 +78,31 @@ const copyToClipboard = () => {
             </div>
 
             <Card class="border shadow-none p-4">
-                <div class="flex flex-col w-full sm:flex-row sm:justify-end mb-4">
+                <div class="flex flex-col w-full sm:flex-row sm:justify-between mb-4">
+                    <!-- HEARTBEAT STATUS -->
+                    <div class="flex items-center gap-3 bg-muted/30 px-3 py-2 rounded-md border mb-4 sm:mb-0">
+                        <div class="relative flex h-3 w-3">
+                            <span v-if="isCronActive" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-3 w-3" :class="isCronActive ? 'bg-green-500' : 'bg-red-500'"></span>
+                        </div>
+                        <div class="text-sm flex items-center">
+                            <span class="font-medium text-foreground mr-1">Demone Cron:</span>
+                            <span :class="isCronActive ? 'text-green-600' : 'text-red-600 font-semibold'">
+                                {{ isCronActive ? 'Attivo' : 'Fermo/Errore' }}
+                            </span>
+                            
+                            <!-- SOURCE INDICATOR -->
+                            <div v-if="isCronActive && lastHeartbeatSource" class="ml-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full border bg-background/50 text-xs">
+                                <span class="w-2 h-2 rounded-full" :class="lastHeartbeatSource === 'webhook' ? 'bg-orange-500' : 'bg-gray-400'"></span>
+                                <span class="text-muted-foreground capitalize">{{ lastHeartbeatSource }}</span>
+                            </div>
+
+                            <span class="text-xs text-muted-foreground ml-2">
+                                (Ultimo check: {{ lastHeartbeatRelative }})
+                            </span>
+                        </div>
+                    </div>
+
                     <Link
                         as="button"
                         href="/impostazioni"

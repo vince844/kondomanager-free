@@ -8,7 +8,7 @@
 ## Stato corrente
 
 **Rilasciato:** `v1.9.1` — Smart Treasury & Passive Cycle
-**In sviluppo:** `v1.9.2` — Pagamenti Avanzati
+**In sviluppo:** `v1.10.0` — The Core Engine Release
 
 ---
 
@@ -29,8 +29,14 @@ Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 - Refactor F24: la ritenuta matura al pagamento, non alla registrazione fattura
 - 22 test automatici di copertura (registrazione, netting, storno, eccezioni, invarianti)
 
-### v1.9.2 — Pagamenti Avanzati
+---
 
+## v1.10.0 — The Core Engine Release
+
+Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del motore di riparto, completa l'anagrafica immobiliare (Iniziativa B Fase 1) e introduce la **risoluzione a cascata del ruolo** con il relativo **warning di coerenza-ruoli**.
+Include inoltre le funzionalità avanzate di pagamento originariamente previste per la v1.9.2.
+
+**Pagamenti Avanzati:**
 - Acconti ai fornitori (conto Crediti v/Fornitori dedicato, compensazione via giroconto)
 - Anticipi dell'amministratore con workflow di rimborso
 - Compensazione pura senza movimento di cassa (NC > Fattura)
@@ -40,21 +46,7 @@ Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 - Abbuoni passivi
 - RID/SDD passivi (rimandati a v1.16 per integrazione con riconciliazione bancaria)
 
-### v1.9.3 — Export SEPA
-
-- Generazione XML Pain.001.001.03 (standard SEPA)
-- Variante CBI italiana (Unicredit, Intesa, BPER)
-- Validazione XSD prima dell'export
-- Bonifico Parlante nella sezione RmtInf con gestione overflow caratteri (CF condòmini multipli)
-- Multi-banca testing
-- Workflow real-world: XML uploaded a home banking, autorizzazione SCA/OTP PSD2 (non automatizzata)
-- Fallback v1.9.1: export CSV/lista
-
----
-
-## v1.10 — Foundation Release
-
-Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del motore di riparto, completa l'anagrafica immobiliare (Iniziativa B Fase 1) e introduce la **risoluzione a cascata del ruolo** con il relativo **warning di coerenza-ruoli**.
+**Foundation & Motore:**
 
 - **Voci di accantonamento** con `fondo_target_id`, bifurcation incasso, `delibera_id` nullable;
   fix coverage entry per ancorare la copertura a `voce_spesa_id` (debito tecnico da `FatturaPassivaService`)
@@ -111,6 +103,18 @@ Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del 
   - `codice_cliente`, `intestatario_id`, `valid_from`/`valid_to` per storico subentri
   - Correzione copy in pagina associazione anagrafica (includere Usufruttuario e nuovi ruoli)
   - **Verifica:** esiste un meccanismo che pone `attivo = false` allo scadere di `data_fine`? In assenza → observer/job (slittabile a v1.11).
+
+---
+
+## v1.10.1 — Export SEPA
+
+- Generazione XML Pain.001.001.03 (standard SEPA)
+- Variante CBI italiana (Unicredit, Intesa, BPER)
+- Validazione XSD prima dell'export
+- Bonifico Parlante nella sezione RmtInf con gestione overflow caratteri (CF condòmini multipli)
+- Multi-banca testing
+- Workflow real-world: XML uploaded a home banking, autorizzazione SCA/OTP PSD2 (non automatizzata)
+- Fallback v1.9.1: export CSV/lista
 
 ---
 

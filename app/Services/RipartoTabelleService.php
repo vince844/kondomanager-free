@@ -69,14 +69,44 @@ class RipartoTabelleService
             return $this->empty();
         }
 
-        // Override importi dal pivot piano_rate_capitoli
+        // Override importi: se straordinario su fatture, aggrega righe_fattura; altrimenti usa pivot capitoli
         $pivotOverrides = [];
+        $hasFatture = false;
+        
+        if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
+            $hasFatture = true;
+            $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
+            $righe = \Illuminate\Support\Facades\DB::table('righe_fattura')
+                ->whereIn('fattura_passiva_id', $fattureIds)
+                ->whereNotNull('conto_id')
+                ->get();
+
+            foreach ($righe as $riga) {
+                $contoId = $riga->conto_id;
+                if (!isset($pivotOverrides[$contoId])) {
+                    $pivotOverrides[$contoId] = 0;
+                }
+                // Importo riga (imponibile + IVA)
+                $pivotOverrides[$contoId] += abs($riga->importo_imponibile + $riga->importo_iva);
+            }
+            $capitoliIds = array_keys($pivotOverrides);
+
+            // Se tutte le righe sono addebiti diretti a immobile (nessun conto_id)
+            if (empty($capitoliIds) && $pianoRate->capitoli->isEmpty()) {
+                return $this->empty();
+            }
+        } 
+        
+        // Sempre, aggiungi anche i capitoli espliciti se ci sono (gestisce i piani "misti")
         foreach ($pianoRate->capitoli as $cap) {
             if (!is_null($cap->pivot->importo)) {
-                $pivotOverrides[$cap->id] = (int) $cap->pivot->importo;
+                if (!isset($pivotOverrides[$cap->id])) {
+                    $pivotOverrides[$cap->id] = 0;
+                }
+                $pivotOverrides[$cap->id] += (int) $cap->pivot->importo;
             }
         }
-        $capitoliIds = $pianoRate->capitoli->pluck('id')->toArray();
+        $capitoliIds = array_keys($pivotOverrides);
 
         // ─── 2. Carica tutti i conti foglia con tabelle ───────────────────────
         $queryConti = Conto::with([
@@ -86,11 +116,22 @@ class RipartoTabelleService
             'sottoconti.tabelleMillesimali.ripartizioni',
         ])->where('piano_conto_id', $pianoConto->id);
 
+        $contiImpegnatiIds = [];
         if (!empty($capitoliIds)) {
             // Piano specifico: filtra per capitoli inclusi
             $queryConti->whereIn('id', $capitoliIds);
         } else {
             $queryConti->whereNull('parent_id');
+            if (!$hasFatture) {
+                // Piano rate generale (catch-all): escludiamo i capitoli già assegnati ad ALTRI piani rate attivi
+                $contiImpegnatiIds = \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')
+                    ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
+                    ->where('piani_rate.gestione_id', $pianoRate->gestione_id)
+                    ->where('piani_rate.attivo', true)
+                    ->where('piani_rate.id', '!=', $pianoRate->id)
+                    ->pluck('conto_id')
+                    ->toArray();
+            }
         }
 
         $conti = $queryConti->get();
@@ -101,8 +142,9 @@ class RipartoTabelleService
         $weights  = [];   // tabella_id → "aid|iid" → float weight
         $quoteMill = [];  // tabella_id → immobile_id → float valore
         $tabelleInfo = []; // tabella_id → ['nome', 'quota_label']
+        $processatiIds = [];
 
-        $this->processaContiPerPesi($conti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at);
+        $this->processaContiPerPesi($conti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at, $contiImpegnatiIds, $processatiIds);
 
         if (empty($weights)) {
             return $this->empty();
@@ -283,9 +325,15 @@ class RipartoTabelleService
         array &$weights,
         array &$quoteMill,
         array &$tabelleInfo,
-        ?\Carbon\Carbon $snapshotAt
+        ?\Carbon\Carbon $snapshotAt,
+        array $contiImpegnatiIds = [],
+        array &$processatiIds = []
     ): void {
         foreach ($conti as $conto) {
+            if (in_array($conto->id, $contiImpegnatiIds)) continue;
+            if (in_array($conto->id, $processatiIds)) continue;
+            $processatiIds[] = $conto->id;
+
             $hasOverride = isset($pivotOverrides[$conto->id]);
 
             if ($hasOverride) {
@@ -326,7 +374,7 @@ class RipartoTabelleService
                         }
                     }
 
-                    $this->processaContiPerPesi($figli, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt);
+                    $this->processaContiPerPesi($figli, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
                 }
                 continue;
             }
@@ -338,7 +386,7 @@ class RipartoTabelleService
             }
 
             if ($conto->sottoconti && $conto->sottoconti->isNotEmpty()) {
-                $this->processaContiPerPesi($conto->sottoconti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt);
+                $this->processaContiPerPesi($conto->sottoconti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
             }
         }
     }

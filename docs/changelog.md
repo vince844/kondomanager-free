@@ -7,6 +7,22 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.1] - Piani Straordinari Misti, Paginazione Stampe PDF e Logica "Catch-all"
+
+### Aggiunto
+- **Pannello Impostazioni Cron & Heartbeat:** Aggiunta una nuova vista dedicata (`ImpostazioniCron.vue`) sotto `Impostazioni > Sistema > Automazioni`. La pagina espone un widget visivo "Heartbeat / Cron System" che indica in tempo reale lo stato di salute dello Scheduler di sistema. Se il pallino è verde, il server sta processando regolarmente i job in background; include inoltre un timestamp "Ultimo battito" per un controllo millimetrico.
+- **Stampa Riparto Bilancio per Capitolo e Soggetto:** Introdotto il nuovo documento di riparto PDF accessibile dal piano rate. La stampa raggruppa analiticamente le spese ripartite per **Capitoli di spesa**, mostrando le quote e gli importi precisi distribuiti per ogni unità e soggetto coinvolto.
+- **Paginazione Automatica Stampe PDF (Chunking):** Implementata la paginazione orizzontale dinamica per i prospetti in formato PDF (Riparto per Tabelle e Riparto per Capitoli). Se il piano dei conti o le tabelle millesimali superano la larghezza massima (oltre 5-6 colonne), il sistema suddivide automaticamente le voci su più pagine (`<pagebreak />`). Questo garantisce la massima leggibilità dei font evitando documenti illeggibili per condomini molto grandi.
+- **Supporto Piani Rate Straordinari Misti:** Estesa la logica di calcolo (`RipartoCapitoliService` e `RipartoTabelleService`) per i Piani Straordinari. È ora possibile aggregare in un unico documento sia i costi derivanti dalle **fatture collegate** sia quelli provenienti da **capitoli di spesa aggiunti manualmente**.
+- **Docker Supervisord per Scheduler Locale:** Aggiunto il demone `laravel-scheduler` in `docker/supervisord.conf` per l'avvio automatico di `schedule:work` all'interno dell'ambiente Docker, essenziale per lo sviluppo e il test locale dell'heartbeat.
+- **Test Automatizzati (Riparto Preventivo):** Implementata una suite di test (Pest/PHPUnit) per certificare e bloccare eventuali regressioni del motore di riparto, testando rigorosamente la quadratura dei calcoli e il corretto funzionamento della logica Raccoglitore (catch-all) nei Piani Rate Generali.
+- **Guida Plesk per Cron Job:** Redatta la documentazione ufficiale `plesk_cronjob_setup.it.md` per la corretta configurazione di Scheduler e Queue Worker in ambienti Plesk, con indicazioni per disabilitare il flag `SCHEDULE_QUEUE_WORKER` ed evitare Error 500 causati dai rigidi timeout web.
+
+### Corretto
+- **Logica "Catch-all" (Raccoglitore):** Ottimizzato il comportamento dei Piani Rate Generali. Ora il sistema esclude in automatico tutte le voci di spesa (`conti_id`) che sono già state intercettate da altri Piani Rate Parziali attivi. Il Piano Generale si comporta quindi come un contenitore per tutte le "voci orfane" rimaste da coprire, prevenendo la doppia riscossione.
+
+---
+
 ## [1.9.1] — Smart Treasury & Passive Cycle
 
 > **Stable release.**
