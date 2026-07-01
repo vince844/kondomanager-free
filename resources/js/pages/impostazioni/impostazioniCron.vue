@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm, Link } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, useForm, Link, router } from '@inertiajs/vue3';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -45,18 +45,39 @@ const copyToClipboard = () => {
     setTimeout(() => copied.value = false, 2000);
 };
 
-import { computed } from 'vue';
+const currentTime = ref(Math.floor(Date.now() / 1000));
+let timeInterval = null;
+let pollInterval = null;
+
+onMounted(() => {
+    timeInterval = setInterval(() => {
+        currentTime.value = Math.floor(Date.now() / 1000);
+    }, 1000);
+
+    pollInterval = setInterval(() => {
+        router.reload({
+            only: ['lastHeartbeat', 'lastHeartbeatSource'],
+            preserveScroll: true,
+            preserveState: true,
+        });
+    }, 15000);
+});
+
+onUnmounted(() => {
+    if (timeInterval) clearInterval(timeInterval);
+    if (pollInterval) clearInterval(pollInterval);
+});
 
 const isCronActive = computed(() => {
     if (!props.lastHeartbeat) return false;
-    const now = Math.floor(Date.now() / 1000);
     // Consider active if heartbeat is within the last 3 minutes (180 seconds)
-    return (now - props.lastHeartbeat) <= 180;
+    return (currentTime.value - props.lastHeartbeat) <= 180;
 });
 
 const lastHeartbeatRelative = computed(() => {
     if (!props.lastHeartbeat) return 'Mai eseguito';
-    const seconds = Math.floor(Date.now() / 1000) - props.lastHeartbeat;
+    const seconds = currentTime.value - props.lastHeartbeat;
+    if (seconds < 0) return 'Ora';
     if (seconds < 60) return `${seconds} sec fa`;
     const mins = Math.floor(seconds / 60);
     return `${mins} min fa`;

@@ -142,8 +142,13 @@ return [
     |--------------------------------------------------------------------------
     |
     | scheduler_queue_worker:
-    | - TRUE: Per Shared Hosting (cPanel/SiteGround). Lancia un worker "usa e getta" ogni minuto.
-    | - FALSE: Per VPS (con Supervisor). Non fa nulla (ci pensa Supervisor).
+    | - TRUE (default distro): Shared Hosting senza accesso CLI
+    |   (cPanel, Altervista, Netsons). Lancia un worker sincrono
+    |   ogni minuto dentro lo scheduler. Richiede cron-job.org.
+    |
+    | - FALSE: Plesk, VPS o qualsiasi server con cron nativi CLI.
+    |   Il worker gira come cron separato (queue:work --stop-when-empty).
+    |   Impostare SCHEDULE_QUEUE_WORKER=false nel .env.
     |
     */
     'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
