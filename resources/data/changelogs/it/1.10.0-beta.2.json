@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Stampa estratto conto anagrafica (PDF): aggiunto il nuovo documento ufficiale esportabile per ogni anagrafica, che include il riepilogo completo dei saldi (iniziale, versato, addebiti, finale) e la timeline dettagliata dei movimenti contabili per l'esercizio.",
+        "Menu a tendina intelligente per i pulsanti (Mobile UX): l'intestazione delle pagine (PageHeaderGuide) raggruppa ora automaticamente i pulsanti d'azione sotto un 'burger menu' su smartphone, preservando lo spazio su schermo senza sacrificare la navigabilità.",
+        "Migliorato il ritorno dinamico delle breadcrumb: la navigazione per tornare al piano rate dall'estratto conto anagrafico ora rileva la cronologia della sessione, evitando fastidiosi errori 404 in scenari multi-contesto.",
+        "Ottimizzazione formattazione importi: corretto l'allineamento visivo del simbolo dell'euro nel PDF dell'estratto conto, anteposto coerentemente prima dell'importo numerico su tutte le righe.",
+        "Formattazione Piè di Pagina nei PDF: risolto il problema di rendering in cui gli 'a capo' e gli spazi multipli della Nota Legale / Footer venivano ignorati nei PDF generati, assicurando una formattazione fedele all'input dell'utente."
+    ]
+}

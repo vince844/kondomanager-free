@@ -283,7 +283,7 @@ const submit = () => {
 
           </CardContent>
 
-          <CardFooter class="px-0 pt-6 flex items-center gap-4">
+          <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
             <Button :disabled="form.processing">
               <span v-if="form.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
               {{ trans('impostazioni.actions.save_settings') }}

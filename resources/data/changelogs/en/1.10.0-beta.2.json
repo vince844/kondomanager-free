@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Account statement printing (PDF): added a new official exportable document for each contact, which includes a complete summary of balances (initial, paid, debits, final) and a detailed timeline of accounting movements for the fiscal year.",
+        "Smart dropdown menu for action buttons (Mobile UX): page headers (PageHeaderGuide) now automatically group action buttons under a 'burger menu' on smartphones, saving screen space without sacrificing navigability.",
+        "Improved dynamic breadcrumb return: navigating back to the installment plan from the contact account statement now detects session history, avoiding annoying 404 errors in multi-context scenarios.",
+        "Currency formatting optimization: corrected the visual alignment of the euro symbol in the account statement PDF, consistently placed before the numeric amount on all rows.",
+        "PDF Footer Formatting: fixed a rendering issue where newlines and multiple spaces in the Legal Note / Footer were ignored in generated PDFs, ensuring formatting accurately reflects user input."
+    ]
+}

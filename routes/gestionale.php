@@ -186,6 +186,9 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])
         ->name('anagrafiche.estratto-conto');
     
+    Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
+        ->name('anagrafiche.estratto-conto.print');
+    
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');
     

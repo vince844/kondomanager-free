@@ -3,13 +3,15 @@
 import { computed } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import PageHeaderGuide, { type GuideItem } from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { useDateConverter } from '@/composables/useDateConverter';
-import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle } from 'lucide-vue-next';
+import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle, ChevronDown } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -38,17 +40,57 @@ const goBack = () => {
     else router.visit(generatePath('gestionale/:condominio/piani-rate', { condominio: props.condominio.id }));
 };
 
+const printPDF = () => {
+    const url = route('admin.gestionale.anagrafiche.estratto-conto.print', {
+        condominio: props.condominio.id,
+        anagrafica: props.anagrafica.id,
+    });
+    window.open(url, '_blank');
+};
+
 const formatIndirizzoImmobile = (immobile: any) => {
     let base = `Int. ${immobile.interno}`; 
     if (immobile.piano) base += ` - P. ${immobile.piano}`;
     return base;
 };
 
+const backUrlString = computed(() => {
+    if (typeof window !== 'undefined' && window.history.state?.back) {
+        return window.history.state.back;
+    }
+    // Fallback alla lista dei piani rate dell'esercizio corrente
+    return route('admin.gestionale.esercizi.piani-rate.index', { 
+        condominio: props.condominio.id, 
+        esercizio: props.esercizio.id 
+    });
+});
+
 const breadcrumbs = computed(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-  { title: 'Piani Rate', href: '#' },
+  { title: 'Piani Rate', href: backUrlString.value },
   { title: `EC: ${props.anagrafica.nome}`, href: '#' },
 ]);
+
+const pageGuides: GuideItem[] = [
+  {
+    title: 'Saldo Iniziale',
+    description: 'Il debito o credito ereditato dall\'esercizio precedente. Un importo in rosso indica un debito residuo, in verde un credito a tuo favore.',
+    icon: Landmark,
+    colorVariant: 'slate'
+  },
+  {
+    title: 'Addebiti',
+    description: 'Tutte le rate emesse a carico del condòmino e gli eventuali ripristini di debito.',
+    icon: Banknote,
+    colorVariant: 'amber'
+  },
+  {
+    title: 'Pagamenti',
+    description: 'Tutti gli incassi registrati e le compensazioni usate per raggiungere il saldo finale.',
+    icon: Wallet,
+    colorVariant: 'emerald'
+  }
+];
 
 const saldoColorClass = computed(() => {
     if (props.stats.saldo_raw > 0) return 'text-red-600';
@@ -106,24 +148,46 @@ const getImportoStyle = (riga: any) => {
 <template>
     <Head :title="`EC - ${anagrafica.nome}`" />
 
-    <GestionaleLayout :breadcrumbs="breadcrumbs">
+    <GestionaleLayout>
         
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-            <div>
-                <h1 class="text-2xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
-                    {{ anagrafica.nome }}
-                    <Badge variant="outline" class="font-mono font-normal text-xs">{{ anagrafica.codice_fiscale }}</Badge>
-                </h1>
-                <p class="text-sm text-gray-500 mt-1 flex items-center gap-2">
-                    <Mail class="w-3 h-3" /> {{ anagrafica.email || 'Nessuna email' }}
-                    <span class="text-gray-300">|</span> Esercizio: {{ esercizio.nome }}
-                </p>
-            </div>
-            <div class="flex gap-2">
-                <Button variant="outline" size="sm" @click="goBack"><ArrowLeft class="w-4 h-4 mr-2" /> Indietro</Button>
-                <Button variant="outline" size="sm"><Printer class="w-4 h-4 mr-2" /> Stampa PDF</Button>
-            </div>
-        </div>
+        <div class="px-6 py-8 space-y-6">
+            <PageHeaderGuide
+                :page-title="`Estratto Conto: ${anagrafica.nome}`"
+                :page-subtitle="`Situazione contabile dettagliata, saldo progressivo e storico movimenti. CF: ${anagrafica.codice_fiscale}`"
+                :guides="pageGuides"
+                :breadcrumbs="breadcrumbs"
+                :condominio="condominio"
+                :esercizio="esercizio"
+                :backUrl="backUrlString"
+                backText="Indietro"
+            >
+                <template #actions>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="h-8 px-3 border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm shrink-0 gap-2">
+                                <Printer class="w-4 h-4" />
+                                <span class="hidden sm:inline">Stampe</span>
+                                <ChevronDown class="w-3 h-3 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-56 shadow-xl rounded-xl border-slate-100 p-1.5">
+                            <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                                Documenti Ufficiali
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem 
+                                @click="printPDF"
+                                class="cursor-pointer flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700">
+                                <FileText class="w-3.5 h-3.5 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Estratto conto</div>
+                                    <div class="text-[10px] text-slate-400">PDF riepilogativo per anagrafica</div>
+                                </div>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </template>
+            </PageHeaderGuide>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -372,6 +436,7 @@ const getImportoStyle = (riga: any) => {
                     </table>
                 </div>
             </div>
+        </div>
         </div>
     </GestionaleLayout>
 </template>

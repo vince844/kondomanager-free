@@ -29,7 +29,7 @@
                 <tr>
                     <td style="text-align: left; width: 75%;">
                         @if(!empty($nota_legale_stampe))
-                            {{ $nota_legale_stampe }}
+                            {!! nl2br(str_replace('  ', '&nbsp;&nbsp;', e($nota_legale_stampe))) !!}
                         @endif
                     </td>
                     <td style="text-align: right; width: 25%;">

@@ -2,12 +2,14 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm, Link, router } from '@inertiajs/vue3';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info } from 'lucide-vue-next';
+import { Copy, RefreshCw, AlertTriangle, CheckCircle, Settings, Info, Globe, Terminal, Server } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { trans } from 'laravel-vue-i18n';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import CronSetupGuide from '@/components/guides/CronSetupGuide.vue';
 
 const props = defineProps({
     enabled: Boolean,
@@ -21,8 +23,41 @@ const form = useForm({
     enabled: props.enabled,
 });
 
+const breadcrumbs = computed(() => [
+  {
+    title: trans('impostazioni.label.settings'),
+    href: '/impostazioni',
+  },
+  {
+    title: trans('impostazioni.header.cron_settings_title'),
+    href: '/impostazioni/cron',
+  },
+]);
+
+const pageGuides = computed(() => [
+  {
+    title: trans('impostazioni.dialogs.cron_guide_1_title') || 'Il Motore Invisibile',
+    description: trans('impostazioni.dialogs.cron_guide_1_desc') || 'Il demone esegue automaticamente i task in background: controlla le scadenze, emette le rate e gestisce gli alert senza intervento manuale.',
+    icon: Info,
+    colorVariant: 'blue'
+  },
+  {
+    title: trans('impostazioni.dialogs.cron_guide_2_title') || 'Webhook (Esterno)',
+    description: trans('impostazioni.dialogs.cron_guide_2_desc') || 'Identificato dal pallino arancione. Permette di attivare lo scheduler tramite un URL criptato chiamato da servizi esterni (es. cron-job.org).',
+    icon: Globe,
+    colorVariant: 'amber'
+  },
+  {
+    title: trans('impostazioni.dialogs.cron_guide_3_title') || 'System Cron (Nativo)',
+    description: trans('impostazioni.dialogs.cron_guide_3_desc') || 'Identificato dal pallino grigio. Indica che lo scheduler gira in modo ultra-veloce direttamente sul sistema operativo (es. Crontab o Plesk).',
+    icon: Terminal,
+    colorVariant: 'emerald'
+  }
+]);
+
 const copied = ref(false);
 const isRegenerateDialogOpen = ref(false);
+const showPleskGuide = ref(false);
 
 const toggleEnabled = () => {
     form.post(route('impostazioni.cron.update'), {
@@ -75,28 +110,36 @@ const isCronActive = computed(() => {
 });
 
 const lastHeartbeatRelative = computed(() => {
-    if (!props.lastHeartbeat) return 'Mai eseguito';
+    if (!props.lastHeartbeat) return trans('impostazioni.dialogs.cron_status_never_run') || 'Mai eseguito';
     const seconds = currentTime.value - props.lastHeartbeat;
-    if (seconds < 0) return 'Ora';
-    if (seconds < 60) return `${seconds} sec fa`;
+    if (seconds < 0) return trans('impostazioni.dialogs.cron_status_now') || 'Ora';
+    if (seconds < 60) return trans('impostazioni.dialogs.cron_status_seconds_ago', { seconds }) || `${seconds} sec fa`;
     const mins = Math.floor(seconds / 60);
-    return `${mins} min fa`;
+    return trans('impostazioni.dialogs.cron_status_minutes_ago', { minutes: mins }) || `${mins} min fa`;
 });
 </script>
 
 <template>
-    <AppLayout>
+    <AppLayout :breadcrumbs="[]">
         <Head :title="trans('impostazioni.header.cron_settings_title')" />
 
-        <div class="px-4 py-6">
-            <div class="mb-6">
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ trans('impostazioni.header.cron_settings_title') }}
-                </h1>
-                <p class="mt-2 text-sm text-muted-foreground">
-                    {{ trans('impostazioni.header.cron_settings_description') }}
-                </p>
-            </div>
+        <div class="px-4 py-6 space-y-6">
+            <PageHeaderGuide
+                :page-title="trans('impostazioni.header.cron_settings_title') || 'Automazioni e Sincronizzazione'"
+                :page-subtitle="trans('impostazioni.header.cron_settings_description') || 'Configura e monitora l\'esecuzione automatica in background dei task di sistema, come la verifica degli scoperti e l\'emissione delle rate.'"
+                :icon="Settings"
+                :guides="pageGuides"
+                :breadcrumbs="breadcrumbs"
+                back-url="/impostazioni"
+                :back-text="trans('impostazioni.label.settings') || 'Impostazioni'"
+            >
+                <template #actions>
+                    <Button variant="outline" size="sm" @click="showPleskGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
+                        <Server class="w-4 h-4" />
+                        Guida configurazione
+                    </Button>
+                </template>
+            </PageHeaderGuide>
 
             <Card class="border shadow-none p-4">
                 <div class="flex flex-col w-full sm:flex-row sm:justify-between mb-4">
@@ -107,9 +150,9 @@ const lastHeartbeatRelative = computed(() => {
                             <span class="relative inline-flex rounded-full h-3 w-3" :class="isCronActive ? 'bg-green-500' : 'bg-red-500'"></span>
                         </div>
                         <div class="text-sm flex items-center">
-                            <span class="font-medium text-foreground mr-1">Demone Cron:</span>
+                            <span class="font-medium text-foreground mr-1">{{ trans('impostazioni.dialogs.cron_label_daemon') || 'Demone Cron:' }}</span>
                             <span :class="isCronActive ? 'text-green-600' : 'text-red-600 font-semibold'">
-                                {{ isCronActive ? 'Attivo' : 'Fermo/Errore' }}
+                                {{ isCronActive ? trans('impostazioni.dialogs.cron_status_active') || 'Attivo' : trans('impostazioni.dialogs.cron_status_error') || 'Fermo/Errore' }}
                             </span>
                             
                             <!-- SOURCE INDICATOR -->
@@ -119,54 +162,14 @@ const lastHeartbeatRelative = computed(() => {
                             </div>
 
                             <span class="text-xs text-muted-foreground ml-2">
-                                (Ultimo check: {{ lastHeartbeatRelative }})
+                                {{ trans('impostazioni.dialogs.cron_label_last_check') || '(Ultimo check:' }} {{ lastHeartbeatRelative }})
                             </span>
                         </div>
                     </div>
 
-                    <Link
-                        as="button"
-                        href="/impostazioni"
-                        class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-white hover:bg-primary/90"
-                    >
-                        <Settings class="w-4 h-4" />
-                        <span>{{ trans('impostazioni.label.settings') }}</span>
-                    </Link>
                 </div>
                 
                 <CardContent class="space-y-4 p-0">
-
-                    <div class="rounded-lg border bg-muted/40 p-4 mb-6">
-                        <div class="flex items-start gap-4">
-                            <Info class="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                            <div class="grid gap-6 md:grid-cols-2 w-full">
-                                <div>
-                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
-                                        {{ trans('impostazioni.dialogs.cron_info_title') }}
-                                    </h4>
-                                    <p 
-                                        class="text-xs text-muted-foreground leading-relaxed" 
-                                        v-html="trans('impostazioni.dialogs.cron_info_description')"
-                                    ></p>
-                                </div>
-                                <div class="text-xs space-y-2 border-l pl-4 md:border-l-0 md:pl-0 md:border-l-0">
-                                    <h4 class="font-semibold text-sm mb-1 text-foreground">
-                                        {{ trans('impostazioni.dialogs.cron_legend_title') }}
-                                    </h4>
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-                                        <span class="font-medium">Webhook:</span>
-                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_external') }}</span>
-                                    </div>
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-2 h-2 rounded-full bg-gray-400"></span>
-                                        <span class="font-medium">System Cron:</span>
-                                        <span class="text-muted-foreground">{{ trans('impostazioni.dialogs.cron_legend_internal') }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
                     
                     <!-- TOGGLE SCHEDULER -->
                     <div class="flex flex-row items-center justify-between gap-4 border rounded-lg p-4">
@@ -243,7 +246,6 @@ const lastHeartbeatRelative = computed(() => {
             </Card>
         </div>
 
-        <!-- CONFIRM DIALOG -->
         <ConfirmDialog
             v-model:modelValue="isRegenerateDialogOpen"
             :title="trans('impostazioni.actions.regenerate_token')"
@@ -251,4 +253,6 @@ const lastHeartbeatRelative = computed(() => {
             @confirm="regenerateToken"
         />
     </AppLayout>
+
+    <CronSetupGuide v-model:open="showPleskGuide" />
 </template>

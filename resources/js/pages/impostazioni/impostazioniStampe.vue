@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/layouts/AppLayout.vue'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,8 +10,10 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import { trans } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import Alert from '@/components/Alert.vue'
-import { computed } from 'vue'
-import { FileText, PenTool, LayoutTemplate } from 'lucide-vue-next'
+
+import { FileText, PenTool, LayoutTemplate, Info } from 'lucide-vue-next'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import PrintSetupGuide from '@/components/guides/PrintSetupGuide.vue'
 
 const page = usePage()
 
@@ -60,6 +62,8 @@ const form = useForm({
   delete_firma_stampe: false,
 })
 
+const showGuide = ref(false)
+
 const signaturePreviewUrl = ref<string | null>((firma_stampe_url as string) || null)
 
 const handleSignatureUpload = (e: Event) => {
@@ -88,7 +92,7 @@ const submit = () => {
 </script>
 
 <template>
-  <AppLayout :breadcrumbs="breadcrumbs">
+  <AppLayout :breadcrumbs="[]">
     <Head :title="trans('impostazioni.dialogs.print_settings_title') || 'Impostazioni Stampe PDF'" />
 
     <div class="px-4 py-6 space-y-6">
@@ -101,7 +105,14 @@ const submit = () => {
         back-url="/impostazioni"
         :back-text="trans('impostazioni.label.settings')"
         :video-url="null"
-      />
+      >
+        <template #actions>
+          <Button variant="outline" size="sm" @click="showGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
+            <FileText class="w-4 h-4" />
+            Guida impaginazione
+          </Button>
+        </template>
+      </PageHeaderGuide>
 
       <div v-if="flashMessage" class="py-2">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
@@ -113,7 +124,20 @@ const submit = () => {
             
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">{{ trans('impostazioni.label.print_legal_note') || 'Nota Legale / Footer' }}</label>
+                <div class="flex items-center gap-2 mb-1 min-h-[24px]">
+                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_legal_note') || 'Nota Legale / Footer' }}</label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                        <Info class="w-4 h-4" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_legal_note') || 'Nota Legale / Footer' }}</h4>
+                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_legal_note_tooltip') || 'Puoi premere &quot;Invio&quot; per andare a capo e inserire spazi multipli per allineare il testo. La formattazione verrà mantenuta fedelmente in stampa nel PDF.'"></p>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
                 <Textarea 
                   v-model="form.nota_legale_stampe" 
                   rows="3" 
@@ -128,7 +152,20 @@ const submit = () => {
               </div>
 
               <div class="pt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-1">{{ trans('impostazioni.label.print_admin_signature') || 'Firma Amministratore' }}</label>
+                <div class="flex items-center gap-2 mb-1 min-h-[24px]">
+                  <label class="block text-sm font-medium text-gray-700">{{ trans('impostazioni.label.print_admin_signature') || 'Firma Amministratore' }}</label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                        <Info class="w-4 h-4" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                      <h4 class="text-sm font-bold mb-2">{{ trans('impostazioni.label.print_admin_signature') || 'Firma Amministratore' }}</h4>
+                      <p class="text-xs text-slate-500 leading-relaxed" v-html="trans('impostazioni.label.print_admin_signature_tooltip') || '<strong>Dimensioni ottimali:</strong> ~400x150 pixel.<br>Consigliato formato PNG con sfondo trasparente e ritagliato senza margini bianchi eccessivi attorno alla firma.'"></p>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
                 <div class="flex items-center gap-4">
                   <div 
                     class="relative h-24 w-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden"
@@ -165,8 +202,8 @@ const submit = () => {
 
           </CardContent>
 
-          <CardFooter class="px-0 pt-6 flex items-center gap-4 border-t px-6 pb-6 mt-6">
-            <Button :disabled="form.processing" class="mt-6">
+          <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
+            <Button :disabled="form.processing">
               <span v-if="form.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
               {{ trans('impostazioni.actions.save_settings') || 'Salva Impostazioni' }}
             </Button>
@@ -174,5 +211,7 @@ const submit = () => {
         </Card>
       </form>
     </div>
+
+    <PrintSetupGuide v-model:open="showGuide" />
   </AppLayout>
 </template>

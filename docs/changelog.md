@@ -7,6 +7,19 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.2] - Estratto Conto Anagrafica PDF, Mobile UX & Breadcrumbs Dinamiche
+
+### Aggiunto
+- **Stampa Estratto Conto Anagrafica (PDF):** Aggiunta la generazione del nuovo documento ufficiale di "Estratto Conto" per singolo condòmino, richiamabile dalla vista Piani Rate. Il PDF include un'intestazione premium, la lista delle unità immobiliari associate, un cruscotto riepilogativo dei saldi (iniziale, addebiti, versamenti, saldo finale) e una tabella cronologica (timeline) dettagliata e formattata con tutti i movimenti e operazioni registrati per l'anagrafica nell'esercizio di riferimento, applicando il motore a partita doppia "penny-perfect" per il calcolo del saldo progressivo.
+- **Burger Menu Intelligente su PageHeaderGuide:** Migliorata drasticamente la UX mobile del gestionale introducendo la modalità "Burger Menu" (Menu a tendina) nell'header di pagina standard. Su smartphone, i bottoni d'azione in esubero (es. Indietro, Pulsanti Guida) vengono automaticamente collassati sotto un unico pulsante espandibile "Opzioni", prevenendo overflow orizzontali e ammassamenti indesiderati di pulsanti.
+
+### Corretto
+- **Fix Ritorno Dinamico Breadcrumb:** Sostituita la precedente logica di generazione statica del link "Torna al Piano Rate" all'interno della vista *Estratto Conto Anagrafica*. Il sistema intercetta la cronologia d'accesso (tramite Inertia `window.history.state.back`) restituendo sempre il condòmino al piano corretto (generale o straordinario) da cui era partito, estirpando definitivamente falsi errori 404 in scenari multi-contesto.
+- **Risoluzione Tipografica PDF:** Uniformata la formattazione dei campi contabili nel layout PDF del documento di Estratto Conto. Il simbolo della valuta (€) viene ora coerentemente stampato davanti all'importo in tutte le colonne (Dare, Avere, Saldi intermedi) anziché appeso alla fine.
+- **Formattazione Piè di Pagina nei PDF:** Risolto un problema di rendering per cui gli "a capo" (invio) e gli spazi multipli inseriti nella "Nota Legale / Footer" non venivano rispettati nei PDF generati. La formattazione ora ricalca fedelmente l'input utente.
+
+---
+
 ## [1.10.0-beta.1] - Piani Straordinari Misti, Paginazione Stampe PDF e Logica "Catch-all"
 
 ### Aggiunto
