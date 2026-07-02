@@ -322,7 +322,9 @@ class InstallerWizard extends Component
         ];
 
         foreach ($pairs as $key => $value) {
-            $pattern = "/^{$key}=.*$/m";
+            // #?[ \t]* tollera righe commentate (es. "# DB_HOST=...") lasciate come placeholder
+            // in .env.example: le sostituisce/scommenta invece di duplicarle in append.
+            $pattern = "/^#?[ \t]*{$key}=.*$/m";
             $env = preg_match($pattern, $env)
                 ? preg_replace($pattern, "{$key}={$value}", $env)
                 : $env . PHP_EOL . "{$key}={$value}";
@@ -348,7 +350,8 @@ class InstallerWizard extends Component
         ];
 
         foreach ($pairs as $key => $value) {
-            $pattern = "/^{$key}=.*$/m";
+            // #?[ \t]* tollera righe commentate lasciate come placeholder in .env.example.
+            $pattern = "/^#?[ \t]*{$key}=.*$/m";
             $env = preg_match($pattern, $env)
                 ? preg_replace($pattern, "{$key}={$value}", $env)
                 : $env . PHP_EOL . "{$key}={$value}";

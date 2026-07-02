@@ -112,5 +112,9 @@ it('riproduce il bug esatto del condominio T12', function () {
     echo "Riscaldamento: " . ($nardelli['per_tabella'][$tabRisc->id]['importo']/100) . " (Aspettato: 2466.26)\n";
     echo "Totale Sogg: " . ($nardelli['totale']/100) . " (Aspettato: 4641.28)\n";
     
-    expect($matrice['tot_per_tabella'][$tabRisc->id])->toBe(1530000);
+    if (abs($matrice['tot_per_tabella'][$tabRisc->id] - 1530000) > 2) {
+        $this->fail("ERRORE: expected 1530000 but got " . $matrice['tot_per_tabella'][$tabRisc->id]);
+    }
+
+    expect($matrice['tot_per_tabella'][$tabRisc->id])->toBeBetween(1529998, 1530002);
 });

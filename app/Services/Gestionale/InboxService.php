@@ -112,20 +112,26 @@ class InboxService
         // Definiamo il limite temporale per i task urgenti (fine giornata odierna)
         $deadline = now()->endOfDay()->toDateTimeString();
         
-        $stats = Evento::query()
+        $statsQuery = Evento::query()
             // Filtriamo solo eventi che richiedono un'azione esplicita dell'admin
             ->whereJsonContains('meta->requires_action', true)
             // Escludiamo eventi privati (dedicati solo ai condòmini)
             ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
             // Consideriamo solo ciò che non è ancora stato evaso
-            ->where('is_completed', false)
-            // Usiamo una singola selectRaw per estrarre tutti i contatori in un'unica passata al DB
-            ->selectRaw("
-                COUNT(*) as all_tasks,
-                SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
-                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
-                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
-            ", [$deadline])
+            ->where('is_completed', false);
+
+        // Fix cross-database per SQLite tests vs MySQL
+        $isSqlite = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite';
+        $typeExtract = $isSqlite 
+            ? "JSON_EXTRACT(meta, '$.\"type\"')" 
+            : "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4)";
+
+        $stats = $statsQuery->selectRaw("
+            COUNT(*) as all_tasks,
+            SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
+            SUM(CASE WHEN {$typeExtract} = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
+            SUM(CASE WHEN {$typeExtract} = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
+        ", [$deadline])
             ->first();
 
         // Cast esplicito a intero per garantire coerenza nel frontend (Inertia/Vue)

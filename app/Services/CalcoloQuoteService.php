@@ -610,7 +610,7 @@ class CalcoloQuoteService
         $sumBase    = 0;
 
         foreach ($weights as $key => $w) {
-            $raw   = $totAbs * $w;
+            $raw   = round($totAbs * $w, 8);
             $base  = (int) floor($raw);
             $bases[$key]      = $base;
             $remainders[$key] = $raw - $base;

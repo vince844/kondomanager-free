@@ -17,6 +17,8 @@ afterEach(function () {
 
 beforeEach(function () {
     Config::set('mail.default', 'smtp');
+    $reflection = new ReflectionClass(\App\Providers\MailConfigServiceProvider::class);
+    $reflection->setStaticPropertyValue('defaultConfig', null);
 });
 
 it('carica correttamente la configurazione SMTP dal database quando abilitata', function () {

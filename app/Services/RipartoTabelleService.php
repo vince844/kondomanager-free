@@ -103,7 +103,7 @@ class RipartoTabelleService
                 if (!isset($pivotOverrides[$cap->id])) {
                     $pivotOverrides[$cap->id] = 0;
                 }
-                $pivotOverrides[$cap->id] += (int) $cap->pivot->importo;
+                $pivotOverrides[$cap->id] += (int) round($cap->pivot->importo);
             }
         }
         $capitoliIds = array_keys($pivotOverrides);
@@ -164,7 +164,7 @@ class RipartoTabelleService
             foreach ($rata->rateQuote as $rq) {
                 if (!$rq->anagrafica_id || !$rq->immobile_id) continue;
                 $totaliReali[$rq->anagrafica_id][$rq->immobile_id] =
-                    ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) $rq->importo;
+                    ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) round($rq->importo);
             }
         }
 
@@ -227,13 +227,17 @@ class RipartoTabelleService
                 if ($peseTot > 0.0) {
                     $assegnato = 0;
                     $tabIds    = array_keys($pesPerTab);
+                    // Fase 1 (docs/ripartotabelle_discrepanza_centesimale.md): ordina per peso crescente
+                    // così il resto dell'arrotondamento va alla tabella con peso maggiore (meno visibile).
+                    usort($tabIds, fn($a, $b) => $pesPerTab[$a] <=> $pesPerTab[$b]);
                     $nTab      = count($tabIds);
                     foreach ($tabIds as $idx => $tabId) {
                         if ($idx === $nTab - 1) {
                             // Ultimo: il resto (penny-perfect)
                             $importiPerTab[$tabId] = $importoTotale - $assegnato;
                         } else {
-                            $q = (int) round($importoTotale * ($pesPerTab[$tabId] / $peseTot));
+                            $ratio = round($pesPerTab[$tabId] / $peseTot, 8);
+                            $q = (int) round($importoTotale * $ratio);
                             $importiPerTab[$tabId] = $q;
                             $assegnato += $q;
                         }

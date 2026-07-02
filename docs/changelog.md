@@ -7,6 +7,20 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.3] - Riparto Penny-Perfect, Hardening Installer & Requisito Minimo PHP 8.4
+
+### Corretto
+- **Discrepanza Centesimale nel Riparto per Tabella (Fase 1):** Risolto lo spostamento di centesimi tra le colonne del documento "Riparto Bilancio per Tabella × Soggetto" (`RipartoTabelleService::buildMatrice`). Le tabelle vengono ora ordinate per peso crescente prima della distribuzione penny-perfect, così il resto dell'arrotondamento va sempre alla tabella con il peso maggiore (dove lo scostamento è proporzionalmente irrilevante) invece che a una tabella arbitraria determinata dall'ordine di inserimento nel piano dei conti. Analisi completa, causa meccanica e roadmap della Fase 2 (approccio column-first, non ancora avviata) documentate in `docs/ripartotabelle_discrepanza_centesimale.md`.
+- **Duplicazione Variabili Database nel Wizard di Installazione:** Corretta la regex in `InstallerWizard::updateEnvSettings()` / `updateMailSettings()` che non riconosceva le righe placeholder commentate (`# DB_HOST=...`) ereditate da `.env.example`, causando l'aggiunta di una riga duplicata invece della sostituzione in-place quando l'amministratore inseriva le credenziali reali del database durante l'installazione.
+
+### Hardening
+- **Requisito Minimo elevato a PHP 8.4:** `composer.json` e `config/installer.php` dichiarano ora `^8.4` / `8.4.0` come versione minima richiesta, allineati al nuovo target della piattaforma. Aggiornati anche `.env.example` (worker di coda per hosting condivisi, credenziali database non più commentate per evitare la duplicazione sopra) e i riferimenti PHP nella documentazione (README, roadmap).
+- **Worker Coda su Hosting Condivisi:** Aggiunta la variabile `SCHEDULE_QUEUE_WORKER` a `.env.example`, documentando esplicitamente quando lo scheduler deve processare la coda in modalità sincrona (hosting condivisi senza Supervisor) rispetto a un worker dedicato (VPS/Plesk).
+
+> **Nota di rilascio:** l'aggiornamento delle dipendenze Composer (`composer update` per allineare `composer.lock` alla nuova piattaforma PHP 8.4) è pianificato subito prima della pubblicazione di questa beta.
+
+---
+
 ## [1.10.0-beta.2] - Estratto Conto Anagrafica PDF, Mobile UX & Breadcrumbs Dinamiche
 
 ### Aggiunto

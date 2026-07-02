@@ -119,17 +119,24 @@ class ActionInboxController extends Controller
 
         $deadline = now()->endOfDay()->toDateTimeString();
 
-        $stats = Evento::query()
+        $statsQuery = Evento::query()
             ->whereJsonContains('meta->requires_action', true)
             ->where(fn($q) => $q->where('visibility', '!=', 'private')->orWhereNull('visibility'))
             ->where('is_completed', false)
-            ->whereHas('condomini', fn($q) => $q->where('condomini.id', $condominioId))
-            ->selectRaw("
-                COUNT(*) as all_tasks,
-                SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
-                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
-                SUM(CASE WHEN CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4) = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
-            ", [$deadline])
+            ->whereHas('condomini', fn($q) => $q->where('condomini.id', $condominioId));
+
+        // Fix cross-database per SQLite tests vs MySQL
+        $isSqlite = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite';
+        $typeExtract = $isSqlite 
+            ? "JSON_EXTRACT(meta, '$.\"type\"')" 
+            : "CONVERT(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.\"type\"')) USING utf8mb4)";
+
+        $stats = $statsQuery->selectRaw("
+            COUNT(*) as all_tasks,
+            SUM(CASE WHEN start_time <= ? THEN 1 ELSE 0 END) as urgent,
+            SUM(CASE WHEN {$typeExtract} = 'verifica_pagamento' THEN 1 ELSE 0 END) as payments,
+            SUM(CASE WHEN {$typeExtract} = 'segnalazione_guasto' THEN 1 ELSE 0 END) as maintenance
+        ", [$deadline])
             ->first();
 
         return [

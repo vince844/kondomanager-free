@@ -12,6 +12,8 @@ test('login screen can be rendered', function () {
 
 test('users can authenticate using the login screen', function () {
     $user = User::factory()->create();
+    
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => \App\Enums\Permission::ACCESS_ADMIN_PANEL->value, 'guard_name' => 'web']);
 
     $response = $this->post('/login', [
         'email' => $user->email,
@@ -19,7 +21,7 @@ test('users can authenticate using the login screen', function () {
     ]);
 
     $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(\App\Helpers\RedirectHelper::userHomeRoute());
 });
 
 test('users can not authenticate with invalid password', function () {
@@ -34,6 +36,7 @@ test('users can not authenticate with invalid password', function () {
 });
 
 test('users can logout', function () {
+    /** @var \App\Models\User $user */
     $user = User::factory()->create();
 
     $response = $this->actingAs($user)->post('/logout');

@@ -40,7 +40,7 @@ class UpdateService
      *         "version": "1.9.0",
      *         "url": "...",
      *         "hash": "sha256...",
-     *         "requirements": { "php": "8.2.0", "extensions": [...] },
+     *         "requirements": { "php": "8.4.0", "extensions": [...] },
      *         "exclude": [...]
      *       }
      *     ]

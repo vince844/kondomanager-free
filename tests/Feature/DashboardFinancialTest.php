@@ -12,7 +12,7 @@ use App\Models\Gestionale\Rata;
 use Inertia\Testing\AssertableInertia;
 use Spatie\Permission\Models\Permission;
 
-function setupFinancialScenario($preventivo, $pianificato, $connesso = true) {
+function setupFinancialScenario(int|float $preventivo, int|float $pianificato, bool $connesso = true) {
     // 1. Permessi minimi per evitare crash del layout
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
 
@@ -91,6 +91,7 @@ test('dashboard risulta allineata', function () {
 
 test('dashboard somma correttamente rate da più piani per la stessa voce (Scenario Multi-Piano)', function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
     $user = User::factory()->create();
     $user->givePermissionTo('Accesso pannello amministratore');
     $condominio = Condominio::factory()->create();
@@ -148,11 +149,11 @@ test('dashboard identifica la singola voce responsabile del deficit', function (
         ->get("/admin/gestionale/{$data['condominio']->id}")
         ->assertStatus(200)
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->has('copertura.voci_critiche', 1) // Ci aspettiamo 1 voce nella lista dei problemi
-            ->has('copertura.voci_critiche.0', fn ($json) => $json
-                ->where('mancante', 10000) // 100,00€ di buco
+            ->has('copertura.orfani', 1) // Ci aspettiamo 1 voce nella lista dei problemi
+            ->has('copertura.orfani.0', fn ($json) => $json
+                ->where('importo', 10000) // 100,00€ di buco
                 // Qui verifichiamo che ci sia il suggerimento giusto
-                ->where('tipo_azione', 'integrazione') 
+                ->where('strategia', 'nessuna') 
                 ->etc()
             )
         );
@@ -160,24 +161,27 @@ test('dashboard identifica la singola voce responsabile del deficit', function (
 
 test('impedisce la modifica dell\'importo spesa se esistono rate emesse', function () {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    /** @var \App\Models\User $user */
     $user = User::factory()->create();
     $user->givePermissionTo('Accesso pannello amministratore');
     $condominio = Condominio::factory()->create();
     
+    $esercizio = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
     $gestione = Gestione::factory()->create(['condominio_id' => $condominio->id]);
-    $pianoConti = PianoConto::factory()->create(['gestione_id' => $gestione->id]);
+    $esercizio->gestioni()->attach($gestione->id, ['attiva' => true]);
+    $pianoConti = PianoConto::factory()->create(['gestione_id' => $gestione->id, 'condominio_id' => $condominio->id]);
     $conto = Conto::factory()->create(['piano_conto_id' => $pianoConti->id, 'importo' => 50000]);
     
     // *** CORREZIONE: Usiamo l'Enum corretto (o 'approvato' se non hai l'enum sotto mano) ***
     // Assumo che tu abbia StatoPianoRate::APPROVATO, se dà errore usa la stringa 'approvato'
     $stato = enum_exists(StatoPianoRate::class) ? StatoPianoRate::APPROVATO : 'approvato';
 
-    $pianoRate = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'stato' => $stato]); 
+    $pianoRate = PianoRate::factory()->create(['gestione_id' => $gestione->id, 'stato' => $stato]);  
     // FIX: Anche qui per coerenza, esplicitiamo l'importo 
     $pianoRate->capitoli()->attach($conto->id, ['importo' => 50000]);
 
     $response = $this->actingAs($user)
-        ->patchJson("/admin/gestionale/{$condominio->id}/conti/{$conto->id}", [
+        ->patchJson("/admin/gestionale/{$condominio->id}/esercizi/{$esercizio->id}/piani-conti/{$pianoConti->id}/conti/{$conto->id}", [
             'importo' => 60000,
             'nome' => 'Spesa Modificata'
         ]);
