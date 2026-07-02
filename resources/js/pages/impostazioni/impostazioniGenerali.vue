@@ -6,9 +6,11 @@ import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
 import { Settings, Globe, Building2, ShieldCheck } from 'lucide-vue-next'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
+import InputError from '@/components/InputError.vue'
 import { trans, wTrans, isLoaded, loadLanguageAsync } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import type { GeneralSettings } from '@/types/GeneralSettings'
@@ -72,11 +74,12 @@ const languageLabels = computed<
 const {
   can_register,
   language,
+  app_name,
   open_condominio_on_login,
   default_condominio_id,
   condomini,
-  default_user_role, 
-  roles,            
+  default_user_role,
+  roles,
 } = page.props
 
 /* -------------------------------------------------
@@ -85,6 +88,7 @@ const {
 const form = useForm({
   user_frontend_registration: Boolean(can_register),
   language: (language || 'it') as SupportedLanguage,
+  app_name: app_name || 'Kondomanager',
   open_condominio_on_login: Boolean(Number(open_condominio_on_login)),
   default_condominio_id: default_condominio_id ? String(default_condominio_id) : '',
   default_user_role: default_user_role || 'utenti', 
@@ -181,6 +185,25 @@ const submit = () => {
                   </Select>
                 </div>
                 <div v-else class="w-full h-10 bg-muted/50 rounded-md animate-pulse" />
+              </div>
+            </div>
+
+            <!-- APP NAME -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.app_name_settings_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.app_name_settings_description') }}
+                </p>
+              </div>
+
+              <div class="w-full sm:w-[240px] shrink-0">
+                <Input v-model="form.app_name" type="text" maxlength="255"
+                  :placeholder="trans('impostazioni.placeholder.app_name')"
+                  class="w-full text-sm" />
+                <InputError :message="form.errors.app_name" />
               </div>
             </div>
 

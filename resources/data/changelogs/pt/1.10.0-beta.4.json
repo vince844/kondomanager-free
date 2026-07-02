@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Atualização da plataforma: o Kondomanager foi atualizado para as versões mais recentes do Laravel, Inertia e Livewire, com testes extensivos em todas as páginas para garantir total compatibilidade.",
+        "Seleção de idioma durante a instalação: o assistente de instalação agora permite escolher imediatamente o idioma principal da aplicação (Italiano, Inglês, Espanhol, Português), sem precisar defini-lo depois.",
+        "Nome da aplicação personalizável: o nome exibido na aba do navegador e como remetente nos emails enviados aos condóminos agora pode ser alterado a qualquer momento nas Configurações Gerais, não apenas durante a instalação.",
+        "Segurança reforçada na página final de resumo do instalador: as senhas (administrador, banco de dados, email) deixam de ser expostas em texto simples na página ou no ficheiro de resumo descarregável.",
+        "Corrigido um problema em que o idioma e o nome da aplicação escolhidos durante uma instalação nova não eram aplicados corretamente.",
+        "Removidos campos de configuração de email não utilizados da etapa 'Ambiente' da instalação: a configuração de email permanece na sua etapa dedicada."
+    ]
+}

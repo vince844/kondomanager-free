@@ -7,6 +7,32 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.4] - Aggiornamento Piattaforma (Laravel 13) & Identità Personalizzabile
+
+### Aggiornamento Piattaforma
+
+- **Laravel 13, Inertia 3 & Livewire 4:** Aggiornate le dipendenze core del framework (`laravel/framework` ^13.0, `inertiajs/inertia-laravel` / `@inertiajs/vue3` ^3.0, `livewire/livewire` 4.3, `vite` ^8.0, `pestphp/pest` ^4.0). Verificato l'intero frontend Inertia/Vue con test manuali estensivi su tutte le pagine.
+
+### Aggiunto
+
+- **Selezione Lingua in Installazione:** Il wizard di installazione permette ora di scegliere la lingua principale dell'applicazione (Italiano, Inglese, Spagnolo, Portoghese) direttamente dallo step "Impostazioni ambientali", invece di dover passare successivamente da Impostazioni Generali.
+- **Nome Applicazione Personalizzabile da Pannello:** Il nome dell'applicazione (mostrato nella scheda del browser e come mittente nelle email transazionali) è ora modificabile in qualsiasi momento da Impostazioni Generali, non solo in fase di installazione. Il valore è salvato in `GeneralSettings->app_name` e applicato a runtime tramite `SetAppNameMiddleware` (richieste web) e un hook `Queue::before()` (job in coda / notifiche email), lo stesso meccanismo già usato per la lingua.
+
+### Sicurezza
+
+- **Redazione Credenziali nello step Finish dell'Installer:** Il componente vendor `eii/laravel-installer` esponeva le password in chiaro (admin, database, SMTP) sia nello snapshot Livewire incluso nell'HTML della pagina di riepilogo finale sia nel file `.txt` scaricabile. Introdotto `App\Livewire\Installer\Finish` che redige questi campi subito dopo il caricamento, prima che vengano serializzati.
+
+### Corretto
+
+- **Nome App / Lingua Ignorati in Prima Installazione Pulita:** I campi "Nome applicazione" e "Lingua" raccolti dal wizard non avevano alcun effetto in una prima installazione pulita (funzionavano solo negli aggiornamenti), perché il wizard che li scrive su `.env` viene sostituito dalla versione originale del vendor per un vincolo di checksum Livewire. Il valore scelto viene ora salvato in un marker nel progress file e applicato a `GeneralSettings` (lingua, nome app) subito dopo `migrate:fresh`, tramite il listener `MigrationsEnded` già usato per sincronizzare la versione — funziona quindi indipendentemente da quale wizard esegue l'installazione.
+- **Cache Vista Blade Obsoleta / Attributo `<title>` Deprecato:** Risolti due problemi emersi dall'aggiornamento a Inertia 3: una cache di vista compilata precedente all'upgrade causava pagine bianche su tutte le rotte tranne "/"; l'attributo `<title inertia>` in `app.blade.php`, deprecato dalla nuova major, è stato aggiornato a `<title data-inertia>`.
+
+### Rimosso
+
+- **Campi Email Morti nello step Ambiente dell'Installer:** Rimossa da `FixedEnvironmentSettings` la raccolta di campi SMTP mai effettivamente scritti su `.env` né mai esposti nella vista pubblicata — la configurazione email resta affidata al suo step dedicato ("Impostazioni di posta").
+
+---
+
 ## [1.10.0-beta.3] - Riparto Penny-Perfect, Hardening Installer & Requisito Minimo PHP 8.4
 
 ### Corretto

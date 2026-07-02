@@ -36,7 +36,7 @@ return [
      | Front‑end strings (headings, titles, descriptions)
      | ------------------------------------------------------------------ */
     'header' => [
-        'settings_head'                => 'Impostazioni',
+        'settings_head'                => 'Settings',
         'settings_title'               => 'Impostazioni applicazione',
         'settings_description'         => 'Di seguito un elenco di tutte le impostazioni configurabili per l\'applicazione',
         'general_settings_title'       => 'Impostazioni generali',
@@ -80,7 +80,7 @@ return [
         'print_no_signature'      => 'Nessuna firma',
         'print_upload_image'      => 'Carica Immagine',
         'print_remove_signature'  => 'Rimuovi',
-        'print_signature_help'    => 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max 2MB). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.',
+        'print_admin_signature_help' => 'Usa un\'immagine PNG o JPG con sfondo bianco o trasparente (max 2MB). L\'immagine verrà stampata alla fine dell\'ultimo foglio di prospetti e rendiconti.',
         'print_admin_signature_tooltip' => '<strong>Dimensioni ottimali:</strong> ~400x150 pixel.<br>Consigliato formato PNG con sfondo trasparente e ritagliato senza margini bianchi eccessivi attorno alla firma.',
     ],
 
@@ -99,6 +99,8 @@ return [
         'updates_desc_latest'                   => 'Il sistema è aggiornato all\'ultima versione',
         'language_settings_title'               => 'Lingua applicazione',
         'language_settings_description'         => 'Seleziona la lingua principale per l\'applicazione',
+        'app_name_settings_title'               => 'Nome applicazione',
+        'app_name_settings_description'         => 'Personalizza il nome mostrato nella scheda del browser e nelle email inviate ai condomini',
         'default_building_title'                => 'Apri condominio al login',
         'default_building_description'          => 'Se attivato, l\'utente verrà reindirizzato direttamente al condominio selezionato',
         'select_building_title'                 => 'Condominio predefinito',
@@ -132,7 +134,7 @@ return [
         'test_error_message'                    => 'Impossibile inviare l\'email. Controlla i parametri e riprova.',
         'test_unsaved_warning'                  => 'Hai modifiche non salvate. Salva la configurazione prima di inviare il test.',
         'cron_guide_1_title'                    => 'Il Motore Invisibile',
-        'cron_guide_1_desc'                     => 'Il processo esegue automaticamente i task in background: controlla le scadenze, emette le rate e gestisce gli alert senza intervento manuale.',
+        'cron_guide_1_desc'                     => 'Il demone esegue automaticamente i task in background: controlla le scadenze, emette le rate e gestisce gli alert senza intervento manuale.',
         'cron_guide_2_title'                    => 'Webhook (Esterno)',
         'cron_guide_2_desc'                     => 'Identificato dal pallino arancione. Permette di attivare lo scheduler tramite un URL criptato chiamato da servizi esterni (es. cron-job.org).',
         'cron_guide_3_title'                    => 'System Cron (Nativo)',
@@ -143,7 +145,7 @@ return [
         'cron_status_now'                       => 'Ora',
         'cron_status_seconds_ago'               => ':seconds sec fa',
         'cron_status_minutes_ago'               => ':minutes min fa',
-        'cron_label_daemon'                     => 'Processo Cron:',
+        'cron_label_daemon'                     => 'Demone Cron:',
         'cron_status_active'                    => 'Attivo',
         'cron_status_error'                     => 'Fermo/Errore',
         'cron_label_last_check'                 => '(Ultimo check:',
@@ -166,6 +168,7 @@ return [
     'placeholder' => [
         'select_building'     => 'Seleziona condominio',
         'select_language'     => 'Seleziona lingua',
+        'app_name'            => 'Es. Studio Amministrazioni Rossi',
         'search_settings'     => 'Filtra impostazioni...',
         'mail_host'           => 'es. smtp.gmail.com',
         'mail_password'       => 'Inserisci la password SMTP',

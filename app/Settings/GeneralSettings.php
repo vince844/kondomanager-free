@@ -9,6 +9,7 @@ class GeneralSettings extends Settings
 {
     public bool $user_frontend_registration = false;
     public string $language = 'it';
+    public string $app_name = 'Kondomanager';
     public string $version = '1.7.0';
     public bool $external_cron_enabled = false;
     public ?string $external_cron_token = null;

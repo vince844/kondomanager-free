@@ -15,6 +15,7 @@ export interface GeneralSettings extends PageProps {
   flash?: { message?: Flash }
   can_register: boolean
   language: string
+  app_name: string
   open_condominio_on_login: boolean
   default_condominio_id: number | null
   condomini: CondominioOption[]

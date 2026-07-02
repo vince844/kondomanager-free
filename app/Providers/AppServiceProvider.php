@@ -13,10 +13,13 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Database\Events\MigrationsEnded;
+use Illuminate\Queue\Events\JobProcessing;
 use App\Settings\GeneralSettings;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
-use Livewire\Livewire; 
-use App\Livewire\Installer\InstallerWizard; 
+use Livewire\Livewire;
+use App\Livewire\Installer\InstallerWizard;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -73,10 +76,67 @@ class AppServiceProvider extends ServiceProvider
             try {
                 $settings = app(GeneralSettings::class);
                 $settings->version = config('app.version');
+
+                // ====================================================================
+                // LINGUA / NOME APP SCELTI IN INSTALLAZIONE (FixedEnvironmentSettings)
+                // ====================================================================
+                // APP_LOCALE/APP_NAME nel .env non bastano: i valori realmente usati a
+                // runtime vengono letti da GeneralSettings (language, app_name) tramite
+                // SetLocaleMiddleware/SetAppNameMiddleware, che sovrascrivono la config
+                // in memoria su ogni richiesta. Le settings-migration inseriscono sempre
+                // un default fisso ('it', config('app.name')). Qui applichiamo la scelta
+                // reale dell'utente, salvata nel progress file PRIMA di migrate:fresh
+                // (quindi disponibile appena la tabella settings esiste), e puliamo
+                // subito i marker per non ri-applicarli su migrazioni future non collegate
+                // all'installer (es. update dell'app), il che resetterebbe silenziosamente
+                // una lingua o un nome cambiati nel frattempo dall'amministratore tramite
+                // Impostazioni generali.
+                $progressFile = config('installer.options.progress_file');
+                if (File::exists($progressFile)) {
+                    $progress = json_decode(File::get($progressFile), true) ?? [];
+                    $dirty = false;
+
+                    if (!empty($progress['pending_locale'])) {
+                        $settings->language = $progress['pending_locale'];
+                        unset($progress['pending_locale']);
+                        $dirty = true;
+                    }
+
+                    if (!empty($progress['pending_app_name'])) {
+                        $settings->app_name = $progress['pending_app_name'];
+                        unset($progress['pending_app_name']);
+                        $dirty = true;
+                    }
+
+                    if ($dirty) {
+                        File::put($progressFile, json_encode($progress, JSON_PRETTY_PRINT));
+                    }
+                }
+
                 $settings->save();
             } catch (\Exception $e) {
                 // Ignora se settings non è ancora configurato
                 // (prima installazione in corso)
+            }
+        });
+
+        // ====================================================================
+        // NOME APP NEI JOB IN CODA
+        // ====================================================================
+        // SetAppNameMiddleware copre solo le richieste web: i job in coda (es.
+        // notifiche email inviate tramite ShouldQueue) girano in un processo
+        // worker separato, senza middleware HTTP. Qui applichiamo lo stesso
+        // override di config('app.name') prima che ogni job venga eseguito,
+        // così oggetto/corpo delle email (config('app.name') nelle notification
+        // e nei template mail di Laravel) riflettono il nome personalizzato.
+        Queue::before(function (JobProcessing $event) {
+            try {
+                $settings = app(GeneralSettings::class);
+                if (!empty($settings->app_name)) {
+                    config(['app.name' => $settings->app_name]);
+                }
+            } catch (\Throwable $e) {
+                // Se il DB non risponde, resta il valore da .env
             }
         });
 

@@ -7,6 +7,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Lingue disponibili per la selezione al momento dell'installazione
+    |--------------------------------------------------------------------------
+    | Chiave = codice locale (usato in APP_LOCALE e nella cartella lang/),
+    | valore = etichetta mostrata nel wizard.
+    */
+    'available_locales' => [
+        'it' => 'Italiano',
+        'en' => 'English',
+        'es' => 'Español',
+        'pt' => 'Português',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Installation Steps
     |--------------------------------------------------------------------------
     | Define the steps of the installer wizard.
@@ -54,7 +68,9 @@ return [
             'key'           => 'finish',
             'label'         => 'Fine',
             'description'   => 'Completa la configurazione',
-            'component'     => \Eii\Installer\Livewire\Install\Finish::class,
+            // Override: redige password admin/db/mail prima che finiscano nello snapshot
+            // Livewire pubblico o nel file scaricabile (vedi App\Livewire\Installer\Finish).
+            'component'     => \App\Livewire\Installer\Finish::class,
         ],
     ],
 

@@ -231,6 +231,12 @@ class InstallerWizard extends Component
             DB::purge('mysql');
             DB::reconnect('mysql');
 
+            // NOTA: la sincronizzazione di GeneralSettings->language (lingua scelta
+            // nel wizard) avviene nel listener MigrationsEnded in AppServiceProvider,
+            // non qui — perché durante la prima installazione pulita questo wizard
+            // custom NON viene usato (vedi docblock di classe), quindi un fix qui
+            // funzionerebbe solo per gli aggiornamenti, non per l'installazione iniziale.
+
             // =====================================================
             // FIX SPATIE PERMISSION CACHE
             // Dopo migrate:fresh il DB è vuoto ma la cache Spatie
@@ -309,10 +315,11 @@ class InstallerWizard extends Component
         $quoteIfNeeded = fn($value) => preg_match('/\s/', $value ?? '') ? '"' . addslashes($value) . '"' : $value;
 
         $pairs = [
-            'APP_NAME'      => $quoteIfNeeded(config('installer.app_name', 'Kondomanager')),
+            'APP_NAME'      => $quoteIfNeeded($data['app_name'] ?? config('installer.app_name', 'Kondomanager')),
             'APP_ENV'       => config('installer.requirements.environment.production') ? 'production' : 'local',
             'APP_DEBUG'     => config('installer.requirements.environment.debug') ? 'true' : 'false',
             'APP_URL'       => $data['app_url'] ?? '',
+            'APP_LOCALE'    => $data['app_locale'] ?? config('app.locale', 'it'),
             'DB_CONNECTION' => $data['db_connection'] ?? 'mysql',
             'DB_HOST'       => $data['db_host'] ?? '127.0.0.1',
             'DB_PORT'       => $data['db_port'] ?? '3306',

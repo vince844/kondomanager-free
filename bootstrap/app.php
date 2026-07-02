@@ -13,6 +13,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Routing\Exceptions\InvalidSignatureException;
 use App\Http\Middleware\EnsureTwoFactorChallengeSession;
 use App\Http\Middleware\SetLocaleMiddleware;
+use App\Http\Middleware\SetAppNameMiddleware;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -35,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             CheckForPendingUpdates::class,
             SetLocaleMiddleware::class,
+            SetAppNameMiddleware::class,
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);

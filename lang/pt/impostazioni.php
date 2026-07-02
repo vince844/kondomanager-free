@@ -100,6 +100,8 @@ return [
         'updates_desc_latest'                   => 'O sistema está atualizado com a versão mais recente.',
         'language_settings_title'               => 'Idioma da aplicação',
         'language_settings_description'         => 'Selecione o idioma principal da aplicação.',
+        'app_name_settings_title'               => 'Nome da aplicação',
+        'app_name_settings_description'         => 'Personalize o nome mostrado no separador do navegador e nos emails enviados aos condóminos',
         'default_building_title'                => 'Abrir condomínio ao iniciar sessão',
         'default_building_description'          => 'Se ativado, o utilizador será redirecionado diretamente para o condomínio selecionado.',
         'select_building_title'                 => 'Condomínio predefinido',
@@ -173,6 +175,7 @@ return [
     'placeholder' => [
         'select_building'     => 'Selecionar condomínio',
         'select_language'     => 'Selecionar idioma',
+        'app_name'            => 'Ex. Administração Rossi',
         'search_settings'     => 'Filtrar configurações...',
         'mail_host'           => 'ex: smtp.gmail.com',
         'mail_password'       => 'Insira a palavra-passe SMTP',

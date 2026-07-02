@@ -101,6 +101,8 @@ return [
         'updates_desc_latest'                   => 'The system is up to date with the latest version.',
         'language_settings_title'               => 'Application language',
         'language_settings_description'         => 'Select the main language for the application.',
+        'app_name_settings_title'               => 'Nombre de la aplicación',
+        'app_name_settings_description'         => 'Personaliza el nombre mostrado en la pestaña del navegador y en los correos enviados a los propietarios',
         'default_building_title'                => 'Open building on login',
         'default_building_description'          => 'If enabled, the user will be redirected directly to the selected building.',
         'select_building_title'                 => 'Default building',
@@ -174,6 +176,7 @@ return [
     'placeholder' => [
         'select_building'     => 'Select building',
         'select_language'     => 'Select language',
+        'app_name'            => 'Ej. Administración Rossi',
         'search_settings'     => 'Filter settings...',
         'mail_host'           => 'e.g. smtp.gmail.com',
         'mail_password'       => 'Enter SMTP password',

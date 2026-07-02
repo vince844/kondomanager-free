@@ -25,6 +25,7 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'user_frontend_registration' => 'required|boolean',
             'force_comment_moderation'   => 'required|boolean',
             'language'                   => 'required|in:it,en,pt,es',
+            'app_name'                   => 'required|string|max:255',
             'open_condominio_on_login'   => 'required|boolean',
             'default_user_role'          => ['required', 'string', 'exists:roles,name'],
             'default_condominio_id'      => [

@@ -33,6 +33,7 @@ class ImpostazioniGeneraliController extends Controller
         return Inertia::render('impostazioni/impostazioniGenerali', [
             'can_register'             => (bool) $settings->user_frontend_registration,
             'language'                 => (string) $settings->language,
+            'app_name'                 => (string) $settings->app_name,
             'open_condominio_on_login' => $user->userPreferences->open_condominio_on_login,
             'default_condominio_id'    => $user->userPreferences->default_condominio_id,
             'condomini'                => Condominio::select('id','nome')->get(),
@@ -58,6 +59,7 @@ class ImpostazioniGeneraliController extends Controller
 
             $settings->user_frontend_registration = $validated['user_frontend_registration'];
             $settings->language = $validated['language'];
+            $settings->app_name = $validated['app_name'];
             $settings->default_user_role = $validated['default_user_role'];
             $settings->force_comment_moderation = $validated['force_comment_moderation'];
             $settings->save();
@@ -68,8 +70,9 @@ class ImpostazioniGeneraliController extends Controller
             $userPreferences->default_condominio_id = $validated['open_condominio_on_login']
                 ? $validated['default_condominio_id']
                 : null;
-            
+
             app()->setLocale($settings->language);
+            config(['app.name' => $settings->app_name]);
 
             $userPreferences->save();
 

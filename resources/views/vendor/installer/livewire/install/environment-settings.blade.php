@@ -4,13 +4,33 @@
     @endisset
 
 
-    {{-- APP URL --}}
+    {{-- APP --}}
     <h2 class="border-b w-full pb-1 text-gray-400">App</h2>
+
+    <div class="mt-6">
+        <label for="app-name">{{ __('App Name') }}</label>
+        <input type="text" name="app-name" id="app-name" placeholder="Laravel" wire:model.blur="appName">
+        @error('appName')
+            <span class="error">{{ $message }}</span>
+        @enderror
+    </div>
 
     <div class="mt-6">
         <label for="app-url">{{ __('App Url') }}</label>
         <input type="text" name="app-url" id="app-url" placeholder="https://domain.com" wire:model.blur="appUrl">
         @error('appUrl')
+            <span class="error">{{ $message }}</span>
+        @enderror
+    </div>
+
+    <div class="mt-6">
+        <label for="app-locale">{{ __('Lingua') }}</label>
+        <select name="app-locale" id="app-locale" wire:model.blur="appLocale">
+            @foreach (config('installer.available_locales', []) as $locale => $label)
+                <option value="{{ $locale }}">{{ $label }}</option>
+            @endforeach
+        </select>
+        @error('appLocale')
             <span class="error">{{ $message }}</span>
         @enderror
     </div>
