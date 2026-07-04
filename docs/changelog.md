@@ -7,6 +7,50 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.5] - Installer Nativo
+
+### Aggiunto
+
+- **Installer Nativo KondoManager:** Sostituito interamente il pacchetto `eii/laravel-installer` con un wizard di installazione proprio, sotto `App\Livewire\Installer\*` — nessuna dipendenza esterna, nessun alias Livewire. Il vincolo di checksum che costringeva a usare la classe originale del vendor durante la primissima installazione (documentato nelle beta precedenti) non esiste più: un solo `InstallerWizard`, referenziato per nome-classe diretto nelle routes, gira identico sia alla prima installazione sia rientrando nel wizard.
+- **Nuova grafica:** Tema scuro con card bianca, badge "Km" come unico marchio in header (coerente con `AppLogo.vue`, dove la scritta testuale accanto al badge è anch'essa assente), tooltip esplicativo su ogni campo del form, select personalizzati con freccia custom, loader più visibile e descrittivo tra uno step e l'altro (in particolare durante la configurazione del database). Interfaccia del wizard interamente in italiano/inglese, rilevata automaticamente dall'header `Accept-Language` del browser — concetto distinto dalla lingua scelta per l'app installata (`available_locales`), che resta configurabile come già introdotto in beta.4.
+- **Layout compatto senza scroll:** Card e spaziature ridotte, campi "Nome applicazione/URL/Lingua" riorganizzati in griglia (prima impilati a piena larghezza) e intestazioni di sezione ridondanti rimosse, così l'intera pagina di ogni step (compreso Ambiente, il più denso di campi) è visibile senza scorrimento verticale sulle risoluzioni desktop comuni.
+- **Testo di benvenuto rivisto:** Unificati i tre paragrafi introduttivi dello step Benvenuto (promemoria credenziali, scopo del wizard, requisiti minimi) in un messaggio di benvenuto coeso e più caloroso.
+- **Mini-guida per ogni step:** Sotto il titolo di ogni pagina del wizard è stata aggiunta una breve descrizione di cosa fare in quello step. Nella pagina finale la guida ricorda esplicitamente di configurare il cronjob sul server, senza il quale i processi in background (emissione rate, promemoria, notifiche email) non funzionano.
+- **Logo nella sidebar:** Il badge "Km" è stato spostato dall'header esterno alla sidebar dello stepper (sopra il primo step) con nome "Kondomanager" e sottotitolo, racchiusi in un riquadro con sfondo tenue per separarlo visivamente dagli step senza usare una linea divisoria.
+- **Traduzione "Applicazione e database":** Rinominato lo step "Impostazioni ambientali" (traduzione letterale poco naturale di "environment settings") in "Applicazione e database", più chiaro e coerente col contenuto reale dello step (nome app, lingua, credenziali database).
+- **Requisiti server in griglia:** Estensioni PHP e permessi cartelle mostrati su due colonne invece che in un unico elenco verticale, eliminando lo scroll residuo su questa pagina.
+- **Feedback di caricamento sui pulsanti:** I pulsanti Avanti/Salta/Fine mostrano uno spinner e si disabilitano durante l'elaborazione dello step, evitando doppi invii accidentali (utile in particolare nello step Ambiente, che esegue `migrate:fresh`).
+- **Pulsante "Indietro":** Aggiunta la navigazione allo step precedente (assente finora — il wizard procedeva solo in avanti), nascosta nella pagina finale dato che a quel punto l'installazione è già stata bloccata (lock file scritto).
+- **Test connessione database:** Nello step Applicazione e database, un pulsante "Testa connessione" verifica host/porta/credenziali PRIMA di premere "Avanti" (che esegue `migrate:fresh`), usando una connessione DB dedicata e isolata (`installer_test`) così un test fallito non lascia stato sporco sulla connessione `mysql` reale.
+- **Mostra/nascondi password:** Nuovo componente `<x-installer.password-input>` con icona a forma di occhio, applicato ai campi password di database, posta e amministratore — riduce gli errori di battitura su credenziali che altrimenti restano invisibili.
+- **Ricontrolla requisiti server:** Nella pagina Requisiti server, un pulsante "Recheck" (con orario dell'ultimo controllo) permette di rieseguire il controllo PHP/estensioni/permessi senza ricaricare la pagina — utile se si risolve un requisito mancante a metà installazione.
+- **Test configurazione SMTP:** Nello step Posta è stato aggiunto un pulsante "Invia email di test" che tenta un invio reale con le credenziali appena inserite (senza scriverle su `.env`), mostrando subito se la configurazione funziona o l'errore di connessione/autenticazione restituito dal server SMTP.
+
+### Sicurezza
+
+- **Password amministratore mai su disco:** Lo step di creazione amministratore non include più la password in chiaro nel payload salvato nel progress file (nemmeno temporaneamente) — la redazione introdotta in beta.4 per lo step Finish resta come seconda barriera di sicurezza.
+
+### Corretto
+
+Bug reali emersi durante il porting e il test end-to-end dal vivo (non presenti nei singoli step testati isolatamente in precedenza):
+
+- **Loop di redirect infinito tra gli step Posta e Amministratore:** Il wizard riusava per errore la stessa chiave di progress (`raw_env_data`) sia per lo step Ambiente sia per lo step Posta. Al termine dello step Posta (anche solo saltandolo), il wizard interpretava erroneamente quel marker come dati dello step Ambiente, li sovrascriveva e rimandava sempre indietro allo step Posta — bloccando per sempre il proseguimento verso Crea Amministratore.
+- **Eccezione quando lo step Posta veniva saltato:** `MailSettings::completeStep()` chiamava `$this->validate()` incondizionatamente anche quando lo step non prevede regole (mail non richiesta), causando un errore Livewire (`MissingRulesException`) invece di procedere.
+- **Lingua di default del campo Ambiente contaminata dalla lingua del wizard:** Il campo "Lingua" nello step Ambiente leggeva `config('app.locale')`, che nel frattempo la nuova rilevazione automatica della lingua del wizard (`App::setLocale()`) aveva già sovrascritto — mostrando come preselezionata la lingua del browser invece del valore reale in `.env`. Corretto leggendo `env('APP_LOCALE')` direttamente.
+- **Checkmark permessi sempre verde:** Il display dei permessi server nello step Requisiti mostrava sempre l'icona di successo indipendentemente dall'esito reale del controllo (confrontava un array con un booleano). Ora riflette correttamente `exists` e `writable`.
+- **Messaggi di validazione illeggibili:** Errori come "The db database field is required" sono stati sostituiti con le etichette tradotte dei campi ("The Database field is required") su tutti gli step con validazione (Ambiente, Posta, Amministratore). Anche il messaggio generico "formato non valido" sui campi database (host/porta/nome/utente) è stato sostituito con un messaggio esplicito ("non può contenere spazi").
+
+### Rimosso
+
+- **Dipendenza `eii/laravel-installer`:** Rimossa da `composer.json`. `livewire/livewire` (che era installato solo transitivamente tramite il pacchetto rimosso) è ora dichiarato come dipendenza diretta. Rimossi anche i file pubblicati orfani (`resources/views/vendor/installer/`, `public/vendor/installer/`).
+
+### Test
+
+- Suite completa (239 test) verificata a ogni fase.
+- Test end-to-end reale contro un database MySQL dedicato e temporaneo (creato ed eliminato per l'occasione, senza toccare il database di sviluppo): `migrate:fresh`, seeding, sincronizzazione lingua/nome applicazione/versione, creazione amministratore con ruolo Spatie, redazione password nel riepilogo finale — verificato tutto funzionante end-to-end.
+
+---
+
 ## [1.10.0-beta.4] - Aggiornamento Piattaforma (Laravel 13) & Identità Personalizzabile
 
 ### Aggiornamento Piattaforma

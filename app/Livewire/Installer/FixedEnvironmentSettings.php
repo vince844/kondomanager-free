@@ -2,8 +2,8 @@
 
 namespace App\Livewire\Installer;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
-use Livewire\Attributes\Layout;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
@@ -23,6 +23,20 @@ class FixedEnvironmentSettings extends Component
     public ?string $dbUsername = null;
     public ?string $dbPassword = null;
 
+    public ?string $dbTestStatus = null;
+    public ?string $dbTestMessage = null;
+
+    private function dbFieldRules(): array
+    {
+        return [
+            'dbHost' => 'required|regex:/^\S*$/u',
+            'dbPort' => 'required|numeric|regex:/^\S*$/u',
+            'dbDatabase' => 'required|min:1|regex:/^\S*$/u',
+            'dbUsername' => 'required|min:1|regex:/^\S*$/u',
+            'dbPassword' => 'nullable|string',
+        ];
+    }
+
     protected function rules(): array
     {
         $rules = [
@@ -32,23 +46,47 @@ class FixedEnvironmentSettings extends Component
         ];
 
         if ($this->isDatabaseRequired) {
-            $rules = array_merge($rules, [
-                'dbHost' => 'required|regex:/^\S*$/u',
-                'dbPort' => 'required|numeric|regex:/^\S*$/u',
-                'dbDatabase' => 'required|min:1|regex:/^\S*$/u',
-                'dbUsername' => 'required|min:1|regex:/^\S*$/u',
-                'dbPassword' => 'nullable|string',
-            ]);
+            $rules = array_merge($rules, $this->dbFieldRules());
         }
 
         return $rules;
+    }
+
+    protected function validationAttributes(): array
+    {
+        return [
+            'appName' => __('installer.fields.app_name.label'),
+            'appUrl' => __('installer.fields.app_url.label'),
+            'appLocale' => __('installer.fields.app_locale.label'),
+            'dbHost' => __('installer.fields.db_host.label'),
+            'dbPort' => __('installer.fields.db_port.label'),
+            'dbDatabase' => __('installer.fields.db_database.label'),
+            'dbUsername' => __('installer.fields.db_username.label'),
+            'dbPassword' => __('installer.fields.db_password.label'),
+        ];
+    }
+
+    protected function messages(): array
+    {
+        // Il messaggio generico "formato non valido" non spiega il vincolo reale
+        // (nessuno spazio consentito), quindi lo sostituiamo con uno esplicito.
+        return [
+            'dbHost.regex' => __('installer.validation.no_whitespace'),
+            'dbPort.regex' => __('installer.validation.no_whitespace'),
+            'dbDatabase.regex' => __('installer.validation.no_whitespace'),
+            'dbUsername.regex' => __('installer.validation.no_whitespace'),
+        ];
     }
 
     public function mount(): void
     {
         $this->isDatabaseRequired = config('installer.requirements.environment.database', false);
         $this->appName = config('installer.app_name', config('app.name', 'Laravel'));
-        $this->appLocale = config('app.locale', 'it');
+        // env() diretto, non config('app.locale'): quest'ultimo può essere già stato
+        // sovrascritto da App::setLocale() (usato da CheckInstaller per la lingua dei
+        // testi del wizard, un concetto distinto dalla lingua di default dell'app
+        // installata che questo campo propone come valore iniziale).
+        $this->appLocale = env('APP_LOCALE', 'it');
 
         try {
             $progressFile = config('installer.options.progress_file');
@@ -111,6 +149,41 @@ class FixedEnvironmentSettings extends Component
         $this->dispatch('wizard.stepCompleted', ['data' => $data]);
     }
 
+    public function testDatabaseConnection(): void
+    {
+        $this->sanitizeInputs();
+        $this->dbTestStatus = null;
+        $this->dbTestMessage = null;
+
+        $this->validate($this->dbFieldRules());
+
+        // Connessione dedicata "installer_test": non tocca la connessione 'mysql'
+        // usata più avanti da migrate:fresh, così un test fallito non lascia
+        // configurazione sporca dietro di sé.
+        config(['database.connections.installer_test' => array_merge(
+            config('database.connections.mysql', []),
+            [
+                'host'     => $this->dbHost,
+                'port'     => $this->dbPort,
+                'database' => $this->dbDatabase,
+                'username' => $this->dbUsername,
+                'password' => $this->dbPassword ?? '',
+            ]
+        )]);
+
+        try {
+            DB::connection('installer_test')->select('select 1');
+
+            $this->dbTestStatus = 'success';
+            $this->dbTestMessage = __('installer.database.test_success', ['database' => $this->dbDatabase]);
+        } catch (\Throwable $e) {
+            $this->dbTestStatus = 'error';
+            $this->dbTestMessage = __('installer.database.test_error', ['error' => $e->getMessage()]);
+        } finally {
+            DB::purge('installer_test');
+        }
+    }
+
     /**
      * Salva lingua e nome app scelti nel progress file, letti dal listener
      * MigrationsEnded (App\Providers\AppServiceProvider) per applicarli a
@@ -159,11 +232,8 @@ class FixedEnvironmentSettings extends Component
         return $value;
     }
 
-    // Nota: Manteniamo il layout originale del pacchetto
-    #[Layout('installer::layouts.installer')]
     public function render()
     {
-        // Nota: Manteniamo la vista originale del pacchetto
-        return view('installer::livewire.install.environment-settings');
+        return view('installer.environment-settings');
     }
 }

@@ -18,8 +18,6 @@ use App\Settings\GeneralSettings;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
-use Livewire\Livewire;
-use App\Livewire\Installer\InstallerWizard;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,26 +35,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // ====================================================================
-        // OVERRIDE INSTALLER WIZARD (Fix Spatie Permission Cache)
+        // ROTTE INSTALLER
         // ====================================================================
-        // IMPORTANTE: Questo override funziona SOLO per gli aggiornamenti.
-        //
-        // PRIMA INSTALLAZIONE PULITA:
-        //   Livewire usa il file originale del package (Eii\Installer\...)
-        //   perché il checksum del snapshot nel DOM contiene il nome originale.
-        //   Il seed gira correttamente tramite config('installer.requirements.seeding').
-        //
-        // AGGIORNAMENTI (migrate su DB esistente):
-        //   Qui l'override viene applicato e il nostro InstallerWizard custom
-        //   viene usato al posto dell'originale. Il fix aggiunge il purge della
-        //   cache Spatie Permission PRIMA del seed, necessario perché la cache
-        //   contiene ancora i permessi del DB precedente alle migrazioni.
-        //   Senza questo purge, Spatie legge dati stale e il seed può fallire.
-        //
-        // ====================================================================
-        if (config('installer.run_installer') && class_exists(Livewire::class) && class_exists(InstallerWizard::class)) {
-            Livewire::component('eii.installer.livewire.install.installer-wizard', InstallerWizard::class);
-        }
+        // Registrate qui (non in bootstrap/app.php withRouting 'then') perché
+        // usano la macro Route::livewire(), disponibile solo dopo che tutti i
+        // provider hanno completato la fase register() — incluso quello di
+        // Livewire. Durante "composer install/update" (artisan package:discover)
+        // il closure 'then' di withRouting gira troppo presto e la macro non
+        // esiste ancora, causando un errore. loadRoutesFrom() in boot() non ha
+        // questo problema: è lo stesso schema già usato dal vendor eii/installer.
+        $this->loadRoutesFrom(base_path('routes/installer.php'));
 
         // ====================================================================
         // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)

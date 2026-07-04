@@ -13,23 +13,20 @@ use Livewire\Component;
 use Illuminate\Database\Seeder;
 
 /**
- * Custom InstallerWizard — Override del package eii/installer
+ * Wizard di installazione — orchestratore nativo KondoManager.
  *
- * SCOPO: Usato SOLO per gli aggiornamenti (non per la prima installazione pulita).
+ * Sostituisce eii/laravel-installer: referenziato direttamente per nome-classe
+ * in routes/installer.php (nessun alias Livewire), quindi è sempre questo
+ * codice a girare, sia alla primissima installazione pulita sia rientrando
+ * nel wizard — a differenza del precedente setup, dove un vincolo di checksum
+ * sullo snapshot DOM costringeva a usare la classe del vendor in quel caso.
  *
- * DIFFERENZE rispetto all'originale (Eii\Installer\Livewire\Install\InstallerWizard):
- *
- * 1. FIX SOTTO-PROCESSI: updateEnvSettings() viene chiamata PRIMA di migrate e seed,
- *    così i sotto-processi Artisan leggono sempre le credenziali corrette dal .env.
- *
- * 2. FIX SPATIE CACHE: Purge della cache Spatie Permission dopo migrate:fresh.
- *    Necessario perché su DB esistente la cache contiene permessi stale
- *    dopo migrate:fresh, causando errori silenti nel seeder.
- *    Fix proposto come PR al package eii/installer.
- *
- * NOTA: Per la prima installazione pulita, Livewire usa il file originale del package
- * a causa del checksum nel snapshot DOM. Questo file viene attivato tramite
- * AppServiceProvider::boot() → Livewire::component() solo per gli aggiornamenti.
+ * Punti di attenzione mantenuti dalle versioni precedenti:
+ * 1. updateEnvSettings() viene chiamata PRIMA di migrate e seed, così i
+ *    sotto-processi Artisan leggono sempre le credenziali corrette dal .env.
+ * 2. Purge della cache Spatie Permission dopo migrate:fresh, necessaria perché
+ *    su DB esistente la cache contiene permessi stale dopo migrate:fresh,
+ *    causando errori silenti nel seeder.
  */
 class InstallerWizard extends Component
 {
@@ -109,10 +106,19 @@ class InstallerWizard extends Component
         $this->saveStep();
     }
 
-    #[Layout('installer::layouts.installer')]
+    public function previousStep()
+    {
+        if ($this->currentIndex === 0) {
+            return;
+        }
+
+        return $this->redirect(route('install.step', $this->steps[$this->currentIndex - 1]['key']));
+    }
+
+    #[Layout('installer.layouts.installer')]
     public function render()
     {
-        return view('installer::livewire.install.installer-wizard', [
+        return view('installer.installer-wizard', [
             'step' => $this->steps[$this->currentIndex],
             'steps' => $this->steps,
             'currentIndex' => $this->currentIndex,
@@ -303,8 +309,13 @@ class InstallerWizard extends Component
 
     private function runMailSetup(array $data): void
     {
-        $this->progress['raw_env_data'] = $data;
-        $this->saveProgress();
+        // Bug del vendor: riusava la chiave 'raw_env_data' (pensata solo per lo step
+        // 'environment', vedi il controllo in mount()) anche qui, causando un loop di
+        // redirect infinito mail -> admin -> mail: mount() vedeva 'raw_env_data' residuo,
+        // lo trattava come dati dello step environment, sovrascriveva data.environment e
+        // rimandava sempre allo step successivo ad 'environment' (cioè 'mail'). saveStep()
+        // già salva correttamente questi dati in progress['data']['mail'], quindi qui
+        // basta scrivere il .env, senza toccare il progress file.
         $this->updateMailSettings($data);
     }
 

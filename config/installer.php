@@ -36,13 +36,13 @@ return [
             'key'           => 'welcome',
             'label'         => 'Benvenuto',
             'description'   => 'Iniziare',
-            'component'     => \Eii\Installer\Livewire\Install\Welcome::class,
+            'component'     => \App\Livewire\Installer\Welcome::class,
         ],
         [
             'key'           => 'requirements',
             'label'         => 'Requisiti del server',
             'description'   => 'Assicurarsi che tutti i requisiti necessari siano soddisfatti',
-            'component'     => \Eii\Installer\Livewire\Install\ServerRequirements::class,
+            'component'     => \App\Livewire\Installer\ServerRequirements::class,
         ],
         [
             'key'           => 'environment',
@@ -54,22 +54,20 @@ return [
             'key'           => 'mail',
             'label'         => 'Impostazioni di posta',
             'description'   => 'Impostazioni della posta in uscita',
-            'component'     => \Eii\Installer\Livewire\Install\MailSettings::class,
+            'component'     => \App\Livewire\Installer\MailSettings::class,
             'optional'      => true,
         ],
         [
             'key'           => 'admin',
             'label'         => 'Crea amministratore',
             'description'   => 'Crea utente amministratore',
-            'component'     => \Eii\Installer\Livewire\Install\CreateAdmin::class,
+            'component'     => \App\Livewire\Installer\CreateAdmin::class,
             'optional'      => false,
         ],
         [
             'key'           => 'finish',
             'label'         => 'Fine',
             'description'   => 'Completa la configurazione',
-            // Override: redige password admin/db/mail prima che finiscano nello snapshot
-            // Livewire pubblico o nel file scaricabile (vedi App\Livewire\Installer\Finish).
             'component'     => \App\Livewire\Installer\Finish::class,
         ],
     ],
