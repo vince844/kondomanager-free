@@ -97,6 +97,7 @@ return [
         'mail_port' => ['label' => 'Port', 'tooltip' => 'The SMTP port: usually 587 (TLS) or 465 (SSL).'],
         'mail_username' => ['label' => 'Username', 'tooltip' => 'The email address or username to authenticate with the SMTP server.'],
         'mail_password' => ['label' => 'Password', 'tooltip' => 'The password for the email account above.'],
+        'mail_encryption' => ['label' => 'Encryption', 'tooltip' => 'The encryption type required by the SMTP server: TLS is the most common (port 587), SSL for direct encrypted connections (port 465). Choose "None" only for local or test servers.', 'none' => 'None'],
         'mail_from_address' => ['label' => 'From address', 'tooltip' => 'The email address unit owners will see as the sender of communications.'],
         'mail_from_name' => ['label' => 'From name', 'tooltip' => 'The name displayed next to the sender address in emails.'],
         'admin_name' => ['label' => 'Full name', 'tooltip' => "The name of Kondomanager's main administrator."],
@@ -142,6 +143,8 @@ return [
         'test_body' => 'If you received this email, your SMTP configuration is correct and Kondomanager will be able to send notifications, reminders and communications to unit owners.',
         'test_success' => 'Test email sent successfully to :email. Check your inbox.',
         'test_error' => 'Sending failed: :error',
+        'test_recipient_label' => 'Send test email to',
+        'test_recipient_tooltip' => 'The address to send the test email to — use one you can check right away, different from the SMTP server if you want to verify real delivery.',
     ],
 
     'database' => [

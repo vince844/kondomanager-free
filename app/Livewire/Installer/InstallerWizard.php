@@ -316,6 +316,12 @@ class InstallerWizard extends Component
         // rimandava sempre allo step successivo ad 'environment' (cioè 'mail'). saveStep()
         // già salva correttamente questi dati in progress['data']['mail'], quindi qui
         // basta scrivere il .env, senza toccare il progress file.
+        //
+        // NOTA: le credenziali scritte qui in .env vengono già usate correttamente
+        // da App\Providers\MailConfigServiceProvider::applyEnvFallback() finché
+        // l'admin non configura Impostazioni > Mail da database — quella pagina
+        // mostra già un badge "Configurazione .env" in questo caso, quindi non è
+        // necessario duplicare la scrittura anche su App\Settings\MailSettings.
         $this->updateMailSettings($data);
     }
 
@@ -363,6 +369,11 @@ class InstallerWizard extends Component
             'MAIL_PORT'         => $data['mail_port'] ?? '',
             'MAIL_USERNAME'     => $data['mail_username'] ?? '',
             'MAIL_PASSWORD'     => $data['mail_password'] ?? '',
+            // Illuminate\Mail\MailManager legge 'scheme' (non 'encryption') per
+            // decidere il tipo di cifratura: 'smtps' per TLS implicito (porta 465),
+            // altrimenti vuoto per lasciare l'auto-detect di Laravel in base alla
+            // porta (STARTTLS opportunistico, il caso comune per la porta 587).
+            'MAIL_SCHEME'       => ($data['mail_encryption'] ?? 'tls') === 'ssl' ? 'smtps' : '',
             'MAIL_FROM_ADDRESS' => $data['mail_from_address'] ?? '',
             'MAIL_FROM_NAME'    => $quoteIfNeeded($data['mail_from_name'] ?? ''),
         ];

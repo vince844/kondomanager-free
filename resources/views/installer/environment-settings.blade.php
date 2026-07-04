@@ -10,7 +10,7 @@
             <x-installer.field-label for="app-name" :tooltip="__('installer.fields.app_name.tooltip')">
                 {{ __('installer.fields.app_name.label') }}
             </x-installer.field-label>
-            <input type="text" name="app-name" id="app-name" placeholder="Kondomanager" wire:model.blur="appName">
+            <input type="text" name="app-name" id="app-name" placeholder="Kondomanager" wire:model.live.blur="appName" wire:key="field-appName">
             @error('appName')
                 <span class="error">{{ $message }}</span>
             @enderror
@@ -20,7 +20,7 @@
             <x-installer.field-label for="app-url" :tooltip="__('installer.fields.app_url.tooltip')">
                 {{ __('installer.fields.app_url.label') }}
             </x-installer.field-label>
-            <input type="text" name="app-url" id="app-url" placeholder="https://dominio.com" wire:model.blur="appUrl">
+            <input type="text" name="app-url" id="app-url" placeholder="https://dominio.com" wire:model.live.blur="appUrl" wire:key="field-appUrl">
             @error('appUrl')
                 <span class="error">{{ $message }}</span>
             @enderror
@@ -30,7 +30,7 @@
             <x-installer.field-label for="app-locale" :tooltip="__('installer.fields.app_locale.tooltip')">
                 {{ __('installer.fields.app_locale.label') }}
             </x-installer.field-label>
-            <select name="app-locale" id="app-locale" wire:model.blur="appLocale">
+            <select name="app-locale" id="app-locale" wire:model.live.blur="appLocale" wire:key="field-appLocale">
                 @foreach (config('installer.available_locales', []) as $locale => $label)
                     <option value="{{ $locale }}">{{ $label }}</option>
                 @endforeach
@@ -49,7 +49,7 @@
                 <x-installer.field-label for="db-host" :tooltip="__('installer.fields.db_host.tooltip')">
                     {{ __('installer.fields.db_host.label') }}
                 </x-installer.field-label>
-                <input type="text" name="db-host" id="db-host" placeholder="127.0.0.1" wire:model.blur="dbHost">
+                <input type="text" name="db-host" id="db-host" placeholder="127.0.0.1" wire:model.live.blur="dbHost" wire:key="field-dbHost">
                 @error('dbHost')
                     <span class="error">{{ $message }}</span>
                 @enderror
@@ -59,7 +59,7 @@
                 <x-installer.field-label for="db-port" :tooltip="__('installer.fields.db_port.tooltip')">
                     {{ __('installer.fields.db_port.label') }}
                 </x-installer.field-label>
-                <input type="text" name="db-port" id="db-port" placeholder="3306" wire:model.blur="dbPort">
+                <input type="text" name="db-port" id="db-port" placeholder="3306" wire:model.live.blur="dbPort" wire:key="field-dbPort">
                 @error('dbPort')
                     <span class="error">{{ $message }}</span>
                 @enderror
@@ -69,7 +69,7 @@
                 <x-installer.field-label for="db-database" :tooltip="__('installer.fields.db_database.tooltip')">
                     {{ __('installer.fields.db_database.label') }}
                 </x-installer.field-label>
-                <input type="text" name="db-database" id="db-database" placeholder="kondomanager" wire:model.blur="dbDatabase">
+                <input type="text" name="db-database" id="db-database" placeholder="kondomanager" wire:model.live.blur="dbDatabase" wire:key="field-dbDatabase">
                 @error('dbDatabase')
                     <span class="error">{{ $message }}</span>
                 @enderror
@@ -79,7 +79,7 @@
                 <x-installer.field-label for="db-username" :tooltip="__('installer.fields.db_username.tooltip')">
                     {{ __('installer.fields.db_username.label') }}
                 </x-installer.field-label>
-                <input type="text" name="db-username" id="db-username" placeholder="root" wire:model.blur="dbUsername">
+                <input type="text" name="db-username" id="db-username" placeholder="root" wire:model.live.blur="dbUsername" wire:key="field-dbUsername">
                 @error('dbUsername')
                     <span class="error">{{ $message }}</span>
                 @enderror
@@ -89,7 +89,7 @@
                 <x-installer.field-label for="db-password" :tooltip="__('installer.fields.db_password.tooltip')">
                     {{ __('installer.fields.db_password.label') }}
                 </x-installer.field-label>
-                <x-installer.password-input id="db-password" name="db-password" wire:model.blur="dbPassword" />
+                <x-installer.password-input id="db-password" name="db-password" wire:model.live.blur="dbPassword" wire:key="field-dbPassword" />
                 @error('dbPassword')
                     <span class="error">{{ $message }}</span>
                 @enderror

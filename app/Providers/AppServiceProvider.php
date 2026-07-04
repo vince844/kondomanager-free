@@ -34,6 +34,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->suppressReadonlyTouchWarning();
+
         // ====================================================================
         // ROTTE INSTALLER
         // ====================================================================
@@ -132,5 +134,30 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Role::class, RolePolicy::class);
         Gate::policy(Permission::class, PermissionPolicy::class);
         Gate::policy(Segnalazione::class, SegnalazionePolicy::class);
+    }
+
+    /**
+     * Alcuni hosting condivisi molto restrittivi (es. Altervista) negano la
+     * modifica del mtime (utime) sui file già esistenti. Laravel chiama
+     * touch() internamente come pura ottimizzazione della cache delle view
+     * compilate (Blade/Livewire) — evita di ricalcolare l'hash del sorgente
+     * ad ogni richiesta quando il file compilato è già valido. Se touch()
+     * fallisce, PHP solleva un warning che il gestore errori di Laravel
+     * converte in eccezione fatale, anche se la cache compilata resta
+     * perfettamente valida e utilizzabile. Sopprimiamo SOLO questo avviso
+     * specifico, lasciando invariata la gestione di tutti gli altri
+     * errori/warning da parte di Laravel.
+     */
+    private function suppressReadonlyTouchWarning(): void
+    {
+        $previousHandler = set_error_handler(function (int $errno, string $errstr, string $errfile = '', int $errline = 0) use (&$previousHandler) {
+            if ($errno === E_WARNING && str_contains($errstr, 'touch(): Utime failed')) {
+                return true;
+            }
+
+            return $previousHandler
+                ? $previousHandler($errno, $errstr, $errfile, $errline)
+                : false;
+        });
     }
 }

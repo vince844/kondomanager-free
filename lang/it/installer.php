@@ -97,6 +97,7 @@ return [
         'mail_port' => ['label' => 'Porta', 'tooltip' => 'La porta SMTP: generalmente 587 (TLS) o 465 (SSL).'],
         'mail_username' => ['label' => 'Username', 'tooltip' => "L'indirizzo email o username per autenticarsi al server SMTP."],
         'mail_password' => ['label' => 'Password', 'tooltip' => "La password dell'account email indicato sopra."],
+        'mail_encryption' => ['label' => 'Cifratura', 'tooltip' => 'Il tipo di cifratura richiesto dal server SMTP: TLS è il più comune (porta 587), SSL per connessioni dirette cifrate (porta 465). Scegli "Nessuna" solo per server locali o di test.', 'none' => 'Nessuna'],
         'mail_from_address' => ['label' => 'Indirizzo mittente', 'tooltip' => "L'indirizzo email che i condomini vedranno come mittente delle comunicazioni."],
         'mail_from_name' => ['label' => 'Nome mittente', 'tooltip' => "Il nome visualizzato accanto all'indirizzo mittente nelle email."],
         'admin_name' => ['label' => 'Nome completo', 'tooltip' => "Il nome dell'amministratore principale di Kondomanager."],
@@ -142,6 +143,8 @@ return [
         'test_body' => 'Se hai ricevuto questa email, la configurazione SMTP è corretta e Kondomanager potrà inviare notifiche, promemoria e comunicazioni ai condomini.',
         'test_success' => 'Email di test inviata con successo a :email. Controlla la tua casella di posta.',
         'test_error' => 'Invio non riuscito: :error',
+        'test_recipient_label' => 'Invia email di prova a',
+        'test_recipient_tooltip' => "L'indirizzo a cui inviare l'email di prova — usane uno che puoi controllare subito, diverso dal server SMTP se vuoi verificare la consegna reale.",
     ],
 
     'database' => [
