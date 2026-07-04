@@ -76,41 +76,52 @@
                                 campi dello step corrente, altrimenti un click subito dopo l'ultimo carattere
                                 digitato può partire prima che quel salvataggio arrivi al server. --}}
                             <button class="btn-secondary flex items-center justify-center gap-2" wire:click="previousStep" wire:loading.attr="disabled">
-                                {{ __('installer.actions.back') }}
+                                <svg wire:loading class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                </svg>
+                                <span wire:loading.remove>{{ __('installer.actions.back') }}</span>
+                                <span wire:loading>{{ __('installer.actions.loading') }}</span>
                             </button>
                         @else
                             <span></span>
                         @endif
 
+                        {{-- Spinner/testo "Attendere..." senza wire:target: reagiscono a QUALSiasi
+                            richiesta Livewire in corso (inclusi i salvataggi "on blur" dei campi,
+                            ora frequenti con .live.blur), non solo a completeStep/skipStep. Senza
+                            questo il pulsante si disabilita comunque durante quei salvataggi ma
+                            resta visivamente "Avanti"/"Salta" senza alcun segnale di attesa — su
+                            connessioni lente sembra bloccato invece che in caricamento. --}}
                         <div class="flex gap-3">
                             @if ($skippable)
                                 <button class="btn-primary flex items-center justify-center gap-2" wire:click="skipStep" wire:loading.attr="disabled">
-                                    <svg wire:loading wire:target="skipStep" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg wire:loading class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                     </svg>
-                                    <span wire:loading.remove wire:target="skipStep">{{ __('installer.actions.skip') }}</span>
-                                    <span wire:loading wire:target="skipStep">{{ __('installer.actions.loading') }}</span>
+                                    <span wire:loading.remove>{{ __('installer.actions.skip') }}</span>
+                                    <span wire:loading>{{ __('installer.actions.loading') }}</span>
                                 </button>
                             @endif
 
                             @if ($currentIndex === $steps->count() - 1)
                                 <button class="btn-primary flex items-center justify-center gap-2" wire:click="completeStep" wire:loading.attr="disabled">
-                                    <svg wire:loading wire:target="completeStep" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg wire:loading class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                     </svg>
-                                    <span wire:loading.remove wire:target="completeStep">{{ __('installer.actions.finish') }}</span>
-                                    <span wire:loading wire:target="completeStep">{{ __('installer.actions.loading') }}</span>
+                                    <span wire:loading.remove>{{ __('installer.actions.finish') }}</span>
+                                    <span wire:loading>{{ __('installer.actions.loading') }}</span>
                                 </button>
                             @else
                                 <button class="btn-primary flex items-center justify-center gap-2" wire:click="completeStep" wire:loading.attr="disabled" @disabled(!$canProceed)>
-                                    <svg wire:loading wire:target="completeStep" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <svg wire:loading class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                                     </svg>
-                                    <span wire:loading.remove wire:target="completeStep">{{ __('installer.actions.next') }}</span>
-                                    <span wire:loading wire:target="completeStep">{{ __('installer.actions.loading') }}</span>
+                                    <span wire:loading.remove>{{ __('installer.actions.next') }}</span>
+                                    <span wire:loading>{{ __('installer.actions.loading') }}</span>
                                 </button>
                             @endif
                         </div>

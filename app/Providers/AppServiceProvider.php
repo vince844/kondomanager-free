@@ -52,9 +52,21 @@ class AppServiceProvider extends ServiceProvider
         // FIX HTTPS (Mixed Content per Reverse Proxy come Altervista/Cloudflare)
         // ====================================================================
 
-        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS
+        // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS.
+        // Condizionato a request()->isSecure(): forzare SEMPRE, anche quando la
+        // richiesta corrente risulta genuinamente http (es. proxy che inoltra
+        // X-Forwarded-Proto: http, o accesso diretto senza certificato pronto),
+        // genera un mismatch tra lo schema della pagina e quello degli endpoint
+        // Livewire/asset generati — il browser blocca queste richieste come
+        // cross-origin (schema diverso = origin diversa). Osservato realmente
+        // su Altervista: pagina servita in http, endpoint Livewire forzato in
+        // https, richieste bloccate con errore CORS pur rispondendo 200.
+        // In console (job in coda, comandi artisan) non c'è una request da cui
+        // rilevare lo schema reale, quindi si forza comunque in base a APP_URL.
         if (config('app.url') && str_contains(config('app.url'), 'https://')) {
-            URL::forceScheme('https');
+            if ($this->app->runningInConsole() || request()->isSecure()) {
+                URL::forceScheme('https');
+            }
         }
 
         // ====================================================================

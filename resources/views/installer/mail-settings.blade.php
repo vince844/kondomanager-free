@@ -5,8 +5,7 @@
 
     {{-- MAIL --}}
     @if ($isMailRequired)
-        <h2 class="border-b w-full pb-1 mt-12 text-gray-400">{{ __('installer.sections.mail') }}</h2>
-        <div class="grid grid-cols-2 gap-4 mt-6">
+        <div class="grid grid-cols-2 gap-4">
             <div>
                 <x-installer.field-label for="mail-mailer" :tooltip="__('installer.fields.mail_mailer.tooltip')">
                     {{ __('installer.fields.mail_mailer.label') }}

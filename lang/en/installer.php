@@ -78,9 +78,7 @@ return [
     ],
 
     'sections' => [
-        'app' => 'App',
         'database' => 'Database',
-        'mail' => 'Mail',
     ],
 
     'fields' => [
