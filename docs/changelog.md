@@ -24,6 +24,11 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 - **Test connessione database:** Nello step Applicazione e database, un pulsante "Testa connessione" verifica host/porta/credenziali PRIMA di premere "Avanti" (che esegue `migrate:fresh`), usando una connessione DB dedicata e isolata (`installer_test`) così un test fallito non lascia stato sporco sulla connessione `mysql` reale.
 - **Mostra/nascondi password:** Nuovo componente `<x-installer.password-input>` con icona a forma di occhio, applicato ai campi password di database, posta e amministratore — riduce gli errori di battitura su credenziali che altrimenti restano invisibili.
 - **Ricontrolla requisiti server:** Nella pagina Requisiti server, un pulsante "Recheck" (con orario dell'ultimo controllo) permette di rieseguire il controllo PHP/estensioni/permessi senza ricaricare la pagina — utile se si risolve un requisito mancante a metà installazione.
+- **Guida cronjob dettagliata su Finish:** Nella pagina finale, tab per cron-job.org/cPanel/Plesk-VPS (adattate dalla guida già presente nel pannello Impostazioni) con comandi pronti da copiare — invece di rifare l'intero step dedicato con test/skip, valutato eccessivo dato che il controllo esiste già post-login in Impostazioni > Cron.
+
+### Corretto (grafica)
+
+- **Pulsanti di test che si restringevano:** I pulsanti "Testa connessione"/"Invia email di test" non avevano `shrink-0`, quindi si comprimevano nel container flex quando il messaggio di esito accanto era lungo. Aggiunto `shrink-0` al pulsante e `min-w-0` al messaggio.
 - **Test configurazione SMTP:** Nello step Posta è stato aggiunto un pulsante "Invia email di test" che tenta un invio reale con le credenziali appena inserite (senza scriverle su `.env`), mostrando subito se la configurazione funziona o l'errore di connessione/autenticazione restituito dal server SMTP.
 
 ### Sicurezza

@@ -80,7 +80,7 @@
             </div>
 
             <div class="col-span-full flex items-center gap-3 mt-2">
-                <button type="button" class="btn-primary flex items-center justify-center gap-2" wire:click="sendTestEmail" wire:loading.attr="disabled" wire:target="sendTestEmail">
+                <button type="button" class="btn-primary shrink-0 flex items-center justify-center gap-2" wire:click="sendTestEmail" wire:loading.attr="disabled" wire:target="sendTestEmail">
                     <svg wire:loading wire:target="sendTestEmail" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -90,9 +90,9 @@
                 </button>
 
                 @if ($testStatus === 'success')
-                    <span class="text-sm text-green-600">{{ $testMessage }}</span>
+                    <span class="text-sm text-green-600 min-w-0">{{ $testMessage }}</span>
                 @elseif ($testStatus === 'error')
-                    <span class="text-sm text-red-500">{{ $testMessage }}</span>
+                    <span class="text-sm text-red-500 min-w-0">{{ $testMessage }}</span>
                 @endif
             </div>
         </div>

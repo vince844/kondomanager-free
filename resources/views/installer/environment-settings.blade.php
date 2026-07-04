@@ -96,7 +96,7 @@
             </div>
 
             <div class="col-span-full flex items-center gap-3 mt-2">
-                <button type="button" class="btn-secondary flex items-center justify-center gap-2" wire:click="testDatabaseConnection" wire:loading.attr="disabled" wire:target="testDatabaseConnection">
+                <button type="button" class="btn-secondary shrink-0 flex items-center justify-center gap-2" wire:click="testDatabaseConnection" wire:loading.attr="disabled" wire:target="testDatabaseConnection">
                     <svg wire:loading wire:target="testDatabaseConnection" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
@@ -106,9 +106,9 @@
                 </button>
 
                 @if ($dbTestStatus === 'success')
-                    <span class="text-sm text-green-600">{{ $dbTestMessage }}</span>
+                    <span class="text-sm text-green-600 min-w-0">{{ $dbTestMessage }}</span>
                 @elseif ($dbTestStatus === 'error')
-                    <span class="text-sm text-red-500">{{ $dbTestMessage }}</span>
+                    <span class="text-sm text-red-500 min-w-0">{{ $dbTestMessage }}</span>
                 @endif
             </div>
         </div>

@@ -46,7 +46,7 @@ flowchart TD
 | Tipo Installazione | Config (`installer.run_installer`) | Dashboard UI | Metodo Aggiornamento |
 |-------------------|-----------------------------------|--------------|---------------------|
 | **Via Wizard** | `true` | ✅ Bottone "Cerca Aggiornamenti" | Automatico (One-Click) |
-| **Manuale (FTP)** | `false` | ❌ Nascosto | Manuale (Upload `setup.php`) |
+| **Manuale (FTP)** | `false` | ❌ Nascosto | Manuale (Upload `index.php`) |
 
 ---
 
@@ -61,16 +61,16 @@ sequenceDiagram
     participant I as Installer (v12.4)
     participant W as Wizard Laravel
     
-    U->>S: Carica setup.php
-    U->>I: Lancia http://sito.com/setup.php
+    U->>S: Carica index.php
+    U->>I: Lancia http://sito.com/index.php
     I->>S: Scarica ZIP, estrae, crea .env/.htaccess
     I->>W: Redirect a /install
     W->>S: Completa setup, setta run_installer=true
 ```
 
 **Passaggi:**
-1. **Azione:** Utente scarica `setup.php` (v12.4 Standalone) e lo carica sul server
-2. **Esecuzione:** Lancia `http://sito.com/setup.php`
+1. **Azione:** Utente scarica `index.php` (v12.4 Standalone) e lo carica sul server
+2. **Esecuzione:** Lancia `http://sito.com/index.php`
 3. **Setup:** L'installer scarica lo ZIP, estrae, crea `.env` e `.htaccess`
 4. **Redirect:** Porta l'utente a `/install`
 5. **Risultato:** Laravel Wizard completa il setup e setta `run_installer = true`
@@ -87,8 +87,8 @@ sequenceDiagram
     participant M as Middleware
     
     Note over S: Stato: run_installer = false
-    U->>S: Carica setup.php via FTP/Panel
-    U->>I: Lancia http://sito.com/setup.php
+    U->>S: Carica index.php via FTP/Panel
+    U->>I: Lancia http://sito.com/index.php
     I->>S: Sovrascrive file sistema<br>(preserva storage/.env)
     U->>S: Accede dashboard
     M->>S: CheckForPendingUpdates<br>File Version > DB Version
@@ -97,8 +97,8 @@ sequenceDiagram
 
 **Passaggi:**
 1. **Stato:** Cliente ha `run_installer = false`
-2. **Azione:** Utente carica `setup.php` (v12.4 Standalone) via FTP/Panel
-3. **Esecuzione:** Lancia `http://sito.com/setup.php`
+2. **Azione:** Utente carica `index.php` (v12.4 Standalone) via FTP/Panel
+3. **Esecuzione:** Lancia `http://sito.com/index.php`
 4. **Processo:** L'installer sovrascrive i file di sistema (preservando `storage` e `.env`)
 5. **Middleware:** Al rientro in dashboard, `CheckForPendingUpdates` nota che `File Version > DB Version`
 6. **Risultato:** Redirect forzato a `/system/upgrade/confirm` per lanciare le migrazioni
@@ -141,7 +141,7 @@ sequenceDiagram
 
 | Tipo | File | Posizione Repo | Scopo | Note |
 |------|------|----------------|-------|------|
-| **Standalone** | **v12.4** | `public/setup.php` | Nuovi Clienti / Manual Update | Hash Hardcoded. Grafica Premium. Crea .htaccess. |
+| **Standalone** | **v12.4** | Distribuito a parte (non versionato nel repo) | Nuovi Clienti / Manual Update | Hash Hardcoded. Grafica Premium. Crea .htaccess. Caricato come `index.php` in root, si autoelimina a fine esecuzione (o alla ricarica se l'unlink fallisce, mostrando 410 Gone). |
 | **Bridge** | **v13.0** | `resources/installer/index.php` | Auto-Update Interno | Hash dinamico (dal JSON). Minimalista. Git-Safe. |
 
 ### Il Backend (Laravel)
@@ -390,7 +390,7 @@ private function cleanupPartialMigration(): void
 ### **Creazione Pacchetto**
 - [ ] **Bridge Check:** Verificato che `resources/installer/index.php` sia presente dentro lo ZIP
 - [ ] **Hash ZIP:** Creato SHA256 dello ZIP e inserito in `latest.json`
-- [ ] **Setup Standalone:** Aggiornate costanti `PACKAGE_HASH` e `PACKAGE_URL` in `public/setup.php`
+- [ ] **Setup Standalone:** Aggiornate costanti `PACKAGE_HASH` e `PACKAGE_URL` nel file `index.php` standalone (distribuito a parte, non nel repo)
 - [ ] **Exclude List:** Verificato che `latest.json` abbia exclude list corretta
 - [ ] **Requirements:** Aggiornati requisiti PHP/Laravel se necessari
 
