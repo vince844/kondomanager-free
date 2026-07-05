@@ -17,7 +17,7 @@ class InstallController extends Controller
         if (File::exists($progressFile)) {
             $progress = json_decode(File::get($progressFile), true);
 
-            if (!empty($progress['current_step'])) {
+            if (! empty($progress['current_step'])) {
                 return redirect()->route('install.step', $progress['current_step']);
             }
         }

@@ -12,16 +12,25 @@ class MailSettings extends Component
     public bool $isMailRequired = false;
 
     public string $mailMailer = 'smtp';
+
     public string $mailHost = '127.0.0.1';
+
     public string $mailPort = '587';
+
     public ?string $mailUsername = null;
+
     public ?string $mailPassword = null;
+
     public string $mailEncryption = 'tls';
+
     public ?string $mailFromAddress = null;
+
     public ?string $mailFromName = null;
 
     public ?string $testEmailRecipient = null;
+
     public ?string $testStatus = null;
+
     public ?string $testMessage = null;
 
     private function mailFieldRules(): array
@@ -79,6 +88,7 @@ class MailSettings extends Component
             }
         } catch (\Exception $e) {
             $this->dispatch('wizard.error', ['message' => "Failed to load progress: {$e->getMessage()}"]);
+
             return;
         }
 
@@ -151,7 +161,7 @@ class MailSettings extends Component
 
             Mail::mailer($this->mailMailer)->raw(
                 __('installer.mail.test_body'),
-                fn($message) => $message->to($this->testEmailRecipient)->subject(__('installer.mail.test_subject'))
+                fn ($message) => $message->to($this->testEmailRecipient)->subject(__('installer.mail.test_subject'))
             );
 
             $this->testStatus = 'success';

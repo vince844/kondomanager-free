@@ -9,6 +9,7 @@ use Livewire\Component;
 class ServerRequirements extends Component
 {
     public array $requirements = [];
+
     public ?string $lastCheckedAt = null;
 
     public function mount(): void

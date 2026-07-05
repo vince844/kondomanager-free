@@ -9,8 +9,11 @@ use Livewire\Component;
 class Welcome extends Component
 {
     public string $php;
+
     public ?string $extensions = null;
+
     public bool $isDatabaseRequired = false;
+
     public bool $isMailRequired = false;
 
     public function mount(): void
@@ -23,7 +26,7 @@ class Welcome extends Component
 
             $this->dispatch('wizard.canProceed');
         } catch (\Exception $e) {
-            Log::error('Welcome mount failed: ' . $e->getMessage());
+            Log::error('Welcome mount failed: '.$e->getMessage());
             $this->dispatch('wizard.cannotProceed');
             $this->dispatch('wizard.error', ['message' => "Failed to load welcome step: {$e->getMessage()}"]);
         }

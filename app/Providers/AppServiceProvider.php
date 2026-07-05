@@ -6,18 +6,18 @@ use App\Models\Segnalazione;
 use App\Policies\PermissionPolicy;
 use App\Policies\RolePolicy;
 use App\Policies\SegnalazionePolicy;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Gate;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Event;
-use Illuminate\Database\Events\MigrationsEnded;
-use Illuminate\Queue\Events\JobProcessing;
 use App\Settings\GeneralSettings;
+use Illuminate\Database\Events\MigrationsEnded;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Queue\Events\JobProcessing;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -98,13 +98,13 @@ class AppServiceProvider extends ServiceProvider
                     $progress = json_decode(File::get($progressFile), true) ?? [];
                     $dirty = false;
 
-                    if (!empty($progress['pending_locale'])) {
+                    if (! empty($progress['pending_locale'])) {
                         $settings->language = $progress['pending_locale'];
                         unset($progress['pending_locale']);
                         $dirty = true;
                     }
 
-                    if (!empty($progress['pending_app_name'])) {
+                    if (! empty($progress['pending_app_name'])) {
                         $settings->app_name = $progress['pending_app_name'];
                         unset($progress['pending_app_name']);
                         $dirty = true;
@@ -134,7 +134,7 @@ class AppServiceProvider extends ServiceProvider
         Queue::before(function (JobProcessing $event) {
             try {
                 $settings = app(GeneralSettings::class);
-                if (!empty($settings->app_name)) {
+                if (! empty($settings->app_name)) {
                     config(['app.name' => $settings->app_name]);
                 }
             } catch (\Throwable $e) {

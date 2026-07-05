@@ -11,19 +11,28 @@ class FixedEnvironmentSettings extends Component
 {
     // --- APP PROPERTIES ---
     public string $appName = '';
+
     public string $appUrl = '';
+
     public string $appLocale = '';
 
     // --- DATABASE PROPERTIES ---
     public bool $isDatabaseRequired = false;
+
     public string $dbConnection = 'mysql';
+
     public string $dbHost = '127.0.0.1';
+
     public string $dbPort = '3306';
+
     public ?string $dbDatabase = null;
+
     public ?string $dbUsername = null;
+
     public ?string $dbPassword = null;
 
     public ?string $dbTestStatus = null;
+
     public ?string $dbTestMessage = null;
 
     private function dbFieldRules(): array
@@ -40,9 +49,9 @@ class FixedEnvironmentSettings extends Component
     protected function rules(): array
     {
         $rules = [
-            'appName'   => 'required|string|max:255',
-            'appUrl'    => 'required|string',
-            'appLocale' => 'required|string|in:' . implode(',', array_keys(config('installer.available_locales', []))),
+            'appName' => 'required|string|max:255',
+            'appUrl' => 'required|string',
+            'appLocale' => 'required|string|in:'.implode(',', array_keys(config('installer.available_locales', []))),
         ];
 
         if ($this->isDatabaseRequired) {
@@ -107,6 +116,7 @@ class FixedEnvironmentSettings extends Component
             }
         } catch (\Exception $e) {
             $this->dispatch('wizard.error', ['message' => "Failed to load progress: {$e->getMessage()}"]);
+
             return;
         }
 
@@ -128,19 +138,19 @@ class FixedEnvironmentSettings extends Component
         $this->validate();
 
         $data = [
-            'app_name'   => $this->formatEnvValue($this->appName),
-            'app_url'    => $this->appUrl,
+            'app_name' => $this->formatEnvValue($this->appName),
+            'app_url' => $this->appUrl,
             'app_locale' => $this->appLocale,
         ];
 
         if ($this->isDatabaseRequired) {
             $data = array_merge($data, [
                 'db_connection' => $this->dbConnection,
-                'db_host'       => $this->dbHost,
-                'db_port'       => $this->dbPort,
-                'db_database'   => $this->dbDatabase,
-                'db_username'   => $this->dbUsername,
-                'db_password'   => $this->formatEnvValue($this->dbPassword),
+                'db_host' => $this->dbHost,
+                'db_port' => $this->dbPort,
+                'db_database' => $this->dbDatabase,
+                'db_username' => $this->dbUsername,
+                'db_password' => $this->formatEnvValue($this->dbPassword),
             ]);
         }
 
@@ -163,8 +173,8 @@ class FixedEnvironmentSettings extends Component
         config(['database.connections.installer_test' => array_merge(
             config('database.connections.mysql', []),
             [
-                'host'     => $this->dbHost,
-                'port'     => $this->dbPort,
+                'host' => $this->dbHost,
+                'port' => $this->dbPort,
                 'database' => $this->dbDatabase,
                 'username' => $this->dbUsername,
                 'password' => $this->dbPassword ?? '',
@@ -226,9 +236,10 @@ class FixedEnvironmentSettings extends Component
         if (is_null($value)) {
             return null;
         }
-        if (preg_match('/\s/', $value) && !str_starts_with($value, '"')) {
-            return '"' . $value . '"';
+        if (preg_match('/\s/', $value) && ! str_starts_with($value, '"')) {
+            return '"'.$value.'"';
         }
+
         return $value;
     }
 

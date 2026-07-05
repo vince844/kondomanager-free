@@ -32,6 +32,7 @@ class Finish extends Component
                     File::delete($progressFile);
                 } catch (\Exception $e) {
                     $this->dispatch('wizard.error', ['message' => "Failed to delete progress file: {$e->getMessage()}"]);
+
                     return;
                 }
             }
@@ -40,6 +41,7 @@ class Finish extends Component
                 File::put($lockFile, now()->toDateTimeString());
             } catch (\Exception $e) {
                 $this->dispatch('wizard.error', ['message' => "Failed to create lock file: {$e->getMessage()}"]);
+
                 return;
             }
 
@@ -60,14 +62,14 @@ class Finish extends Component
     public function downloadSettings(): StreamedResponse
     {
         try {
-            $content = "Saved Installation Settings\n" . str_repeat('=', 40) . "\n\n";
+            $content = "Saved Installation Settings\n".str_repeat('=', 40)."\n\n";
             foreach ($this->settings as $step => $data) {
-                $content .= strtoupper($step) . ":\n";
+                $content .= strtoupper($step).":\n";
                 $content .= $this->formatData($data, 1);
                 $content .= "\n";
             }
 
-            $filename = 'installation_settings_' . now()->format('Y-m-d_H-i-s') . '.txt';
+            $filename = 'installation_settings_'.now()->format('Y-m-d_H-i-s').'.txt';
 
             return response()->streamDownload(function () use ($content) {
                 echo $content;

@@ -7,6 +7,7 @@ return [
         'brand_subtitle' => 'Software gestionale open source',
         'wait_default' => 'Attendere prego...',
         'wait_environment' => 'Configurazione del database in corso, non chiudere questa pagina...',
+        'footer_license' => 'Software Open Source (AGPL-3.0) per la gestione condominiale',
     ],
 
     'actions' => [
@@ -37,7 +38,7 @@ return [
         'mail' => [
             'label' => 'Impostazioni di posta',
             'description' => 'Impostazioni della posta in uscita',
-            'guide' => "Configura il server SMTP che Kondomanager userà per inviare email (notifiche, reimpostazione password, comunicazioni ai condomini). Puoi saltare questo step e configurarlo in un secondo momento dalle Impostazioni Generali.",
+            'guide' => 'Configura il server SMTP che Kondomanager userà per inviare email (notifiche, reimpostazione password, comunicazioni ai condomini). Puoi saltare questo step e configurarlo in un secondo momento dalle Impostazioni Generali.',
         ],
         'admin' => [
             'label' => 'Crea amministratore',
@@ -52,7 +53,7 @@ return [
     ],
 
     'welcome' => [
-        'before_start' => "Prima di iniziare, tieni a portata di mano le credenziali del database e, se vuoi configurarla subito, anche quelle del server di posta SMTP. Assicurati inoltre di avere i seguenti requisiti minimi del server:",
+        'before_start' => 'Prima di iniziare, tieni a portata di mano le credenziali del database e, se vuoi configurarla subito, anche quelle del server di posta SMTP. Assicurati inoltre di avere i seguenti requisiti minimi del server:',
         'php_requirement' => 'Il server deve avere installato la versione :version o maggiore.',
         'php_check_link' => 'Come controllare la versione di PHP installata',
         'extensions_label' => 'Estensioni:',
@@ -109,11 +110,11 @@ return [
         'save_settings' => 'Salva impostazioni',
         'cron_guide' => [
             'title' => 'Guida alla configurazione del cronjob',
-            'subtitle' => "Scegli il tuo ambiente di hosting per le istruzioni dettagliate. Potrai rivedere questa guida in qualsiasi momento da Impostazioni > Cron.",
+            'subtitle' => 'Scegli il tuo ambiente di hosting per le istruzioni dettagliate. Potrai rivedere questa guida in qualsiasi momento da Impostazioni > Cron.',
             'tab_webhook' => 'cron-job.org',
             'tab_cpanel' => 'cPanel',
             'tab_plesk' => 'Plesk / VPS',
-            'webhook_intro' => "Ideale per hosting condivisi senza accesso al terminale (es. Altervista): un servizio gratuito \"chiama\" la tua installazione ogni minuto al posto di un vero cronjob.",
+            'webhook_intro' => 'Ideale per hosting condivisi senza accesso al terminale (es. Altervista): un servizio gratuito "chiama" la tua installazione ogni minuto al posto di un vero cronjob.',
             'webhook_step1' => "Accedi a Kondomanager come amministratore, vai su Impostazioni > Cron, attiva \"Scheduler esterno\" e copia l'URL webhook generato.",
             'webhook_step2' => "Crea un account gratuito su cron-job.org, crea un nuovo cronjob incollando l'URL copiato e imposta l'esecuzione ogni minuto.",
             'cpanel_intro' => 'Configurazione nativa consigliata per hosting professionali con cPanel — più stabile ed efficiente del webhook.',

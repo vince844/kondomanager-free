@@ -1,8 +1,15 @@
 <?php
 
+use App\Livewire\Installer\CreateAdmin;
+use App\Livewire\Installer\Finish;
+use App\Livewire\Installer\FixedEnvironmentSettings;
+use App\Livewire\Installer\MailSettings;
+use App\Livewire\Installer\ServerRequirements;
+use App\Livewire\Installer\Welcome;
+
 return [
 
-    'app_name'      => 'Kondomanager',
+    'app_name' => 'Kondomanager',
     'run_installer' => false,
 
     /*
@@ -33,42 +40,42 @@ return [
 
     'steps' => [
         [
-            'key'           => 'welcome',
-            'label'         => 'Benvenuto',
-            'description'   => 'Iniziare',
-            'component'     => \App\Livewire\Installer\Welcome::class,
+            'key' => 'welcome',
+            'label' => 'Benvenuto',
+            'description' => 'Iniziare',
+            'component' => Welcome::class,
         ],
         [
-            'key'           => 'requirements',
-            'label'         => 'Requisiti del server',
-            'description'   => 'Assicurarsi che tutti i requisiti necessari siano soddisfatti',
-            'component'     => \App\Livewire\Installer\ServerRequirements::class,
+            'key' => 'requirements',
+            'label' => 'Requisiti del server',
+            'description' => 'Assicurarsi che tutti i requisiti necessari siano soddisfatti',
+            'component' => ServerRequirements::class,
         ],
         [
-            'key'           => 'environment',
-            'label'         => 'Impostazioni ambientali',
-            'description'   => 'Raccogliere le impostazioni ambientali',
-            'component'     => \App\Livewire\Installer\FixedEnvironmentSettings::class,
+            'key' => 'environment',
+            'label' => 'Impostazioni ambientali',
+            'description' => 'Raccogliere le impostazioni ambientali',
+            'component' => FixedEnvironmentSettings::class,
         ],
         [
-            'key'           => 'mail',
-            'label'         => 'Impostazioni di posta',
-            'description'   => 'Impostazioni della posta in uscita',
-            'component'     => \App\Livewire\Installer\MailSettings::class,
-            'optional'      => true,
+            'key' => 'mail',
+            'label' => 'Impostazioni di posta',
+            'description' => 'Impostazioni della posta in uscita',
+            'component' => MailSettings::class,
+            'optional' => true,
         ],
         [
-            'key'           => 'admin',
-            'label'         => 'Crea amministratore',
-            'description'   => 'Crea utente amministratore',
-            'component'     => \App\Livewire\Installer\CreateAdmin::class,
-            'optional'      => false,
+            'key' => 'admin',
+            'label' => 'Crea amministratore',
+            'description' => 'Crea utente amministratore',
+            'component' => CreateAdmin::class,
+            'optional' => false,
         ],
         [
-            'key'           => 'finish',
-            'label'         => 'Fine',
-            'description'   => 'Completa la configurazione',
-            'component'     => \App\Livewire\Installer\Finish::class,
+            'key' => 'finish',
+            'label' => 'Fine',
+            'description' => 'Completa la configurazione',
+            'component' => Finish::class,
         ],
     ],
 
@@ -89,20 +96,20 @@ return [
             'json',
         ],
         'permissions' => [
-            'storage/'              => 'writable',
-            'bootstrap/cache/'      => 'writable',
-            'storage/app/'          => 'writable',
-            'storage/framework/'    => 'writable',
-            'storage/logs/'         => 'writable',
-            '.env'                  => 'writable',
+            'storage/' => 'writable',
+            'bootstrap/cache/' => 'writable',
+            'storage/app/' => 'writable',
+            'storage/framework/' => 'writable',
+            'storage/logs/' => 'writable',
+            '.env' => 'writable',
         ],
         'environment' => [
-            'production'    => true,  // True for production, False for Local
-            'debug'         => false, // Set debug
-            'database'      => true,  // Ask for database details. Set to false if there is no database. 
-            'mail'          => true,
+            'production' => true,  // True for production, False for Local
+            'debug' => false, // Set debug
+            'database' => true,  // Ask for database details. Set to false if there is no database.
+            'mail' => true,
         ],
-        'link_storage'      => true,  // True to link storage
+        'link_storage' => true,  // True to link storage
         /*
         | Database Seeding Logic
         | Set 'enabled' to true to run seeders after migrations.
@@ -122,10 +129,10 @@ return [
     |--------------------------------------------------------------------------
     */
     'options' => [
-        'verify_admin_email'        => true, // Set to true to set the admin email as verified in the database
-        'lock_file'                 => storage_path('installed.lock'),
-        'progress_file'             => storage_path('install-progress.json'),
-        'redirect_after_install'    => '/',
+        'verify_admin_email' => true, // Set to true to set the admin email as verified in the database
+        'lock_file' => storage_path('installed.lock'),
+        'progress_file' => storage_path('install-progress.json'),
+        'redirect_after_install' => '/',
     ],
 
     /*
@@ -134,8 +141,8 @@ return [
     |--------------------------------------------------------------------------
     */
     'spatie' => [
-        'enabled'       => true, // Set to false to disable role assignment
-        'admin_role'    => 'amministratore', // The role name to assign to the new admin
+        'enabled' => true, // Set to false to disable role assignment
+        'admin_role' => 'amministratore', // The role name to assign to the new admin
     ],
 
 ];

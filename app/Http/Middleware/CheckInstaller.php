@@ -23,7 +23,7 @@ class CheckInstaller
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!config('installer.run_installer')) {
+        if (! config('installer.run_installer')) {
             return redirect('/');
         }
 

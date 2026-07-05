@@ -2,15 +2,16 @@
 
 namespace App\Livewire\Installer;
 
+use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\File;
-use Livewire\Attributes\Layout;
-use Livewire\Attributes\On;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Component;
-use Illuminate\Database\Seeder;
+use Spatie\Permission\PermissionRegistrar;
 
 /**
  * Wizard di installazione — orchestratore nativo KondoManager.
@@ -31,22 +32,28 @@ use Illuminate\Database\Seeder;
 class InstallerWizard extends Component
 {
     public string $stepKey;
+
     public Collection $steps;
+
     public int $currentIndex = 0;
+
     public array $progress = [];
+
     public bool $canProceed = true;
+
     public bool $skippable = false;
+
     public bool $showWaitScreen = false;
 
     public function mount(string $step)
     {
         $this->steps = collect(config('installer.steps'));
         $this->stepKey = $step;
-        $this->currentIndex = $this->steps->search(fn($s) => $s['key'] === $this->stepKey);
+        $this->currentIndex = $this->steps->search(fn ($s) => $s['key'] === $this->stepKey);
         $this->skippable = $this->steps[$this->currentIndex]['optional'] ?? false;
 
         if ($this->currentIndex === false) {
-            abort(404, "Invalid installer step.");
+            abort(404, 'Invalid installer step.');
         }
 
         $this->loadProgress();
@@ -59,20 +66,22 @@ class InstallerWizard extends Component
             } else {
                 $this->progress['data']['environment'] = $this->progress['raw_env_data'];
                 unset($this->progress['raw_env_data']);
-                $this->progress['current_step'] = "environment";
+                $this->progress['current_step'] = 'environment';
                 $this->saveProgress();
 
-                $savedIndex = $this->steps->search(fn($s) => $s['key'] === 'environment');
+                $savedIndex = $this->steps->search(fn ($s) => $s['key'] === 'environment');
                 $nextStepRoute = $this->steps[$savedIndex + 1]['key'];
+
                 return $this->redirect(route('install.step', $nextStepRoute));
             }
         }
 
         $savedStep = $this->progress['current_step'] ?? null;
-        $savedIndex = $this->steps->search(fn($s) => $s['key'] === $savedStep);
+        $savedIndex = $this->steps->search(fn ($s) => $s['key'] === $savedStep);
 
         if ($savedIndex !== false && $this->currentIndex > $savedIndex + 1) {
             $nextStepRoute = $this->steps[$savedIndex + 1]['key'];
+
             return $this->redirect(route('install.step', $nextStepRoute));
         }
     }
@@ -127,15 +136,22 @@ class InstallerWizard extends Component
             : ['data' => []];
 
         try {
-            if ($this->stepKey === "environment") {
+            if ($this->stepKey === 'environment') {
                 $this->runEnvironmentSetup($payload['data']);
             }
 
-            if ($this->stepKey === "mail") {
-                $this->runMailSetup($payload['data'] ?? []);
+            // Solo se lo step è stato davvero compilato (non saltato): altrimenti
+            // $payload['data'] è assente e runMailSetup([]) forzerebbe comunque
+            // MAIL_MAILER a 'smtp' (fallback in updateMailSettings()) al posto del
+            // default sicuro 'log' di .env.example, con host/porta/credenziali
+            // vuoti — un mailer "attivo" ma non configurato, peggio di uno che
+            // si limita a loggare le email finché non vengono configurate da
+            // Impostazioni > Mail.
+            if ($this->stepKey === 'mail' && ! empty($payload['data'])) {
+                $this->runMailSetup($payload['data']);
             }
 
-            if (!empty($payload)) {
+            if (! empty($payload)) {
                 $progress['data'][$this->stepKey] = $payload;
             }
 
@@ -148,11 +164,11 @@ class InstallerWizard extends Component
             return $this->redirect(route('install.step', $nextStepKey ?? $redirectUrl));
 
         } catch (\Throwable $th) {
-            Log::error("Installer Failed at step [{$this->stepKey}]: " . $th->getMessage(), [
-                'exception' => $th
+            Log::error("Installer Failed at step [{$this->stepKey}]: ".$th->getMessage(), [
+                'exception' => $th,
             ]);
 
-            $friendlyMessage = $this->friendlyErrorMessage($th); 
+            $friendlyMessage = $this->friendlyErrorMessage($th);
             $progress['error'] = $friendlyMessage;
             File::put($progressFile, json_encode($progress, JSON_PRETTY_PRINT));
             $this->showWaitScreen = false;
@@ -186,7 +202,7 @@ class InstallerWizard extends Component
     {
         if (config('installer.requirements.environment.database')) {
             if (empty($data['db_database'])) {
-                throw new \Exception("DB_DATABASE is missing. Please provide a database name.");
+                throw new \Exception('DB_DATABASE is missing. Please provide a database name.');
             }
 
             // =====================================================
@@ -199,8 +215,8 @@ class InstallerWizard extends Component
 
             Artisan::call('config:clear');
             config([
-                'database.connections.mysql.host'     => $data['db_host'],
-                'database.connections.mysql.port'     => $data['db_port'] ?? 3306,
+                'database.connections.mysql.host' => $data['db_host'],
+                'database.connections.mysql.port' => $data['db_port'] ?? 3306,
                 'database.connections.mysql.database' => $data['db_database'],
                 'database.connections.mysql.username' => $data['db_username'],
                 'database.connections.mysql.password' => $data['db_password'],
@@ -215,13 +231,13 @@ class InstallerWizard extends Component
                     throw new \Exception("Database '{$data['db_database']}' does not exist or cannot be accessed.");
                 }
             } catch (\Exception $e) {
-                Log::error("Database connection failed: " . $e->getMessage());
+                Log::error('Database connection failed: '.$e->getMessage());
                 throw new \Exception("We couldn't connect to your database. Please check your credentials.");
             }
 
             $exitCode = Artisan::call('migrate:fresh', ['--force' => true]);
             if ($exitCode !== 0) {
-                throw new \Exception("Database migration failed.");
+                throw new \Exception('Database migration failed.');
             }
 
             // Ripristina connessione dopo migrate:fresh che può resettarla
@@ -241,8 +257,8 @@ class InstallerWizard extends Component
             // purge il seeder trova dati stale e può fallire silenziosamente.
             // Questo fix è stato proposto come PR al package eii/installer.
             // =====================================================
-            if (class_exists(\Spatie\Permission\PermissionRegistrar::class)) {
-                app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+            if (class_exists(PermissionRegistrar::class)) {
+                app()[PermissionRegistrar::class]->forgetCachedPermissions();
             }
             Artisan::call('cache:clear');
 
@@ -259,14 +275,14 @@ class InstallerWizard extends Component
                     if (empty($classes)) {
                         $seedExitCode = Artisan::call('db:seed', ['--force' => true]);
                         if ($seedExitCode !== 0) {
-                            throw new \Exception("Default seeding failed: " . Artisan::output());
+                            throw new \Exception('Default seeding failed: '.Artisan::output());
                         }
                     } else {
                         foreach ($classes as $class) {
                             if (class_exists($class) && is_subclass_of($class, Seeder::class)) {
                                 $seedExitCode = Artisan::call('db:seed', ['--class' => $class, '--force' => true]);
                                 if ($seedExitCode !== 0) {
-                                    throw new \Exception("Seeding failed for class [{$class}]: " . Artisan::output());
+                                    throw new \Exception("Seeding failed for class [{$class}]: ".Artisan::output());
                                 }
                             } else {
                                 Log::warning("Installer: Seeder class [{$class}] not found or invalid. Skipping.");
@@ -278,7 +294,7 @@ class InstallerWizard extends Component
 
                 } catch (\Throwable $e) {
                     DB::rollBack();
-                    Log::error("Seeding rolled back: " . $e->getMessage());
+                    Log::error('Seeding rolled back: '.$e->getMessage());
                     throw $e;
                 }
             }
@@ -288,8 +304,8 @@ class InstallerWizard extends Component
             try {
                 Artisan::call('storage:link');
             } catch (\Exception $e) {
-                Log::error("Storage link creation failed: " . $e->getMessage());
-                throw new \Exception("Storage link creation failed.");
+                Log::error('Storage link creation failed: '.$e->getMessage());
+                throw new \Exception('Storage link creation failed.');
             }
         }
 
@@ -320,29 +336,34 @@ class InstallerWizard extends Component
     {
         $envPath = base_path('.env');
         $env = File::exists($envPath) ? File::get($envPath) : '';
-        $quoteIfNeeded = fn($value) => preg_match('/\s/', $value ?? '') ? '"' . addslashes($value) . '"' : $value;
+        $quoteIfNeeded = fn ($value) => preg_match('/\s/', $value ?? '') ? '"'.addslashes($value).'"' : $value;
 
         $pairs = [
-            'APP_NAME'      => $quoteIfNeeded($data['app_name'] ?? config('installer.app_name', 'Kondomanager')),
-            'APP_ENV'       => config('installer.requirements.environment.production') ? 'production' : 'local',
-            'APP_DEBUG'     => config('installer.requirements.environment.debug') ? 'true' : 'false',
-            'APP_URL'       => $data['app_url'] ?? '',
-            'APP_LOCALE'    => $data['app_locale'] ?? config('app.locale', 'it'),
+            'APP_NAME' => $quoteIfNeeded($data['app_name'] ?? config('installer.app_name', 'Kondomanager')),
+            'APP_ENV' => config('installer.requirements.environment.production') ? 'production' : 'local',
+            'APP_DEBUG' => config('installer.requirements.environment.debug') ? 'true' : 'false',
+            'APP_URL' => $data['app_url'] ?? '',
+            'APP_LOCALE' => $data['app_locale'] ?? config('app.locale', 'it'),
             'DB_CONNECTION' => $data['db_connection'] ?? 'mysql',
-            'DB_HOST'       => $data['db_host'] ?? '127.0.0.1',
-            'DB_PORT'       => $data['db_port'] ?? '3306',
-            'DB_DATABASE'   => $data['db_database'] ?? '',
-            'DB_USERNAME'   => $data['db_username'] ?? '',
-            'DB_PASSWORD'   => $data['db_password'] ?? '',
+            'DB_HOST' => $data['db_host'] ?? '127.0.0.1',
+            'DB_PORT' => $data['db_port'] ?? '3306',
+            'DB_DATABASE' => $data['db_database'] ?? '',
+            'DB_USERNAME' => $data['db_username'] ?? '',
+            'DB_PASSWORD' => $data['db_password'] ?? '',
         ];
 
         foreach ($pairs as $key => $value) {
             // #?[ \t]* tollera righe commentate (es. "# DB_HOST=...") lasciate come placeholder
             // in .env.example: le sostituisce/scommenta invece di duplicarle in append.
+            // preg_replace_callback (non preg_replace) perché $value è un valore
+            // utente non fidato: se contenesse "$" seguito da una cifra (comune in
+            // password come "Pass$1word"), preg_replace lo interpreterebbe come
+            // backreference e lo rimuoverebbe silenziosamente dalla stringa scritta
+            // su .env — riprodotto: preg_replace corrompe "Pass$1word" in "Password".
             $pattern = "/^#?[ \t]*{$key}=.*$/m";
             $env = preg_match($pattern, $env)
-                ? preg_replace($pattern, "{$key}={$value}", $env)
-                : $env . PHP_EOL . "{$key}={$value}";
+                ? preg_replace_callback($pattern, fn () => "{$key}={$value}", $env)
+                : $env.PHP_EOL."{$key}={$value}";
         }
 
         File::put($envPath, trim($env));
@@ -352,29 +373,31 @@ class InstallerWizard extends Component
     {
         $envPath = base_path('.env');
         $env = File::exists($envPath) ? File::get($envPath) : '';
-        $quoteIfNeeded = fn($value) => preg_match('/\s/', $value ?? '') ? '"' . addslashes($value) . '"' : $value;
+        $quoteIfNeeded = fn ($value) => preg_match('/\s/', $value ?? '') ? '"'.addslashes($value).'"' : $value;
 
         $pairs = [
-            'MAIL_MAILER'       => $data['mail_mailer'] ?? 'smtp',
-            'MAIL_HOST'         => $data['mail_host'] ?? '',
-            'MAIL_PORT'         => $data['mail_port'] ?? '',
-            'MAIL_USERNAME'     => $data['mail_username'] ?? '',
-            'MAIL_PASSWORD'     => $data['mail_password'] ?? '',
+            'MAIL_MAILER' => $data['mail_mailer'] ?? 'smtp',
+            'MAIL_HOST' => $data['mail_host'] ?? '',
+            'MAIL_PORT' => $data['mail_port'] ?? '',
+            'MAIL_USERNAME' => $data['mail_username'] ?? '',
+            'MAIL_PASSWORD' => $data['mail_password'] ?? '',
             // Illuminate\Mail\MailManager legge 'scheme' (non 'encryption') per
             // decidere il tipo di cifratura: 'smtps' per TLS implicito (porta 465),
             // altrimenti vuoto per lasciare l'auto-detect di Laravel in base alla
             // porta (STARTTLS opportunistico, il caso comune per la porta 587).
-            'MAIL_SCHEME'       => ($data['mail_encryption'] ?? 'tls') === 'ssl' ? 'smtps' : '',
+            'MAIL_SCHEME' => ($data['mail_encryption'] ?? 'tls') === 'ssl' ? 'smtps' : '',
             'MAIL_FROM_ADDRESS' => $data['mail_from_address'] ?? '',
-            'MAIL_FROM_NAME'    => $quoteIfNeeded($data['mail_from_name'] ?? ''),
+            'MAIL_FROM_NAME' => $quoteIfNeeded($data['mail_from_name'] ?? ''),
         ];
 
         foreach ($pairs as $key => $value) {
             // #?[ \t]* tollera righe commentate lasciate come placeholder in .env.example.
+            // preg_replace_callback (non preg_replace): vedi commento in updateEnvSettings(),
+            // stesso rischio di corruzione se una password mail contiene "$" + cifra.
             $pattern = "/^#?[ \t]*{$key}=.*$/m";
             $env = preg_match($pattern, $env)
-                ? preg_replace($pattern, "{$key}={$value}", $env)
-                : $env . PHP_EOL . "{$key}={$value}";
+                ? preg_replace_callback($pattern, fn () => "{$key}={$value}", $env)
+                : $env.PHP_EOL."{$key}={$value}";
         }
 
         File::put($envPath, trim($env));
@@ -384,18 +407,24 @@ class InstallerWizard extends Component
     {
         $msg = $th->getMessage();
 
-        if ($th instanceof \Exception && !str_contains($msg, 'SQLSTATE') && !str_contains($msg, 'PDOException')) {
+        if ($th instanceof \Exception && ! str_contains($msg, 'SQLSTATE') && ! str_contains($msg, 'PDOException')) {
             return $msg;
         }
 
         if (str_contains($msg, 'SQLSTATE') || str_contains($msg, 'Connection refused')) {
-            return "Unable to connect to the database. Please check your credentials and make sure the database exists.";
+            return 'Unable to connect to the database. Please check your credentials and make sure the database exists.';
         }
 
-        if (str_contains($msg, 'migrate')) return "Database migration failed.";
-        if (str_contains($msg, 'seed'))    return "Database seeding failed.";
-        if (str_contains($msg, '.env'))    return "There was a problem updating the environment file.";
+        if (str_contains($msg, 'migrate')) {
+            return 'Database migration failed.';
+        }
+        if (str_contains($msg, 'seed')) {
+            return 'Database seeding failed.';
+        }
+        if (str_contains($msg, '.env')) {
+            return 'There was a problem updating the environment file.';
+        }
 
-        return "An unexpected error occurred.";
+        return 'An unexpected error occurred.';
     }
 }

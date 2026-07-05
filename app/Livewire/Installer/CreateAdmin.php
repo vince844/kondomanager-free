@@ -11,8 +11,11 @@ use Livewire\Component;
 class CreateAdmin extends Component
 {
     public ?string $name = null;
+
     public ?string $email = null;
+
     public ?string $password = null;
+
     public ?string $password_confirmation = null;
 
     protected function rules(): array

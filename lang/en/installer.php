@@ -7,6 +7,7 @@ return [
         'brand_subtitle' => 'Open source property management software',
         'wait_default' => 'Please wait...',
         'wait_environment' => 'Setting up the database, please do not close this page...',
+        'footer_license' => 'Open source software (AGPL-3.0) for condominium management',
     ],
 
     'actions' => [
@@ -88,7 +89,7 @@ return [
         'db_port' => ['label' => 'Port', 'tooltip' => 'The MySQL server port, usually 3306.'],
         'db_database' => ['label' => 'Database', 'tooltip' => 'The name of the database created specifically for Kondomanager.'],
         'db_username' => ['label' => 'Username', 'tooltip' => 'A user with access permissions to the database.'],
-        'db_password' => ['label' => 'Password', 'tooltip' => "The password for the database user above."],
+        'db_password' => ['label' => 'Password', 'tooltip' => 'The password for the database user above.'],
         'mail_mailer' => ['label' => 'Mailer', 'tooltip' => 'The mail sending method, usually "smtp".'],
         'mail_host' => ['label' => 'Host', 'tooltip' => 'The SMTP server address, e.g. smtp.gmail.com.'],
         'mail_port' => ['label' => 'Port', 'tooltip' => 'The SMTP port: usually 587 (TLS) or 465 (SSL).'],
@@ -113,7 +114,7 @@ return [
             'tab_webhook' => 'cron-job.org',
             'tab_cpanel' => 'cPanel',
             'tab_plesk' => 'Plesk / VPS',
-            'webhook_intro' => "Ideal for shared hosting without terminal access (e.g. Altervista): a free service \"calls\" your installation every minute instead of a real cron job.",
+            'webhook_intro' => 'Ideal for shared hosting without terminal access (e.g. Altervista): a free service "calls" your installation every minute instead of a real cron job.',
             'webhook_step1' => 'Log in to Kondomanager as administrator, go to Settings > Cron, enable "External scheduler" and copy the generated webhook URL.',
             'webhook_step2' => 'Create a free account on cron-job.org, create a new cron job pasting the copied URL, and set it to run every minute.',
             'cpanel_intro' => 'Native setup recommended for professional hosting with cPanel — more stable and efficient than the webhook.',

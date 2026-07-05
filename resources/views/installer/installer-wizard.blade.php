@@ -20,7 +20,7 @@
 
         <div class="bg-white rounded-2xl shadow-xl p-8 flex gap-8">
             <!-- Stepper -->
-            <div class="shrink-0 max-w-xs border-r pe-4">
+            <div class="shrink-0 max-w-xs border-r pe-4 flex flex-col">
                 <div class="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3 mb-8">
                     <span class="shrink-0 flex items-center justify-center w-10 h-10 rounded-full bg-gray-950 text-white text-sm font-bold">Km</span>
                     <div class="leading-tight">
@@ -56,6 +56,15 @@
                             </div>
                         </div>
                     @endforeach
+                </div>
+
+                <div class="mt-auto pt-6">
+                    <p class="bg-gray-50 rounded-xl px-3 py-3 text-center text-xs text-gray-400">
+                        Powered by
+                        <a href="https://www.kondomanager.com" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-500 hover:text-gray-700 hover:underline">Kondomanager</a>
+                        —
+                        <a href="https://github.com/vince844/kondomanager-free" target="_blank" rel="noopener noreferrer" class="hover:text-gray-700 hover:underline">{{ __('installer.wizard.footer_license') }}</a>
+                    </p>
                 </div>
             </div>
 
