@@ -106,15 +106,6 @@ class InstallerWizard extends Component
         $this->saveStep();
     }
 
-    public function previousStep()
-    {
-        if ($this->currentIndex === 0) {
-            return;
-        }
-
-        return $this->redirect(route('install.step', $this->steps[$this->currentIndex - 1]['key']));
-    }
-
     #[Layout('installer.layouts.installer')]
     public function render()
     {

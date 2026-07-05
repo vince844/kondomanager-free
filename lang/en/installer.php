@@ -11,7 +11,6 @@ return [
 
     'actions' => [
         'next' => 'Next',
-        'back' => 'Back',
         'finish' => 'Finish',
         'skip' => 'Skip',
         'loading' => 'Please wait...',
@@ -105,7 +104,7 @@ return [
     ],
 
     'finish' => [
-        'title' => 'Installation complete!',
+        'title' => 'Congratulations, installation complete!',
         'description' => 'The application has been successfully installed and configured.',
         'save_settings' => 'Save settings',
         'cron_guide' => [

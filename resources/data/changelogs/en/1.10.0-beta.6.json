@@ -1,0 +1,12 @@
+{
+    "features": [
+        "Fixed a crash that occurred when typing the Beneficiary IBAN on the supplier payment edit page.",
+        "The \"bonifico parlante\" (the qualifying bank transfer required for Italian tax deductions), the deduction type and bank fees are now correctly saved when editing an already registered supplier payment.",
+        "Reversed supplier payments can no longer be reached from the edit page: a clear message is now shown instead of a save that silently had no effect.",
+        "Added an account balance check when editing a supplier payment too, with an explicit confirmation required in case of overdraft — as was already the case when creating a payment.",
+        "Added a safeguard that prevents editing cumulative payments spanning multiple invoices, to avoid corrupting the allocated amounts.",
+        "The \"bonifico parlante\" field, reserved for tax deductions (renovations, eco-bonus, seismic bonus, superbonus), now only appears for payments made by bank transfer: Italian law does not allow cash or checks for these deductions.",
+        "Improved the layout of the supplier payment edit page: full-width card, related fields placed side by side, and a more compact save button, consistent with the other pages of the management module.",
+        "Fixed some display issues on the supplier payment edit page on smartphones, where some fields could overlap."
+    ]
+}

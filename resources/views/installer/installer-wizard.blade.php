@@ -69,23 +69,7 @@
                         @livewire($step['component'], ['wizard' => $this])
                     </div>
 
-                    <div class="mt-auto flex justify-between items-center gap-3 pt-6">
-                        @if ($currentIndex > 0 && $currentIndex < $steps->count() - 1)
-                            {{-- wire:loading.attr senza wire:target: si disabilita per QUALSIASI richiesta
-                                Livewire in corso, non solo previousStep — inclusi i salvataggi "on blur" dei
-                                campi dello step corrente, altrimenti un click subito dopo l'ultimo carattere
-                                digitato può partire prima che quel salvataggio arrivi al server. --}}
-                            <button class="btn-secondary flex items-center justify-center gap-2" wire:click="previousStep" wire:loading.attr="disabled">
-                                <svg wire:loading class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                                </svg>
-                                <span wire:loading.remove>{{ __('installer.actions.back') }}</span>
-                                <span wire:loading>{{ __('installer.actions.loading') }}</span>
-                            </button>
-                        @else
-                            <span></span>
-                        @endif
+                    <div class="mt-auto flex justify-end items-center gap-3 pt-6">
 
                         {{-- Spinner/testo "Attendere..." senza wire:target: reagiscono a QUALSiasi
                             richiesta Livewire in corso (inclusi i salvataggi "on blur" dei campi,

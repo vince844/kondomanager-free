@@ -556,6 +556,15 @@ watch(() => form.fornitore_id, async (newVal) => {
 // Richiede IBAN per bonifico
 const richiedeIban = computed(() => form.metodo_pagamento === 'bonifico');
 
+// Il Bonifico Parlante richiede un bonifico tracciabile (art. 16-bis TUIR):
+// se si cambia metodo, la dichiarazione fiscale non è più valida.
+watch(() => form.metodo_pagamento, (metodo) => {
+    if (metodo !== 'bonifico') {
+        form.bonifico_parlante = false;
+        form.tipo_detrazione = null;
+    }
+});
+
 // ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
@@ -768,8 +777,8 @@ const pageGuides = [
                                 placeholder="0,00" />
                         </div>
 
-                        <!-- Fiscal Sentinel (Bonifico Parlante) -->
-                        <div class="space-y-1.5">
+                        <!-- Fiscal Sentinel (Bonifico Parlante) — richiede un bonifico tracciabile (art. 16-bis TUIR) -->
+                        <div v-if="richiedeIban" class="space-y-1.5">
                             <div class="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors"
                                 :class="{ 'bg-indigo-50/50 border-indigo-200 dark:bg-indigo-900/10 dark:border-indigo-700/50': form.bonifico_parlante }">
                                 <div class="flex items-center justify-between cursor-pointer" @click="form.bonifico_parlante = !form.bonifico_parlante">
