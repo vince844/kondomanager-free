@@ -25,22 +25,26 @@ namespace App\Enums;
 enum StatoPagamentoFattura: string
 {
     /** Nessun pagamento/compensazione registrata (totale allocato = 0). */
-    case APERTA   = 'aperta';
+    case APERTA = 'aperta';
 
     /** Pagamento/compensazione parziale (0 < totale < netto_a_pagare). */
     case PARZIALE = 'parziale';
 
     /** Interamente saldato/compensato (totale = netto_a_pagare). */
-    case PAGATA   = 'pagata';
+    case PAGATA = 'pagata';
+
+    /** Fattura stornata (congelata): sostituita da una Nota di Credito di compensazione. */
+    case STORNATA = 'stornata';
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     public function label(): string
     {
-        return match($this) {
-            self::APERTA   => 'Aperta',
+        return match ($this) {
+            self::APERTA => 'Aperta',
             self::PARZIALE => 'Parzialmente pagata',
-            self::PAGATA   => 'Pagata',
+            self::PAGATA => 'Pagata',
+            self::STORNATA => 'Stornata',
         };
     }
 
@@ -50,10 +54,11 @@ enum StatoPagamentoFattura: string
      */
     public function labelPerNC(): string
     {
-        return match($this) {
-            self::APERTA   => 'Disponibile',
+        return match ($this) {
+            self::APERTA => 'Disponibile',
             self::PARZIALE => 'Parzialmente utilizzata',
-            self::PAGATA   => 'Compensata',
+            self::PAGATA => 'Compensata',
+            self::STORNATA => 'Stornata',
         };
     }
 
@@ -66,10 +71,11 @@ enum StatoPagamentoFattura: string
     /** Badge color per la UI (Tailwind CSS class). */
     public function badgeColor(): string
     {
-        return match($this) {
-            self::APERTA   => 'red',
+        return match ($this) {
+            self::APERTA => 'red',
             self::PARZIALE => 'yellow',
-            self::PAGATA   => 'green',
+            self::PAGATA => 'green',
+            self::STORNATA => 'slate',
         };
     }
 
@@ -79,10 +85,10 @@ enum StatoPagamentoFattura: string
      */
     public static function fromImporti(int $totaleAllocato, int $nettoDaPagare): self
     {
-        return match(true) {
-            $totaleAllocato <= 0              => self::APERTA,
-            $totaleAllocato < $nettoDaPagare  => self::PARZIALE,
-            default                           => self::PAGATA,
+        return match (true) {
+            $totaleAllocato <= 0 => self::APERTA,
+            $totaleAllocato < $nettoDaPagare => self::PARZIALE,
+            default => self::PAGATA,
         };
     }
 }

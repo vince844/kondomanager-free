@@ -2,14 +2,15 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
-use App\Http\Controllers\Controller;
 use App\Enums\StatoPagamentoFattura;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
+use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
 use App\Http\Requests\Gestionale\Movimenti\UpdateFatturaRequest;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Condominio;
 use App\Models\Documento;
+use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
@@ -22,17 +23,18 @@ use App\Services\Gestionale\FatturaPassivaService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Http\RedirectResponse;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
-use Illuminate\Support\Facades\Auth;
 
 /**
  * Controller per la gestione delle Fatture Passive (Ciclo Passivo).
@@ -41,12 +43,12 @@ use Illuminate\Support\Facades\Auth;
  */
 class FatturaPassivaController extends Controller
 {
-    use HandleFlashMessages, HasEsercizio, HasCondomini;
+    use HandleFlashMessages, HasCondomini, HasEsercizio;
 
     /**
      * Inizializza il controller iniettando il service per le fatture passive.
      *
-     * @param FatturaPassivaService $service Il servizio che contiene la logica di business e la partita doppia.
+     * @param  FatturaPassivaService  $service  Il servizio che contiene la logica di business e la partita doppia.
      */
     public function __construct(private FatturaPassivaService $service) {}
 
@@ -56,40 +58,39 @@ class FatturaPassivaController extends Controller
      * Permette di filtrare i documenti per stato di pagamento, stato di approvazione e testo libero
      * (numero documento o ragione sociale del fornitore).
      *
-     * @param Request $request La richiesta HTTP contenente i filtri (search, stato_pagamento, ecc).
-     * @param Condominio $condominio Il condominio di cui si stanno visualizzando le fatture.
+     * @param  Request  $request  La richiesta HTTP contenente i filtri (search, stato_pagamento, ecc).
+     * @param  Condominio  $condominio  Il condominio di cui si stanno visualizzando le fatture.
      * @return Response Vista Inertia con i dati paginati e le statistiche sommarie.
      */
     public function index(Request $request, Condominio $condominio): Response
     {
         $fatture = FatturaPassiva::where('condominio_id', $condominio->id)
             ->with(['fornitore', 'righe', 'documenti'])
-            ->when($request->stato_pagamento, fn($q, $v) => $q->where('stato_pagamento', $v))
-            ->when($request->stato_approvazione, fn($q, $v) => $q->where('stato_approvazione', $v))
-            ->when($request->search, fn($q, $v) =>
-                $q->where('numero_documento', 'like', "%{$v}%")
-                  ->orWhereHas('fornitore', fn($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
+            ->when($request->stato_pagamento, fn ($q, $v) => $q->where('stato_pagamento', $v))
+            ->when($request->stato_approvazione, fn ($q, $v) => $q->where('stato_approvazione', $v))
+            ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
+                ->orWhereHas('fornitore', fn ($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
             )
             ->orderByDesc('data_documento')
             ->paginate(20)
             ->withQueryString();
-        
+
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         $stats = [
-            'totale_aperte'       => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->count(),
-            'totale_sfori'        => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_approvazione', 'sforo_motivato')->count(),
-            'importo_da_pagare'   => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->sum('netto_a_pagare'),
+            'totale_aperte' => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->count(),
+            'totale_sfori' => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_approvazione', 'sforo_motivato')->count(),
+            'importo_da_pagare' => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->sum('netto_a_pagare'),
         ];
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterList', [
             'condominio' => $condominio,
-            'fatture'    => $fatture,
-            'stats'      => $stats,
-            'esercizio'  => $esercizio,
-            'condomini'  => $listaCondomini, 
-            'filters'    => $request->only(['stato_pagamento', 'stato_approvazione', 'search']),
+            'fatture' => $fatture,
+            'stats' => $stats,
+            'esercizio' => $esercizio,
+            'condomini' => $listaCondomini,
+            'filters' => $request->only(['stato_pagamento', 'stato_approvazione', 'search']),
         ]);
     }
 
@@ -102,7 +103,7 @@ class FatturaPassivaController extends Controller
      * - I fondi di riserva e le capienze per le fatture pregresse (Rata 0).
      * - Lo storico recente per la prevenzione dei duplicati.
      *
-     * @param Condominio $condominio Il condominio in cui si sta registrando la fattura.
+     * @param  Condominio  $condominio  Il condominio in cui si sta registrando la fattura.
      * @return Response Vista Inertia contenente il "Matrix Workspace" e tutte le dipendenze calcolate.
      */
     public function create(Condominio $condominio): Response
@@ -119,232 +120,32 @@ class FatturaPassivaController extends Controller
             ->value('numero_protocollo');
 
         if ($ultimoProtocollo && preg_match('/-(\d+)$/', $ultimoProtocollo, $matches)) {
-            $nextNum = str_pad((int)$matches[1] + 1, 4, '0', STR_PAD_LEFT);
+            $nextNum = str_pad((int) $matches[1] + 1, 4, '0', STR_PAD_LEFT);
             $protocolloSuggerito = "PR-{$annoInCorso}-{$nextNum}";
         } else {
             $protocolloSuggerito = "PR-{$annoInCorso}-0001";
         }
         // ------------------------------------------
 
-        // --- ESTRAZIONE ULTIME SPESE E CALCOLO REALE BUDGET ---
-        $ultimeSpese = collect();
-        $spesePerConto = collect();
-
-        if ($esercizio) {
-            $ultimeSpese = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
-                ->where('fatture_passive.condominio_id', $condominio->id)
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->select(
-                    'righe_fattura.conto_id',
-                    'fatture_passive.data_documento',
-                    'fatture_passive.numero_documento',
-                    'fatture_passive.is_pregresso',
-                    'fornitori.ragione_sociale',
-                    'righe_fattura.importo_imponibile',
-                    'righe_fattura.importo_iva'
-                )
-                ->orderByDesc('fatture_passive.data_documento')
-                ->get()
-                ->groupBy('conto_id');
-
-            $spesePerConto = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.condominio_id', $condominio->id)
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.is_pregresso', false) 
-                ->groupBy('righe_fattura.conto_id')
-                ->selectRaw('righe_fattura.conto_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_spesa')
-                ->pluck('totale_spesa', 'righe_fattura.conto_id');
-        }
-
-        // --- DATI PER IL WIDGET DOUBLE LOCK ---
-
-        // 1. Calcoliamo la Rata 0 Globale (Crediti vs Condòmini) GIA' EROSA e INCASSATA
-        $totaleRataZeroInizialeCents = 0;
-        $totaleRataZeroIncassataCents = 0;
-        $totalePregressoGiaUsatoCents = 0;
-        $capienzaRataZeroResidua = 0;
-
-        if ($esercizio) {
-            $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizio->id)
-                ->whereNotNull('anagrafica_id')
-                ->where('saldo_iniziale', '>', 0)
-                ->sum('saldo_iniziale');
-
-            $incassiCorrenti = ScritturaContabile::where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizio->id)
-                ->where('tipo_movimento', 'incasso_rata')
-                ->with('quotePagate.rata') 
-                ->get();
-
-            $totaleRataZeroIncassataCents = $incassiCorrenti->sum(function ($movimento) {
-                return $movimento->quotePagate
-                    ->filter(function ($quota) {
-                        return $quota->rata && (
-                            $quota->rata->numero_rata === 0 || 
-                            $quota->rata->numero_rata === '0'
-                        );
-                    })
-                    ->sum(function ($quota) {
-                        return $quota->pivot->importo_pagato ?? 0;
-                    });
-            });
-
-            $totalePregressoGiaUsatoCents = DB::table('fatture_passive')
-                ->where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizio->id)
-                ->where('is_pregresso', true)
-                ->sum(DB::raw('importo_imponibile + importo_iva'));
-
-            $capienzaRataZeroResidua = max(0, $totaleRataZeroInizialeCents - $totalePregressoGiaUsatoCents);
-        }
-
-        // 2. Estraiamo i Debiti verso Fornitori e calcoliamo il loro residuo individuale
-        $debitiPatrimoniali = collect();
-        if ($esercizio) {
-            $debitiPatrimoniali = Saldo::where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizio->id)
-                ->whereNull('anagrafica_id')
-                ->where('saldo_iniziale', '<', 0)
-                ->get()
-                ->map(function($saldo) {
-                    $importoInizialeCents = abs($saldo->saldo_iniziale);
-
-                    $fattureCollegate = FatturaPassiva::where('saldo_patrimoniale_id', $saldo->id)
-                        ->where('is_pregresso', true)
-                        ->get()
-                        ->map(function($f) {
-                            $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
-                            return [
-                                'id'               => $f->id,
-                                'numero_documento' => $f->numero_documento ?? 'S/N',
-                                'data_documento'   => $f->data_documento ? \Carbon\Carbon::parse($f->data_documento)->format('d/m/Y') : '',
-                                'importo_usato'    => round($lordoEuro, 2)
-                            ];
-                        });
-
-                    $importoUsatoCents = $fattureCollegate->sum(fn($f) => $f['importo_usato'] * 100);
-                    $importoDisponibileCents = max(0, $importoInizialeCents - $importoUsatoCents);
-
-                    return [
-                        'id'                  => $saldo->id,
-                        'fornitore_id'        => $saldo->fornitore_id,
-                        'descrizione'         => $saldo->descrizione ?? 'Debito pregresso senza descrizione',
-                        'importo_iniziale'    => $importoInizialeCents,
-                        'importo_disponibile' => (int) $importoDisponibileCents,
-                        'fatture_collegate'   => $fattureCollegate->toArray(),
-                    ];
-                })->values();
-        }
-
-        // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
-        $fondiRiserva = Cassa::where('condominio_id', $condominio->id)
-            ->where('tipo', 'fondo')
-            ->where('attiva', true)
-            ->get()
-            ->map(function($cassa) {
-                $movimenti = DB::table('righe_scritture')
-                    ->where('conto_contabile_id', $cassa->conto_contabile_id)
-                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
-                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
-                    ->first();
-
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + ($movimenti->avere ?? 0) - ($movimenti->dare ?? 0);
-
-                return [
-                    'id'            => $cassa->conto_contabile_id, 
-                    'nome'          => $cassa->nome,
-                    'saldo_attuale' => (int) max(0, $saldoAttuale),
-                    
-                    // --- I DATI DI GOVERNANCE MANCANTI CHE SERVONO A VUE ---
-                    'sottotipo_fondo'                => $cassa->sottotipo_fondo,
-                    'is_override_assemblea'          => (bool) $cassa->is_override_assemblea,
-                    'is_utilizzabile_per_imprevisti' => (bool) $cassa->is_utilizzabile_per_imprevisti,
-                ];
-            });
-
-        // 4. Fatture pregresse registrate (Radar Anti-Duplicati)
-        $fatturePregresseRegistrate = collect();
-        if ($esercizio) {
-            $fatturePregresseRegistrate = FatturaPassiva::where('condominio_id', $condominio->id)
-                ->where('esercizio_id', $esercizio->id)
-                ->where('is_pregresso', true)
-                ->get()
-                ->map(function($f) {
-                    $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
-                    return [
-                        'id'               => $f->id,
-                        'fornitore_id'     => $f->fornitore_id,
-                        'numero_documento' => $f->numero_documento ?? 'S/N',
-                        'data_documento'   => $f->data_documento ? \Carbon\Carbon::parse($f->data_documento)->format('d/m/Y') : '',
-                        'importo_usato'    => round($lordoEuro, 2)
-                    ];
-                });
-        }
+        $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio);
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterNew', [
             'condominio' => $condominio,
-            'fornitori'  => Fornitore::all(),
-            'esercizi'   => $condominio->esercizi()->where('stato', 'aperto')->get(),
-            'esercizio'  => $esercizio,
-            'condomini'  => $listaCondomini, 
-            'debiti_patrimoniali' => $debitiPatrimoniali,
-            'fatture_pregresse_registrate' => $fatturePregresseRegistrate,
-            'fondi_riserva'       => $fondiRiserva,
-            'capienza_rata_zero'  => (int) $capienzaRataZeroResidua,
-            'incassato_rata_zero' => (int) $totaleRataZeroIncassataCents,
+            'esercizio' => $esercizio,
+            'condomini' => $listaCondomini,
+            ...$contestoBudget,
             'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)
                 ->with('esercizi:id')
                 ->get()
                 ->map(function ($gestione) {
                     return [
-                        'id'   => $gestione->id,
+                        'id' => $gestione->id,
                         'nome' => $gestione->nome,
                         'tipo' => $gestione->tipo,
                         'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
                     ];
                 }),
-
-            'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
-                ->with('parent')
-                ->whereDoesntHave('sottoconti')
-                ->get()
-                ->map(function ($conto) use ($ultimeSpese, $spesePerConto) {
-                    $budgetApprovato = $conto->importo ?? 0; 
-                    $spesaAttuale    = $spesePerConto->get($conto->id, 0); 
-                    $residuo         = $budgetApprovato - $spesaAttuale;
-
-                    $storicoRecente = [];
-                    if ($ultimeSpese->has($conto->id)) {
-                        $storicoRecente = $ultimeSpese->get($conto->id)->take(3)->map(function($spesa) {
-                            return [
-                                'data'         => \Carbon\Carbon::parse($spesa->data_documento)->format('d/m/Y'),
-                                'fornitore'    => $spesa->ragione_sociale,
-                                'documento'    => $spesa->numero_documento,
-                                'is_pregresso' => (bool) $spesa->is_pregresso, 
-                                'importo'      => $spesa->importo_imponibile + $spesa->importo_iva,
-                            ];
-                        })->values()->toArray();
-                    }
-
-                    return [
-                        'id'               => $conto->id,
-                        'nome'             => $conto->nome, 
-                        'parent_nome'      => $conto->parent ? $conto->parent->nome : null, 
-                        '_sort_key'        => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
-                        'codice'           => null,
-                        'residuo_budget'   => $residuo,
-                        'is_capiente'      => $residuo >= 0,
-                        'ultimi_movimenti' => $storicoRecente 
-                    ];
-                })
-                ->sortBy('_sort_key')
-                ->values(),
 
             'banche' => Cassa::where('condominio_id', $condominio->id)
                 ->where('attiva', true)
@@ -358,15 +159,15 @@ class FatturaPassivaController extends Controller
                 ->get()
                 ->map(function ($cassa) {
                     $entrate = $cassa->totale_entrate ?? 0;
-                    $uscite  = $cassa->totale_uscite ?? 0;
-                    $saldoIniziale = $cassa->saldo_iniziale ?? 0; 
+                    $uscite = $cassa->totale_uscite ?? 0;
+                    $saldoIniziale = $cassa->saldo_iniziale ?? 0;
                     $saldoAttuale = $saldoIniziale + $entrate - $uscite;
 
                     return [
-                        'id'            => $cassa->conto_contabile_id, 
-                        'cassa_id'      => $cassa->id,
-                        'nome'          => $cassa->nome,
-                        'saldo_attuale' => $saldoAttuale, 
+                        'id' => $cassa->conto_contabile_id,
+                        'cassa_id' => $cassa->id,
+                        'nome' => $cassa->nome,
+                        'saldo_attuale' => $saldoAttuale,
                     ];
                 }),
 
@@ -377,8 +178,8 @@ class FatturaPassivaController extends Controller
                 ->get()
                 ->map(function ($imm) {
                     return [
-                        'id'    => $imm->id,
-                        'label' => 'Int. ' . $imm->interno . ' — ' . $imm->nome, 
+                        'id' => $imm->id,
+                        'label' => 'Int. '.$imm->interno.' — '.$imm->nome,
                     ];
                 }),
         ]);
@@ -391,8 +192,8 @@ class FatturaPassivaController extends Controller
      * e gestire logiche complesse (es. ritenute d'acconto, coperture e "Scudo Legale").
      * In caso di eccezioni del Service, blocca l'operazione restituendo un errore visibile all'utente.
      *
-     * @param StoreFatturaRequest $request Request validata in ingresso.
-     * @param Condominio $condominio Il condominio interessato.
+     * @param  StoreFatturaRequest  $request  Request validata in ingresso.
+     * @param  Condominio  $condominio  Il condominio interessato.
      * @return RedirectResponse Reindirizza alla pagina precedente (back) per permettere inserimenti multipli.
      */
     public function store(StoreFatturaRequest $request, Condominio $condominio): RedirectResponse
@@ -414,13 +215,14 @@ class FatturaPassivaController extends Controller
             return back()->with($this->flashSuccess('Fattura registrata con successo.'));
 
         } catch (ModelNotFoundException $e) {
-            Log::error("ERRORE 404: " . $e->getMessage());
+            Log::error('ERRORE 404: '.$e->getMessage());
+
             return back()->withErrors(['error' => 'Risorsa non trovata. Verifica fornitore, conto e gestione.']);
 
         } catch (\Exception $e) {
-            Log::error("FATAL ERROR NEL SERVICE: " . $e->getMessage());
-            Log::error("Traccia: " . $e->getTraceAsString());
-            
+            Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
+            Log::error('Traccia: '.$e->getTraceAsString());
+
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -434,23 +236,22 @@ class FatturaPassivaController extends Controller
      * Se la fattura cancellata è una Nota di Credito creata da uno storno, il sistema applica
      * la "Resurrezione", sbloccando e riportando ad "aperta" la fattura originale.
      *
-     * @param Condominio $condominio Il condominio di appartenenza.
-     * @param FatturaPassiva $fattura La fattura da eliminare.
-     * @return RedirectResponse
+     * @param  Condominio  $condominio  Il condominio di appartenenza.
+     * @param  FatturaPassiva  $fattura  La fattura da eliminare.
      */
     public function destroy(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
         // --- INIZIO FIX: BLOCCO INTELLIGENTE PIANO RATE STRAORDINARIO ---
         $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
-        
+
         if ($pivotPlan) {
-            /** @var \App\Models\Gestionale\PianoRate $piano */
+            /** @var PianoRate $piano */
             $piano = PianoRate::find($pivotPlan->piano_rate_id);
-            
+
             if ($piano) {
                 // 1. Blocco Duro: Ci sono già incassi o emissioni contabili fisiche?
-                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))->exists();
-                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
+                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))->exists();
+                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
 
                 if ($hasPagamenti || $hasEmissioni) {
                     return back()->with($this->flashError(
@@ -466,8 +267,8 @@ class FatturaPassivaController extends Controller
                     ));
                 }
 
-                // Se arriviamo qui, il piano è in 'bozza' ed è vuoto. 
-                // Possiamo procedere! La 'cascadeOnDelete' della tua migration 
+                // Se arriviamo qui, il piano è in 'bozza' ed è vuoto.
+                // Possiamo procedere! La 'cascadeOnDelete' della tua migration
                 // cancellerà in automatico la riga dalla tabella 'piano_rate_fatture' mantenendo pulito il database.
             }
         }
@@ -476,7 +277,7 @@ class FatturaPassivaController extends Controller
         // 1. IL MURO CONTABILE
         if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
             return back()->with($this->flashError(
-                'Operazione negata: La fattura risulta pagata o parzialmente saldata. ' .
+                'Operazione negata: La fattura risulta pagata o parzialmente saldata. '.
                 'Per mantenere la coerenza del libro giornale, devi usare la funzione "Storna".'
             ));
         }
@@ -522,23 +323,23 @@ class FatturaPassivaController extends Controller
                 $contiImprevistiIds->push($copertura->conto_id);
             }
         }
-        
+
         $contiImprevistiIds = $contiImprevistiIds->filter()->unique();
         // ---------------------------------------------------
 
         // 2. ELIMINAZIONE FISICA E PULIZIA
         try {
             DB::transaction(function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
-                
+
                 // --- LA RESURREZIONE ---
                 if ($fatturaOriginale) {
                     $datiExtraOriginali = $fatturaOriginale->dati_extra ?? [];
                     unset($datiExtraOriginali['is_stornata']);
                     unset($datiExtraOriginali['stornata_da_id']);
-                    
+
                     $fatturaOriginale->update([
                         'stato_pagamento' => StatoPagamentoFattura::APERTA,
-                        'dati_extra'      => $datiExtraOriginali
+                        'dati_extra' => $datiExtraOriginali,
                     ]);
                 }
 
@@ -557,10 +358,10 @@ class FatturaPassivaController extends Controller
                 // --- FIX: ELIMINAZIONE CONTI FANTASMA ---
                 $contiDaEliminare = Conto::whereIn('id', $contiImprevistiIds)
                     ->where('is_tecnico', true) // solo conti generati on-the-fly
-                    ->whereNotIn('id', function($q) {
+                    ->whereNotIn('id', function ($q) {
                         $q->select('conto_id')->from('righe_fattura')->whereNotNull('conto_id');
                     })
-                    ->whereNotIn('id', function($q) {
+                    ->whereNotIn('id', function ($q) {
                         $q->select('conto_id')->from('fattura_coperture')->whereNotNull('conto_id');
                     })
                     ->pluck('id');
@@ -576,18 +377,19 @@ class FatturaPassivaController extends Controller
                     }
                     $documento->delete();
                 }
-                
+
                 $fattura->delete();
             });
 
-            $msg = $fatturaOriginale 
-                ? 'Nota di credito eliminata. La fattura originale è stata ripristinata e risulta di nuovo aperta.' 
+            $msg = $fatturaOriginale
+                ? 'Nota di credito eliminata. La fattura originale è stata ripristinata e risulta di nuovo aperta.'
                 : 'Fattura eliminata fisicamente dal sistema.';
 
             return back()->with($this->flashSuccess($msg));
-            
+
         } catch (\Exception $e) {
-            Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: " . $e->getMessage());
+            Log::error("Errore durante l'eliminazione fisica della fattura ID {$fattura->id}: ".$e->getMessage());
+
             return back()->with($this->flashError('Errore di sistema durante l\'eliminazione.'));
         }
     }
@@ -596,71 +398,300 @@ class FatturaPassivaController extends Controller
      * Mostra il form per la modifica di una fattura passiva aperta.
      *
      * Prepara gli stessi dati di create() ma pre-popolati con la fattura esistente.
-     * Le guard di modificabilità sono lato service; qui rendiamo il form se la
-     * fattura è aperta (check veloce) e lasciamo al service il controllo completo.
-     *
-     * @param Condominio $condominio
-     * @param FatturaPassiva $fattura
-     * @return Response
+     * Il service espone la stessa guard usata da aggiornaFattura() tramite
+     * motivoBloccoModifica(): se la fattura non è modificabile (stornata, esercizio
+     * chiuso, pregressa, ecc.) reindirizziamo con un messaggio chiaro invece di
+     * mostrare un form che fallirebbe silenziosamente al salvataggio.
      */
-    public function edit(Condominio $condominio, FatturaPassiva $fattura): Response
+    public function edit(Condominio $condominio, FatturaPassiva $fattura): Response|RedirectResponse
     {
         abort_if($fattura->condominio_id !== $condominio->id, 403, 'Accesso non autorizzato.');
+
+        if ($motivo = $this->service->motivoBloccoModifica($fattura)) {
+            return redirect()
+                ->route('admin.gestionale.fatture.show', ['condominio' => $condominio->id, 'fattura' => $fattura->id])
+                ->with($this->flashError($motivo));
+        }
 
         $fattura->load(['fornitore', 'righe.conto.parent', 'documenti', 'coperture']);
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
-        $esercizio      = $this->getEsercizioCorrente($condominio);
+        $esercizio = $this->getEsercizioCorrente($condominio);
+
+        $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio);
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
             'condominio' => $condominio,
-            'fattura'    => $fattura,
-            'esercizio'  => $esercizio,
-            'condomini'  => $listaCondomini,
-            'gestioni'   => $condominio->gestioni()
+            'fattura' => $fattura,
+            'esercizio' => $esercizio,
+            'condomini' => $listaCondomini,
+            ...$contestoBudget,
+            'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)
                 ->with('esercizi:id')
                 ->get()
                 ->map(function ($gestione) {
                     return [
-                        'id'            => $gestione->id,
-                        'nome'          => $gestione->nome,
-                        'tipo'          => $gestione->tipo,
+                        'id' => $gestione->id,
+                        'nome' => $gestione->nome,
+                        'tipo' => $gestione->tipo,
                         'esercizio_ids' => $gestione->esercizi->pluck('id')->toArray(),
                     ];
                 }),
-            'conti' => Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
-                ->with('parent')
-                ->whereDoesntHave('sottoconti')
-                ->get()
-                ->map(function ($conto) {
-                    return [
-                        'id'          => $conto->id,
-                        'nome'        => $conto->nome,
-                        'parent_nome' => $conto->parent ? $conto->parent->nome : null,
-                        '_sort_key'   => $conto->parent ? $conto->parent->nome . ' ' . $conto->nome : $conto->nome,
-                    ];
-                })
-                ->sortBy('_sort_key')
-                ->values(),
             'banche' => Cassa::where('condominio_id', $condominio->id)
                 ->where('attiva', true)
                 ->where('tipo', '!=', 'fondo')
+                ->withSum(['movimenti as totale_entrate' => function ($q) {
+                    $q->where('tipo_riga', 'dare');
+                }], 'importo')
+                ->withSum(['movimenti as totale_uscite' => function ($q) {
+                    $q->where('tipo_riga', 'avere');
+                }], 'importo')
                 ->get()
-                ->map(fn($c) => [
-                    'id'   => $c->conto_contabile_id,
-                    'nome' => $c->nome,
-                ]),
+                ->map(function ($cassa) {
+                    $entrate = $cassa->totale_entrate ?? 0;
+                    $uscite = $cassa->totale_uscite ?? 0;
+                    $saldoIniziale = $cassa->saldo_iniziale ?? 0;
+                    $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+
+                    return [
+                        'id' => $cassa->conto_contabile_id,
+                        'cassa_id' => $cassa->id,
+                        'nome' => $cassa->nome,
+                        'saldo_attuale' => $saldoAttuale,
+                    ];
+                }),
             'immobili' => Immobile::where('condominio_id', $condominio->id)
                 ->where('attivo', true)
                 ->select('id', 'interno', 'nome')
                 ->orderBy('interno')
                 ->get()
-                ->map(fn($i) => [
-                    'id'    => $i->id,
-                    'label' => 'Int. ' . $i->interno . ' — ' . $i->nome,
+                ->map(fn ($i) => [
+                    'id' => $i->id,
+                    'label' => 'Int. '.$i->interno.' — '.$i->nome,
                 ]),
         ]);
+    }
+
+    /**
+     * Calcola il contesto di budget/capienza condiviso tra create() ed edit().
+     *
+     * Centralizza fornitori, esercizi aperti, conti con residuo budget/storico movimenti,
+     * debiti patrimoniali pregressi, fondi di riserva e capienza Rata 0 — tutti dati che
+     * il "Matrix Workspace" Vue richiede come prop obbligatorie sia in creazione sia in modifica.
+     *
+     * @param  Esercizio|null  $esercizio  Esercizio corrente del condominio (null se nessuno aperto).
+     * @return array<string, mixed>
+     */
+    private function prepareContestoBudget(Condominio $condominio, ?Esercizio $esercizio): array
+    {
+        // --- ESTRAZIONE ULTIME SPESE E CALCOLO REALE BUDGET ---
+        $ultimeSpese = collect();
+        $spesePerConto = collect();
+
+        if ($esercizio) {
+            $ultimeSpese = DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->join('fornitori', 'fatture_passive.fornitore_id', '=', 'fornitori.id')
+                ->where('fatture_passive.condominio_id', $condominio->id)
+                ->where('fatture_passive.esercizio_id', $esercizio->id)
+                ->select(
+                    'righe_fattura.conto_id',
+                    'fatture_passive.data_documento',
+                    'fatture_passive.numero_documento',
+                    'fatture_passive.is_pregresso',
+                    'fornitori.ragione_sociale',
+                    'righe_fattura.importo_imponibile',
+                    'righe_fattura.importo_iva'
+                )
+                ->orderByDesc('fatture_passive.data_documento')
+                ->get()
+                ->groupBy('conto_id');
+
+            $spesePerConto = DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->where('fatture_passive.condominio_id', $condominio->id)
+                ->where('fatture_passive.esercizio_id', $esercizio->id)
+                ->where('fatture_passive.is_pregresso', false)
+                ->groupBy('righe_fattura.conto_id')
+                ->selectRaw('righe_fattura.conto_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_spesa')
+                ->pluck('totale_spesa', 'righe_fattura.conto_id');
+        }
+
+        // --- DATI PER IL WIDGET DOUBLE LOCK ---
+
+        // 1. Calcoliamo la Rata 0 Globale (Crediti vs Condòmini) GIA' EROSA e INCASSATA
+        $totaleRataZeroInizialeCents = 0;
+        $totaleRataZeroIncassataCents = 0;
+        $totalePregressoGiaUsatoCents = 0;
+        $capienzaRataZeroResidua = 0;
+
+        if ($esercizio) {
+            $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->whereNotNull('anagrafica_id')
+                ->where('saldo_iniziale', '>', 0)
+                ->sum('saldo_iniziale');
+
+            $incassiCorrenti = ScritturaContabile::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->where('tipo_movimento', 'incasso_rata')
+                ->with('quotePagate.rata')
+                ->get();
+
+            $totaleRataZeroIncassataCents = $incassiCorrenti->sum(function ($movimento) {
+                return $movimento->quotePagate
+                    ->filter(function ($quota) {
+                        return $quota->rata && (
+                            $quota->rata->numero_rata === 0 ||
+                            $quota->rata->numero_rata === '0'
+                        );
+                    })
+                    ->sum(function ($quota) {
+                        return $quota->pivot->importo_pagato ?? 0;
+                    });
+            });
+
+            $totalePregressoGiaUsatoCents = DB::table('fatture_passive')
+                ->where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->where('is_pregresso', true)
+                ->sum(DB::raw('importo_imponibile + importo_iva'));
+
+            $capienzaRataZeroResidua = max(0, $totaleRataZeroInizialeCents - $totalePregressoGiaUsatoCents);
+        }
+
+        // 2. Estraiamo i Debiti verso Fornitori e calcoliamo il loro residuo individuale
+        $debitiPatrimoniali = collect();
+        if ($esercizio) {
+            $debitiPatrimoniali = Saldo::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->whereNull('anagrafica_id')
+                ->where('saldo_iniziale', '<', 0)
+                ->get()
+                ->map(function ($saldo) {
+                    $importoInizialeCents = abs($saldo->saldo_iniziale);
+
+                    $fattureCollegate = FatturaPassiva::where('saldo_patrimoniale_id', $saldo->id)
+                        ->where('is_pregresso', true)
+                        ->get()
+                        ->map(function ($f) {
+                            $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
+
+                            return [
+                                'id' => $f->id,
+                                'numero_documento' => $f->numero_documento ?? 'S/N',
+                                'data_documento' => $f->data_documento ? Carbon::parse($f->data_documento)->format('d/m/Y') : '',
+                                'importo_usato' => round($lordoEuro, 2),
+                            ];
+                        });
+
+                    $importoUsatoCents = $fattureCollegate->sum(fn ($f) => $f['importo_usato'] * 100);
+                    $importoDisponibileCents = max(0, $importoInizialeCents - $importoUsatoCents);
+
+                    return [
+                        'id' => $saldo->id,
+                        'fornitore_id' => $saldo->fornitore_id,
+                        'descrizione' => $saldo->descrizione ?? 'Debito pregresso senza descrizione',
+                        'importo_iniziale' => $importoInizialeCents,
+                        'importo_disponibile' => (int) $importoDisponibileCents,
+                        'fatture_collegate' => $fattureCollegate->toArray(),
+                    ];
+                })->values();
+        }
+
+        // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
+        $fondiRiserva = Cassa::where('condominio_id', $condominio->id)
+            ->where('tipo', 'fondo')
+            ->where('attiva', true)
+            ->get()
+            ->map(function ($cassa) {
+                $movimenti = DB::table('righe_scritture')
+                    ->where('conto_contabile_id', $cassa->conto_contabile_id)
+                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
+                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
+                    ->first();
+
+                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
+                $saldoAttuale = $saldoIniziale + ($movimenti->avere ?? 0) - ($movimenti->dare ?? 0);
+
+                return [
+                    'id' => $cassa->conto_contabile_id,
+                    'nome' => $cassa->nome,
+                    'saldo_attuale' => (int) max(0, $saldoAttuale),
+                    'sottotipo_fondo' => $cassa->sottotipo_fondo,
+                    'is_override_assemblea' => (bool) $cassa->is_override_assemblea,
+                    'is_utilizzabile_per_imprevisti' => (bool) $cassa->is_utilizzabile_per_imprevisti,
+                ];
+            });
+
+        // 4. Fatture pregresse registrate (Radar Anti-Duplicati)
+        $fatturePregresseRegistrate = collect();
+        if ($esercizio) {
+            $fatturePregresseRegistrate = FatturaPassiva::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->where('is_pregresso', true)
+                ->get()
+                ->map(function ($f) {
+                    $lordoEuro = ($f->importo_imponibile + $f->importo_iva) / 100;
+
+                    return [
+                        'id' => $f->id,
+                        'fornitore_id' => $f->fornitore_id,
+                        'numero_documento' => $f->numero_documento ?? 'S/N',
+                        'data_documento' => $f->data_documento ? Carbon::parse($f->data_documento)->format('d/m/Y') : '',
+                        'importo_usato' => round($lordoEuro, 2),
+                    ];
+                });
+        }
+
+        // 5. Conti con residuo budget e storico movimenti recenti
+        $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
+            ->with('parent')
+            ->whereDoesntHave('sottoconti')
+            ->get()
+            ->map(function ($conto) use ($ultimeSpese, $spesePerConto) {
+                $budgetApprovato = $conto->importo ?? 0;
+                $spesaAttuale = $spesePerConto->get($conto->id, 0);
+                $residuo = $budgetApprovato - $spesaAttuale;
+
+                $storicoRecente = [];
+                if ($ultimeSpese->has($conto->id)) {
+                    $storicoRecente = $ultimeSpese->get($conto->id)->take(3)->map(function ($spesa) {
+                        return [
+                            'data' => Carbon::parse($spesa->data_documento)->format('d/m/Y'),
+                            'fornitore' => $spesa->ragione_sociale,
+                            'documento' => $spesa->numero_documento,
+                            'is_pregresso' => (bool) $spesa->is_pregresso,
+                            'importo' => $spesa->importo_imponibile + $spesa->importo_iva,
+                        ];
+                    })->values()->toArray();
+                }
+
+                return [
+                    'id' => $conto->id,
+                    'nome' => $conto->nome,
+                    'parent_nome' => $conto->parent ? $conto->parent->nome : null,
+                    '_sort_key' => $conto->parent ? $conto->parent->nome.' '.$conto->nome : $conto->nome,
+                    'codice' => null,
+                    'residuo_budget' => $residuo,
+                    'is_capiente' => $residuo >= 0,
+                    'ultimi_movimenti' => $storicoRecente,
+                ];
+            })
+            ->sortBy('_sort_key')
+            ->values();
+
+        return [
+            'fornitori' => Fornitore::all(),
+            'esercizi' => $condominio->esercizi()->where('stato', 'aperto')->get(),
+            'debiti_patrimoniali' => $debitiPatrimoniali,
+            'fatture_pregresse_registrate' => $fatturePregresseRegistrate,
+            'fondi_riserva' => $fondiRiserva,
+            'capienza_rata_zero' => (int) $capienzaRataZeroResidua,
+            'incassato_rata_zero' => (int) $totaleRataZeroIncassataCents,
+            'conti' => $conti,
+        ];
     }
 
     /**
@@ -668,11 +699,6 @@ class FatturaPassivaController extends Controller
      *
      * Delega tutta la logica a FatturaPassivaService::aggiornaFattura().
      * Le guard di modificabilità sono nel service.
-     *
-     * @param UpdateFatturaRequest $request
-     * @param Condominio $condominio
-     * @param FatturaPassiva $fattura
-     * @return RedirectResponse
      */
     public function update(UpdateFatturaRequest $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
@@ -690,10 +716,11 @@ class FatturaPassivaController extends Controller
                 ->with($this->flashSuccess('Fattura aggiornata con successo.'));
 
         } catch (FatturaModificaVietataException $e) {
-            return back()->with($this->flashError($e->getMessage()));
+            return back()->withErrors(['modifica_vietata' => $e->getMessage()]);
 
         } catch (\Exception $e) {
-            Log::error("Errore modifica fattura ID {$fattura->id}: " . $e->getMessage());
+            Log::error("Errore modifica fattura ID {$fattura->id}: ".$e->getMessage());
+
             return back()->withErrors(['error' => $e->getMessage()]);
         }
     }
@@ -703,10 +730,6 @@ class FatturaPassivaController extends Controller
      *
      * Transizione: da_approvare → approvata.
      * Differisce dalla ratifica sforo perché non richiede motivazioni legali.
-     *
-     * @param Condominio $condominio
-     * @param FatturaPassiva $fattura
-     * @return RedirectResponse
      */
     public function approva(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
@@ -718,7 +741,7 @@ class FatturaPassivaController extends Controller
 
         $fattura->update(['stato_approvazione' => 'approvata']);
 
-        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID " . Auth::id());
+        Log::info("Fattura ID {$fattura->id} approvata (da_approvare → approvata) da utente ID ".Auth::id());
 
         return back()->with($this->flashSuccess('Fattura approvata con successo.'));
     }
@@ -730,11 +753,6 @@ class FatturaPassivaController extends Controller
      * La fattura diventa selezionabile per il pagamento in PagamentoNew.
      * I dati dell'approvazione (note, timestamp, utente) vengono salvati in dati_extra
      * per garantire l'audit trail della delibera assembleare.
-     *
-     * @param Request $request
-     * @param Condominio $condominio
-     * @param FatturaPassiva $fattura
-     * @return RedirectResponse
      */
     public function approvaSforo(Request $request, Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
@@ -751,17 +769,17 @@ class FatturaPassivaController extends Controller
 
         $datiExtra = $fattura->dati_extra ?? [];
         $datiExtra['ratifica_assembleare'] = [
-            'note'           => $request->input('note'),
-            'approvato_il'   => now()->toIso8601String(),
-            'approvato_da'   => Auth::id(),
+            'note' => $request->input('note'),
+            'approvato_il' => now()->toIso8601String(),
+            'approvato_da' => Auth::id(),
         ];
 
         $fattura->update([
             'stato_approvazione' => 'approvata',
-            'dati_extra'         => $datiExtra,
+            'dati_extra' => $datiExtra,
         ]);
 
-        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID " . Auth::id());
+        Log::info("Fattura ID {$fattura->id} ratificata (sforo_motivato → approvata) da utente ID ".Auth::id());
 
         return back()->with($this->flashSuccess(
             'Fattura ratificata con successo. Può ora essere pagata.'
@@ -773,22 +791,18 @@ class FatturaPassivaController extends Controller
      *
      * Include le righe di dettaglio, i documenti allegati e le informazioni
      * sull'eventuale ratifica dello sforo motivato.
-     *
-     * @param Condominio $condominio
-     * @param FatturaPassiva $fattura
-     * @return Response
      */
     public function show(Condominio $condominio, FatturaPassiva $fattura): Response
     {
         $fattura->load([
             'fornitore',
             'righe.conto.parent',
-            'documenti'
+            'documenti',
         ]);
 
         // Caricamento del nome utente che ha ratificato se presente
         $utenteRatifica = null;
-        if (!empty($fattura->dati_extra['ratifica_assembleare']['approvato_da'])) {
+        if (! empty($fattura->dati_extra['ratifica_assembleare']['approvato_da'])) {
             $utenteRatifica = DB::table('users')
                 ->where('id', $fattura->dati_extra['ratifica_assembleare']['approvato_da'])
                 ->value('name');
@@ -813,14 +827,14 @@ class FatturaPassivaController extends Controller
      * per garantire che il documento richiesto appartenga effettivamente alla fattura in oggetto.
      * I file sono protetti nel disco privato (local) del server.
      *
-     * @param Condominio $condominio Il condominio della fattura.
-     * @param FatturaPassiva $fattura La fattura passiva "contenitore".
-     * @param Documento $documento Il documento polimorfico associato.
+     * @param  Condominio  $condominio  Il condominio della fattura.
+     * @param  FatturaPassiva  $fattura  La fattura passiva "contenitore".
+     * @param  Documento  $documento  Il documento polimorfico associato.
      * @return BinaryFileResponse|RedirectResponse Il file binario da scaricare, o un redirect in caso di errore/divieto.
      */
     public function download(Condominio $condominio, FatturaPassiva $fattura, Documento $documento)
     {
-        // 1. AUTORIZZAZIONE 
+        // 1. AUTORIZZAZIONE
         Gate::authorize('view', $documento);
 
         // 2. CONTROLLO ANTI-IDOR
@@ -830,7 +844,7 @@ class FatturaPassivaController extends Controller
 
         try {
             // 3. VERIFICA ESISTENZA
-            if (!Storage::disk('local')->exists($documento->path)) {
+            if (! Storage::disk('local')->exists($documento->path)) {
                 return redirect()->back()->with(
                     $this->flashError(__('documenti.file_not_found') ?? 'File della fattura non trovato sul server.')
                 );
@@ -838,12 +852,12 @@ class FatturaPassivaController extends Controller
 
             // Otteniamo il percorso assoluto del file sul server
             $percorsoAssoluto = Storage::disk('local')->path($documento->path);
-            
+
             return response()->download($percorsoAssoluto, $documento->name);
 
         } catch (\Exception $e) {
-            Log::error("Errore download fattura ID {$fattura->id}: " . $e->getMessage());
-            
+            Log::error("Errore download fattura ID {$fattura->id}: ".$e->getMessage());
+
             return redirect()->back()->with(
                 $this->flashError(__('documenti.error_downloading_document') ?? 'Errore durante il download del documento.')
             );

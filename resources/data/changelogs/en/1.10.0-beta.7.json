@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Fixed a crash that occurred when opening the edit page of a registered supplier invoice: some data (suppliers, budget, reserve funds) required from page load was missing.",
+        "Fixed an error that occurred when opening the list, detail, or edit page of an already reversed supplier invoice.",
+        "Editing a non-editable supplier invoice (reversed, from a closed accounting year, carried over, with contingent items, pending budget-overrun approval, or on an extraordinary installment plan) now always shows a clear message instead of silently failing.",
+        "Added display of warning messages on the invoice detail page, which previously showed none.",
+        "Fixed an issue where sending email from the admin panel's SMTP configuration could silently fail on some hosting providers due to an invalid EHLO hostname; also fixed the SSL encryption option, which previously had no effect."
+    ]
+}

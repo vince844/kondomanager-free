@@ -14,10 +14,11 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoConto;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
@@ -27,18 +28,18 @@ class FatturaPassivaService
     {
         return DB::transaction(function () use ($data, $condominioId, $file) {
 
-            $fornitore      = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
-            $isNotaCredito  = ($data['tipo_documento'] === 'nota_credito');
+            $fornitore = Fornitore::with('referenti')->findOrFail($data['fornitore_id']);
+            $isNotaCredito = ($data['tipo_documento'] === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
-            
-            $isPregresso    = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN); 
+
+            $isPregresso = filter_var($data['is_pregresso'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             $imponibileTotale = 0;
-            $ivaTotale        = 0;
-            $righeProcessate  = [];
+            $ivaTotale = 0;
+            $righeProcessate = [];
             $aliquotaPregressaSalvata = 22; // Default per il DB
 
-            $dynamicContoComuneId  = null;
+            $dynamicContoComuneId = null;
             $logLegale = $data['dati_extra']['log_legale_sopravvenienza'] ?? null;
 
             // 1. Calcolo Imponibile e IVA
@@ -48,30 +49,30 @@ class FatturaPassivaService
                 $ivaPregressa = (int) round(($impPregresso * $aliqPregressa) / 100);
 
                 $imponibileTotale = $impPregresso;
-                $ivaTotale        = $ivaPregressa;
+                $ivaTotale = $ivaPregressa;
                 $aliquotaPregressaSalvata = $aliqPregressa;
             } else {
                 foreach ($data['righe'] as $rigaInput) {
                     $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
-                    $aliq    = (float) $rigaInput['aliquota_iva'];
+                    $aliq = (float) $rigaInput['aliquota_iva'];
                     $ivaRiga = (int) round(($impRiga * $aliq) / 100);
                     $isSopravvenienza = filter_var($rigaInput['is_sopravvenienza'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
                     $imponibileTotale += $impRiga;
-                    $ivaTotale        += $ivaRiga;
+                    $ivaTotale += $ivaRiga;
 
                     // SMISTAMENTO INTELLIGENTE IMPREVISTI (Millesimale vs Ad Personam)
                     $contoIdRiga = $rigaInput['conto_id'] ?? null;
 
                     if ($isSopravvenienza) {
-                        if (!empty($rigaInput['immobile_id'])) {
+                        if (! empty($rigaInput['immobile_id'])) {
                             // SOTTO-CASO: Spesa Privata Imprevista
                             // FIX: NON creiamo nessun Conto nel Piano dei Conti/Preventivo!
-                            $contoIdRiga = null; 
+                            $contoIdRiga = null;
                         } else {
                             // SOTTO-CASO: Spesa Comune Imprevista
                             // Creiamo il conto dinamico solo per la quota condominiale
-                            if (!$dynamicContoComuneId && $logLegale) {
+                            if (! $dynamicContoComuneId && $logLegale) {
                                 $dynamicContoComuneId = $this->creaContoDinamicoSopravvenienza(
                                     $condominioId, $data['gestione_id'], $fornitore->id, $logLegale
                                 );
@@ -81,27 +82,27 @@ class FatturaPassivaService
                     } else {
                         // Se l'utente seleziona un capitolo (es. Manutenzione Idraulica) MA assegna l'immobile,
                         // forziamo a null per evitare che sporchi il preventivo comune.
-                        if (!empty($rigaInput['immobile_id'])) {
+                        if (! empty($rigaInput['immobile_id'])) {
                             $contoIdRiga = null;
                         }
                     }
 
                     $righeProcessate[] = [
-                        'descrizione'        => $rigaInput['descrizione'],
+                        'descrizione' => $rigaInput['descrizione'],
                         'importo_imponibile' => $impRiga * $moltiplicatore,
-                        'aliquota_iva'       => $aliq,
-                        'importo_iva'        => $ivaRiga * $moltiplicatore,
-                        'conto_id'           => $contoIdRiga, // Null se spesa privata
-                        'immobile_id'        => $rigaInput['immobile_id'] ?? null,
-                        'is_sopravvenienza'  => $isSopravvenienza,
+                        'aliquota_iva' => $aliq,
+                        'importo_iva' => $ivaRiga * $moltiplicatore,
+                        'conto_id' => $contoIdRiga, // Null se spesa privata
+                        'immobile_id' => $rigaInput['immobile_id'] ?? null,
+                        'is_sopravvenienza' => $isSopravvenienza,
                     ];
                 }
             }
 
             // 2. Calcolo Ritenuta
-            $ritenuta     = 0;
+            $ritenuta = 0;
             $datiRitenuta = null;
-            
+
             // FIX: Calcoliamo SEMPRE la ritenuta, anche per le note di credito
             // La ritenuta si calcola sempre tranne quando esplicitamente disabilitata
             // (es. storno di fattura con ritenuta già versata all'erario)
@@ -111,56 +112,56 @@ class FatturaPassivaService
                 $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
                 $datiRitenuta = [
                     'imponibile_calcolo' => $base,
-                    'aliquota'           => $fornitore->perc_ritenuta,
-                    'codice_tributo'     => $fornitore->codice_tributo,
+                    'aliquota' => $fornitore->perc_ritenuta,
+                    'codice_tributo' => $fornitore->codice_tributo,
                 ];
             }
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
-            
+
             // Il moltiplicatore resta per la testata della fattura a database
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
             $statoApprovazione = $data['stato_approvazione'] ?? 'approvata';
-            if (!empty($data['dati_extra']['override_budget'])) {
+            if (! empty($data['dati_extra']['override_budget'])) {
                 $statoApprovazione = 'sforo_motivato';
             }
 
             // 3. Creazione Fattura
             $fattura = FatturaPassiva::create([
-                'condominio_id'      => $condominioId,
-                'fornitore_id'       => $fornitore->id,
-                'esercizio_id'       => $data['esercizio_id'],
-                'conto_corrente_id'  => $data['conto_corrente_id'] ?? null,
-                'tipo_documento'     => $data['tipo_documento'],
-                'numero_documento'   => $data['numero_documento'],               
-                'data_documento'     => $data['data_documento'],
-                'data_scadenza'      => $data['data_scadenza'],
-                'is_pregresso'       => $isPregresso,
+                'condominio_id' => $condominioId,
+                'fornitore_id' => $fornitore->id,
+                'esercizio_id' => $data['esercizio_id'],
+                'conto_corrente_id' => $data['conto_corrente_id'] ?? null,
+                'tipo_documento' => $data['tipo_documento'],
+                'numero_documento' => $data['numero_documento'],
+                'data_documento' => $data['data_documento'],
+                'data_scadenza' => $data['data_scadenza'],
+                'is_pregresso' => $isPregresso,
                 'data_competenza_originaria' => $data['data_competenza_originaria'] ?? null,
-                'saldo_patrimoniale_id'      => $data['saldo_patrimoniale_id'] ?? null,
-                'imponibile_pregresso'   => $isPregresso ? $imponibileTotale : 0,
+                'saldo_patrimoniale_id' => $data['saldo_patrimoniale_id'] ?? null,
+                'imponibile_pregresso' => $isPregresso ? $imponibileTotale : 0,
                 'aliquota_iva_pregressa' => $isPregresso ? $aliquotaPregressaSalvata : 0,
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
-                'importo_iva'        => $ivaTotale * $moltiplicatore,
-                'importo_ritenuta'   => $ritenuta * $moltiplicatore,
-                'totale_documento'   => $totaleDoc * $moltiplicatore,
-                'netto_a_pagare'     => $netto,
-                'stato_pagamento'    => StatoPagamentoFattura::APERTA,
+                'importo_iva' => $ivaTotale * $moltiplicatore,
+                'importo_ritenuta' => $ritenuta * $moltiplicatore,
+                'totale_documento' => $totaleDoc * $moltiplicatore,
+                'netto_a_pagare' => $netto,
+                'stato_pagamento' => StatoPagamentoFattura::APERTA,
                 'stato_approvazione' => $statoApprovazione,
                 'modalita_pagamento' => $data['modalita_pagamento'],
-                'iban_fornitore'     => $data['iban_fornitore'] ?? null,
-                'dati_extra'         => [
-                    'fiscal'          => array_merge(
+                'iban_fornitore' => $data['iban_fornitore'] ?? null,
+                'dati_extra' => [
+                    'fiscal' => array_merge(
                         $data['dati_extra']['fiscal'] ?? [],
                         ['ritenuta_details' => $datiRitenuta]
                     ),
-                    'competenza'      => $data['dati_extra']['competenza'] ?? null,
+                    'competenza' => $data['dati_extra']['competenza'] ?? null,
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
                 ],
             ]);
 
-            if (!$isPregresso && !empty($righeProcessate)) {
+            if (! $isPregresso && ! empty($righeProcessate)) {
                 $fattura->righe()->createMany($righeProcessate);
             }
 
@@ -171,15 +172,15 @@ class FatturaPassivaService
             // Non esiste doppio movimento: coperture ≠ contabilità.
             // =====================================================================
             $overrideData = $data['dati_extra']['override_budget'] ?? null;
-            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
+            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])) {
                 $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
                 $fattura->coperture()->create([
-                    'tipo_copertura'      => 'fondo_riserva',
+                    'tipo_copertura' => 'fondo_riserva',
                     // FIX: Moltiplicatore per azzerare i report in caso di storno
-                    'importo'             => $importoSforo * $moltiplicatore, 
-                    'stato'               => 'pianificata',
-                    'fondo_id'            => $overrideData['fondo_patrimoniale_id'],
-                    'nota_amministratore' => "Copertura sforo budget (Art. 1135 c.c.): " . ($overrideData['motivazione'] ?? ''),
+                    'importo' => $importoSforo * $moltiplicatore,
+                    'stato' => 'pianificata',
+                    'fondo_id' => $overrideData['fondo_patrimoniale_id'],
+                    'nota_amministratore' => 'Copertura sforo budget (Art. 1135 c.c.): '.($overrideData['motivazione'] ?? ''),
                 ]);
             }
 
@@ -187,20 +188,20 @@ class FatturaPassivaService
             $totaleCopertoPregresso = 0;
             $nuovoContoIdPregresso = null;
 
-            if ($isPregresso && !empty($data['coperture'])) {
+            if ($isPregresso && ! empty($data['coperture'])) {
                 foreach ($data['coperture'] as $index => &$copertura) {
                     $importoCoperturaCents = (int) round($copertura['importo'] * 100);
                     // L'eccedenza interna si calcola sui valori assoluti
-                    $totaleCopertoPregresso += $importoCoperturaCents; 
+                    $totaleCopertoPregresso += $importoCoperturaCents;
 
                     $fattura->coperture()->create([
-                        'tipo_copertura'      => $copertura['tipo_copertura'],
+                        'tipo_copertura' => $copertura['tipo_copertura'],
                         // FIX: Moltiplicatore per i report del DB
-                        'importo'             => $importoCoperturaCents * $moltiplicatore, 
-                        'stato'               => 'pianificata',
-                        'saldo_id'            => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
-                        'conto_id'            => $copertura['tipo_copertura'] === 'sopravvenienza' ? ($copertura['fonte_id'] ?? null) : null,
-                        'fondo_id'            => $copertura['tipo_copertura'] === 'fondo_riserva' ? $copertura['fonte_id'] : null,
+                        'importo' => $importoCoperturaCents * $moltiplicatore,
+                        'stato' => 'pianificata',
+                        'saldo_id' => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
+                        'conto_id' => $copertura['tipo_copertura'] === 'sopravvenienza' ? ($copertura['fonte_id'] ?? null) : null,
+                        'fondo_id' => $copertura['tipo_copertura'] === 'fondo_riserva' ? $copertura['fonte_id'] : null,
                         'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
                     ]);
                 }
@@ -212,38 +213,38 @@ class FatturaPassivaService
 
             if ($isPregresso && $eccedenzaCents > 0 && $logLegale) {
                 $nuovoContoIdPregresso = $this->creaContoDinamicoSopravvenienza(
-                    $condominioId, 
-                    $data['gestione_id'], 
-                    $fornitore->id, 
-                    $logLegale, 
+                    $condominioId,
+                    $data['gestione_id'],
+                    $fornitore->id,
+                    $logLegale,
                     $eccedenzaCents
                 );
 
                 $fattura->coperture()->create([
-                    'tipo_copertura'      => 'sopravvenienza',
+                    'tipo_copertura' => 'sopravvenienza',
                     // FIX: Moltiplicatore per i report del DB
-                    'importo'             => $eccedenzaCents * $moltiplicatore, 
-                    'stato'               => 'pianificata',
-                    'conto_id'            => $nuovoContoIdPregresso,
-                    'nota_amministratore' => "Eccedenza fattura pregressa non coperta dai saldi iniziali",
+                    'importo' => $eccedenzaCents * $moltiplicatore,
+                    'stato' => 'pianificata',
+                    'conto_id' => $nuovoContoIdPregresso,
+                    'nota_amministratore' => 'Eccedenza fattura pregressa non coperta dai saldi iniziali',
                 ]);
             }
 
             // 5. Salvataggio File
             if ($file) {
-                $path = $file->storeAs('documenti/' . $condominioId, $file->hashName(), 'local');
+                $path = $file->storeAs('documenti/'.$condominioId, $file->hashName(), 'local');
                 $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
 
                 $fattura->documenti()->create([
-                    'name'         => $file->getClientOriginalName(),
-                    'description'  => 'Fattura passiva n. ' . $data['numero_documento'],
-                    'path'         => $path,
-                    'mime_type'    => $file->getMimeType(),
-                    'file_size'    => $file->getSize(),
-                    'created_by'   => Auth::id() ?? 1,
+                    'name' => $file->getClientOriginalName(),
+                    'description' => 'Fattura passiva n. '.$data['numero_documento'],
+                    'path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'created_by' => Auth::id() ?? 1,
                     'is_published' => false,
-                    'is_approved'  => true,
-                    'category_id'  => $categoriaFatture ? $categoriaFatture->id : null,
+                    'is_approved' => true,
+                    'category_id' => $categoriaFatture ? $categoriaFatture->id : null,
                 ]);
             }
 
@@ -256,20 +257,20 @@ class FatturaPassivaService
                 ->where('ruolo', 'crediti_condomini')
                 ->first();
 
-            if (!$contoDebiti || !$contoCreditiCondomini) {
+            if (! $contoDebiti || ! $contoCreditiCondomini) {
                 throw new \Exception("Errore Piano dei Conti: Mancano i Mastri 'debiti_fornitori' o 'crediti_condomini'.");
             }
 
             $scrittura = ScritturaContabile::create([
-                'condominio_id'      => $condominioId,
-                'esercizio_id'       => $data['esercizio_id'],
-                'gestione_id'        => $data['gestione_id'] ?? null,
+                'condominio_id' => $condominioId,
+                'esercizio_id' => $data['esercizio_id'],
+                'gestione_id' => $data['gestione_id'] ?? null,
                 'data_registrazione' => now(),
-                'data_competenza'    => $fattura->data_documento,
-                'numero_protocollo'  => $fattura->numero_protocollo,
-                'causale'            => ($isPregresso ? "[PREGRESSO] " : "") . "Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
-                'tipo_movimento'     => 'fattura_acquisto',
-                'stato'              => 'registrata',
+                'data_competenza' => $fattura->data_documento,
+                'numero_protocollo' => $fattura->numero_protocollo,
+                'causale' => ($isPregresso ? '[PREGRESSO] ' : '')."Ft. {$data['numero_documento']} - {$fornitore->ragione_sociale}",
+                'tipo_movimento' => 'fattura_acquisto',
+                'stato' => 'registrata',
             ]);
 
             if ($isPregresso) {
@@ -279,28 +280,28 @@ class FatturaPassivaService
 
                 $totaleRata0 = 0;
 
-                if (!empty($data['coperture'])) {
+                if (! empty($data['coperture'])) {
                     foreach ($data['coperture'] as $copertura) {
                         $importoCoperturaCents = (int) round($copertura['importo'] * 100);
-                        
+
                         if ($copertura['tipo_copertura'] === 'fondo_riserva') {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $copertura['fonte_id'],
-                                'tipo_riga'          => 'dare',
-                                'importo'            => abs($importoCoperturaCents),
-                                'note'               => 'Utilizzo fondo riserva per debito pregresso',
+                                'tipo_riga' => 'dare',
+                                'importo' => abs($importoCoperturaCents),
+                                'note' => 'Utilizzo fondo riserva per debito pregresso',
                             ]);
                         } else {
                             $totaleRata0 += $importoCoperturaCents;
                         }
                     }
-                    
+
                     if ($totaleRata0 > 0) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoPassateGestioni->id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => abs($totaleRata0),
-                            'note'               => 'Chiusura debito patrimoniale pregresso',
+                            'tipo_riga' => 'dare',
+                            'importo' => abs($totaleRata0),
+                            'note' => 'Chiusura debito patrimoniale pregresso',
                         ]);
                     }
                 }
@@ -311,18 +312,18 @@ class FatturaPassivaService
                         if ($contoSopravv && $contoSopravv->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoSopravv->conto_contabile_id,
-                                'tipo_riga'          => 'dare',
-                                'importo'            => abs($eccedenzaCents),
-                                'voce_spesa_id'      => $contoSopravv->id,
-                                'note'               => 'Sopravvenienza passiva: eccedenza fattura pregressa',
+                                'tipo_riga' => 'dare',
+                                'importo' => abs($eccedenzaCents),
+                                'voce_spesa_id' => $contoSopravv->id,
+                                'note' => 'Sopravvenienza passiva: eccedenza fattura pregressa',
                             ]);
                         }
                     } else {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoPassateGestioni->id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => abs($eccedenzaCents),
-                            'note'               => 'Caricamento debito pregresso senza copertura esplicita',
+                            'tipo_riga' => 'dare',
+                            'importo' => abs($eccedenzaCents),
+                            'note' => 'Caricamento debito pregresso senza copertura esplicita',
                         ]);
                     }
                 }
@@ -330,42 +331,42 @@ class FatturaPassivaService
                 foreach ($righeProcessate as $riga) {
                     $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
 
-                    if (!empty($riga['immobile_id'])) {
+                    if (! empty($riga['immobile_id'])) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoCreditiCondomini->id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => $importoLordoRiga,
-                            'voce_spesa_id'      => null,
-                            'immobile_id'        => $riga['immobile_id'],
-                            'note'               => 'Anticipazione spesa ad personam (Art. 63)',
+                            'tipo_riga' => 'dare',
+                            'importo' => $importoLordoRiga,
+                            'voce_spesa_id' => null,
+                            'immobile_id' => $riga['immobile_id'],
+                            'note' => 'Anticipazione spesa ad personam (Art. 63)',
                         ]);
-                    } elseif (!empty($riga['conto_id'])) {
+                    } elseif (! empty($riga['conto_id'])) {
                         $contoBudget = Conto::find($riga['conto_id']);
                         if ($contoBudget && $contoBudget->conto_contabile_id) {
                             $scrittura->righe()->create([
                                 'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                                'tipo_riga'          => 'dare',
-                                'importo'            => $importoLordoRiga,
-                                'voce_spesa_id'      => $riga['conto_id'],
-                                'immobile_id'        => null,
+                                'tipo_riga' => 'dare',
+                                'importo' => $importoLordoRiga,
+                                'voce_spesa_id' => $riga['conto_id'],
+                                'immobile_id' => null,
                             ]);
                         } else {
                             throw new \Exception("Integrità compromessa: Manca l'ancoraggio in Partita Doppia per il capitolo di spesa.");
                         }
                     } else {
-                        throw new \Exception("Integrità compromessa: Impossibile allocare la riga (nessun immobile e nessun conto associato).");
+                        throw new \Exception('Integrità compromessa: Impossibile allocare la riga (nessun immobile e nessun conto associato).');
                     }
                 }
             }
 
             $anagraficaPrincipale = $fornitore->referenti()->first();
-            
+
             // AVERE 1: Debito verso Fornitore
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga'          => 'avere',
-                'importo'            => abs($netto),
-                'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
+                'tipo_riga' => 'avere',
+                'importo' => abs($netto),
+                'anagrafica_id' => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
             ]);
 
             // AVERE 2: Debito verso Erario (Ritenute)
@@ -374,27 +375,29 @@ class FatturaPassivaService
                     ->where('ruolo', 'debiti_erario_ritenute')
                     ->first();
 
-                if (!$contoErario) throw new \Exception("Errore Piano dei Conti: Manca il Conto Mastro Ritenute.");
+                if (! $contoErario) {
+                    throw new \Exception('Errore Piano dei Conti: Manca il Conto Mastro Ritenute.');
+                }
 
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoErario->id,
-                    'tipo_riga'          => 'avere',
-                    'importo'            => abs($ritenuta),
-                    'anagrafica_id'      => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
-                    'note'               => "Ritenuta d'acconto 4% fattura fornitore"
+                    'tipo_riga' => 'avere',
+                    'importo' => abs($ritenuta),
+                    'anagrafica_id' => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
+                    'note' => "Ritenuta d'acconto 4% fattura fornitore",
                 ]);
             }
-            
+
             // Registrazione Contabile Sforo Budget
-            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && !empty($overrideData['fondo_patrimoniale_id'])) {
+            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])) {
                 $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
-                
+
                 if ($importoSforo > 0) {
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $overrideData['fondo_patrimoniale_id'],
-                        'tipo_riga'          => 'dare',
-                        'importo'            => abs($importoSforo),
-                        'note'               => 'Utilizzo fondo riserva per sforo budget: ' . ($overrideData['motivazione'] ?? ''),
+                        'tipo_riga' => 'dare',
+                        'importo' => abs($importoSforo),
+                        'note' => 'Utilizzo fondo riserva per sforo budget: '.($overrideData['motivazione'] ?? ''),
                     ]);
 
                     $contoSopravvenienza = ContoContabile::where('condominio_id', $condominioId)
@@ -404,14 +407,14 @@ class FatturaPassivaService
                     if ($contoSopravvenienza) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoSopravvenienza->id,
-                            'tipo_riga'          => 'avere',
-                            'importo'            => abs($importoSforo),
-                            'note'               => 'Giroconto copertura sforo budget da fondo riserva',
+                            'tipo_riga' => 'avere',
+                            'importo' => abs($importoSforo),
+                            'note' => 'Giroconto copertura sforo budget da fondo riserva',
                         ]);
                     }
                 }
             }
-            
+
             // =====================================================================
             // IL FILTRO INVERTITORE
             // =====================================================================
@@ -419,7 +422,7 @@ class FatturaPassivaService
                 DB::table('righe_scritture')
                     ->where('scrittura_id', $scrittura->id)
                     ->update([
-                        'tipo_riga' => DB::raw("CASE WHEN tipo_riga = 'dare' THEN 'avere' ELSE 'dare' END")
+                        'tipo_riga' => DB::raw("CASE WHEN tipo_riga = 'dare' THEN 'avere' ELSE 'dare' END"),
                     ]);
             }
 
@@ -430,7 +433,7 @@ class FatturaPassivaService
 
             $fattura->scritture()->attach($scrittura->id, [
                 'importo_allocato' => abs($totaleDoc),
-                'tipo'             => 'competenza',
+                'tipo' => 'competenza',
             ]);
 
             event(new FatturaRegistrata($fattura, Auth::id() ?? 1));
@@ -451,73 +454,68 @@ class FatturaPassivaService
      *  - Il numero_protocollo è immutabile (identificativo contabile)
      *  - Non riemette FatturaRegistrata (evita duplicazione task Inbox)
      *
-     * @param FatturaPassiva $fattura La fattura da aggiornare (con relazioni caricate).
-     * @param array $data I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
-     * @param UploadedFile|null $file Nuovo allegato (opzionale). Se presente sostituisce il precedente.
+     * @param  FatturaPassiva  $fattura  La fattura da aggiornare (con relazioni caricate).
+     * @param  array  $data  I nuovi dati validati (stessa struttura di registraFattura, senza fornitore_id e tipo_documento).
+     * @param  UploadedFile|null  $file  Nuovo allegato (opzionale). Se presente sostituisce il precedente.
+     *
      * @throws FatturaModificaVietataException Se la fattura non può essere modificata direttamente.
      */
-    public function aggiornaFattura(FatturaPassiva $fattura, array $data, ?UploadedFile $file = null): FatturaPassiva
+    public function motivoBloccoModifica(FatturaPassiva $fattura): ?string
     {
-        // ── Guard composita ─────────────────────────────────────────────────
-        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            throw new FatturaModificaVietataException(
-                'La fattura ha già un pagamento registrato. Usa lo storno.'
-            );
+        if ($fattura->stato_pagamento === StatoPagamentoFattura::STORNATA || ($fattura->dati_extra['is_stornata'] ?? false)) {
+            return 'Fattura già stornata: non modificabile.';
         }
 
-        if ($fattura->dati_extra['is_stornata'] ?? false) {
-            throw new FatturaModificaVietataException('Fattura già stornata: non modificabile.');
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            return 'La fattura ha già un pagamento registrato. Usa lo storno.';
         }
 
         $statoEsercizio = DB::table('esercizi')->where('id', $fattura->esercizio_id)->value('stato');
         if ($statoEsercizio === 'chiuso') {
-            throw new FatturaModificaVietataException(
-                'La fattura appartiene a un esercizio chiuso: usa lo storno.'
-            );
+            return 'La fattura appartiene a un esercizio chiuso: usa lo storno.';
         }
 
         if ($fattura->is_pregresso) {
-            throw new FatturaModificaVietataException(
-                'Le fatture pregresse non sono modificabili direttamente: usa lo storno.'
-            );
+            return 'Le fatture pregresse non sono modificabili direttamente: usa lo storno.';
         }
 
         if ($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists()) {
-            throw new FatturaModificaVietataException(
-                'La fattura ha coperture di sopravvenienza: usa lo storno.'
-            );
+            return 'La fattura ha coperture di sopravvenienza: usa lo storno.';
         }
 
         if ($fattura->stato_approvazione === 'sforo_motivato') {
-            throw new FatturaModificaVietataException(
-                'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.'
-            );
+            return 'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.';
         }
 
         // Controllo piano rate (replica del controllo in destroy())
         $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
         if ($pivotPlan) {
-            $piano = \App\Models\Gestionale\PianoRate::find($pivotPlan->piano_rate_id);
-            if ($piano instanceof \App\Models\Gestionale\PianoRate) {
-                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn($q) => $q->where('importo_pagato', '>', 0))->exists();
-                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
+            $piano = PianoRate::find($pivotPlan->piano_rate_id);
+            if ($piano instanceof PianoRate) {
+                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))->exists();
+                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
                 if ($hasPagamenti || $hasEmissioni) {
-                    throw new FatturaModificaVietataException(
-                        'La fattura è in un piano straordinario con rate già emesse: usa lo storno.'
-                    );
+                    return 'La fattura è in un piano straordinario con rate già emesse: usa lo storno.';
                 }
                 $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
                 if ($stato === 'approvato') {
-                    throw new FatturaModificaVietataException(
-                        'La fattura è in un piano approvato: usa lo storno.'
-                    );
+                    return 'La fattura è in un piano approvato: usa lo storno.';
                 }
             }
         }
 
+        return null;
+    }
+
+    public function aggiornaFattura(FatturaPassiva $fattura, array $data, ?UploadedFile $file = null): FatturaPassiva
+    {
+        if ($motivo = $this->motivoBloccoModifica($fattura)) {
+            throw new FatturaModificaVietataException($motivo);
+        }
+
         // ── Snapshot before (per audit trail e aggiornamento Inbox) ─────────
         $dataScadenzaBefore = $fattura->data_scadenza?->format('Y-m-d');
-        $importoBefore      = $fattura->netto_a_pagare;
+        $importoBefore = $fattura->netto_a_pagare;
 
         // ── Transazione atomica ──────────────────────────────────────────────
         return DB::transaction(function () use ($fattura, $data, $file, $dataScadenzaBefore, $importoBefore) {
@@ -538,63 +536,63 @@ class FatturaPassivaService
 
             // 3. Aggiorna testata fattura (campi modificabili — protocollo e fornitore sono immutabili)
             $fattura->update([
-                'numero_documento'   => $data['numero_documento'],
-                'data_documento'     => $data['data_documento'],
-                'data_scadenza'      => $data['data_scadenza'],
+                'numero_documento' => $data['numero_documento'],
+                'data_documento' => $data['data_documento'],
+                'data_scadenza' => $data['data_scadenza'],
                 'modalita_pagamento' => $data['modalita_pagamento'],
-                'iban_fornitore'     => $data['iban_fornitore'] ?? null,
-                'conto_corrente_id'  => $data['conto_corrente_id'] ?? $fattura->conto_corrente_id,
+                'iban_fornitore' => $data['iban_fornitore'] ?? null,
+                'conto_corrente_id' => $data['conto_corrente_id'] ?? $fattura->conto_corrente_id,
             ]);
 
             // 4. Ricalcola imponibile, IVA e ritenuta dalle nuove righe
-            $fornitore      = Fornitore::with('referenti')->findOrFail($fattura->fornitore_id);
-            $isNotaCredito  = ($fattura->tipo_documento === 'nota_credito');
+            $fornitore = Fornitore::with('referenti')->findOrFail($fattura->fornitore_id);
+            $isNotaCredito = ($fattura->tipo_documento === 'nota_credito');
             $moltiplicatore = $isNotaCredito ? -1 : 1;
 
             $imponibileTotale = 0;
-            $ivaTotale        = 0;
-            $righeProcessate  = [];
+            $ivaTotale = 0;
+            $righeProcessate = [];
 
             foreach ($data['righe'] as $rigaInput) {
                 $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
-                $aliq    = (float) $rigaInput['aliquota_iva'];
+                $aliq = (float) $rigaInput['aliquota_iva'];
                 $ivaRiga = (int) round(($impRiga * $aliq) / 100);
 
                 $imponibileTotale += $impRiga;
-                $ivaTotale        += $ivaRiga;
+                $ivaTotale += $ivaRiga;
 
                 $contoIdRiga = $rigaInput['conto_id'] ?? null;
-                if (!empty($rigaInput['immobile_id'])) {
+                if (! empty($rigaInput['immobile_id'])) {
                     $contoIdRiga = null;
                 }
 
                 $righeProcessate[] = [
-                    'descrizione'        => $rigaInput['descrizione'],
+                    'descrizione' => $rigaInput['descrizione'],
                     'importo_imponibile' => $impRiga * $moltiplicatore,
-                    'aliquota_iva'       => $aliq,
-                    'importo_iva'        => $ivaRiga * $moltiplicatore,
-                    'conto_id'           => $contoIdRiga,
-                    'immobile_id'        => $rigaInput['immobile_id'] ?? null,
-                    'is_sopravvenienza'  => false, // bloccato a monte
+                    'aliquota_iva' => $aliq,
+                    'importo_iva' => $ivaRiga * $moltiplicatore,
+                    'conto_id' => $contoIdRiga,
+                    'immobile_id' => $rigaInput['immobile_id'] ?? null,
+                    'is_sopravvenienza' => false, // bloccato a monte
                 ];
             }
 
             // Ritenuta
-            $ritenuta     = 0;
+            $ritenuta = 0;
             $datiRitenuta = null;
             $applicaRitenuta = $fornitore->soggetto_ritenuta && ($data['applica_ritenuta'] ?? true);
             if ($applicaRitenuta) {
-                $base     = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
+                $base = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
                 $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
                 $datiRitenuta = [
                     'imponibile_calcolo' => $base,
-                    'aliquota'           => $fornitore->perc_ritenuta,
-                    'codice_tributo'     => $fornitore->codice_tributo,
+                    'aliquota' => $fornitore->perc_ritenuta,
+                    'codice_tributo' => $fornitore->codice_tributo,
                 ];
             }
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
-            $netto     = ($totaleDoc - $ritenuta) * $moltiplicatore;
+            $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
 
             // 5. Aggiorna importi sulla fattura
             $datiExtra = $fattura->dati_extra ?? [];
@@ -602,11 +600,11 @@ class FatturaPassivaService
 
             $fattura->update([
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
-                'importo_iva'        => $ivaTotale * $moltiplicatore,
-                'importo_ritenuta'   => $ritenuta * $moltiplicatore,
-                'totale_documento'   => $totaleDoc * $moltiplicatore,
-                'netto_a_pagare'     => $netto,
-                'dati_extra'         => $datiExtra,
+                'importo_iva' => $ivaTotale * $moltiplicatore,
+                'importo_ritenuta' => $ritenuta * $moltiplicatore,
+                'totale_documento' => $totaleDoc * $moltiplicatore,
+                'netto_a_pagare' => $netto,
+                'dati_extra' => $datiExtra,
             ]);
 
             // 6. Ricrea righe
@@ -622,15 +620,15 @@ class FatturaPassivaService
                 ->firstOrFail();
 
             $scrittura = ScritturaContabile::create([
-                'condominio_id'      => $fattura->condominio_id,
-                'esercizio_id'       => $fattura->esercizio_id,
-                'gestione_id'        => $data['gestione_id'] ?? $fattura->scritture()->withTrashed()->first()?->gestione_id,
+                'condominio_id' => $fattura->condominio_id,
+                'esercizio_id' => $fattura->esercizio_id,
+                'gestione_id' => $data['gestione_id'] ?? $fattura->scritture()->withTrashed()->first()?->gestione_id,
                 'data_registrazione' => now(),
-                'data_competenza'    => $fattura->data_documento,
-                'numero_protocollo'  => $fattura->numero_protocollo, // immutabile
-                'causale'            => "Ft. {$fattura->numero_documento} - {$fornitore->ragione_sociale} [modifica]",
-                'tipo_movimento'     => 'fattura_acquisto',
-                'stato'              => 'registrata',
+                'data_competenza' => $fattura->data_documento,
+                'numero_protocollo' => $fattura->numero_protocollo, // immutabile
+                'causale' => "Ft. {$fattura->numero_documento} - {$fornitore->ragione_sociale} [modifica]",
+                'tipo_movimento' => 'fattura_acquisto',
+                'stato' => 'registrata',
             ]);
 
             // Righe DARE
@@ -639,38 +637,38 @@ class FatturaPassivaService
             foreach ($righeProcessate as $riga) {
                 $importoLordoRiga = abs($riga['importo_imponibile'] + $riga['importo_iva']);
 
-                if (!empty($riga['immobile_id'])) {
+                if (! empty($riga['immobile_id'])) {
                     $scrittura->righe()->create([
                         'conto_contabile_id' => $contoCreditiCondomini->id,
-                        'tipo_riga'          => 'dare',
-                        'importo'            => $importoLordoRiga,
-                        'voce_spesa_id'      => null,
-                        'immobile_id'        => $riga['immobile_id'],
-                        'note'               => 'Anticipazione spesa ad personam (Art. 63)',
+                        'tipo_riga' => 'dare',
+                        'importo' => $importoLordoRiga,
+                        'voce_spesa_id' => null,
+                        'immobile_id' => $riga['immobile_id'],
+                        'note' => 'Anticipazione spesa ad personam (Art. 63)',
                     ]);
-                } elseif (!empty($riga['conto_id'])) {
+                } elseif (! empty($riga['conto_id'])) {
                     $contoBudget = Conto::find($riga['conto_id']);
                     if ($contoBudget && $contoBudget->conto_contabile_id) {
                         $scrittura->righe()->create([
                             'conto_contabile_id' => $contoBudget->conto_contabile_id,
-                            'tipo_riga'          => 'dare',
-                            'importo'            => $importoLordoRiga,
-                            'voce_spesa_id'      => $riga['conto_id'],
+                            'tipo_riga' => 'dare',
+                            'importo' => $importoLordoRiga,
+                            'voce_spesa_id' => $riga['conto_id'],
                         ]);
                     } else {
                         throw new \Exception("Integrità compromessa: manca l'ancoraggio in Partita Doppia per il capitolo di spesa.");
                     }
                 } else {
-                    throw new \Exception("Integrità compromessa: impossibile allocare la riga (nessun immobile e nessun conto associato).");
+                    throw new \Exception('Integrità compromessa: impossibile allocare la riga (nessun immobile e nessun conto associato).');
                 }
             }
 
             // Riga AVERE — Debito verso Fornitore
             $scrittura->righe()->create([
                 'conto_contabile_id' => $contoDebiti->id,
-                'tipo_riga'          => 'avere',
-                'importo'            => abs($netto),
-                'anagrafica_id'      => $anagraficaPrincipale?->id,
+                'tipo_riga' => 'avere',
+                'importo' => abs($netto),
+                'anagrafica_id' => $anagraficaPrincipale?->id,
             ]);
 
             // Riga AVERE — Debito verso Erario (se ritenuta)
@@ -681,10 +679,10 @@ class FatturaPassivaService
 
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoErario->id,
-                    'tipo_riga'          => 'avere',
-                    'importo'            => abs($ritenuta),
-                    'anagrafica_id'      => $anagraficaPrincipale?->id,
-                    'note'               => "Ritenuta d'acconto fattura fornitore",
+                    'tipo_riga' => 'avere',
+                    'importo' => abs($ritenuta),
+                    'anagrafica_id' => $anagraficaPrincipale?->id,
+                    'note' => "Ritenuta d'acconto fattura fornitore",
                 ]);
             }
 
@@ -703,7 +701,7 @@ class FatturaPassivaService
             // 9. Attach pivot competenza
             $fattura->scritture()->attach($scrittura->id, [
                 'importo_allocato' => abs($totaleDoc),
-                'tipo'             => 'competenza',
+                'tipo' => 'competenza',
             ]);
 
             // 10. Gestione allegato: nuovo file → elimina vecchio → salva
@@ -715,19 +713,19 @@ class FatturaPassivaService
                     $doc->delete();
                 }
 
-                $path = $file->storeAs('documenti/' . $fattura->condominio_id, $file->hashName(), 'local');
+                $path = $file->storeAs('documenti/'.$fattura->condominio_id, $file->hashName(), 'local');
                 $categoriaFatture = CategoriaDocumento::where('name', 'Fatture')->first();
 
                 $fattura->documenti()->create([
-                    'name'         => $file->getClientOriginalName(),
-                    'description'  => 'Fattura passiva n. ' . $fattura->numero_documento,
-                    'path'         => $path,
-                    'mime_type'    => $file->getMimeType(),
-                    'file_size'    => $file->getSize(),
-                    'created_by'   => Auth::id() ?? 1,
+                    'name' => $file->getClientOriginalName(),
+                    'description' => 'Fattura passiva n. '.$fattura->numero_documento,
+                    'path' => $path,
+                    'mime_type' => $file->getMimeType(),
+                    'file_size' => $file->getSize(),
+                    'created_by' => Auth::id() ?? 1,
                     'is_published' => false,
-                    'is_approved'  => true,
-                    'category_id'  => $categoriaFatture?->id,
+                    'is_approved' => true,
+                    'category_id' => $categoriaFatture?->id,
                 ]);
             }
 
@@ -741,11 +739,11 @@ class FatturaPassivaService
             }
 
             // 12. Audit trail
-            Log::info("FatturaPassiva #{$fattura->id} modificata da utente #" . (Auth::id() ?? 0), [
+            Log::info("FatturaPassiva #{$fattura->id} modificata da utente #".(Auth::id() ?? 0), [
                 'netto_a_pagare_before' => $importoBefore,
-                'netto_a_pagare_after'  => $fattura->fresh()->netto_a_pagare,
-                'data_scadenza_before'  => $dataScadenzaBefore,
-                'data_scadenza_after'   => $nuovaScadenza?->format('Y-m-d'),
+                'netto_a_pagare_after' => $fattura->fresh()->netto_a_pagare,
+                'data_scadenza_before' => $dataScadenzaBefore,
+                'data_scadenza_after' => $nuovaScadenza?->format('Y-m-d'),
             ]);
 
             return $fattura->fresh();
@@ -758,33 +756,35 @@ class FatturaPassivaService
     private function creaContoDinamicoSopravvenienza(int $condominioId, int $gestioneId, int $fornitoreId, array $logLegale, int $importoCent = 0): int
     {
         $pianoConto = PianoConto::where('gestione_id', $gestioneId)->first();
-        if (!$pianoConto) throw new \Exception("Nessun Piano dei Conti trovato per la gestione ID: " . $gestioneId);
+        if (! $pianoConto) {
+            throw new \Exception('Nessun Piano dei Conti trovato per la gestione ID: '.$gestioneId);
+        }
 
         $contoContabileSopravvenienza = ContoContabile::firstOrCreate(
             ['condominio_id' => $condominioId, 'ruolo' => 'sopravvenienze_passive'],
             [
-                'codice'      => 'SOP-' . $condominioId,
-                'nome'        => 'Sopravvenienze passive',
-                'tipo'        => ContoContabileTipo::COSTO->value,
-                'categoria'   => ContoContabileCategoria::COSTI->value,
+                'codice' => 'SOP-'.$condominioId,
+                'nome' => 'Sopravvenienze passive',
+                'tipo' => ContoContabileTipo::COSTO->value,
+                'categoria' => ContoContabileCategoria::COSTI->value,
                 'descrizione' => 'Costi imprevisti o relativi a esercizi precedenti. Art. 1130-bis c.c.',
-                'di_sistema'  => true,
-                'attivo'      => true,
-                'livello'     => 1,
+                'di_sistema' => true,
+                'attivo' => true,
+                'livello' => 1,
             ]
         );
 
         $capitoloPadre = Conto::firstOrCreate(
             [
-                'piano_conto_id' => $pianoConto->id, 
-                'nome' => "Integrazioni Straordinarie (Scudo Legale)", 
-                'parent_id' => null
+                'piano_conto_id' => $pianoConto->id,
+                'nome' => 'Integrazioni Straordinarie (Scudo Legale)',
+                'parent_id' => null,
             ],
             [
-                'tipo'        => 'spesa',
-                'importo'     => 0,
+                'tipo' => 'spesa',
+                'importo' => 0,
                 'descrizione' => 'Capitoli generati automaticamente dal sistema.',
-                'is_tecnico'  => true,
+                'is_tecnico' => true,
             ]
         );
 
@@ -793,37 +793,37 @@ class FatturaPassivaService
             : 'Gestione corrente';
 
         $nuovoConto = Conto::create([
-            'piano_conto_id'       => $pianoConto->id,
-            'parent_id'            => $capitoloPadre->id,
-            'default_fornitore_id' => $fornitoreId, 
-            'nome'                 => $logLegale['nome_voce'] ?? 'Spesa Imprevista',
-            'tipo'                 => 'spesa',
-            'importo'              => $importoCent, 
-            'tipo_ripartizione'    => $logLegale['tipo_ripartizione'] ?? 'millesimale',
-            'origine_decisionale'  => $logLegale['origine_decisionale'] ?? 'gestione_corrente',
-            'is_tecnico'           => true,
+            'piano_conto_id' => $pianoConto->id,
+            'parent_id' => $capitoloPadre->id,
+            'default_fornitore_id' => $fornitoreId,
+            'nome' => $logLegale['nome_voce'] ?? 'Spesa Imprevista',
+            'tipo' => 'spesa',
+            'importo' => $importoCent,
+            'tipo_ripartizione' => $logLegale['tipo_ripartizione'] ?? 'millesimale',
+            'origine_decisionale' => $logLegale['origine_decisionale'] ?? 'gestione_corrente',
+            'is_tecnico' => true,
             'note' => implode("\n", array_filter([
-                "Origine delibera: " . $origine,
-                !empty($logLegale['motivazione_sforo'])
-                    ? "Motivazione: " . $logLegale['motivazione_sforo']
+                'Origine delibera: '.$origine,
+                ! empty($logLegale['motivazione_sforo'])
+                    ? 'Motivazione: '.$logLegale['motivazione_sforo']
                     : null,
             ])),
-            'conto_contabile_id'   => $contoContabileSopravvenienza->id,
+            'conto_contabile_id' => $contoContabileSopravvenienza->id,
         ]);
 
-        if (($logLegale['tipo_ripartizione'] ?? 'millesimale') === 'millesimale' && !empty($logLegale['tabella_millesimale_id'])) {
+        if (($logLegale['tipo_ripartizione'] ?? 'millesimale') === 'millesimale' && ! empty($logLegale['tabella_millesimale_id'])) {
             $contoTabellaId = DB::table('conto_tabella_millesimale')->insertGetId([
-                'conto_id'     => $nuovoConto->id,
-                'tabella_id'   => $logLegale['tabella_millesimale_id'],
+                'conto_id' => $nuovoConto->id,
+                'tabella_id' => $logLegale['tabella_millesimale_id'],
                 'coefficiente' => 100.00,
-                'created_at'   => now(),
-                'updated_at'   => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
 
             $ripartizioni = [
                 ['soggetto' => 'proprietario',  'percentuale' => $logLegale['percentuale_proprietario'] ?? 0],
                 ['soggetto' => 'inquilino',     'percentuale' => $logLegale['percentuale_inquilino'] ?? 0],
-                ['soggetto' => 'usufruttuario', 'percentuale' => $logLegale['percentuale_usufruttuario'] ?? 0]
+                ['soggetto' => 'usufruttuario', 'percentuale' => $logLegale['percentuale_usufruttuario'] ?? 0],
             ];
 
             if (array_sum(array_column($ripartizioni, 'percentuale')) != 100) {
@@ -834,10 +834,10 @@ class FatturaPassivaService
                 if ($rip['percentuale'] > 0) {
                     DB::table('conto_tabella_ripartizioni')->insert([
                         'conto_tabella_millesimale_id' => $contoTabellaId,
-                        'soggetto'                     => $rip['soggetto'],
-                        'percentuale'                  => $rip['percentuale'],
-                        'created_at'                   => now(),
-                        'updated_at'                   => now(),
+                        'soggetto' => $rip['soggetto'],
+                        'percentuale' => $rip['percentuale'],
+                        'created_at' => now(),
+                        'updated_at' => now(),
                     ]);
                 }
             }

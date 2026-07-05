@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import Alert from '@/components/Alert.vue';
 import type { BreadcrumbItem } from '@/types';
+import type { Flash } from '@/types/flash';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +66,9 @@ const statoPagamentoVariant = computed(() => {
     }
 });
 
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
+
 const executeDownload = (documentoId: number) => {
     window.location.href = route(generateRoute('gestionale.fatture.download'), {
         condominio: props.condominio.id,
@@ -99,6 +104,10 @@ const executeDownload = (documentoId: number) => {
                 </Button>
             </template>
             </PageHeaderGuide>
+
+            <div v-if="flashMessage">
+                <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
 
             <div class="w-full">
                 <section class="w-full space-y-6">

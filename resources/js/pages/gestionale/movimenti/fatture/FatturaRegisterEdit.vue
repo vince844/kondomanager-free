@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle } from 'lucide-vue-next';
+import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
@@ -131,6 +131,8 @@ const props = defineProps<{
 const fileInput = ref<HTMLInputElement | null>(null);
 const showOverrideModal = ref(false);
 const showSuccessModal = ref(false);
+const showModificaVietataModal = ref(false);
+const modificaVietataMsg = ref('');
 
 const form = useForm({
     _method: 'PUT',
@@ -504,10 +506,16 @@ const doSubmit = () => {
 
         return payload;
     }).post(route(generateRoute('gestionale.fatture.update'), { condominio: props.condominio.id, fattura: props.fattura.id }), {
-        forceFormData: true, 
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             showSuccessModal.value = true;
+        },
+        onError: (errors) => {
+            if (errors.modifica_vietata) {
+                modificaVietataMsg.value = errors.modifica_vietata;
+                showModificaVietataModal.value = true;
+            }
         },
     });
 };
@@ -645,10 +653,6 @@ const pageGuides = [
                             <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data *</Label>
                                 <Input type="date" v-model="form.data_documento" class="h-9 text-sm" />
-                                <div v-if="isDataDocumentoVecchia" class="mt-2 flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
-                                    <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                                    <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
-                                </div>
                             </div>
                             <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">Scadenza *</Label>
@@ -657,6 +661,10 @@ const pageGuides = [
                                     v-model="form.data_scadenza"
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
                             </div>
+                        </div>
+                        <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
                         </div>
 
                         <hr class="border-slate-100 dark:border-slate-800">
@@ -878,7 +886,7 @@ const pageGuides = [
                                         </div>
 
                                         <!-- Aliquota IVA -->
-                                        <div class="col-span-3 md:col-span-2 lg:col-span-1 relative">
+                                        <div class="col-span-3 md:col-span-2 lg:col-span-2 relative">
                                             <div class="relative">
                                                 <Input min="0" max="100" v-model="riga.aliquota_iva"
                                                     class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
@@ -887,7 +895,7 @@ const pageGuides = [
                                         </div>
 
                                         <!-- Totale riga + elimina -->
-                                        <div class="col-span-5 md:col-span-3 flex items-center justify-end gap-3 h-10">
+                                        <div class="col-span-5 md:col-span-3 lg:col-span-2 flex items-center justify-end gap-3 h-10">
                                             <div class="text-right">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
@@ -1073,6 +1081,34 @@ const pageGuides = [
                 : Math.round(eccedenzaPregressaEuro * 100)"
             @confirm="handleSpesaImprevistaConfirm" 
         />
+
+        <!-- Modale di modifica non consentita (stornata, esercizio chiuso, pregressa, ecc.) — non bypassabile -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showModificaVietataModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-slate-50 to-slate-100/50 dark:from-slate-800 dark:to-slate-700/30 px-8 pt-8 pb-6 text-center border-b border-slate-200 dark:border-slate-700">
+                            <div class="w-16 h-16 bg-white dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-slate-200 dark:border-slate-600">
+                                <Lock class="w-8 h-8 text-slate-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Modifica non consentita</h3>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-xl p-4">
+                                <Info class="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-blue-700 dark:text-blue-400 leading-relaxed">{{ modificaVietataMsg }}</p>
+                            </div>
+
+                            <Button @click="() => { showModificaVietataModal = false; router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: props.condominio.id, fattura: props.fattura.id })); }"
+                                class="w-full h-12 rounded-xl bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-black uppercase tracking-widest text-[11px]">
+                                Ho capito — Torna al dettaglio
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
 
         <!-- Modale di successo -->
         <Teleport to="body">

@@ -699,10 +699,6 @@ const pageGuides = [
                             <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data *</Label>
                                 <Input type="date" v-model="form.data_documento" class="h-9 text-sm" />
-                                <div v-if="isDataDocumentoVecchia" class="mt-2 flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
-                                    <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
-                                    <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
-                                </div>
                             </div>
                             <div class="space-y-1.5 col-span-2 md:col-span-1">
                                 <Label class="text-[11px] font-bold uppercase tracking-wider text-primary">Scadenza *</Label>
@@ -711,6 +707,10 @@ const pageGuides = [
                                     v-model="form.data_scadenza"
                                     class="h-9 text-sm border-primary/40 bg-primary/5 text-primary font-bold" />
                             </div>
+                        </div>
+                        <div v-if="isDataDocumentoVecchia" class="flex items-start gap-2 text-[10.5px] font-medium text-amber-700 bg-amber-50 p-2 rounded-md border border-amber-200">
+                            <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-500" />
+                            <span><strong>Attenzione (Art. 1130 c.c.)</strong> Stai registrando un'operazione avvenuta oltre 30 giorni fa. Ricorda che la normativa prevede l'annotazione a registro entro i 30 giorni.</span>
                         </div>
 
                         <!-- Checkbox pregresso -->
@@ -986,7 +986,7 @@ const pageGuides = [
                                         </div>
 
                                         <!-- Aliquota IVA -->
-                                        <div class="col-span-3 md:col-span-2 lg:col-span-1 relative">
+                                        <div class="col-span-3 md:col-span-2 lg:col-span-2 relative">
                                             <div class="relative">
                                                 <Input min="0" max="100" v-model="riga.aliquota_iva"
                                                     class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
@@ -995,7 +995,7 @@ const pageGuides = [
                                         </div>
 
                                         <!-- Totale riga + elimina -->
-                                        <div class="col-span-5 md:col-span-3 flex items-center justify-end gap-3 h-10">
+                                        <div class="col-span-5 md:col-span-3 lg:col-span-2 flex items-center justify-end gap-3 h-10">
                                             <div class="text-right">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
