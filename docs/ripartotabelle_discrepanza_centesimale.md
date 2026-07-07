@@ -1,7 +1,7 @@
 # RipartoTabelleService — Discrepanza Centesimale e Roadmap Fix
 **Data:** 2026-06-28  
 **Versione attuale:** v1.9.1  
-**Stato:** Noto, documentato, fix pianificato in v1.10  
+**Stato:** RISOLTO il 2026-07-06 — vedi appendice "Risoluzione definitiva" in fondo  
 **File coinvolti:** `app/Services/RipartoTabelleService.php`  
 **Documento di riferimento:** `tests/fixtures/T12/16Preventivo.pdf`
 ---
@@ -214,3 +214,49 @@ questi capitoli vengono raggruppati nelle colonne del PDF.
   documentare il cambio da row-first a ibrido per la stampa riparto.
 - Il `CalcoloQuoteService` rimane row-first — la modifica riguarda solo
   la stampa PDF, non il motore di calcolo delle rate.
+
+---
+## APPENDICE — Risoluzione definitiva (2026-07-06)
+
+### La scoperta chiave
+`CalcoloQuoteService` applica GIÀ il metodo del resto più grande (Hamilton)
+**per singolo conto** (`distribuisciImporto()`): al momento della generazione
+delle rate esiste quindi una matrice intera esatta in cui sia le righe
+(totali per soggetto = `rate_quote`) sia le colonne (budget per conto)
+tornano perfettamente. Il difetto era SOLO nella stampa:
+`RipartoTabelleService` scartava quella matrice e la ricostruiva
+ridistribuendo i totali di riga sui pesi float, scaricando il resto
+sull'ultima tabella (v1.9.1: ultima registrata, anche a peso zero → il
+famoso "€0,01 su TUNNEL a chi non c'entra" segnalato da Gadotti su PAR).
+
+### Il fix implementato (variante della Fase 2, senza i suoi rischi)
+`RipartoTabelleService` ora ricostruisce le celle CONTO PER CONTO con lo
+stesso identico algoritmo del motore rate (pesi identici, cascata ruolo
+identica incl. `nuda_proprietario`, decurtazione scoperti identica, copia
+1:1 di `distribuisciImporto()`). Risultato:
+- **Colonne esatte**: ogni tabella somma al budget dei suoi conti; i
+  centesimi di resto restano DENTRO i partecipanti del conto.
+- **Righe esatte**: ogni totale soggetto coincide con `rate_quote` perché
+  le allocazioni sono le stesse che hanno generato le rate.
+- **Fallback di sicurezza**: se i dati sono cambiati dopo la generazione
+  (o per quote extra: saldi/conguagli), il residuo di riga viene
+  riallineato sulla tabella a peso maggiore del soggetto — la garanzia
+  legale (riga = rate_quote) vale INCONDIZIONATAMENTE. Questo elimina la
+  dipendenza da `piano_rate.snapshot_at` che bloccava la Fase 2 originale.
+
+`CalcoloQuoteService` NON è stato toccato.
+
+### Validazione
+`tests/Feature/Riparto/RipartoCondominioParRealeTest.php` ricostruisce il
+condominio PAR reale (44 unità, 8 tabelle, 23 conti, dati estratti dal DB
+dell'amministratore) e verifica: i 44 totali `rate_quote` riprodotti al
+centesimo; ogni colonna esatta al budget (ACQUA FISSO 2.200,00 — era
+2.199,96; TUNNEL 800,00 — era 800,04); i 4 centesimi di ACQUA FISSO
+spalmati sui partecipanti (4×104,77 + 17×104,76); TUNNEL di Telch Mario
+(non partecipante) = 0 — era €0,01. Suite completa verde.
+
+### Nota storica
+Il fix "Fase 1" (usort per peso) e il successivo tentativo Hamilton
+row-first sono superati: su dati reali PAR producevano risultati identici
+tra loro e non risolvevano i totali di colonna. I relativi unit test sono
+stati sostituiti dal test PAR completo.

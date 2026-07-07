@@ -33,17 +33,27 @@ use Illuminate\Support\Facades\Log;
  *   'tot_per_tabella' => [ tabella_id => int (cents) ],
  * ]
  *
- * ALGORITMO
- * ---------
- * Per ogni foglia del piano dei conti (conto con tabelleMillesimali configurate):
- *   1. Determina l'importo di quel conto nel piano rate (override pivot o importo live).
- *   2. Per ogni tabella collegata (con coefficiente%):
- *      - Parte di importo allocata a questa tabella = importo × coeff/100
- *      - Per ogni immobile in tabella: peso = valore_immobile / somma_valori_tabella
- *      - Per ogni ripartizione soggetto (proprietario, inquilino, ...):
- *          importo_soggetto_tabella = parte_tabella × peso_immobile × percentuale_soggetto/100
- *        → accumula in weights[tabella_id][anagrafica_id][immobile_id]
- * 3. Penny-perfect sull'importo totale del conto (globale), poi proporziona per tabella.
+ * ALGORITMO (per-conto, allineato a CalcoloQuoteService)
+ * ------------------------------------------------------
+ * Le celle della matrice sono ricostruite CONTO PER CONTO con lo stesso
+ * identico algoritmo penny-perfect usato da CalcoloQuoteService per generare
+ * le rate (pesi identici, stessa cascata ruolo, stessa decurtazione scoperti,
+ * stesso metodo del resto più grande). Ne seguono due garanzie:
+ *
+ *   1. COLONNE: ogni tabella somma esattamente al budget dei suoi conti
+ *      (per i conti collegati a una sola tabella — il caso normale), e i
+ *      centesimi di arrotondamento restano DENTRO i partecipanti del conto.
+ *   2. RIGHE: il totale di ogni soggetto coincide con quanto realmente
+ *      addebitato in contabilità (rate_quote) perché le allocazioni sono le
+ *      stesse che hanno generato le rate. Se i dati sono cambiati dopo la
+ *      generazione (o per quote extra come saldi), un riallineamento di
+ *      sicurezza corregge il residuo sulla tabella a peso maggiore del
+ *      soggetto: la garanzia legale (riga = rate_quote) vale SEMPRE.
+ *
+ * Storia: v1.9.1 distribuiva il totale di riga proporzionalmente ai pesi e
+ * scaricava il resto sull'ultima tabella registrata (anche a peso zero →
+ * "€0,01 su TUNNEL a chi non c'entra"); vedi
+ * docs/ripartotabelle_discrepanza_centesimale.md.
  *
  * NOTA: La quota millesimale mostrata nella colonna "mill." è letta direttamente da
  * quote_tabella.valore per ogni (immobile, tabella). Non viene ricalcolata.
@@ -72,7 +82,7 @@ class RipartoTabelleService
         // Override importi: se straordinario su fatture, aggrega righe_fattura; altrimenti usa pivot capitoli
         $pivotOverrides = [];
         $hasFatture = false;
-        
+
         if ($pianoRate->tipo === 'straordinario' && $pianoRate->fatture()->exists()) {
             $hasFatture = true;
             $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
@@ -95,8 +105,8 @@ class RipartoTabelleService
             if (empty($capitoliIds) && $pianoRate->capitoli->isEmpty()) {
                 return $this->empty();
             }
-        } 
-        
+        }
+
         // Sempre, aggiungi anche i capitoli espliciti se ci sono (gestisce i piani "misti")
         foreach ($pianoRate->capitoli as $cap) {
             if (!is_null($cap->pivot->importo)) {
@@ -136,23 +146,25 @@ class RipartoTabelleService
 
         $conti = $queryConti->get();
 
-        // ─── 3. Accumula pesi per tabella ────────────────────────────────────
-        // weights[tabella_id][anagrafica_id . '|' . immobile_id] = float (peso normalizzato × importo)
+        // ─── 3. Ricostruisce le allocazioni esatte per (tabella, soggetto) ────
+        // cells[tabella_id][aid|iid]   = int cents (stesse allocazioni del motore rate)
+        // weights[tabella_id][aid|iid] = float (peso × importo, solo per il fallback residuo)
         // quoteMill[tabella_id][immobile_id] = float (valore nella tabella)
-        $weights  = [];   // tabella_id → "aid|iid" → float weight
+        $cells    = [];
+        $weights  = [];
         $quoteMill = [];  // tabella_id → immobile_id → float valore
         $tabelleInfo = []; // tabella_id → ['nome', 'quota_label']
         $processatiIds = [];
 
-        $this->processaContiPerPesi($conti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at, $contiImpegnatiIds, $processatiIds);
+        $this->processaConti($conti, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $pianoRate->created_at, $contiImpegnatiIds, $processatiIds);
 
         if (empty($weights)) {
             return $this->empty();
         }
 
         // ─── 4. Somma importi totali da rate_quote già emesse ─────────────────
-        // Usiamo le rate_quote come fonte di verità per gli importi reali distribuiti.
-        // I weights calcolati sopra servono SOLO per proporzionare per tabella.
+        // Le rate_quote restano la fonte di verità per il totale di ogni soggetto:
+        // le celle per-conto vengono riallineate a questo totale in caso di residuo.
         $pianoRate->load([
             'rate.rateQuote.anagrafica',
             'rate.rateQuote.immobile',
@@ -169,8 +181,6 @@ class RipartoTabelleService
         }
 
         // ─── 5. Costruisce struttura righe ────────────────────────────────────
-        // Per ogni (anagrafica, immobile) con importo reale, distribui per tabella
-        // usando le quote di peso calcolate.
 
         $righe       = [];
         $totPerTab   = array_fill_keys(array_keys($tabelleInfo), 0);
@@ -182,9 +192,6 @@ class RipartoTabelleService
             'inquilino'         => 'I',
             'usufruttuario'     => 'U',
         ];
-
-        // Calcola pesi totali per immobile per ogni tabella, per poter proporzionare i millesimi
-        // (codice rimosso perché passiamo ai millesimi accorpati per immobile)
 
         // Per ogni anagrafica × immobile presente nelle rate reali
         foreach ($totaliReali as $anagraficaId => $perImmobile) {
@@ -211,42 +218,37 @@ class RipartoTabelleService
                 $quotaSogg = $pivot?->quota ?? 100;
                 $siglRuolo = $sigleRuolo[$ruoloRaw] ?? strtoupper(substr($ruoloRaw, 0, 1));
 
-                // Calcola pesi per tabella per questo (anagrafica × immobile)
                 $pesiFlatKey = $anagraficaId . '|' . $immobileId;
-                $pesPerTab   = [];
-                $peseTot     = 0.0;
 
-                foreach ($weights as $tabId => $flatMap) {
-                    $w = $flatMap[$pesiFlatKey] ?? 0.0;
+                // Celle esatte per-conto (stesse allocazioni che hanno generato le rate)
+                $importiPerTab = [];
+                $rowSum    = 0;
+                $pesPerTab = [];
+                $peseTot   = 0.0;
+                foreach ($tabelleInfo as $tabId => $_info) {
+                    $cent = $cells[$tabId][$pesiFlatKey] ?? 0;
+                    $importiPerTab[$tabId] = $cent;
+                    $rowSum += $cent;
+
+                    $w = $weights[$tabId][$pesiFlatKey] ?? 0.0;
                     $pesPerTab[$tabId] = $w;
                     $peseTot += $w;
                 }
 
-                // Distribuisce l'importo reale proporzionalmente alle tabelle
-                $importiPerTab = [];
-                if ($peseTot > 0.0) {
-                    $assegnato = 0;
-                    $tabIds    = array_keys($pesPerTab);
-                    // Fase 1 (docs/ripartotabelle_discrepanza_centesimale.md): ordina per peso crescente
-                    // così il resto dell'arrotondamento va alla tabella con peso maggiore (meno visibile).
-                    usort($tabIds, fn($a, $b) => $pesPerTab[$a] <=> $pesPerTab[$b]);
-                    $nTab      = count($tabIds);
-                    foreach ($tabIds as $idx => $tabId) {
-                        if ($idx === $nTab - 1) {
-                            // Ultimo: il resto (penny-perfect)
-                            $importiPerTab[$tabId] = $importoTotale - $assegnato;
-                        } else {
-                            $ratio = round($pesPerTab[$tabId] / $peseTot, 8);
-                            $q = (int) round($importoTotale * $ratio);
-                            $importiPerTab[$tabId] = $q;
-                            $assegnato += $q;
-                        }
-                    }
-                } else {
-                    // Nessun peso configurato: mette tutto in "senza tabella"
-                    foreach (array_keys($tabelleInfo) as $tabId) {
-                        $importiPerTab[$tabId] = 0;
-                    }
+                // Riallineamento di sicurezza: la riga stampata deve SEMPRE
+                // coincidere con rate_quote (garanzia legale). Un residuo ≠ 0
+                // indica quote extra (saldi/conguagli) o dati modificati dopo
+                // la generazione: va sulla tabella a peso maggiore del soggetto.
+                $residuo = $importoTotale - $rowSum;
+                if ($residuo !== 0 && $peseTot > 0.0) {
+                    arsort($pesPerTab);
+                    $tabMax = array_key_first($pesPerTab);
+                    $importiPerTab[$tabMax] += $residuo;
+                    Log::debug("RipartoTabelleService: residuo di {$residuo} cent riallineato a rate_quote.", [
+                        'piano_rate_id' => $pianoRate->id,
+                        'anagrafica_id' => $anagraficaId,
+                        'immobile_id'   => $immobileId,
+                    ]);
                 }
 
                 // Quota millesimale per tabella per questo immobile
@@ -319,13 +321,13 @@ class RipartoTabelleService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Scorre i conti e accumula i pesi per tabella, mimando la logica di CalcoloQuoteService
-     * ma producendo weights[tabella_id]["aid|iid"] invece di totali[$aid][$iid].
+     * Scorre i conti replicando la traversal di CalcoloQuoteService::processaConti
+     * (overrides propagati ai sottoconti, snapshot temporale, esclusioni).
      */
-    private function processaContiPerPesi(
+    private function processaConti(
         Collection $conti,
         array $pivotOverrides,
-        array $capitoliIds,
+        array &$cells,
         array &$weights,
         array &$quoteMill,
         array &$tabelleInfo,
@@ -344,7 +346,10 @@ class RipartoTabelleService
                 $importo = $pivotOverrides[$conto->id];
 
                 if ($conto->tabelleMillesimali->isNotEmpty()) {
-                    $this->distribuisciConto($conto, $importo, $weights, $quoteMill, $tabelleInfo);
+                    $importoConto = in_array($conto->tipo ?? 'spesa', ['spesa', 'uscita'], true)
+                        ? abs($importo)
+                        : -abs($importo);
+                    $this->distribuisciConto($conto, $importoConto, $cells, $weights, $quoteMill, $tabelleInfo);
                     continue;
                 }
 
@@ -378,7 +383,7 @@ class RipartoTabelleService
                         }
                     }
 
-                    $this->processaContiPerPesi($figli, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
+                    $this->processaConti($figli, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
                 }
                 continue;
             }
@@ -386,25 +391,37 @@ class RipartoTabelleService
             // Senza override: usa importo live
             $importo = (int) ($conto->importo ?? 0);
             if ($importo !== 0 && $conto->tabelleMillesimali->isNotEmpty()) {
-                $this->distribuisciConto($conto, abs($importo), $weights, $quoteMill, $tabelleInfo);
+                $importoConto = in_array($conto->tipo ?? 'spesa', ['spesa', 'uscita'], true)
+                    ? abs($importo)
+                    : -abs($importo);
+                $this->distribuisciConto($conto, $importoConto, $cells, $weights, $quoteMill, $tabelleInfo);
             }
 
             if ($conto->sottoconti && $conto->sottoconti->isNotEmpty()) {
-                $this->processaContiPerPesi($conto->sottoconti, $pivotOverrides, $capitoliIds, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
+                $this->processaConti($conto->sottoconti, $pivotOverrides, $cells, $weights, $quoteMill, $tabelleInfo, $snapshotAt, $contiImpegnatiIds, $processatiIds);
             }
         }
     }
 
     /**
-     * Per un singolo conto foglia, accumula i pesi per tabella × soggetto × immobile.
+     * Distribuisce un singolo conto sulle sue tabelle × soggetti con lo STESSO
+     * algoritmo di CalcoloQuoteService::distribuisciSuTabelle (pesi identici,
+     * cascata ruolo identica, decurtazione scoperti identica, penny-perfect
+     * identico), accumulando le celle intere in $cells[tabella_id][aid|iid].
      */
     private function distribuisciConto(
         Conto $conto,
-        int $importo,
+        int $importoConto,
+        array &$cells,
         array &$weights,
         array &$quoteMill,
         array &$tabelleInfo
     ): void {
+        // wPerTab[tabella_id][key] e wMerged[key]: pesi puri di QUESTO conto
+        $wPerTab = [];
+        $wMerged = [];
+        $pesoScopertoTotale = 0.0;
+
         foreach ($conto->tabelleMillesimali as $ctm) {
             $tabella = $ctm->tabella ?? null;
             if (!$tabella) continue;
@@ -428,11 +445,7 @@ class RipartoTabelleService
                 ];
             }
 
-            $parteSuTabella = $importo * ($coeff / 100.0);
-
-            $ripartizioni = $ctm->ripartizioni->isNotEmpty()
-                ? $ctm->ripartizioni
-                : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
+            $weightCoeff = $coeff / 100.0;
 
             foreach ($quote as $quota) {
                 $immobile = $quota->immobile ?? null;
@@ -444,11 +457,17 @@ class RipartoTabelleService
                 // Registra valore nella tabella per questo immobile
                 $quoteMill[$tabella->id][$immobile->id] = $valore;
 
-                $pesoImmobile = $valore / $sommaValori;
+                $weightImmobile = $weightCoeff * ($valore / $sommaValori);
+
+                $ripartizioni = $ctm->ripartizioni->isNotEmpty()
+                    ? $ctm->ripartizioni
+                    : collect([(object) ['soggetto' => 'proprietario', 'percentuale' => 100.0]]);
 
                 foreach ($ripartizioni as $rip) {
                     $percent = (float) $rip->percentuale;
                     if ($percent <= 0.0) continue;
+
+                    $weightRip = $weightImmobile * ($percent / 100.0);
 
                     $anagrafiche = $immobile->anagrafiche
                         ->where('pivot.attivo', true)
@@ -457,7 +476,7 @@ class RipartoTabelleService
                     // Cascata ruolo (identica a CalcoloQuoteService)
                     if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
                         $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
-                        $catenaCapitale  = ['proprietario'];
+                        $catenaCapitale  = ['nuda_proprietario', 'proprietario'];
                         $catena = in_array($rip->soggetto, $catenaCapitale, true)
                             ? $catenaCapitale : $catenaGodimento;
 
@@ -472,7 +491,11 @@ class RipartoTabelleService
                         }
                     }
 
-                    if ($anagrafiche->isEmpty()) continue;
+                    // Cascata esaurita: peso scoperto (decurtato come nel motore rate)
+                    if ($anagrafiche->isEmpty()) {
+                        $pesoScopertoTotale += $weightRip;
+                        continue;
+                    }
 
                     $sommaQuote = (float) $anagrafiche->sum('pivot.quota');
                     if ($sommaQuote <= 0.0) $sommaQuote = 1.0;
@@ -481,17 +504,125 @@ class RipartoTabelleService
                         $quotaAnag = (float) $anag->pivot->quota;
                         if ($quotaAnag <= 0.0) continue;
 
-                        $pesoAnag = $pesoImmobile * ($percent / 100.0) * ($quotaAnag / $sommaQuote);
-                        $key      = $anag->id . '|' . $immobile->id;
+                        $weightAnagrafica = $weightRip * ($quotaAnag / $sommaQuote);
+                        $key = $anag->id . '|' . $immobile->id;
 
-                        if (!isset($weights[$tabella->id])) {
-                            $weights[$tabella->id] = [];
-                        }
-                        $weights[$tabella->id][$key] = ($weights[$tabella->id][$key] ?? 0.0) + $parteSuTabella * $pesoAnag;
+                        $wPerTab[$tabella->id][$key] = ($wPerTab[$tabella->id][$key] ?? 0.0) + $weightAnagrafica;
+                        $wMerged[$key] = ($wMerged[$key] ?? 0.0) + $weightAnagrafica;
+
+                        // Peso × importo per il fallback residuo (ordinamento tabelle)
+                        $weights[$tabella->id][$key] =
+                            ($weights[$tabella->id][$key] ?? 0.0) + abs($importoConto) * $weightAnagrafica;
                     }
                 }
             }
         }
+
+        if (empty($wMerged)) return;
+
+        // Decurtazione scoperti — identica a CalcoloQuoteService
+        $pesoSoggetti = array_sum($wMerged);
+        $pesoTotaleInclScoperto = $pesoSoggetti + $pesoScopertoTotale;
+        if ($pesoTotaleInclScoperto <= 0.0) return;
+
+        $importoDaDistribuire = abs($importoConto);
+        if ($pesoScopertoTotale > 0.0) {
+            $totaleScopertoInt = (int) round(abs($importoConto) * ($pesoScopertoTotale / $pesoTotaleInclScoperto));
+            $importoDaDistribuire = abs($importoConto) - $totaleScopertoInt;
+        }
+        $importoContoSegno = $importoConto < 0 ? -$importoDaDistribuire : $importoDaDistribuire;
+
+        $wMergedNorm = [];
+        foreach ($wMerged as $key => $w) {
+            $wMergedNorm[$key] = $w / $pesoSoggetti;
+        }
+
+        $alloc = $this->distribuisciImporto($wMergedNorm, $importoContoSegno);
+
+        // Split per tabella: se il conto insiste su una sola tabella (caso
+        // normale) l'intera quota va lì; altrimenti penny-perfect sui pesi
+        // per-tabella del soggetto.
+        $tabIds = array_keys($wPerTab);
+
+        foreach ($alloc as $key => $importoSoggetto) {
+            if (count($tabIds) === 1) {
+                $tid = $tabIds[0];
+                $cells[$tid][$key] = ($cells[$tid][$key] ?? 0) + $importoSoggetto;
+                continue;
+            }
+
+            $pesiSogg = [];
+            $sommaPesi = 0.0;
+            foreach ($tabIds as $tid) {
+                $w = $wPerTab[$tid][$key] ?? 0.0;
+                if ($w > 0.0) {
+                    $pesiSogg[$tid] = $w;
+                    $sommaPesi += $w;
+                }
+            }
+            if ($sommaPesi <= 0.0) {
+                $cells[$tabIds[0]][$key] = ($cells[$tabIds[0]][$key] ?? 0) + $importoSoggetto;
+                continue;
+            }
+
+            $pesiNorm = [];
+            foreach ($pesiSogg as $tid => $w) {
+                $pesiNorm[$tid] = $w / $sommaPesi;
+            }
+            foreach ($this->distribuisciImporto($pesiNorm, $importoSoggetto) as $tid => $parte) {
+                $cells[$tid][$key] = ($cells[$tid][$key] ?? 0) + $parte;
+            }
+        }
+    }
+
+    /**
+     * Distribuisce un importo totale basandosi su un array di pesi normalizzati,
+     * garantendo una ripartizione "penny-perfect" senza perdita o creazione di centesimi.
+     *
+     * COPIA 1:1 di CalcoloQuoteService::distribuisciImporto — DEVE rimanere
+     * sincronizzata: la garanzia "riga stampata = rate_quote" dipende dal fatto
+     * che i due servizi arrotondino in modo bit-identico.
+     *
+     * @param array $weights Array di pesi normalizzati (somma = 1)
+     * @param int $importoTotale Importo totale da distribuire in centesimi
+     * @return array Importi penny-perfect calcolati
+     */
+    private function distribuisciImporto(array $weights, int $importoTotale): array
+    {
+        $result = [];
+        if ($importoTotale === 0) {
+            foreach ($weights as $key => $_) { $result[$key] = 0; }
+            return $result;
+        }
+
+        $sign    = $importoTotale < 0 ? -1 : 1;
+        $totAbs  = abs($importoTotale);
+        $bases      = [];
+        $remainders = [];
+        $sumBase    = 0;
+
+        foreach ($weights as $key => $w) {
+            $raw   = round($totAbs * $w, 8);
+            $base  = (int) floor($raw);
+            $bases[$key]      = $base;
+            $remainders[$key] = $raw - $base;
+            $sumBase += $base;
+        }
+
+        $diff = $totAbs - $sumBase;
+        if ($diff > 0) {
+            arsort($remainders);
+            $keys = array_keys($remainders);
+            for ($i = 0; $i < $diff && $i < count($keys); $i++) {
+                $bases[$keys[$i]]++;
+            }
+        }
+
+        foreach ($bases as $key => $b) {
+            $result[$key] = $b * $sign;
+        }
+
+        return $result;
     }
 
     private function empty(): array

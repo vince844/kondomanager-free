@@ -7,6 +7,24 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.8] - Riparto Penny-Perfect & Offline
+
+### Corretto
+
+- **Totali di colonna errati nella stampa "Riparto per Tabella e Soggetto" (segnalazione beta-tester su condominio reale, 44 unità):** i totali delle colonne tabella non quadravano col budget della voce di spesa (es. ACQUA FISSO €2.199,96 invece di €2.200,00) e i centesimi mancanti ricomparivano su colonne estranee — in v1.9.1 fino al caso limite di €0,01 stampato nella colonna TUNNEL per condòmini che al tunnel non partecipano affatto. Causa: `RipartoTabelleService` ricostruiva le celle ridistribuendo il totale di riga (da `rate_quote`) sui pesi float e scaricava l'intero resto di arrotondamento su una sola tabella per soggetto (in v1.9.1 l'ultima registrata, anche a peso zero; dopo il fix "Fase 1" quella a peso maggiore) — mentre `CalcoloQuoteService`, il motore che genera le rate, calcola già ogni conto in modo penny-perfect tra i suoi soli partecipanti. La stampa ora ricostruisce le celle CONTO PER CONTO con lo stesso identico algoritmo del motore (pesi identici, cascata ruolo identica inclusa `nuda_proprietario`, decurtazione scoperti identica, copia 1:1 di `distribuisciImporto()` con vincolo di sincronizzazione documentato): ogni colonna somma esattamente al budget dei suoi conti, i centesimi di resto restano dentro i partecipanti della voce, e ogni riga coincide con `rate_quote` perché le allocazioni sono le stesse che hanno generato le rate. Un riallineamento di sicurezza copre i casi di dati modificati dopo la generazione (o quote extra come saldi/conguagli): la garanzia legale riga = `rate_quote` vale incondizionatamente, il che elimina anche la dipendenza da `piano_rate.snapshot_at` che bloccava la "Fase 2" originaria. `CalcoloQuoteService` non è stato toccato. Dettagli in `docs/ripartotabelle_discrepanza_centesimale.md` (appendice "Risoluzione definitiva").
+- **Interfaccia dipendente da CDN esterno per i font:** `app.blade.php` caricava Instrument Sans da `fonts.bunny.net` con un `<link rel="stylesheet">` bloccante: senza connessione internet (installazioni locali MAMP, reti con firewall) il rendering di ogni pagina restava appeso fino al timeout, facendo sembrare l'applicazione bloccata. I font sono ora self-hosted via `@fontsource/instrument-sans` (400/500/600) e bundlati da Vite: nessuna richiesta esterna, avvio più rapido anche online.
+
+### Migliorato
+
+- **Impaginazione stampa riparto (feedback beta-tester):** colonne di servizio ristrette (App. 5→3,5%, Ruolo 5→3%, % TOT. 5→3,5%, TOTALE SOGG. e TOT. IMMOB. 8-10→7%) a favore delle colonne tabella; font alzato di mezzo punto nei casi oltre 5 tabelle (base 6→6,5pt); blocchi di chunking portati da 6 a 8 tabelle, così un condominio con 8 tabelle torna su blocco unico A3 come nelle stampe storiche. Criteri e valori documentati nella nuova guida `docs/stile_stampa_riparto_tabelle.md`.
+- **`.gitignore`:** esclusi i file `lang/php_*.json` generati temporaneamente dal plugin Vite `laravel-vue-i18n` durante build/dev server.
+
+### Aggiunto
+
+- **Test di regressione su dati reali:** `RipartoCondominioParRealeTest` ricostruisce un condominio reale di 44 unità, 8 tabelle e 23 conti (dati forniti dall'amministratore beta-tester) e verifica al centesimo tutti i 44 totali `rate_quote` E tutti i totali di colonna della stampa; `RipartoCasiLimiteTest` copre conti multi-tabella con coefficienti 60/40, comproprietari 50/50, ripartizioni percentuali proprietario/inquilino, capitoli con importo override e piani a 12 rate. I test unit del precedente approccio row-first (superato) sono stati rimossi.
+
+---
+
 ## [1.10.0-beta.7] - Hardening Fatture Passive
 
 ### Corretto

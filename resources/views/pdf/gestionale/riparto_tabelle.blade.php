@@ -14,17 +14,21 @@
     $nTab         = count($tabelle);
 
     // ── Font adattivo ────────────────────────────────────────────────────────
-    $fontBase  = $nTab > 8 ? '5.5pt' : ($nTab > 5 ? '6pt'   : '7pt');
-    $fontSmall = $nTab > 8 ? '4.5pt' : ($nTab > 5 ? '5pt'   : '6pt');
-    $fontTiny  = $nTab > 8 ? '4pt'   : ($nTab > 5 ? '4.5pt' : '5.5pt');
+    // Colonne di servizio ristrette (docs/stile_stampa_riparto_tabelle.md):
+    // lo spazio recuperato consente un font più grande a parità di tabelle.
+    $fontBase  = $nTab > 8 ? '6pt'   : ($nTab > 5 ? '6.5pt' : '7pt');
+    $fontSmall = $nTab > 8 ? '5pt'   : ($nTab > 5 ? '5.5pt' : '6pt');
+    $fontTiny  = $nTab > 8 ? '4.5pt' : ($nTab > 5 ? '5pt'   : '5.5pt');
 
     // ── Larghezze colonne (%) ────────────────────────────────────────────────
-    $wApp    = 5;
+    // Le colonne di servizio contengono valori corti (sigla ruolo, percentuale,
+    // importi): tenerle strette massimizza lo spazio per le tabelle millesimali.
+    $wApp    = 3.5;
     $wNome   = $nTab > 5 ? 18 : 22;
-    $wRuolo  = 5;
-    $wTotSogg= $nTab > 5 ? 8 : 10;
-    $wPct    = 5;
-    $wTotApt = $nTab > 5 ? 8 : 10;
+    $wRuolo  = 3;
+    $wTotSogg= 7;
+    $wPct    = 3.5;
+    $wTotApt = 7;
     $wFixed  = $wApp + $wNome + $wRuolo + $wTotSogg + $wPct + $wTotApt;
     $wTabCols = 100 - $wFixed;
     // Le larghezze interne verranno calcolate per ogni blocco (chunk)
@@ -134,8 +138,10 @@
 @else
 
 @php
-    // Dividiamo le tabelle in blocchi di max 6 colonne per pagina
-    $chunksTabelle = array_chunk($tabelle, 6, true);
+    // Dividiamo le tabelle in blocchi di max 8 colonne per pagina.
+    // Con le colonne di servizio ristrette, 8 tabelle stanno in un unico
+    // blocco A3-L (caso PAR: una sola pagina come nelle stampe storiche).
+    $chunksTabelle = array_chunk($tabelle, 8, true);
 @endphp
 
 @foreach($chunksTabelle as $chunkIndex => $tabelleChunk)
