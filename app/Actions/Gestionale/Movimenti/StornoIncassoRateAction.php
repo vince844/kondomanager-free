@@ -2,6 +2,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +12,9 @@ class StornoIncassoRateAction
     public function execute(ScritturaContabile $scrittura, Condominio $condominio): void
     {
         // 1. GUARD CLAUSE: Preveniamo lo "Storno dello Storno" (Inception contabile)
-        if ($scrittura->tipo_movimento === 'rettifica') {
+        // tipo_movimento è castato all'enum: il confronto con la stringa era sempre
+        // falso, quindi questa protezione non scattava mai.
+        if ($scrittura->tipo_movimento === TipoMovimentoContabile::RETTIFICA) {
             throw new \RuntimeException('Non è possibile stornare una scrittura di rettifica.');
         }
 

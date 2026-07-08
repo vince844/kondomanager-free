@@ -44,6 +44,19 @@ const totaleIncassato = computed(() => {
     return props.incassoFormatted.importo_totale_raw * 100; // cents
 });
 
+// Il totale versato da solo non basta a capire se una rata è stata saldata
+// con denaro reale o con credito pregresso (specialmente a cassa zero, dove
+// l'importo è correttamente € 0,00 ma non è affatto ovvio perché).
+const modalitaVersamento = computed(() => {
+    const righe = props.incassoFormatted.dettagli_rate || [];
+    const haCredito = righe.some((r: any) => r.tipo === 'credito');
+    const haContanti = righe.some((r: any) => r.tipo === 'contanti');
+
+    if (haCredito && !haContanti) return 'credito';
+    if (haCredito && haContanti) return 'misto';
+    return null;
+});
+
 </script>
 
 <template>
@@ -134,7 +147,11 @@ const totaleIncassato = computed(() => {
                             </div>
                             <div class="space-y-1 sm:col-span-2 mt-2 pt-4 border-t border-slate-100 dark:border-slate-800/50">
                                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Conto di Accredito</p>
-                                <p class="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                <p v-if="props.incassoFormatted.cassa_nome === 'N/D' && modalitaVersamento === 'credito'" class="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                                    <Coins class="w-4 h-4 text-blue-500" />
+                                    Nessuno — saldato interamente con credito
+                                </p>
+                                <p v-else class="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                                     <Landmark class="w-4 h-4 text-slate-400" />
                                     {{ props.incassoFormatted.cassa_nome }}
                                 </p>
@@ -162,9 +179,15 @@ const totaleIncassato = computed(() => {
                         <CardTitle class="text-sm font-black uppercase tracking-wider text-slate-500">Totale Versamento</CardTitle>
                     </CardHeader>
                     <CardContent class="text-center">
-                        <div class="flex justify-center items-center py-4">
+                        <div class="flex flex-col justify-center items-center py-4 gap-1">
                             <span class="text-4xl font-black" :class="props.incasso.stato === 'stornato' ? 'text-slate-400 line-through' : 'text-emerald-600 dark:text-emerald-400'">
                                 {{ props.incassoFormatted.importo_totale_formatted }}
+                            </span>
+                            <span v-if="modalitaVersamento === 'credito'" class="inline-flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                                <Coins class="w-3.5 h-3.5" /> Saldato con credito pregresso
+                            </span>
+                            <span v-else-if="modalitaVersamento === 'misto'" class="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                                <Coins class="w-3.5 h-3.5" /> Contanti + credito pregresso
                             </span>
                         </div>
                     </CardContent>

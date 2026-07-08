@@ -306,7 +306,8 @@ class IncassoRateController extends Controller
             'quotePagate.rata.pianoRate.gestione',
             'quotePagate.immobile',
             'figlie.quotePagate.rata',
-            'figlie.quotePagate.immobile'
+            'figlie.quotePagate.immobile',
+            'figlie.righe.anagrafica',
         ]);
 
         // Caricamento del nome utente creatore per l'audit trail

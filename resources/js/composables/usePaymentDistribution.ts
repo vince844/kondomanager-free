@@ -95,12 +95,16 @@ export function usePaymentDistribution() {
         let budgetCents = Math.round(importoTotaleEuro * 100);
 
         rateList.forEach(r => {
+            const residuoCents = Math.round(parseMoney(r.residuo) * 100);
+
+            // Le righe di credito (residuo negativo) sono gestite a parte
+            // dalla distribuzione: non vanno azzerate né deselezionate qui.
+            if (residuoCents < 0) return;
+
             r.da_pagare = 0;
             r.selezionata = false;
 
-            const residuoCents = Math.round(parseMoney(r.residuo) * 100);
-            
-            if (residuoCents <= 0) return; 
+            if (residuoCents <= 0) return;
 
             const allocabileCents = Math.min(budgetCents, residuoCents);
             

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Gestionale\PianiRate;
 
+use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
+use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
@@ -179,9 +181,17 @@ class EmissioneRateController extends Controller
 
             InboxService::clearAdminCache();
 
-            $msg = $inviaNotifiche 
-                ? 'Rate emesse e notificate correttamente ai condòmini.' 
+            $msg = $inviaNotifiche
+                ? 'Rate emesse e notificate correttamente ai condòmini.'
                 : 'Rate emesse in modalità silenziosa. I condòmini non vedranno gli importi finché non li pubblicherai.';
+
+            // Proposta compensazione: se qualche intestatario delle rate appena
+            // emesse ha un credito disponibile (saldo a credito o strapagamento),
+            // lo segnaliamo così l'amministratore può compensare subito.
+            $suggerimentoCrediti = $this->buildSuggerimentoCrediti($condominio, $request->rate_ids);
+            if ($suggerimentoCrediti) {
+                $msg .= ' ' . $suggerimentoCrediti;
+            }
 
             return back()->with($this->flashSuccess($msg));
 
@@ -197,6 +207,58 @@ class EmissioneRateController extends Controller
             return back()->with($this->flashError('Si è verificato un errore tecnico durante l\'emissione.'));
         }
 }
+
+    /**
+     * Verifica se gli intestatari delle rate appena emesse hanno crediti
+     * disponibili (saldi a credito non consumati o quote strapagate) e
+     * costruisce il testo del suggerimento di compensazione da accodare
+     * al messaggio flash. Ritorna null se nessuno ha credito.
+     */
+    private function buildSuggerimentoCrediti(Condominio $condominio, array $rateIds): ?string
+    {
+        $anagraficheIds = RataQuote::whereIn('rata_id', $rateIds)
+            ->whereNotNull('anagrafica_id')
+            ->pluck('anagrafica_id')
+            ->unique();
+
+        if ($anagraficheIds->isEmpty()) {
+            return null;
+        }
+
+        $crediti = RataQuote::whereHas('rata.pianoRate', fn($p) => $p->where('condominio_id', $condominio->id))
+            ->whereIn('anagrafica_id', $anagraficheIds)
+            ->where(function ($q) {
+                $q->whereRaw('importo_pagato > importo')
+                  ->orWhere('importo', '<', 0);
+            })
+            ->with('anagrafica:id,nome')
+            ->get()
+            ->groupBy('anagrafica_id')
+            ->map(fn($quote) => [
+                'nome'    => $quote->first()->anagrafica->nome ?? 'Condomino',
+                'credito' => $quote->sum(fn($q) => $q->credito_disponibile),
+            ])
+            ->filter(fn($c) => $c['credito'] > 0)
+            ->values();
+
+        if ($crediti->isEmpty()) {
+            return null;
+        }
+
+        $elenco = $crediti->take(3)
+            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['credito']) . ')')
+            ->join(', ');
+
+        if ($crediti->count() > 3) {
+            $elenco .= ' e altri ' . ($crediti->count() - 3);
+        }
+
+        $intro = $crediti->count() === 1
+            ? 'Nota: 1 condòmino ha un credito disponibile'
+            : 'Nota: ' . $crediti->count() . ' condòmini hanno un credito disponibile';
+
+        return $intro . ' — ' . $elenco . '. Puoi compensare le nuove rate da "Nuovo incasso" con il pulsante "Usa credito".';
+    }
 
     /**
      * Annulla l'emissione di una singola rata.

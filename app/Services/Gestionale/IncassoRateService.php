@@ -2,6 +2,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Helpers\MoneyHelper;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
@@ -25,10 +26,11 @@ class IncassoRateService
                 'righe.anagrafica', 
                 'righe.cassa',
                 // EAGER LOADING: Carichiamo le quote e le rate padre in un colpo solo
-                'quotePagate.rata', 
+                'quotePagate.rata',
                 'quotePagate.immobile',  // ← aggiungi
                 'figlie.quotePagate.rata',     // ← aggiungi per credito
                 'figlie.quotePagate.immobile', // ← aggiungi per credito
+                'figlie.righe.anagrafica',     // ← pagante su compensazioni a cassa zero
             ]);
 
         if ($search) {
@@ -57,15 +59,26 @@ class IncassoRateService
     public function formatMovimentoForFrontend(ScritturaContabile $movimento): array
     {
         $rigaCassa = $movimento->righe->firstWhere('tipo_riga', 'dare');
-        
-        $rigaPagantePrinc = $movimento->righe
-            ->where('tipo_riga', 'avere')
-            ->whereNotNull('anagrafica_id')
-            ->first();
 
-        $nomiPaganti = $movimento->righe
+        // Righe su cui cercare il pagante: quelle della scrittura padre, più quelle
+        // delle scritture figlie (storno_credito). Una compensazione a cassa zero
+        // (importo versato € 0, saldata interamente col credito) non crea alcuna
+        // riga sul padre: senza questo fallback il pagante risultava "Sconosciuto"
+        // pur essendo perfettamente noto sulla scrittura figlia.
+        $righeAvereConAnagrafica = $movimento->righe
             ->where('tipo_riga', 'avere')
-            ->whereNotNull('anagrafica_id')
+            ->whereNotNull('anagrafica_id');
+
+        if ($righeAvereConAnagrafica->isEmpty()) {
+            $righeAvereConAnagrafica = $movimento->figlie
+                ->flatMap(fn($figlia) => $figlia->righe)
+                ->where('tipo_riga', 'avere')
+                ->whereNotNull('anagrafica_id');
+        }
+
+        $rigaPagantePrinc = $righeAvereConAnagrafica->first();
+
+        $nomiPaganti = $righeAvereConAnagrafica
             ->map(fn($r) => $r->anagrafica->nome ?? null)
             ->filter()
             ->unique()
@@ -119,7 +132,11 @@ class IncassoRateService
 
         // Quote pagate con credito (scritture figlie storno_credito)
         foreach ($movimento->figlie as $figlia) {
-            if ($figlia->tipo_movimento !== 'storno_credito') continue;
+            // tipo_movimento è castato all'enum TipoMovimentoContabile: il confronto
+            // con la stringa era sempre falso (tipi diversi), quindi questo ramo non
+            // scattava mai e le compensazioni a credito restavano invisibili sia in
+            // lista che nel dettaglio incasso, per qualunque provenienza del credito.
+            if ($figlia->tipo_movimento !== TipoMovimentoContabile::STORNO_CREDITO) continue;
 
             foreach ($figlia->quotePagate as $quota) {
                 if ($quota->importo <= 0) continue;

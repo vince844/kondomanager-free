@@ -25,10 +25,14 @@ class SituazioneDebitoriaController extends Controller
                 $q->whereHas('pianoRate', fn($p) => $p->where('condominio_id', $condominio->id));
             });
 
-        // 2. Filtro Logico: Rate non ancora pagate del tutto o a credito
+        // 2. Filtro Logico: Rate non ancora pagate del tutto o a credito.
+        // Include anche le quote STRAPAGATE (importo_pagato > importo): sono
+        // credito disponibile e devono nettare il residuo della rata, altrimenti
+        // la UI mostra un debito inesistente (rischio doppio addebito).
         $query->where(function($q) {
-            $q->whereRaw('importo > importo_pagato') 
-              ->orWhere('importo', '<', 0);          
+            $q->whereRaw('importo > importo_pagato')
+              ->orWhereRaw('importo_pagato > importo')
+              ->orWhere('importo', '<', 0);
         });
 
         // 3. Filtri Contestuali

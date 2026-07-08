@@ -98,6 +98,11 @@ class StoreIncassoRateAction
                 ]);
             }
 
+            // Quota di appoggio per l'eventuale eccedenza: l'ultima quota del
+            // pagante toccata dall'incasso (vedi blocco eccedenza più sotto).
+            $quotaPerEccedenza = null;
+            $ultimaQuotaFaro   = null;
+
             foreach ($pagamentiOrdinari as $pagamento) {
                 if ($budgetCashCents <= 0) break;
 
@@ -107,6 +112,7 @@ class StoreIncassoRateAction
                 if ($importoDaDistribuireCents <= 0) continue;
 
                 $quotaFaro = RataQuote::findOrFail($pagamento['rata_id']);
+                $ultimaQuotaFaro = $quotaFaro;
 
                 $quoteDaSaldare = RataQuote::where('rata_id', $quotaFaro->rata_id)
                     ->where('anagrafica_id', $validated['pagante_id'])
@@ -151,7 +157,9 @@ class StoreIncassoRateAction
 
                         // 3. Ricalcola lo stato e salva automaticamente
                         $quota->ricalcolaStato();
-                        
+
+                        $quotaPerEccedenza = $quota;
+
                         $importoDaDistribuireCents -= $importoDaVersareQui;
                         $budgetCashCents -= $importoDaVersareQui;
                     }
@@ -164,13 +172,48 @@ class StoreIncassoRateAction
             }
 
             if ($eccedenzaFinaleCents > 0) {
-                $scritturaIncasso->righe()->create([
-                    'conto_contabile_id' => $contoAnticipi->id,
-                    'anagrafica_id'      => $validated['pagante_id'],
-                    'tipo_riga'          => 'avere',
-                    'importo'            => $eccedenzaFinaleCents,
-                    'note'               => 'Anticipo / Eccedenza',
-                ]);
+                // L'eccedenza viene registrata come STRAPAGAMENTO sull'ultima quota
+                // del pagante toccata dall'incasso: così resta visibile nella
+                // situazione debitoria come credito (residuo negativo) ed è
+                // spendibile in seguito tramite "Usa credito" (compensazione).
+                $quotaAccredito = $quotaPerEccedenza;
+
+                if (!$quotaAccredito && $ultimaQuotaFaro) {
+                    $quotaAccredito = RataQuote::where('rata_id', $ultimaQuotaFaro->rata_id)
+                        ->where('anagrafica_id', $validated['pagante_id'])
+                        ->where('importo', '>', 0)
+                        ->orderByDesc('importo')
+                        ->first();
+                }
+
+                if ($quotaAccredito) {
+                    $quotaAccredito->pagamenti()->attach($scritturaIncasso->id, [
+                        'importo_pagato' => $eccedenzaFinaleCents,
+                        'data_pagamento' => $validated['data_pagamento'],
+                    ]);
+
+                    $scritturaIncasso->righe()->create([
+                        'conto_contabile_id' => $contoCrediti->id,
+                        'anagrafica_id'      => $quotaAccredito->anagrafica_id,
+                        'rata_id'            => $quotaAccredito->rata_id,
+                        'immobile_id'        => $quotaAccredito->immobile_id,
+                        'tipo_riga'          => 'avere',
+                        'importo'            => $eccedenzaFinaleCents,
+                        'note'               => 'Anticipo / Eccedenza',
+                    ]);
+
+                    $quotaAccredito->ricalcolaStato();
+                } else {
+                    // Fallback legacy: nessuna quota di appoggio disponibile,
+                    // l'eccedenza resta una pura scrittura contabile sugli anticipi.
+                    $scritturaIncasso->righe()->create([
+                        'conto_contabile_id' => $contoAnticipi->id,
+                        'anagrafica_id'      => $validated['pagante_id'],
+                        'tipo_riga'          => 'avere',
+                        'importo'            => $eccedenzaFinaleCents,
+                        'note'               => 'Anticipo / Eccedenza',
+                    ]);
+                }
             }
 
             // ---------------------------------------------------------
@@ -192,52 +235,65 @@ class StoreIncassoRateAction
                 foreach ($pagamentiCredito as $pagamentoCredito) {
                     $creditoDaConsumareCents = MoneyHelper::toCents(abs($pagamentoCredito['importo']));
 
-                    $quotaCredito = RataQuote::where('rata_id', function ($q) use ($pagamentoCredito) {
-                            $q->select('rata_id')->from('rate_quote')->where('id', $pagamentoCredito['rata_id'])->limit(1);
-                        })
-                        ->where('anagrafica_id', $validated['pagante_id'])
-                        ->where('tipo', 'saldo_iniziale')
-                        ->where('importo', '<', 0)
-                        ->lockForUpdate()
-                        ->first() 
-                        ?? 
-                        RataQuote::where('id', $pagamentoCredito['rata_id'])
-                        ->where('tipo', 'saldo_iniziale')
-                        ->where('importo', '<', 0)
-                        ->lockForUpdate()
-                        ->first();
+                    // La quota passata dal frontend identifica la RATA di origine del
+                    // credito. Su quella rata raccogliamo TUTTE le quote del pagante
+                    // che portano credito, in entrambe le forme supportate:
+                    // - saldo iniziale / anticipo (importo negativo non consumato)
+                    // - strapagamento (importo_pagato > importo)
+                    $quotaRef = RataQuote::lockForUpdate()->findOrFail($pagamentoCredito['rata_id']);
 
-                    if (!$quotaCredito) {
+                    $quoteCredito = RataQuote::where('rata_id', $quotaRef->rata_id)
+                        ->where('anagrafica_id', $validated['pagante_id'])
+                        ->lockForUpdate()
+                        ->get()
+                        ->filter(fn($q) => $q->credito_disponibile > 0)
+                        ->values();
+
+                    if ($quoteCredito->isEmpty() && $quotaRef->credito_disponibile > 0) {
+                        // Fallback (es. ricerca per immobile: la quota può essere
+                        // intestata a un'anagrafica diversa dal pagante).
+                        $quoteCredito = collect([$quotaRef]);
+                    }
+
+                    if ($quoteCredito->isEmpty()) {
                         throw new \RuntimeException('Quota credito non trovata per rata_id: ' . $pagamentoCredito['rata_id']);
                     }
 
-                    $creditoResiduo = abs($quotaCredito->importo) - abs($quotaCredito->importo_pagato);
+                    $creditoResiduo = $quoteCredito->sum(fn($q) => $q->credito_disponibile);
 
                     if ($creditoDaConsumareCents > $creditoResiduo) {
                         throw new \RuntimeException('Credito insufficiente. Disponibile: ' . MoneyHelper::format($creditoResiduo) . ', richiesto: ' . MoneyHelper::format($creditoDaConsumareCents));
                     }
 
-                    $creditoDaConsumareCents = min($creditoDaConsumareCents, $creditoResiduo);
+                    // --- LATO DARE (Svuotiamo il Salvadanaio / lo strapagamento) ---
+                    $daPrelevareCents = $creditoDaConsumareCents;
 
-                    // --- LATO DARE (Svuotiamo il Salvadanaio) ---
-                    $scritturaStorno->righe()->create([
-                        'conto_contabile_id' => $contoCrediti->id,
-                        'anagrafica_id'      => $quotaCredito->anagrafica_id,
-                        'rata_id'            => $quotaCredito->rata_id,
-                        'immobile_id'        => $quotaCredito->immobile_id,
-                        'tipo_riga'          => 'dare',
-                        'importo'            => $creditoDaConsumareCents,
-                        'note'               => 'Utilizzo credito pregresso',
-                    ]);
+                    foreach ($quoteCredito as $quotaCredito) {
+                        if ($daPrelevareCents <= 0) break;
 
-                    // 1. Attach alla pivot (con importo negativo per ridurre il credito)
-                    $quotaCredito->pagamenti()->attach($scritturaStorno->id, [
-                        'importo_pagato' => -$creditoDaConsumareCents,
-                        'data_pagamento' => $validated['data_pagamento'],
-                    ]);
+                        $prelievoCents = min($daPrelevareCents, $quotaCredito->credito_disponibile);
 
-                    // 2. Ricalcola (senza update manuale ridondante)
-                    $quotaCredito->ricalcolaStato();
+                        $scritturaStorno->righe()->create([
+                            'conto_contabile_id' => $contoCrediti->id,
+                            'anagrafica_id'      => $quotaCredito->anagrafica_id,
+                            'rata_id'            => $quotaCredito->rata_id,
+                            'immobile_id'        => $quotaCredito->immobile_id,
+                            'tipo_riga'          => 'dare',
+                            'importo'            => $prelievoCents,
+                            'note'               => 'Utilizzo credito pregresso',
+                        ]);
+
+                        // 1. Attach alla pivot (con importo negativo per ridurre il credito)
+                        $quotaCredito->pagamenti()->attach($scritturaStorno->id, [
+                            'importo_pagato' => -$prelievoCents,
+                            'data_pagamento' => $validated['data_pagamento'],
+                        ]);
+
+                        // 2. Ricalcola (senza update manuale ridondante)
+                        $quotaCredito->ricalcolaStato();
+
+                        $daPrelevareCents -= $prelievoCents;
+                    }
 
                     // --- LATO AVERE (Chiudiamo il debito sulla rata) ---
                     $budgetCreditoCents = $creditoDaConsumareCents;

@@ -44,11 +44,11 @@ const pageGuides = [
         icon: ArrowRightLeft, 
         colorVariant: 'blue' as const 
     },
-    { 
-        title: 'Credito pregresso', 
-        description: 'Se il condomino ha un saldo a credito ("salvadanaio"), puoi usarlo per compensare le rate aperte. Clicca "Usa credito" sulla riga del saldo iniziale.', 
-        icon: Wallet, 
-        colorVariant: 'amber' as const 
+    {
+        title: 'Credito disponibile',
+        description: 'Se il condomino ha un credito (saldo iniziale a credito, anticipo o rata strapagata), la riga appare in blu con residuo negativo. Clicca "Usa credito" per compensare le rate aperte, anche a cassa zero.',
+        icon: Wallet,
+        colorVariant: 'amber' as const
     },
     { 
         title: 'Ricerca flessibile', 
@@ -143,7 +143,7 @@ const showOnlyOverdue = ref(false);
 const intentUsaCredito = ref(false);
 
 const hasSaldoPregressoInLista = computed(() => {
-    return rateList.value.some(r => isRataZero(r));
+    return rateList.value.some(r => isRataZero(r) || parseResiduoQuota(r.residuo) < 0);
 });
 
 const previewContabile = computed(() => {
@@ -213,65 +213,76 @@ const toggleCredito = (rata: Rata) => {
     runDistribution();
 };
 
-const runDistribution = async () => { 
-    await nextTick(); 
-    
+const runDistribution = async () => {
+    await nextTick();
+
     // 1. Troviamo la rata bersaglio
-    const targetRataId = priorityRataId.value; 
-    const rataTarget = rateList.value.find(r => 
-        (r.id === targetRataId || r.rata_padre_id === targetRataId) && 
+    const targetRataId = priorityRataId.value;
+    const rataTarget = rateList.value.find(r =>
+        (r.id === targetRataId || r.rata_padre_id === targetRataId) &&
         parseResiduoQuota(r.residuo) > 0
     );
 
-    // 2. Individuiamo la riga del credito (Rata 0)
+    // 2. Individuiamo le righe di credito attive: qualsiasi riga con residuo
+    //    negativo (saldo iniziale a credito, anticipo o strapagamento emerso).
     const isInboxMode = priorityRataId.value !== null && rataTarget !== undefined;
-    const rataCredito = rateList.value.find(
-        r => isRataZero(r) && parseResiduoQuota(r.residuo) < 0 && (r.selezionata || isInboxMode)
+    const righeCredito = rateList.value.filter(
+        r => parseResiduoQuota(r.residuo) < 0 && (r.selezionata || isInboxMode)
     );
-    const creditoDisponibile = rataCredito ? Math.abs(parseResiduoQuota(rataCredito.residuo)) : 0;
+    const creditoDisponibile = righeCredito.reduce((s, r) => s + Math.abs(parseResiduoQuota(r.residuo)), 0);
+
+    // Ripartisce il credito effettivamente usato sulle righe di credito attive
+    const spalmaCredito = (importoEuro: number) => {
+        let restoCents = Math.round(importoEuro * 100);
+        righeCredito.forEach(r => {
+            const capienzaCents = Math.round(Math.abs(parseResiduoQuota(r.residuo)) * 100);
+            const usatoCents = Math.min(restoCents, capienzaCents);
+            r.da_pagare = usatoCents > 0 ? -(usatoCents / 100) : 0;
+            r.selezionata = true;
+            restoCents -= usatoCents;
+        });
+    };
 
     if (mode.value === 'auto') {
         rateList.value.forEach(r => {
             if (parseResiduoQuota(r.residuo) > 0) r.da_pagare = 0;
         });
 
-        if (rataTarget && rataCredito) {
+        if (rataTarget && righeCredito.length > 0) {
             const debitoRata = parseResiduoQuota(rataTarget.residuo);
             const creditoDaUsare = Math.min(creditoDisponibile, debitoRata);
-            
-            rataCredito.selezionata = true;
+
+            spalmaCredito(creditoDaUsare);
 
             rataTarget.da_pagare = creditoDaUsare + importoNumerico.value;
             rataTarget.selezionata = rataTarget.da_pagare > 0;
-            
-            rataCredito.da_pagare = -creditoDaUsare;
-            
+
             form.eccedenza = Math.max(0, (creditoDaUsare + importoNumerico.value) - debitoRata);
-            
+
             if (form.eccedenza > 0) {
                 rataTarget.da_pagare = debitoRata;
             }
         } else {
-            const budgetTotale = importoNumerico.value + (rataCredito ? creditoDisponibile : 0);
+            const budgetTotale = importoNumerico.value + creditoDisponibile;
             form.eccedenza = distributeGreedy(rateList.value, budgetTotale);
-            
-            if (rataCredito) {
+
+            if (righeCredito.length > 0) {
                 const totaleDebitiEmettibili = rateList.value
                     .filter(r => parseResiduoQuota(r.residuo) > 0)
                     .reduce((s, r) => s + parseResiduoQuota(r.residuo), 0);
-                
+
                 const creditoEffettivoUsato = Math.min(creditoDisponibile, Math.max(0, totaleDebitiEmettibili - importoNumerico.value));
-                rataCredito.da_pagare = -creditoEffettivoUsato;
+                spalmaCredito(creditoEffettivoUsato);
             }
         }
     } else {
         const budgetContante = importoNumerico.value;
-        const budgetCredito = rataCredito ? Math.abs(rataCredito.da_pagare) : 0;
+        const budgetCredito = righeCredito.reduce((s, r) => s + Math.abs(parseResiduoQuota(r.da_pagare)), 0);
         form.eccedenza = calculateExcess(rateList.value, budgetContante + budgetCredito);
     }
 
-    rateList.value = [...rateList.value]; 
-    syncForm(); 
+    rateList.value = [...rateList.value];
+    syncForm();
 };
 
 const distributeAuto = () => { 
@@ -377,10 +388,10 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
     }
 
     if (intentUsaCredito.value) {
-        const rataCredito = list.find(r => isRataZero(r) && parseResiduoQuota(r.residuo) < 0);
+        const rataCredito = list.find(r => parseResiduoQuota(r.residuo) < 0);
         if (rataCredito && !rataCredito.selezionata) {
-            rataCredito.selezionata = true; 
-            intentUsaCredito.value = false; 
+            rataCredito.selezionata = true;
+            intentUsaCredito.value = false;
         }
     }
 

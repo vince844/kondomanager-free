@@ -154,17 +154,29 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
       const formatted = row.original.importo_totale_formatted
       const cassaNome = row.original.cassa_nome || 'N/D'
       const cassaTipo = row.original.cassa_tipo_label || 'Risorsa'
+      const dettagli  = row.original.dettagli_rate || []
+      const haCredito = dettagli.some((d: any) => d.tipo === 'credito')
+
+      // Nessuna cassa toccata (importo versato € 0) ma la scrittura è coperta
+      // da credito: "N/D" da solo sembrerebbe un dato mancante, non una scelta
+      // intenzionale. Sostituiamo con un'indicazione esplicita.
+      const risorsaRow = (cassaNome === 'N/D' && haCredito)
+        ? h('div', { class: 'flex items-center gap-1 min-w-0' }, [
+            h(Coins, { class: 'w-3 h-3 text-blue-500 shrink-0' }),
+            h('span', { class: 'text-[11px] text-blue-600 font-semibold truncate' }, 'Credito pregresso'),
+          ])
+        : h('div', { class: 'flex items-center gap-1 min-w-0' }, [
+            h(Building2, { class: 'w-3 h-3 text-slate-400 shrink-0' }),
+            h('span', { class: 'text-[11px] text-slate-400 truncate', title: cassaNome }, cassaNome),
+          ])
 
       return h('div', { class: 'flex flex-col gap-0.5 group cursor-default' }, [
         h('span', { class: 'font-black text-sm whitespace-nowrap text-slate-900 group-hover:text-emerald-600 transition-colors tabular-nums' },
           formatted
         ),
-        h('div', { class: 'flex items-center gap-1 min-w-0' }, [
-          h(Building2, { class: 'w-3 h-3 text-slate-400 shrink-0' }),
-          h('span', { class: 'text-[11px] text-slate-400 truncate', title: cassaNome }, cassaNome),
-        ]),
-        h('span', { class: 'text-[11px] text-slate-400 whitespace-nowrap' }, cassaTipo),
-      ])
+        risorsaRow,
+        (cassaNome === 'N/D' && haCredito) ? null : h('span', { class: 'text-[11px] text-slate-400 whitespace-nowrap' }, cassaTipo),
+      ].filter(Boolean))
     },
   },
 
