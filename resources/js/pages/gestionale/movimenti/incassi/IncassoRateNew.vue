@@ -146,6 +146,57 @@ const hasSaldoPregressoInLista = computed(() => {
     return rateList.value.some(r => isRataZero(r) || parseResiduoQuota(r.residuo) < 0);
 });
 
+// --- Spaccato e avviso cross-gestione ------------------------------------
+// Il credito non è vincolato alla gestione in cui è nato: nulla nel backend
+// lo impedisce (per scelta: potrebbe esserci un accordo condominiale che lo
+// autorizza), ma l'amministratore deve poterlo vedere e confermarlo
+// esplicitamente prima di procedere.
+
+const spaccatoCreditoDisponibile = computed(() => {
+    const mappa = new Map<number, { nome: string; importo: number }>();
+    rateList.value.forEach(r => {
+        if (parseResiduoQuota(r.residuo) >= 0 || r.gestione_id == null) return;
+        const prev = mappa.get(r.gestione_id);
+        mappa.set(r.gestione_id, {
+            nome: r.gestione,
+            importo: (prev?.importo ?? 0) + Math.abs(parseResiduoQuota(r.residuo)),
+        });
+    });
+    return Array.from(mappa.values());
+});
+
+const spaccatoCreditoUsato = computed(() => {
+    const mappa = new Map<number, { nome: string; importo: number }>();
+    form.dettaglio_pagamenti.forEach(p => {
+        if (p.importo >= 0) return;
+        const r = rateList.value.find(rate => rate.id === p.rata_id);
+        if (!r || r.gestione_id == null) return;
+        const prev = mappa.get(r.gestione_id);
+        mappa.set(r.gestione_id, {
+            nome: r.gestione,
+            importo: (prev?.importo ?? 0) + Math.abs(p.importo),
+        });
+    });
+    return Array.from(mappa.entries()).map(([gestione_id, v]) => ({ gestione_id, ...v }));
+});
+
+const gestioniDebitoPagate = computed(() => {
+    const set = new Set<number>();
+    form.dettaglio_pagamenti.forEach(p => {
+        if (p.importo <= 0) return;
+        const r = rateList.value.find(rate => rate.id === p.rata_id);
+        if (r && r.gestione_id != null) set.add(r.gestione_id);
+    });
+    return set;
+});
+
+const isCrossGestione = computed(() => {
+    return spaccatoCreditoUsato.value.some(g => !gestioniDebitoPagate.value.has(g.gestione_id));
+});
+
+const crossGestioneConfermato = ref(false);
+watch(isCrossGestione, (val) => { if (!val) crossGestioneConfermato.value = false; });
+
 const previewContabile = computed(() => {
     const pagamenti = form.dettaglio_pagamenti;
     const importo = importoNumerico.value;
@@ -600,9 +651,9 @@ onMounted(async () => {
                             <span class="text-slate-500 uppercase tracking-wider font-semibold">Totale allocato:</span>
                             <span class="font-bold text-slate-800 text-sm">{{ euro(totalAllocato) }}</span>
                         </div>
-                        <Button 
-                            @click="submit" 
-                            :disabled="form.processing || !previewContabile.hasData || !form.pagante_id" 
+                        <Button
+                            @click="submit"
+                            :disabled="form.processing || !previewContabile.hasData || !form.pagante_id || (isCrossGestione && !crossGestioneConfermato)"
                             class="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md transition-all text-sm"
                         >
                             <CheckCircle2 class="w-4 h-4 mr-2" /> Conferma incasso
@@ -674,6 +725,30 @@ onMounted(async () => {
                             <div v-if="rateList.length > 0 && !hasSaldoPregressoInLista" class="bg-emerald-50/80 border-b border-emerald-100 px-3 py-2 flex items-center text-emerald-700 shrink-0">
                                 <CheckCircle2 class="w-4 h-4 mr-2 text-emerald-500" />
                                 <span class="text-[11px] font-medium">Situazione pregressa regolare. Procedi con l'incasso delle rate ordinarie.</span>
+                            </div>
+
+                            <div v-if="spaccatoCreditoDisponibile.length > 0" class="bg-blue-50/80 px-3 py-2 flex items-center gap-2 text-blue-700 shrink-0 flex-wrap" :class="isCrossGestione ? 'border-b border-blue-100/0' : 'border-b border-blue-100'">
+                                <Wallet class="w-4 h-4 text-blue-500 shrink-0" />
+                                <span class="text-[11px] font-medium">Credito disponibile:</span>
+                                <span v-for="(g, idx) in spaccatoCreditoDisponibile" :key="idx" class="text-[11px] font-bold">
+                                    {{ g.nome }}: {{ euro(g.importo) }}<span v-if="idx < spaccatoCreditoDisponibile.length - 1">,</span>
+                                </span>
+                            </div>
+
+                            <div v-if="isCrossGestione" class="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3 text-amber-800 shrink-0">
+                                <div class="p-1 bg-amber-100 rounded-full mt-0.5 shrink-0">
+                                    <AlertCircle class="w-4 h-4 text-amber-600" />
+                                </div>
+                                <div class="flex-1">
+                                    <span class="text-xs font-bold block mb-1">Attenzione: stai attraversando gestioni diverse</span>
+                                    <span class="text-[11px] leading-snug block opacity-90 mb-2">
+                                        Il credito qui sopra non appartiene alla stessa gestione della rata che stai saldando. Non è impedito, ma verifica che sia la scelta corretta prima di confermare.
+                                    </span>
+                                    <label class="flex items-center gap-2 text-[11px] font-bold cursor-pointer select-none">
+                                        <input type="checkbox" v-model="crossGestioneConfermato" class="w-3.5 h-3.5 text-amber-600 border-amber-300 rounded focus:ring-amber-500 cursor-pointer" />
+                                        Confermo l'utilizzo di credito da una gestione diversa
+                                    </label>
+                                </div>
                             </div>
 
                             <table v-if="rateList.length" class="w-full text-sm border-collapse">

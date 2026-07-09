@@ -7,6 +7,34 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.10] - Credito Visibile Ovunque & Separazione Gestioni
+
+Seguito diretto della beta.9: il credito ora è correttamente visibile e spendibile in "Nuovo incasso", ma restava isolato lì — non compariva in Estratto Conto né in Dashboard, e nulla impediva di compensare credito di una gestione (es. ordinaria) su una rata di un'altra (es. straordinaria), come già accaduto nei dati reali di un cliente.
+
+### Aggiunto
+
+- **Avviso non bloccante per compensazioni cross-gestione:** quando in "Nuovo incasso" il credito usato per saldare una rata proviene da una gestione diversa da quella della rata stessa (es. credito su Ordinaria 2026 usato su una rata di Straordinaria Atrio), l'interfaccia mostra un banner giallo con checkbox obbligatoria ("Confermo l'utilizzo di credito da una gestione diversa") che blocca il pulsante "Conferma incasso" finché non viene spuntata. La rilevazione non è mai bloccante per scelta esplicita: potrebbe esistere un accordo condominiale che autorizza il trasferimento tra gestioni, quindi la decisione resta sempre all'amministratore. La stessa rilevazione avviene anche lato backend, indipendentemente dal frontend (difesa in profondità): quando `StoreIncassoRateAction` rileva che la gestione della quota-credito prelevata differisce da quella della quota-target pagata, la nota sulla riga contabile in avere diventa esplicita ("Compensazione cross-gestione confermata dall'amministratore: [gestione credito] → [gestione rata] — rata n.X"), riusando il campo `note` già esistente e già mostrato in Estratto Conto — nessuna nuova tabella di audit log.
+- **Spaccato del credito disponibile per gestione:** in "Nuovo incasso", un box blu sempre visibile quando il condomino ha credito mostra l'importo disponibile suddiviso per gestione (es. "€ 100 su Ordinaria 2026, € 50 su Straordinaria Atrio"), non solo il totale.
+- **Credito disponibile in Estratto Conto:** nuova card nella scheda anagrafica dell'Estratto Conto con il totale del credito disponibile del condomino e, se proviene da più di una gestione, il relativo dettaglio al passaggio del mouse. Prima il credito era visibile solo cercando esplicitamente l'anagrafica dentro "Nuovo incasso" — non esistendo ancora una scheda anagrafica dedicata (`AnagraficaController::show()` è tuttora uno stub vuoto), l'Estratto Conto è il posto naturale, già esistente e già linkato ovunque (nome cliccabile nella lista incassi).
+- **Nuovo widget Dashboard "Crediti da compensare":** elenco dei condomini con credito disponibile nel condominio corrente, ciascuno con link diretto a "Nuovo incasso" con anagrafica già precompilata. Segue lo stesso pattern del Treasury Guardian Widget esistente (contratto `DashboardWidget` + `WidgetManager`), nascosto automaticamente quando nessun condomino ha credito.
+- **Nuovo `App\Services\Gestionale\CreditoService`** (`perAnagrafica`, `perCondominio`): l'aggregazione "credito disponibile raggruppato per gestione" era già duplicata in due punti (situazione debitoria, suggerimento all'emissione); con Estratto Conto e widget Dashboard sarebbe diventata una quarta copia. Estratta in un servizio condiviso; `EmissioneRateController::buildSuggerimentoCrediti()` è stato refactorizzato per usarlo al posto della query duplicata.
+- **5 nuovi test automatici:** scenario di compensazione cross-gestione (verifica che la nota sulla riga avere contenga il testo esplicito) su `IncassoRateTest`, più 4 su un nuovo `CreditoServiceTest` (breakdown corretto per gestione, somma totale corretta, filtro per condominio). 190 test verdi su `tests/Feature/Gestionale` (1 skip preesistente, invariato).
+
+### Corretto
+
+- **"Inbox Operativa" in Dashboard cresceva senza limiti con molte attività reali, spingendo in basso il resto della pagina:** il tentativo iniziale di allineare la sua altezza a quella (variabile) della card "Copertura bilancio" accanto usava solo CSS Grid (`items-stretch`), che però può soltanto far crescere il fratello più *corto* fino a raggiungere quello più *alto* — mai il contrario. Con poche attività il bug restava invisibile (l'Inbox era sempre la più corta); con un'Inbox popolata da attività reali (es. 14 task scaduti) sfondava qualunque limite. Corretto misurando l'altezza reale di "Copertura bilancio" con un `ResizeObserver` e applicandola esplicitamente all'Inbox, che ora resta sempre della stessa altezza con scorrimento interno per il contenuto in eccesso.
+- **Testo duplicato "Conto corrente" nella lista incassi:** quando l'amministratore chiama la propria cassa con lo stesso nome del suo tipo (es. cassa "Conto Corrente" di tipo "Conto Corrente"), la colonna Importo mostrava la stessa dicitura due volte, una volta come nome e una come tipo. La seconda riga ora compare solo quando aggiunge un'informazione diversa dal nome.
+- **Badge impilate in modo incoerente nella lista incassi:** nella colonna Descrizione, il badge "1 RATA" (pagamento normale, testo corto) finiva affiancato al badge della gestione, mentre "1 RATA · CREDITO USATO" (testo più lungo) andava a capo sotto di esso — stesso layout, resa diversa solo in base alla lunghezza del testo, per via di `flex-wrap`. Ora sempre impilate verticalmente, indipendentemente dal contenuto.
+
+### Migliorato
+
+- **Linguaggio del banner cross-gestione:** sostituito il colloquiale "Occhio" con "Attenzione".
+- **Posizione del widget "Crediti da compensare" in Dashboard:** riga a piena larghezza sotto "Copertura bilancio"/"Inbox Operativa", affiancato al Treasury Guardian con lo stesso rapporto 1/3 : 2/3 della riga sopra (Crediti più stretto, Treasury più denso); se uno dei due widget non è visibile, l'altro occupa l'intera riga.
+
+**Deciso esplicitamente di non fare in questo giro:** visibilità del credito lato portale condòmino — richiede prima un lavoro più ampio di ottimizzazione UI sull'area condòmino, documentato come differito in `docs/credito_visibile_ovunque.md`.
+
+---
+
 ## [1.10.0-beta.9] - Crediti Visibili & Castelletto Spendibile
 
 ### Corretto

@@ -75,6 +75,12 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
   - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*
   - **Radar Salute Contabile** — validatore millesimi + **detector coerenza-ruoli (quota scoperta)** + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
+  - **Crediti da compensare Widget** (specchio del Credit Enforcer, ma per i condòmini a credito invece che morosi) — lista condòmini con credito disponibile, link diretto a Nuovo Incasso pre-compilato. Vedi [`credito_visibile_ovunque.md`](credito_visibile_ovunque.md).
+- **Credito visibile ovunque** (vedi [`credito_visibile_ovunque.md`](credito_visibile_ovunque.md), seguito diretto del fix v1.10.0-beta.9):
+  - Avviso non bloccante quando una compensazione a credito attraversa gestioni diverse (ordinaria/straordinaria), con nota esplicita registrata sulla scrittura
+  - Spaccato del credito disponibile per gestione, mostrato nell'avviso e in Estratto Conto
+  - Card "Credito disponibile" in Estratto Conto Anagrafica (non esiste ancora una scheda anagrafica dedicata — `AnagraficaController::show()` è uno stub)
+  - *Differito:* visibilità del credito lato portale condòmino — richiede prima lavoro di ottimizzazione UI sull'area condòmino
 - **Backup Management**
 - **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.

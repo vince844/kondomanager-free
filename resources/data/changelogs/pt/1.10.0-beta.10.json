@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Aviso ao usar crédito entre gestões diferentes: se em 'Novo recebimento' o crédito disponível do condômino pertence a uma gestão (ex.: ordinária) diferente da parcela que está sendo quitada (ex.: extraordinária), um aviso amarelo sinaliza claramente e exige confirmação explícita antes de prosseguir. A compensação nunca é bloqueada — pode ser autorizada por um acordo condominial — mas continua sendo sempre uma decisão consciente do administrador, registrada de forma explícita.",
+        "Crédito disponível agora visível também no extrato: antes só era possível vê-lo procurando o condômino em 'Novo recebimento'; agora um cartão dedicado no extrato mostra imediatamente o crédito disponível, com o detalhamento por gestão quando vem de mais de uma.",
+        "Novo widget no Painel 'Créditos a compensar': lista dos condôminos com crédito disponível no condomínio atual, com um clique direto para um 'Novo recebimento' já preenchido.",
+        "Corrigido um problema de layout no Painel: o quadro 'Caixa de Entrada Operacional', quando continha muitas atividades pendentes, crescia sem nenhum limite e empurrava o resto da página para baixo. Agora mantém sempre a mesma altura do quadro 'Cobertura orçamentária' ao lado, com rolagem interna para as atividades excedentes.",
+        "Melhorias menores: badges sempre alinhados de forma consistente na lista de recebimentos, removida uma legenda duplicada quando o nome e o tipo do caixa coincidem, e linguagem mais clara nos avisos da página 'Novo recebimento'."
+    ]
+}

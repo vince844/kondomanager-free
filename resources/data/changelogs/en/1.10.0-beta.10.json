@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Warning when using credit across different management funds: if in 'New payment collection' the resident's available credit belongs to a different fund (e.g. ordinary) than the instalment being settled (e.g. extraordinary), a yellow banner clearly flags it and requires explicit confirmation before proceeding. The compensation is never blocked — it may be authorised by a building agreement — but it always remains a conscious, explicitly logged decision by the administrator.",
+        "Available credit now visible in the account statement too: previously it could only be seen by looking up the resident in 'New payment collection'; a dedicated card in the account statement now shows the available credit immediately, with a per-fund breakdown when it comes from more than one.",
+        "New Dashboard widget 'Credits to offset': a list of residents with available credit in the current building, with a direct link to a pre-filled 'New payment collection'.",
+        "Fixed a Dashboard layout issue: the 'Operational Inbox' panel grew without any limit when it held many pending activities, pushing the rest of the page down. It now always matches the height of the 'Budget coverage' panel next to it, with internal scrolling for the extra activities.",
+        "Minor improvements: consistently aligned badges in the payment list, removed a duplicated label when the cash account name and type coincide, and clearer wording in the 'New payment collection' banners."
+    ]
+}

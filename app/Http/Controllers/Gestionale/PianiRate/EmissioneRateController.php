@@ -16,6 +16,7 @@ use App\Enums\VisibilityStatus;
 use App\Events\Gestionale\RataEmessa;
 use App\Enums\EventoTipo;
 use App\Models\Evento;
+use App\Services\Gestionale\CreditoService;
 use App\Services\Gestionale\InboxService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
@@ -225,28 +226,14 @@ class EmissioneRateController extends Controller
             return null;
         }
 
-        $crediti = RataQuote::whereHas('rata.pianoRate', fn($p) => $p->where('condominio_id', $condominio->id))
-            ->whereIn('anagrafica_id', $anagraficheIds)
-            ->where(function ($q) {
-                $q->whereRaw('importo_pagato > importo')
-                  ->orWhere('importo', '<', 0);
-            })
-            ->with('anagrafica:id,nome')
-            ->get()
-            ->groupBy('anagrafica_id')
-            ->map(fn($quote) => [
-                'nome'    => $quote->first()->anagrafica->nome ?? 'Condomino',
-                'credito' => $quote->sum(fn($q) => $q->credito_disponibile),
-            ])
-            ->filter(fn($c) => $c['credito'] > 0)
-            ->values();
+        $crediti = app(CreditoService::class)->perCondominio($condominio->id, $anagraficheIds->all());
 
         if ($crediti->isEmpty()) {
             return null;
         }
 
         $elenco = $crediti->take(3)
-            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['credito']) . ')')
+            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['totale_cents']) . ')')
             ->join(', ');
 
         if ($crediti->count() > 3) {

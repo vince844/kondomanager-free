@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { Head, Link, InfiniteScroll, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import TreasuryGuardianWidget from './components/TreasuryGuardianWidget.vue';
+import CreditiDaCompensareWidget from './components/CreditiDaCompensareWidget.vue';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 
@@ -207,6 +208,27 @@ const confirmReject = () => {
         onSuccess: () => closeRejectModal(),
     });
 };
+
+// Altezza di Inbox Operativa agganciata a quella reale di Copertura Bilancio.
+// CSS puro (grid items-stretch) non basta: fa crescere il piu' corto per
+// raggiungere il piu' alto, mai il contrario — se Inbox ha molte attivita'
+// reali, sfonderebbe qualunque limite. Misuriamo Copertura Bilancio col
+// ResizeObserver e capiamo Inbox a quell'altezza, con scroll interno.
+const coperturaCardRef = ref<HTMLElement | null>(null);
+const coperturaHeight = ref<number | null>(null);
+let coperturaResizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+    if (!coperturaCardRef.value) return;
+    coperturaResizeObserver = new ResizeObserver((entries) => {
+        coperturaHeight.value = entries[0].contentRect.height;
+    });
+    coperturaResizeObserver.observe(coperturaCardRef.value);
+});
+
+onUnmounted(() => {
+    coperturaResizeObserver?.disconnect();
+});
 </script>
 
 <template>
@@ -226,11 +248,11 @@ const confirmReject = () => {
                 :esercizi="props.esercizi"
             />
 
-            <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-start">
-                
+            <div class="grid gap-3 md:grid-cols-3 lg:grid-cols-12 items-stretch">
+
                 <div class="md:col-span-1 lg:col-span-4 flex flex-col gap-6">
                     
-                    <div v-if="copertura" class="relative flex flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
+                    <div v-if="copertura" ref="coperturaCardRef" class="relative flex flex-col justify-between overflow-hidden rounded-xl border border-sidebar-border/70 bg-white dark:bg-slate-900 shadow-sm transition-all hover:shadow-md group">
                         <div class="absolute -right-6 -top-6 text-slate-50 dark:text-slate-800/50 pointer-events-none transition-colors group-hover:text-slate-100 dark:group-hover:text-slate-800">
                             <Wallet class="h-32 w-32 opacity-50" />
                         </div>
@@ -482,16 +504,15 @@ const confirmReject = () => {
                         </Link>
                     </div>
                 </div>
-                <!-- Widget Tesoreria Semaforico -->
-                <TreasuryGuardianWidget 
-                    v-if="widgets?.treasury_guardian" 
-                    :treasury="widgets.treasury_guardian" 
-                />
             </div>
 
-                <div class="md:col-span-2 lg:col-span-8">
-                    <div v-if="inboxTasks" class="bg-white dark:bg-slate-900 border border-sidebar-border/70 rounded-xl overflow-hidden shadow-sm flex flex-col h-[430px]">
-                        
+                <div class="md:col-span-2 lg:col-span-8 flex flex-col gap-3 min-h-0">
+                    <div
+                        v-if="inboxTasks"
+                        class="bg-white dark:bg-slate-900 border border-sidebar-border/70 rounded-xl overflow-hidden shadow-sm flex flex-col min-h-[430px]"
+                        :style="coperturaHeight ? { height: coperturaHeight + 'px' } : {}"
+                    >
+
                         <div class="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
                             <div class="flex items-center gap-2">
                                 <Inbox class="w-4 h-4 text-slate-400" />
@@ -500,7 +521,12 @@ const confirmReject = () => {
                             <Badge v-if="inboxTasks.total > 0" variant="destructive" class="font-bold rounded-md text-[10px]">{{ inboxTasks.total }} ATTIVITÀ</Badge>
                         </div>
 
-                        <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                        <!-- min-h-0 e' essenziale: senza, un figlio flex con
+                             overflow-y-auto non scrolla mai, cresce e basta,
+                             perche' il default CSS e' min-height:auto (si adatta
+                             al contenuto). Bug invisibile con Inbox vuota,
+                             evidente con molte attivita' reali. -->
+                        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2">
                             <template v-if="inboxTasks.data && inboxTasks.data.length > 0">
                                 <InfiniteScroll data="inboxTasks" preserve-url>
                                     <ul role="list" class="space-y-2">
@@ -584,7 +610,26 @@ const confirmReject = () => {
                             </div>
                         </div>
                     </div>
-                </div> 
+                </div>
+
+                <!-- Riga widget a piena larghezza, stesso rapporto 1/3 : 2/3 della
+                     riga sopra (Copertura Bilancio : Inbox = 4:8). Crediti a
+                     sinistra (piu' stretto, contenuto breve), Tesoreria a destra
+                     (piu' denso). Se manca uno dei due, l'altro prende tutta la riga. -->
+                <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
+                    <CreditiDaCompensareWidget
+                        v-if="widgets?.crediti_da_compensare"
+                        :crediti="widgets.crediti_da_compensare"
+                        class="lg:col-span-1"
+                        :class="{ 'lg:col-span-3': !widgets?.treasury_guardian }"
+                    />
+                    <TreasuryGuardianWidget
+                        v-if="widgets?.treasury_guardian"
+                        :treasury="widgets.treasury_guardian"
+                        class="lg:col-span-2"
+                        :class="{ 'lg:col-span-3': !widgets?.crediti_da_compensare }"
+                    />
+                </div>
 
             </div>
         </div>

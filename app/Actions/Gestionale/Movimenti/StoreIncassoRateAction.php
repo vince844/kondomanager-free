@@ -240,10 +240,13 @@ class StoreIncassoRateAction
                     // che portano credito, in entrambe le forme supportate:
                     // - saldo iniziale / anticipo (importo negativo non consumato)
                     // - strapagamento (importo_pagato > importo)
-                    $quotaRef = RataQuote::lockForUpdate()->findOrFail($pagamentoCredito['rata_id']);
+                    $quotaRef = RataQuote::with('rata.pianoRate.gestione:id,nome')
+                        ->lockForUpdate()
+                        ->findOrFail($pagamentoCredito['rata_id']);
 
                     $quoteCredito = RataQuote::where('rata_id', $quotaRef->rata_id)
                         ->where('anagrafica_id', $validated['pagante_id'])
+                        ->with('rata.pianoRate.gestione:id,nome')
                         ->lockForUpdate()
                         ->get()
                         ->filter(fn($q) => $q->credito_disponibile > 0)
@@ -258,6 +261,11 @@ class StoreIncassoRateAction
                     if ($quoteCredito->isEmpty()) {
                         throw new \RuntimeException('Quota credito non trovata per rata_id: ' . $pagamentoCredito['rata_id']);
                     }
+
+                    // Tutte le quote di $quoteCredito condividono la stessa rata,
+                    // quindi la stessa gestione: la leggiamo una sola volta per
+                    // sapere se questa compensazione attraversa gestioni diverse.
+                    $gestioneCredito = $quoteCredito->first()->rata->pianoRate->gestione ?? null;
 
                     $creditoResiduo = $quoteCredito->sum(fn($q) => $q->credito_disponibile);
 
@@ -307,6 +315,7 @@ class StoreIncassoRateAction
                         $quoteOrdConResiduo = RataQuote::where('rata_id', $quotaFaroOrd->rata_id)
                             ->where('anagrafica_id', $validated['pagante_id'])
                             ->where('importo', '>', 0)
+                            ->with('rata.pianoRate.gestione:id,nome')
                             ->lockForUpdate()
                             ->get()
                             ->filter(fn($q) => ($q->importo - $q->importo_pagato) > 0);
@@ -317,6 +326,18 @@ class StoreIncassoRateAction
                             $residuoOrd = $quotaOrd->importo - $quotaOrd->importo_pagato;
                             $daApplicare = min($budgetCreditoCents, $residuoOrd);
 
+                            $gestioneRata = $quotaOrd->rata->pianoRate->gestione ?? null;
+
+                            // Compensazione tra gestioni diverse (es. credito ordinaria
+                            // usato su rata straordinaria): non impedita, ma tracciata
+                            // esplicitamente. L'amministratore l'ha confermata a schermo
+                            // (banner "Nuovo incasso"); qui la registriamo comunque, anche
+                            // se il flag di conferma frontend non dovesse arrivare, così la
+                            // nota in Estratto Conto resta sempre veritiera.
+                            $noteCompensazione = ($gestioneCredito && $gestioneRata && $gestioneCredito->id !== $gestioneRata->id)
+                                ? "Compensazione cross-gestione confermata dall'amministratore: {$gestioneCredito->nome} → {$gestioneRata->nome} — rata n." . ($quotaOrd->rata->numero_rata ?? '')
+                                : 'Compensazione credito su rata n.' . ($quotaOrd->rata->numero_rata ?? '');
+
                             $scritturaStorno->righe()->create([
                                 'conto_contabile_id' => $contoCrediti->id,
                                 'anagrafica_id'      => $quotaOrd->anagrafica_id,
@@ -324,7 +345,7 @@ class StoreIncassoRateAction
                                 'immobile_id'        => $quotaOrd->immobile_id,
                                 'tipo_riga'          => 'avere',
                                 'importo'            => $daApplicare,
-                                'note'               => 'Compensazione credito su rata n.' . ($quotaOrd->rata->numero_rata ?? ''),
+                                'note'               => $noteCompensazione,
                             ]);
 
                             // 1. Attach alla pivot

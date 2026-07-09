@@ -12,6 +12,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
+use App\Services\Dashboard\Widgets\CreditiDaCompensareWidget;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Inertia\Inertia;
@@ -22,9 +23,9 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget): Response
     {
-        $widgetManager->register($treasuryWidget);
+        $widgetManager->registerMany([$treasuryWidget, $creditiWidget]);
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;

@@ -6,8 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Anagrafica;
-use App\Models\Gestionale\RataQuote; 
+use App\Models\Gestionale\RataQuote;
 use App\Helpers\MoneyHelper;
+use App\Services\Gestionale\CreditoService;
 use App\Traits\HasEsercizio;
 use App\Services\PDF\PdfService;
 use Inertia\Inertia;
@@ -337,14 +338,22 @@ class EstrattoContoAnagraficaController extends Controller
             ];
         });
 
+        // Credito disponibile (saldo iniziale a credito + strapagamenti), non
+        // riusa $quoteMap perché quella è scoped alle rate presenti in questo
+        // esercizio/timeline: qui serve la fotografia completa dell'anagrafica.
+        $credito = app(CreditoService::class)->perAnagrafica($condominio->id, $anagrafica->id);
+
         // COMPILAZIONE STATISTICHE CENTESIMALI FINALI
         $stats = [
-            'totale_addebiti'    => MoneyHelper::format($timeline->sum('dare')),
-            'totale_versamenti'  => MoneyHelper::format($timeline->sum('avere')),
-            'saldo_finale'       => MoneyHelper::format($runningBalance),
-            'saldo_raw'          => $runningBalance,
-            'saldo_iniziale'     => MoneyHelper::format($saldoInizialeCents),
-            'saldo_iniziale_raw' => $saldoInizialeCents
+            'totale_addebiti'         => MoneyHelper::format($timeline->sum('dare')),
+            'totale_versamenti'       => MoneyHelper::format($timeline->sum('avere')),
+            'saldo_finale'            => MoneyHelper::format($runningBalance),
+            'saldo_raw'               => $runningBalance,
+            'saldo_iniziale'          => MoneyHelper::format($saldoInizialeCents),
+            'saldo_iniziale_raw'      => $saldoInizialeCents,
+            'credito_disponibile'     => $credito['totale_formatted'],
+            'credito_disponibile_raw' => $credito['totale_cents'],
+            'credito_per_gestione'    => $credito['per_gestione'],
         ];
 
         return [$timeline, $stats, $saldoInizialeCents];

@@ -546,6 +546,96 @@ class IncassoRateTest extends TestCase
     }
 
     #[\PHPUnit\Framework\Attributes\Test]
+    public function compensazione_cross_gestione_registra_nota_esplicita() {
+        // Il backend non impedisce di usare credito di una gestione per saldare
+        // una rata di un'altra gestione (scelta di prodotto: l'amministratore
+        // potrebbe avere un accordo condominiale che lo autorizza), ma deve
+        // tracciarlo esplicitamente sulla riga contabile, indipendentemente dal
+        // banner di conferma lato frontend (difesa in profondità).
+        $data = $this->createIncassoScenario();
+
+        // Strapagamento sulla quota ordinaria esistente: 150 incassati su 100 dovuti.
+        $scritturaLegacy = \App\Models\Gestionale\ScritturaContabile::create([
+            'condominio_id' => $data->condominio->id,
+            'esercizio_id' => $data->esercizio->id,
+            'gestione_id' => $data->gestione->id,
+            'data_registrazione' => '2025-01-15',
+            'data_competenza' => '2025-01-15',
+            'causale' => 'Incasso legacy senza tetto',
+            'tipo_movimento' => 'incasso_rata',
+            'stato' => 'registrata',
+        ]);
+        $data->quota->pagamenti()->attach($scritturaLegacy->id, [
+            'importo_pagato' => 15000,
+            'data_pagamento' => '2025-01-15',
+        ]);
+        $data->quota->ricalcolaStato();
+
+        // Seconda gestione (Straordinaria) con una rata impagata per la stessa anagrafica.
+        $gestioneStraordinaria = Gestione::create([
+            'condominio_id' => $data->condominio->id,
+            'nome' => 'Straordinaria',
+            'tipo' => 'straordinaria',
+            'data_inizio' => '2025-01-01',
+        ]);
+        $gestioneStraordinaria->esercizi()->attach($data->esercizio->id, ['attiva' => true]);
+
+        $pianoStraordinario = PianoRate::create([
+            'condominio_id' => $data->condominio->id,
+            'gestione_id' => $gestioneStraordinaria->id,
+            'nome' => 'Piano straordinario',
+            'numero_rate' => 1,
+        ]);
+
+        $rataStraordinaria = Rata::create([
+            'piano_rate_id' => $pianoStraordinario->id,
+            'numero_rata' => 1,
+            'data_scadenza' => '2025-02-28',
+            'importo_totale' => 5000,
+            'stato' => 'emessa'
+        ]);
+
+        $quotaStraordinaria = RataQuote::create([
+            'rata_id' => $rataStraordinaria->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => 5000,
+            'importo_pagato' => 0,
+            'stato' => 'da_pagare',
+            'data_scadenza' => '2025-02-28'
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $gestioneStraordinaria->id,
+            'data_pagamento' => '2025-03-01',
+            'importo_totale' => 0,
+            'descrizione' => 'Compensazione cross-gestione',
+            'eccedenza' => 0,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $data->quota->id, 'importo' => -50.00],
+                ['rata_id' => $quotaStraordinaria->id, 'importo' => 50.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        $quotaStraordinaria->refresh();
+        $this->assertEquals(5000, $quotaStraordinaria->importo_pagato);
+        $this->assertEquals('pagata', $quotaStraordinaria->stato);
+
+        $rigaAvere = \App\Models\Gestionale\RigaScrittura::where('rata_id', $quotaStraordinaria->rata_id)
+            ->where('tipo_riga', 'avere')
+            ->where('anagrafica_id', $data->anagrafica->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($rigaAvere);
+        $this->assertStringContainsString('cross-gestione', $rigaAvere->note);
+        $this->assertStringContainsString('Ordinaria', $rigaAvere->note);
+        $this->assertStringContainsString('Straordinaria', $rigaAvere->note);
+    }
+
+    #[\PHPUnit\Framework\Attributes\Test]
     public function impedisce_incasso_se_totale_matematico_non_quadra() {
         $data = $this->createIncassoScenario();
         

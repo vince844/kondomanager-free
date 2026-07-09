@@ -28,6 +28,9 @@ const props = defineProps<{
     saldo_raw: number;
     saldo_iniziale: string;
     saldo_iniziale_raw: number;
+    credito_disponibile: string;
+    credito_disponibile_raw: number;
+    credito_per_gestione: Array<{ gestione_id: number | null; gestione_nome: string; importo_cents: number; importo_formatted: string }>;
   };
 }>();
 
@@ -190,7 +193,7 @@ const getImportoStyle = (riga: any) => {
             </PageHeaderGuide>
 
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="rounded-lg border bg-gray-50/50 shadow-sm border-gray-200">
                     <div class="flex flex-row items-center justify-between p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Saldo iniziale</h3>
@@ -232,6 +235,36 @@ const getImportoStyle = (riga: any) => {
                         <div class="text-2xl font-bold" :class="saldoColorClass">{{ stats.saldo_finale }}</div>
                         <p class="text-[10px] uppercase font-bold mt-1 tracking-wide" :class="stats.saldo_raw > 0 ? 'text-red-600' : 'text-emerald-600'">
                             {{ stats.saldo_raw > 0 ? 'DA VERSARE' : (stats.saldo_raw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
+                        </p>
+                    </div>
+                </div>
+                <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200">
+                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Credito disponibile</h3>
+                        <Coins class="h-4 w-4 text-blue-500" />
+                    </div>
+                    <div class="p-4 pt-0">
+                        <div class="flex items-center gap-1.5">
+                            <div class="text-xl font-bold" :class="stats.credito_disponibile_raw > 0 ? 'text-blue-600' : 'text-gray-400'">{{ stats.credito_disponibile }}</div>
+                            <TooltipProvider v-if="stats.credito_per_gestione.length > 1" :delayDuration="0">
+                                <Tooltip>
+                                    <TooltipTrigger as-child>
+                                        <Info class="w-3.5 h-3.5 text-blue-400 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" class="bg-slate-900 border-slate-700 text-slate-200 p-3 shadow-2xl rounded-lg z-[100]">
+                                        <div class="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider border-b border-slate-700 pb-1">Spaccato per gestione</div>
+                                        <ul class="space-y-1">
+                                            <li v-for="g in stats.credito_per_gestione" :key="g.gestione_id ?? 0" class="flex justify-between gap-4 text-[11px]">
+                                                <span class="text-slate-300">{{ g.gestione_nome }}</span>
+                                                <span class="font-bold text-blue-400">{{ g.importo_formatted }}</span>
+                                            </li>
+                                        </ul>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                        <p class="text-[10px] text-muted-foreground mt-1">
+                            {{ stats.credito_per_gestione.length > 0 ? stats.credito_per_gestione[0].gestione_nome + (stats.credito_per_gestione.length > 1 ? ' e altre' : '') : 'Nessun credito attivo' }}
                         </p>
                     </div>
                 </div>
