@@ -24,7 +24,7 @@
             <x-installer.field-label for="password" :tooltip="__('installer.fields.admin_password.tooltip')">
                 {{ __('installer.fields.admin_password.label') }}
             </x-installer.field-label>
-            <x-installer.password-input id="password" name="password" wire:model.live.blur="password" wire:key="field-password" required />
+            <x-installer.password-input id="password" name="password" autocomplete="new-password" wire:model.live.blur="password" wire:key="field-password" required />
             @error('password')
                 <span class="error">{{ $message }}</span>
             @enderror
@@ -34,7 +34,7 @@
             <x-installer.field-label for="password_confirmation" :tooltip="__('installer.fields.admin_password_confirmation.tooltip')">
                 {{ __('installer.fields.admin_password_confirmation.label') }}
             </x-installer.field-label>
-            <x-installer.password-input id="password_confirmation" name="password_confirmation" wire:model.live.blur="password_confirmation" wire:key="field-password_confirmation" required />
+            <x-installer.password-input id="password_confirmation" name="password_confirmation" autocomplete="new-password" wire:model.live.blur="password_confirmation" wire:key="field-password_confirmation" required />
         </div>
     </div>
 </div>

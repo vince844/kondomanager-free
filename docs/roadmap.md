@@ -36,7 +36,7 @@ Chiude il ciclo passivo iniziato con la v1.9 (registrazione fatture).
 Release che porta a maturità l'infrastruttura contabile **e** il Livello 1 del motore di riparto, completa l'anagrafica immobiliare (Iniziativa B Fase 1) e introduce la **risoluzione a cascata del ruolo** con il relativo **warning di coerenza-ruoli**.
 Include inoltre le funzionalità avanzate di pagamento originariamente previste per la v1.9.2.
 
-**Pagamenti Avanzati:**
+**Pagamenti Avanzati:** *(idea da valutare in corso d'opera — scoping non ancora definitivo, si decide durante lo sviluppo se completarla nella 1.10 o rimandarla)*
 - Acconti ai fornitori (conto Crediti v/Fornitori dedicato, compensazione via giroconto)
 - Anticipi dell'amministratore con workflow di rimborso
 - Compensazione pura senza movimento di cassa (NC > Fattura)
@@ -73,7 +73,7 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
   > e `StoreIncassoRateAction`: la tracciabilità per immobile è già garantita a DB.*
 - **Dashboard Intelligence:**
   - Treasury Guardian Widget — predittore liquidità a 30 giorni; scan conti vs fatture in scadenza; propone emissione insoluti, sollecito rate, giroconto fondo riserva *(MVP anticipato a v1.9.x; vista distesa in v1.18)*
-  - **Radar Salute Contabile** — validatore millesimi + **detector coerenza-ruoli (quota scoperta)** + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
+  - **Radar Salute Contabile** — fronte dashboard del Validatore Coerenza Millesimi (vedi Iniziativa A) + **detector coerenza-ruoli (quota scoperta)** + detector duplicati intelligenti (nascosto se OK, semaforo emergenza se dati incoerenti)
   - Credit Enforcer Widget — pannello morosità con link diretto al Wizard Solleciti
   - **Crediti da compensare Widget** (specchio del Credit Enforcer, ma per i condòmini a credito invece che morosi) — lista condòmini con credito disponibile, link diretto a Nuovo Incasso pre-compilato. Vedi [`credito_visibile_ovunque.md`](credito_visibile_ovunque.md).
 - **Credito visibile ovunque** (vedi [`credito_visibile_ovunque.md`](credito_visibile_ovunque.md), seguito diretto del fix v1.10.0-beta.9):
@@ -81,7 +81,7 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
   - Spaccato del credito disponibile per gestione, mostrato nell'avviso e in Estratto Conto
   - Card "Credito disponibile" in Estratto Conto Anagrafica (non esiste ancora una scheda anagrafica dedicata — `AnagraficaController::show()` è uno stub)
   - *Differito:* visibilità del credito lato portale condòmino — richiede prima lavoro di ottimizzazione UI sull'area condòmino
-- **Backup Management**
+- **Backup Management** — creazione e gestione dei backup direttamente dal pannello di amministrazione
 - **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
 - **Rateazione per origine e quadratura al centesimo** (vedi [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md)): rateazione per origine di addebito (es. preventivo, saldo iniziale, fondo) su scadenze multiple, quadratura al centesimo bidimensionale (per-immobile-first) e predisposizione al calcolo esatto dei subentri.
@@ -92,6 +92,9 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
   - Filtri scala/palazzina in `QuoteList.vue`
   - Contatore totale live + colonna percentuale effettiva
   - Warning giallo non-bloccante su deviazione somma millesimi da 1000
+  - Pulizia dropdown tipologie: rimozione/disabilitazione (badge "Coming soon") delle opzioni `acqua` e `riscaldamento`, oggi presenti ma incomplete
+  - Warning non-bloccante nel form conto (voce di spesa) se la somma dei coefficienti delle tabelle collegate ≠ 100%
+  - **Validatore Coerenza Millesimi (Tier 1)** — fail-fast multilivello su cinque fronti: blocco in emissione rate solo su incoerenza reale (somma ≠ **totale di riferimento dichiarato per tabella**, mai contro 1000 fisso — le tabelle reali spesso non fanno 1000 per unità rimosse o arrotondamenti del tecnico); widget dashboard con scarto rispetto al riferimento; forzatura tracciata con nota obbligatoria; griglia valori per editing massivo + import Excel; log diagnostici sulla riga/quota esatta. Decisioni di design complete in [`note_tecniche_e_decisioni.md`](note_tecniche_e_decisioni.md).
   - **Risoluzione a cascata del ruolo** (sostituisce il fallback piatto in `CalcoloQuoteService::distribuisciSuTabelle`):
     godimento `inquilino → comodatario → usufruttuario → proprietario`;
     capitale `nuda proprietà → proprietario` (classe unica).

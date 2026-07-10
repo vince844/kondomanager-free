@@ -43,7 +43,30 @@ class CreateAdmin extends Component
 
     public function updated(string $property): void
     {
+        // La regola 'confirmed' vive sul campo password, ma l'utente corregge il
+        // mismatch tipicamente editando la CONFERMA — senza questo remap, il blur
+        // sulla conferma validava un campo senza regole e l'errore "non coincide"
+        // restava visualizzato anche a correzione avvenuta (fino al click su Avanti).
+        // Il confronto scatta solo quando entrambi i campi sono compilati: la sola
+        // password appena digitata (conferma ancora vuota) farebbe fallire
+        // 'confirmed' mostrando un errore prematuro mentre l'utente sta ancora
+        // per compilare la conferma.
+        if (in_array($property, ['password', 'password_confirmation'], true)) {
+            if (filled($this->password) && filled($this->password_confirmation)) {
+                $property = 'password';
+            } elseif ($property === 'password_confirmation') {
+                return;
+            } else {
+                $this->resetErrorBag('password');
+                $this->validate(['password' => 'required|min:6']);
+                $this->dispatch('wizard.canProceed');
+
+                return;
+            }
+        }
+
         $this->validateOnly($property);
+
         if ($this->getErrorBag()->isEmpty($property)) {
             $this->dispatch('wizard.canProceed');
         }

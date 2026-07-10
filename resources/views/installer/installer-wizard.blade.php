@@ -75,7 +75,19 @@
                     <p class="mt-1.5 text-sm text-gray-500 leading-relaxed">{{ __('installer.steps.' . $step['key'] . '.guide') }}</p>
 
                     <div class="mt-3 py-3 pe-4">
-                        @livewire($step['component'], ['wizard' => $this])
+                        {{-- Chiave esplicita e stabile: senza questa, ogni volta che il wizard
+                            si ri-renderizza (es. processando il click su "Avanti", che dispatcha
+                            l'evento completeStep verso questo child) Livewire può perdere
+                            l'identità del componente figlio e rimontarlo da zero — i valori
+                            digitati (con .live.blur già sincronizzati sul componente vecchio)
+                            vengono sostituiti da un'istanza fresca con proprietà a null,
+                            causando errori "required" su campi già compilati o, a seconda del
+                            momento esatto, un comportamento incoerente sui dati inviati.
+                            Riprodotto e verificato in rete: stesso wire:id prima del click,
+                            wire:id diverso e dati nulli subito dopo. Il key() sullo step
+                            corrente risolve perché resta stabile per tutta la permanenza sullo
+                            stesso step. --}}
+                        @livewire($step['component'], ['wizard' => $this], key($step['key']))
                     </div>
 
                     <div class="mt-auto flex justify-end items-center gap-3 pt-6">
