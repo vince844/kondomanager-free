@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.10.0-beta.10'),
+    'version' => env('APP_VERSION', '1.10.0-beta.11'),
 
     /*
     |--------------------------------------------------------------------------
@@ -164,6 +164,6 @@ return [
     | - '10.0.0.1,192.168.1.1' : Lista specifica
     |
     */
-    'trusted_proxies' => env('TRUSTED_PROXIES', null), 
+    'trusted_proxies' => env('TRUSTED_PROXIES', null),
 
 ];

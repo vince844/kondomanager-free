@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Impostazioni\BackupSettingsController;
 use App\Http\Controllers\Impostazioni\CronSettingsController;
 use App\Http\Controllers\Impostazioni\ImpostazioniController;
 use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
@@ -30,28 +31,47 @@ Route::middleware('auth')->group(function () {
         ->name('impostazioni.stampe.store');
 
     Route::get('impostazioni/cron', [CronSettingsController::class, 'edit'])
-        ->name('impostazioni.cron'); 
+        ->name('impostazioni.cron');
 
     Route::post('impostazioni/cron', [CronSettingsController::class, 'update'])
-        ->name('impostazioni.cron.update'); 
+        ->name('impostazioni.cron.update');
 
     Route::post('impostazioni/cron/regenerate', [CronSettingsController::class, 'regenerateToken'])
-        ->name('impostazioni.cron.regenerate'); 
+        ->name('impostazioni.cron.regenerate');
 
-        // MAIL SETTINGS
+    // MAIL SETTINGS
     Route::get('impostazioni/mail', [MailSettingsController::class, 'edit'])
-        ->name('impostazioni.mail'); 
+        ->name('impostazioni.mail');
 
     Route::post('impostazioni/mail', [MailSettingsController::class, 'update'])
-        ->name('admin.settings.mail.update'); 
+        ->name('admin.settings.mail.update');
 
     Route::post('impostazioni/mail/test', [MailSettingsController::class, 'testConnection'])
         ->name('admin.settings.mail.test');
-    
+
+    // BACKUPS
+    Route::get('impostazioni/backups', [BackupSettingsController::class, 'index'])
+        ->name('impostazioni.backups');
+
+    Route::post('impostazioni/backups', [BackupSettingsController::class, 'store'])
+        ->name('impostazioni.backups.store');
+
+    Route::post('impostazioni/backups/settings', [BackupSettingsController::class, 'updateSettings'])
+        ->name('impostazioni.backups.settings');
+
+    Route::post('impostazioni/backups/{backup:uuid}/step', [BackupSettingsController::class, 'step'])
+        ->name('impostazioni.backups.step');
+
+    Route::get('impostazioni/backups/{backup:uuid}/download', [BackupSettingsController::class, 'download'])
+        ->name('impostazioni.backups.download');
+
+    Route::delete('impostazioni/backups/{backup:uuid}', [BackupSettingsController::class, 'destroy'])
+        ->name('impostazioni.backups.destroy');
+
     // LOGS & AUDIT
     Route::get('logs', [LogsController::class, 'index'])
         ->name('logs.index');
-    
+
     Route::redirect('settings', 'settings/profile');
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])

@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Nuova sezione Impostazioni → Gestione backups: crea un backup completo dell'installazione (database, documenti caricati e file di configurazione .env) direttamente dall'interfaccia, con barra di avanzamento, e scaricalo come archivio zip. Elenco dei backup con dimensione, impronta SHA-256 per verificare le copie, download ed eliminazione con conferma.",
+        "Progettato per gli hosting condivisi: il backup procede a piccoli passi riprendibili, senza bisogno di mysqldump, terminale o cron. Se la pagina viene chiusa o il server interrompe l'esecuzione, il backup riparte esattamente da dove era rimasto.",
+        "Conservazione automatica configurabile: scegli quanti backup mantenere sul server (default 5), i più vecchi vengono eliminati automaticamente al termine di ogni nuovo backup.",
+        "Verifica dei requisiti prima di partire: estensione ZIP, database supportato, cartella scrivibile e spazio su disco disponibile, con stima della dimensione del backup.",
+        "Guida integrata 'Backup e ripristino': cosa contiene l'archivio, come custodirlo in sicurezza e la procedura passo-passo per ripristinare o trasferire l'installazione su un altro server.",
+        "Ogni archivio include un manifest con versione dell'applicazione e checksum di integrità: è il formato su cui si baserà il futuro ripristino guidato dall'interfaccia."
+    ]
+}

@@ -7,6 +7,32 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.11] - Backup Manuali & Trasferimento Installazione
+
+Prima versione del sistema di backup integrato, la funzione "In arrivo" della pagina impostazioni. Obiettivo: un archivio **completo e autosufficiente** (database + documenti + configurazione) creato dall'interfaccia, sufficiente da solo per trasferire o ripristinare un'installazione — e che funzioni sugli hosting condivisi che sono il pubblico primario di KondoManager, dove `mysqldump`, `proc_open` e i cron affidabili spesso non esistono.
+
+### Aggiunto
+
+- **Nuova pagina Impostazioni → "Gestione backups":** creazione del backup con barra di avanzamento in tempo reale, elenco dei backup con stato, data, dimensione e impronta SHA-256 (con copia rapida per verificare l'integrità delle copie trasferite), download, eliminazione con conferma e annullamento di un backup in corso. Card "Requisiti di sistema" (preflight) che verifica estensione ZIP, driver database supportato, cartella scrivibile e spazio su disco con stima della dimensione prima di consentire l'avvio. Retention automatica configurabile (mantieni gli ultimi N, default 5). Traduzioni complete it/en/es/pt.
+- **Motore a passi riprendibili (step-runner), scelta architetturale deliberata:** scartato `spatie/laravel-backup` dopo ricerca documentata — richiede sempre il binario `mysqldump` + `proc_open` (assenti o disabilitati sugli hosting condivisi tipici), non include alcuna funzione di restore ed esegue in un'unica richiesta monolitica non riprendibile. Il motore interno (zero nuove dipendenze Composer) lavora invece come Duplicator/UpdraftPlus: ogni richiesta HTTP avanza per ~20 secondi (configurabile in `config/backup.php`), salva un checkpoint nella tabella `backups` e il frontend richiede lo step successivo. Un backup interrotto (pagina chiusa, timeout del server) riprende esattamente da dove era rimasto; un lock in cache impedisce esecuzioni sovrapposte; i backup fermi da oltre 2 ore vengono marcati falliti e i temporanei ripuliti.
+- **Dump MySQL in puro PHP/PDO (`MySqlDumper`):** nessun binario esterno. SQL prodotto per la massima portabilità: statement `INSERT` sotto 1 MB reimportabili da phpMyAdmin, nessun `DEFINER` (l'import non richiede privilegi SUPER), valori binari in esadecimale, viste ricreabili in qualsiasi ordine (tecnica degli stub di mysqldump), trigger inclusi, colonne generate escluse dall'INSERT e ricalcolate all'import, sessione in UTC per i TIMESTAMP. Paginazione keyset sulla chiave primaria con fallback a OFFSET per tabelle senza PK singola. SQLite gestito con `VACUUM INTO`. Postgres/SQL Server rifiutati esplicitamente dal preflight.
+- **`manifest.json` versionato in ogni archivio** (formato 1): versione dell'applicazione, elenco delle migrazioni eseguite, conteggi tabelle/righe/file, checksum SHA-256 del dump, eventuali warning. È la "carta d'identità" del backup su cui si baserà il futuro **ripristino guidato dall'interfaccia** (validazione di compatibilità e integrità prima di toccare i dati) senza cambiare formato. Copiato anche nella colonna `manifest` per mostrare i dettagli in UI senza aprire lo zip.
+- **Guida in-page "Backup e ripristino"** (pattern delle guide Cron/Stampe): tre schede — contenuto dell'archivio (con spiegazione del manifest e avviso di non modificarlo), procedura di ripristino/trasferimento passo-passo con l'avvertenza critica di **non rigenerare mai la APP_KEY**, buone pratiche di custodia (copia fuori dal server, verifica SHA-256, momento giusto per il backup a caldo).
+- **Punti di estensione per il futuro plugin backup** (scheduling e destinazioni cloud): contratti `DatabaseDumperInterface` e `BackupDestination`, registro `DestinationManager` estendibile dal container, eventi `BackupStarted/Completed/Failed/Deleted` emessi dal core senza listener nel free. Il comando artisan di backup è deliberatamente assente dal free. Lo step-runner riprendibile renderà possibile il backup programmato anche nella finestra ~55s del webhook cron sugli hosting condivisi.
+- **16 nuovi test automatici**, incluso il gate di rilascio: round-trip dump → import su MySQL reale con confronto dato-per-dato (stringhe con apici/emoji/newline, blob binari, PK composte, tabelle senza PK, colonne generate, viste, trigger, 2500 righe con checkpoint serializzati in JSON tra gli step) e round-trip dell'intero database di sviluppo con conteggi identici; più step-runner (ripresa, retention, lock, stantii, eliminazione), selettore file (esclusioni, symlink non seguiti, dotfile inclusi) e flusso HTTP completo (permessi, store→step→download, 409 su doppio avvio, validazione retention).
+- **File di sistema esclusi automaticamente** dagli archivi: `.DS_Store`, `Thumbs.db`, `desktop.ini`.
+
+### Sicurezza
+
+- Gli archivi vivono in `storage/app/backups`, **fuori dalla document root** e su un disco dedicato con `serve => false`: non sono raggiungibili via web in alcun modo. Il download passa solo dalla rotta autenticata protetta dal permesso "Gestisci impostazioni generali", con URL basati su uuid non enumerabili. La cartella dei backup è auto-esclusa dagli archivi stessi (nessuna ricorsione). L'archivio contiene il file `.env` (necessario al ripristino completo): la guida in-page istruisce esplicitamente sulla custodia sicura.
+
+### Corretto
+
+- **Card "Gestione backups" disallineata nella hub impostazioni:** la descrizione su una sola riga faceva scendere il titolo rispetto all'icona, diversamente dalle altre card; descrizione riscritta (e più informativa) nelle 4 lingue.
+- **Breadcrumb con chiavi di traduzione grezze al primo caricamento** nella nuova pagina backup: i breadcrumb calcolati come costante nel setup leggevano le traduzioni prima che fossero caricate; resi reattivi con `computed()`. Lo stesso difetto è presente nelle altre pagine impostazioni (Stampe, Cron, ...) e verrà corretto separatamente.
+
+---
+
 ## [1.10.0-beta.10] - Credito Visibile Ovunque & Separazione Gestioni
 
 Seguito diretto della beta.9: il credito ora è correttamente visibile e spendibile in "Nuovo incasso", ma restava isolato lì — non compariva in Estratto Conto né in Dashboard, e nulla impediva di compensare credito di una gestione (es. ordinaria) su una rata di un'altra (es. straordinaria), come già accaduto nei dati reali di un cliente.

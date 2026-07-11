@@ -22,6 +22,18 @@ class ImpostazioniController extends Controller
             __('errors.403_message')
         );
 
-        return Inertia::render('impostazioni/impostazioni');
+        $backupsEnabled = (bool) config('backup.enabled', true);
+
+        try {
+            $backupRunning = $backupsEnabled && \App\Models\Backup::running()->exists();
+        } catch (\Throwable) {
+            // La hub non deve mai rompersi per lo stato dei backup
+            $backupRunning = false;
+        }
+
+        return Inertia::render('impostazioni/impostazioni', [
+            'backups_enabled' => $backupsEnabled,
+            'backup_running'  => $backupRunning,
+        ]);
     }
 }

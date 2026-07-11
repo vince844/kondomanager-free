@@ -1,0 +1,10 @@
+{
+    "features": [
+        "New Settings → Backup management section: create a full backup of your installation (database, uploaded documents and the .env configuration file) directly from the interface, with a progress bar, and download it as a zip archive. Backup list with size, SHA-256 fingerprint to verify copies, download and deletion with confirmation.",
+        "Designed for shared hosting: the backup proceeds in small resumable steps, with no need for mysqldump, a terminal or cron. If the page is closed or the server interrupts execution, the backup resumes exactly where it left off.",
+        "Configurable automatic retention: choose how many backups to keep on the server (default 5); older ones are deleted automatically after each new backup completes.",
+        "Requirements check before starting: ZIP extension, supported database, writable folder and available disk space, with an estimate of the backup size.",
+        "Built-in 'Backup and restore' guide: what the archive contains, how to store it safely and the step-by-step procedure to restore or migrate the installation to another server.",
+        "Every archive includes a manifest with the application version and integrity checksums: this is the format the future guided restore from the interface will be built on."
+    ]
+}

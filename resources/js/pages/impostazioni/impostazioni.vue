@@ -24,6 +24,13 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const page = usePage()
 
+// I backup possono essere disabilitati a livello di installazione
+// (BACKUP_ENABLED=false: demo pubblica, installazioni gestite)
+const backupsEnabled = computed(() => (page.props as any).backups_enabled !== false)
+
+// Un backup in corso viene segnalato sulla card con un badge animato
+const backupRunning = computed(() => (page.props as any).backup_running === true)
+
 const updateAvailable = computed(() => {
   const updateInfo = page.props.system_update as SystemUpdateData | undefined;
   return updateInfo?.available || false;
@@ -90,8 +97,9 @@ const apps = computed(() => [
     name: 'impostazioni.dialogs.backups_settings_title',
     logo: DatabaseBackup,
     desc: 'impostazioni.dialogs.backups_settings_description',
-    href: "#",
-    comingSoon: true, 
+    href: "/impostazioni/backups",
+    disabled: !backupsEnabled.value,
+    running: backupRunning.value,
   },
   {
     name: 'impostazioni.dialogs.updates_title',
@@ -160,11 +168,24 @@ const apps = computed(() => [
           <ItemContent>
             <ItemTitle class="flex items-center gap-2">
               {{ trans(app.name) }}
-              <span 
-                v-if="app.comingSoon" 
+              <span
+                v-if="app.comingSoon"
                 class="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 dark:bg-blue-400/10 dark:text-blue-400 dark:ring-blue-400/30"
               >
                 In arrivo
+              </span>
+              <span
+                v-else-if="app.disabled"
+                class="inline-flex items-center rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700 ring-1 ring-inset ring-red-600/10 dark:bg-red-400/10 dark:text-red-400 dark:ring-red-400/30"
+              >
+                {{ trans('impostazioni.label.backups_disabled_badge') }}
+              </span>
+              <span
+                v-else-if="app.running"
+                class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-slate-900 px-2 py-0.5 text-[10px] font-medium text-white dark:bg-slate-100 dark:text-slate-900"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                {{ trans('impostazioni.label.backup_running_badge') }}
               </span>
             </ItemTitle>
             <ItemDescription class="text-[13px] leading-tight mt-0.5">
@@ -173,14 +194,14 @@ const apps = computed(() => [
           </ItemContent>
           
           <ItemActions>
-            <Button 
-              v-if="app.comingSoon"
+            <Button
+              v-if="app.comingSoon || app.disabled"
               disabled
-              variant="outline" 
+              variant="outline"
               size="sm"
               class="h-8 text-xs font-semibold opacity-50 cursor-not-allowed"
             >
-              Prossimamente
+              {{ app.comingSoon ? 'Prossimamente' : trans('impostazioni.label.manage') }}
             </Button>
 
             <Button 
