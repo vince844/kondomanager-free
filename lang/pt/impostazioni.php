@@ -22,6 +22,9 @@ return [
     'backup_error_in_progress' => 'Já existe outro backup em execução.',
     'backup_error_stale' => 'Backup interrompido: sem progresso durante demasiado tempo. Pode iniciar um novo.',
     'backup_error_generic' => 'Ocorreu um erro durante o backup. Tente novamente.',
+    'backup_error_encryption_unsupported' => 'Este servidor não suporta a cifragem de arquivos zip: os backups só podem ser criados sem palavra-passe.',
+    'backup_error_no_saved_password' => 'Nenhuma palavra-passe de proteção definida: defina uma nas configurações de backup antes de criar um backup cifrado.',
+    'success_remove_backup_password' => 'Palavra-passe de proteção dos backups removida',
     'backup_success_completed' => 'Backup concluído com sucesso. Descarregue-o e guarde-o num local seguro.',
 
     /* ------------------------------------------------------------------
@@ -114,8 +117,10 @@ return [
         'backup_preflight_title' => 'Requisitos do sistema',
         'backup_estimated_size' => 'Tamanho estimado',
         'backup_free_space' => 'Espaço livre',
+        'backup_preflight_aes_supported' => 'Cifragem AES-256 disponível',
+        'backup_preflight_aes_unsupported' => 'Cifragem AES-256 não disponível',
         'backup_create_title' => 'Criar um novo backup',
-        'backup_create_help' => 'O backup inclui a base de dados completa, os documentos carregados (pasta storage) e o ficheiro de configuração .env: tudo o que é necessário para restaurar ou transferir o KondoManager. Execute-o preferencialmente quando não houver operações em curso.',
+        'backup_create_help' => 'Escolha entre um backup completo — base de dados, documentos e o ficheiro de configuração .env, tudo o que é necessário para migrar ou restaurar — ou apenas a base de dados, mais rápido e útil antes de uma operação delicada. Proteja-o com a palavra-passe guardada nas configurações, se tiver uma definida. Execute-o preferencialmente quando não houver outras operações em curso.',
         'backup_in_progress_help' => 'Não feche esta página: o backup avança por etapas. Se for interrompido, retoma de onde parou.',
         'backup_status' => 'Estado',
         'backup_date' => 'Data',
@@ -126,6 +131,28 @@ return [
         'backup_retention_help' => 'Número de backups concluídos a manter no servidor: no final de cada novo backup, os mais antigos além deste limite são eliminados automaticamente.',
         'backups_disabled_badge' => 'Desativados',
         'backup_running_badge' => 'Backup em curso',
+        'backup_type_title' => 'Tipo de backup',
+        'backup_type_full' => 'Completo',
+        'backup_type_full_desc' => 'Base de dados, documentos e configuração: tudo o que é necessário para transferir ou restaurar.',
+        'backup_type_db' => 'Só base de dados',
+        'backup_type_db_desc' => 'Mais rápido: só os dados, sem os documentos. Útil antes de uma operação delicada.',
+        'backup_protect_title' => 'Proteção',
+        'backup_protect_toggle' => 'Proteja com a palavra-passe guardada (AES-256)',
+        'backup_protect_card_desc' => 'Sem a palavra-passe, os ficheiros do arquivo não podem ser lidos.',
+        'backup_password' => 'Palavra-passe',
+        'backup_password_confirm' => 'Confirmar palavra-passe',
+        'backup_password_warning' => 'Se esquecer a palavra-passe o backup é irrecuperável: não há forma de a repor. Nota: o Explorador do Windows não abre zips cifrados com AES — use 7-Zip (Windows) ou Keka (Mac).',
+        'backup_encrypted_badge' => 'Protegido por palavra-passe',
+        'backup_db_only_label' => 'Só base de dados',
+        'backup_password_error_min' => 'Mínimo 8 caracteres',
+        'backup_password_error_mismatch' => 'As palavras-passe não coincidem',
+        'backup_password_show' => 'Mostrar palavra-passe',
+        'backup_password_hide' => 'Ocultar palavra-passe',
+        'backup_protect_no_password_hint' => 'Para cifrar os backups, defina primeiro uma palavra-passe de proteção mais abaixo.',
+        'backup_password_setting_title' => 'Palavra-passe de proteção dos backups',
+        'backup_password_setting_help' => 'Defina-a uma só vez: será usada para cifrar todos os backups protegidos, sem ter de a escrever novamente de cada vez. É guardada cifrada neste servidor e nunca é incluída dentro dos backups.',
+        'backup_password_set' => 'Palavra-passe definida',
+        'backup_password_not_set' => 'Nenhuma palavra-passe definida',
     ],
 
     /* ------------------------------------------------------------------
@@ -216,6 +243,7 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
+        'backup_password' => 'Mínimo 8 caracteres',
         'select_building' => 'Selecionar condomínio',
         'select_language' => 'Selecionar idioma',
         'app_name' => 'Ex. Administração Rossi',
@@ -247,6 +275,10 @@ return [
         'download_backup' => 'Descarregar backup',
         'delete_backup' => 'Eliminar backup',
         'copy_checksum' => 'Copiar checksum',
+        'set_backup_password' => 'Definir palavra-passe',
+        'change_backup_password' => 'Alterar palavra-passe',
+        'remove_backup_password' => 'Remover',
+        'restore_guide' => 'Guia de restauro',
     ],
     'confirmations' => [
         'regenerate_token' => 'Tem a certeza? Terá de atualizar o URL no cron-job.org.',
@@ -254,6 +286,8 @@ return [
         'delete_backup_description' => 'Tem a certeza? O arquivo será eliminado definitivamente do servidor. Se ainda não o descarregou, não poderá ser recuperado.',
         'cancel_backup_title' => 'Cancelar backup',
         'cancel_backup_description' => 'Tem a certeza de que pretende cancelar o backup em curso? Os dados parciais serão eliminados.',
+        'remove_backup_password_title' => 'Remover palavra-passe de proteção',
+        'remove_backup_password_description' => 'Tem a certeza? Os novos backups deixarão de poder ser cifrados até definir uma nova palavra-passe. Os backups já cifrados continuam protegidos pela palavra-passe antiga (que terá de recordar para os abrir).',
     ],
     'sidebar' => [
         'users' => 'Utilizadores',

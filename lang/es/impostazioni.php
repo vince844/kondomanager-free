@@ -22,6 +22,9 @@ return [
     'backup_error_in_progress' => 'Ya hay otra copia de seguridad en ejecución',
     'backup_error_stale' => 'Copia de seguridad interrumpida: sin progreso durante demasiado tiempo. Puedes iniciar una nueva.',
     'backup_error_generic' => 'Se ha producido un error durante la copia de seguridad. Inténtalo de nuevo.',
+    'backup_error_encryption_unsupported' => 'Este servidor no admite el cifrado de archivos zip: las copias solo pueden crearse sin contraseña.',
+    'backup_error_no_saved_password' => 'No hay ninguna contraseña de protección configurada: configúrala en los ajustes de copias antes de crear una copia cifrada.',
+    'success_remove_backup_password' => 'Contraseña de protección de copias eliminada',
     'backup_success_completed' => 'Copia de seguridad completada correctamente. Descárgala y consérvala en un lugar seguro.',
 
     /* ------------------------------------------------------------------
@@ -115,8 +118,10 @@ return [
         'backup_preflight_title' => 'Requisitos del sistema',
         'backup_estimated_size' => 'Tamaño estimado',
         'backup_free_space' => 'Espacio libre',
+        'backup_preflight_aes_supported' => 'Cifrado AES-256 disponible',
+        'backup_preflight_aes_unsupported' => 'Cifrado AES-256 no disponible',
         'backup_create_title' => 'Crear una nueva copia de seguridad',
-        'backup_create_help' => 'La copia de seguridad incluye la base de datos completa, los documentos subidos (carpeta storage) y el archivo de configuración .env: todo lo necesario para restaurar o trasladar KondoManager. Ejecútala preferiblemente cuando no haya operaciones en curso.',
+        'backup_create_help' => 'Elige entre una copia completa —base de datos, documentos y el archivo de configuración .env, todo lo necesario para migrar o restaurar— o solo la base de datos, más rápida y útil antes de una operación delicada. Protégela con la contraseña guardada en la configuración, si tienes una establecida. Realízala preferiblemente cuando no haya operaciones en curso.',
         'backup_in_progress_help' => 'No cierres esta página: la copia de seguridad avanza por pasos. Si se interrumpe, se reanuda desde donde quedó.',
         'backup_status' => 'Estado',
         'backup_date' => 'Fecha',
@@ -127,6 +132,28 @@ return [
         'backup_retention_help' => 'Número de copias de seguridad completadas que se mantienen en el servidor: al terminar cada nueva copia, las más antiguas que superen este límite se eliminan automáticamente.',
         'backups_disabled_badge' => 'Desactivadas',
         'backup_running_badge' => 'Copia en curso',
+        'backup_type_title' => 'Tipo de copia',
+        'backup_type_full' => 'Completa',
+        'backup_type_full_desc' => 'Base de datos, documentos y configuración: todo lo necesario para trasladar o restaurar.',
+        'backup_type_db' => 'Solo base de datos',
+        'backup_type_db_desc' => 'Más rápida: solo los datos, sin los documentos. Útil antes de una operación delicada.',
+        'backup_protect_title' => 'Protección',
+        'backup_protect_toggle' => 'Protege con la contraseña guardada (AES-256)',
+        'backup_protect_card_desc' => 'Sin la contraseña, los archivos de la copia no se pueden leer.',
+        'backup_password' => 'Contraseña',
+        'backup_password_confirm' => 'Confirmar contraseña',
+        'backup_password_warning' => 'Si olvidas la contraseña la copia es irrecuperable: no hay forma de restablecerla. Nota: el Explorador de Windows no abre zips cifrados con AES — usa 7-Zip (Windows) o Keka (Mac).',
+        'backup_encrypted_badge' => 'Protegida con contraseña',
+        'backup_db_only_label' => 'Solo base de datos',
+        'backup_password_error_min' => 'Mínimo 8 caracteres',
+        'backup_password_error_mismatch' => 'Las contraseñas no coinciden',
+        'backup_password_show' => 'Mostrar contraseña',
+        'backup_password_hide' => 'Ocultar contraseña',
+        'backup_protect_no_password_hint' => 'Para cifrar las copias, configura primero una contraseña de protección más abajo.',
+        'backup_password_setting_title' => 'Contraseña de protección de las copias',
+        'backup_password_setting_help' => 'Configúrala una sola vez: se usará para cifrar todas las copias protegidas, sin tener que volver a escribirla cada vez. Se guarda cifrada en este servidor y nunca se incluye dentro de las copias.',
+        'backup_password_set' => 'Contraseña configurada',
+        'backup_password_not_set' => 'Ninguna contraseña configurada',
     ],
 
     /* ------------------------------------------------------------------
@@ -217,6 +244,7 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
+        'backup_password' => 'Mínimo 8 caracteres',
         'select_building' => 'Select building',
         'select_language' => 'Select language',
         'app_name' => 'Ej. Administración Rossi',
@@ -248,6 +276,10 @@ return [
         'download_backup' => 'Descargar copia',
         'delete_backup' => 'Eliminar copia',
         'copy_checksum' => 'Copiar checksum',
+        'set_backup_password' => 'Configurar contraseña',
+        'change_backup_password' => 'Cambiar contraseña',
+        'remove_backup_password' => 'Eliminar',
+        'restore_guide' => 'Guía de restauración',
     ],
     'confirmations' => [
         'regenerate_token' => 'Are you sure? You will need to update the URL on cron-job.org.',
@@ -255,6 +287,8 @@ return [
         'delete_backup_description' => '¿Estás seguro? El archivo se eliminará definitivamente del servidor. Si aún no lo has descargado, no podrá recuperarse.',
         'cancel_backup_title' => 'Cancelar copia de seguridad',
         'cancel_backup_description' => '¿Seguro que quieres cancelar la copia de seguridad en curso? Los datos parciales se eliminarán.',
+        'remove_backup_password_title' => 'Eliminar contraseña de protección',
+        'remove_backup_password_description' => '¿Estás seguro? Las nuevas copias ya no podrán cifrarse hasta que configures una nueva contraseña. Las copias ya cifradas siguen protegidas con la contraseña anterior (que tendrás que recordar para abrirlas).',
     ],
     'sidebar' => [
         'users' => 'Users',

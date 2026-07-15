@@ -38,7 +38,7 @@ defineEmits(['update:open']);
             <section>
               <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Cosa c'è dentro lo zip</h3>
               <p class="mb-3">
-                Ogni backup è un archivio <strong>completo e autosufficiente</strong>: contiene tutto il necessario per trasferire o ripristinare KondoManager su qualsiasi server.
+                Ogni backup <strong>completo</strong> è un archivio autosufficiente: contiene tutto il necessario per trasferire o ripristinare KondoManager su qualsiasi server. Scegliendo invece <strong>"Solo database"</strong> alla creazione, l'archivio contiene soltanto il dump del database e il manifest — più veloce e leggero, utile come salvataggio rapido prima di un'operazione delicata, ma non sufficiente da solo per un trasferimento completo.
               </p>
               <ul class="space-y-3 list-disc pl-5">
                 <li>
@@ -115,6 +115,12 @@ defineEmits(['update:open']);
                 </li>
                 <li>
                   <strong>Scegli il momento giusto.</strong> Il backup fotografa i dati "a caldo": eseguilo preferibilmente quando nessuno sta inserendo pagamenti o caricando documenti.
+                </li>
+                <li>
+                  <strong>Password opzionale (AES-256).</strong> Imposta una volta sola la password di protezione nelle impostazioni in fondo alla pagina (accanto al numero di backup da conservare): l'interruttore "Proteggi con la password salvata (AES-256)" si attiva da solo e ogni backup protetto viene cifrato per intero. La password è custodita cifrata sul server e non finisce mai dentro gli archivi. Attenzione: password dimenticata = backup irrecuperabile, e su Windows serve 7-Zip per aprire gli zip cifrati (Esplora Risorse non li supporta; su Mac va bene Keka).
+                </li>
+                <li>
+                  <strong>L'elenco dei file resta visibile: è normale.</strong> Aprendo un archivio cifrato, il tuo programma di compressione mostra subito i nomi dei file senza chiedere nulla: nel formato zip la cifratura protegge il <em>contenuto</em> dei file, non l'elenco. La password viene chiesta al primo file che apri o estrai — prova con <code class="text-[12px]">db/database.sql</code>: è la verifica che la protezione sta funzionando.
                 </li>
               </ul>
               <div class="p-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800/50 flex gap-3">

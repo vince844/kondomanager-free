@@ -10,11 +10,17 @@ use Illuminate\Support\Str;
 
 class Backup extends Model
 {
+    public const TYPE_FULL = 'full';
+
+    public const TYPE_DB_ONLY = 'db_only';
+
     protected $fillable = [
         'uuid',
         'filename',
         'disk',
         'status',
+        'type',
+        'encrypted',
         'progress',
         'checkpoint',
         'manifest',
@@ -28,6 +34,7 @@ class Backup extends Model
 
     protected $casts = [
         'status' => BackupStatus::class,
+        'encrypted' => 'boolean',
         'progress' => 'array',
         'checkpoint' => 'array',
         'manifest' => 'array',

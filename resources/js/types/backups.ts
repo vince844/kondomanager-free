@@ -8,6 +8,8 @@ export interface BackupItem {
   uuid: string;
   filename: string | null;
   status: 'pending' | 'dumping_database' | 'archiving_files' | 'finalizing' | 'completed' | 'failed';
+  type: 'full' | 'db_only';
+  encrypted: boolean;
   progress: BackupProgress | null;
   size: number | null;
   checksum: string | null;
@@ -32,7 +34,10 @@ export interface PreflightCheck {
 
 export interface BackupPreflight {
   ok: boolean;
+  ok_db_only: boolean;
   checks: PreflightCheck[];
   estimated_bytes: number;
+  estimated_db_bytes: number;
   free_bytes: number | null;
+  encryption_supported: boolean;
 }

@@ -22,6 +22,9 @@ return [
     'backup_error_in_progress' => 'Un altro backup è già in esecuzione',
     'backup_error_stale' => 'Backup interrotto: nessun avanzamento per troppo tempo. Puoi avviarne uno nuovo.',
     'backup_error_generic' => 'Si è verificato un errore durante il backup. Riprova.',
+    'backup_error_encryption_unsupported' => 'Questo server non supporta la cifratura degli archivi zip: il backup può essere creato solo senza password.',
+    'backup_error_no_saved_password' => 'Nessuna password di protezione impostata: impostala nelle impostazioni backup prima di creare un backup cifrato.',
+    'success_remove_backup_password' => 'Password di protezione dei backup rimossa',
     'backup_success_completed' => 'Backup completato con successo. Scaricalo e conservalo in un luogo sicuro.',
 
     /* ------------------------------------------------------------------
@@ -113,8 +116,10 @@ return [
         'backup_preflight_title' => 'Requisiti di sistema',
         'backup_estimated_size' => 'Dimensione stimata',
         'backup_free_space' => 'Spazio libero',
+        'backup_preflight_aes_supported' => 'Cifratura AES-256 disponibile',
+        'backup_preflight_aes_unsupported' => 'Cifratura AES-256 non disponibile',
         'backup_create_title' => 'Crea un nuovo backup',
-        'backup_create_help' => 'Il backup include il database completo, i documenti caricati (cartella storage) e il file di configurazione .env: tutto il necessario per ripristinare o trasferire KondoManager. Eseguilo preferibilmente quando non ci sono operazioni in corso.',
+        'backup_create_help' => 'Scegli tra un backup completo — database, documenti e file di configurazione .env, tutto il necessario per trasferire o ripristinare — oppure solo il database, più rapido e utile prima di un\'operazione delicata. Proteggilo con la password salvata nelle impostazioni, se ne hai impostata una. Eseguilo preferibilmente quando non ci sono operazioni in corso.',
         'backup_in_progress_help' => 'Non chiudere questa pagina: il backup procede a passi. Se si interrompe, riprende da dove era rimasto.',
         'backup_status' => 'Stato',
         'backup_date' => 'Data',
@@ -125,6 +130,28 @@ return [
         'backup_retention_help' => 'Numero di backup completati da mantenere sul server: al termine di ogni nuovo backup, i più vecchi oltre questo limite vengono eliminati automaticamente.',
         'backups_disabled_badge' => 'Disabilitati',
         'backup_running_badge' => 'Backup in corso',
+        'backup_type_title' => 'Tipo di backup',
+        'backup_type_full' => 'Completo',
+        'backup_type_full_desc' => 'Database, documenti e configurazione: tutto il necessario per trasferire o ripristinare.',
+        'backup_type_db' => 'Solo database',
+        'backup_type_db_desc' => 'Più veloce: solo i dati, senza i documenti. Utile prima di un\'operazione delicata.',
+        'backup_protect_title' => 'Protezione',
+        'backup_protect_toggle' => 'Proteggi con la password salvata (AES-256)',
+        'backup_protect_card_desc' => 'Senza la password i file dell\'archivio non sono leggibili.',
+        'backup_password' => 'Password',
+        'backup_password_confirm' => 'Conferma password',
+        'backup_password_warning' => 'Se dimentichi la password il backup è irrecuperabile: non esiste alcun modo di reimpostarla. Nota: Esplora Risorse di Windows non apre gli zip cifrati AES — servono 7-Zip (Windows) o Keka (Mac).',
+        'backup_encrypted_badge' => 'Protetto da password',
+        'backup_db_only_label' => 'Solo database',
+        'backup_password_error_min' => 'Minimo 8 caratteri',
+        'backup_password_error_mismatch' => 'Le password non coincidono',
+        'backup_password_show' => 'Mostra password',
+        'backup_password_hide' => 'Nascondi password',
+        'backup_protect_no_password_hint' => 'Per cifrare i backup imposta prima una password di protezione qui sotto.',
+        'backup_password_setting_title' => 'Password di protezione dei backup',
+        'backup_password_setting_help' => 'Impostala una volta sola: verrà usata per cifrare tutti i backup protetti, senza doverla ridigitare ogni volta. È salvata cifrata su questo server e non è mai inclusa dentro i backup.',
+        'backup_password_set' => 'Password impostata',
+        'backup_password_not_set' => 'Nessuna password impostata',
     ],
 
     /* ------------------------------------------------------------------
@@ -209,6 +236,7 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
+        'backup_password' => 'Minimo 8 caratteri',
         'select_building' => 'Seleziona condominio',
         'select_language' => 'Seleziona lingua',
         'app_name' => 'Es. Studio Amministrazioni Rossi',
@@ -240,6 +268,10 @@ return [
         'download_backup' => 'Scarica backup',
         'delete_backup' => 'Elimina backup',
         'copy_checksum' => 'Copia checksum',
+        'restore_guide' => 'Guida al ripristino',
+        'set_backup_password' => 'Imposta password',
+        'change_backup_password' => 'Cambia password',
+        'remove_backup_password' => 'Rimuovi',
     ],
     'confirmations' => [
         'regenerate_token' => 'Sei sicuro? Dovrai aggiornare l\'URL su cron-job.org',
@@ -247,6 +279,8 @@ return [
         'delete_backup_description' => 'Sei sicuro? L\'archivio verrà eliminato definitivamente dal server. Se non l\'hai già scaricato, non potrà essere recuperato.',
         'cancel_backup_title' => 'Annulla backup',
         'cancel_backup_description' => 'Sei sicuro di voler annullare il backup in corso? I dati parziali verranno eliminati.',
+        'remove_backup_password_title' => 'Rimuovi password di protezione',
+        'remove_backup_password_description' => 'Sei sicuro? I nuovi backup non potranno più essere cifrati finché non imposti una nuova password. I backup già cifrati restano protetti dalla vecchia password (che dovrai ricordare per aprirli).',
     ],
     'sidebar' => [
         'users' => 'Utenti',

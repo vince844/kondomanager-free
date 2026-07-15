@@ -4,6 +4,7 @@ use App\Contracts\Backup\DatabaseDumperInterface;
 use App\Enums\BackupStatus;
 use App\Models\Backup;
 use App\Services\Backup\BackupManager;
+use App\Services\Backup\BackupPasswordStore;
 use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\FileSelector;
 use App\Settings\BackupSettings;
@@ -47,7 +48,7 @@ beforeEach(function () {
 
 afterEach(function () {
     File::deleteDirectory(fixturePath());
-    File::deleteDirectory(storage_path('app/backups/tmp'));
+    File::deleteDirectory(config('backup.tmp_path'));
 });
 
 function runToCompletion(BackupManager $manager, Backup $backup, int $maxSteps = 10): Backup
@@ -116,8 +117,8 @@ test('un backup completo produce uno zip con dump, file, .env-like e manifest', 
     expect($backup->manifest)->toEqual($manifest);
 
     // I temporanei sono stati ripuliti
-    expect(File::exists(storage_path('app/backups/tmp/'.$backup->uuid)))->toBeFalse();
-    expect(File::exists(storage_path('app/backups/tmp/'.$backup->uuid.'.zip')))->toBeFalse();
+    expect(File::exists(config('backup.tmp_path').'/'.$backup->uuid))->toBeFalse();
+    expect(File::exists(config('backup.tmp_path').'/'.$backup->uuid.'.zip'))->toBeFalse();
 });
 
 test('non si possono avviare due backup contemporaneamente', function () {
@@ -165,7 +166,7 @@ test('la retention elimina i backup completati più vecchi del limite', function
 
 test('i backup fermi da troppo tempo vengono marcati come falliti', function () {
     $manager = makeManager();
-    $backup = $manager->start();
+    $backup = $manager->start(null, ['password' => 'chiave-super-segreta']);
 
     Backup::where('id', $backup->id)->update(['updated_at' => now()->subHours(5)]);
 
@@ -173,6 +174,9 @@ test('i backup fermi da troppo tempo vengono marcati come falliti', function () 
 
     expect($backup->refresh()->status)->toBe(BackupStatus::FAILED);
     expect($backup->error)->not->toBeNull();
+    // Il checkpoint (con la password cifrata) non deve sopravvivere
+    // a un backup terminato, nemmeno se fallito
+    expect($backup->checkpoint)->toBeNull();
 
     // Ora un nuovo backup può partire
     expect($manager->start())->toBeInstanceOf(Backup::class);
@@ -187,6 +191,129 @@ test('eliminare un backup rimuove archivio e record', function () {
 
     Storage::disk('backups')->assertMissing($filename);
     expect(Backup::where('uuid', $backup->uuid)->exists())->toBeFalse();
+});
+
+test('un backup "solo database" non contiene i file utente', function () {
+    $manager = makeManager();
+    $backup = runToCompletion($manager, $manager->start(null, ['type' => Backup::TYPE_DB_ONLY]));
+
+    expect($backup->status)->toBe(BackupStatus::COMPLETED);
+    expect($backup->type)->toBe(Backup::TYPE_DB_ONLY);
+
+    $zip = new ZipArchive;
+    expect($zip->open(Storage::disk('backups')->path($backup->filename)))->toBeTrue();
+
+    $entries = [];
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entries[] = $zip->getNameIndex($i);
+    }
+
+    $zip->close();
+
+    // Solo dump e manifest: nessun file utente, nessun .env
+    expect($entries)->toContain('db/database.sql');
+    expect($entries)->toContain('manifest.json');
+    expect(implode("\n", $entries))->not->toContain('files/');
+
+    expect($backup->manifest['contents'])->toBe(Backup::TYPE_DB_ONLY);
+    expect($backup->manifest['env_file'])->toBeNull();
+    expect($backup->manifest['files']['count'])->toBe(0);
+});
+
+test('un backup cifrato è illeggibile senza password e leggibile con quella giusta', function () {
+    $manager = makeManager();
+    $backup = runToCompletion($manager, $manager->start(null, ['password' => 'chiave-super-segreta']));
+
+    expect($backup->status)->toBe(BackupStatus::COMPLETED);
+    expect($backup->encrypted)->toBeTrue();
+    expect($backup->manifest['encrypted'])->toBeTrue();
+    // La password (cifrata) viveva nel checkpoint, che al completamento sparisce
+    expect($backup->checkpoint)->toBeNull();
+
+    $zipPath = Storage::disk('backups')->path($backup->filename);
+
+    // Senza password: l'elenco delle entry si vede, il contenuto no
+    $zip = new ZipArchive;
+    expect($zip->open($zipPath))->toBeTrue();
+    expect($zip->getFromName('manifest.json'))->toBeFalse();
+    expect($zip->getFromName('db/database.sql'))->toBeFalse();
+    $zip->close();
+
+    // Con la password sbagliata: ancora niente
+    $zip = new ZipArchive;
+    $zip->open($zipPath);
+    $zip->setPassword('password-sbagliata');
+    expect($zip->getFromName('manifest.json'))->toBeFalse();
+    $zip->close();
+
+    // Con la password giusta: tutto leggibile e integro
+    $zip = new ZipArchive;
+    $zip->open($zipPath);
+    $zip->setPassword('chiave-super-segreta');
+    $manifest = json_decode((string) $zip->getFromName('manifest.json'), true);
+    expect($manifest['manifest_format'])->toBe(1);
+    expect($manifest['encrypted'])->toBeTrue();
+    expect((string) $zip->getFromName('db/database.sql'))->toContain('dump di prova');
+    expect((string) $zip->getFromName('files/storage/framework/testing/backup-fixture/radice.txt'))->toBe('file in radice');
+    $zip->close();
+});
+
+test('un backup cifrato interrotto riprende e resta cifrato per intero', function () {
+    $manager = makeManager();
+    $backup = $manager->start(null, ['password' => 'chiave-super-segreta', 'type' => Backup::TYPE_FULL]);
+
+    // Simula l'interruzione dopo il passaggio a DUMPING (nuova richiesta HTTP)
+    $backup->forceFill(['status' => BackupStatus::DUMPING_DATABASE])->save();
+    $resumed = runToCompletion($manager, Backup::where('uuid', $backup->uuid)->firstOrFail());
+
+    expect($resumed->status)->toBe(BackupStatus::COMPLETED);
+    expect($resumed->encrypted)->toBeTrue();
+
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('backups')->path($resumed->filename));
+
+    // OGNI entry deve risultare cifrata AES-256 (nessuna in chiaro)
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $stat = $zip->statIndex($i);
+        expect($stat['encryption_method'])->toBe(ZipArchive::EM_AES_256);
+    }
+
+    $zip->close();
+});
+
+test('la password salvata non finisce MAI dentro un backup', function () {
+    // È la garanzia centrale della cifratura: se la password viaggiasse
+    // dentro l'archivio, chiunque lo aprisse potrebbe leggerla e la
+    // protezione degli archivi che lasciano il server sarebbe inutile.
+    $store = app(BackupPasswordStore::class);
+    $store->set('chiave-super-segreta');
+
+    // Un backup NON cifrato è il caso peggiore: se contenesse la password
+    // salvata, rivelerebbe la chiave di tutti gli archivi cifrati.
+    $manager = makeManager();
+    $backup = runToCompletion($manager, $manager->start());
+
+    expect($backup->status)->toBe(BackupStatus::COMPLETED);
+
+    $zipPath = Storage::disk('backups')->path($backup->filename);
+
+    // Nessuna entry dell'archivio contiene la password né il file che la custodisce
+    $zip = new ZipArchive;
+    $zip->open($zipPath);
+
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $name = $zip->getNameIndex($i);
+        expect($name)->not->toContain('.default-password');
+        expect((string) $zip->getFromIndex($i))->not->toContain('chiave-super-segreta');
+    }
+
+    $zip->close();
+
+    // Neanche nei byte grezzi dello zip (né in chiaro né come blob cifrato col nome noto)
+    expect(file_get_contents($zipPath))->not->toContain('chiave-super-segreta');
+
+    $store->clear();
 });
 
 test('il selettore dei file esclude i percorsi configurati e non segue i symlink', function () {

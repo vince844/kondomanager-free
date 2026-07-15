@@ -15,6 +15,7 @@ use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\Backup\Support\StepBudget;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
 use Throwable;
@@ -48,8 +49,15 @@ class BackupManager
     /**
      * Crea un nuovo backup in stato PENDING. Il primo step va richiesto
      * subito dopo dal chiamante.
+     *
+     * Opzioni supportate:
+     * - type: Backup::TYPE_FULL (default) oppure Backup::TYPE_DB_ONLY
+     * - password: se presente, l'archivio viene cifrato AES-256. La password
+     *   vive solo per la durata del backup, cifrata con l'APP_KEY dentro il
+     *   checkpoint (che viene azzerato al completamento): non resta mai in
+     *   chiaro nel database.
      */
-    public function start(?User $user = null): Backup
+    public function start(?User $user = null, array $options = []): Backup
     {
         $this->failStaleBackups();
         $this->cleanupOrphanTmpDirs();
@@ -58,14 +66,47 @@ class BackupManager
             throw new BackupInProgressException('Un altro backup è già in esecuzione.');
         }
 
-        $backup = Backup::create([
-            'status' => BackupStatus::PENDING,
-            'disk' => config('backup.disk', 'backups'),
-            'created_by' => $user?->id,
-            'started_at' => now(),
-            'progress' => ['percent' => 0, 'phase' => BackupStatus::PENDING->value, 'detail' => null],
-            'checkpoint' => [],
-        ]);
+        $type = $options['type'] ?? Backup::TYPE_FULL;
+        $password = $options['password'] ?? null;
+
+        if (! in_array($type, [Backup::TYPE_FULL, Backup::TYPE_DB_ONLY], true)) {
+            throw new RuntimeException("Tipo di backup [{$type}] non valido.");
+        }
+
+        $checkpoint = [];
+
+        if ($password !== null && $password !== '') {
+            $checkpoint['password_enc'] = Crypt::encryptString($password);
+        }
+
+        // Il lock serializza il controllo "c'è già un backup in corso?" e la
+        // creazione: due store() simultanei non possono creare due backup.
+        $startLock = Cache::lock('backup:start', 15);
+
+        try {
+            $startLock->block(5);
+        } catch (Throwable) {
+            throw new BackupInProgressException('Un altro backup sta partendo in questo momento.');
+        }
+
+        try {
+            if ($this->runningBackup() !== null) {
+                throw new BackupInProgressException('Un altro backup è già in esecuzione.');
+            }
+
+            $backup = Backup::create([
+                'status' => BackupStatus::PENDING,
+                'type' => $type,
+                'encrypted' => isset($checkpoint['password_enc']),
+                'disk' => config('backup.disk', 'backups'),
+                'created_by' => $user?->id,
+                'started_at' => now(),
+                'progress' => ['percent' => 0, 'phase' => BackupStatus::PENDING->value, 'detail' => null],
+                'checkpoint' => $checkpoint,
+            ]);
+        } finally {
+            $startLock->release();
+        }
 
         File::ensureDirectoryExists($this->tmpDir($backup));
 
@@ -116,20 +157,47 @@ class BackupManager
 
     /**
      * Elimina un backup: archivio sulla destinazione, file temporanei e record.
+     *
+     * Su un backup in corso l'eliminazione equivale all'annullamento: il lock
+     * dello step serializza con l'eventuale richiesta step in volo (fino a un
+     * intero budget), altrimenti quella richiesta potrebbe depositare un
+     * archivio orfano sulla destinazione dopo la cancellazione del record.
      */
     public function delete(Backup $backup): void
     {
-        if ($backup->filename) {
-            $destination = $this->destinations->destination();
+        $budgetSeconds = max(5, (int) config('backup.step_time_budget', 20));
+        $stepLock = Cache::lock("backup:step:{$backup->uuid}", $budgetSeconds + 60);
 
-            if ($destination->exists($backup->filename)) {
-                $destination->delete($backup->filename);
-            }
+        try {
+            $stepLock->block($budgetSeconds + 15);
+        } catch (Throwable) {
+            // Lock non ottenuto entro il timeout: si procede comunque, meglio
+            // un caso raro di file orfano che un backup impossibile da eliminare.
         }
 
-        $this->cleanupTmp($backup);
+        try {
+            // Lo step in volo potrebbe aver fatto avanzare (o completato) il
+            // backup mentre aspettavamo il lock: rileggiamo lo stato reale.
+            try {
+                $backup->refresh();
+            } catch (Throwable) {
+                return; // Record già eliminato altrove
+            }
 
-        $backup->delete();
+            if ($backup->filename) {
+                $destination = $this->destinations->destination();
+
+                if ($destination->exists($backup->filename)) {
+                    $destination->delete($backup->filename);
+                }
+            }
+
+            $this->cleanupTmp($backup);
+
+            $backup->delete();
+        } finally {
+            $stepLock->release();
+        }
 
         event(new BackupDeleted($backup));
     }
@@ -149,6 +217,9 @@ class BackupManager
                 $backup->forceFill([
                     'status' => BackupStatus::FAILED,
                     'error' => __('impostazioni.backup_error_stale'),
+                    // Il checkpoint (con l'eventuale password cifrata) non deve
+                    // sopravvivere a un backup terminato
+                    'checkpoint' => null,
                 ])->save();
 
                 $this->cleanupTmp($backup);
@@ -163,7 +234,7 @@ class BackupManager
      */
     public function cleanupOrphanTmpDirs(): void
     {
-        $tmpRoot = storage_path('app/backups/tmp');
+        $tmpRoot = $this->tmpRoot();
 
         if (! is_dir($tmpRoot)) {
             return;
@@ -252,11 +323,15 @@ class BackupManager
         $checkpoint = $backup->checkpoint ?? [];
         $zipPath = $this->tmpZipPath($backup);
         $filesJsonPath = $this->tmpDir($backup).DIRECTORY_SEPARATOR.'files.json';
+        $password = $this->archivePassword($backup);
 
         // Prima passata: enumera i file da archiviare e congela l'elenco su
         // disco (il checkpoint in DB resta piccolo, l'elenco può essere lungo).
+        // Un backup "solo database" salta del tutto la raccolta dei file.
         if (! isset($checkpoint['files'])) {
-            $collected = $this->fileSelector->collect();
+            $collected = $backup->type === Backup::TYPE_DB_ONLY
+                ? ['files' => [], 'total_bytes' => 0]
+                : $this->fileSelector->collect();
 
             File::put($filesJsonPath, json_encode($collected['files']));
 
@@ -275,17 +350,20 @@ class BackupManager
                 throw new RuntimeException('File di dump del database non trovato: il backup non può continuare.');
             }
 
-            $this->archiver->addSingleFile($zipPath, $dumpPath, 'db/'.$checkpoint['dump_file']);
-            @unlink($dumpPath);
+            $this->archiver->addSingleFile($zipPath, $dumpPath, 'db/'.$checkpoint['dump_file'], $password);
 
+            // Prima si persiste il flag, poi si elimina il file temporaneo:
+            // un'interruzione tra i due lascia solo un file orfano innocuo,
+            // l'ordine inverso renderebbe il backup non riprendibile.
             $checkpoint['dump_added'] = true;
             $backup->forceFill(['checkpoint' => $checkpoint])->save();
+            @unlink($dumpPath);
         }
 
         $files = json_decode(File::get($filesJsonPath), true) ?? [];
         $state = $checkpoint['archive'] ?? [];
 
-        $done = $this->archiver->archiveStep($zipPath, $files, $state, $budget);
+        $done = $this->archiver->archiveStep($zipPath, $files, $state, $budget, $password);
 
         $checkpoint['archive'] = $state;
 
@@ -316,7 +394,12 @@ class BackupManager
             $checkpoint['files'] ?? ['count' => 0, 'bytes' => 0],
         );
 
-        $this->archiver->addFromString($zipPath, 'manifest.json', (string) json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        $this->archiver->addFromString(
+            $zipPath,
+            'manifest.json',
+            (string) json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            $this->archivePassword($backup)
+        );
 
         $filename = sprintf(
             '%s-%s-%s.zip',
@@ -355,6 +438,9 @@ class BackupManager
         $backup->forceFill([
             'status' => BackupStatus::FAILED,
             'error' => mb_substr($e->getMessage(), 0, 1000),
+            // Un backup fallito non è riprendibile: il checkpoint (con
+            // l'eventuale password cifrata) non deve restare nel database
+            'checkpoint' => null,
         ])->save();
 
         event(new BackupFailed($backup));
@@ -424,13 +510,34 @@ class BackupManager
         return min(1.0, ((int) ($checkpoint['archive']['bytes_done'] ?? 0)) / $total);
     }
 
+    /**
+     * Password dell'archivio per il backup in corso, se cifrato.
+     * Vive cifrata con l'APP_KEY nel checkpoint e sparisce col checkpoint
+     * stesso al completamento (o alla cancellazione) del backup.
+     */
+    private function archivePassword(Backup $backup): ?string
+    {
+        $encrypted = $backup->checkpoint['password_enc'] ?? null;
+
+        if ($encrypted === null) {
+            return null;
+        }
+
+        return Crypt::decryptString($encrypted);
+    }
+
     private function tmpDir(Backup $backup): string
     {
-        return storage_path('app/backups/tmp/'.$backup->uuid);
+        return $this->tmpRoot().'/'.$backup->uuid;
     }
 
     private function tmpZipPath(Backup $backup): string
     {
-        return storage_path('app/backups/tmp/'.$backup->uuid.'.zip');
+        return $this->tmpRoot().'/'.$backup->uuid.'.zip';
+    }
+
+    private function tmpRoot(): string
+    {
+        return config('backup.tmp_path') ?: storage_path('app/backups/tmp');
     }
 }

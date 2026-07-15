@@ -21,9 +21,12 @@ class BackupPreflight
     /**
      * @return array{
      *     ok: bool,
+     *     ok_db_only: bool,
      *     checks: array<int, array{key: string, ok: bool, detail: array}>,
      *     estimated_bytes: int,
-     *     free_bytes: ?int
+     *     estimated_db_bytes: int,
+     *     free_bytes: ?int,
+     *     encryption_supported: bool
      * }
      */
     public function run(): array
@@ -32,7 +35,8 @@ class BackupPreflight
 
         // Estensione zip
         $zipLoaded = extension_loaded('zip') && class_exists(\ZipArchive::class);
-        $checks[] = ['key' => 'zip_extension', 'ok' => $zipLoaded, 'detail' => []];
+        $aes256Supported = $zipLoaded && method_exists(\ZipArchive::class, 'setEncryptionName');
+        $checks[] = ['key' => 'zip_extension', 'ok' => $zipLoaded, 'detail' => ['aes256_supported' => $aes256Supported]];
 
         // Driver database supportato
         try {
@@ -54,11 +58,13 @@ class BackupPreflight
             $writable = false;
         }
 
-        $checks[] = ['key' => 'dir_writable', 'ok' => $writable, 'detail' => []];
+        $checks[] = ['key' => 'dir_writable', 'ok' => $writable, 'detail' => ['path' => 'storage/app/backups']];
 
         // Stima dello spazio richiesto vs spazio libero
-        $estimated = $this->estimateDatabaseBytes($driver) + $this->estimateFilesBytes();
-        $required = (int) ceil($estimated * (float) config('backup.free_space_margin', 1.5));
+        $margin = (float) config('backup.free_space_margin', 1.5);
+        $databaseBytes = $this->estimateDatabaseBytes($driver);
+        $estimated = $databaseBytes + $this->estimateFilesBytes();
+        $required = (int) ceil($estimated * $margin);
         $free = $writable ? @disk_free_space($backupsRoot) : false;
         $free = $free === false ? null : (int) $free;
 
@@ -68,11 +74,27 @@ class BackupPreflight
             'detail' => ['estimated_bytes' => $estimated, 'required_bytes' => $required, 'free_bytes' => $free],
         ];
 
+        // Un backup "solo database" richiede molto meno spazio di uno completo:
+        // sarebbe assurdo negarlo proprio sui server con il disco quasi pieno,
+        // dove è l'unica opzione praticabile. Tutti i check tranne lo spazio
+        // sono identici; lo spazio viene rivalutato sulla sola stima del DB.
+        $nonSpaceOk = ! in_array(false, array_column(
+            array_filter($checks, fn (array $check) => $check['key'] !== 'disk_space'),
+            'ok'
+        ), true);
+
+        $dbOnlyRequired = (int) ceil($databaseBytes * $margin);
+
         return [
             'ok' => ! in_array(false, array_column($checks, 'ok'), true),
+            'ok_db_only' => $nonSpaceOk && ($free === null || $free > $dbOnlyRequired),
             'checks' => $checks,
             'estimated_bytes' => $estimated,
+            'estimated_db_bytes' => $databaseBytes,
             'free_bytes' => $free,
+            // Cifratura AES degli zip: richiede PHP 7.2+ con libzip crypto.
+            // Non è un check bloccante: se manca, la UI nasconde l'opzione password.
+            'encryption_supported' => $aes256Supported,
         ];
     }
 

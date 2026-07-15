@@ -74,6 +74,14 @@ return [
         'storage/app/backups',
     ],
 
+    // Tabelle di cui il dump include la STRUTTURA ma non i DATI.
+    // 'backups' contiene i checkpoint dei backup in corso (inclusa la
+    // password di cifratura, cifrata con APP_KEY) e righe che comunque
+    // punterebbero ad archivi inesistenti dopo un ripristino.
+    'dump_exclude_data' => [
+        'backups',
+    ],
+
     // File di sistema del sistema operativo, inutili al ripristino:
     // esclusi per nome ovunque si trovino.
     'exclude_filenames' => [
@@ -92,6 +100,17 @@ return [
     // potrà registrare destinazioni aggiuntive (cloud) tramite il
     // DestinationManager senza toccare questa configurazione.
     'disk' => 'backups',
+
+    // File in cui è custodita (cifrata con APP_KEY) la password di protezione
+    // dei backup. Vive dentro la cartella esclusa dagli archivi, così la
+    // password non finisce mai dentro un backup. I test lo ridefiniscono per
+    // non toccare il file reale (vedi Tests\TestCase).
+    'password_file' => storage_path('app/backups/.default-password'),
+
+    // Radice dei file temporanei di lavoro (dump parziali, zip in
+    // costruzione). Anche questa è ridefinita dai test, così i processi
+    // paralleli non si cancellano i temporanei a vicenda.
+    'tmp_path' => storage_path('app/backups/tmp'),
 
     'filename_prefix' => 'kondomanager-backup',
 

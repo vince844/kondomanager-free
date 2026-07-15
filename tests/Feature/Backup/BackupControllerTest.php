@@ -5,6 +5,7 @@ use App\Enums\BackupStatus;
 use App\Enums\Permission;
 use App\Models\Backup;
 use App\Models\User;
+use App\Services\Backup\BackupPasswordStore;
 use App\Settings\BackupSettings;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -31,6 +32,10 @@ function backupFixture(string $relative = ''): string
 beforeEach(function () {
     Storage::fake('backups');
 
+    // La password salvata vive in un file su percorso reale (non sul disco
+    // fake): va azzerata a ogni test per non trascinare stato tra i casi.
+    app(BackupPasswordStore::class)->clear();
+
     $this->app->bind(DatabaseDumperInterface::class, fn () => new FakeBackupDumper);
 
     // I permessi devono esistere come righe anche per i test "senza permesso":
@@ -50,8 +55,9 @@ beforeEach(function () {
 });
 
 afterEach(function () {
+    app(BackupPasswordStore::class)->clear();
     File::deleteDirectory(backupFixture());
-    File::deleteDirectory(storage_path('app/backups/tmp'));
+    File::deleteDirectory(config('backup.tmp_path'));
 });
 
 test('un ospite viene rediretto al login', function () {
@@ -164,7 +170,7 @@ test('con i backup disabilitati (demo/gestito) tutte le rotte rispondono 404 e l
     $this->actingAs($admin)->postJson('/impostazioni/backups')->assertNotFound();
     $this->actingAs($admin)->post('/impostazioni/backups/settings', ['retention_keep_last' => 3])->assertNotFound();
 
-    $backup = Backup::create(['status' => \App\Enums\BackupStatus::COMPLETED, 'filename' => 'x.zip']);
+    $backup = Backup::create(['status' => BackupStatus::COMPLETED, 'filename' => 'x.zip']);
     $this->actingAs($admin)->postJson("/impostazioni/backups/{$backup->uuid}/step")->assertNotFound();
     $this->actingAs($admin)->get("/impostazioni/backups/{$backup->uuid}/download")->assertNotFound();
     $this->actingAs($admin)->delete("/impostazioni/backups/{$backup->uuid}")->assertNotFound();
@@ -185,11 +191,138 @@ test('con i backup abilitati la hub espone backups_enabled true e lo stato di es
             ->where('backup_running', false));
 
     // Con un backup in corso la hub lo segnala (badge sulla card)
-    Backup::create(['status' => \App\Enums\BackupStatus::DUMPING_DATABASE, 'started_at' => now()]);
+    Backup::create(['status' => BackupStatus::DUMPING_DATABASE, 'started_at' => now()]);
 
     $this->actingAs(backupAdmin())
         ->get('/impostazioni')
         ->assertInertia(fn ($page) => $page->where('backup_running', true));
+});
+
+test('la validazione del tipo di backup rifiuta valori sconosciuti', function () {
+    $this->actingAs(backupAdmin())
+        ->postJson('/impostazioni/backups', ['type' => 'inventato'])
+        ->assertStatus(422)
+        ->assertJsonValidationErrors('type');
+
+    expect(Backup::count())->toBe(0);
+});
+
+test('la password di protezione viene validata, salvata e rimossa', function () {
+    $admin = backupAdmin();
+    $store = app(BackupPasswordStore::class);
+
+    // La password si imposta insieme alle altre impostazioni (un solo
+    // pulsante "Salva impostazioni" per tutta la card). Troppo corta:
+    $this->actingAs($admin)
+        ->from('/impostazioni/backups')
+        ->post('/impostazioni/backups/settings', ['retention_keep_last' => 5, 'password' => 'corta', 'password_confirmation' => 'corta'])
+        ->assertSessionHasErrors('password');
+
+    // Conferma non coincidente: protezione dal typo che renderebbe
+    // irrecuperabili tutti i backup futuri
+    $this->actingAs($admin)
+        ->from('/impostazioni/backups')
+        ->post('/impostazioni/backups/settings', ['retention_keep_last' => 5, 'password' => 'password-lunga-1', 'password_confirmation' => 'password-lunga-2'])
+        ->assertSessionHasErrors('password');
+
+    expect($store->has())->toBeFalse();
+
+    // Valida: salvata e recuperabile in chiaro solo lato server
+    $this->actingAs($admin)
+        ->from('/impostazioni/backups')
+        ->post('/impostazioni/backups/settings', [
+            'retention_keep_last' => 5,
+            'password' => 'chiave-super-segreta',
+            'password_confirmation' => 'chiave-super-segreta',
+        ])
+        ->assertRedirect('/impostazioni/backups');
+
+    expect($store->has())->toBeTrue();
+    expect($store->get())->toBe('chiave-super-segreta');
+
+    // La pagina espone solo SE è impostata, mai il valore
+    $this->actingAs($admin)
+        ->get('/impostazioni/backups')
+        ->assertInertia(fn ($page) => $page->where('backup_has_password', true));
+
+    // Il salvataggio della sola retention NON tocca la password salvata
+    $this->actingAs($admin)
+        ->from('/impostazioni/backups')
+        ->post('/impostazioni/backups/settings', ['retention_keep_last' => 7])
+        ->assertRedirect('/impostazioni/backups');
+
+    expect($store->get())->toBe('chiave-super-segreta');
+
+    // Rimozione (endpoint dedicato con conferma)
+    $this->actingAs($admin)
+        ->from('/impostazioni/backups')
+        ->post('/impostazioni/backups/password', ['remove' => true])
+        ->assertRedirect('/impostazioni/backups');
+
+    expect($store->has())->toBeFalse();
+});
+
+test('la password salvata non arriva mai al frontend', function () {
+    app(BackupPasswordStore::class)->set('chiave-super-segreta');
+
+    $response = $this->actingAs(backupAdmin())->get('/impostazioni/backups');
+
+    $response->assertOk();
+    // Il valore in chiaro non deve comparire da nessuna parte nella pagina
+    expect($response->getContent())->not->toContain('chiave-super-segreta');
+});
+
+test('protect senza password salvata non crea un backup in chiaro silenziosamente', function () {
+    $response = $this->actingAs(backupAdmin())->postJson('/impostazioni/backups', ['protect' => true]);
+
+    $response->assertStatus(422);
+    expect(Backup::count())->toBe(0);
+});
+
+test('senza flag protect il backup parte in chiaro anche con una password salvata', function () {
+    app(BackupPasswordStore::class)->set('chiave-super-segreta');
+
+    $response = $this->actingAs(backupAdmin())->postJson('/impostazioni/backups');
+
+    $response->assertOk();
+    expect($response->json('backup.encrypted'))->toBeFalse();
+});
+
+test('il flusso completo di un backup cifrato solo-database funziona da HTTP', function () {
+    $admin = backupAdmin();
+
+    // La password si imposta una volta sola nelle impostazioni
+    app(BackupPasswordStore::class)->set('chiave-super-segreta');
+
+    $response = $this->actingAs($admin)->postJson('/impostazioni/backups', [
+        'type' => 'db_only',
+        'protect' => true,
+    ]);
+    $response->assertOk();
+
+    $uuid = $response->json('backup.uuid');
+    $status = $response->json('backup.status');
+    expect($response->json('backup.type'))->toBe('db_only');
+    expect($response->json('backup.encrypted'))->toBeTrue();
+
+    $guard = 0;
+
+    while (! in_array($status, ['completed', 'failed'], true) && $guard < 10) {
+        $status = $this->actingAs($admin)->postJson("/impostazioni/backups/{$uuid}/step")->json('backup.status');
+        $guard++;
+    }
+
+    expect($status)->toBe('completed');
+
+    $backup = Backup::where('uuid', $uuid)->firstOrFail();
+    $zip = new ZipArchive;
+    $zip->open(Storage::disk('backups')->path($backup->filename));
+
+    // Cifrato: senza password il manifest non si legge
+    expect($zip->getFromName('manifest.json'))->toBeFalse();
+    $zip->setPassword('chiave-super-segreta');
+    expect(json_decode((string) $zip->getFromName('manifest.json'), true)['contents'])->toBe('db_only');
+    $zip->close();
 });
 
 test('le impostazioni di retention vengono validate e salvate', function () {

@@ -6,18 +6,21 @@ import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import Alert from '@/components/Alert.vue'
 import BackupGuide from '@/components/guides/BackupGuide.vue'
+import { Separator } from '@/components/ui/separator'
 import { trans } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import type { BackupItem, BackupPreflight } from '@/types/backups'
 import {
   DatabaseBackup, FileArchive, ShieldAlert, ArchiveRestore, Download, Trash2,
-  Copy, Check, CheckCircle2, AlertCircle, Loader2, XCircle, Play, BookOpen
+  Copy, Check, CheckCircle2, AlertCircle, Loader2, XCircle, Play, BookOpen,
+  Lock, AlertTriangle, Database, Eye, EyeOff, History, Minus, Plus
 } from 'lucide-vue-next'
 
 const showGuide = ref(false)
@@ -27,6 +30,7 @@ const props = defineProps<{
   runningBackup: BackupItem | null;
   preflight: BackupPreflight;
   retention_keep_last: number;
+  backup_has_password: boolean;
 }>()
 
 const page = usePage()
@@ -130,6 +134,17 @@ async function pump() {
   }
 }
 
+/* Opzioni di creazione: tipo di backup e protezione con la password salvata.
+   Con una password impostata la cifratura parte attiva di default: chi la
+   configura una volta si aspetta backup protetti senza altri gesti. */
+const backupType = ref<'full' | 'db_only'>('full')
+const protectWithPassword = ref(props.backup_has_password === true)
+
+// La protezione è disponibile solo se il server supporta la cifratura E
+// l'amministratore ha salvato una password nelle impostazioni sotto.
+const hasSavedPassword = computed(() => props.backup_has_password === true)
+const canProtect = computed(() => props.preflight.encryption_supported && hasSavedPassword.value)
+
 async function createBackup() {
   if (creating.value || isRunning(running.value)) return
 
@@ -138,7 +153,10 @@ async function createBackup() {
   localSuccess.value = null
 
   try {
-    const { data } = await axios.post(route('impostazioni.backups.store'))
+    const { data } = await axios.post(route('impostazioni.backups.store'), {
+      type: backupType.value,
+      protect: protectWithPassword.value && canProtect.value,
+    })
     running.value = data.backup
     pump()
   } catch (error: any) {
@@ -196,14 +214,77 @@ const confirmDelete = () => {
 }
 
 /* ------------------------------------------------------------------
- | Retention
+ | Impostazioni backup: retention + password di protezione in un'unica
+ | card con un solo "Salva impostazioni". La password è impostata una
+ | volta sola e riusata per tutti i backup cifrati; il valore reale non
+ | arriva mai al client (solo il booleano backup_has_password).
  | ------------------------------------------------------------------ */
-const retentionForm = useForm({
+const settingsForm = useForm({
   retention_keep_last: props.retention_keep_last,
+  password: '',
+  password_confirmation: '',
 })
 
-const saveRetention = () => {
-  retentionForm.post(route('impostazioni.backups.settings'), { preserveScroll: true })
+const editingPassword = ref(false)
+const showPassword = ref(false)
+const passwordSubmitAttempted = ref(false)
+
+const passwordError = computed<string | null>(() => {
+  if (!editingPassword.value || !passwordSubmitAttempted.value) return null
+  if (settingsForm.password.length < 8) return trans('impostazioni.label.backup_password_error_min')
+  return settingsForm.errors.password ?? null
+})
+
+const confirmError = computed<string | null>(() => {
+  if (!editingPassword.value || !passwordSubmitAttempted.value) return null
+  if (settingsForm.password_confirmation !== settingsForm.password) return trans('impostazioni.label.backup_password_error_mismatch')
+  return null
+})
+
+const startEditingPassword = () => {
+  editingPassword.value = true
+  showPassword.value = false
+  passwordSubmitAttempted.value = false
+  settingsForm.password = ''
+  settingsForm.password_confirmation = ''
+}
+
+const cancelEditingPassword = () => {
+  editingPassword.value = false
+  showPassword.value = false
+  passwordSubmitAttempted.value = false
+  settingsForm.password = ''
+  settingsForm.password_confirmation = ''
+  settingsForm.clearErrors('password')
+}
+
+const saveSettings = () => {
+  // Se il form password è aperto, la password è parte del salvataggio e
+  // va validata inline PRIMA di inviare (una password sbagliata rende
+  // irrecuperabili i backup futuri)
+  if (editingPassword.value) {
+    passwordSubmitAttempted.value = true
+    if (settingsForm.password.length < 8 || settingsForm.password_confirmation !== settingsForm.password) return
+  }
+
+  settingsForm
+    .transform(data => editingPassword.value ? data : { retention_keep_last: data.retention_keep_last })
+    .post(route('impostazioni.backups.settings'), {
+      preserveScroll: true,
+      onSuccess: () => cancelEditingPassword(),
+    })
+}
+
+const isRemovePasswordDialogOpen = ref(false)
+
+const removePassword = () => {
+  router.post(route('impostazioni.backups.password'), { remove: true }, {
+    preserveScroll: true,
+    onSuccess: () => {
+      protectWithPassword.value = false
+      cancelEditingPassword()
+    },
+  })
 }
 
 /* ------------------------------------------------------------------
@@ -270,7 +351,7 @@ const statusBadgeClass = (status: string) => {
         <template #actions>
           <Button variant="outline" size="sm" @click="showGuide = true" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200">
             <BookOpen class="w-4 h-4" />
-            Guida al ripristino
+            {{ trans('impostazioni.actions.restore_guide') }}
           </Button>
         </template>
       </PageHeaderGuide>
@@ -304,8 +385,14 @@ const statusBadgeClass = (status: string) => {
               <AlertCircle v-else class="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
               <div class="min-w-0">
                 <div class="text-xs font-medium">{{ preflightLabel(check.key) }}</div>
+                <div v-if="check.key === 'zip_extension'" class="text-[11px] text-muted-foreground">
+                  {{ trans(check.detail.aes256_supported ? 'impostazioni.label.backup_preflight_aes_supported' : 'impostazioni.label.backup_preflight_aes_unsupported') }}
+                </div>
                 <div v-if="check.key === 'db_driver' && check.detail.driver" class="text-[11px] text-muted-foreground uppercase font-mono">
                   {{ check.detail.driver }}
+                </div>
+                <div v-if="check.key === 'dir_writable' && check.detail.path" class="text-[11px] text-muted-foreground font-mono">
+                  {{ check.detail.path }}
                 </div>
                 <div v-if="check.key === 'disk_space'" class="text-[11px] text-muted-foreground">
                   {{ trans('impostazioni.label.backup_estimated_size') }}: ~{{ humanSize(preflight.estimated_bytes) }}
@@ -319,89 +406,148 @@ const statusBadgeClass = (status: string) => {
         </CardContent>
       </Card>
 
-      <!-- Creazione backup -->
-      <Card>
-        <CardContent class="pt-6">
-          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h3 class="text-sm font-semibold">{{ trans('impostazioni.label.backup_create_title') }}</h3>
-              <p class="text-sm text-muted-foreground mt-1 max-w-2xl">
-                {{ trans('impostazioni.label.backup_create_help') }}
-              </p>
-            </div>
+      <!-- Colonna principale: creazione backup + elenco. Colonna laterale:
+           impostazioni (retention + password). Il pulsante "Crea backup" vive
+           sotto la tabella (non sopra le card di scelta) e resta sempre
+           raggiungibile perché la tabella scorre al suo interno. -->
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-stretch">
+        <div class="flex flex-col gap-6 lg:flex-1 lg:min-w-0">
+          <!-- Creazione backup -->
+          <Card>
+            <CardContent class="pt-6">
+              <div>
+                <h3 class="text-sm font-semibold flex items-center gap-2">
+                  <DatabaseBackup class="w-4 h-4 text-muted-foreground" />
+                  {{ trans('impostazioni.label.backup_create_title') }}
+                </h3>
+                <p class="text-sm text-muted-foreground mt-1">
+                  {{ trans('impostazioni.label.backup_create_help') }}
+                </p>
+              </div>
 
-            <div class="flex items-center gap-2 shrink-0">
-              <template v-if="isRunning(running)">
-                <Button v-if="!polling" variant="outline" size="sm" @click="pump">
-                  <Play class="w-4 h-4 mr-2" />
-                  {{ trans('impostazioni.actions.resume_backup') }}
-                </Button>
-                <Button variant="outline" size="sm" class="text-red-600 hover:text-red-700" @click="askDelete(running!)">
-                  <XCircle class="w-4 h-4 mr-2" />
-                  {{ trans('impostazioni.actions.cancel_backup') }}
-                </Button>
-              </template>
+              <!-- Opzioni di creazione (nascoste durante l'esecuzione). Il tipo è una
+                   scelta esclusiva, la protezione è indipendente e si combina con
+                   entrambi i tipi: restano due gruppi distinti con etichetta propria,
+                   allineati sulla stessa riga. -->
+              <div v-if="!isRunning(running)" class="mt-5 flex flex-col lg:flex-row lg:items-stretch gap-4">
+                <!-- Tipo di backup -->
+                <div class="flex flex-col flex-1">
+                  <div class="text-xs font-semibold text-muted-foreground mb-2">{{ trans('impostazioni.label.backup_type_title') }}</div>
+                  <div class="grid gap-2 sm:grid-cols-2 flex-1">
+                    <button
+                      type="button"
+                      class="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors h-full"
+                      :class="backupType === 'full' ? 'border-primary bg-muted/60' : 'border-input hover:bg-muted/40'"
+                      @click="backupType = 'full'"
+                    >
+                      <FileArchive class="w-4 h-4 mt-0.5 shrink-0" :class="backupType === 'full' ? 'text-primary' : 'text-muted-foreground'" />
+                      <span>
+                        <span class="block text-sm font-medium">{{ trans('impostazioni.label.backup_type_full') }}</span>
+                        <span class="block text-[11px] text-muted-foreground mt-0.5">{{ trans('impostazioni.label.backup_type_full_desc') }}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      class="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors h-full"
+                      :class="backupType === 'db_only' ? 'border-primary bg-muted/60' : 'border-input hover:bg-muted/40'"
+                      @click="backupType = 'db_only'"
+                    >
+                      <Database class="w-4 h-4 mt-0.5 shrink-0" :class="backupType === 'db_only' ? 'text-primary' : 'text-muted-foreground'" />
+                      <span>
+                        <span class="block text-sm font-medium">{{ trans('impostazioni.label.backup_type_db') }}</span>
+                        <span class="block text-[11px] text-muted-foreground mt-0.5">{{ trans('impostazioni.label.backup_type_db_desc') }}</span>
+                      </span>
+                    </button>
+                  </div>
+                </div>
 
-              <Button
-                v-else
-                :disabled="creating || !preflight.ok"
-                @click="createBackup"
-              >
-                <Loader2 v-if="creating" class="w-4 h-4 mr-2 animate-spin" />
-                <DatabaseBackup v-else class="w-4 h-4 mr-2" />
-                {{ trans('impostazioni.actions.create_backup') }}
-              </Button>
-            </div>
-          </div>
+                <!-- Protezione con la password salvata (solo se il server la supporta) -->
+                <div v-if="preflight.encryption_supported" class="flex flex-col lg:w-72">
+                  <div class="text-xs font-semibold text-muted-foreground mb-2">{{ trans('impostazioni.label.backup_protect_title') }}</div>
+                  <div
+                    class="flex items-start gap-3 rounded-lg border p-3 flex-1 transition-colors"
+                    :class="[
+                      protectWithPassword && hasSavedPassword ? 'border-primary bg-muted/60' : 'border-input',
+                      hasSavedPassword ? 'cursor-pointer hover:bg-muted/40' : '',
+                    ]"
+                    @click="hasSavedPassword && (protectWithPassword = !protectWithPassword)"
+                  >
+                    <Lock class="w-4 h-4 mt-0.5 shrink-0" :class="protectWithPassword && hasSavedPassword ? 'text-primary' : 'text-muted-foreground'" />
+                    <span class="flex-1">
+                      <span class="block text-sm font-medium" :class="!hasSavedPassword ? 'text-muted-foreground' : ''">
+                        {{ trans('impostazioni.label.backup_protect_toggle') }}
+                      </span>
+                      <span class="block text-[11px] text-muted-foreground mt-0.5">
+                        {{ hasSavedPassword ? trans('impostazioni.label.backup_protect_card_desc') : trans('impostazioni.label.backup_protect_no_password_hint') }}
+                      </span>
+                    </span>
+                    <Switch v-model="protectWithPassword" :disabled="!hasSavedPassword" class="mt-0.5" @click.stop />
+                  </div>
+                </div>
+              </div>
 
-          <!-- Barra di progresso -->
-          <div v-if="isRunning(running)" class="mt-5">
-            <div class="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-              <span class="flex items-center gap-2">
-                <Loader2 class="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                {{ phaseLabel(running!.status) }}
-                <span v-if="running!.progress?.detail" class="font-mono text-[11px]">({{ running!.progress.detail }})</span>
-              </span>
-              <span class="font-semibold text-foreground">{{ progressPercent }}%</span>
-            </div>
-            <div class="h-2 w-full rounded-full bg-muted overflow-hidden">
-              <div
-                class="h-full rounded-full bg-primary transition-all duration-500"
-                :style="{ width: `${progressPercent}%` }"
-              />
-            </div>
-            <p class="text-[11px] text-muted-foreground mt-2">
-              {{ trans('impostazioni.label.backup_in_progress_help') }}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+              <!-- Barra di progresso -->
+              <div v-if="isRunning(running)" class="mt-5">
+                <div class="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                  <span class="flex items-center gap-2">
+                    <Loader2 class="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                    {{ phaseLabel(running!.status) }}
+                    <span v-if="running!.progress?.detail" class="font-mono text-[11px]">({{ running!.progress.detail }})</span>
+                  </span>
+                  <span class="font-semibold text-foreground">{{ progressPercent }}%</span>
+                </div>
+                <div class="h-2 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    class="h-full rounded-full bg-primary transition-all duration-500"
+                    :style="{ width: `${progressPercent}%` }"
+                  />
+                </div>
+                <p class="text-[11px] text-muted-foreground mt-2">
+                  {{ trans('impostazioni.label.backup_in_progress_help') }}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
-      <!-- Elenco backup -->
-      <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white dark:bg-card">
-        <div class="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow class="bg-muted/50">
-                <TableHead class="w-[150px]">{{ trans('impostazioni.label.backup_status') }}</TableHead>
-                <TableHead>{{ trans('impostazioni.label.backup_date') }}</TableHead>
-                <TableHead class="hidden md:table-cell">{{ trans('impostazioni.label.backup_size') }}</TableHead>
-                <TableHead class="hidden lg:table-cell">SHA-256</TableHead>
-                <TableHead class="text-right">{{ trans('impostazioni.label.backup_actions') }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <!-- Elenco backup: altezza limitata con scroll interno (ultimi 3-4
+               visibili, gli altri con scorrimento), così il pulsante di
+               creazione sotto resta sempre raggiungibile senza scroll di
+               pagina qualunque sia il numero di backup conservati -->
+          <div class="w-full shadow ring-1 ring-black/5 md:rounded-lg p-4 bg-white dark:bg-card">
+            <div class="rounded-md border max-h-[280px] overflow-y-auto">
+              <table class="w-full caption-bottom text-sm">
+                <TableHeader class="sticky top-0 z-10 bg-background">
+                  <TableRow class="bg-muted/50">
+                    <TableHead class="w-[150px]">{{ trans('impostazioni.label.backup_status') }}</TableHead>
+                    <TableHead>{{ trans('impostazioni.label.backup_date') }}</TableHead>
+                    <TableHead class="hidden md:table-cell">{{ trans('impostazioni.label.backup_size') }}</TableHead>
+                    <TableHead class="hidden xl:table-cell">SHA-256</TableHead>
+                    <TableHead class="text-right">{{ trans('impostazioni.label.backup_actions') }}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
               <!-- Riga "live" del backup in corso -->
               <TableRow v-if="isRunning(running)" class="bg-muted/40 dark:bg-muted/10">
                 <TableCell class="p-2">
-                  <Badge variant="secondary" class="rounded-md whitespace-nowrap text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
-                    <Loader2 class="w-3 h-3 mr-1 animate-spin" />
-                    {{ phaseLabel(running!.status) }}
-                  </Badge>
+                  <span class="inline-flex items-center gap-1.5">
+                    <Badge variant="secondary" class="rounded-md whitespace-nowrap text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                      <Loader2 class="w-3 h-3 mr-1 animate-spin" />
+                      {{ phaseLabel(running!.status) }}
+                    </Badge>
+                    <Lock
+                      v-if="running!.encrypted"
+                      class="w-3.5 h-3.5 shrink-0 text-muted-foreground"
+                      :title="trans('impostazioni.label.backup_encrypted_badge')"
+                    />
+                  </span>
                 </TableCell>
                 <TableCell class="text-sm">
                   <div class="font-medium">{{ formatDate(running!.created_at) }}</div>
                   <div v-if="running!.created_by" class="text-[11px] text-muted-foreground">{{ running!.created_by }}</div>
+                  <div v-if="running!.type === 'db_only'" class="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <Database class="w-3 h-3" />
+                    {{ trans('impostazioni.label.backup_db_only_label') }}
+                  </div>
                   <div class="mt-2 flex items-center gap-2 max-w-[260px]">
                     <div class="h-1.5 flex-1 rounded-full bg-muted overflow-hidden">
                       <div
@@ -431,13 +577,24 @@ const statusBadgeClass = (status: string) => {
 
               <TableRow v-for="backup in tableBackups" :key="backup.uuid" class="hover:bg-muted/50">
                 <TableCell class="p-2">
-                  <Badge variant="secondary" class="rounded-md whitespace-nowrap text-[10px] font-medium" :class="statusBadgeClass(backup.status)">
-                    {{ phaseLabel(backup.status) }}
-                  </Badge>
+                  <span class="inline-flex items-center gap-1.5">
+                    <Badge variant="secondary" class="rounded-md whitespace-nowrap text-[10px] font-medium" :class="statusBadgeClass(backup.status)">
+                      {{ phaseLabel(backup.status) }}
+                    </Badge>
+                    <Lock
+                      v-if="backup.encrypted"
+                      class="w-3.5 h-3.5 shrink-0 text-muted-foreground"
+                      :title="trans('impostazioni.label.backup_encrypted_badge')"
+                    />
+                  </span>
                 </TableCell>
                 <TableCell class="text-sm">
                   <div class="font-medium">{{ formatDate(backup.created_at) }}</div>
                   <div v-if="backup.created_by" class="text-[11px] text-muted-foreground">{{ backup.created_by }}</div>
+                  <div v-if="backup.type === 'db_only'" class="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <Database class="w-3 h-3" />
+                    {{ trans('impostazioni.label.backup_db_only_label') }}
+                  </div>
                   <div v-if="backup.status === 'failed' && backup.error" class="text-[11px] text-red-600 max-w-[300px] truncate" :title="backup.error">
                     {{ backup.error }}
                   </div>
@@ -490,7 +647,7 @@ const statusBadgeClass = (status: string) => {
                 </TableCell>
               </TableRow>
             </TableBody>
-          </Table>
+              </table>
         </div>
 
         <div v-if="backups.links && backups.links.length > 3" class="flex items-center justify-between pt-4">
@@ -510,40 +667,209 @@ const statusBadgeClass = (status: string) => {
             />
           </div>
         </div>
-      </div>
 
-      <!-- Conservazione -->
-      <form @submit.prevent="saveRetention">
-        <Card>
-          <CardContent class="pt-6">
-            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h3 class="text-sm font-semibold">{{ trans('impostazioni.label.backup_retention') }}</h3>
-                <p class="text-sm text-muted-foreground mt-1 max-w-2xl">
-                  {{ trans('impostazioni.label.backup_retention_help') }}
-                </p>
-                <p v-if="retentionForm.errors.retention_keep_last" class="text-sm text-red-500 mt-1">
-                  {{ retentionForm.errors.retention_keep_last }}
-                </p>
-              </div>
-              <div class="w-28 shrink-0">
-                <Input
-                  v-model.number="retentionForm.retention_keep_last"
-                  type="number"
-                  min="1"
-                  max="50"
-                />
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
-            <Button :disabled="retentionForm.processing">
-              <span v-if="retentionForm.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
-              {{ trans('impostazioni.actions.save_settings') }}
+        <!-- Azione di creazione: sotto la tabella, sempre raggiungibile -->
+        <div class="flex items-center justify-end gap-2 mt-4 pt-4 border-t">
+          <template v-if="isRunning(running)">
+            <Button v-if="!polling" variant="outline" size="sm" @click="pump">
+              <Play class="w-4 h-4 mr-2" />
+              {{ trans('impostazioni.actions.resume_backup') }}
             </Button>
-          </CardFooter>
-        </Card>
-      </form>
+            <Button variant="outline" size="sm" class="text-red-600 hover:text-red-700" @click="askDelete(running!)">
+              <XCircle class="w-4 h-4 mr-2" />
+              {{ trans('impostazioni.actions.cancel_backup') }}
+            </Button>
+          </template>
+
+          <Button
+            v-else
+            :disabled="creating || !(backupType === 'db_only' ? preflight.ok_db_only : preflight.ok)"
+            @click="createBackup"
+          >
+            <Loader2 v-if="creating" class="w-4 h-4 mr-2 animate-spin" />
+            <DatabaseBackup v-else class="w-4 h-4 mr-2" />
+            {{ trans('impostazioni.actions.create_backup') }}
+          </Button>
+        </div>
+      </div>
+        </div>
+
+        <!-- Impostazioni: retention + password di protezione, colonna laterale.
+             Altezza allineata alla colonna di sinistra (lg:items-stretch sul
+             contenitore): il pulsante "Salva impostazioni" resta ancorato in
+             fondo, alla stessa quota del pulsante "Crea backup" a sinistra. -->
+        <div class="flex flex-col lg:w-96 lg:shrink-0">
+          <form @submit.prevent="saveSettings" class="flex flex-col flex-1">
+            <Card class="flex flex-col flex-1">
+              <CardContent class="pt-6 space-y-6 flex-1">
+                <!-- Backup da conservare -->
+                <div>
+                  <h3 class="text-sm font-semibold flex items-center gap-2">
+                    <History class="w-4 h-4 text-muted-foreground" />
+                    {{ trans('impostazioni.label.backup_retention') }}
+                  </h3>
+                  <p class="text-sm text-muted-foreground mt-1">
+                    {{ trans('impostazioni.label.backup_retention_help') }}
+                  </p>
+                  <p v-if="settingsForm.errors.retention_keep_last" class="text-sm text-red-500 mt-1">
+                    {{ settingsForm.errors.retention_keep_last }}
+                  </p>
+                  <div class="mt-2 flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      class="shadow-none"
+                      :disabled="settingsForm.retention_keep_last <= 1"
+                      @click="settingsForm.retention_keep_last = Math.max(1, (settingsForm.retention_keep_last || 1) - 1)"
+                    >
+                      <Minus class="w-3.5 h-3.5" />
+                    </Button>
+                    <Input
+                      v-model.number="settingsForm.retention_keep_last"
+                      type="number"
+                      min="1"
+                      max="50"
+                      class="h-8 w-14 text-center text-sm font-semibold shadow-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      class="shadow-none"
+                      :disabled="settingsForm.retention_keep_last >= 50"
+                      @click="settingsForm.retention_keep_last = Math.min(50, (settingsForm.retention_keep_last || 0) + 1)"
+                    >
+                      <Plus class="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <template v-if="preflight.encryption_supported">
+                  <Separator />
+
+                  <!-- Password di protezione dei backup -->
+                  <div>
+                    <h3 class="text-sm font-semibold flex items-center gap-2">
+                      <Lock class="w-4 h-4 text-muted-foreground" />
+                      {{ trans('impostazioni.label.backup_password_setting_title') }}
+                    </h3>
+                    <p class="text-sm text-muted-foreground mt-1">
+                      {{ trans('impostazioni.label.backup_password_setting_help') }}
+                    </p>
+
+                    <!-- Stato: password impostata / non impostata -->
+                    <div v-if="!editingPassword" class="mt-3">
+                      <Badge
+                        v-if="hasSavedPassword"
+                        variant="secondary"
+                        class="rounded-md whitespace-nowrap text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400"
+                      >
+                        <CheckCircle2 class="w-3 h-3 mr-1" />
+                        {{ trans('impostazioni.label.backup_password_set') }}
+                      </Badge>
+                      <Badge
+                        v-else
+                        variant="secondary"
+                        class="rounded-md whitespace-nowrap text-[10px] font-medium bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300"
+                      >
+                        <AlertCircle class="w-3 h-3 mr-1" />
+                        {{ trans('impostazioni.label.backup_password_not_set') }}
+                      </Badge>
+                    </div>
+
+                    <!-- Form impostazione / modifica (salvato dal pulsante in fondo) -->
+                    <div v-if="editingPassword" class="mt-4 space-y-3">
+                      <div class="space-y-3">
+                        <div>
+                          <label class="block text-xs font-medium text-muted-foreground mb-1">{{ trans('impostazioni.label.backup_password') }}</label>
+                          <div class="relative">
+                            <Input
+                              v-model="settingsForm.password"
+                              :type="showPassword ? 'text' : 'password'"
+                              autocomplete="new-password"
+                              class="pr-9"
+                              :class="passwordError ? 'border-red-400 focus-visible:ring-red-400' : ''"
+                              :placeholder="trans('impostazioni.placeholder.backup_password')"
+                            />
+                            <button
+                              type="button"
+                              class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground outline-none"
+                              :aria-label="trans(showPassword ? 'impostazioni.label.backup_password_hide' : 'impostazioni.label.backup_password_show')"
+                              @click="showPassword = !showPassword"
+                            >
+                              <EyeOff v-if="showPassword" class="w-4 h-4" />
+                              <Eye v-else class="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p v-if="passwordError" class="text-[11px] text-red-600 mt-1">{{ passwordError }}</p>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-muted-foreground mb-1">{{ trans('impostazioni.label.backup_password_confirm') }}</label>
+                          <div class="relative">
+                            <Input
+                              v-model="settingsForm.password_confirmation"
+                              :type="showPassword ? 'text' : 'password'"
+                              autocomplete="new-password"
+                              class="pr-9"
+                              :class="confirmError ? 'border-red-400 focus-visible:ring-red-400' : ''"
+                              :placeholder="trans('impostazioni.placeholder.backup_password')"
+                            />
+                            <button
+                              type="button"
+                              class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground outline-none"
+                              :aria-label="trans(showPassword ? 'impostazioni.label.backup_password_hide' : 'impostazioni.label.backup_password_show')"
+                              @click="showPassword = !showPassword"
+                            >
+                              <EyeOff v-if="showPassword" class="w-4 h-4" />
+                              <Eye v-else class="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p v-if="confirmError" class="text-[11px] text-red-600 mt-1">{{ confirmError }}</p>
+                        </div>
+                      </div>
+                      <div class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20">
+                        <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <p class="text-[12px] leading-relaxed text-amber-800 dark:text-amber-200/90">
+                          {{ trans('impostazioni.label.backup_password_warning') }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- Azioni password (il salvataggio passa dal pulsante in fondo) -->
+                    <div class="flex flex-wrap items-center gap-2 mt-3">
+                      <Button v-if="editingPassword" type="button" variant="outline" size="sm" @click="cancelEditingPassword">
+                        {{ trans('impostazioni.actions.cancel_backup') }}
+                      </Button>
+                      <template v-else>
+                        <Button type="button" variant="outline" size="sm" @click="startEditingPassword">
+                          {{ hasSavedPassword ? trans('impostazioni.actions.change_backup_password') : trans('impostazioni.actions.set_backup_password') }}
+                        </Button>
+                        <Button
+                          v-if="hasSavedPassword"
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          class="text-red-600 hover:text-red-700"
+                          @click="isRemovePasswordDialogOpen = true"
+                        >
+                          {{ trans('impostazioni.actions.remove_backup_password') }}
+                        </Button>
+                      </template>
+                    </div>
+                  </div>
+                </template>
+              </CardContent>
+              <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
+                <Button :disabled="settingsForm.processing">
+                  <span v-if="settingsForm.processing" class="animate-spin inline-block h-4 w-4 border-2 border-current rounded-full border-t-transparent mr-2" />
+                  {{ trans('impostazioni.actions.save_settings') }}
+                </Button>
+              </CardFooter>
+            </Card>
+          </form>
+        </div>
+      </div>
     </div>
 
     <ConfirmDialog
@@ -551,6 +877,13 @@ const statusBadgeClass = (status: string) => {
       :title="isRunning(backupToDelete) ? trans('impostazioni.confirmations.cancel_backup_title') : trans('impostazioni.confirmations.delete_backup_title')"
       :description="isRunning(backupToDelete) ? trans('impostazioni.confirmations.cancel_backup_description') : trans('impostazioni.confirmations.delete_backup_description')"
       @confirm="confirmDelete"
+    />
+
+    <ConfirmDialog
+      v-model:modelValue="isRemovePasswordDialogOpen"
+      :title="trans('impostazioni.confirmations.remove_backup_password_title')"
+      :description="trans('impostazioni.confirmations.remove_backup_password_description')"
+      @confirm="removePassword"
     />
 
     <BackupGuide v-model:open="showGuide" />

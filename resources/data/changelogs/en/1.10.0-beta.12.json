@@ -1,0 +1,9 @@
+{
+    "features": [
+        "AES-256 backup encryption: set a protection password once in the settings (with confirmation, an eye icon to reveal it and instant validation) and create encrypted archives by simply switching on 'Protect with the saved password (AES-256)'. A downloaded or stolen backup remains unreadable without the password.",
+        "The protection password never leaves the server: it is stored encrypted on the file system, never ends up inside the archives, is never in clear text in the database and is never sent to the browser. Warning: if you forget it the backup is unrecoverable — the interface reminds you at the right moment and points out that AES-encrypted zips open with 7-Zip (Windows) or Keka (Mac), not with Windows File Explorer.",
+        "New 'database only' backup type: faster and lighter because it does not include uploaded documents, ideal as a quick safety net before a delicate operation (upgrade, bulk import, year-end closing). The disk space check accounts for the smaller size, and in the list 'database only' and encrypted backups are recognisable at a glance.",
+        "Reorganised backup settings: the number of backups to keep and the protection password now live in a single card with one 'Save settings' button; inline password change and removal with confirmation.",
+        "Extra safeguards under the hood: the server refuses to create an unencrypted backup when protection is requested, the backups table enters MySQL dumps as structure only (never its working data), plus several hardenings against double starts and deletions while a step is running."
+    ]
+}

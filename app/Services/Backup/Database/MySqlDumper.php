@@ -172,7 +172,20 @@ class MySqlDumper implements DatabaseDumperInterface
                 return;
             }
 
-            $state['table'] = $this->tableMeta($pdo, $state['tables'][$index]);
+            $table = $state['tables'][$index];
+
+            // Tabelle con struttura ma senza dati nel dump (es. 'backups':
+            // contiene checkpoint con la password cifrata e righe che dopo un
+            // ripristino punterebbero ad archivi inesistenti).
+            if (in_array($table, config('backup.dump_exclude_data', []), true)) {
+                fwrite($out, '-- Dati esclusi dal backup per la tabella '.$this->quoteIdentifier($table)."\n\n");
+                $state['rows_written'][$table] = 0;
+                $state['data_index'] = $index + 1;
+
+                return;
+            }
+
+            $state['table'] = $this->tableMeta($pdo, $table);
             fwrite($out, '-- Dati tabella '.$this->quoteIdentifier($state['table']['name'])."\n");
         }
 

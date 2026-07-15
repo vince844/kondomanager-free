@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\UpdateBackupSettingsRequest;
 use App\Models\Backup;
 use App\Services\Backup\BackupManager;
+use App\Services\Backup\BackupPasswordStore;
 use App\Services\Backup\BackupPreflight;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Backup\Exceptions\BackupInProgressException;
@@ -42,7 +43,7 @@ class BackupSettingsController extends Controller
         abort_unless((bool) config('backup.enabled', true), 404);
     }
 
-    public function index(BackupSettings $settings, BackupManager $manager, BackupPreflight $preflight): Response
+    public function index(BackupSettings $settings, BackupManager $manager, BackupPreflight $preflight, BackupPasswordStore $passwordStore): Response
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
@@ -62,28 +63,61 @@ class BackupSettingsController extends Controller
             'runningBackup' => $running ? $this->presentBackup($running) : null,
             'preflight' => $preflight->run(),
             'retention_keep_last' => $settings->retention_keep_last,
+            // Solo se la password è impostata, MAI il valore in chiaro
+            'backup_has_password' => $passwordStore->has(),
         ]);
     }
 
     /**
      * Crea un nuovo backup ed esegue subito il primo step (endpoint JSON).
      */
-    public function store(Request $request, BackupSettings $settings, BackupManager $manager, BackupPreflight $preflight): JsonResponse
+    public function store(Request $request, BackupSettings $settings, BackupManager $manager, BackupPreflight $preflight, BackupPasswordStore $passwordStore): JsonResponse
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
 
+        $validated = $request->validate([
+            'type' => 'nullable|string|in:full,db_only',
+            // 'protect' = cifra l'archivio con la password salvata una volta
+            // sola nelle impostazioni (nessuna password per-backup da digitare).
+            'protect' => 'nullable|boolean',
+        ]);
+
+        $type = $validated['type'] ?? Backup::TYPE_FULL;
         $check = $preflight->run();
 
-        if (! $check['ok']) {
+        // Un backup "solo database" richiede molto meno spazio: viene valutato
+        // con la propria soglia invece di quella del backup completo.
+        $preflightOk = $type === Backup::TYPE_DB_ONLY ? $check['ok_db_only'] : $check['ok'];
+
+        if (! $preflightOk) {
             return response()->json([
                 'message' => __('impostazioni.backup_error_preflight'),
                 'preflight' => $check,
             ], 422);
         }
 
+        $password = null;
+
+        if ($request->boolean('protect')) {
+            if (! $check['encryption_supported']) {
+                return response()->json(['message' => __('impostazioni.backup_error_encryption_unsupported')], 422);
+            }
+
+            $password = $passwordStore->get();
+
+            // Toggle attivo ma nessuna password salvata: non si parte in chiaro
+            // silenziosamente (l'utente crede di aver cifrato). Deve impostarla.
+            if ($password === null) {
+                return response()->json(['message' => __('impostazioni.backup_error_no_saved_password')], 422);
+            }
+        }
+
         try {
-            $backup = $manager->start($request->user());
+            $backup = $manager->start($request->user(), [
+                'type' => $type,
+                'password' => $password,
+            ]);
         } catch (BackupInProgressException) {
             return response()->json(['message' => __('impostazioni.backup_error_in_progress')], 409);
         }
@@ -136,14 +170,22 @@ class BackupSettingsController extends Controller
         );
     }
 
-    public function updateSettings(UpdateBackupSettingsRequest $request, BackupSettings $settings): RedirectResponse
+    public function updateSettings(UpdateBackupSettingsRequest $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse
     {
         $this->ensureEnabled();
         Gate::authorize('manage', $settings);
 
+        $validated = $request->validated();
+
         try {
-            $settings->retention_keep_last = (int) $request->validated()['retention_keep_last'];
+            $settings->retention_keep_last = (int) $validated['retention_keep_last'];
             $settings->save();
+
+            // Un unico "Salva impostazioni" per tutta la card: se il form
+            // password è aperto e compilato, la (ri)imposta nello stesso colpo.
+            if (filled($validated['password'] ?? null)) {
+                $passwordStore->set((string) $validated['password']);
+            }
         } catch (\Exception $e) {
             return redirect()->back()->with(
                 $this->flashError(__('impostazioni.error_save_backup_settings'))
@@ -155,12 +197,34 @@ class BackupSettingsController extends Controller
         );
     }
 
+    /**
+     * Rimuove la password di cifratura predefinita dei backup. L'impostazione
+     * avviene invece insieme alle altre impostazioni (updateSettings).
+     */
+    public function removePassword(Request $request, BackupSettings $settings, BackupPasswordStore $passwordStore): RedirectResponse
+    {
+        $this->ensureEnabled();
+        Gate::authorize('manage', $settings);
+
+        $request->validate([
+            'remove' => 'required|accepted',
+        ]);
+
+        $passwordStore->clear();
+
+        return redirect()->back()->with(
+            $this->flashSuccess(__('impostazioni.success_remove_backup_password'))
+        );
+    }
+
     private function presentBackup(Backup $backup): array
     {
         return [
             'uuid' => $backup->uuid,
             'filename' => $backup->filename,
             'status' => $backup->status->value,
+            'type' => $backup->type ?? Backup::TYPE_FULL,
+            'encrypted' => (bool) $backup->encrypted,
             'progress' => $backup->progress,
             'size' => $backup->size,
             'checksum' => $backup->checksum,

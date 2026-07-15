@@ -24,6 +24,10 @@ class UpdateBackupSettingsRequest extends FormRequest
     {
         return [
             'retention_keep_last' => 'required|integer|min:1|max:50',
+            // Opzionale: quando presente (ri)imposta la password di protezione
+            // dei backup. 'confirmed' pretende password_confirmation identica:
+            // una password sbagliata renderebbe irrecuperabili i backup futuri.
+            'password' => 'nullable|string|min:8|max:72|confirmed',
         ];
     }
 }

@@ -59,6 +59,9 @@ Route::middleware('auth')->group(function () {
     Route::post('impostazioni/backups/settings', [BackupSettingsController::class, 'updateSettings'])
         ->name('impostazioni.backups.settings');
 
+    Route::post('impostazioni/backups/password', [BackupSettingsController::class, 'removePassword'])
+        ->name('impostazioni.backups.password');
+
     Route::post('impostazioni/backups/{backup:uuid}/step', [BackupSettingsController::class, 'step'])
         ->name('impostazioni.backups.step');
 

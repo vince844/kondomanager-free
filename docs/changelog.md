@@ -7,6 +7,30 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.12] - Cifratura Backup & Backup Solo Database
+
+Secondo capitolo del sistema di backup introdotto nella beta.11. Due funzioni valutate inizialmente per il futuro plugin a pagamento e deliberatamente rilasciate nel free: la **cifratura AES-256 degli archivi** — un backup contiene tutti i dati del condominio e il file `.env` con le chiavi dell'applicazione, e la protezione di dati che lasciano il server non è un lusso — e il tipo **"solo database"** per copie rapide prima delle operazioni delicate.
+
+### Aggiunto
+
+- **Cifratura AES-256 degli archivi con password salvata unica:** la password di protezione si imposta **una volta sola** nelle impostazioni della pagina backup (con conferma per proteggersi dai refusi, icona occhio per mostrarla, validazione immediata sui campi) e viene riusata da tutti i backup protetti: niente password diverse per ogni archivio, facili da dimenticare. Nel riquadro di creazione resta un solo interruttore, "Proteggi con la password salvata (AES-256)", attivo di default quando una password è impostata e disabilitato con istruzioni quando non lo è. Ogni voce dello zip è cifrata singolarmente (WinZip AES-256, lo standard degli archivi cifrati); l'interfaccia avverte nel momento giusto che una password dimenticata rende il backup irrecuperabile e che gli zip AES si aprono con 7-Zip (Windows) o Keka (Mac), non con Esplora Risorse.
+- **Nuovo tipo di backup "solo database":** include il dump completo del database ma non i documenti caricati — molto più rapido e leggero, pensato come rete di sicurezza prima di un'operazione delicata (aggiornamento, import massivo, chiusura d'esercizio). Selezione con due card affiancate ("Completo" / "Solo database") nel riquadro di creazione; il preflight calcola una stima di spazio dedicata, così un disco troppo pieno per un backup completo non blocca più un salvataggio solo-dati; il `manifest.json` dichiara il contenuto (`contents: db_only`) per il futuro ripristino guidato. I backup "solo database" e quelli cifrati sono riconoscibili nell'elenco (etichetta dedicata e icona lucchetto).
+- **Impostazioni backup riorganizzate in un'unica scheda:** "Backup da conservare" e "Password di protezione dei backup" vivono ora nella stessa card con un unico pulsante "Salva impostazioni" in fondo — la password è un'impostazione persistente come la retention, e l'interfaccia la tratta come tale. Cambio password inline, rimozione con finestra di conferma.
+- **12 nuovi test automatici sul backup (28 totali),** incluso il test-garanzia centrale della cifratura: la password salvata non compare MAI dentro un archivio — né tra le voci dello zip né nei byte grezzi del file — e un backup cifrato interrotto e ripreso resta cifrato AES-256 per ogni singola voce.
+
+### Sicurezza
+
+- **La password di protezione non lascia mai il server:** è custodita cifrata con la `APP_KEY` in un file dentro la cartella backups (auto-esclusa dagli archivi: non può finire dentro un backup), non è mai in chiaro nel database e non viaggia mai verso il browser — il frontend riceve solo il booleano "impostata / non impostata". L'unico modo di ottenerla è l'accesso diretto al file system del server.
+- **La tabella `backups` entra nei dump MySQL/MariaDB solo come struttura, senza dati:** i checkpoint dei backup in corso contengono la password di cifratura della sessione (a sua volta cifrata con `APP_KEY`) e righe che dopo un ripristino punterebbero ad archivi inesistenti. Il checkpoint viene inoltre azzerato in tutti i percorsi terminali (completato, fallito, stantio, eliminato). Su SQLite (usato in sviluppo) il database viene invece copiato integralmente: l'eventuale checkpoint del backup in corso vi resta, ma la copia di sessione è cifrata con `APP_KEY` e l'archivio che la contiene è a sua volta cifrato con la password stessa.
+- **Flag di protezione esplicito lato server:** la richiesta di creazione dichiara separatamente "voglio la cifratura" e il server rifiuta di procedere se manca la password salvata — impossibile ottenere per errore un backup non cifrato quando si è chiesta la protezione. Verifica preventiva che libzip supporti la cifratura, con messaggio chiaro in caso contrario.
+
+### Corretto
+
+- **Test intermittenti con l'esecuzione parallela della suite:** i processi paralleli dei test condividevano il file reale della password e la cartella reale dei temporanei, cancellandoseli a vicenda — e le pulizie di fine test potevano cancellare perfino la password di backup reale dell'installazione su cui giravano. I percorsi sono ora configurabili (`config/backup.php`) e ogni processo di test usa percorsi propri e isolati sotto `storage/framework/testing/`.
+- **Irrobustimenti da revisione del codice:** eliminazione di un backup bloccata finché lo step in corso non rilascia il lock (niente file orfani), avvio protetto da lock contro il doppio click, file temporanei del dump rimossi solo dopo la persistenza del checkpoint, colonne generate e viste gestite correttamente anche negli archivi cifrati.
+
+---
+
 ## [1.10.0-beta.11] - Backup Manuali & Trasferimento Installazione
 
 Prima versione del sistema di backup integrato, la funzione "In arrivo" della pagina impostazioni. Obiettivo: un archivio **completo e autosufficiente** (database + documenti + configurazione) creato dall'interfaccia, sufficiente da solo per trasferire o ripristinare un'installazione — e che funzioni sugli hosting condivisi che sono il pubblico primario di KondoManager, dove `mysqldump`, `proc_open` e i cron affidabili spesso non esistono.

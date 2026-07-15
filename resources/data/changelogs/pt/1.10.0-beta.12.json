@@ -1,0 +1,9 @@
+{
+    "features": [
+        "Cifragem AES-256 das cópias de segurança: defina uma palavra-passe de proteção uma única vez nas configurações (com confirmação, ícone de olho para a mostrar e validação imediata) e crie arquivos cifrados simplesmente ativando o interruptor 'Proteja com a palavra-passe guardada (AES-256)'. Um backup descarregado ou roubado permanece ilegível sem a palavra-passe.",
+        "A palavra-passe de proteção nunca sai do servidor: é guardada cifrada no sistema de ficheiros, nunca entra nos arquivos, nunca fica em claro na base de dados e nunca é enviada ao navegador. Atenção: se a esquecer, o backup é irrecuperável — a interface lembra-o no momento certo e indica que os zips cifrados com AES se abrem com 7-Zip (Windows) ou Keka (Mac), não com o Explorador do Windows.",
+        "Novo tipo de backup 'apenas base de dados': mais rápido e leve porque não inclui os documentos carregados, ideal como rede de segurança rápida antes de uma operação delicada (atualização, importação em massa, fecho de exercício). A verificação do espaço em disco considera o tamanho reduzido, e na lista os backups 'apenas base de dados' e os cifrados são reconhecíveis num relance.",
+        "Configurações de backup reorganizadas: o número de backups a conservar e a palavra-passe de proteção vivem agora num único cartão com um só botão 'Guardar configurações'; alteração da palavra-passe inline e remoção com confirmação.",
+        "Proteções adicionais nos bastidores: o servidor recusa criar um backup não cifrado quando a proteção é pedida, a tabela dos backups entra nos dumps MySQL apenas como estrutura (nunca os seus dados de trabalho), além de vários reforços contra arranques duplos e eliminações durante um passo em curso."
+    ]
+}

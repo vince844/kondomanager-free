@@ -216,6 +216,11 @@ test('round-trip MySQL: schema, dati edge-case, viste e trigger identici dopo du
     $src->exec('CREATE TABLE generata (id INT NOT NULL PRIMARY KEY, base INT NOT NULL, doppio INT AS (base * 2) STORED)');
     $src->exec('INSERT INTO generata (id, base) VALUES (1, 21), (2, 100)');
 
+    // La tabella 'backups' è in config backup.dump_exclude_data: la struttura
+    // viaggia nel dump, i dati (checkpoint con password cifrate) no
+    $src->exec('CREATE TABLE backups (id INT NOT NULL PRIMARY KEY, checkpoint TEXT NULL)');
+    $src->exec("INSERT INTO backups VALUES (1, 'segreto-che-non-deve-viaggiare')");
+
     // Vista (con DEFINER da rimuovere) e trigger
     $src->exec('CREATE VIEW vista_tipi AS SELECT id, testo FROM tipi WHERE flag = 1');
     $src->exec('CREATE TABLE contatore (n INT NOT NULL)');
@@ -252,6 +257,10 @@ test('round-trip MySQL: schema, dati edge-case, viste e trigger identici dopo du
     foreach (['tipi', 'molte_righe', 'senza_pk', 'pk_composta', 'generata', 'contatore'] as $table) {
         assertTableDataEqual($src, $dst, $table);
     }
+
+    // La tabella 'backups' arriva con la struttura ma SENZA dati
+    expect((int) $dst->query('SELECT COUNT(*) FROM backups')->fetchColumn())->toBe(0);
+    expect($sql)->not->toContain('segreto-che-non-deve-viaggiare');
 
     // La vista funziona e restituisce gli stessi dati
     expect($dst->query('SELECT * FROM vista_tipi ORDER BY id')->fetchAll(PDO::FETCH_NUM))

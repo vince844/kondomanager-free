@@ -22,6 +22,9 @@ return [
     'backup_error_in_progress' => 'Another backup is already running.',
     'backup_error_stale' => 'Backup interrupted: no progress for too long. You can start a new one.',
     'backup_error_generic' => 'An error occurred during the backup. Please try again.',
+    'backup_error_encryption_unsupported' => 'This server does not support zip archive encryption: backups can only be created without a password.',
+    'backup_error_no_saved_password' => 'No protection password set: set one in the backup settings before creating an encrypted backup.',
+    'success_remove_backup_password' => 'Backup protection password removed',
     'backup_success_completed' => 'Backup completed successfully. Download it and store it in a safe place.',
 
     /* ------------------------------------------------------------------
@@ -114,8 +117,10 @@ return [
         'backup_preflight_title' => 'System requirements',
         'backup_estimated_size' => 'Estimated size',
         'backup_free_space' => 'Free space',
+        'backup_preflight_aes_supported' => 'AES-256 encryption available',
+        'backup_preflight_aes_unsupported' => 'AES-256 encryption unavailable',
         'backup_create_title' => 'Create a new backup',
-        'backup_create_help' => 'The backup includes the full database, uploaded documents (storage folder) and the .env configuration file: everything needed to restore or migrate KondoManager. Preferably run it when no operations are in progress.',
+        'backup_create_help' => 'Choose a full backup — database, uploaded documents and the .env configuration file, everything needed to migrate or restore — or a database-only backup, faster and handy before a delicate operation. Protect it with the saved password in settings, if you have one set. Run it preferably when no other operations are in progress.',
         'backup_in_progress_help' => 'Do not close this page: the backup proceeds in steps. If interrupted, it resumes from where it left off.',
         'backup_status' => 'Status',
         'backup_date' => 'Date',
@@ -126,6 +131,28 @@ return [
         'backup_retention_help' => 'Number of completed backups to keep on the server: after each new backup, older ones beyond this limit are deleted automatically.',
         'backups_disabled_badge' => 'Disabled',
         'backup_running_badge' => 'Backup in progress',
+        'backup_type_title' => 'Backup type',
+        'backup_type_full' => 'Full',
+        'backup_type_full_desc' => 'Database, documents and configuration: everything needed to migrate or restore.',
+        'backup_type_db' => 'Database only',
+        'backup_type_db_desc' => 'Faster: data only, without documents. Useful before a delicate operation.',
+        'backup_protect_title' => 'Protection',
+        'backup_protect_toggle' => 'Protect with the saved password (AES-256)',
+        'backup_protect_card_desc' => 'Without the password the files in the archive cannot be read.',
+        'backup_password' => 'Password',
+        'backup_password_confirm' => 'Confirm password',
+        'backup_password_warning' => 'If you forget the password the backup is unrecoverable: there is no way to reset it. Note: Windows File Explorer cannot open AES-encrypted zips — use 7-Zip (Windows) or Keka (Mac).',
+        'backup_encrypted_badge' => 'Password protected',
+        'backup_db_only_label' => 'Database only',
+        'backup_password_error_min' => 'At least 8 characters',
+        'backup_password_error_mismatch' => 'The passwords do not match',
+        'backup_password_show' => 'Show password',
+        'backup_password_hide' => 'Hide password',
+        'backup_protect_no_password_hint' => 'To encrypt backups, first set a protection password below.',
+        'backup_password_setting_title' => 'Backup protection password',
+        'backup_password_setting_help' => 'Set it once: it will be used to encrypt all protected backups, without having to re-enter it every time. It is stored encrypted on this server and is never included inside the backups.',
+        'backup_password_set' => 'Password set',
+        'backup_password_not_set' => 'No password set',
     ],
 
     /* ------------------------------------------------------------------
@@ -216,6 +243,7 @@ return [
      | Placeholders for inputs
      | ------------------------------------------------------------------ */
     'placeholder' => [
+        'backup_password' => 'Minimum 8 characters',
         'select_building' => 'Select building',
         'select_language' => 'Select language',
         'app_name' => 'e.g. Rossi Property Management',
@@ -247,6 +275,10 @@ return [
         'download_backup' => 'Download backup',
         'delete_backup' => 'Delete backup',
         'copy_checksum' => 'Copy checksum',
+        'restore_guide' => 'Restore guide',
+        'set_backup_password' => 'Set password',
+        'change_backup_password' => 'Change password',
+        'remove_backup_password' => 'Remove',
     ],
     'confirmations' => [
         'regenerate_token' => 'Are you sure? You will need to update the URL on cron-job.org.',
@@ -254,6 +286,8 @@ return [
         'delete_backup_description' => 'Are you sure? The archive will be permanently deleted from the server. If you have not downloaded it yet, it cannot be recovered.',
         'cancel_backup_title' => 'Cancel backup',
         'cancel_backup_description' => 'Are you sure you want to cancel the backup in progress? Partial data will be deleted.',
+        'remove_backup_password_title' => 'Remove protection password',
+        'remove_backup_password_description' => 'Are you sure? New backups can no longer be encrypted until you set a new password. Already encrypted backups remain protected by the old password (which you will need to remember to open them).',
     ],
     'sidebar' => [
         'users' => 'Users',

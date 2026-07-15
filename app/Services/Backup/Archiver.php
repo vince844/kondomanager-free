@@ -13,6 +13,10 @@ use ZipArchive;
  * l'archivio viene quindi chiuso e riaperto a piccoli batch (per numero di
  * file e per byte), così ogni step resta nel budget di tempo e un backup
  * interrotto riparte dall'indice salvato nel checkpoint.
+ *
+ * Cifratura opzionale: quando viene fornita una password, ogni entry è
+ * cifrata con AES-256 (le entry già scritte nei batch precedenti restano
+ * cifrate come sono: alla riapertura basta ripassare la stessa password).
  */
 class Archiver
 {
@@ -20,26 +24,30 @@ class Archiver
      * Aggiunge un singolo file all'archivio in una sessione dedicata
      * (usato per il dump del database e per il manifest).
      */
-    public function addSingleFile(string $zipPath, string $absolutePath, string $entryName): void
+    public function addSingleFile(string $zipPath, string $absolutePath, string $entryName, ?string $password = null): void
     {
-        $zip = $this->open($zipPath);
+        $zip = $this->open($zipPath, $password);
 
         if (! $zip->addFile($absolutePath, $entryName)) {
             $zip->close();
             throw new RuntimeException("Impossibile aggiungere {$entryName} all'archivio di backup.");
         }
 
+        $this->encryptEntry($zip, $entryName, $password);
+
         $this->close($zip, $zipPath);
     }
 
-    public function addFromString(string $zipPath, string $entryName, string $contents): void
+    public function addFromString(string $zipPath, string $entryName, string $contents, ?string $password = null): void
     {
-        $zip = $this->open($zipPath);
+        $zip = $this->open($zipPath, $password);
 
         if (! $zip->addFromString($entryName, $contents)) {
             $zip->close();
             throw new RuntimeException("Impossibile aggiungere {$entryName} all'archivio di backup.");
         }
+
+        $this->encryptEntry($zip, $entryName, $password);
 
         $this->close($zip, $zipPath);
     }
@@ -51,7 +59,7 @@ class Archiver
      * @param  array  $state  Checkpoint: {file_index: int, bytes_done: int}.
      * @return bool True quando tutti i file sono stati archiviati.
      */
-    public function archiveStep(string $zipPath, array $files, array &$state, StepBudget $budget): bool
+    public function archiveStep(string $zipPath, array $files, array &$state, StepBudget $budget, ?string $password = null): bool
     {
         $state['file_index'] ??= 0;
         $state['bytes_done'] ??= 0;
@@ -62,7 +70,7 @@ class Archiver
         $total = count($files);
 
         while ($state['file_index'] < $total && ! $budget->exceeded()) {
-            $zip = $this->open($zipPath);
+            $zip = $this->open($zipPath, $password);
             $addedFiles = 0;
             $addedBytes = 0;
 
@@ -82,6 +90,8 @@ class Archiver
                         throw new RuntimeException("Impossibile aggiungere files/{$relative} all'archivio di backup.");
                     }
 
+                    $this->encryptEntry($zip, 'files/'.$relative, $password);
+
                     $addedBytes += (int) $size;
                 }
 
@@ -97,7 +107,7 @@ class Archiver
         return $state['file_index'] >= $total;
     }
 
-    private function open(string $zipPath): ZipArchive
+    private function open(string $zipPath, ?string $password = null): ZipArchive
     {
         $zip = new ZipArchive;
         $result = $zip->open($zipPath, ZipArchive::CREATE);
@@ -106,7 +116,30 @@ class Archiver
             throw new RuntimeException("Impossibile aprire l'archivio di backup (codice ZipArchive {$result}).");
         }
 
+        if ($password !== null && ! $zip->setPassword($password)) {
+            $zip->close();
+            throw new RuntimeException("Impossibile impostare la password sull'archivio di backup.");
+        }
+
         return $zip;
+    }
+
+    /**
+     * Marca l'entry appena aggiunta per la cifratura AES-256. Va chiamata
+     * prima della close(): è lì che avviene la scrittura vera e propria.
+     */
+    private function encryptEntry(ZipArchive $zip, string $entryName, ?string $password): void
+    {
+        if ($password === null) {
+            return;
+        }
+
+        // Può fallire su build PHP con libzip senza supporto crittografico:
+        // meglio un errore chiaro subito che un archivio silenziosamente in chiaro.
+        if (! $zip->setEncryptionName($entryName, ZipArchive::EM_AES_256)) {
+            $zip->close();
+            throw new RuntimeException('Questo server non supporta la cifratura AES degli archivi zip (libzip senza crypto).');
+        }
     }
 
     private function close(ZipArchive $zip, string $zipPath): void

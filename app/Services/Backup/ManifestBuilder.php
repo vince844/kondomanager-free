@@ -34,6 +34,9 @@ class ManifestBuilder
             'generator' => 'kondomanager-free',
             'created_at' => now()->toIso8601String(),
             'backup_uuid' => $backup->uuid,
+            // 'full' = database + documenti + .env; 'db_only' = solo dump database
+            'contents' => $backup->type ?? Backup::TYPE_FULL,
+            'encrypted' => (bool) $backup->encrypted,
             'app' => [
                 'name' => (string) config('app.name'),
                 'version' => (string) config('app.version'),
@@ -57,7 +60,8 @@ class ManifestBuilder
                 'count' => (int) ($filesMeta['count'] ?? 0),
                 'bytes' => (int) ($filesMeta['bytes'] ?? 0),
             ],
-            'env_file' => 'files/.env',
+            // Nei backup "solo database" il file .env non è incluso
+            'env_file' => ($backup->type ?? Backup::TYPE_FULL) === Backup::TYPE_DB_ONLY ? null : 'files/.env',
             'warnings' => array_values($dumpState['warnings'] ?? []),
         ];
     }
