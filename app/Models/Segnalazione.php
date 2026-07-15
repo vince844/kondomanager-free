@@ -104,7 +104,7 @@ class Segnalazione extends Model implements Commentable
         }
 
         // Altrimenti qualsiasi condomino dello stesso condominio
-        return $user->condomini()->whereKey($this->condominio_id)->exists();
+        return $user->anagrafica?->condomini()->whereKey($this->condominio_id)->exists() ?? false;
     }
 
     // -------------------------------------------------------------------------

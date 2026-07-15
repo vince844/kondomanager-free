@@ -51,7 +51,8 @@ return [
      | ------------------------------------------------------------------ */
     'mail_status' => [
         'database' => 'Configurazione da Database',
-        'env' => 'Configurazione .env',
+        'env'      => 'Configurazione .env',
+        'log'      => 'Modalità sicura (Log)',
     ],
 
     /* ------------------------------------------------------------------
