@@ -7,6 +7,33 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.13] - Ripristino Guidato dall'Interfaccia
+
+Terzo capitolo del sistema di backup: gli archivi creati in beta.11/12 diventano **ripristinabili con un clic dal pannello**, senza phpMyAdmin, terminale o client MySQL — sugli stessi hosting condivisi per cui è stato pensato il motore di backup. Si chiude il cerchio: *backup* → *ripristino*. In più, una rete di sicurezza per gli aggiornamenti: un **backup automatico del database prima di ogni upgrade**, così un amministratore distratto non resta senza punto di ripristino.
+
+### Aggiunto
+
+- **Ripristino di un backup dall'elenco (pannello amministrazione):** accanto a ogni backup completato, il pulsante *Ripristina* riporta l'installazione allo stato di quell'archivio. Una finestra di conferma mostra data, tipo e dimensione, chiede la password dell'archivio se cifrato, lascia scegliere se creare un **backup di sicurezza** prima di procedere (attivo di default) e richiede la **password del proprio account** (l'operazione è la più distruttiva dell'app). Durante il lavoro l'applicazione entra in *modalità ripristino* con una schermata di avanzamento; al termine tutti gli utenti effettuano di nuovo l'accesso e una pagina di esito riepiloga cosa eventualmente riconfigurare.
+- **Motore di ripristino riprendibile (step-runner), speculare al backup:** ogni richiesta HTTP avanza per ~20 secondi e salva un checkpoint, così un ripristino interrotto (pagina chiusa, timeout) riprende da dove era rimasto. Lo stato vive su FILE, non nel database — che l'import sta sovrascrivendo (sessioni, cache e lock inclusi, che in questa applicazione stanno nel DB): per questo gli step si autenticano con un **token monouso**, non con la sessione. Fasi: backup di sicurezza → estrazione → verifica di integrità (SHA-256) → import del database → ripristino dei documenti → finalizzazione.
+- **Import SQL in puro PHP con tokenizer dedicato (`SqlDumpTokenizer`):** ri-legge il dump prodotto dal backup statement per statement — gestendo correttamente stringhe con `;`/apici/newline, valori binari esadecimali, viste e trigger — con ripresa all'offset di byte. Nessun `mysql` da riga di comando.
+- **Ripristino cross-versione:** un backup di una versione più vecchia viene ripristinato e poi allineato al codice attuale eseguendo automaticamente le migrazioni mancanti del database e riportando la versione a quella corrente (stessa logica di un aggiornamento). Un backup di una versione più **nuova** del codice viene invece rifiutato, invitando ad aggiornare prima.
+- **Backup automatico prima dell'aggiornamento:** nella schermata di conferma dell'upgrade, un backup di sicurezza (solo database) del momento pre-migrazione, attivo di default; per disattivarlo serve una conferma esplicita. Il backup finisce nell'elenco normale: se l'aggiornamento va male, si ripristina con lo stesso pannello.
+- **Guida in-page aggiornata** con la nuova procedura di ripristino con un clic e la nota che, ripristinando un backup più vecchio, l'allineamento di versione è automatico. Traduzioni complete it/en/es/pt.
+- **Percorsi di backup configurabili da ambiente** (`BACKUP_ROOT`, `BACKUP_TMP_PATH`, ecc.): consente di spostare gli archivi su un disco dedicato o isolare istanze di collaudo, con default invariati.
+
+### Sicurezza
+
+- **Modalità ripristino:** finché un ripristino è in corso l'intera applicazione risponde con una pagina statica 503, lasciando passare solo le rotte di ripristino autenticate dal token e il controllo di salute. In caso di fallimento la modalità resta attiva: un'app col database a metà import non torna raggiungibile finché l'amministratore non riprende o esegue il rollback.
+- **Archivi non fidati:** l'estrazione valida ogni voce dell'archivio (rifiuta percorsi con `..`, assoluti, symlink e voci fuori dai contenuti attesi di un backup KondoManager) prima di toccare il filesystem, e verifica l'integrità del dump con lo SHA-256 del manifest. La password di un archivio cifrato viene validata subito, prima di avviare qualsiasi operazione.
+- **Cambio di chiave di cifratura gestito:** se un backup proviene da un'installazione con `APP_KEY` diversa, una sonda di decifratura in finalizzazione rileva i dati illeggibili (segreti dell'autenticazione a due fattori, password del server email) e li azzera, avvisando nell'esito cosa riconfigurare — evitando il blocco al login degli utenti con 2FA.
+
+### Corretto
+
+- **Bug critico nell'azzeramento dello schema durante l'import:** la cancellazione delle tabelle non disattivava i vincoli di chiave esterna, quindi falliva su qualsiasi database reale con relazioni — problema individuato dal test end-to-end della catena di ripristino cross-versione e risolto disabilitando i vincoli per la durata dell'operazione.
+- **Impaginazione della pagina Gestione backups:** la colonna delle impostazioni non viene più stirata all'altezza della colonna con l'elenco (niente più spazio vuoto con il pulsante di salvataggio staccato), e l'intestazione della tabella è ora allineata alle colonne a tutte le larghezze dello schermo.
+
+---
+
 ## [1.10.0-beta.12] - Cifratura Backup & Backup Solo Database
 
 Secondo capitolo del sistema di backup introdotto nella beta.11. Due funzioni valutate inizialmente per il futuro plugin a pagamento e deliberatamente rilasciate nel free: la **cifratura AES-256 degli archivi** — un backup contiene tutti i dati del condominio e il file `.env` con le chiavi dell'applicazione, e la protezione di dati che lasciano il server non è un lusso — e il tipo **"solo database"** per copie rapide prima delle operazioni delicate.
@@ -28,6 +55,7 @@ Secondo capitolo del sistema di backup introdotto nella beta.11. Due funzioni va
 
 - **Test intermittenti con l'esecuzione parallela della suite:** i processi paralleli dei test condividevano il file reale della password e la cartella reale dei temporanei, cancellandoseli a vicenda — e le pulizie di fine test potevano cancellare perfino la password di backup reale dell'installazione su cui giravano. I percorsi sono ora configurabili (`config/backup.php`) e ogni processo di test usa percorsi propri e isolati sotto `storage/framework/testing/`.
 - **Irrobustimenti da revisione del codice:** eliminazione di un backup bloccata finché lo step in corso non rilascia il lock (niente file orfani), avvio protetto da lock contro il doppio click, file temporanei del dump rimossi solo dopo la persistenza del checkpoint, colonne generate e viste gestite correttamente anche negli archivi cifrati.
+- **Fallimento Silenzioso nella Creazione di Commenti su Segnalazioni:** Risolto un bug per cui la pubblicazione di un commento su una segnalazione pubblica e non assegnata falliva sempre senza errori visibili all'utente. La causa era una chiamata a un metodo inesistente (`$user->condomini()`) nel calcolo dei destinatari delle notifiche, che generava un'eccezione fatale intercettata dal blocco `catch` generico del controller: la transazione veniva annullata (nessun commento salvato) ma l'utente vedeva comunque un redirect apparentemente riuscito. Corretta la risoluzione della relazione tramite `$user->anagrafica->condomini()`.
 
 ---
 

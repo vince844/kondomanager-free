@@ -32,5 +32,14 @@ abstract class TestCase extends BaseTestCase
         config()->set('backup.tmp_path', storage_path(
             'framework/testing/backup-tmp-'.$token
         ));
+        config()->set('backup.restore.state_file', storage_path(
+            'framework/testing/restore-state-'.$token.'.json'
+        ));
+        config()->set('backup.restore.lock_file', storage_path(
+            'framework/testing/restore-lock-'.$token
+        ));
+        config()->set('backup.restore.marker_file', storage_path(
+            'framework/testing/restore-marker-'.$token
+        ));
     }
 }

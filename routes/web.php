@@ -16,11 +16,11 @@ use App\Http\Controllers\Users\UserController;
 use App\Http\Controllers\Users\UserReinviteController;
 use App\Http\Controllers\Users\UserStatusController;
 use App\Http\Controllers\Users\UserVerifyController;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Artisan;
 use App\Http\Middleware\CheckExternalCron;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', WelcomeController::class)
     ->name('home');
@@ -31,7 +31,7 @@ Route::get('/', WelcomeController::class)
 |--------------------------------------------------------------------------
 */
 Route::resource('/utenti', UserController::class)
-    ->middleware(['auth', 'verified']); 
+    ->middleware(['auth', 'verified']);
 
 Route::put('/utenti/{user}/suspend', [UserStatusController::class, 'suspend'])
     ->middleware(['auth', 'verified'])
@@ -69,7 +69,7 @@ Route::delete('roles/{role}/permissions/{permission}', RevokePermissionFromRoleC
 | Permission Routes
 |--------------------------------------------------------------------------
 */
-Route::get('/permessi', [PermissionController::class, 'index'] )
+Route::get('/permessi', [PermissionController::class, 'index'])
     ->middleware(['auth', 'verified']);
 
 Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)
@@ -84,7 +84,7 @@ Route::get('/segnalazioni/stats', SegnalazioniStatsController::class)
 Route::resource('/condomini', CondominioController::class)
     ->middleware(['auth', 'verified', 'role_or_permission:amministratore|collaboratore|Visualizza condomini'])
     ->parameters([
-        'condomini' => 'condominio'
+        'condomini' => 'condominio',
     ]);
 
 Route::get('/condomini/options', [CondominioController::class, 'options'])
@@ -100,7 +100,7 @@ Route::get('/fetch-condomini', FetchCondominiController::class)
 */
 Route::get('/password/new', [NewUserPasswordController::class, 'showResetForm'])
     ->name('password.new')
-    ->middleware('signed'); 
+    ->middleware('signed');
 
 Route::post('/password/new', [NewUserPasswordController::class, 'reset'])
     ->name('password.create');
@@ -117,7 +117,6 @@ Route::get('/invito/register', [InvitoRegisteredUserController::class, 'show'])
     ->name('invito.register')
     ->middleware('signed', 'throttle:6,1');
 
-
 /*
 |--------------------------------------------------------------------------
 | System Upgrade Routes
@@ -133,13 +132,18 @@ Route::middleware(['auth', 'verified', 'role:amministratore'])
     ->group(function () {
         // La Dashboard: Il controller gestisce internamente la vista "Disabled"
         Route::get('/', [SystemUpgradeController::class, 'index'])->name('index');
-        
+
         // Pagina di conferma database (Accessibile dopo upload manuale o auto)
         Route::get('/finalize', [SystemUpgradeController::class, 'confirm'])->name('confirm');
-        
+
+        // Backup di sicurezza (solo database) PRIMA delle migrazioni, guidato
+        // a step dal frontend come il backup normale.
+        Route::post('/backup', [SystemUpgradeController::class, 'backupStart'])->name('backup');
+        Route::post('/backup/{backup:uuid}/step', [SystemUpgradeController::class, 'backupStep'])->name('backup.step');
+
         // Esecuzione migrazioni (Deve funzionare anche in manuale!)
         Route::post('/run', [SystemUpgradeController::class, 'run'])->name('run');
-        
+
         // Changelog
         Route::get('/whats-new', [SystemUpgradeController::class, 'showChangelog'])->name('changelog');
     });
@@ -164,17 +168,17 @@ Route::middleware(['auth', 'verified', 'auto.update', 'role:amministratore'])
 */
 
 Route::get('/system/run-scheduler', function (Request $request) {
-    
+
     // 1. ATOMIC LOCK (Protezione Anti-Sovrapposizione)
     // Se lo scheduler è lento e dura più di 1 minuto, impediamo che
     // ne parta un secondo in parallelo che impallerebbe la CPU/RAM.
     // Il lock scade automaticamente dopo 50 secondi.
     $lock = Cache::lock('scheduler_running', 50);
 
-    if (!$lock->get()) {
+    if (! $lock->get()) {
         // Se non riusciamo a prendere il lock, significa che sta già girando.
         return response()->json([
-            'status'  => 'skipped',
+            'status' => 'skipped',
             'message' => 'Scheduler già in esecuzione (Overlap Protection).',
         ], 429);
     }
@@ -184,8 +188,8 @@ Route::get('/system/run-scheduler', function (Request $request) {
         Artisan::call('schedule:run');
 
         return response()->json([
-            'status'    => 'success',
-            'message'   => 'Scheduler eseguito (WEB).',
+            'status' => 'success',
+            'message' => 'Scheduler eseguito (WEB).',
             'timestamp' => now()->toDateTimeString(),
         ]);
 
@@ -195,8 +199,8 @@ Route::get('/system/run-scheduler', function (Request $request) {
     }
 
 })->middleware([
-    CheckExternalCron::class, 
-    'throttle:3,1'
+    CheckExternalCron::class,
+    'throttle:3,1',
 ]);
 
 /*
@@ -208,4 +212,3 @@ require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
 require __DIR__.'/admin.php';
 require __DIR__.'/user.php';
-

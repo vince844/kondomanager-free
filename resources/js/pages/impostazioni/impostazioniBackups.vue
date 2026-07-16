@@ -14,13 +14,14 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import Alert from '@/components/Alert.vue'
 import BackupGuide from '@/components/guides/BackupGuide.vue'
 import { Separator } from '@/components/ui/separator'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { trans } from 'laravel-vue-i18n'
 import type { BreadcrumbItem } from '@/types'
 import type { BackupItem, BackupPreflight } from '@/types/backups'
 import {
   DatabaseBackup, FileArchive, ShieldAlert, ArchiveRestore, Download, Trash2,
   Copy, Check, CheckCircle2, AlertCircle, Loader2, XCircle, Play, BookOpen,
-  Lock, AlertTriangle, Database, Eye, EyeOff, History, Minus, Plus
+  Lock, AlertTriangle, Database, Eye, EyeOff, History, Minus, Plus, RotateCcw
 } from 'lucide-vue-next'
 
 const showGuide = ref(false)
@@ -211,6 +212,117 @@ const confirmDelete = () => {
       backupToDelete.value = null
     },
   })
+}
+
+/* ------------------------------------------------------------------
+ | Ripristino di un backup
+ | ------------------------------------------------------------------
+ | Solo backup di QUESTA installazione (quelli in lista): stessa APP_KEY,
+ | .env intatto, nessun tema di dominio. Il dialog chiede la password
+ | dell'account (sudo, operazione distruttiva), la password dell'archivio
+ | se cifrato e se creare un backup di sicurezza. Poi un overlay mostra
+ | l'avanzamento: gli step si autenticano col token, non con la sessione
+ | (che l'import sovrascrive). Vedi docs/ripristino_backup_design.md.
+ */
+const RESTORE_RUNNING_PHASES = ['pending', 'safety_backup', 'extracting', 'verifying', 'importing_database', 'restoring_files', 'finalizing']
+
+const isRestoreDialogOpen = ref(false)
+const backupToRestore = ref<BackupItem | null>(null)
+const restoreAccountPassword = ref('')
+const restoreArchivePassword = ref('')
+const restoreSafetyBackup = ref(true)
+const showRestoreAccountPassword = ref(false)
+const showRestoreArchivePassword = ref(false)
+const restoreSubmitting = ref(false)
+const restoreErrors = ref<Record<string, string>>({})
+
+const restoreRunning = ref(false)
+const restoreToken = ref<string | null>(null)
+const restorePhase = ref<string | null>(null)
+const restoreErrorMessage = ref<string | null>(null)
+
+const askRestore = (backup: BackupItem) => {
+  backupToRestore.value = backup
+  restoreAccountPassword.value = ''
+  restoreArchivePassword.value = ''
+  restoreSafetyBackup.value = true
+  showRestoreAccountPassword.value = false
+  showRestoreArchivePassword.value = false
+  restoreErrors.value = {}
+  isRestoreDialogOpen.value = true
+}
+
+const restorePhaseLabel = computed(() =>
+  restorePhase.value ? trans(`impostazioni.restore_phase.${restorePhase.value}`) : ''
+)
+
+async function submitRestore() {
+  if (!backupToRestore.value || restoreSubmitting.value) return
+
+  restoreSubmitting.value = true
+  restoreErrors.value = {}
+
+  try {
+    const { data } = await axios.post(
+      route('impostazioni.backups.restore.start', backupToRestore.value.uuid),
+      {
+        account_password: restoreAccountPassword.value,
+        password: restoreArchivePassword.value || null,
+        safety_backup: restoreSafetyBackup.value,
+        adopt_app_key: false,
+      }
+    )
+
+    restoreToken.value = data.token
+    restorePhase.value = 'pending'
+    restoreErrorMessage.value = null
+    isRestoreDialogOpen.value = false
+    restoreRunning.value = true
+    pollRestore()
+  } catch (error: any) {
+    if (error?.response?.status === 422) {
+      const errs = error.response.data?.errors ?? {}
+      restoreErrors.value = Object.fromEntries(
+        Object.entries(errs).map(([k, v]) => [k, Array.isArray(v) ? v[0] : String(v)])
+      )
+    } else {
+      restoreErrors.value = { archive: error?.response?.data?.message || trans('impostazioni.restore_error_generic') }
+    }
+  } finally {
+    restoreSubmitting.value = false
+  }
+}
+
+async function pollRestore() {
+  while (restoreRunning.value && restorePhase.value && RESTORE_RUNNING_PHASES.includes(restorePhase.value)) {
+    try {
+      const { data } = await axios.post(route('ripristino.step'), {}, {
+        headers: { 'X-Restore-Token': restoreToken.value ?? '' },
+      })
+
+      const state = data.restore
+      restorePhase.value = state?.phase ?? null
+      restoreErrorMessage.value = state?.error ?? null
+
+      if (restorePhase.value === 'completed') {
+        // Ripristino riuscito: le sessioni sono azzerate, la pagina di esito
+        // è pubblica e richiede un nuovo login.
+        window.location.href = route('ripristino.result')
+        return
+      }
+
+      if (restorePhase.value === 'failed') {
+        return // l'overlay mostra l'errore; l'app resta in modalità ripristino
+      }
+
+      await sleep(1200)
+    } catch (error: any) {
+      // 403 = token scaduto/non valido: interrompe il polling mostrando errore
+      restoreErrorMessage.value = error?.response?.data?.message || trans('impostazioni.restore_error_generic')
+      restorePhase.value = 'failed'
+      return
+    }
+  }
 }
 
 /* ------------------------------------------------------------------
@@ -410,7 +522,7 @@ const statusBadgeClass = (status: string) => {
            impostazioni (retention + password). Il pulsante "Crea backup" vive
            sotto la tabella (non sopra le card di scelta) e resta sempre
            raggiungibile perché la tabella scorre al suo interno. -->
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-stretch">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
         <div class="flex flex-col gap-6 lg:flex-1 lg:min-w-0">
           <!-- Creazione backup -->
           <Card>
@@ -559,7 +671,7 @@ const statusBadgeClass = (status: string) => {
                   </div>
                 </TableCell>
                 <TableCell class="hidden md:table-cell text-sm text-muted-foreground">—</TableCell>
-                <TableCell class="hidden lg:table-cell">
+                <TableCell class="hidden xl:table-cell">
                   <span v-if="running!.progress?.detail" class="font-mono text-[11px] text-muted-foreground">{{ running!.progress.detail }}</span>
                   <span v-else class="text-muted-foreground">—</span>
                 </TableCell>
@@ -602,7 +714,7 @@ const statusBadgeClass = (status: string) => {
                 <TableCell class="hidden md:table-cell text-sm whitespace-nowrap">
                   {{ humanSize(backup.size) }}
                 </TableCell>
-                <TableCell class="hidden lg:table-cell">
+                <TableCell class="hidden xl:table-cell">
                   <div v-if="backup.checksum" class="flex items-center gap-1.5">
                     <span class="font-mono text-[11px] text-muted-foreground">{{ backup.checksum.substring(0, 16) }}…</span>
                     <button
@@ -618,6 +730,15 @@ const statusBadgeClass = (status: string) => {
                   <span v-else class="text-muted-foreground">-</span>
                 </TableCell>
                 <TableCell class="text-right whitespace-nowrap">
+                  <button
+                    v-if="backup.status === 'completed'"
+                    type="button"
+                    class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-600 dark:text-amber-500"
+                    :title="trans('impostazioni.actions.restore_backup')"
+                    @click="askRestore(backup)"
+                  >
+                    <RotateCcw class="w-4 h-4" />
+                  </button>
                   <a
                     v-if="backup.status === 'completed'"
                     :href="route('impostazioni.backups.download', backup.uuid)"
@@ -695,13 +816,13 @@ const statusBadgeClass = (status: string) => {
         </div>
 
         <!-- Impostazioni: retention + password di protezione, colonna laterale.
-             Altezza allineata alla colonna di sinistra (lg:items-stretch sul
-             contenitore): il pulsante "Salva impostazioni" resta ancorato in
-             fondo, alla stessa quota del pulsante "Crea backup" a sinistra. -->
-        <div class="flex flex-col lg:w-96 lg:shrink-0">
-          <form @submit.prevent="saveSettings" class="flex flex-col flex-1">
-            <Card class="flex flex-col flex-1">
-              <CardContent class="pt-6 space-y-6 flex-1">
+             Altezza NATURALE (la colonna sinistra, con la tabella, è più alta:
+             stirare questa lascerebbe un vuoto e staccherebbe "Salva
+             impostazioni" dal contenuto). Il contenitore usa lg:items-start. -->
+        <div class="lg:w-96 lg:shrink-0">
+          <form @submit.prevent="saveSettings">
+            <Card>
+              <CardContent class="pt-6 space-y-6">
                 <!-- Backup da conservare -->
                 <div>
                   <h3 class="text-sm font-semibold flex items-center gap-2">
@@ -885,6 +1006,139 @@ const statusBadgeClass = (status: string) => {
       :description="trans('impostazioni.confirmations.remove_backup_password_description')"
       @confirm="removePassword"
     />
+
+    <!-- Dialog di conferma ripristino: operazione distruttiva → sudo + avvisi -->
+    <Dialog v-model:open="isRestoreDialogOpen">
+      <DialogContent class="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2">
+            <RotateCcw class="w-5 h-5 text-amber-600" />
+            {{ trans('impostazioni.confirmations.restore_backup_title') }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ trans('impostazioni.confirmations.restore_backup_description') }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div v-if="backupToRestore" class="space-y-4">
+          <!-- Riepilogo del backup da ripristinare -->
+          <div class="rounded-lg border bg-muted/40 p-3 text-sm space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="text-muted-foreground">{{ trans('impostazioni.label.backup_date') }}</span>
+              <span class="font-medium">{{ formatDate(backupToRestore.created_at) }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-muted-foreground">{{ trans('impostazioni.label.backup_type_title') }}</span>
+              <span class="font-medium flex items-center gap-1">
+                <Database v-if="backupToRestore.type === 'db_only'" class="w-3.5 h-3.5" />
+                <FileArchive v-else class="w-3.5 h-3.5" />
+                {{ backupToRestore.type === 'db_only' ? trans('impostazioni.label.backup_type_db') : trans('impostazioni.label.backup_type_full') }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-muted-foreground">{{ trans('impostazioni.label.backup_size') }}</span>
+              <span class="font-medium">{{ humanSize(backupToRestore.size) }}</span>
+            </div>
+          </div>
+
+          <!-- Avviso distruttivo -->
+          <div class="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20">
+            <AlertTriangle class="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <p class="text-[12px] leading-relaxed text-amber-800 dark:text-amber-200/90">
+              {{ trans('impostazioni.label.restore_warning') }}
+            </p>
+          </div>
+
+          <!-- Password dell'archivio (solo se cifrato) -->
+          <div v-if="backupToRestore.encrypted">
+            <label class="block text-xs font-medium text-muted-foreground mb-1">
+              {{ trans('impostazioni.label.restore_archive_password') }}
+            </label>
+            <div class="relative">
+              <Input
+                v-model="restoreArchivePassword"
+                :type="showRestoreArchivePassword ? 'text' : 'password'"
+                autocomplete="off"
+                class="pr-9"
+                :class="restoreErrors.password ? 'border-red-400 focus-visible:ring-red-400' : ''"
+                :placeholder="trans('impostazioni.placeholder.backup_password')"
+              />
+              <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                @click="showRestoreArchivePassword = !showRestoreArchivePassword">
+                <EyeOff v-if="showRestoreArchivePassword" class="w-4 h-4" />
+                <Eye v-else class="w-4 h-4" />
+              </button>
+            </div>
+            <p v-if="restoreErrors.password" class="text-[11px] text-red-600 mt-1">{{ restoreErrors.password }}</p>
+          </div>
+
+          <!-- Backup di sicurezza -->
+          <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/40">
+            <Switch v-model="restoreSafetyBackup" class="mt-0.5" />
+            <span>
+              <span class="block text-sm font-medium">{{ trans('impostazioni.label.restore_safety_backup') }}</span>
+              <span class="block text-[11px] text-muted-foreground mt-0.5">{{ trans('impostazioni.label.restore_safety_backup_hint') }}</span>
+            </span>
+          </label>
+
+          <!-- Password account (sudo) -->
+          <div>
+            <label class="block text-xs font-medium text-muted-foreground mb-1">
+              {{ trans('impostazioni.label.restore_account_password') }}
+            </label>
+            <div class="relative">
+              <Input
+                v-model="restoreAccountPassword"
+                :type="showRestoreAccountPassword ? 'text' : 'password'"
+                autocomplete="current-password"
+                class="pr-9"
+                :class="restoreErrors.account_password ? 'border-red-400 focus-visible:ring-red-400' : ''"
+                :placeholder="trans('impostazioni.placeholder.restore_account_password')"
+              />
+              <button type="button" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                @click="showRestoreAccountPassword = !showRestoreAccountPassword">
+                <EyeOff v-if="showRestoreAccountPassword" class="w-4 h-4" />
+                <Eye v-else class="w-4 h-4" />
+              </button>
+            </div>
+            <p v-if="restoreErrors.account_password" class="text-[11px] text-red-600 mt-1">{{ restoreErrors.account_password }}</p>
+          </div>
+
+          <p v-if="restoreErrors.archive" class="text-[12px] text-red-600">{{ restoreErrors.archive }}</p>
+        </div>
+
+        <DialogFooter class="gap-2">
+          <Button type="button" variant="outline" @click="isRestoreDialogOpen = false">
+            {{ trans('impostazioni.actions.cancel_backup') }}
+          </Button>
+          <Button type="button" class="bg-amber-600 hover:bg-amber-700 text-white" :disabled="restoreSubmitting || !restoreAccountPassword" @click="submitRestore">
+            <Loader2 v-if="restoreSubmitting" class="w-4 h-4 mr-2 animate-spin" />
+            <RotateCcw v-else class="w-4 h-4 mr-2" />
+            {{ trans('impostazioni.actions.confirm_restore') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Overlay a pieno schermo durante il ripristino -->
+    <div v-if="restoreRunning" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 p-4">
+      <div class="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 p-8 text-center shadow-2xl">
+        <template v-if="restorePhase !== 'failed'">
+          <Loader2 class="w-10 h-10 mx-auto mb-4 animate-spin text-amber-600" />
+          <h2 class="text-lg font-bold text-slate-900 dark:text-slate-100">{{ trans('impostazioni.label.restore_in_progress') }}</h2>
+          <p class="mt-2 text-sm text-muted-foreground">{{ restorePhaseLabel }}</p>
+          <p class="mt-4 text-[12px] text-muted-foreground">{{ trans('impostazioni.label.restore_do_not_close') }}</p>
+        </template>
+        <template v-else>
+          <XCircle class="w-10 h-10 mx-auto mb-4 text-red-600" />
+          <h2 class="text-lg font-bold text-red-700 dark:text-red-400">{{ trans('impostazioni.label.restore_failed') }}</h2>
+          <p class="mt-2 text-sm text-muted-foreground break-words">{{ restoreErrorMessage }}</p>
+          <a :href="route('ripristino.result')" class="mt-6 inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+            {{ trans('impostazioni.actions.restore_view_result') }}
+          </a>
+        </template>
+      </div>
+    </div>
 
     <BackupGuide v-model:open="showGuide" />
   </AppLayout>

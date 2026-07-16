@@ -27,6 +27,35 @@ return [
     'success_remove_backup_password' => 'Palavra-passe de proteção dos backups removida',
     'backup_success_completed' => 'Backup concluído com sucesso. Descarregue-o e guarde-o num local seguro.',
 
+    'restore_error_generic' => 'Ocorreu um erro durante o restauro. Tente novamente.',
+
+    'restore_result' => [
+        'page_title' => 'Resultado do restauro',
+        'title_completed' => 'Restauro concluído',
+        'subtitle_completed' => 'O backup foi restaurado. Todos os utilizadores têm de iniciar sessão novamente.',
+        'subtitle_completed_versioned' => 'O backup (versão :version) foi restaurado e alinhado a esta versão. Todos os utilizadores têm de iniciar sessão novamente.',
+        'reconfigure_heading' => 'O que verificar',
+        'reconfigure_2fa' => 'A autenticação de dois fatores foi reposta para :count utilizadores (chave de cifragem diferente): terão de a configurar novamente no próximo acesso.',
+        'reconfigure_smtp' => 'A palavra-passe do servidor de email (SMTP) foi removida: volte a introduzi-la nas configurações de email.',
+        'reconfigure_backup_password' => 'Foi adotada a chave de cifragem do backup: volte a definir a palavra-passe de proteção dos backups nas configurações.',
+        'title_failed' => 'Restauro falhado',
+        'failed_guidance' => 'A aplicação permanece em modo de restauro por segurança. Pode retomar o restauro com a chave que lhe foi mostrada no início, ou restaurar a cópia de segurança se tiver criado uma.',
+        'title_none' => 'Nenhum restauro recente',
+        'subtitle_none' => 'Não existe nenhum restauro em curso ou recém-concluído.',
+        'go_to_login' => 'Ir para o login',
+    ],
+    'restore_phase' => [
+        'pending' => 'A preparar…',
+        'safety_backup' => 'Cópia de segurança em curso…',
+        'extracting' => 'A extrair o arquivo…',
+        'verifying' => 'Verificação de integridade…',
+        'importing_database' => 'A restaurar a base de dados…',
+        'restoring_files' => 'A restaurar os documentos…',
+        'finalizing' => 'A finalizar…',
+        'completed' => 'Concluído',
+        'failed' => 'Falhado',
+    ],
+
     /* ------------------------------------------------------------------
      | Backup — fases e requisitos
      | ------------------------------------------------------------------ */
@@ -143,6 +172,15 @@ return [
         'backup_password_confirm' => 'Confirmar palavra-passe',
         'backup_password_warning' => 'Se esquecer a palavra-passe o backup é irrecuperável: não há forma de a repor. Nota: o Explorador do Windows não abre zips cifrados com AES — use 7-Zip (Windows) ou Keka (Mac).',
         'backup_encrypted_badge' => 'Protegido por palavra-passe',
+
+        'restore_warning' => 'O restauro substitui TODOS os dados e documentos atuais pelos do backup: a operação não é reversível (exceto através da cópia de segurança abaixo). No final, todos os utilizadores terão de iniciar sessão novamente.',
+        'restore_archive_password' => 'Palavra-passe do arquivo (cifrado)',
+        'restore_safety_backup' => 'Criar uma cópia de segurança antes de continuar',
+        'restore_safety_backup_hint' => 'Um backup apenas da base de dados do estado atual, para poder reverter se algo correr mal.',
+        'restore_account_password' => 'Confirme com a palavra-passe da sua conta',
+        'restore_in_progress' => 'Restauro em curso',
+        'restore_do_not_close' => 'Não feche esta janela. A aplicação voltará a estar disponível no final.',
+        'restore_failed' => 'Restauro falhado',
         'backup_db_only_label' => 'Só base de dados',
         'backup_password_error_min' => 'Mínimo 8 caracteres',
         'backup_password_error_mismatch' => 'As palavras-passe não coincidem',
@@ -252,6 +290,8 @@ return [
         'mail_password' => 'Insira a palavra-passe SMTP',
         'mail_password_keep' => 'Deixe em branco para manter a palavra-passe atual',
         'mail_password_enter' => 'Insira a palavra-passe SMTP',
+
+        'restore_account_password' => 'A sua palavra-passe de acesso',
         'mail_from_address' => 'ex: geral@seu-dominio.pt',
         'test_recipient' => 'Inserir e-mail para o teste',
         'select_role' => 'Selecione uma função',
@@ -279,6 +319,10 @@ return [
         'change_backup_password' => 'Alterar palavra-passe',
         'remove_backup_password' => 'Remover',
         'restore_guide' => 'Guia de restauro',
+
+        'restore_backup' => 'Restaurar',
+        'confirm_restore' => 'Restaurar agora',
+        'restore_view_result' => 'Ver resultado',
     ],
     'confirmations' => [
         'regenerate_token' => 'Tem a certeza? Terá de atualizar o URL no cron-job.org.',
@@ -288,6 +332,9 @@ return [
         'cancel_backup_description' => 'Tem a certeza de que pretende cancelar o backup em curso? Os dados parciais serão eliminados.',
         'remove_backup_password_title' => 'Remover palavra-passe de proteção',
         'remove_backup_password_description' => 'Tem a certeza? Os novos backups deixarão de poder ser cifrados até definir uma nova palavra-passe. Os backups já cifrados continuam protegidos pela palavra-passe antiga (que terá de recordar para os abrir).',
+
+        'restore_backup_title' => 'Restaurar este backup',
+        'restore_backup_description' => 'Está prestes a repor a instalação ao estado deste backup. Confirme para continuar.',
     ],
     'sidebar' => [
         'users' => 'Utilizadores',

@@ -27,6 +27,35 @@ return [
     'success_remove_backup_password' => 'Contraseña de protección de copias eliminada',
     'backup_success_completed' => 'Copia de seguridad completada correctamente. Descárgala y consérvala en un lugar seguro.',
 
+    'restore_error_generic' => 'Se ha producido un error durante la restauración. Inténtalo de nuevo.',
+
+    'restore_result' => [
+        'page_title' => 'Resultado de la restauración',
+        'title_completed' => 'Restauración completada',
+        'subtitle_completed' => 'La copia se ha restaurado. Todos los usuarios deben iniciar sesión de nuevo.',
+        'subtitle_completed_versioned' => 'La copia (versión :version) se ha restaurado y alineado a esta versión. Todos los usuarios deben iniciar sesión de nuevo.',
+        'reconfigure_heading' => 'Qué comprobar',
+        'reconfigure_2fa' => 'La autenticación de dos factores se ha restablecido para :count usuarios (clave de cifrado distinta): deberán configurarla de nuevo en su próximo acceso.',
+        'reconfigure_smtp' => 'La contraseña del servidor de correo (SMTP) se ha eliminado: vuelve a introducirla en la configuración de correo.',
+        'reconfigure_backup_password' => 'Se ha adoptado la clave de cifrado de la copia: vuelve a establecer la contraseña de protección de las copias en la configuración.',
+        'title_failed' => 'Restauración fallida',
+        'failed_guidance' => 'La aplicación permanece en modo restauración por seguridad. Puedes reanudar la restauración con la clave que se te mostró al inicio, o restaurar la copia de seguridad si creaste una.',
+        'title_none' => 'Ninguna restauración reciente',
+        'subtitle_none' => 'No hay ninguna restauración en curso o recién finalizada.',
+        'go_to_login' => 'Ir al inicio de sesión',
+    ],
+    'restore_phase' => [
+        'pending' => 'Preparando…',
+        'safety_backup' => 'Copia de seguridad en curso…',
+        'extracting' => 'Extrayendo el archivo…',
+        'verifying' => 'Comprobación de integridad…',
+        'importing_database' => 'Restaurando la base de datos…',
+        'restoring_files' => 'Restaurando los documentos…',
+        'finalizing' => 'Finalizando…',
+        'completed' => 'Completado',
+        'failed' => 'Fallido',
+    ],
+
     /* ------------------------------------------------------------------
      | Backup — fases y requisitos
      | ------------------------------------------------------------------ */
@@ -144,6 +173,15 @@ return [
         'backup_password_confirm' => 'Confirmar contraseña',
         'backup_password_warning' => 'Si olvidas la contraseña la copia es irrecuperable: no hay forma de restablecerla. Nota: el Explorador de Windows no abre zips cifrados con AES — usa 7-Zip (Windows) o Keka (Mac).',
         'backup_encrypted_badge' => 'Protegida con contraseña',
+
+        'restore_warning' => 'La restauración sustituye TODOS los datos y documentos actuales por los de la copia: no se puede deshacer (salvo mediante la copia de seguridad de abajo). Al terminar, todos los usuarios deberán iniciar sesión de nuevo.',
+        'restore_archive_password' => 'Contraseña del archivo (cifrado)',
+        'restore_safety_backup' => 'Crear una copia de seguridad antes de continuar',
+        'restore_safety_backup_hint' => 'Una copia solo de la base de datos del estado actual, para poder revertir si algo sale mal.',
+        'restore_account_password' => 'Confirma con la contraseña de tu cuenta',
+        'restore_in_progress' => 'Restauración en curso',
+        'restore_do_not_close' => 'No cierres esta ventana. La aplicación volverá a estar disponible al terminar.',
+        'restore_failed' => 'Restauración fallida',
         'backup_db_only_label' => 'Solo base de datos',
         'backup_password_error_min' => 'Mínimo 8 caracteres',
         'backup_password_error_mismatch' => 'Las contraseñas no coinciden',
@@ -253,6 +291,8 @@ return [
         'mail_password' => 'Enter SMTP password',
         'mail_password_keep' => 'Leave blank to keep the current password',
         'mail_password_enter' => 'Enter SMTP password',
+
+        'restore_account_password' => 'Tu contraseña de acceso',
         'mail_from_address' => 'e.g. admin@your-domain.com',
         'test_recipient' => 'Enter email for test',
         'select_role' => 'Select a role',
@@ -280,6 +320,10 @@ return [
         'change_backup_password' => 'Cambiar contraseña',
         'remove_backup_password' => 'Eliminar',
         'restore_guide' => 'Guía de restauración',
+
+        'restore_backup' => 'Restaurar',
+        'confirm_restore' => 'Restaurar ahora',
+        'restore_view_result' => 'Ver resultado',
     ],
     'confirmations' => [
         'regenerate_token' => 'Are you sure? You will need to update the URL on cron-job.org.',
@@ -289,6 +333,9 @@ return [
         'cancel_backup_description' => '¿Seguro que quieres cancelar la copia de seguridad en curso? Los datos parciales se eliminarán.',
         'remove_backup_password_title' => 'Eliminar contraseña de protección',
         'remove_backup_password_description' => '¿Estás seguro? Las nuevas copias ya no podrán cifrarse hasta que configures una nueva contraseña. Las copias ya cifradas siguen protegidas con la contraseña anterior (que tendrás que recordar para abrirlas).',
+
+        'restore_backup_title' => 'Restaurar esta copia',
+        'restore_backup_description' => 'Vas a devolver la instalación al estado de esta copia. Confirma para continuar.',
     ],
     'sidebar' => [
         'users' => 'Users',

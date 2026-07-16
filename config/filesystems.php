@@ -49,7 +49,9 @@ return [
 
         'backups' => [
             'driver' => 'local',
-            'root' => storage_path('app/backups'),
+            // Env-driven per isolare istanze di collaudo o spostare gli archivi
+            // su un mount dedicato; default invariato.
+            'root' => env('BACKUP_ROOT', storage_path('app/backups')),
             'serve' => false,
             'throw' => false,
             'report' => false,

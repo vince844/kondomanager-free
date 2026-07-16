@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Ripristino di un backup con un clic dal pannello: accanto a ogni backup completato trovi il pulsante 'Ripristina', che riporta l'installazione allo stato di quell'archivio senza phpMyAdmin, terminale o client MySQL. Una finestra di conferma mostra data, tipo e dimensione, chiede la password se l'archivio è cifrato, ti fa creare un backup di sicurezza prima di procedere e richiede la password del tuo account.",
+        "Durante il ripristino l'applicazione entra in modalità ripristino con una schermata di avanzamento; il processo è riprendibile se la pagina si chiude o il server si interrompe. Al termine tutti gli utenti effettuano di nuovo l'accesso e una pagina di esito riepiloga cosa eventualmente riconfigurare.",
+        "Ripristino tra versioni diverse: se ripristini un backup di una versione più vecchia, KondoManager applica automaticamente gli aggiornamenti del database necessari e riallinea la versione. Non devi installare prima la vecchia versione. Un backup di una versione più recente del codice installato viene invece rifiutato, invitandoti ad aggiornare prima.",
+        "Backup automatico del database prima di ogni aggiornamento: nella schermata di conferma dell'upgrade viene creato un backup di sicurezza del momento pre-migrazione, attivo di default. Se l'aggiornamento va male, lo ripristini con lo stesso pannello. Un amministratore distratto non resta più senza punto di ripristino.",
+        "Sicurezza: durante un ripristino l'intera applicazione è bloccata da una pagina di attesa tranne le operazioni di ripristino; gli archivi vengono validati (nessun percorso sospetto, integrità SHA-256 verificata) prima di toccare i dati; se un backup proviene da un'installazione con chiave di cifratura diversa, i dati illeggibili (2FA, password email) vengono azzerati con avviso, evitando il blocco al login.",
+        "Guida al ripristino aggiornata con la nuova procedura con un clic. Traduzioni complete it/en/es/pt. Corretti alcuni dettagli di impaginazione della pagina Gestione backups."
+    ]
+}

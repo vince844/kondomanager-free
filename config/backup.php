@@ -104,13 +104,42 @@ return [
     // File in cui è custodita (cifrata con APP_KEY) la password di protezione
     // dei backup. Vive dentro la cartella esclusa dagli archivi, così la
     // password non finisce mai dentro un backup. I test lo ridefiniscono per
-    // non toccare il file reale (vedi Tests\TestCase).
-    'password_file' => storage_path('app/backups/.default-password'),
+    // non toccare il file reale (vedi Tests\TestCase). Env-driven per poter
+    // isolare istanze di collaudo o spostare lo storage su un mount dedicato.
+    'password_file' => env('BACKUP_PASSWORD_FILE', storage_path('app/backups/.default-password')),
 
     // Radice dei file temporanei di lavoro (dump parziali, zip in
     // costruzione). Anche questa è ridefinita dai test, così i processi
     // paralleli non si cancellano i temporanei a vicenda.
-    'tmp_path' => storage_path('app/backups/tmp'),
+    'tmp_path' => env('BACKUP_TMP_PATH', storage_path('app/backups/tmp')),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ripristino
+    |--------------------------------------------------------------------------
+    |
+    | Lo stato del ripristino vive su FILE, mai nel database: l'import
+    | sovrascrive il database stesso (sessioni, cache e lock inclusi, che
+    | in questa applicazione stanno tutti su DB). Vedi
+    | docs/ripristino_backup_design.md. Tutti e tre i percorsi sono
+    | ridefiniti dai test per l'isolamento tra processi paralleli.
+    |
+    */
+
+    'restore' => [
+        // Stato/checkpoint del ripristino in corso (JSON, scritture atomiche).
+        // Dentro la cartella backups: fuori document root, esclusa dagli archivi.
+        'state_file' => env('BACKUP_RESTORE_STATE_FILE', storage_path('app/backups/.restore-state.json')),
+
+        // Lock di mutua esclusione degli step (flock, si libera da solo se
+        // il processo muore). La cache non è affidabile qui: sta nel DB.
+        'lock_file' => env('BACKUP_RESTORE_LOCK_FILE', storage_path('app/backups/.restore-lock')),
+
+        // Marker "modalità ripristino": finché esiste, il middleware blocca
+        // tutta l'app tranne le rotte di ripristino. In storage/framework
+        // perché deve esistere anche se storage/app/backups viene ricreata.
+        'marker_file' => env('BACKUP_RESTORE_MARKER_FILE', storage_path('framework/restore.lock')),
+    ],
 
     'filename_prefix' => 'kondomanager-backup',
 

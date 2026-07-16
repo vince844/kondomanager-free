@@ -7,9 +7,11 @@ use App\Http\Controllers\Impostazioni\ImpostazioniGeneraliController;
 use App\Http\Controllers\Impostazioni\ImpostazioniStampeController;
 use App\Http\Controllers\Impostazioni\LogsController;
 use App\Http\Controllers\Impostazioni\MailSettingsController;
+use App\Http\Controllers\Impostazioni\RestoreController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthController;
+use App\Http\Middleware\EnsureRestoreToken;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -71,6 +73,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('impostazioni/backups/{backup:uuid}', [BackupSettingsController::class, 'destroy'])
         ->name('impostazioni.backups.destroy');
 
+    // RIPRISTINO — avvio (protetto da sessione + permesso + sudo). Gli step
+    // successivi NON usano la sessione (vedi gruppo session-less più sotto).
+    Route::post('impostazioni/backups/{backup:uuid}/ripristina/ispeziona', [RestoreController::class, 'inspect'])
+        ->name('impostazioni.backups.restore.inspect');
+
+    Route::post('impostazioni/backups/{backup:uuid}/ripristina', [RestoreController::class, 'start'])
+        ->name('impostazioni.backups.restore.start');
+
     // LOGS & AUDIT
     Route::get('logs', [LogsController::class, 'index'])
         ->name('logs.index');
@@ -112,3 +122,27 @@ Route::middleware('auth')->group(function () {
         return Inertia::render('settings/Appearance');
     })->name('appearance');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Ripristino — rotte SENZA sessione
+|--------------------------------------------------------------------------
+| Durante l'import il database viene sovrascritto e la tabella sessions con
+| esso: gli step e lo stato NON possono usare l'auth di sessione. Sono
+| autenticati dal token monouso (EnsureRestoreToken) e devono restare
+| raggiungibili anche in modalità ripristino (il prefisso "ripristino" è
+| nell'allowlist di CheckRestoreMode). Vedi docs/ripristino_backup_design.md.
+*/
+Route::middleware(EnsureRestoreToken::class)->group(function () {
+
+    Route::post('ripristino/step', [RestoreController::class, 'step'])
+        ->name('ripristino.step');
+
+    Route::get('ripristino/stato', [RestoreController::class, 'status'])
+        ->name('ripristino.status');
+});
+
+// Pagina di esito: la modalità ripristino è già spenta se completato, ma le
+// sessioni sono state azzerate — niente auth, legge lo stato su file.
+Route::get('ripristino/esito', [RestoreController::class, 'result'])
+    ->name('ripristino.result');

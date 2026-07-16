@@ -1,0 +1,10 @@
+{
+    "features": [
+        "Restauro de um backup com um clique a partir do painel: ao lado de cada backup concluído encontra o botão 'Restaurar', que repõe a instalação ao estado desse arquivo sem phpMyAdmin, terminal ou cliente MySQL. Uma janela de confirmação mostra data, tipo e tamanho, pede a palavra-passe se o arquivo estiver cifrado, permite criar uma cópia de segurança antes de continuar e exige a palavra-passe da sua conta.",
+        "Durante o restauro a aplicação entra em modo de restauro com um ecrã de progresso; o processo é retomável se a página fechar ou o servidor interromper. No final todos os utilizadores iniciam sessão novamente e uma página de resultado resume o que eventualmente reconfigurar.",
+        "Restauro entre versões diferentes: se restaurar um backup de uma versão mais antiga, o KondoManager aplica automaticamente as atualizações da base de dados necessárias e realinha a versão. Não precisa de instalar primeiro a versão antiga. Um backup de uma versão mais recente do que o código instalado é recusado, sugerindo que atualize primeiro.",
+        "Backup automático da base de dados antes de cada atualização: no ecrã de confirmação da atualização é criada uma cópia de segurança do estado pré-migração, ativa por omissão. Se a atualização correr mal, restaura-a a partir do mesmo painel. Um administrador distraído nunca fica sem ponto de restauro.",
+        "Segurança: durante um restauro toda a aplicação fica bloqueada por uma página de espera exceto as operações de restauro; os arquivos são validados (sem caminhos suspeitos, integridade SHA-256 verificada) antes de tocar nos dados; se um backup vier de uma instalação com uma chave de cifragem diferente, os dados ilegíveis (2FA, palavra-passe do email) são repostos com um aviso, evitando bloqueios no início de sessão.",
+        "Guia de restauro atualizado com o novo procedimento de um clique. Traduções completas it/en/es/pt. Corrigidos alguns detalhes de disposição na página de Gestão de backups."
+    ]
+}

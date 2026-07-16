@@ -27,6 +27,35 @@ return [
     'success_remove_backup_password' => 'Password di protezione dei backup rimossa',
     'backup_success_completed' => 'Backup completato con successo. Scaricalo e conservalo in un luogo sicuro.',
 
+    'restore_error_generic' => 'Si è verificato un errore durante il ripristino. Riprova.',
+
+    'restore_result' => [
+        'page_title' => 'Esito ripristino',
+        'title_completed' => 'Ripristino completato',
+        'subtitle_completed' => 'Il backup è stato ripristinato. Tutti gli utenti devono effettuare di nuovo l\'accesso.',
+        'subtitle_completed_versioned' => 'Il backup (versione :version) è stato ripristinato e allineato a questa versione. Tutti gli utenti devono effettuare di nuovo l\'accesso.',
+        'reconfigure_heading' => 'Cosa verificare',
+        'reconfigure_2fa' => 'L\'autenticazione a due fattori è stata azzerata per :count utenti (chiave di cifratura diversa): dovranno riconfigurarla al prossimo accesso.',
+        'reconfigure_smtp' => 'La password del server email (SMTP) è stata rimossa: reinseriscila nelle impostazioni email.',
+        'reconfigure_backup_password' => 'È stata adottata la chiave di cifratura del backup: reimposta la password di protezione dei backup nelle impostazioni.',
+        'title_failed' => 'Ripristino non riuscito',
+        'failed_guidance' => 'L\'applicazione resta in modalità ripristino per sicurezza. Puoi riprendere il ripristino con la chiave che ti è stata mostrata all\'avvio, oppure ripristinare il backup di sicurezza se ne avevi creato uno.',
+        'title_none' => 'Nessun ripristino recente',
+        'subtitle_none' => 'Non risulta alcun ripristino in corso o appena concluso.',
+        'go_to_login' => 'Vai al login',
+    ],
+    'restore_phase' => [
+        'pending' => 'Preparazione…',
+        'safety_backup' => 'Backup di sicurezza in corso…',
+        'extracting' => 'Estrazione dell\'archivio…',
+        'verifying' => 'Verifica di integrità…',
+        'importing_database' => 'Ripristino del database…',
+        'restoring_files' => 'Ripristino dei documenti…',
+        'finalizing' => 'Finalizzazione…',
+        'completed' => 'Completato',
+        'failed' => 'Non riuscito',
+    ],
+
     /* ------------------------------------------------------------------
      | Backup — fasi e requisiti
      | ------------------------------------------------------------------ */
@@ -51,8 +80,8 @@ return [
      | ------------------------------------------------------------------ */
     'mail_status' => [
         'database' => 'Configurazione da Database',
-        'env'      => 'Configurazione .env',
-        'log'      => 'Modalità sicura (Log)',
+        'env' => 'Configurazione .env',
+        'log' => 'Modalità sicura (Log)',
     ],
 
     /* ------------------------------------------------------------------
@@ -143,6 +172,15 @@ return [
         'backup_password_confirm' => 'Conferma password',
         'backup_password_warning' => 'Se dimentichi la password il backup è irrecuperabile: non esiste alcun modo di reimpostarla. Nota: Esplora Risorse di Windows non apre gli zip cifrati AES — servono 7-Zip (Windows) o Keka (Mac).',
         'backup_encrypted_badge' => 'Protetto da password',
+
+        'restore_warning' => 'Il ripristino sostituisce TUTTI i dati e i documenti attuali con quelli del backup: l\'operazione non è reversibile (salvo il backup di sicurezza qui sotto). Al termine tutti gli utenti dovranno effettuare di nuovo l\'accesso.',
+        'restore_archive_password' => 'Password dell\'archivio (cifrato)',
+        'restore_safety_backup' => 'Crea un backup di sicurezza prima di procedere',
+        'restore_safety_backup_hint' => 'Un backup del solo database dello stato attuale, per poter tornare indietro in caso di problemi.',
+        'restore_account_password' => 'Conferma con la password del tuo account',
+        'restore_in_progress' => 'Ripristino in corso',
+        'restore_do_not_close' => 'Non chiudere questa finestra. L\'applicazione tornerà disponibile al termine.',
+        'restore_failed' => 'Ripristino non riuscito',
         'backup_db_only_label' => 'Solo database',
         'backup_password_error_min' => 'Minimo 8 caratteri',
         'backup_password_error_mismatch' => 'Le password non coincidono',
@@ -246,6 +284,8 @@ return [
         'mail_password' => 'Inserisci la password SMTP',
         'mail_password_keep' => 'Lascia vuoto per mantenere la password attuale',
         'mail_password_enter' => 'Inserisci la password SMTP',
+
+        'restore_account_password' => 'La tua password di accesso',
         'mail_from_address' => 'es. amministrazione@studio-rossi.it',
         'test_recipient' => 'Inserisci l\'email per il test',
         'select_role' => 'Seleziona un ruolo',
@@ -270,6 +310,10 @@ return [
         'delete_backup' => 'Elimina backup',
         'copy_checksum' => 'Copia checksum',
         'restore_guide' => 'Guida al ripristino',
+
+        'restore_backup' => 'Ripristina',
+        'confirm_restore' => 'Ripristina ora',
+        'restore_view_result' => 'Vedi esito',
         'set_backup_password' => 'Imposta password',
         'change_backup_password' => 'Cambia password',
         'remove_backup_password' => 'Rimuovi',
@@ -282,6 +326,9 @@ return [
         'cancel_backup_description' => 'Sei sicuro di voler annullare il backup in corso? I dati parziali verranno eliminati.',
         'remove_backup_password_title' => 'Rimuovi password di protezione',
         'remove_backup_password_description' => 'Sei sicuro? I nuovi backup non potranno più essere cifrati finché non imposti una nuova password. I backup già cifrati restano protetti dalla vecchia password (che dovrai ricordare per aprirli).',
+
+        'restore_backup_title' => 'Ripristina questo backup',
+        'restore_backup_description' => 'Stai per riportare l\'installazione allo stato di questo backup. Conferma per procedere.',
     ],
     'sidebar' => [
         'users' => 'Utenti',

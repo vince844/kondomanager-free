@@ -27,6 +27,35 @@ return [
     'success_remove_backup_password' => 'Backup protection password removed',
     'backup_success_completed' => 'Backup completed successfully. Download it and store it in a safe place.',
 
+    'restore_error_generic' => 'An error occurred during the restore. Please try again.',
+
+    'restore_result' => [
+        'page_title' => 'Restore result',
+        'title_completed' => 'Restore completed',
+        'subtitle_completed' => 'The backup has been restored. All users must sign in again.',
+        'subtitle_completed_versioned' => 'The backup (version :version) has been restored and aligned to this version. All users must sign in again.',
+        'reconfigure_heading' => 'What to check',
+        'reconfigure_2fa' => 'Two-factor authentication was reset for :count users (different encryption key): they will have to set it up again at their next sign-in.',
+        'reconfigure_smtp' => 'The email server (SMTP) password was removed: re-enter it in the email settings.',
+        'reconfigure_backup_password' => 'The backup\'s encryption key was adopted: set the backup protection password again in the settings.',
+        'title_failed' => 'Restore failed',
+        'failed_guidance' => 'The application stays in restore mode for safety. You can resume the restore with the key shown to you at the start, or restore the safety backup if you created one.',
+        'title_none' => 'No recent restore',
+        'subtitle_none' => 'There is no restore in progress or just finished.',
+        'go_to_login' => 'Go to login',
+    ],
+    'restore_phase' => [
+        'pending' => 'Preparing…',
+        'safety_backup' => 'Safety backup in progress…',
+        'extracting' => 'Extracting the archive…',
+        'verifying' => 'Integrity check…',
+        'importing_database' => 'Restoring the database…',
+        'restoring_files' => 'Restoring documents…',
+        'finalizing' => 'Finalizing…',
+        'completed' => 'Completed',
+        'failed' => 'Failed',
+    ],
+
     /* ------------------------------------------------------------------
      | Backup — phases and requirements
      | ------------------------------------------------------------------ */
@@ -143,6 +172,15 @@ return [
         'backup_password_confirm' => 'Confirm password',
         'backup_password_warning' => 'If you forget the password the backup is unrecoverable: there is no way to reset it. Note: Windows File Explorer cannot open AES-encrypted zips — use 7-Zip (Windows) or Keka (Mac).',
         'backup_encrypted_badge' => 'Password protected',
+
+        'restore_warning' => 'The restore replaces ALL current data and documents with those from the backup: this cannot be undone (except via the safety backup below). When it finishes, all users will have to sign in again.',
+        'restore_archive_password' => 'Archive password (encrypted)',
+        'restore_safety_backup' => 'Create a safety backup before proceeding',
+        'restore_safety_backup_hint' => 'A database-only backup of the current state, so you can roll back if something goes wrong.',
+        'restore_account_password' => 'Confirm with your account password',
+        'restore_in_progress' => 'Restore in progress',
+        'restore_do_not_close' => 'Do not close this window. The application will come back when it finishes.',
+        'restore_failed' => 'Restore failed',
         'backup_db_only_label' => 'Database only',
         'backup_password_error_min' => 'At least 8 characters',
         'backup_password_error_mismatch' => 'The passwords do not match',
@@ -252,6 +290,8 @@ return [
         'mail_password' => 'Enter SMTP password',
         'mail_password_keep' => 'Leave blank to keep the current password',
         'mail_password_enter' => 'Enter SMTP password',
+
+        'restore_account_password' => 'Your sign-in password',
         'mail_from_address' => 'e.g. admin@your-domain.com',
         'test_recipient' => 'Enter email for test',
         'select_role' => 'Select a role',
@@ -276,6 +316,10 @@ return [
         'delete_backup' => 'Delete backup',
         'copy_checksum' => 'Copy checksum',
         'restore_guide' => 'Restore guide',
+
+        'restore_backup' => 'Restore',
+        'confirm_restore' => 'Restore now',
+        'restore_view_result' => 'View result',
         'set_backup_password' => 'Set password',
         'change_backup_password' => 'Change password',
         'remove_backup_password' => 'Remove',
@@ -288,6 +332,9 @@ return [
         'cancel_backup_description' => 'Are you sure you want to cancel the backup in progress? Partial data will be deleted.',
         'remove_backup_password_title' => 'Remove protection password',
         'remove_backup_password_description' => 'Are you sure? New backups can no longer be encrypted until you set a new password. Already encrypted backups remain protected by the old password (which you will need to remember to open them).',
+
+        'restore_backup_title' => 'Restore this backup',
+        'restore_backup_description' => 'You are about to return the installation to the state of this backup. Confirm to proceed.',
     ],
     'sidebar' => [
         'users' => 'Users',
