@@ -5,6 +5,7 @@ use App\Enums\Permission;
 use App\Models\Backup;
 use App\Models\User;
 use App\Services\Backup\BackupPasswordStore;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -107,4 +108,36 @@ test('senza la tabella backups l endpoint risponde 409', function () {
     $this->actingAs(upgradeAdmin())
         ->post('/system/upgrade/backup')
         ->assertStatus(409);
+});
+
+test('il backup pre-aggiornamento funziona anche se manca type/encrypted (upgrade da < beta.12)', function () {
+    // Simula lo schema di una versione anteriore alla beta.12: il backup di
+    // sicurezza gira PRIMA delle migrazioni, quindi le colonne type/encrypted
+    // (aggiunte in beta.12) potrebbero non esistere ancora.
+    Schema::table('backups', function (Blueprint $table) {
+        $table->dropColumn(['type', 'encrypted']);
+    });
+    expect(Schema::hasColumn('backups', 'type'))->toBeFalse();
+
+    $admin = upgradeAdmin();
+
+    // Prima della fix: 500 "Unknown column 'type'". Dopo: lo schema viene
+    // allineato al volo (solo infrastruttura) e il backup parte regolarmente.
+    $response = $this->actingAs($admin)->post('/system/upgrade/backup');
+    $response->assertOk();
+
+    expect(Schema::hasColumn('backups', 'type'))->toBeTrue();
+    expect(Schema::hasColumn('backups', 'encrypted'))->toBeTrue();
+
+    $uuid = $response->json('backup.uuid');
+    expect(Backup::firstWhere('uuid', $uuid)->type)->toBe(Backup::TYPE_DB_ONLY);
+
+    $status = $response->json('backup.status');
+    $guard = 0;
+    while (in_array($status, ['pending', 'dumping_database', 'archiving_files', 'finalizing'], true) && $guard < 50) {
+        $status = $this->actingAs($admin)->post("/system/upgrade/backup/{$uuid}/step")->json('backup.status');
+        $guard++;
+    }
+
+    expect($status)->toBe('completed');
 });

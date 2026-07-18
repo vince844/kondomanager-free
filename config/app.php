@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.10.0-beta.13'),
+    'version' => env('APP_VERSION', '1.10.0-beta.14'),
 
     /*
     |--------------------------------------------------------------------------
@@ -153,17 +153,9 @@ return [
     */
     'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Trusted Proxies (Sicurezza Rete)
-    |--------------------------------------------------------------------------
-    |
-    | Definisce gli IP dei proxy di cui ci fidiamo.
-    | - '*' : Fidati di tutti (Cloudflare, AWS, Hosting Condiviso)
-    | - null : Non fidarti di nessuno default per sicurezza (VPS Nudo - Default Sicuro)
-    | - '10.0.0.1,192.168.1.1' : Lista specifica
-    |
-    */
-    'trusted_proxies' => env('TRUSTED_PROXIES', null),
+    // I proxy fidati NON sono più qui: la chiave 'app.trusted_proxies' non
+    // veniva letta da nessuno (il middleware TrustProxies legge
+    // config('trustedproxy.proxies')). La configurazione, con le relative note
+    // di sicurezza, vive in config/trustedproxy.php.
 
 ];

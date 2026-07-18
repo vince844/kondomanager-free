@@ -9,6 +9,7 @@ use App\Services\Backup\Exceptions\BackupInProgressException;
 use App\Services\System\SystemFinalizer;
 use App\Services\UpdateService;
 use App\Settings\GeneralSettings;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
@@ -119,6 +120,12 @@ class SystemUpgradeController extends Controller
     {
         abort_unless(Schema::hasTable('backups'), 409, 'Infrastruttura di backup non disponibile.');
 
+        // Il backup di sicurezza gira PRIMA delle migrazioni: se si aggiorna da
+        // una versione anteriore alla beta.12, la tabella backups non ha ancora
+        // le colonne type/encrypted usate dal motore di backup. Le allineiamo
+        // qui (sola infrastruttura, nessun dato utente toccato) per non fallire.
+        $this->ensureBackupsMetadataColumns();
+
         // Un backup di sicurezza già in corso (ripresa dopo un reload): riusalo.
         $running = $manager->runningBackup();
 
@@ -140,6 +147,30 @@ class SystemUpgradeController extends Controller
         $manager->runStep($backup);
 
         return response()->json(['backup' => $this->presentUpgradeBackup($backup->refresh())]);
+    }
+
+    /**
+     * Allinea le colonne di metadati della tabella backups (type/encrypted)
+     * introdotte nella beta.12. Serve al solo backup di sicurezza pre-upgrade,
+     * che gira prima delle migrazioni: aggiornando da una versione più vecchia
+     * quelle colonne non esistono ancora e la creazione del record fallirebbe
+     * con "Unknown column". È idempotente e non tocca alcun dato utente; la
+     * migration dedicata resta la fonte di verità e diventa un no-op quando poi
+     * verrà eseguita (è guardata con hasColumn).
+     */
+    private function ensureBackupsMetadataColumns(): void
+    {
+        if (! Schema::hasColumn('backups', 'type')) {
+            Schema::table('backups', function (Blueprint $table) {
+                $table->string('type', 20)->default('full')->after('status');
+            });
+        }
+
+        if (! Schema::hasColumn('backups', 'encrypted')) {
+            Schema::table('backups', function (Blueprint $table) {
+                $table->boolean('encrypted')->default(false)->after('type');
+            });
+        }
     }
 
     /**

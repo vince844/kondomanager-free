@@ -240,6 +240,12 @@ const restoreRunning = ref(false)
 const restoreToken = ref<string | null>(null)
 const restorePhase = ref<string | null>(null)
 const restoreErrorMessage = ref<string | null>(null)
+const restoreUuid = ref<string | null>(null)
+const restoreFailedPhase = ref<string | null>(null)
+const restoreFailedAt = ref<number | null>(null)
+const restoreAppVersion = ref<string | null>(null)
+const restoreRecovering = ref(false)
+const restoreCopied = ref(false)
 
 const askRestore = (backup: BackupItem) => {
   backupToRestore.value = backup
@@ -303,6 +309,10 @@ async function pollRestore() {
       const state = data.restore
       restorePhase.value = state?.phase ?? null
       restoreErrorMessage.value = state?.error ?? null
+      restoreUuid.value = state?.uuid ?? restoreUuid.value
+      restoreFailedPhase.value = state?.failed_phase ?? null
+      restoreFailedAt.value = state?.failed_at ?? null
+      restoreAppVersion.value = state?.app_version ?? null
 
       if (restorePhase.value === 'completed') {
         // Ripristino riuscito: le sessioni sono azzerate, la pagina di esito
@@ -322,6 +332,63 @@ async function pollRestore() {
       restorePhase.value = 'failed'
       return
     }
+  }
+}
+
+// Log tecnico compatto da copiare e inviare all'assistenza
+const restoreSupportLog = computed(() => [
+  'KondoManager restore log',
+  `uuid: ${restoreUuid.value ?? '—'}`,
+  `version: ${restoreAppVersion.value ?? '—'}`,
+  `failed_phase: ${restoreFailedPhase.value ?? restorePhase.value ?? '—'}`,
+  `failed_at: ${restoreFailedAt.value ? new Date(restoreFailedAt.value * 1000).toISOString().replace('T', ' ').slice(0, 19) : '—'}`,
+  `error: ${restoreErrorMessage.value ?? '—'}`,
+].join('\n'))
+
+function copyRestoreLog() {
+  navigator.clipboard?.writeText(restoreSupportLog.value).then(() => {
+    restoreCopied.value = true
+    setTimeout(() => (restoreCopied.value = false), 2000)
+  }).catch(() => {})
+}
+
+// Riprende un ripristino fallito col token ancora in memoria (l'overlay è
+// aperto), poi riprende il polling degli step come un avvio normale.
+async function resumeRestore() {
+  if (restoreRecovering.value) return
+  restoreRecovering.value = true
+  try {
+    const { data } = await axios.post(route('ripristino.resume'), {}, {
+      headers: { 'X-Restore-Token': restoreToken.value ?? '' },
+    })
+    if (data.token) restoreToken.value = data.token
+    restorePhase.value = data.restore?.phase ?? 'pending'
+    restoreErrorMessage.value = null
+    if (restorePhase.value === 'completed') {
+      window.location.href = route('ripristino.result')
+      return
+    }
+    if (restorePhase.value && RESTORE_RUNNING_PHASES.includes(restorePhase.value)) {
+      pollRestore()
+    }
+  } catch {
+    // resta sullo stato fallito, l'utente può riprovare o sbloccare
+  } finally {
+    restoreRecovering.value = false
+  }
+}
+
+// Annulla e sblocca l'applicazione: il DB può restare parziale (la UI avvisa).
+async function abortRestore() {
+  if (restoreRecovering.value) return
+  restoreRecovering.value = true
+  try {
+    await axios.post(route('ripristino.abort'), {}, {
+      headers: { 'X-Restore-Token': restoreToken.value ?? '' },
+    })
+    window.location.href = '/'
+  } catch {
+    restoreRecovering.value = false
   }
 }
 
@@ -1132,10 +1199,30 @@ const statusBadgeClass = (status: string) => {
         <template v-else>
           <XCircle class="w-10 h-10 mx-auto mb-4 text-red-600" />
           <h2 class="text-lg font-bold text-red-700 dark:text-red-400">{{ trans('impostazioni.label.restore_failed') }}</h2>
-          <p class="mt-2 text-sm text-muted-foreground break-words">{{ restoreErrorMessage }}</p>
-          <a :href="route('ripristino.result')" class="mt-6 inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-            {{ trans('impostazioni.actions.restore_view_result') }}
-          </a>
+          <p class="mt-2 text-sm text-muted-foreground">{{ trans('impostazioni.restore_recovery.failed_body') }}</p>
+
+          <!-- Dettagli tecnici + log copiabile per l'assistenza -->
+          <details class="mt-4 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-left">
+            <summary class="cursor-pointer select-none text-[12px] font-medium text-muted-foreground">{{ trans('impostazioni.restore_recovery.details') }}</summary>
+            <pre class="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 font-mono text-[10px] leading-relaxed text-muted-foreground">{{ restoreSupportLog }}</pre>
+            <p class="mt-1.5 text-[11px] text-muted-foreground">{{ trans('impostazioni.restore_recovery.log_intro') }}</p>
+            <button type="button" @click="copyRestoreLog" class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2.5 py-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">
+              <component :is="restoreCopied ? Check : Copy" class="h-3.5 w-3.5" />
+              {{ restoreCopied ? trans('impostazioni.restore_recovery.copied') : trans('impostazioni.restore_recovery.copy_log') }}
+            </button>
+          </details>
+
+          <!-- Azioni di recupero: token ancora in memoria (overlay aperto) -->
+          <div class="mt-5 flex flex-col gap-2">
+            <Button type="button" class="bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white" :disabled="restoreRecovering" @click="resumeRestore">
+              <Loader2 v-if="restoreRecovering" class="w-4 h-4 mr-2 animate-spin" />
+              {{ trans('impostazioni.restore_recovery.resume') }}
+            </Button>
+            <Button type="button" variant="outline" class="border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900/50 dark:text-red-400" :disabled="restoreRecovering" @click="abortRestore">
+              {{ trans('impostazioni.restore_recovery.unlock') }}
+            </Button>
+            <p class="text-[11px] text-muted-foreground">{{ trans('impostazioni.restore_recovery.unlock_note') }}</p>
+          </div>
         </template>
       </div>
     </div>

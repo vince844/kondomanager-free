@@ -60,7 +60,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Saldo di apertura',
-    description: 'Puoi correggere il saldo di apertura se necessario. Questa modifica non influenza i movimenti già registrati, solo il punto di partenza.',
+    description: 'Puoi correggere il saldo di apertura solo finché la risorsa non ha movimenti contabili registrati: una volta presenti, il campo si blocca perché modificarlo altererebbe retroattivamente il saldo reale.',
     icon: Wallet,
     colorVariant: 'amber' as const
   },
@@ -232,7 +232,7 @@ const submit = () => {
                         <HoverCardContent class="w-72 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
                           <h4 class="text-sm font-bold mb-2">Modifica saldo</h4>
                           <p class="text-xs text-slate-500 leading-relaxed">
-                            Puoi correggere il saldo di apertura se necessario. Questa modifica non influenza i movimenti già registrati, solo il punto di partenza.
+                            Puoi correggere il saldo di apertura solo finché la risorsa non ha movimenti contabili registrati: una volta presenti, il campo si blocca perché modificarlo altererebbe retroattivamente il saldo reale.
                           </p>
                         </HoverCardContent>
                       </HoverCard>
@@ -241,11 +241,15 @@ const submit = () => {
                       id="saldo_iniziale"
                       v-model="form.saldo_iniziale"
                       :money-options="moneyOptions"
-                      :lazy="true" 
+                      :lazy="true"
                       placeholder="0,00"
                       class="mt-1"
+                      :disabled="cassaData.has_movements"
                       @focus="form.clearErrors('saldo_iniziale')"
                     />
+                    <p v-if="cassaData.has_movements" class="text-xs text-amber-600 mt-1">
+                      Impossibile modificare il saldo di apertura: risorsa già utilizzata in contabilità.
+                    </p>
                     <InputError :message="form.errors.saldo_iniziale" />
                   </div>
 

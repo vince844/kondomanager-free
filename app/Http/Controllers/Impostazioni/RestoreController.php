@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Impostazioni;
 use App\Enums\BackupStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Backup;
+use App\Models\User;
 use App\Services\Backup\Destinations\DestinationManager;
 use App\Services\Restore\ArchiveReader;
 use App\Services\Restore\Exceptions\IncompatibleBackupException;
@@ -13,6 +14,7 @@ use App\Services\Restore\Exceptions\MalformedArchiveException;
 use App\Services\Restore\Exceptions\RestoreInProgressException;
 use App\Services\Restore\RestoreManager;
 use App\Services\Restore\RestorePreflight;
+use App\Services\Restore\RestoreState;
 use App\Settings\BackupSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -147,6 +149,73 @@ class RestoreController extends Controller
         ]);
     }
 
+    /**
+     * Riprende un ripristino fallito/in stallo (pulsante della pagina di
+     * blocco o dell'overlay admin). Vedi authorizeRecovery per le due vie di
+     * autenticazione senza sessione.
+     */
+    public function resume(Request $request, RestoreManager $manager, RestoreState $stateStore): JsonResponse
+    {
+        $this->authorizeRecovery($request, $manager, $stateStore);
+
+        $state = $manager->resume();
+
+        // Riemetti un token: la pagina di recupero (senza sessione) può così
+        // guidare gli step successivi come l'overlay admin, senza ridigitare la
+        // password a ogni passo.
+        $token = $stateStore->issueToken((int) config('backup.stale_after_hours', 2) * 3600);
+
+        return response()->json([
+            'restore' => $this->present($state),
+            'token' => $token,
+        ]);
+    }
+
+    /**
+     * Annulla un ripristino fallito/in stallo e sblocca l'applicazione. Il
+     * database può restare in uno stato parziale: la UI lo avvisa.
+     */
+    public function abort(Request $request, RestoreManager $manager, RestoreState $stateStore): JsonResponse
+    {
+        $this->authorizeRecovery($request, $manager, $stateStore);
+
+        $manager->abort();
+
+        return response()->json(['restore' => $this->present($manager->current())]);
+    }
+
+    /**
+     * Autorizza un'azione di recupero senza sessione (l'import l'ha azzerata).
+     * Due vie: (1) il token del ripristino, che chi ha ancora aperta la pagina
+     * admin conserva in memoria; (2) la password dell'account che ha avviato
+     * il ripristino, per chi arriva dalla pagina di blocco 503.
+     */
+    private function authorizeRecovery(Request $request, RestoreManager $manager, RestoreState $stateStore): void
+    {
+        $state = $manager->current();
+
+        abort_if($state === null, 404);
+
+        // Via 1 — token valido (overlay admin ancora aperto)
+        $token = $request->header('X-Restore-Token') ?? $request->input('token');
+        if ($token !== null && $stateStore->validateToken($token)) {
+            return;
+        }
+
+        // Via 2 — password dell'account che ha avviato il ripristino
+        $password = (string) $request->input('account_password', '');
+        $userId = $state['created_by'] ?? null;
+        $user = $userId ? User::find($userId) : null;
+
+        if ($password !== '' && $user !== null && Hash::check($password, $user->password)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'account_password' => __('impostazioni.restore_recovery.auth_failed'),
+        ]);
+    }
+
     private function archivePath(Backup $backup, DestinationManager $destinations): string
     {
         abort_unless($backup->status === BackupStatus::COMPLETED && $backup->filename, 404);
@@ -174,6 +243,11 @@ class RestoreController extends Controller
             'manifest' => $state['manifest'] ?? null,
             'outcome' => $state['outcome'] ?? [],
             'error' => $state['error'] ?? null,
+            // Contesto per il log di supporto (nessun segreto)
+            'failed_phase' => $state['failed_phase'] ?? null,
+            'failed_at' => $state['failed_at'] ?? null,
+            'aborted' => (bool) ($state['aborted'] ?? false),
+            'app_version' => config('app.version'),
         ];
     }
 }

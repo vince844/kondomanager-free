@@ -19,27 +19,37 @@ class UpdateCassaAction
             // --- 1. CONTROLLO DI SICUREZZA ---
             // Questo blocco viene eseguito PRIMA di qualsiasi modifica.
             // Se scatta l'eccezione, la transazione si ferma e nulla cambia.
-            if ($cassa->tipo !== $data['tipo']) {
-                
-                // TODO: Ricordati di rimuovere il false fisso quando avrai i movimenti!
-                // $hasMovimenti = $cassa->contoContabile?->movimenti()->exists();
-                $hasMovimenti = false; 
+            $hasMovimenti = $cassa->movimenti()->exists();
 
-                if ($hasMovimenti) {
-                    throw ValidationException::withMessages([
-                        'tipo' => 'Impossibile modificare il tipo: questa risorsa ha già movimenti contabili registrati.'
-                    ]);
-                }
+            if ($cassa->tipo !== $data['tipo'] && $hasMovimenti) {
+                throw ValidationException::withMessages([
+                    'tipo' => 'Impossibile modificare il tipo: questa risorsa ha già movimenti contabili registrati.'
+                ]);
+            }
+
+            // saldo_iniziale non ha un cast 'integer' sul model: lo normalizziamo
+            // esplicitamente per evitare confronti stretti falsati da un valore
+            // restituito come stringa dal driver DB (vedi CassaResource).
+            $saldoInizialeAttuale = (int) $cassa->saldo_iniziale;
+
+            // Se il campo non è presente nel payload, manteniamo il valore attuale
+            // (non deve mai azzerarsi solo perché omesso dalla richiesta).
+            $nuovoSaldoIniziale = isset($data['saldo_iniziale'])
+                ? MoneyHelper::toCents($data['saldo_iniziale'])
+                : $saldoInizialeAttuale;
+
+            if ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale) {
+                throw ValidationException::withMessages([
+                    'saldo_iniziale' => 'Impossibile modificare il saldo di apertura: questa risorsa ha già movimenti contabili registrati.'
+                ]);
             }
 
             // --- 2. AGGIORNAMENTO CASSA ---
             $cassa->update([
                 'nome'        => $data['nome'],
-                'tipo'        => $data['tipo'], 
+                'tipo'        => $data['tipo'],
                 'descrizione' => $data['descrizione'] ?? null,
-                'saldo_iniziale' => isset($data['saldo_iniziale']) 
-                                ? MoneyHelper::toCents($data['saldo_iniziale']) 
-                                : 0,
+                'saldo_iniziale' => $nuovoSaldoIniziale,
                 'note'        => $data['note'] ?? null,
                 // --- CAMPI GOVERNANCE FONDI ---
                 'sottotipo_fondo'         => $data['sottotipo_fondo'] ?? null,

@@ -20,7 +20,7 @@ class RestoreMode
 {
     public function __construct(private ?string $path = null) {}
 
-    public function enter(string $restoreUuid): void
+    public function enter(string $restoreUuid, ?string $locale = null): void
     {
         $path = $this->path();
         $directory = dirname($path);
@@ -29,8 +29,12 @@ class RestoreMode
             mkdir($directory, 0755, true);
         }
 
+        // Salviamo la lingua dell'admin che avvia il ripristino: la pagina 503
+        // (senza DB né sessione) la usa per mostrare UN SOLO idioma invece di
+        // impilare tutte le traduzioni.
         file_put_contents($path, json_encode([
             'restore_uuid' => $restoreUuid,
+            'locale' => $locale,
             'entered_at' => time(),
         ]));
     }

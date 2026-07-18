@@ -146,3 +146,12 @@ Route::middleware(EnsureRestoreToken::class)->group(function () {
 // sessioni sono state azzerate — niente auth, legge lo stato su file.
 Route::get('ripristino/esito', [RestoreController::class, 'result'])
     ->name('ripristino.result');
+
+// Recupero da un ripristino fallito/in stallo (pulsanti della pagina 503 o
+// dell'overlay admin). NON sotto EnsureRestoreToken: chi arriva dalla 503 non
+// ha il token — l'autorizzazione (token OPPURE password account) è nel
+// controller. CSRF-except in bootstrap/app.php (nessuna sessione qui).
+Route::post('ripristino/riprendi', [RestoreController::class, 'resume'])
+    ->name('ripristino.resume');
+Route::post('ripristino/annulla', [RestoreController::class, 'abort'])
+    ->name('ripristino.abort');

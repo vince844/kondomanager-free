@@ -292,7 +292,7 @@ Route::get('/debug-proxy', function (Request $request) {
         'laravel_ip' => $request->ip(),
         'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? 'N/A',
         'x_forwarded_for' => $request->header('X-Forwarded-For'),
-        'config_proxies' => config('app.trusted_proxies'),
+        'config_proxies' => config('trustedproxy.proxies'),
     ]);
 })->middleware('auth'); // Proteggi questo endpoint!
 ```
@@ -386,6 +386,8 @@ tail -f storage/logs/laravel.log | grep -i cron
 - ❓ Sei dietro Cloudflare/Proxy?
 - ✅ Aggiungi `TRUSTED_PROXIES=*` nel `.env`
 - ✅ Esegui `php artisan config:clear`
+
+> ⚠️ **Prima di usare `*`:** `*` si fida di *qualsiasi* client che si connette direttamente a PHP. Se l'origine è raggiungibile anche fuori dal proxy, un attaccante può falsificare `X-Forwarded-For` — aggirando non solo l'allowlist del cron ma anche i limiti anti-brute-force di login/2FA (le cui chiavi includono l'IP). Su origini raggiungibili direttamente **preferisci la lista IP esplicita** del proxy (Opzione C sopra) e/o firewalla l'origine così che solo il proxy la raggiunga.
 
 **Causa 3:** IP non di cron-job.org
 - ❓ Stai usando un altro servizio?

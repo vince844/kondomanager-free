@@ -71,25 +71,33 @@ class UpgradePatchServiceProvider extends ServiceProvider
         // --- LOGICA DI RILEVAMENTO AMBIENTE ---
 
         $host = $_SERVER['HTTP_HOST'] ?? '';
-        
-        // A. Rilevamento per NOME (Hosting Gratuiti/Specifici)
-        // Alcuni hosting (es. Altervista) non passano sempre gli header standard,
-        // quindi ci basiamo sul dominio per attivare la modalità compatibile.
+
+        // Rilevamento per NOME host (hosting condivisi noti). Su questi ambienti
+        // PHP è raggiungibile SOLO attraverso il proxy dell'host, quindi scrivere
+        // TRUSTED_PROXIES=* è sicuro: nessuno può connettersi all'origine per
+        // falsificare gli header X-Forwarded-*.
+        //
+        // SICUREZZA — perché NON usiamo più il rilevamento per header proxy:
+        // Prima qui c'era anche un ramo "$isBehindProxy" che attivava l'auto-'*'
+        // sulla semplice presenza di X-Forwarded-For / X-Forwarded-Proto /
+        // CF-Connecting-IP. Quegli header sono client-suppliable. Finché il fix
+        // trusted-proxy era inerte (env letto troppo presto in bootstrap/app.php)
+        // il ramo era innocuo; da quando è effettivo (config/trustedproxy.php),
+        // scrivere '*' in base a un header falsificabile permetterebbe — su
+        // un'origine raggiungibile direttamente — di far passare l'app in
+        // "trust-all" con una singola richiesta non autenticata. Rimosso.
+        // Chi sta dietro Cloudflare/nginx con dominio proprio deve impostare
+        // TRUSTED_PROXIES a mano (preferibilmente la lista IP del proxy), come
+        // raccomanda config/trustedproxy.php; il sintomo mixed-content è comunque
+        // già coperto dal forceScheme in AppServiceProvider.
         $isRestricted = (strpos($host, 'altervista') !== false) ||
                         (strpos($host, '.av') !== false) ||
                         (strpos($host, 'infinityfree') !== false) ||
                         (strpos($host, 'netsons') !== false);
 
-        // B. Rilevamento TECNICO (Header Proxy Standard)
-        // Se vediamo questi header, c'è matematicamente un "intermediario" (Nginx, Load Balancer, Cloudflare).
-        // È sicuro attivare i proxy fidati.
-        $isBehindProxy = !empty($_SERVER['HTTP_X_FORWARDED_FOR']) || 
-                         !empty($_SERVER['HTTP_X_FORWARDED_PROTO']) || 
-                         !empty($_SERVER['HTTP_CF_CONNECTING_IP']); // Specifico per Cloudflare
-
         // 3. APPLICAZIONE PATCH
-        // Se siamo in un ambiente che necessita del fix...
-        if ($isRestricted || $isBehindProxy) {
+        // Solo su hosting condivisi noti (origine non raggiungibile fuori dal proxy).
+        if ($isRestricted) {
             try {
                 // Prepariamo il blocco da appendere. Usiamo i commenti per far capire all'utente
                 // che questa modifica è stata automatica.
@@ -98,10 +106,15 @@ class UpgradePatchServiceProvider extends ServiceProvider
                 // Scriviamo in append (FILE_APPEND) per non sovrascrivere nulla.
                 file_put_contents($envPath, $patch, FILE_APPEND);
                 
-                // 4. RUNTIME FIX (Zero Downtime):
-                // Modificare il file .env non ha effetto sulla richiesta *corrente* (perché DotEnv è già stato caricato).
-                // Forziamo le variabili d'ambiente in memoria per far funzionare QUESTA richiesta
-                // (es. il redirect finale dell'aggiornamento) senza bisogno di riavviare/aggiornare la pagina.
+                // 4. RUNTIME (nota): da quando i trusted proxy si configurano
+                // via config/trustedproxy.php (letto dal middleware come
+                // config('trustedproxy.proxies'), risolto al boot da env), questi
+                // putenv/$_ENV NON hanno più effetto sulla richiesta *corrente*:
+                // la config è già stata risolta prima del boot dei provider. Il
+                // fix diventa attivo dalla richiesta SUCCESSIVA, quando il .env
+                // appena riscritto viene ricaricato. Le due righe restano
+                // innocue e le teniamo per compatibilità con eventuali usi di
+                // env('TRUSTED_PROXIES') a valle nella stessa richiesta.
                 putenv("TRUSTED_PROXIES=*");
                 $_ENV['TRUSTED_PROXIES'] = '*';
                 

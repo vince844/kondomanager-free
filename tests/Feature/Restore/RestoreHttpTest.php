@@ -6,6 +6,7 @@ use App\Models\Backup;
 use App\Models\User;
 use App\Services\Restore\RestoreMode;
 use App\Services\Restore\RestoreState;
+use App\Services\System\SystemFinalizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission as SpatiePermission;
@@ -122,4 +123,65 @@ test('la pagina di esito è raggiungibile senza autenticazione', function () {
             ->component('impostazioni/RestoreResult')
             ->where('restore.phase', 'completed')
         );
+});
+
+test('la 503 in corso mostra una sola lingua e si auto-aggiorna', function () {
+    app(RestoreState::class)->put(['uuid' => 'r1', 'phase' => 'importing_database']);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    $res = $this->get('/admin/dashboard')->assertStatus(503);
+    $res->assertSee('Ripristino in corso', false);              // IT
+    $res->assertDontSee('A backup is being restored', false);   // niente EN impilato
+    $res->assertSee('http-equiv="refresh"', false);             // spinner → refresh attivo
+    expect($res->headers->get('Retry-After'))->toBe('30');
+});
+
+test('la 503 mostra il recupero (non lo spinner) quando il ripristino è fallito', function () {
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'failed', 'failed_phase' => 'finalizing',
+        'error' => 'Errore-di-prova-XYZ', 'failed_at' => time(),
+    ]);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    $res = $this->get('/admin/dashboard')->assertStatus(503);
+    $res->assertSee('Ripristino non riuscito', false);   // pagina di recupero
+    $res->assertSee('Riprendi il ripristino', false);    // pulsante
+    $res->assertSee('Errore-di-prova-XYZ', false);       // log tecnico copiabile
+    $res->assertDontSee('http-equiv="refresh"', false);  // niente auto-refresh
+    expect($res->headers->get('Retry-After'))->toBeNull();
+});
+
+test('riprendi richiede un token o la password dell account', function () {
+    $admin = restoreAdmin();
+    app(RestoreState::class)->put([
+        'uuid' => 'r1', 'phase' => 'failed', 'failed_phase' => 'finalizing',
+        'created_by' => $admin->id, 'error' => 'x', 'failed_at' => time(),
+    ]);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    // il finalizer di sistema è già coperto altrove: qui isoliamo l'auth
+    $this->mock(SystemFinalizer::class, fn ($m) => $m->shouldReceive('finalize')->andReturnNull());
+
+    // Senza credenziali → 422
+    $this->postJson('/ripristino/riprendi')->assertStatus(422);
+
+    // Password sbagliata → 422
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'errata'])->assertStatus(422);
+
+    // Password corretta → autorizzato (l'endpoint avanza uno step)
+    $this->postJson('/ripristino/riprendi', ['account_password' => 'la-mia-password'])->assertOk();
+});
+
+test('annulla sblocca l applicazione con un token valido', function () {
+    $admin = restoreAdmin();
+    $state = app(RestoreState::class);
+    $state->put(['uuid' => 'r1', 'phase' => 'failed', 'created_by' => $admin->id]);
+    $token = $state->issueToken(3600);
+    app(RestoreMode::class)->enter('r1', 'it');
+
+    expect(app(RestoreMode::class)->active())->toBeTrue();
+
+    $this->postJson('/ripristino/annulla', [], ['X-Restore-Token' => $token])->assertOk();
+
+    expect(app(RestoreMode::class)->active())->toBeFalse(); // sbloccata
 });

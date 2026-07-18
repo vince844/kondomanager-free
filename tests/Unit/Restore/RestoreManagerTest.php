@@ -122,6 +122,14 @@ test('ripristino db_only completo: import, versione riallineata, orfani registra
     CREATE TABLE `sessions` (`id` varchar(255) NOT NULL, `payload` longtext NOT NULL, `last_activity` int NOT NULL, PRIMARY KEY (`id`));
     INSERT INTO `sessions` (`id`, `payload`, `last_activity`) VALUES ('vecchia-sessione', 'x', 123);
 
+    DROP TABLE IF EXISTS `jobs`;
+    CREATE TABLE `jobs` (`id` bigint unsigned NOT NULL AUTO_INCREMENT, `queue` varchar(255) NOT NULL, `payload` longtext NOT NULL, `attempts` tinyint unsigned NOT NULL, `reserved_at` int unsigned DEFAULT NULL, `available_at` int unsigned NOT NULL, `created_at` int unsigned NOT NULL, PRIMARY KEY (`id`));
+    INSERT INTO `jobs` (`queue`, `payload`, `attempts`, `available_at`, `created_at`) VALUES ('default', 'x', 0, 1, 1);
+
+    DROP TABLE IF EXISTS `failed_jobs`;
+    CREATE TABLE `failed_jobs` (`id` bigint unsigned NOT NULL AUTO_INCREMENT, `uuid` varchar(255) NOT NULL, `connection` text NOT NULL, `queue` text NOT NULL, `payload` longtext NOT NULL, `exception` longtext NOT NULL, `failed_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `failed_jobs_uuid_unique` (`uuid`));
+    INSERT INTO `failed_jobs` (`uuid`, `connection`, `queue`, `payload`, `exception`) VALUES ('j1', 'database', 'default', 'x', 'y');
+
     DROP TABLE IF EXISTS `backups`;
     CREATE TABLE `backups` (`id` bigint unsigned NOT NULL AUTO_INCREMENT, `uuid` char(36) NOT NULL, `filename` varchar(255) DEFAULT NULL, `disk` varchar(255) NOT NULL DEFAULT 'backups', `status` varchar(255) NOT NULL DEFAULT 'pending', `type` varchar(20) NOT NULL DEFAULT 'full', `encrypted` tinyint(1) NOT NULL DEFAULT '0', `progress` json DEFAULT NULL, `checkpoint` json DEFAULT NULL, `manifest` json DEFAULT NULL, `size` bigint unsigned DEFAULT NULL, `checksum` varchar(64) DEFAULT NULL, `error` text, `created_by` bigint unsigned DEFAULT NULL, `started_at` timestamp NULL DEFAULT NULL, `completed_at` timestamp NULL DEFAULT NULL, `created_at` timestamp NULL DEFAULT NULL, `updated_at` timestamp NULL DEFAULT NULL, PRIMARY KEY (`id`), UNIQUE KEY `backups_uuid_unique` (`uuid`));
 
@@ -198,6 +206,11 @@ test('ripristino db_only completo: import, versione riallineata, orfani registra
     // Le sessioni ereditate dal backup sono state azzerate
     expect(DB::table('sessions')->count())->toBe(0);
 
+    // Anche la coda ereditata dal dump è stata azzerata: niente job stantii
+    // rieseguiti, niente failed_jobs vecchi.
+    expect(DB::table('jobs')->count())->toBe(0);
+    expect(DB::table('failed_jobs')->count())->toBe(0);
+
     // Gli archivi su disco sono stati ri-registrati (origine + orfano)
     $registered = DB::table('backups')->pluck('filename')->all();
     expect($registered)->toContain('backup-origine.zip');
@@ -209,6 +222,80 @@ test('ripristino db_only completo: import, versione riallineata, orfani registra
 
     // Lo stato finale è consultabile (storico), niente residui tmp
     expect(is_dir($this->e2eRoot.'/backups/tmp/restore-'.$result['uuid']))->toBeFalse();
+});
+
+test('ripristino di un backup <= beta.11 (dump con la propria riga backups) non va in duplicate-uuid', function () {
+    kmE2eUseConnection();
+
+    $backupUuid = '21e60fa7-451f-4771-b71b-88de99191d36';
+
+    // I backup creati con versioni <= beta.11 includevano i DATI della tabella
+    // backups nel dump: qui la riga ha lo STESSO uuid dell'archivio ma un
+    // filename diverso da quello finale su disco (com'era al momento del dump).
+    $dump = <<<SQL
+    SET NAMES utf8mb4;
+    SET FOREIGN_KEY_CHECKS=0;
+
+    DROP TABLE IF EXISTS `migrations`;
+    CREATE TABLE `migrations` (`id` int unsigned NOT NULL AUTO_INCREMENT, `migration` varchar(255) NOT NULL, `batch` int NOT NULL, PRIMARY KEY (`id`));
+    INSERT INTO `migrations` (`migration`, `batch`) VALUES ('0001_01_01_000000_create_users_table', 1);
+
+    DROP TABLE IF EXISTS `settings`;
+    CREATE TABLE `settings` (`id` bigint unsigned NOT NULL AUTO_INCREMENT, `group` varchar(255) NOT NULL, `name` varchar(255) NOT NULL, `locked` tinyint(1) NOT NULL DEFAULT '0', `payload` json NOT NULL, PRIMARY KEY (`id`));
+    INSERT INTO `settings` (`group`, `name`, `locked`, `payload`) VALUES ('general', 'version', 0, '"1.0.0"');
+
+    DROP TABLE IF EXISTS `backups`;
+    CREATE TABLE `backups` (`id` bigint unsigned NOT NULL AUTO_INCREMENT, `uuid` char(36) NOT NULL, `filename` varchar(255) DEFAULT NULL, `disk` varchar(255) NOT NULL DEFAULT 'backups', `status` varchar(255) NOT NULL DEFAULT 'pending', `type` varchar(20) NOT NULL DEFAULT 'full', `encrypted` tinyint(1) NOT NULL DEFAULT '0', `progress` json DEFAULT NULL, `checkpoint` json DEFAULT NULL, `manifest` json DEFAULT NULL, `size` bigint unsigned DEFAULT NULL, `checksum` varchar(64) DEFAULT NULL, `error` text, `created_by` bigint unsigned DEFAULT NULL, `started_at` timestamp NULL DEFAULT NULL, `completed_at` timestamp NULL DEFAULT NULL, `created_at` timestamp NULL DEFAULT NULL, `updated_at` timestamp NULL DEFAULT NULL, PRIMARY KEY (`id`), UNIQUE KEY `backups_uuid_unique` (`uuid`));
+    INSERT INTO `backups` (`uuid`, `filename`, `disk`, `status`, `type`, `encrypted`) VALUES
+      ('{$backupUuid}', 'nome-al-momento-del-dump.zip', 'backups', 'completed', 'full', 0),
+      ('99999999-aaaa-bbbb-cccc-000000000000', 'backup-cancellato.zip', 'backups', 'completed', 'full', 0);
+
+    SET FOREIGN_KEY_CHECKS=1;
+    SQL;
+
+    $manifest = [
+        'manifest_format' => 1,
+        'contents' => 'full',
+        'encrypted' => false,
+        'backup_uuid' => $backupUuid,
+        'app' => ['name' => 'Origine', 'version' => '1.0.0', 'url' => 'https://origine.test'],
+        'database' => ['driver' => 'mysql', 'dump_sha256' => hash('sha256', $dump)],
+    ];
+
+    // Il file su disco ha un nome DIVERSO dalla riga importata: il dedup per
+    // filename non lo intercetta, quindi si arriva alla riga per uuid.
+    $archivePath = $this->e2eRoot.'/backups/kondomanager-backup-2026-07-12_135414-21e60fa7.zip';
+    kmE2eBuildArchive($archivePath, $dump, $manifest);
+
+    $this->mock(SystemFinalizer::class, function ($mock) {
+        $mock->shouldReceive('finalize')->andReturnNull();
+    });
+
+    $manager = app(RestoreManager::class);
+    $result = $manager->start($archivePath, null, ['safety_backup' => false, 'adopt_app_key' => false]);
+
+    $steps = 0;
+    do {
+        $state = $manager->runStep();
+        $steps++;
+    } while (RestoreStatus::from($state['phase'])->isRunning() && $steps < 500);
+
+    // Prima della fix: fallimento con "Duplicate entry ... for key
+    // backups_uuid_unique". Dopo: la finalizzazione completa.
+    expect($state['phase'])->toBe(RestoreStatus::COMPLETED->value);
+
+    kmE2eUseConnection();
+
+    // Esattamente UNA riga per quell'uuid, riconciliata al file reale su disco.
+    $rows = DB::table('backups')->where('uuid', $backupUuid)->get();
+    expect($rows)->toHaveCount(1);
+    expect($rows->first()->filename)->toBe(basename($archivePath));
+
+    // La riga "fantasma" ereditata dal dump (backup-cancellato.zip, senza file
+    // corrispondente su disco) è stata purgata: niente voci 404 nell'elenco.
+    expect(DB::table('backups')->where('filename', 'backup-cancellato.zip')->count())->toBe(0);
+
+    expect(app(RestoreMode::class)->active())->toBeFalse();
 });
 
 test('un archivio manomesso (sha256 non combacia) fa fallire senza spegnere la modalità', function () {

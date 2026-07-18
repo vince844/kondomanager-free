@@ -106,19 +106,28 @@ function createScenarioCascata(string $ruoloRiparto = 'inquilino', int $importo 
 
 function immobileConAnagrafiche(array $soggetti, Tabella $tabella, int $valoreMillesimale = 1000): object
 {
+    // Contatore monotòno per dati univoci: le colonne anagrafiche.email e
+    // .codice_fiscale sono UNIQUE, e usare rand() (email 1-1000, CF 10-99)
+    // causava collisioni sporadiche quando un test crea più anagrafiche,
+    // rendendo la suite flaky. Un contatore statico garantisce l'unicità
+    // senza dipendere dalla casualità.
+    static $seq = 0;
+
+    $seq++;
     $immobile = Immobile::forceCreate([
         'condominio_id' => $tabella->condominio_id,
-        'nome' => 'Int ' . rand(1, 1000),
+        'nome' => 'Int ' . $seq,
         'descrizione' => 'Appartamento',
-        'interno' => (string)rand(1, 1000)
+        'interno' => (string) $seq,
     ]);
-    
+
     foreach ($soggetti as &$s) {
+        $seq++;
         $anagrafica = Anagrafica::forceCreate([
-            'nome' => 'Test User ' . rand(1, 1000),
-            'email' => 'test' . rand(1, 1000) . '@example.com',
+            'nome' => 'Test User ' . $seq,
+            'email' => 'test' . $seq . '@example.com',
             'indirizzo' => 'Via Roma 1',
-            'codice_fiscale' => 'RSSMRA' . rand(10, 99) . 'A01H501U'
+            'codice_fiscale' => 'RSSMRA' . str_pad((string) $seq, 10, '0', STR_PAD_LEFT),
         ]);
         
         // SQLite constraint bypass for enum: we can insert directly into pivot 

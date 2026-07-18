@@ -100,12 +100,13 @@ class RestoreManager
             'checkpoint' => [],
             'outcome' => [],
             'created_by' => $user?->id,
+            'locale' => app()->getLocale(),
             'started_at' => time(),
         ]);
 
         $token = $this->state->issueToken($this->staleSeconds());
 
-        $this->mode->enter($uuid);
+        $this->mode->enter($uuid, app()->getLocale());
 
         event(new RestoreStarted($uuid, $manifest));
 
@@ -153,6 +154,74 @@ class RestoreManager
         return $this->state->get();
     }
 
+    /**
+     * Riprende un ripristino FALLITO dal punto in cui si era interrotto:
+     * riporta la fase a quella pre-fallimento (il cui checkpoint — offset
+     * import, indice file — è già salvato) e rilancia gli step. Utile quando
+     * l'errore era transitorio o è stato corretto (deploy di una fix).
+     */
+    public function resume(): ?array
+    {
+        $state = $this->state->get();
+
+        if ($state === null) {
+            return null;
+        }
+
+        if ($this->statusOf($state)->isRunning()) {
+            return $this->runStep(); // già in corso: normale avanzamento
+        }
+
+        if ($this->statusOf($state) !== RestoreStatus::FAILED) {
+            return $state; // completato o già chiuso: niente da riprendere
+        }
+
+        // La modalità potrebbe non essere mai stata spenta (fail non la spegne),
+        // ma la riaccendiamo per sicurezza nel caso di un abort precedente.
+        if (! $this->mode->active()) {
+            $this->mode->enter($state['uuid'] ?? (string) Str::uuid(), $state['locale'] ?? null);
+        }
+
+        $this->state->merge([
+            'phase' => $state['failed_phase'] ?? RestoreStatus::PENDING->value,
+            'error' => null,
+            'failed_at' => null,
+            'resumed_at' => time(),
+        ]);
+
+        return $this->runStep();
+    }
+
+    /**
+     * Annulla un ripristino: spegne la modalità (l'app torna raggiungibile) e
+     * segna lo stato come annullato. NON tenta un rollback dei dati — il
+     * database potrebbe restare in uno stato parziale, e la UI lo avvisa.
+     */
+    public function abort(): void
+    {
+        try {
+            $state = $this->state->get();
+
+            if ($state !== null) {
+                // Se la fase file aveva spostato gli originali in tmp/old, va
+                // fatto il rollback PRIMA di cancellare tmp: altrimenti
+                // cleanupTemp distruggerebbe l'unica copia dei file utente
+                // (il safety backup potrebbe essere db_only o disattivato).
+                $this->rollbackFiles($state);
+                $this->cleanupTemp($state);
+                $this->state->merge([
+                    'phase' => RestoreStatus::FAILED->value,
+                    'aborted' => true,
+                    'aborted_at' => time(),
+                ]);
+            }
+        } catch (Throwable) {
+            // best effort: l'importante è spegnere la modalità qui sotto
+        }
+
+        $this->mode->exit();
+    }
+
     /* ------------------------------------------------------------------
      | Avanzamento
      | ------------------------------------------------------------------ */
@@ -186,9 +255,18 @@ class RestoreManager
         $backup = $uuid ? Backup::firstWhere('uuid', $uuid) : null;
 
         if ($backup === null) {
+            // Se stiamo ripristinando un archivio FULL, il safety backup deve
+            // essere anch'esso FULL: altrimenti storage/app (che la fase file
+            // sovrascrive) non avrebbe alcun punto di rollback. Per un archivio
+            // solo-database basta un db_only. (I manifest <= beta.11 non hanno
+            // la chiave 'contents': default FULL, corretto per quei backup.)
+            $safetyType = ($state['manifest']['contents'] ?? Backup::TYPE_FULL) === Backup::TYPE_DB_ONLY
+                ? Backup::TYPE_DB_ONLY
+                : Backup::TYPE_FULL;
+
             $backup = $this->backupManager->start(
                 $uuid ? null : User::find($state['created_by'] ?? null),
-                ['type' => Backup::TYPE_DB_ONLY]
+                ['type' => $safetyType]
             );
             $state = $this->patchCheckpoint($state, ['safety_uuid' => $backup->uuid]);
         }
@@ -402,6 +480,14 @@ class RestoreManager
             ? base64_decode(substr($newKey, 7))
             : $newKey]);
 
+        // Il singleton 'encrypter' è GIÀ stato risolto con la vecchia chiave a
+        // inizio richiesta (EncryptCookies del gruppo web, MailConfigProvider):
+        // un semplice config() non lo ricostruisce. Va dimenticato, altrimenti
+        // la sonda di decifratura decifrerebbe con la chiave sbagliata e
+        // azzererebbe proprio i dati 2FA/SMTP che l'adozione deve preservare.
+        app()->forgetInstance('encrypter');
+        Crypt::clearResolvedInstances();
+
         return true;
     }
 
@@ -469,12 +555,15 @@ class RestoreManager
 
     private function resetVolatileState(): void
     {
-        foreach (['sessions', 'cache', 'cache_locks'] as $table) {
+        // sessions/cache + code (jobs/job_batches/failed_jobs): stato volatile
+        // che nel dump di un backup finisce coi suoi dati. Reimportarlo farebbe
+        // rieseguire job stantii e lascerebbe failed_jobs vecchi: va azzerato.
+        foreach (['sessions', 'cache', 'cache_locks', 'jobs', 'job_batches', 'failed_jobs', 'password_reset_tokens'] as $table) {
             try {
                 DB::table($table)->truncate();
             } catch (Throwable) {
-                // La tabella potrebbe non esistere (driver di sessione/cache
-                // diverso): non è un errore per il ripristino.
+                // La tabella potrebbe non esistere (driver di sessione/cache/coda
+                // diverso da database): non è un errore per il ripristino.
             }
         }
 
@@ -503,8 +592,9 @@ class RestoreManager
         }
 
         $registered = 0;
+        $archives = glob(rtrim($root, '/').'/*.zip') ?: [];
 
-        foreach (glob(rtrim($root, '/').'/*.zip') ?: [] as $archivePath) {
+        foreach ($archives as $archivePath) {
             $filename = basename($archivePath);
 
             if (Backup::where('filename', $filename)->exists()) {
@@ -522,22 +612,44 @@ class RestoreManager
                 $reader->close();
             }
 
-            Backup::create([
-                'uuid' => $manifest['backup_uuid'] ?? (string) Str::uuid(),
-                'filename' => $filename,
-                'disk' => $disk,
-                'status' => BackupStatus::COMPLETED,
-                'type' => $manifest['contents'] ?? Backup::TYPE_FULL,
-                'encrypted' => $manifest === null ? true : (bool) ($manifest['encrypted'] ?? false),
-                'manifest' => $manifest,
-                'size' => filesize($archivePath) ?: null,
-                'checksum' => hash_file('sha256', $archivePath) ?: null,
-                'progress' => ['percent' => 100, 'phase' => 'completed', 'detail' => null],
-                'completed_at' => now(),
-            ]);
+            $uuid = $manifest['backup_uuid'] ?? (string) Str::uuid();
+
+            // updateOrCreate (non create) per non violare il vincolo UNIQUE su
+            // uuid: i backup creati con versioni <= beta.11 includevano i DATI
+            // della tabella backups nel dump, quindi dopo l'import la riga con
+            // questo uuid può già esistere — magari con un filename non allineato
+            // al file su disco (per cui il controllo per filename qui sopra non
+            // l'ha intercettata). In quel caso la riconciliamo ai valori reali
+            // dell'archivio invece di duplicarla.
+            Backup::updateOrCreate(
+                ['uuid' => $uuid],
+                [
+                    'filename' => $filename,
+                    'disk' => $disk,
+                    'status' => BackupStatus::COMPLETED,
+                    'type' => $manifest['contents'] ?? Backup::TYPE_FULL,
+                    'encrypted' => $manifest === null ? true : (bool) ($manifest['encrypted'] ?? false),
+                    'manifest' => $manifest,
+                    'size' => filesize($archivePath) ?: null,
+                    'checksum' => hash_file('sha256', $archivePath) ?: null,
+                    'progress' => ['percent' => 100, 'phase' => 'completed', 'detail' => null],
+                    'completed_at' => now(),
+                ]
+            );
 
             $registered++;
         }
+
+        // Riconcilia l'altro verso: elimina le righe COMPLETED ereditate dal
+        // dump (backup <= beta.11 includevano i DATI della tabella backups) che
+        // puntano ad archivi non più presenti su disco — altrimenti restano
+        // voci fantasma nell'elenco che darebbero 404 a download/ripristino.
+        $onDisk = array_map('basename', $archives);
+        Backup::query()
+            ->where('status', BackupStatus::COMPLETED->value)
+            ->whereNotNull('filename')
+            ->whereNotIn('filename', $onDisk ?: ['__nessun_archivio__'])
+            ->delete();
 
         return $registered;
     }
@@ -545,6 +657,56 @@ class RestoreManager
     /* ------------------------------------------------------------------
      | File: setting aside + lista
      | ------------------------------------------------------------------ */
+
+    /**
+     * Rollback della fase file: rimette gli originali (spostati in tmp/old da
+     * setCurrentFilesAside) al loro posto in storage/app, rimuovendo prima i
+     * file parzialmente ripristinati. No-op se i file non erano stati spostati.
+     * Best effort per-operazione: un intoppo su una voce non blocca lo sblocco.
+     */
+    private function rollbackFiles(array $state): void
+    {
+        if (! ($state['checkpoint']['files_set_aside'] ?? false)) {
+            return; // la fase file non era mai iniziata: niente da ripristinare
+        }
+
+        $oldRoot = $this->tmpRoot($state).'/old/storage-app';
+
+        if (! is_dir($oldRoot)) {
+            return;
+        }
+
+        $liveRoot = storage_path('app');
+        $backupsDirName = basename(config('filesystems.disks.'.config('backup.disk', 'backups').'.root', 'backups'));
+
+        // 1) Rimuovi i file/dir parzialmente ripristinati (mai la dir backups)
+        foreach (File::directories($liveRoot) as $directory) {
+            if (basename($directory) === $backupsDirName) {
+                continue;
+            }
+            try {
+                File::deleteDirectory($directory);
+            } catch (Throwable) {
+            }
+        }
+        foreach (File::files($liveRoot) as $file) {
+            @unlink($file->getPathname());
+        }
+
+        // 2) Rimetti gli originali al loro posto
+        foreach (File::directories($oldRoot) as $directory) {
+            try {
+                File::moveDirectory($directory, $liveRoot.'/'.basename($directory));
+            } catch (Throwable) {
+            }
+        }
+        foreach (File::files($oldRoot) as $file) {
+            try {
+                File::move($file->getPathname(), $liveRoot.'/'.$file->getFilename());
+            } catch (Throwable) {
+            }
+        }
+    }
 
     private function setCurrentFilesAside(array $state, string $liveRoot): void
     {
@@ -608,6 +770,9 @@ class RestoreManager
 
         $failed = $this->state->merge([
             'phase' => RestoreStatus::FAILED->value,
+            // La fase in cui eravamo, per poter riprendere da lì (il checkpoint
+            // di quella fase è già salvato: offset import, indice file, ecc.).
+            'failed_phase' => $state['phase'] ?? null,
             'error' => mb_substr($e->getMessage(), 0, 1000),
             'failed_at' => time(),
         ]);

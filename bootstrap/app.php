@@ -30,15 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
 
-        // env() è necessario qui: config() non è ancora disponibile durante il bootstrap.
-        // Default: null (nessun proxy accettato = sicuro per VPS nude).
-        $trustedProxies = env('TRUSTED_PROXIES');
-        if ($trustedProxies === '*') {
-            $middleware->trustProxies(at: '*');
-        } elseif ($trustedProxies) {
-            $proxies = array_map('trim', explode(',', $trustedProxies));
-            $middleware->trustProxies(at: $proxies);
-        }
+        // TRUSTED PROXIES: configurati in config/trustedproxy.php, NON qui.
+        // Questo closure gira quando lo HttpKernel viene risolto
+        // (Application::handleRequest -> make(Kernel)), PRIMA dei bootstrapper
+        // LoadEnvironmentVariables/LoadConfiguration: in questo punto né env()
+        // né config() vedono ancora il .env, quindi env('TRUSTED_PROXIES')
+        // tornerebbe sempre null e i proxy non verrebbero MAI configurati.
+        // Il middleware globale TrustProxies legge invece a request-time
+        // config('trustedproxy.proxies'), valorizzato dal .env dopo il boot.
+        // Vedi il commento esteso in config/trustedproxy.php.
 
         // CheckRestoreMode va per PRIMO: se un ripristino è in corso deve
         // bloccare tutto (update check incluso) senza toccare DB/sessione.
@@ -71,6 +71,10 @@ return Application::configure(basePath: dirname(__DIR__))
             // Lo step di ripristino è autenticato dal token, non dalla
             // sessione (che l'import sovrascrive): niente cookie CSRF.
             'ripristino/step',
+            // Recupero da ripristino fallito: autenticato da token o password
+            // account nel controller, senza sessione (quindi senza CSRF).
+            'ripristino/riprendi',
+            'ripristino/annulla',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

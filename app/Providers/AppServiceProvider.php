@@ -53,18 +53,35 @@ class AppServiceProvider extends ServiceProvider
         // ====================================================================
 
         // Se nel .env l'APP_URL inizia con https://, forziamo gli asset in HTTPS.
-        // Condizionato a request()->isSecure(): forzare SEMPRE, anche quando la
-        // richiesta corrente risulta genuinamente http (es. proxy che inoltra
-        // X-Forwarded-Proto: http, o accesso diretto senza certificato pronto),
-        // genera un mismatch tra lo schema della pagina e quello degli endpoint
-        // Livewire/asset generati — il browser blocca queste richieste come
-        // cross-origin (schema diverso = origin diversa). Osservato realmente
-        // su Altervista: pagina servita in http, endpoint Livewire forzato in
-        // https, richieste bloccate con errore CORS pur rispondendo 200.
+        // Condizionato allo schema reale della richiesta: forzare SEMPRE, anche
+        // quando la richiesta corrente risulta genuinamente http, genera un
+        // mismatch tra lo schema della pagina e quello degli endpoint Livewire/
+        // asset generati — il browser blocca queste richieste come cross-origin
+        // (schema diverso = origin diversa). Osservato realmente su Altervista:
+        // pagina servita in http, endpoint Livewire forzato in https, richieste
+        // bloccate con errore CORS pur rispondendo 200.
+        //
+        // NON basta request()->isSecure(): su hosting dietro reverse proxy che
+        // termina TLS (Altervista, Cloudflare) rileva lo schema tramite proxy
+        // fidato solo se il middleware TrustProxies ha già processato QUESTA
+        // richiesta — ma TrustProxies gira nella pipeline dei middleware, DOPO
+        // che tutti i Service Provider (questo incluso) hanno già completato
+        // boot() (vedi Illuminate\Foundation\Http\Kernel::sendRequestThroughRouter:
+        // bootstrap() prima, Pipeline::through($middleware) dopo). Quindi qui
+        // isSecure() non può MAI riflettere un proxy fidato, indipendentemente
+        // da TRUSTED_PROXIES. Leggiamo perciò l'header diretto, bypassando il
+        // meccanismo di trust: accettabile perché il rischio di spoofing è solo
+        // estetico (schema sbagliato negli URL generati), non viene usato per
+        // decisioni di autenticazione o IP. Verificato su hosting reale
+        // (Altervista): nessun header X-Forwarded-Proto/Ssl viene mai visto da
+        // TrustProxies in questo punto, qualunque sia TRUSTED_PROXIES.
+        $isForwardedHttps = request()->header('X-Forwarded-Proto') === 'https'
+            || request()->header('X-Forwarded-Ssl') === 'on';
+
         // In console (job in coda, comandi artisan) non c'è una request da cui
         // rilevare lo schema reale, quindi si forza comunque in base a APP_URL.
         if (config('app.url') && str_contains(config('app.url'), 'https://')) {
-            if ($this->app->runningInConsole() || request()->isSecure()) {
+            if ($this->app->runningInConsole() || request()->isSecure() || $isForwardedHttps) {
                 URL::forceScheme('https');
             }
         }

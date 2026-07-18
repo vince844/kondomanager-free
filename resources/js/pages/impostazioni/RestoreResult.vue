@@ -3,9 +3,9 @@
 // autenticato): dopo il ripristino le sessioni sono azzerate e tutti devono
 // rifare l'accesso. Legge lo stato su file passato dal controller.
 import { Head } from '@inertiajs/vue3'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { trans } from 'laravel-vue-i18n'
-import { CheckCircle2, XCircle, AlertTriangle, ShieldAlert } from 'lucide-vue-next'
+import { CheckCircle2, XCircle, AlertTriangle, ShieldAlert, Copy, ClipboardCheck } from 'lucide-vue-next'
 
 const props = defineProps<{
   restore: {
@@ -14,6 +14,10 @@ const props = defineProps<{
     manifest: Record<string, any> | null
     outcome: Record<string, any>
     error: string | null
+    failed_phase?: string | null
+    failed_at?: number | null
+    aborted?: boolean
+    app_version?: string | null
   } | null
 }>()
 
@@ -35,6 +39,27 @@ const reconfigure = computed(() => {
   }
   return items
 })
+
+// Log tecnico compatto da copiare e inviare all'assistenza
+const copied = ref(false)
+const supportLog = computed(() => {
+  const r = props.restore
+  const at = r?.failed_at ? new Date(r.failed_at * 1000).toISOString().replace('T', ' ').slice(0, 19) : '—'
+  return [
+    'KondoManager restore log',
+    `uuid: ${r?.uuid ?? '—'}`,
+    `version: ${r?.app_version ?? '—'}`,
+    `failed_phase: ${r?.failed_phase ?? r?.phase ?? '—'}`,
+    `failed_at: ${at}`,
+    `error: ${r?.error ?? '—'}`,
+  ].join('\n')
+})
+function copyLog() {
+  navigator.clipboard?.writeText(supportLog.value).then(() => {
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  }).catch(() => {})
+}
 </script>
 
 <template>
@@ -74,10 +99,24 @@ const reconfigure = computed(() => {
         <div class="text-center">
           <XCircle class="mx-auto mb-3 h-12 w-12 text-red-600" />
           <h1 class="text-xl font-bold text-red-700">{{ trans('impostazioni.restore_result.title_failed') }}</h1>
-          <p class="mt-2 text-sm text-slate-600 break-words">{{ restore?.error }}</p>
+          <p class="mt-2 text-sm text-slate-600">{{ trans('impostazioni.restore_recovery.failed_body') }}</p>
         </div>
 
-        <div class="mt-6 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <!-- Dettagli tecnici + log copiabile per l'assistenza -->
+        <details class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-left">
+          <summary class="cursor-pointer select-none text-[13px] font-medium text-slate-600">
+            {{ trans('impostazioni.restore_recovery.details') }}
+          </summary>
+          <pre class="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-100 bg-white p-2 font-mono text-[11px] leading-relaxed text-slate-600">{{ supportLog }}</pre>
+          <p class="mt-2 text-[12px] text-slate-400">{{ trans('impostazioni.restore_recovery.log_intro') }}</p>
+          <button type="button" @click="copyLog"
+                  class="mt-2 inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-[12px] font-semibold text-slate-700 hover:bg-slate-100">
+            <component :is="copied ? ClipboardCheck : Copy" class="h-3.5 w-3.5" />
+            {{ copied ? trans('impostazioni.restore_recovery.copied') : trans('impostazioni.restore_recovery.copy_log') }}
+          </button>
+        </details>
+
+        <div class="mt-5 flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <ShieldAlert class="h-4 w-4 shrink-0 mt-0.5 text-slate-500" />
           <p class="text-[13px] leading-relaxed text-slate-600">
             {{ trans('impostazioni.restore_result.failed_guidance') }}
