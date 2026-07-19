@@ -161,59 +161,147 @@ class CalcoloQuoteService
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
     {
         $this->scopertiAccumulati = [];
-        $fattureIds = $pianoRate->fatture->pluck('id')->toArray();
 
-        if (empty($fattureIds)) {
+        // Carichiamo le fatture col pivot: importo_collegato è la quota della
+        // fattura effettivamente finanziata da QUESTO piano (residuo/split).
+        $fatture = $pianoRate->fattureStraordinarie()->get();
+
+        if ($fatture->isEmpty()) {
             throw new \RuntimeException(
                 "Piano straordinario ID {$pianoRate->id} non ha fatture collegate. Impossibile calcolare le quote."
             );
         }
 
-        $righe = DB::table('righe_fattura')
-            ->whereIn('fattura_passiva_id', $fattureIds)
-            ->get();
+        $totali             = [];
+        $righeElaborate     = 0;
+        $copertureElaborate = 0;
 
-        $totali = [];
+        foreach ($fatture as $fattura) {
 
-        foreach ($righe as $riga) {
-            $importoCents = abs($riga->importo_imponibile + $riga->importo_iva);
+            // -----------------------------------------------------------------
+            // 1. COMPONENTI STRAORDINARI DELLA FATTURA
+            //    - Fattura corrente: SOLO righe imprevisto/ad personam
+            //      (is_sopravvenienza OR immobile_id). Le righe ordinarie
+            //      (capitolo a preventivo) NON fanno parte dello straordinario.
+            //      Stesso filtro usato dal carrello (FetchFattureStraordinarie 1a)
+            //      e dalla marcatura is_rateizzata nel PianoRateController.
+            //    - Fattura pregressa: nessuna riga_fattura → si usa la copertura
+            //      'sopravvenienza' (fattura_coperture), agganciata a un Conto
+            //      con tabelle millesimali (FetchFattureStraordinarie 1b).
+            // -----------------------------------------------------------------
+            $componenti = [];
 
-            if ($importoCents === 0) continue;
+            if ($fattura->is_pregresso) {
+                $coperture = DB::table('fattura_coperture')
+                    ->where('fattura_passiva_id', $fattura->id)
+                    ->where('tipo_copertura', 'sopravvenienza')
+                    ->whereNotNull('conto_id')
+                    ->get();
 
-            if (!is_null($riga->immobile_id)) {
-                $this->addebitaDiretto((int) $riga->immobile_id, $importoCents, $totali);
+                foreach ($coperture as $cop) {
+                    $imp = abs((int) $cop->importo);
+                    if ($imp === 0) continue;
+
+                    $componenti[] = ['immobile_id' => null, 'conto_id' => (int) $cop->conto_id, 'importo' => $imp];
+                    $copertureElaborate++;
+                }
             } else {
-                if (is_null($riga->conto_id)) {
-                    Log::warning("calcolaDaFattureStraordinarie: riga senza conto_id e senza immobile_id, saltata.", [
-                        'riga_id'            => $riga->id,
-                        'fattura_passiva_id' => $riga->fattura_passiva_id,
-                    ]);
+                $righe = DB::table('righe_fattura')
+                    ->where('fattura_passiva_id', $fattura->id)
+                    ->where(function ($q) {
+                        $q->where('is_sopravvenienza', true)
+                          ->orWhereNotNull('immobile_id');
+                    })
+                    ->get();
+
+                foreach ($righe as $riga) {
+                    $imp = abs((int) ($riga->importo_imponibile + $riga->importo_iva));
+                    if ($imp === 0) continue;
+
+                    if (is_null($riga->immobile_id) && is_null($riga->conto_id)) {
+                        Log::warning("calcolaDaFattureStraordinarie: riga senza conto_id e senza immobile_id, saltata.", [
+                            'riga_id'            => $riga->id,
+                            'fattura_passiva_id' => $riga->fattura_passiva_id,
+                        ]);
+                        continue;
+                    }
+
+                    $componenti[] = [
+                        'immobile_id' => is_null($riga->immobile_id) ? null : (int) $riga->immobile_id,
+                        'conto_id'    => is_null($riga->conto_id) ? null : (int) $riga->conto_id,
+                        'importo'     => $imp,
+                    ];
+                    $righeElaborate++;
+                }
+            }
+
+            if (empty($componenti)) continue;
+
+            // -----------------------------------------------------------------
+            // 2. IMPORTO EFFETTIVO DA RIPARTIRE (rispetta importo_collegato)
+            //    Un piano può finanziare solo una parte della fattura (residuo,
+            //    split su più piani): importo_collegato è la quota reale a carico
+            //    di QUESTO piano. Fallback difensivo al totale naturale se il
+            //    pivot è mancante/0 (dati storici o piani ante-colonna) → in quel
+            //    caso si distribuisce l'intero, esattamente come prima.
+            // -----------------------------------------------------------------
+            $naturale = array_sum(array_column($componenti, 'importo'));
+            if ($naturale <= 0) continue;
+
+            $collegato = (int) ($fattura->pivot->importo_collegato ?? 0);
+            $target    = $collegato > 0 ? $collegato : $naturale;
+
+            // Finanziamento intero (target == naturale): ogni componente mantiene
+            // il suo importo esatto → identico alla distribuzione riga-per-riga.
+            // Solo il finanziamento parziale attiva lo scaling penny-perfect.
+            if ($target === $naturale) {
+                $importiComponenti = array_column($componenti, 'importo');
+            } else {
+                $pesi = [];
+                foreach ($componenti as $i => $c) {
+                    $pesi[$i] = $c['importo'] / $naturale;
+                }
+                $importiComponenti = $this->distribuisciImporto($pesi, $target);
+            }
+
+            // -----------------------------------------------------------------
+            // 3. DISTRIBUZIONE DI OGNI COMPONENTE
+            // -----------------------------------------------------------------
+            foreach ($componenti as $i => $c) {
+                $importoComp = (int) ($importiComponenti[$i] ?? 0);
+                if ($importoComp === 0) continue;
+
+                if (!is_null($c['immobile_id'])) {
+                    $this->addebitaDiretto($c['immobile_id'], $importoComp, $totali);
                     continue;
                 }
 
                 $conto = Conto::with([
                     'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
                     'tabelleMillesimali.ripartizioni',
-                ])->find($riga->conto_id);
+                ])->find($c['conto_id']);
 
                 if (!$conto) {
-                    Log::warning("calcolaDaFattureStraordinarie: conto_id={$riga->conto_id} non trovato, riga saltata.");
+                    Log::warning("calcolaDaFattureStraordinarie: conto_id={$c['conto_id']} non trovato, componente saltato.", [
+                        'fattura_passiva_id' => $fattura->id,
+                    ]);
                     continue;
                 }
 
                 $importoConto = in_array($conto->tipo, ['spesa', 'uscita'])
-                    ? $importoCents
-                    : -$importoCents;
+                    ? $importoComp
+                    : -$importoComp;
 
                 $this->distribuisciSuTabelle($conto, $importoConto, $totali);
             }
         }
 
         Log::info("=== CALCOLO STRAORDINARIO COMPLETATO ===", [
-            'piano_rate_id'    => $pianoRate->id,
-            'fatture_ids'      => $fattureIds,
-            'righe_elaborate'  => $righe->count(),
-            'soggetti_trovati' => count($totali),
+            'piano_rate_id'       => $pianoRate->id,
+            'fatture'             => $fatture->count(),
+            'righe_elaborate'     => $righeElaborate,
+            'coperture_pregresse' => $copertureElaborate,
+            'soggetti_trovati'    => count($totali),
         ]);
 
         return $totali;

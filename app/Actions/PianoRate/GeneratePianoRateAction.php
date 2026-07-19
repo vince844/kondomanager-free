@@ -155,11 +155,17 @@ class GeneratePianoRateAction
                 'gestione_id'   => $gestione->id,
             ]);
 
+            $dettaglio = $pianoRate->tipo === 'straordinario'
+                ? "Per i piani straordinari verificare che ogni fattura collegata abbia importo finanziato (> 0) e "
+                    . "componenti straordinari validi: righe imprevisto/ad personam per le fatture correnti, "
+                    . "oppure una copertura di tipo 'sopravvenienza' agganciata a un capitolo con tabella millesimale "
+                    . "per le fatture pregresse."
+                : "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, "
+                    . "(2) ogni immobile abbia almeno un condòmino attivo associato, "
+                    . "(3) ogni voce di spesa sia collegata a una tabella millesimale.";
+
             throw new \RuntimeException(
-                "Impossibile generare il piano rate: nessuna quota calcolata. " .
-                "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, " .
-                "(2) ogni immobile abbia almeno un condòmino attivo associato, " .
-                "(3) ogni voce di spesa sia collegata a una tabella millesimale."
+                "Impossibile generare il piano rate: nessuna quota calcolata. " . $dettaglio
             );
         }
         // =========================================================================

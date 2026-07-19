@@ -7,6 +7,48 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.15] - Cruscotto Sforamenti, Ciclo Straordinario (Piani Rate) & Stampe PDF
+
+Correzione di un bug di **sola visualizzazione** nel cruscotto (Dashboard): l'indicatore di *sforamento di budget* di un capitolo (`orfano.is_sforo`) e l'allarme globale `has_sforo` risultavano **sempre spenti**, anche quando la spesa reale su un capitolo superava il preventivo e il deficit non era ancora coperto da alcun piano rate. Nessun dato contabile era errato — l'importo del deficit, la percentuale di copertura e la strategia di rientro erano già corretti — ma l'amministratore non riceveva l'avviso visivo che quella spesa era fuori budget. Emerso durante una review a partire dal caso della ratifica di uno sforo motivato (Art. 1135 c.c.): l'indicatore sembrava "spegnersi" dopo la ratifica, mentre in realtà non si era **mai** acceso.
+
+### Corretto
+
+- **Indicatore di sforamento sempre falso nel cruscotto:** `BudgetCoverageService::analyze()` espone in `item['budget']` il *fabbisogno reale* del capitolo, cioè `max(budget preventivato, speso reale)`. La Dashboard calcolava lo sforamento come `speso > item['budget']`, che equivale a `speso > max(preventivo, speso)`: una condizione **sempre falsa** per costruzione. Di conseguenza `orfano.is_sforo` era sempre `false`. Lo stesso difetto azzerava l'allarme globale `has_sforo`: il totale `$totBudgetPuro` veniva accumulato usando lo stesso `item['budget']` (fabbisogno reale) impiegato per `$totPrev`, rendendo il confronto `$totPrev > $totBudgetPuro` sempre falso. Il servizio ora espone anche `budget_teorico` (il preventivo puro, senza il `max`) e il cruscotto confronta la spesa reale contro quel valore, sia per il flag per-capitolo `is_sforo` sia per il totale `has_sforo`. Il fix tocca **solo** questi due indicatori: importo del deficit, percentuale di copertura, `delta`, `scoperto` e la strategia di rientro erano già calcolati correttamente e restano invariati.
+
+### Test
+
+- Nuova suite `tests/Feature/Gestionale/DashboardSforoIndicatorTest.php` (2 test): guardia di regressione anti-reintroduzione. Registra una spesa comune reale di 1.500€ su un capitolo con budget di 1.000€ non coperta da piani rate e verifica che il cruscotto accenda `is_sforo` e `has_sforo` **prima** della ratifica, e che `is_sforo` resti acceso **dopo** la ratifica assembleare (con `strategia` che decade a `nessuna`). Entrambi i test falliscono contro il codice pre-fix, a conferma che il difetto era reale e ora è bloccato.
+
+### Note
+
+- Modifica di **solo codice applicativo** (`BudgetCoverageService`, `DashboardController`): **nessuna migrazione**, nessuna alterazione di schema o dati del database.
+
+### Corretto — Ciclo Straordinario (Piani Rate)
+
+- **Piano rate straordinario con fatture pregresse — nessuna quota / errore fuorviante:** Un piano straordinario composto (anche solo in parte) da **fatture pregresse** non produceva quote. Le fatture pregresse non hanno `righe_fattura`: il loro importo straordinario è registrato come copertura di tipo `sopravvenienza` in `fattura_coperture`, agganciata a un capitolo dinamico con tabella millesimale. Il motore `CalcoloQuoteService::calcolaDaFattureStraordinarie` leggeva però **solo** `righe_fattura`, restituendo zero quote e facendo scattare in `GeneratePianoRateAction` una `RuntimeException` fuorviante ("nessuna quota calcolata — verificare millesimi/anagrafiche"), pur avendo il carrello (`FetchFattureStraordinarieController`, Query 1b) offerto volutamente quelle fatture. Il calcolo ora ripartisce anche le coperture `sopravvenienza` delle pregresse sul capitolo collegato.
+- **Allineamento Calcolo/Carrello per le Fatture Correnti (righe ordinarie):** Per le fatture correnti il motore iterava **tutte** le `righe_fattura`, mentre il carrello e la marcatura `is_rateizzata` del `PianoRateController` considerano straordinarie solo le righe `is_sopravvenienza` o ad personam (`immobile_id`). Una fattura mista (righe ordinarie + straordinarie) finita in un piano straordinario rischiava quindi una **sovra-ripartizione**. Il calcolo ora filtra le sole righe imprevisto/ad personam, coerentemente con il carrello.
+- **Rispetto della Quota Finanziata (`importo_collegato`):** Il motore distribuiva sempre l'intero importo della fattura ignorando `importo_collegato` (la quota della fattura effettivamente finanziata da quel piano, es. finanziamento parziale o split su più piani). Ora la ripartizione rispetta `importo_collegato` con scaling "penny-perfect"; il finanziamento intero resta **byte-identico** al comportamento precedente e un `importo_collegato` mancante/0 (dati storici) ricade in sicurezza sul totale naturale.
+- **Messaggio Guardia Generazione più chiaro:** Il messaggio della guardia in `GeneratePianoRateAction` è ora contestuale al tipo di piano: per i piani straordinari indica le cause reali (importo finanziato, righe imprevisto/ad personam, copertura sopravvenienza per le pregresse) invece del generico riferimento a millesimi/anagrafiche.
+
+### Test — Ciclo Straordinario
+
+- Nuova suite `tests/Feature/Gestionale/PianoRateStraordinarioPregressoTest.php` (8 test): fatture pregresse (ripartizione + generazione senza `RuntimeException`), finanziamento parziale, fallback difensivo su `importo_collegato`=0, riga corrente pura, filtro delle righe ordinarie in fattura mista, addebito ad personam, ed E2E che verifica come le rate effettivamente generate sommino esattamente `importo_collegato`.
+
+### Note — Ciclo Straordinario
+
+- Modifica di **sola logica di calcolo lato lettura** (`CalcoloQuoteService`, `GeneratePianoRateAction`): **nessuna migrazione**, nessuna alterazione di schema o dati del database.
+
+### Migliorato — Stampe PDF
+
+- **Identità dell'unità allineata tra schermo e stampa:** nel prospetto scadenziario "per unità immobiliare" e nel riparto per tabella, la riga dell'unità era identificata dal `codice_immobile` + intestatario anagrafico, mentre la vista a schermo ("Per immobile") guida con `immobile.nome`. Le due viste potevano quindi mostrare identità diverse per la stessa unità (es. nome unità "Bianco Rossi" a schermo, intestatario "Proprietario Sconosciuto" in stampa), generando confusione. Ora anche la stampa guida con `immobile.nome` (fallback al codice), con interno/piano/codice come dettaglio e l'intestatario anagrafico come **riga secondaria** — che resta perché identifica il debitore (valenza legale dello scadenziario, art. 1135 / 63 disp. att. c.c.). File: `PianoRatePrintController::buildMatriceImmobile`, `RipartoTabelleService`, partial `_tabella_scadenziario`, `riparto_tabelle`.
+- **Data di emissione nel piè di pagina:** tutte le stampe (`pdf.base`) riportano ora "Documento emesso il …" nel footer, sopra la nota legale, con default alla data di stampa (`now()`) e possibilità di passare una data specifica via la variabile `$data_emissione_stampe`.
+
+### Note — Stampe PDF
+
+- Modifica di **sola presentazione** (controller/servizio di stampa e template Blade): **nessuna migrazione**, nessuna alterazione di schema o dati del database. Il nome dell'intestatario è letto **live** dalla relazione `RataQuote → Anagrafica`: rinominare l'anagrafica aggiorna la stampa senza rigenerare il piano rate.
+
+---
+
 ## [1.10.0-beta.14] - Trusted Proxies & Ripristino Backup Robusto
 
 Correzione di un bug **strutturale e subdolo**: la configurazione dei proxy fidati (`TRUSTED_PROXIES`) non ha **mai** avuto effetto quando impostata via `.env`, su nessuna installazione. La causa è un problema di *timing* nel ciclo di vita di Laravel, non una svista di configurazione — individuato partendo da un caso reale di *mixed content* su Altervista e confermato con prove empiriche sul server.

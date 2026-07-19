@@ -40,6 +40,9 @@
                     @if(!empty($hasSottoEtichetta) && !empty($row['sub_etichetta']))
                         <br><span style="font-weight: normal; font-size: 6.5pt; color: #666;">{{ $row['sub_etichetta'] }}</span>
                     @endif
+                    @if(!empty($hasSottoEtichetta) && !empty($row['intestatario']))
+                        <br><span style="font-weight: normal; font-size: 6.5pt; color: #888;">Intestatario: {{ $row['intestatario'] }}</span>
+                    @endif
                 </td>
 
                 @foreach($colonneRate as $numero => $datiRata)

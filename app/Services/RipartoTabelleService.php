@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Log;
  *     immobile_id => [
  *       'interno'  => string,
  *       'piano'    => string,
+ *       'nome_immobile' => string,  // nome unità (allineato alla vista a schermo), fallback codice
  *       'soggetti' => [
  *         anagrafica_id => [
  *           'nome'       => string,
@@ -265,6 +266,7 @@ class RipartoTabelleService
                     $righe[$immobileId] = [
                         'interno'          => $immobile->interno ?? '',
                         'piano'            => $immobile->piano   ?? '',
+                        'nome_immobile'    => $immobile->nome ?: ($immobile->codice_immobile ?? ''),
                         'soggetti'         => [],
                         'totale_immobile'  => 0,
                     ];

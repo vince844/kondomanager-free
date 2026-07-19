@@ -154,6 +154,10 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
 - Rimozione filtro `created_at` in `BudgetCoverageService` Step 1
 - Rimozione `isParentLocked` da `AlberoDeiConti.vue`
 
+**Hardening Backup/Ripristino & Sistema** *(emersi dal collaudo beta.14 su hosting reale — vedi changelog beta.14)*:
+- **Verifica SHA-256 del ripristino a chunk** (`hash_init`/`hash_update` entro il budget di step) per blindare anche i dump molto grandi (multi-GB): oggi la fase *verifying* calcola `hash_file` sull'intero dump in un colpo solo (unico punto non riprendibile del ripristino; import DB per offset e copia file a lotti sono già a step). Rischio timeout solo su dimensioni patologiche, ma vale chiuderlo.
+- **Toggle "Forza HTTPS" nelle impostazioni generali:** redirect http→https opzionale, **default OFF**, con rilevamento *proxy-aware* (riusa il fix Trusted Proxies della beta.14) e **valvola di fuga via env** (`FORCE_HTTPS=false`) che scavalca l'impostazione DB, per evitare loop di redirect che chiudano fuori dal pannello. Il metodo primario resta il redirect lato server (da documentare per Altervista/hosting condivisi).
+
 ---
 
 ## v1.12 — DNA Fiscale Fornitore
@@ -332,6 +336,15 @@ In v1.21 si aggiungono le due varianti per il condòmino:
 - **Multi-Gestione split** — distribuzione percentuale tra gestioni con scritture multiple
 - **Import CSV/Excel** — wizard, mapping colonne, report errori
 - **Riparto misto per riga** — criteri: `millesimi_generali`, `riscaldamento`, `scale`, `parti_uguali`, `personale`, `custom`
+
+---
+
+## Migrazione & Onboarding *(tema trasversale — da collocare dopo il core 1.10)*
+
+Raggruppa gli strumenti per **portare un'installazione o dei dati dentro KondoManager su un ambiente nuovo**. Da schedulare quando il core 1.10 (motore riparto/millesimali, giroconti, pagamenti) è maturo: sono funzioni a bassa frequenza, non prioritarie rispetto alle funzioni d'uso quotidiano.
+
+- **Importatore dati da altri gestionali** (vedi [`import_migrazione_dati.md`](import_migrazione_dati.md)): import di condomini/anagrafiche da Danea, Gestionale.it e simili. Leva di adozione forte — chi arriva da un altro software non migra se non può portarsi i dati.
+- **M2 — Ripristino da backup nel wizard d'installazione** (spec: [`ripristino_backup_design.md`](ripristino_backup_design.md) §M2): al primo avvio, in alternativa a "Nuova installazione", ricostruire l'intera installazione da un backup (trasferimento server-to-server). Groundwork già pronto in beta.13/14 (guard su DB fresco in `RestoreManager`, fix encrypter per l'adozione della chiave dall'archivio). **Regola d'oro:** ramo puramente *additivo*, senza toccare il flusso "Nuova installazione" né tornare alla dipendenza `eii/laravel-installer`, con test in isolamento. *(Sganciata dalla beta.15: la robustezza del ripristino aveva la precedenza, ed è un'operazione una-tantum.)* Nel frattempo il trasferimento è coperto da **M1** (ripristino dal pannello) + la **procedura manuale** documentata.
 
 ---
 

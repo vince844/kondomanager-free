@@ -219,11 +219,11 @@ class DashboardController extends Controller
                 $virtualeGestione = 0; 
 
                 foreach ($report['items'] as $item) {
-                    if (!($item['is_leaf'] ?? false)) continue; 
-                    
-                    $budgetTeorico = $item['budget'];
+                    if (!($item['is_leaf'] ?? false)) continue;
+
+                    $budgetTeorico = $item['budget_teorico'];
                     $spesoReale = $fatturatoMap[$item['id']] ?? 0;
-                    
+
                     $fabbisognoRealeGestione += max($budgetTeorico, $spesoReale);
                     $budgetPuroGestione += $budgetTeorico;
                     $virtualeGestione += $item['copertura_virtuale'] ?? 0;
@@ -261,7 +261,7 @@ class DashboardController extends Controller
                             'importo'     => $deficitRispettoRate, 
                             'gestione'    => $gestione->nome,
                             'gestione_id' => $gestione->id,
-                            'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget'],
+                            'is_sforo'    => isset($fatturatoMap[$item['id']]) && $fatturatoMap[$item['id']] > $item['budget_teorico'],
                             'strategia'   => $tipoStrategia 
                         ];
 

@@ -236,13 +236,18 @@ class PianoRatePrintController extends Controller
 
                 if (!isset($matrice[$immobileId])) {
                     $codice  = $immobile->codice_immobile ?? '-';
-                    $interno = $immobile->interno ?? '';
-                    $piano   = $immobile->piano   ?? '';
+                    $interno = $immobile->interno ?: '-';
+                    $piano   = $immobile->piano   ?: '-';
                     $proprietario = $anagrafica->nome ?? '—';
 
+                    // Identità primaria allineata alla vista a schermo ("Per immobile"):
+                    // guida il nome dell'unità (immobile.nome, fallback codice), con
+                    // interno/piano/codice come dettaglio e l'intestatario anagrafico
+                    // come riga secondaria (identifica il debitore, valenza legale).
                     $matrice[$immobileId] = [
-                        'etichetta'       => $codice . ' — Int. ' . $interno . ' (Piano ' . $piano . ')',
-                        'sub_etichetta'   => $proprietario,
+                        'etichetta'       => $immobile->nome ?: $codice,
+                        'sub_etichetta'   => 'Int. ' . $interno . ' • Piano ' . $piano . ' · cod. ' . $codice,
+                        'intestatario'    => $proprietario,
                         'importi_per_rata'=> [],
                         'totale'          => 0,
                     ];

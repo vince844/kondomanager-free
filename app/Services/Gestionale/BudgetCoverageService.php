@@ -67,6 +67,7 @@ class BudgetCoverageService
                 'padre'              => $conto->parent?->nome,
                 'is_leaf'            => $isLeaf,
                 'budget'             => $fabbisognoReale,
+                'budget_teorico'     => $budgetTeorico,
                 'pianificato'        => $pianificato,
                 'copertura_virtuale' => $virtuale, 
                 'delta'              => $delta,

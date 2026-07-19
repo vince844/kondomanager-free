@@ -23,7 +23,7 @@
     // ── Larghezze colonne (%) ────────────────────────────────────────────────
     // Le colonne di servizio contengono valori corti (sigla ruolo, percentuale,
     // importi): tenerle strette massimizza lo spazio per le tabelle millesimali.
-    $wApp    = 3.5;
+    $wApp    = 7;
     $wNome   = $nTab > 5 ? 18 : 22;
     $wRuolo  = 3;
     $wTotSogg= 7;
@@ -172,7 +172,7 @@
         <tr style="background-color: {{ $navyLt }}; color: {{ $navy }};">
             <th rowspan="2" style="padding: 4px 3px; border: 1px solid {{ $navyMid }}; width: {{ $wApp }}%;
                                     text-align: center; vertical-align: middle;">
-                App.
+                Unità
             </th>
             <th rowspan="2" style="padding: 4px 5px; border: 1px solid {{ $navyMid }}; width: {{ $wNome }}%;
                                     text-align: left; vertical-align: middle;">
@@ -271,15 +271,18 @@
                     @if($isFirst)
                         <td rowspan="{{ $nSoggettiImmobile }}"
                             style="padding: 3px 2px; border: 1px solid {{ $sepLine }};
-                                   text-align: center; font-weight: bold; color: {{ $navy }};
+                                   text-align: center; color: {{ $navy }};
                                    background-color: {{ $iceBlue }}; vertical-align: middle;
-                                   font-size: {{ $fontBase }};
                                    border-left: 3px solid {{ $navy }};">
-                            {{ $rigaImmobile['interno'] ?? '—' }}
+                            @if(!empty($rigaImmobile['nome_immobile']))
+                                {{-- Identità primaria allineata alla vista a schermo: nome unità in testa --}}
+                                <span style="font-weight: bold; font-size: {{ $fontSmall }};">{{ Str::limit($rigaImmobile['nome_immobile'], 24) }}</span>
+                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #555;">Int. {{ $rigaImmobile['interno'] ?: '—' }}</span>
+                            @else
+                                <span style="font-weight: bold; font-size: {{ $fontBase }};">{{ $rigaImmobile['interno'] ?: '—' }}</span>
+                            @endif
                             @if($rigaImmobile['piano'])
-                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #888;">
-                                    Piano {{ $rigaImmobile['piano'] }}
-                                </span>
+                                <br><span style="font-weight: normal; font-size: {{ $fontTiny }}; color: #888;">Piano {{ $rigaImmobile['piano'] }}</span>
                             @endif
                         </td>
                     @endif

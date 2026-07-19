@@ -31,6 +31,23 @@ Due ingressi:
 beta.13. Il piano resta in due milestone: se M2 si allunga, M1 è rilasciabile da
 solo come beta.13 e M2 slitta a beta.14 senza rework.
 
+**Aggiornamento stato (18/07/2026):** M1 (ripristino dal pannello admin) + backup
+pre-upgrade db_only sono usciti nella **beta.13**. La **beta.14** ha portato il fix
+Trusted Proxies (HTTPS dietro reverse proxy), i fix contabili sulle Casse e —
+dopo un collaudo reale su hosting condiviso partendo da un backup beta.11 — le fix
+di robustezza del ripristino di backup ≤ beta.11 (updateOrCreate, ensureBackupsMetadata,
+coda/righe fantasma, safety backup FULL, rollback file, adopt-key encrypter) più il
+**recupero guidato da un ripristino fallito** (503 state-aware con Riprendi/Sblocca +
+log copiabile). **M2 (ramo "Ripristina da backup" del wizard d'installazione) è stata
+SGANCIATA dalla beta.15** (decisione Vincenzo 18/07/2026): è un'operazione una-tantum
+(trasferimento server-to-server) già coperta da M1 + procedura manuale, e non deve
+mettere a rischio il wizard appena ottimizzato e reso indipendente da `eii/laravel-installer`.
+Ricollocata nel tema **"Migrazione & Onboarding"** (vedi `roadmap.md`), insieme
+all'importatore dati da altri gestionali, da schedulare **dopo il core 1.10** (motore
+riparto/millesimali, giroconti, pagamenti — le funzioni ad alta frequenza hanno la
+precedenza). La spec §M2 qui sotto resta valida; il groundwork (guard DB fresco +
+fix encrypter) è pronto e non scade.
+
 Il formato archivio NON cambia: manifest_format 1 (beta.11/12) deve essere
 ripristinabile. Il manifest era stato progettato per questo (versione app,
 elenco migrazioni, sha256 del dump, contents, encrypted).
