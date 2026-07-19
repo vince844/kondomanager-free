@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\PianoConto\Conto;
 
+use App\Models\Gestionale\Conto;
 use Illuminate\Foundation\Http\FormRequest;
 
 /**
@@ -32,7 +33,11 @@ class CreateContoRequest extends FormRequest
             'isCapitolo'             => 'required|boolean',
             'isSottoConto'           => 'required|boolean', 
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
-            'parent_id'              => 'nullable|exists:conti,id',
+            // Il padre deve vivere nello STESSO piano dei conti: senza questo
+            // vincolo un sottoconto poteva essere agganciato a un capitolo di un
+            // altro condominio (o di un altro piano dello stesso), producendo un
+            // albero contabile che attraversa i confini dello stabile.
+            'parent_id'              => ['nullable', $this->regolaPadreNelPiano()],
             'codice'                 => ['nullable', 'string', 'max:20'],
             'default_fornitore_id'   => ['nullable', 'exists:fornitori,id'],
             'tipo_spesa'             => ['nullable', 'string', 'in:standard,professionista,lavori,utenza'],
@@ -49,7 +54,7 @@ class CreateContoRequest extends FormRequest
         }
 
         if ($this->boolean('isSottoConto')) {
-             $rules['parent_id'] = 'required|exists:conti,id';
+             $rules['parent_id'] = ['required', $this->regolaPadreNelPiano()];
         }
 
         return $rules;
@@ -81,6 +86,19 @@ class CreateContoRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
+            // Il capitolo padre deve essere una voce di PRIMO LIVELLO: un sotto-conto
+            // non può fare da padre (anche se lasciato a importo 0).
+            if ($this->boolean('isSottoConto') && $this->filled('parent_id')) {
+                $parent = Conto::find($this->parent_id);
+
+                if ($parent && $parent->parent_id !== null) {
+                    $validator->errors()->add(
+                        'parent_id',
+                        'Il padre selezionato è un sotto-conto: come capitolo padre puoi scegliere solo una voce di primo livello'
+                    );
+                }
+            }
+
             if (!$this->boolean('isCapitolo')) {
                 $somma = $this->percentuale_proprietario + 
                          $this->percentuale_inquilino + 
@@ -94,5 +112,18 @@ class CreateContoRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * Il conto padre deve appartenere allo stesso piano dei conti della rotta.
+     * È il vincolo di appartenenza che mancava: `exists:conti,id` accettava
+     * qualunque conto del database, compresi quelli di altri condomìni.
+     */
+    private function regolaPadreNelPiano(): \Illuminate\Validation\Rules\Exists
+    {
+        $pianoContoId = $this->route('pianoConto')?->id;
+
+        return \Illuminate\Validation\Rule::exists('conti', 'id')
+            ->where('piano_conto_id', $pianoContoId);
     }
 }

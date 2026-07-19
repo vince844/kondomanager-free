@@ -39,9 +39,13 @@ test('storno cross-esercizio (B1): usa esercizio aperto per stornare pagamento d
     // Chiudi l'esercizio 1
     $esercizio->update(['stato' => 'chiuso']);
 
-    // Crea l'esercizio 2 aperto
+    // Crea l'esercizio 2 aperto (nome esplicito: il primo esercizio creato da
+    // setupPagamentiHttp() è "Esercizio 2026" e l'indice è unico su condominio_id + nome)
     $esercizio2 = Esercizio::factory()->create([
         'condominio_id' => $condominio->id,
+        'nome' => 'Esercizio 2027',
+        'data_inizio' => '2027-01-01',
+        'data_fine' => '2027-12-31',
         'stato' => 'aperto'
     ]);
 

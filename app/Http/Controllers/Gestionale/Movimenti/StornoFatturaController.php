@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Enums\StatoPagamentoFattura;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\FatturaPassiva;
@@ -25,6 +26,18 @@ class StornoFatturaController extends Controller
 
         if ($fattura->netto_a_pagare < 0) {
             return back()->with($this->flashError('Operazione negata: Non puoi stornare una Nota di Credito.'));
+        }
+
+        // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
+        // credito: il denaro è già uscito dalla cassa e quel movimento va stornato per
+        // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
+        // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
+        // ancora allocati.
+        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
+            return back()->with($this->flashError(
+                'Operazione negata: la fattura ha pagamenti registrati. '
+                .'Storna prima i pagamenti, poi la fattura.'
+            ));
         }
 
         $gestioneId = null;

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\Movimenti;
 
+use App\Helpers\DateHelper;
 use App\Enums\TipoDetrazione;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -19,10 +20,49 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
         return true;
     }
 
+    /**
+     * La data inviata coincide con quella già salvata sul pagamento?
+     *
+     * Se sì, l'utente non sta introducendo una data futura: la sta solo riproponendo
+     * perché il form la rimanda sempre. In quel caso il vincolo non deve scattare,
+     * altrimenti un record storico con data futura diventa immodificabile per sempre.
+     */
+    private function dataPagamentoInvariata(): bool
+    {
+        $pagamento = $this->route('pagamento');
+
+        if (! $pagamento instanceof \App\Models\Gestionale\PagamentoFornitore) {
+            return false;
+        }
+
+        $inviata = $this->input('data_pagamento');
+        if (! $inviata) {
+            return false;
+        }
+
+        try {
+            return \Illuminate\Support\Carbon::parse($inviata)->isSameDay($pagamento->data_pagamento);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     public function rules(): array
     {
         return [
-            'data_pagamento' => 'required|date',
+            // Coerente con lo Store: una data di pagamento futura descrive un movimento
+            // che non è ancora avvenuto (il service la copia in data_registrazione,
+            // quindi produrrebbe una scrittura di giornale datata nel futuro).
+            //
+            // DEROGA per i record preesistenti: il vincolo si applica solo se la data
+            // viene CAMBIATA. Fino a questa versione erano ammesse date future, e i DB
+            // in produzione possono contenerne (assegni postdatati, bonifici
+            // programmati, errori di battitura). Bloccare l'intero form impedirebbe
+            // perfino di correggere quella data — o di aggiungere una nota — su record
+            // che l'utente non ha creato oggi.
+            'data_pagamento' => $this->dataPagamentoInvariata()
+                ? 'required|date'
+                : 'required|date|before_or_equal:'.DateHelper::oggiUtente(),
             'metodo_pagamento' => 'required|string',
             'conto_corrente_id' => 'required|exists:conti_contabili,id',
             'importo_lordo_cents' => 'required|integer|min:1',
@@ -54,6 +94,7 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
     {
         return [
             'data_pagamento.required' => 'La data di pagamento è obbligatoria.',
+            'data_pagamento.before_or_equal' => 'La data di pagamento non può essere futura.',
             'metodo_pagamento.required' => 'Il metodo di pagamento è obbligatorio.',
             'conto_corrente_id.required' => 'Il conto bancario è obbligatorio.',
             'importo_lordo_cents.required' => "L'importo lordo è obbligatorio.",

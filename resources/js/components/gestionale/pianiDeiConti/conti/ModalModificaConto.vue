@@ -73,7 +73,7 @@ watch(
   () => props.show,
   (newVal) => {
     if (newVal && props.conto) {
-      fetchCapitoliConti(props.condominioId, props.pianoContoId)
+      fetchCapitoliConti(props.condominioId, props.pianoContoId, props.conto.id)
       // Re-idrata il form ogni volta che il modale si apre, anche se lo stesso
       // conto è già selezionato (stessa reference, il watch su conto non scatterebbe)
       populateFormFromConto(props.conto)
@@ -185,7 +185,7 @@ const resetForm = () => {
 
 const onDropdownCapitoliOpen = () => {
   if (capitoli.value.length === 0) {
-    fetchCapitoliConti(props.condominioId, props.pianoContoId)
+    fetchCapitoliConti(props.condominioId, props.pianoContoId, props.conto?.id)
   }
 }
 

@@ -74,6 +74,59 @@ test('pagina di creazione fattura passiva espone lo stesso contesto budget della
     );
 });
 
+test('in modifica il residuo budget esclude la fattura stessa: nessun falso sforamento', function () {
+    // Il capitolo di setupContabile ha budget 500.000 cent; la fattura vale 122.000 cent
+    // (1.000 € imponibile + 22% IVA). Se il residuo esposto in edit sottraesse anche la
+    // fattura in modifica, il frontend — che risomma l'importo digitato — vedrebbe
+    // 378.000 di residuo contro 122.000 di spesa e segnalerebbe uno sforamento inesistente.
+    $ctx = setupContabile();
+    [$condominio, , , , $capitolo] = $ctx;
+    $fattura = registraFatturaServiceTest($ctx, [
+        'righe' => [[
+            'descrizione' => 'Servizio Test',
+            'importo_imponibile' => 1000,
+            'aliquota_iva' => 22,
+            'conto_id' => $capitolo->id,
+            'is_sopravvenienza' => false,
+        ]],
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.edit', [$condominio, $fattura]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', 500000)
+        ->where('conti.0.is_capiente', true)
+    );
+});
+
+test('in creazione il residuo budget continua a contare le fatture già registrate', function () {
+    // Contro-prova del test precedente: l'esclusione vale SOLO per la fattura in modifica,
+    // altrimenti in creazione il budget risulterebbe sempre intatto.
+    $ctx = setupContabile();
+    [$condominio, , , , $capitolo] = $ctx;
+    registraFatturaServiceTest($ctx, [
+        'righe' => [[
+            'descrizione' => 'Servizio Test',
+            'importo_imponibile' => 1000,
+            'aliquota_iva' => 22,
+            'conto_id' => $capitolo->id,
+            'is_sopravvenienza' => false,
+        ]],
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', 378000)
+    );
+});
+
 test('una fattura stornata resta leggibile: stato_pagamento=stornata non crasha il cast enum', function () {
     $ctx = setupContabile();
     [$condominio, , , , $capitolo] = $ctx;

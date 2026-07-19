@@ -251,7 +251,9 @@ test('update pagamento confermato aggiorna i campi mutabili', function () {
     $response = $this->actingAs($this->user)
         ->put(route('admin.gestionale.pagamenti-fornitori.update', [$condominio, $pagamento]), [
             'conto_corrente_id' => $contoCorrenteId,
-            'data_pagamento' => now()->addDay()->toDateString(),
+            // Una data diversa da quella di registrazione, ma nel passato: la data
+            // di pagamento descrive un movimento già avvenuto e non può essere futura.
+            'data_pagamento' => now()->subDay()->toDateString(),
             'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
             'importo_lordo_cents' => $pagamento->importo_lordo,
             'importo_netto_cents' => $pagamento->importo_netto,
@@ -266,7 +268,7 @@ test('update pagamento confermato aggiorna i campi mutabili', function () {
     $pagamento->refresh();
     expect($pagamento->causale_bonifico)->toBe('Modifica test causale');
     expect($pagamento->note_override)->toBe('Nota aggiunta post');
-    expect($pagamento->data_pagamento->toDateString())->toBe(now()->addDay()->toDateString());
+    expect($pagamento->data_pagamento->toDateString())->toBe(now()->subDay()->toDateString());
 });
 
 test('pagina di modifica pagamento espone la lista fornitori richiesta dalla sentinella anti-frode IBAN', function () {

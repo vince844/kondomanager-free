@@ -9,6 +9,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\DoubleEntryValidator;
 use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\RigaScrittura;
 use App\Enums\StatoPianoRate;
@@ -139,7 +140,22 @@ class EmissioneRateController extends Controller
                             'importo'            => $totaleRataCentesimi,
                             'note'               => "Totale emissione " . $rata->descrizione
                         ]);
+                    } else {
+                        // Nessuna quota da emettere (es. rata di soli conguagli a credito):
+                        // la testata resterebbe una scrittura SENZA RIGHE, che il
+                        // DoubleEntryValidator approva (0 = 0) ma che sporca il giornale e
+                        // brucia un numero di protocollo. Peggio: nessuna quota riceve
+                        // scrittura_contabile_id, quindi il guard anti-doppia-emissione non
+                        // scatta e ogni nuova emissione ne accumula un'altra.
+                        $scrittura->forceDelete();
+                        continue;
                     }
+
+                    // Quadratura dell'emissione: la somma delle quote a DARE deve
+                    // corrispondere esattamente alla chiusura in AVERE. Un arrotondamento
+                    // sbagliato sulle quote qui viene intercettato subito, invece di
+                    // propagarsi a tutte le rate del piano e comparire nel rendiconto.
+                    DoubleEntryValidator::validateOrFail($scrittura->id);
 
                     // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
                     $rataId = (int) $rata->id;

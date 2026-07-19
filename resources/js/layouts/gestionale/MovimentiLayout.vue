@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText, Zap } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -40,8 +40,14 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
     },
     {
         type:  'link',
+        icon:  Zap,
+        title: 'Regolazione immediata',
+        href:  generatePath('gestionale/:condominio/regolazioni-immediate/create', { condominio: condominio.value.id }),
+    },
+    {
+        type:  'link',
         icon:  Wallet,
-        title: 'Registro contabilità (prima nota)',
+        title: 'Prima nota',
         href:  '#',
         badge: 'In sviluppo',
     },
@@ -53,7 +59,9 @@ const currentPath = window.location.pathname;
 <template>
     <div class="">
         <!-- Topbar -->
-        <nav class="inline-flex items-center space-x-2 shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
+        <!-- flex-wrap + max-w-full: con l'aggiunta della sesta voce la barra sforava
+             il viewport. `w-fit` mantiene la larghezza a contenuto quando ci sta. -->
+        <nav class="flex flex-wrap items-center gap-2 w-fit max-w-full shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
             <Button
                 v-for="item in topbarNavItems"
                 :key="item.href"

@@ -65,6 +65,17 @@ class CondominioService
 
         if ($existing) return $existing;
 
+        // Invariante "al più un esercizio aperto per condominio": va rispettata anche
+        // qui, non solo nelle FormRequest. Questo è il percorso non-HTTP (creazione
+        // condominio, installer, seeder) e creava sempre 'aperto' senza guardare se ce
+        // ne fosse già uno: bastava quello per rendere nondeterministico
+        // getEsercizioCorrente() e, con lui, ogni sigillo per-esercizio.
+        $giaAperto = $condominio->esercizi()->where('stato', 'aperto')->first();
+
+        if ($giaAperto) {
+            return $giaAperto;
+        }
+
         return Esercizio::create([
             'condominio_id' => $condominio->id,
             'nome'          => "Esercizio anno {$currentYear}",

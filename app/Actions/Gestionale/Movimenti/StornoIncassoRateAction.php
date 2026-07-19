@@ -5,6 +5,7 @@ namespace App\Actions\Gestionale\Movimenti;
 use App\Enums\TipoMovimentoContabile;
 use App\Models\Condominio;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\Gestionale\DoubleEntryValidator;
 use Illuminate\Support\Facades\DB;
 
 class StornoIncassoRateAction
@@ -70,6 +71,11 @@ class StornoIncassoRateAction
                     // Ricalcolo dello stato leggendo la nuova pivot aggiornata
                     $quota->ricalcolaStato();
                 }
+
+                // La rettifica è il mirror esatto dell'originale: se l'originale
+                // quadrava deve quadrare anche lei. Verificarlo qui intercetta
+                // un'inversione incompleta prima che entri nel giornale.
+                DoubleEntryValidator::validateOrFail($rettifica->id);
 
                 // 6. Sigilliamo la scrittura originale
                 $scr->update(['stato' => 'annullata']);

@@ -11,14 +11,35 @@ use Illuminate\Support\Facades\ParallelTesting;
  */
 abstract class TestCase extends BaseTestCase
 {
+    /**
+     * Controllo di sicurezza anti-database-reale.
+     *
+     * DEVE stare qui e non in setUp(): `parent::setUp()` applica i trait — fra cui
+     * RefreshDatabase, che esegue `migrate:fresh` — PRIMA che il corpo di setUp()
+     * venga eseguito. Con il controllo in setUp() l'eccezione arrivava a database
+     * già distrutto: la guardia segnalava un disastro invece di impedirlo.
+     *
+     * `setUpTraits()` viene invocato da parent::setUp() dopo la creazione
+     * dell'applicazione (quindi la config è disponibile) ma prima che i trait
+     * tocchino il database: è l'unico punto in cui il blocco è ancora utile.
+     */
+    protected function setUpTraits(): array
+    {
+        if (config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') {
+            throw new \Exception(
+                'ATTENZIONE: Stai cercando di lanciare i test sul database reale! '
+                .'I test devono girare esclusivamente su SQLite in memory. '
+                .'Controlla la configurazione del tuo editor o usa phpunit.xml. '
+                .'Connessione rilevata: '.config('database.default')
+            );
+        }
+
+        return parent::setUpTraits();
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
-
-        // Controllo di sicurezza: impedisce ai test di girare sul database reale
-        if (config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') {
-            throw new \Exception('ATTENZIONE: Stai cercando di lanciare i test sul database reale! I test devono girare esclusivamente su SQLite in memory. Controlla la configurazione del tuo editor o usa phpunit.xml');
-        }
 
         // I test non devono mai toccare la password di backup reale né i
         // temporanei reali dell'installazione; con --parallel ogni processo

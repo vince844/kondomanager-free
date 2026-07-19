@@ -11,6 +11,7 @@ use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
+use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
@@ -203,6 +204,16 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::get('/movimenti', [MovimentiController::class, 'index'])
         ->name('movimenti.index');
+
+    // --- PRIMA NOTA DIRETTA: REGOLAZIONE IMMEDIATA (costo → banca, senza fattura) ---
+    Route::get('/regolazioni-immediate/create', [RegolazioneImmediataController::class, 'create'])
+        ->name('regolazioni-immediate.create');
+
+    Route::post('/regolazioni-immediate', [RegolazioneImmediataController::class, 'store'])
+        ->name('regolazioni-immediate.store');
+
+    Route::post('/regolazioni-immediate/{scrittura}/storno', [RegolazioneImmediataController::class, 'storno'])
+        ->name('regolazioni-immediate.storno');
 
     // --- CICLO PASSIVO: FATTURE ---
     Route::get('/fatture', [FatturaPassivaController::class, 'index'])

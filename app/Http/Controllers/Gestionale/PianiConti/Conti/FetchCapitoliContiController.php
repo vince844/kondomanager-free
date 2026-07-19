@@ -29,16 +29,32 @@ class FetchCapitoliContiController extends Controller
         try {
             
             $request->validate([
-                'piano_conto_id' => 'required|integer|exists:piani_conti,id'
+                'piano_conto_id' => 'required|integer|exists:piani_conti,id',
+                'conto_id'       => 'nullable|integer|exists:conti,id',
             ]);
 
             $pianoContoId = $request->input('piano_conto_id');
+            $contoId      = $request->input('conto_id');
 
-            // Get all chapters (capitoli) for this condominium, exercise and piano conto
-            $capitoli = Conto::where('piano_conto_id', $pianoContoId)
+            // Un "capitolo padre" valido è un conto di PRIMO LIVELLO (parent_id NULL)
+            // e vuoto (importo 0). Un sotto-conto (parent_id valorizzato) non può mai
+            // fare da padre, nemmeno se lasciato a 0: prima la lista si basava solo su
+            // importo == 0, così un sotto-conto a zero veniva scambiato per un capitolo.
+            $query = Conto::where('piano_conto_id', $pianoContoId)
+                ->whereNull('parent_id')
                 ->where('importo', 0)
-                ->visibili()  // ← scope: where('is_tecnico', false)
-                ->select('id', 'nome')
+                ->visibili();  // ← scope: where('is_tecnico', false)
+
+            // In modifica (conto_id presente): escludi il conto stesso — così non può
+            // essere scelto come padre di sé stesso — e i suoi discendenti, per non
+            // creare cicli nell'albero dei conti.
+            if ($contoId) {
+                $conto       = Conto::find($contoId);
+                $daEscludere = array_merge([(int) $contoId], $conto ? $conto->getAllChildrenIds() : []);
+                $query->whereNotIn('id', $daEscludere);
+            }
+
+            $capitoli = $query->select('id', 'nome')
                 ->orderBy('nome')
                 ->get();
 

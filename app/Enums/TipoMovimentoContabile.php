@@ -38,6 +38,18 @@ enum TipoMovimentoContabile: string
     case INCASSO_DIVERSO             = 'incasso_diverso';
     case RIMBORSO_ASSICURATIVO       = 'rimborso_assicurativo';
 
+    // ─── Prima nota diretta (Scrittura senza Fattura a monte) ────────────────
+    /**
+     * Registrazione a regolazione immediata: costo → banca/cassa in scrittura unica,
+     * senza aprire una partita fornitore. Per i fatti amministrativi che nascono e si
+     * estinguono nello stesso momento (bolli, commissioni bancarie, addebiti automatici).
+     * Vietata dove serve la struttura del debito — vedi RegolazioneImmediataNonAmmessaException.
+     */
+    case REGOLAZIONE_IMMEDIATA       = 'regolazione_immediata';
+
+    /** Scrittura inversa che annulla una regolazione immediata (giornale append-only). */
+    case STORNO_REGOLAZIONE_IMMEDIATA = 'storno_regolazione_immediata';
+
     // ─── Adempimenti fiscali ──────────────────────────────────────────────────
     case PAGAMENTO_F24               = 'pagamento_f24';
 
@@ -69,6 +81,8 @@ enum TipoMovimentoContabile: string
             self::RIMBORSO_CONDOMINO         => 'Rimborso condòmino',
             self::INCASSO_DIVERSO            => 'Incasso diverso',
             self::RIMBORSO_ASSICURATIVO      => 'Rimborso assicurativo',
+            self::REGOLAZIONE_IMMEDIATA      => 'Regolazione immediata',
+            self::STORNO_REGOLAZIONE_IMMEDIATA => 'Storno regolazione immediata',
             self::PAGAMENTO_F24              => 'Pagamento F24',
             self::APERTURA                   => 'Apertura esercizio',
             self::CHIUSURA                   => 'Chiusura esercizio',
@@ -85,6 +99,7 @@ enum TipoMovimentoContabile: string
         return in_array($this, [
             self::PAGAMENTO_FORNITORE,
             self::PAGAMENTO_F24,
+            self::REGOLAZIONE_IMMEDIATA,
         ]);
     }
 
@@ -95,6 +110,8 @@ enum TipoMovimentoContabile: string
             self::INCASSO_DIVERSO,
             self::RIMBORSO_ASSICURATIVO,
             self::STORNO_PAGAMENTO_FORNITORE,
+            // Lo storno di un'uscita di cassa è, per definizione, un rientro.
+            self::STORNO_REGOLAZIONE_IMMEDIATA,
         ]);
     }
 

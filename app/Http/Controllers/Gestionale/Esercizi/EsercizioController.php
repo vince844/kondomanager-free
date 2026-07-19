@@ -10,6 +10,7 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\Esercizi\EsercizioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -275,6 +276,14 @@ class EsercizioController extends Controller
     {
         try {
 
+            // Le rotte annidate non usano scopeBindings: senza questa verifica le
+            // guardie sotto valuterebbero condizioni miste — "è l'ultimo esercizio"
+            // contato sul condominio di rotta, stato e scritture letti su un esercizio
+            // che può appartenere a un altro condominio.
+            if ($esercizio->condominio_id !== $condominio->id) {
+                abort(403, 'L\'esercizio non appartiene a questo condominio.');
+            }
+
             $numeroEsercizi = $condominio->esercizi()->count();
 
             // Impedisci sempre eliminazione se:
@@ -290,7 +299,25 @@ class EsercizioController extends Controller
                     ->with($this->flashError(__('gestionale.error_delete_opened_esercizio')));
             }
 
-            // Elimina solo esercizi chiusi che non sono l'ultimo
+            // MURO CONTABILE: scritture_contabili.esercizio_id è cascadeOnDelete
+            // (migration 2025_12_17_212946:18). Senza questa guardia, eliminare un
+            // esercizio chiuso distrugge in cascata l'intero libro giornale — righe,
+            // pivot quota_scrittura e fattura_scrittura — e azzera in silenzio
+            // rate_quote.scrittura_contabile_id (nullOnDelete), lasciando quote con
+            // importo_pagato materializzato e nessun movimento a giustificarlo.
+            // Un esercizio chiuso che contiene scritture è il dato più sigillato che
+            // esista: non si cancella, si conserva.
+            $numeroScritture = ScritturaContabile::where('esercizio_id', $esercizio->id)->count();
+
+            if ($numeroScritture > 0) {
+                return to_route('admin.gestionale.esercizi.index', $condominio)
+                    ->with($this->flashError(
+                        "Operazione negata: l'esercizio contiene {$numeroScritture} scritture contabili. "
+                        .'Eliminarlo distruggerebbe il libro giornale di quel periodo, che va conservato.'
+                    ));
+            }
+
+            // Elimina solo esercizi chiusi, non ultimi e senza alcun movimento contabile
             $esercizio->delete();
 
             return to_route('admin.gestionale.esercizi.index', $condominio)

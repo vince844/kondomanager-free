@@ -7,6 +7,74 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.16] - Regolazione Immediata, Guardie del Libro Giornale & Tenancy
+
+Rilascio nato da un caso reale segnalato sul forum: la registrazione di un'**imposta di bollo da 16,68 €** aveva prodotto sei documenti contabili, un fornitore fittizio "Banca", un falso sforamento di budget e infine un errore 500. Analizzando quel percorso sono emersi difetti latenti nel ciclo passivo e nel presidio del libro giornale, alcuni presenti da diverse versioni e mai visibili all'utente.
+
+Il rilascio introduce la **registrazione a regolazione immediata** (prima nota diretta costo → banca, senza partita fornitore), chiude le falle che permettevano di aggirare o corrompere il giornale, e corregge uno sbilancio contabile silenzioso sugli incassi con utilizzo del credito.
+
+### Aggiunto
+
+- **Registrazione a regolazione immediata** (`Movimenti → Regolazione immediata`): una sola `ScritturaContabile` con due righe (DARE capitolo di spesa / AVERE cassa), nessuna `FatturaPassiva`, nessuna riga nel pivot `fattura_scrittura`, nessuno stato di pagamento da tracciare. Destinata ai fatti che nascono e si estinguono nello stesso momento: bolli, commissioni bancarie, addebiti automatici, piccole spese. La riga DARE porta `voce_spesa_id`, quindi il movimento **entra regolarmente in budget e riparto** come una riga di fattura. Nuovo case `TipoMovimentoContabile::REGOLAZIONE_IMMEDIATA` e prefisso protocollo `RIM`. Implementa `docs/registrazione_e_regolazione_immediata.md` (§4.3, §5, §6); nota: la spec citava un enum `RegistrazioneType` che non esiste — il vocabolario reale è `TipoMovimentoContabile`, già persistito.
+- **Guard rail per costruzione** (spec §6): fornitore soggetto a ritenuta d'acconto e richiesta di alimentare lo scadenziario sono **vietati** con `RegolazioneImmediataNonAmmessaException`, perché richiedono la struttura del debito. Il blocco è anticipato in UI prima del submit, con il link al percorso corretto. Il fornitore, se indicato, resta un **tag analitico** su `anagrafica_id`: non movimenta Debiti v/Fornitori e non genera scadenze.
+- **Storno della regolazione immediata**: scrittura inversa con `scrittura_padre_id`, protocollo `STO`, `voce_spesa_id` propagato (l'effetto netto sul capitolo torna a zero). Resta possibile anche a esercizio chiuso, appoggiando lo storno all'esercizio aperto con la provenienza in causale — stesso paradigma della Variante B1 già adottata per lo storno dei pagamenti. Era l'unico produttore di scritture privo di una via d'uscita, in violazione della regola cardine "storno sempre ammesso".
+- **UI**: form compilabile interamente da tastiera (autofocus sull'importo, `Tab` fra i campi, `Invio` registra, `Esc` esce con conferma se il form è sporco), anteprima in tempo reale della scrittura in partita doppia, esclusione delle casse di tipo `fondo` (sono partizioni virtuali del conto corrente reale, non sorgenti di pagamento) e dei capitoli privi di ancoraggio in partita doppia.
+
+### Modificato — comportamenti che cambiano
+
+Queste modifiche **negano operazioni prima consentite**. Sono intenzionali: ciascuna impediva una corruzione del libro giornale.
+
+- **Eliminazione esercizio**: bloccata se l'esercizio contiene scritture. `scritture_contabili.esercizio_id` è `cascadeOnDelete`, quindi l'eliminazione distruggeva in cascata righe, pivot `quota_scrittura` e `fattura_scrittura`, azzerando per `nullOnDelete` anche `rate_quote.scrittura_contabile_id`: restavano quote con `importo_pagato` materializzato e nessun movimento a giustificarlo. Era il modo di aggirare il sigillo più forte del sistema.
+- **Un solo esercizio aperto per condominio**, imposto in `CreateEsercizioRequest`, `UpdateEsercizioRequest` **e** `CondominioService::createEsercizioForCondominio` (percorso non-HTTP: installer, seeder, creazione condominio). Con due esercizi aperti `HasEsercizio::getEsercizioCorrente()` fa `->first()` senza ordinamento e l'esercizio corrente diventa nondeterministico, con ricadute sullo storno cross-esercizio. Il vincolo scatta **solo sulla transizione** chiuso → aperto: un esercizio già aperto resta rinominabile anche su archivi che ne contengono due (ripristino di backup anteriori).
+- **Storno di fattura con pagamenti registrati**: negato. Prima la nota di credito veniva creata anche su fattura pagata, lasciando un'uscita di cassa senza debito corrispondente e — dopo l'eliminazione della NC — una fattura `aperta` con pagamenti ancora allocati.
+- **Note di credito da storno non compensabili**: `trovaNoteCreditoCompensabili()` esclude ora le NC con `dati_extra->nota_storno`. Non sono documenti emessi dal fornitore ed esistono solo per azzerare la fattura che stornano; consumarne una parte altrove lasciava lo storno incompleto e registrava l'estinzione di un debito senza contropartita di cassa. Le NC autentiche restano compensabili.
+- **`data_pagamento` non successiva a oggi** in `Store`/`UpdatePagamentoFornitoreRequest` e negli incassi: il service la copia in `data_registrazione`, quindi una data futura produce una scrittura di giornale datata nel futuro. Il confronto usa il **fuso dell'utente** (`config('app.user_timezone')`, default `Europe/Rome`) via `DateHelper::oggiUtente()`, perché con il solo UTC la data odierna veniva respinta nelle ore notturne. Deroga: se la data inviata coincide con quella già salvata il vincolo non scatta, così i record storici con data futura restano modificabili.
+
+### Corretto
+
+- **Sbilancio silenzioso negli incassi con utilizzo del credito** (`StoreIncassoRateAction`): quando contanti e credito superavano il debito della rata, l'eccedenza — finanziata dal credito — veniva registrata in AVERE sulla scrittura di **cassa**, che in DARE porta i soli contanti. Il giornale usciva sbilanciato di `min(eccedenza, credito)` per **qualunque** combinazione di credito e eccedenza non nulli, senza che nulla lo segnalasse. Ora l'eccedenza è ripartita fra le due scritture e il credito prelevato ma non utilizzato viene **riaccreditato** sulle quote di provenienza: il condòmino consuma solo la parte realmente servita.
+- **Resurrezione della fattura stornata** (`FatturaPassivaController::destroy`): eliminando la nota di credito di uno storno lo stato dell'originale veniva forzato ad `APERTA` senza consultare i pivot, producendo fatture "aperte" con pagamenti vivi. Ora il congelamento viene sciolto su **entrambe** le fonti di verità (`stato_pagamento` e `dati_extra.is_stornata`) e lo stato è **ricalcolato** dai pagamenti reali.
+- **`ricalcolaStatoFattura` non sovrascrive più `STORNATA`**: il read model derivava solo `APERTA`/`PARZIALE`/`PAGATA` e poteva riportare ad `APERTA` una fattura stornata lasciando `dati_extra.is_stornata` a `true`, facendo divergere le due fonti di verità.
+- **Falso sforamento di budget in modifica fattura**: `prepareContestoBudget()` sommava tutte le righe dell'esercizio **inclusa la fattura in corso di modifica**, che veniva quindi contata due volte. Il residuo esclude ora la fattura tramite il parametro `$escludiFattura`.
+- **Emissione rate con quote tutte a zero o negative**: la testata veniva creata comunque, restando una scrittura **senza righe** (che il `DoubleEntryValidator` approva, 0 = 0) e bruciando un numero di protocollo. Nessuna quota riceveva `scrittura_contabile_id`, quindi il guard anti-doppia-emissione non scattava e ogni ri-emissione ne accumulava un'altra.
+- **Prefisso protocollo `pagamento_f24`**: cadeva nel `default => 'SCR'` di `HasProtocolNumber`, assegnando a un versamento F24 un protocollo di scrittura generica.
+
+### Sicurezza
+
+- **Controllo di appartenenza al condominio** esteso a tutti gli identificativi accettati dai movimenti, prima validati con un `exists` privo di vincolo di tenancy mentre il codice a valle li risolve con `find()`/`findOrFail()` senza verifiche: `esercizio_id` (fatture e pagamenti, con controllo aggiuntivo dello stato `aperto`), `righe.*.conto_id` e `righe.*.immobile_id`, `conto_corrente_id` (che non aveva **nemmeno** un `exists`), `allocazioni.*.fattura_id`, `cassa_id`, `gestione_id`, `pagante_id`, `dettaglio_pagamenti.*.rata_id` e `parent_id` nel piano dei conti. Le rotte annidate non usano `scopeBindings`: aggiunta verifica esplicita di appartenenza in `EsercizioController::destroy` e lettura del condominio dall'esercizio stesso in `UpdateEsercizioRequest`.
+- **`DoubleEntryValidator` esteso a tutti i produttori di scritture**: era invocato solo dal ciclo passivo, mentre `StoreIncassoRateAction`, `StornoIncassoRateAction` ed `EmissioneRateController` scrivevano nel giornale senza alcuna verifica di quadratura.
+
+### Test
+
+- **+32 test**, suite a 398 verdi. Nuovi file: `RegolazioneImmediataTest` (15), `HardeningFase0Test` (14), `TenancyScopingTest` (5); più un test di riproduzione dello sbilancio credito+eccedenza in `IncassoRateTest`.
+- Ogni guardia è stata verificata con **mutation test**: rimosso il fix di produzione, il test corrispondente deve fallire. La procedura ha smascherato tre test inizialmente tautologici (l'eliminazione esercizio passava grazie alla FK `restrictOnDelete` di `fatture_passive`, non alla nuova guardia; la guardia `STORNATA` era testata impostando entrambi i rami dell'OR insieme; il controllo su `CondominioService` non veniva mai raggiunto perché il metodo usciva prima), poi riscritti in forma discriminante.
+
+### Note
+
+- **Nessuna migrazione**: nessuna alterazione di schema o dati. Il nuovo case dell'enum `TipoMovimentoContabile` non richiede DDL perché `scritture_contabili.tipo_movimento` è `VARCHAR(50)` dalla migrazione `2026_05_20_062512`.
+- Nuova chiave di configurazione `app.user_timezone` (default `Europe/Rome`, sovrascrivibile con `APP_USER_TIMEZONE`): riguarda **solo** la validazione delle date digitate a mano. I timestamp restano in UTC.
+- Non incluso e ancora aperto: il case `STORNATA` di `StatoPagamentoFattura` è assente sul branch `main`, dove `StornoFatturaController` scrive comunque `'stornata'` — la 1.9.1 in produzione risponde 500 alla lettura successiva di una fattura stornata.
+
+### Piano dei conti — capitolo padre e auto-riferimento
+
+Correzione di un bug nel piano dei conti segnalato da un utente: un **sotto-conto lasciato a importo 0** veniva proposto come **capitolo padre** nell'elenco delle voci selezionabili, e una voce poteva essere impostata come **figlia di sé stessa**. Il difetto si vedeva sia nel modale "Nuova voce di spesa o capitolo" sia in "Modifica voce di spesa".
+
+#### Corretto
+
+- **Un sotto-conto a €0 veniva scambiato per un capitolo:** `FetchCapitoliContiController` selezionava i possibili capitoli padre con il solo criterio `where('importo', 0)`. Poiché anche un sotto-conto lasciato a zero soddisfa quella condizione, finiva nell'elenco dei padri. L'appartenenza a un livello dell'albero è però una proprietà **strutturale**, non di importo: la query filtra ora su `whereNull('parent_id')` (voce di primo livello), mantenendo `importo = 0` per continuare a proporre solo capitoli vuoti. Nota: il difetto si manifestava unicamente con sotto-conti **reali** lasciati a zero — quelli tecnici (`is_tecnico`, sopravvenienze generate on-the-fly) erano già esclusi dallo scope `visibili()`.
+- **Una voce poteva diventare figlia di sé stessa:** l'elenco dei capitoli padre non escludeva la voce in corso di modifica, che compariva quindi tra i propri possibili padri. L'endpoint accetta ora un parametro opzionale `conto_id` e scarta quel conto **e tutti i suoi discendenti** (`getAllChildrenIds()`), prevenendo di conseguenza anche i cicli nell'albero; `ModalModificaConto` lo trasmette tramite il composable `useCapitoliConti`.
+- **Validazione lato server (difesa in profondità):** `CreateContoRequest` e `UpdateContoRequest` rifiutano ora un `parent_id` che punti a un sotto-conto (il padre deve essere una voce di primo livello); `UpdateContoRequest` blocca inoltre il padre che coincida con un discendente del conto in modifica (ciclo). Serviva un presidio esplicito perché la regola `Rule::notIn` che impediva l'auto-riferimento veniva **sovrascritta** dal ramo `isSottoConto` in `rules()`, restando di fatto inattiva.
+
+#### Test
+
+- 4 nuovi test in `tests/Feature/Gestionale/ContoControllerTest.php`: il sotto-conto a zero non compare tra i capitoli padre; la voce in modifica è esclusa dalla propria lista; l'update rifiuta un sotto-conto come padre; l'update rifiuta l'auto-riferimento. I primi tre **falliscono contro il codice pre-fix**, a conferma che il difetto era reale e ora è bloccato.
+
+#### Note
+
+- Modifica di **sola logica applicativa e di interfaccia** (controller di lettura, form request, composable e modale): **nessuna migrazione**, nessuna alterazione di schema o dati del database.
+
+---
+
 ## [1.10.0-beta.15] - Cruscotto Sforamenti, Ciclo Straordinario (Piani Rate) & Stampe PDF
 
 Correzione di un bug di **sola visualizzazione** nel cruscotto (Dashboard): l'indicatore di *sforamento di budget* di un capitolo (`orfano.is_sforo`) e l'allarme globale `has_sforo` risultavano **sempre spenti**, anche quando la spesa reale su un capitolo superava il preventivo e il deficit non era ancora coperto da alcun piano rate. Nessun dato contabile era errato — l'importo del deficit, la percentuale di copertura e la strategia di rientro erano già corretti — ma l'amministratore non riceveva l'avviso visivo che quella spesa era fuori budget. Emerso durante una review a partire dal caso della ratifica di uno sforo motivato (Art. 1135 c.c.): l'indicatore sembrava "spegnersi" dopo la ratifica, mentre in realtà non si era **mai** acceso.

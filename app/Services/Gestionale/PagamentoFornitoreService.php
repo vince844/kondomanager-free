@@ -852,6 +852,19 @@ class PagamentoFornitoreService
     public function ricalcolaStatoFattura(FatturaPassiva $fattura): void
     {
         try {
+            // STORNATA è uno stato di congelamento, non un saldo: non è derivabile
+            // dalla somma dei pivot e non deve essere sovrascritto da questo read model.
+            // Senza questa guardia una fattura stornata che riceve un ricalcolo (es. per
+            // lo storno di un pagamento residuo) tornava APERTA lasciando però
+            // dati_extra.is_stornata a true — le due fonti di verità divergevano e la UI
+            // mostrava una fattura riaperta che nessuna guardia lasciava più toccare.
+            if ($fattura->stato_pagamento === StatoPagamentoFattura::STORNATA
+                || ($fattura->dati_extra['is_stornata'] ?? false)) {
+                $fattura->update(['ultimo_ricalcolo_pagamento_at' => now()]);
+
+                return;
+            }
+
             $totale = (int) DB::table('fattura_scrittura')
                 ->where('fattura_passiva_id', $fattura->id)
                 ->whereIn('tipo', [
@@ -970,6 +983,15 @@ class PagamentoFornitoreService
                 StatoPagamentoFattura::PARZIALE->value,
             ])
             ->where('stato_approvazione', 'approvata')
+            // Le note di credito generate internamente da uno storno NON sono
+            // compensabili. Non sono documenti: il fornitore non le ha mai emesse e
+            // non sa che esistono. Il loro unico scopo è azzerare la fattura che
+            // stornano — consumarne una parte altrove lascerebbe lo storno incompleto
+            // e, soprattutto, registrerebbe l'estinzione di un debito verso un
+            // fornitore che continua a considerare quella fattura non pagata, senza
+            // che un euro sia uscito dalla cassa. Le NC vere del fornitore restano
+            // compensabili: qui si esclude solo l'artefatto interno.
+            ->whereNull('dati_extra->nota_storno')
             ->orderBy('data_scadenza')
             ->get();
     }

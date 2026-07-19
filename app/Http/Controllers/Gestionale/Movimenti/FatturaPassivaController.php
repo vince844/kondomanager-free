@@ -20,6 +20,7 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Services\Gestionale\FatturaPassivaService;
+use App\Services\Gestionale\PagamentoFornitoreService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -332,15 +333,29 @@ class FatturaPassivaController extends Controller
             DB::transaction(function () use ($fattura, $fatturaOriginale, $contiImprevistiIds) {
 
                 // --- LA RESURREZIONE ---
+                // Sciogliere il congelamento non basta: lo stato di pagamento va
+                // RICALCOLATO dai pivot, non forzato ad APERTA. Forzarlo produceva
+                // fatture "aperte" con pagamenti ancora vivi — uno stato che nessuna
+                // guardia sa più trattare, perché il muro contabile di destroy() legge
+                // proprio stato_pagamento per decidere.
                 if ($fatturaOriginale) {
                     $datiExtraOriginali = $fatturaOriginale->dati_extra ?? [];
                     unset($datiExtraOriginali['is_stornata']);
                     unset($datiExtraOriginali['stornata_da_id']);
 
+                    // Il congelamento va sciolto su ENTRAMBE le fonti di verità prima
+                    // del ricalcolo: la guardia in ricalcolaStatoFattura è in OR
+                    // (stato_pagamento === STORNATA || dati_extra.is_stornata), quindi
+                    // ripulire solo dati_extra la lascerebbe scattare lo stesso e la
+                    // fattura resterebbe congelata per sempre. APERTA è solo un valore
+                    // di transito: il valore vero lo deriva subito dopo dai pivot.
                     $fatturaOriginale->update([
-                        'stato_pagamento' => StatoPagamentoFattura::APERTA,
                         'dati_extra' => $datiExtraOriginali,
+                        'stato_pagamento' => StatoPagamentoFattura::APERTA,
                     ]);
+                    $fatturaOriginale->refresh();
+
+                    app(PagamentoFornitoreService::class)->ricalcolaStatoFattura($fatturaOriginale);
                 }
 
                 $fattura->coperture()->delete();
@@ -418,7 +433,10 @@ class FatturaPassivaController extends Controller
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
-        $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio);
+        // In modifica il residuo va calcolato AL NETTO della fattura stessa: il frontend
+        // (budgetImpacts) risomma l'intero importo digitato, quindi lasciarla dentro
+        // la conterebbe due volte e farebbe scattare un falso "sforamento budget".
+        $contestoBudget = $this->prepareContestoBudget($condominio, $esercizio, $fattura);
 
         return Inertia::render('gestionale/movimenti/fatture/FatturaRegisterEdit', [
             'condominio' => $condominio,
@@ -481,9 +499,13 @@ class FatturaPassivaController extends Controller
      * il "Matrix Workspace" Vue richiede come prop obbligatorie sia in creazione sia in modifica.
      *
      * @param  Esercizio|null  $esercizio  Esercizio corrente del condominio (null se nessuno aperto).
+     * @param  FatturaPassiva|null  $escludiFattura  Fattura in corso di modifica: le sue righe vanno
+     *                                               escluse dallo speso, altrimenti in edit la fattura
+     *                                               conta sé stessa e il frontend — che somma di nuovo
+     *                                               l'importo digitato — segnala un falso sforamento.
      * @return array<string, mixed>
      */
-    private function prepareContestoBudget(Condominio $condominio, ?Esercizio $esercizio): array
+    private function prepareContestoBudget(Condominio $condominio, ?Esercizio $esercizio, ?FatturaPassiva $escludiFattura = null): array
     {
         // --- ESTRAZIONE ULTIME SPESE E CALCOLO REALE BUDGET ---
         $ultimeSpese = collect();
@@ -504,6 +526,7 @@ class FatturaPassivaController extends Controller
                     'righe_fattura.importo_imponibile',
                     'righe_fattura.importo_iva'
                 )
+                ->when($escludiFattura, fn ($q) => $q->where('righe_fattura.fattura_passiva_id', '!=', $escludiFattura->id))
                 ->orderByDesc('fatture_passive.data_documento')
                 ->get()
                 ->groupBy('conto_id');
@@ -513,6 +536,7 @@ class FatturaPassivaController extends Controller
                 ->where('fatture_passive.condominio_id', $condominio->id)
                 ->where('fatture_passive.esercizio_id', $esercizio->id)
                 ->where('fatture_passive.is_pregresso', false)
+                ->when($escludiFattura, fn ($q) => $q->where('righe_fattura.fattura_passiva_id', '!=', $escludiFattura->id))
                 ->groupBy('righe_fattura.conto_id')
                 ->selectRaw('righe_fattura.conto_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_spesa')
                 ->pluck('totale_spesa', 'righe_fattura.conto_id');

@@ -34,6 +34,9 @@ trait HasProtocolNumber
             'giroconto'                   => 'GIR',
             'rettifica'                   => 'RET',
             'fattura_acquisto'            => 'FTP',
+            'regolazione_immediata'       => 'RIM',
+            'storno_regolazione_immediata'=> 'STO',
+            'pagamento_f24'               => 'F24',
             default                       => 'SCR',
         };
 

@@ -660,4 +660,74 @@ class IncassoRateTest extends TestCase
 
         app(StoreIncassoRateAction::class)->execute($payload, $data->condominio, $data->esercizio);
     }
+
+    #[\PHPUnit\Framework\Attributes\Test]
+    public function credito_piu_eccedenza_produce_scritture_quadrate() {
+        // Caso reale prodotto dalla UI: debito 100, credito disponibile 40,
+        // l'amministratore incassa 90 in contanti. 90 + 40 = 130 > 100, quindi
+        // il frontend calcola eccedenza = 30.
+        //
+        // Prima della correzione l'eccedenza finanziata dal credito veniva
+        // contabilizzata in AVERE sulla scrittura di CASSA (che ha in DARE i soli
+        // contanti): il giornale usciva sbilanciato di 30 e, una volta acceso il
+        // DoubleEntryValidator, l'intera operazione falliva.
+        $data = $this->createIncassoScenario();
+
+        $rataZero = Rata::create([
+            'piano_rate_id' => $data->quota->rata->piano_rate_id,
+            'numero_rata' => 0,
+            'data_scadenza' => '2025-01-01',
+            'importo_totale' => -4000,
+            'stato' => 'emessa',
+            'descrizione' => 'Saldo Pregresso',
+        ]);
+        $quotaCredito = RataQuote::create([
+            'rata_id' => $rataZero->id,
+            'anagrafica_id' => $data->anagrafica->id,
+            'immobile_id' => $data->quota->immobile_id,
+            'importo' => -4000,
+            'importo_pagato' => 0,
+            'stato' => 'credito',
+            'tipo' => 'saldo_iniziale',
+            'data_scadenza' => '2025-01-01',
+        ]);
+
+        app(StoreIncassoRateAction::class)->execute([
+            'pagante_id' => $data->anagrafica->id,
+            'cassa_id' => $data->cassa->id,
+            'gestione_id' => $data->gestione->id,
+            'data_pagamento' => '2025-02-01',
+            'importo_totale' => 90.00,
+            'descrizione' => 'Contanti 90 + credito 40 su debito 100',
+            'eccedenza' => 30.00,
+            'dettaglio_pagamenti' => [
+                ['rata_id' => $quotaCredito->id, 'importo' => -40.00],
+                ['rata_id' => $data->quota->id, 'importo' => 100.00],
+            ],
+        ], $data->condominio, $data->esercizio);
+
+        // Ogni scrittura prodotta dall'incasso deve quadrare.
+        $scritture = \App\Models\Gestionale\ScritturaContabile::where('condominio_id', $data->condominio->id)->get();
+        $this->assertGreaterThanOrEqual(2, $scritture->count());
+
+        foreach ($scritture as $scrittura) {
+            $dare = $scrittura->righe()->where('tipo_riga', 'dare')->sum('importo');
+            $avere = $scrittura->righe()->where('tipo_riga', 'avere')->sum('importo');
+            $this->assertEquals(
+                $dare, $avere,
+                "Scrittura {$scrittura->numero_protocollo} ({$scrittura->tipo_movimento->value}) sbilanciata: DARE {$dare} vs AVERE {$avere}"
+            );
+        }
+
+        // La cassa ha incassato esattamente i contanti dichiarati.
+        $scritturaCassa = $scritture->firstWhere('tipo_movimento', \App\Enums\TipoMovimentoContabile::INCASSO_RATA);
+        $this->assertEquals(9000, $scritturaCassa->righe()->where('tipo_riga', 'dare')->sum('importo'));
+
+        // Il debito di 100 è coperto e il credito è stato consumato solo per la
+        // parte realmente servita (10), non per l'intero prelievo di 40.
+        $data->quota->refresh();
+        $quotaCredito->refresh();
+        $this->assertEquals(10000, $data->quota->importo_pagato);
+        $this->assertEquals(3000, $quotaCredito->credito_disponibile);
+    }
 }

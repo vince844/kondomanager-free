@@ -10,6 +10,7 @@ use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Anagrafica;
 use App\Helpers\MoneyHelper;
 use App\Models\Esercizio;
+use App\Services\Gestionale\DoubleEntryValidator;
 use Illuminate\Support\Facades\DB;
 
 class StoreIncassoRateAction
@@ -171,7 +172,16 @@ class StoreIncassoRateAction
                 }
             }
 
-            if ($eccedenzaFinaleCents > 0) {
+            // Solo la parte di eccedenza effettivamente finanziata dai CONTANTI
+            // appartiene a questa scrittura, che in DARE porta i soli contanti.
+            // Quando l'incasso combina denaro e credito pregresso (es. debito 100,
+            // credito 40, contanti 90 → eccedenza 30), l'eccedenza è finanziata dal
+            // credito: contabilizzarla qui sbilanciava il giornale di quell'importo.
+            // La parte residua viene restituita al credito nella scrittura 2.
+            $eccedenzaCassaCents = min($eccedenzaFinaleCents, $budgetCashCents);
+            $eccedenzaDaCreditoCents = $eccedenzaFinaleCents - $eccedenzaCassaCents;
+
+            if ($eccedenzaCassaCents > 0) {
                 // L'eccedenza viene registrata come STRAPAGAMENTO sull'ultima quota
                 // del pagante toccata dall'incasso: così resta visibile nella
                 // situazione debitoria come credito (residuo negativo) ed è
@@ -188,7 +198,7 @@ class StoreIncassoRateAction
 
                 if ($quotaAccredito) {
                     $quotaAccredito->pagamenti()->attach($scritturaIncasso->id, [
-                        'importo_pagato' => $eccedenzaFinaleCents,
+                        'importo_pagato' => $eccedenzaCassaCents,
                         'data_pagamento' => $validated['data_pagamento'],
                     ]);
 
@@ -198,7 +208,7 @@ class StoreIncassoRateAction
                         'rata_id'            => $quotaAccredito->rata_id,
                         'immobile_id'        => $quotaAccredito->immobile_id,
                         'tipo_riga'          => 'avere',
-                        'importo'            => $eccedenzaFinaleCents,
+                        'importo'            => $eccedenzaCassaCents,
                         'note'               => 'Anticipo / Eccedenza',
                     ]);
 
@@ -210,7 +220,7 @@ class StoreIncassoRateAction
                         'conto_contabile_id' => $contoAnticipi->id,
                         'anagrafica_id'      => $validated['pagante_id'],
                         'tipo_riga'          => 'avere',
-                        'importo'            => $eccedenzaFinaleCents,
+                        'importo'            => $eccedenzaCassaCents,
                         'note'               => 'Anticipo / Eccedenza',
                     ]);
                 }
@@ -360,7 +370,58 @@ class StoreIncassoRateAction
                             $budgetCreditoCents -= $daApplicare;
                         }
                     }
+
+                    // Il credito prelevato in DARE può eccedere il debito residuo:
+                    // succede ogni volta che contanti + credito superano il dovuto
+                    // (debito 100, credito 40, contanti 90 → 30 in eccesso). Quella
+                    // parte non è stata usata e va RESTITUITA al credito, altrimenti
+                    // la scrittura resta sbilanciata e il condòmino perde credito che
+                    // non ha speso. La restituzione va sulle stesse quote da cui il
+                    // credito è stato prelevato: effetto netto = solo quanto servito.
+                    if ($budgetCreditoCents > 0) {
+                        foreach ($quoteCredito as $quotaCredito) {
+                            if ($budgetCreditoCents <= 0) break;
+
+                            $giaPrelevato = abs((int) DB::table('quota_scrittura')
+                                ->where('rate_quota_id', $quotaCredito->id)
+                                ->where('scrittura_contabile_id', $scritturaStorno->id)
+                                ->sum('importo_pagato'));
+
+                            $daRestituire = min($budgetCreditoCents, $giaPrelevato);
+                            if ($daRestituire <= 0) continue;
+
+                            $scritturaStorno->righe()->create([
+                                'conto_contabile_id' => $contoCrediti->id,
+                                'anagrafica_id' => $quotaCredito->anagrafica_id,
+                                'rata_id' => $quotaCredito->rata_id,
+                                'immobile_id' => $quotaCredito->immobile_id,
+                                'tipo_riga' => 'avere',
+                                'importo' => $daRestituire,
+                                'note' => 'Credito non utilizzato, riaccreditato',
+                            ]);
+
+                            $quotaCredito->pagamenti()->attach($scritturaStorno->id, [
+                                'importo_pagato' => $daRestituire,
+                                'data_pagamento' => $validated['data_pagamento'],
+                            ]);
+
+                            $quotaCredito->ricalcolaStato();
+
+                            $budgetCreditoCents -= $daRestituire;
+                        }
+                    }
                 }
+            }
+
+            // Quadratura verificata anche qui: fino alla v1.10 il DoubleEntryValidator
+            // era chiamato solo dal ciclo passivo (fatture e pagamenti), mentre incassi,
+            // storni incassi ed emissioni rate scrivevano nel giornale senza alcun
+            // controllo. Il check a monte (riga 38) valida l'INPUT dell'utente, non il
+            // ledger prodotto: sono due cose diverse.
+            DoubleEntryValidator::validateOrFail($scritturaIncasso->id);
+
+            if (isset($scritturaStorno) && $scritturaStorno->righe()->exists()) {
+                DoubleEntryValidator::validateOrFail($scritturaStorno->id);
             }
         });
     }

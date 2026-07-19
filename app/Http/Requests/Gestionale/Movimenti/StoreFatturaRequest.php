@@ -18,8 +18,18 @@ class StoreFatturaRequest extends FormRequest
 
         $rules = [
             'fornitore_id'    => 'required|exists:fornitori,id',
-            'esercizio_id'    => 'required|exists:esercizi,id',
-            'is_pregresso'    => 'nullable', 
+
+            // Scopato per condominio E per stato: senza il primo vincolo si poteva
+            // registrare una fattura nell'esercizio di un altro condominio, senza il
+            // secondo direttamente in un esercizio chiuso — scavalcando il muro
+            // contabile che destroy() e motivoBloccoModifica() presidiano a valle.
+            'esercizio_id'    => [
+                'required',
+                Rule::exists('esercizi', 'id')
+                    ->where('condominio_id', $this->route('condominio')->id)
+                    ->where('stato', 'aperto'),
+            ],
+            'is_pregresso'    => 'nullable',
             
             // ── CAMPI COMUNI ──
             'gestione_id' => [
@@ -80,8 +90,22 @@ class StoreFatturaRequest extends FormRequest
             $rules['righe.*.descrizione']        = 'required|string';
             $rules['righe.*.importo_imponibile'] = 'required|numeric';
             $rules['righe.*.aliquota_iva']       = 'required|numeric|min:0|max:100';
-            $rules['righe.*.conto_id']           = 'nullable|exists:conti,id';
-            $rules['righe.*.immobile_id']        = 'nullable|exists:immobili,id';
+            // Scopati per condominio: FatturaPassivaService risolve il capitolo con
+            // Conto::find() e ne usa il conto_contabile_id per la riga DARE. Un id di
+            // un altro condominio avrebbe agganciato la scrittura al mastro altrui,
+            // inquinandone i saldi senza che nulla lo segnalasse.
+            $rules['righe.*.conto_id'] = [
+                'nullable',
+                Rule::exists('conti', 'id')->whereIn(
+                    'piano_conto_id',
+                    fn ($q) => $q->select('id')->from('piani_conti')
+                        ->where('condominio_id', $this->route('condominio')->id)
+                ),
+            ];
+            $rules['righe.*.immobile_id'] = [
+                'nullable',
+                Rule::exists('immobili', 'id')->where('condominio_id', $this->route('condominio')->id),
+            ];
             $rules['righe.*.is_sopravvenienza']  = 'nullable|boolean';
         }
 

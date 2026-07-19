@@ -26,7 +26,7 @@ return [
     |
     */
 
-    'version' => env('APP_VERSION', '1.10.0-beta.15'),
+    'version' => env('APP_VERSION', '1.10.0-beta.16'),
 
     /*
     |--------------------------------------------------------------------------
@@ -79,6 +79,21 @@ return [
     */
 
     'timezone' => 'UTC',
+
+    /*
+    |--------------------------------------------------------------------------
+    | Fuso orario di riferimento dell'utente
+    |--------------------------------------------------------------------------
+    |
+    | I timestamp restano in UTC (sopra), ma le validazioni sulle DATE inserite
+    | a mano — "non può essere futura" — devono ragionare nel fuso in cui vive
+    | l'amministratore. Con il solo UTC, un utente italiano che registra un
+    | pagamento alle 00:30 sceglie dal calendario la data di oggi (ora locale) e
+    | si vede respingere il form, perché in UTC è ancora ieri.
+    |
+    */
+
+    'user_timezone' => env('APP_USER_TIMEZONE', 'Europe/Rome'),
 
     /*
     |--------------------------------------------------------------------------
