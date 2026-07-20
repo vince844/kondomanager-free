@@ -357,11 +357,70 @@ test('una fattura con pagamenti registrati non è stornabile finché il pagament
     $fattura->refresh();
     expect($fattura->stato_pagamento)->toBe(StatoPagamentoFattura::PAGATA);
 
+    // Il rifiuto viaggia su withErrors, non sul flash: è l'unico canale che
+    // sopravvive al redirect di back() in una visita Inertia e arriva a schermo.
     $this->actingAs($this->user)
         ->post(route('admin.gestionale.fatture.storno', [$condominio, $fattura]))
-        ->assertSessionHas('message.type', 'error');
+        ->assertSessionHasErrors('storno_vietato');
 
     // Nessuna nota di credito fabbricata sopra un pagamento ancora vivo.
     expect(FatturaPassiva::where('condominio_id', $condominio->id)
         ->where('tipo_documento', 'nota_credito')->count())->toBe(0);
+});
+
+// ─── IVA a zero: un'aliquota 0 non è un'aliquota mancante ───────────────────
+
+/**
+ * Segnalazione dal forum (beta.14): registrando una spesa con IVA a 0 —
+ * commissioni bancarie, professionisti in regime forfetario — l'anteprima
+ * mostrava l'importo corretto ma il documento salvato usciva con il 22%.
+ *
+ * La causa era lato form (`Number(r.aliquota_iva) || 22`, che scambia lo zero
+ * per "valore assente"). Il servizio è sempre stato corretto: questo test lo
+ * blinda, così nessun default può rientrare dalla porta di servizio.
+ */
+test('una riga con aliquota IVA a zero resta senza IVA', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    $fattura = registraFatturaServiceTest($ctx, [
+        'righe' => [[
+            'descrizione' => 'Commissione bancaria',
+            'importo_imponibile' => 250,     // in euro: il service moltiplica x100
+            'aliquota_iva' => 0,
+            'conto_id' => $capitolo->id,
+            'is_sopravvenienza' => false,
+        ]],
+    ]);
+
+    expect($fattura->importo_imponibile)->toBe(25000)
+        ->and($fattura->importo_iva)->toBe(0)
+        ->and($fattura->totale_documento)->toBe(25000);
+
+    // Anche la riga salvata, non solo la testata.
+    $riga = DB::table('righe_fattura')->where('fattura_passiva_id', $fattura->id)->first();
+    expect((float) $riga->aliquota_iva)->toBe(0.0)
+        ->and((int) $riga->importo_iva)->toBe(0);
+
+    // E la scrittura contabile non deve contenere alcuna riga di IVA a credito.
+    assertQuadraturaPerfetta($fattura->scritture->first()->id);
+});
+
+test('una riga con aliquota IVA valorizzata continua a calcolarla', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    $fattura = registraFatturaServiceTest($ctx, [
+        'righe' => [[
+            'descrizione' => 'Manutenzione ordinaria',
+            'importo_imponibile' => 100,
+            'aliquota_iva' => 10,
+            'conto_id' => $capitolo->id,
+            'is_sopravvenienza' => false,
+        ]],
+    ]);
+
+    expect($fattura->importo_imponibile)->toBe(10000)
+        ->and($fattura->importo_iva)->toBe(1000)
+        ->and($fattura->totale_documento)->toBe(11000);
 });

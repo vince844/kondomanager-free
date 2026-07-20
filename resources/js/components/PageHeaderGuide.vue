@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft, BookOpen, Menu } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
 import { usePermission } from "@/composables/permissions";
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';

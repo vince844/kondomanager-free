@@ -1,59 +1,16 @@
 <script setup lang="ts">
 
-import { ref } from 'vue'
-import { router, Link } from "@inertiajs/vue3"
+import { Link } from "@inertiajs/vue3"
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,  DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
-import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { FilePenLine, MoreHorizontal } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { Building } from '@/types/buildings'
 
 const { esercizio, condominio } = defineProps<{ esercizio: Esercizio, condominio: Building }>()
 
-const esercizioID = ref<number | null>(null)
-const isAlertOpen = ref(false)
-const isDropdownOpen = ref(false)
-const isDeleting = ref(false)
-
 const { generateRoute } = usePermission()
-
-function handleDelete(targetEsercizio: Esercizio) {
-  esercizioID.value = targetEsercizio.id
-  isDropdownOpen.value = false
-  setTimeout(() => {
-    isAlertOpen.value = true
-  }, 200)
-}
-
-function closeModal() {
-  esercizioID.value = null
-  isAlertOpen.value = false
-  isDropdownOpen.value = false
-}
-
-function deleteEsercizio() {
-  if (esercizioID.value === null || isDeleting.value) return
-
-  const id = esercizioID.value
-  isDeleting.value = true
-
-  router.delete(route(generateRoute('gestionale.esercizi.destroy'), { condominio: condominio.id, esercizio: id }), {
-    preserveScroll: true,
-    preserveState: true,
-    only: ['flash', 'esercizi'],
-    onSuccess: () => {
-      closeModal()
-    },
-    onError: () => {
-      console.error('Errore durante la cancellazione.')
-    },
-    onFinish: () => {
-      isDeleting.value = false
-    }
-  })
-}
 </script>
 
 <template>
@@ -77,21 +34,15 @@ function deleteEsercizio() {
         </Link>
       </DropdownMenuItem>
 
-      <DropdownMenuItem
-        @click="handleDelete(esercizio)"
-      >
-        <Trash2 class="w-4 h-4 text-xs" />
-        Elimina
-      </DropdownMenuItem>
+      <!-- Eliminazione rimossa dall'interfaccia.
+           L'esercizio è il contenitore di tutto il libro giornale del periodo:
+           la FK `scritture_contabili.esercizio_id` è cascadeOnDelete, quindi
+           eliminarlo distruggerebbe scritture, righe e pivot di quel periodo.
+           Il muro contabile lato server resta come difesa in profondità, ma un
+           pulsante che offre un'operazione irreversibile su un pilastro della
+           contabilità non ha ragione di esistere nell'uso quotidiano.
+           La MODIFICA resta: è l'unico modo per chiudere un esercizio. -->
     </DropdownMenuContent>
   </DropdownMenu>
-
-  <ConfirmDialog
-    v-model:modelValue="isAlertOpen"
-    title="Sei sicuro di voler eliminare questo esercizio?"
-    description="Questa azione non è reversibile. Eliminerà l'esercizio e tutti i dati ad esso associati."
-    :loading="isDeleting"
-    @confirm="deleteEsercizio"
-  />
 
 </template>

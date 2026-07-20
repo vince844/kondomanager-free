@@ -2,6 +2,7 @@
 import { computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -164,6 +165,8 @@ function onKeydown(e: KeyboardEvent) {
                 :condominio="props.condominio"
                 :condomini="props.condomini"
             />
+
+            <MovimentiLayout>
 
             <div v-if="form.errors.regolazione_non_ammessa"
                  class="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
@@ -353,6 +356,8 @@ function onKeydown(e: KeyboardEvent) {
                     </div>
                 </div>
             </div>
+
+            </MovimentiLayout>
         </div>
     </GestionaleLayout>
 </template>

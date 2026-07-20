@@ -7,6 +7,62 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.17] - Avvisi che Restano & Divieti Dichiarati Prima del Clic
+
+Rilascio nato dal collaudo a video di beta.16. Verificando una per una le guardie contabili appena introdotte, è emerso che **funzionavano ma non si vedevano**: ogni rifiuto veniva comunicato per tre secondi e poi svaniva. Il difetto non era nelle guardie ma nel componente che mostra gli avvisi, ed era presente da prima — riguardava tutti i circa 150 punti dell'applicazione che usano il canale dei messaggi flash.
+
+Il tema del rilascio è lo stesso della beta.16, portato un passo più in là: **un divieto va dichiarato prima del clic, e la sua spiegazione deve restare a schermo finché non è stata letta.**
+
+### Modificato — comportamenti che cambiano
+
+- **Gli avvisi di errore e di attenzione non si autochiudono più** (`Alert.vue`). Il componente impostava un `setTimeout` di 3 secondi indistintamente per ogni tipo di messaggio. Ora l'autochiusura vale solo per `success` e `info` (a 6 secondi) e tutti gli avvisi hanno un pulsante di chiusura esplicito. Rimossa inoltre la mutazione `usePage().props.flash = { message: "" }` eseguita alla chiusura: scriveva sulle props globali condivise da tutte le pagine, lasciando il canale sporco per i messaggi successivi.
+- **La voce "Storna" scompare dalle fatture con pagamenti registrati** e viene sostituita da una voce disattivata con il motivo nel tooltip, distinto fra fattura *pagata* e *parziale*. Prima la voce era attiva su qualunque fattura non ancora stornata: il rifiuto arrivava dopo aver aperto la modale di conferma, che nel frattempo aveva descritto un'operazione che non sarebbe mai avvenuta.
+- **`StornoFatturaController` risponde con `withErrors` anziché con il flash** per tutte e tre le guardie (già stornata, nota di credito, pagamenti registrati). Il canale degli errori di validazione apre una modale non ignorabile, trattamento appropriato per un'operazione contabile bloccata; il flash resta per gli avvisi che non richiedono una decisione.
+- **Rimossa l'azione "Elimina" dal menu degli esercizi contabili.** Il muro contabile lato server introdotto in beta.16 resta come difesa in profondità, ma `scritture_contabili.esercizio_id` è `cascadeOnDelete`: il comando offriva un'operazione irreversibile sul contenitore dell'intero giornale di un periodo. La voce "Modifica" resta ed è deliberato — il campo `stato` vive lì, quindi è da lì che si chiude un esercizio; toglierla bloccherebbe il passaggio di anno contabile. Un'azione dedicata "Chiudi esercizio" è rimandata alla progettazione del ciclo di chiusura/apertura.
+
+### Corretto
+
+- **IVA a 0 salvata come 22%** (segnalazione dal forum su beta.14, difetto presente fino a beta.16 inclusa). In `FatturaRegisterNew` e `FatturaRegisterEdit` il payload inviato al server costruiva l'aliquota con `Number(r.aliquota_iva) || 22`: in JavaScript `0 || 22` vale `22`, quindi lo zero — un'aliquota perfettamente legittima — veniva scambiato per "campo non compilato" e sostituito con il valore ordinario. L'anteprima a schermo usa `|| 0` (righe 195 e 1002) ed era corretta: da qui il sintomo riferito dall'utente, *"l'importo giusto durante l'inserimento, con l'IVA dopo il salvataggio"*. Sostituito con `Number.isFinite(...) ? ... : 22`. Il servizio `FatturaPassivaService` è sempre stato corretto (`(float) $rigaInput['aliquota_iva']`, nessun default): il difetto era interamente nel form. Impatta ogni spesa senza IVA — commissioni bancarie e postali, professionisti in regime forfetario, scontrini — che nel ciclo passivo condominiale sono ordinarie.
+- **La pagina Regolazione immediata restava bianca.** `RegolazioneImmediataController::create` non passava la prop `esercizio` (singolare): `GestionaleHeader` la usa per costruire i link a Gestioni, Piani conti e Piani rate, quindi il suo `setup()` sollevava `TypeError: esercizio.value is undefined` e l'intera barra di navigazione spariva. Con Vite in modalità sviluppo l'errore si propagava fino a impedire il rendering della pagina. Difetto introdotto insieme alla feature in beta.16 e mascherato in produzione, dove si manifestava solo come barra mancante. `GestionaleHeader` è stato reso tollerante (`esercizio.value?.id`): una prop dimenticata costerà al più qualche collegamento, non l'usabilità della pagina.
+- La pagina **Regolazione immediata** non includeva `MovimentiLayout`: era l'unica della sezione priva della barra dei Movimenti.
+- **Componenti usati e non importati**: `PageHeaderGuide` usava `DropdownMenuLabel` e `DropdownMenuSeparator` nel template senza dichiararli fra gli import, e `buildings/DataTableColumnHeader` faceva lo stesso con `DropdownMenuSeparator`. Vue emetteva un `Failed to resolve component` e non renderizzava quegli elementi. Nessun malfunzionamento visibile, ma il rumore in console maschera gli errori veri — è esattamente ciò che ha reso più lenta la diagnosi della pagina bianca qui sopra. Una scansione dell'intero `resources/js` conferma che erano gli unici due casi.
+- Nel registro voci di spesa (`FatturaRegisterNew`, `FatturaRegisterEdit`) l'etichetta **"Totale riga"** andava a capo su due righe nella colonna stretta. Riequilibrata la griglia: causale `lg:col-span-5` → `4`, totale `2` → `3`, con `whitespace-nowrap tabular-nums` sul valore.
+
+### Interfaccia — menu a tendina del registro voci di spesa
+
+Segnalazione dell'utente sulla pagina di registrazione fattura: i menu della colonna di destra erano visibilmente diversi da quelli della colonna di sinistra, e un capitolo lungo sfondava il bordo del campo.
+
+- **Allineamento fra le due colonne.** Alla baseline solo i `v-select` delle righe portavano la classe `style-chooser`, che li stilava con `border-radius: 0.75rem; min-height: 40px`; quelli della colonna di sinistra non avevano alcuna classe e ricevevano quindi il `vue-select` di default (~35 px, raggio 4 px). La correzione è la **rimozione di quella regola** in `FatturaRegisterNew` e `FatturaRegisterEdit`: le due colonne coincidono senza aggiungere nulla.
+- **Troncamento delle etichette lunghe.** `.vs__selected-options` è un figlio flex che cresce con il contenuto: un capitolo del tipo *"Imprevisto - Mario Rossi Impianti s.r.l – Integrazioni Straordinarie (Scudo Legale)"* (91 caratteri) finiva sotto le icone `×` e `⌄`. La causa tecnica è l'assenza di `min-width: 0`, senza cui un figlio flex non può rimpicciolirsi sotto la propria larghezza intrinseca e quindi `text-overflow: ellipsis` non ha alcun effetto. Aggiunti `min-width: 0` + `overflow: hidden` sul contenitore e `flex: 0 0 auto` su `.vs__actions`. Nessuna metrica toccata: altezza, raggio e spaziature restano quelle di default.
+- **Blocco `<style scoped>`, non globale.** `.style-chooser` è usata anche da altre pagine e un blocco `<style>` non incapsulato viene iniettato globalmente non appena il componente è importato: le regole sono quindi in un blocco `scoped` con `:deep()`, e non escono da queste due pagine.
+
+#### Nota di processo — un'unificazione globale tentata e ritirata
+
+Una prima stesura aveva centralizzato la resa di `vue-select` in `resources/css/custom.css` con selettore `.v-select`, per sanare la divergenza fra i **67** file che usano il componente. È stata **ritirata** dopo che l'utente ha notato un peggioramento delle pillole nei campi a selezione multipla. Misure in Chrome headless sui due CSS reali presi da git:
+
+| | prima | dopo |
+|---|---|---|
+| altezza riquadro | 34,8 px | 40 px |
+| altezza pillola | **24,8 px** | **34 px** *(+37%)* |
+| cursore rispetto alla pillola | allineato | −4 px |
+
+La causa: `.vs__selected-options` è un contenitore flex con `align-items` al valore di default, e la pillola non ha altezza propria — quindi **si stira** per riempire il contenitore. Imponendo `min-height: 2.5rem` e togliendo il `padding-bottom: 4px` del riquadro, lo spazio interno è passato da 28,8 a 38 px e la pillola è cresciuta con lui; separatamente, `margin: 0` su `.vs__search` ha cancellato il `margin-top: 4px` di default, che era esattamente quello della pillola.
+
+Le **21 pagine a selezione multipla** colpite (utenti, ruoli, inviti, comunicazioni, eventi, documenti, anagrafiche, segnalazioni, piani rate) non avevano alcun override locale e nessun problema da risolvere: erano fuori dal perimetro della richiesta. La regola tenuta è quella minima e circoscritta descritta sopra. La divergenza di stile fra le pagine resta un debito noto, da affrontare semmai come lavoro a sé, con un collaudo dedicato sui campi a selezione multipla.
+
+### Test
+
+- Due test di regressione sull'IVA a zero (`aliquota 0 → nessuna IVA`, `aliquota 10 → IVA calcolata`) verificati con mutation test: reintroducendo un default nel service il primo fallisce.
+- `HardeningFase0Test` asseriva il rifiuto dello storno con `assertSessionHas('message.type','error')`, cioè su un canale che l'utente non vedeva mai. Ora asserisce `assertSessionHasErrors('storno_vietato')`, lo stesso che il frontend legge. Suite a **443 test verdi**, 4 saltati.
+
+### Note
+
+- **Nessuna migrazione**: nessuna alterazione di schema o dati.
+- Collaudo a video sulla pagina fattura con dati reali: capitolo di 91 caratteri troncato con ellissi, testo che resta 19 px dentro il bordo, icone `×` e `⌄` mai coperte, riquadro a 35 px identico a quello della colonna di sinistra.
+- Collaudo a video eseguito su dati reali per: storno di fattura pagata, secondo esercizio aperto, eliminazione ultimo esercizio, sforo differenziale in modifica (residuo esatto e sforo reale ancora rilevato), registrazione e storno di una regolazione immediata con effetto netto zero sul capitolo.
+
+---
+
 ## [1.10.0-beta.16] - Regolazione Immediata, Guardie del Libro Giornale & Tenancy
 
 Rilascio nato da un caso reale segnalato sul forum: la registrazione di un'**imposta di bollo da 16,68 €** aveva prodotto sei documenti contabili, un fornitore fittizio "Banca", un falso sforamento di budget e infine un errore 500. Analizzando quel percorso sono emersi difetti latenti nel ciclo passivo e nel presidio del libro giornale, alcuni presenti da diverse versioni e mai visibili all'utente.

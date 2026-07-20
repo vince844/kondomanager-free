@@ -14,6 +14,7 @@ use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
+use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -35,6 +36,7 @@ class RegolazioneImmediataController extends Controller
 {
     use HandleFlashMessages;
     use HasCondomini;
+    use HasEsercizio;
 
     /**
      * Form di registrazione. Espone solo ciò che la scrittura richiede davvero:
@@ -65,6 +67,10 @@ class RegolazioneImmediataController extends Controller
         return Inertia::render('gestionale/movimenti/regolazioni/RegolazioneImmediataNew', [
             'condominio' => $condominio,
             'condomini' => CondominioResource::collection($this->getCondomini())->resolve(),
+            // Obbligatorio: GestionaleHeader legge `props.esercizio` (singolare) per
+            // costruire i link a Gestioni, Piani conti e Piani rate. Senza, il setup
+            // del componente va in errore e l'intera barra di navigazione sparisce.
+            'esercizio' => $this->getEsercizioCorrente($condominio),
             'esercizi' => $condominio->esercizi()->where('stato', 'aperto')->get(['esercizi.id', 'esercizi.nome']),
             'gestioni' => $condominio->gestioni()
                 ->where('gestioni.attiva', true)

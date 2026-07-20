@@ -237,6 +237,10 @@ test('il form espone i capitoli agganciati alla partita doppia e nasconde quelli
         ->where('capitoli.0.id', $capitolo->id)
         ->has('casse')
         ->has('esercizi')
+        // `esercizio` al singolare è indispensabile a GestionaleHeader per i link a
+        // Gestioni, Piani conti e Piani rate: senza, il componente va in errore in
+        // fase di setup e l'intera barra di navigazione scompare dalla pagina.
+        ->has('esercizio')
         ->has('gestioni')
         ->has('fornitori')
     );

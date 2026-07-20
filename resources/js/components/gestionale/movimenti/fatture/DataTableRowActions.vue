@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { usePermission } from "@/composables/permissions";
-import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit } from 'lucide-vue-next'
+import { MoreHorizontal, Eye, CreditCard, Trash2, RotateCcw, CheckCircle2, AlertTriangle, Download, ShieldCheck, Edit, Ban } from 'lucide-vue-next'
 
 const props = defineProps<{
   fattura: any,
@@ -20,6 +20,32 @@ const isModificabile = computed(() =>
   !props.fattura.is_pregresso &&
   props.fattura.stato_approvazione !== 'sforo_motivato'
 );
+
+// Lo storno è ammesso solo su una fattura senza pagamenti vivi: il denaro già
+// uscito va rimesso a posto per primo, altrimenti resterebbe un'uscita di cassa
+// senza un debito che la giustifichi. Stessa regola della guardia server, esposta
+// qui perché l'utente la veda PRIMA di aprire la modale.
+const puoStornare = computed(() =>
+  !props.fattura.dati_extra?.is_stornata &&
+  props.fattura.netto_a_pagare > 0 &&
+  props.fattura.stato_pagamento === 'aperta'
+);
+
+const stornoBloccatoDaPagamenti = computed(() =>
+  !props.fattura.dati_extra?.is_stornata &&
+  props.fattura.netto_a_pagare > 0 &&
+  ['pagata', 'parziale'].includes(props.fattura.stato_pagamento)
+);
+
+const motivoStornoBloccato = computed(() =>
+  props.fattura.stato_pagamento === 'pagata'
+    ? 'La fattura è già stata pagata: storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.'
+    : 'La fattura ha un pagamento parziale: storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.'
+);
+
+// Messaggio della guardia server, se dovesse scattare comunque (difesa in profondità:
+// il blocco lato UI si basa sui dati della riga, che potrebbero essere obsoleti).
+const erroreStorno = ref<string | null>(null);
 
 // Stato dei Modali
 const isDeleteModalOpen = ref(false);
@@ -49,12 +75,23 @@ const executeDelete = () => {
 
 // Esecuzione Storno Contabile (Errore Consolidato)
 const executeStorno = () => {
+    erroreStorno.value = null;
+
     router.post(route(generateRoute('gestionale.fatture.storno'), {
         condominio: props.condominioId,
-        fattura: props.fattura.id 
+        fattura: props.fattura.id
     }), {}, {
         preserveScroll: true,
-        onSuccess: () => isStornoModalOpen.value = false
+        onSuccess: () => isStornoModalOpen.value = false,
+        // Le guardie di dominio rispondono con withErrors: il canale del flash non
+        // sopravvive al redirect di back() in una visita Inertia, e l'operazione
+        // veniva rifiutata in silenzio.
+        onError: (errors: Record<string, string>) => {
+            isStornoModalOpen.value = false;
+            erroreStorno.value = errors.storno_vietato
+                ?? Object.values(errors)[0]
+                ?? 'Operazione non consentita.';
+        },
     });
 };
 
@@ -164,12 +201,23 @@ const downloadPdf = () => {
           <Trash2 class="w-4 h-4 mr-2" /> Elimina
       </DropdownMenuItem>
 
-      <DropdownMenuItem 
-          v-if="!fattura.dati_extra?.is_stornata && fattura.netto_a_pagare > 0"
-          @click="confirmStornoFattura" 
+      <DropdownMenuItem
+          v-if="puoStornare"
+          @click="confirmStornoFattura"
           class="text-amber-600 focus:text-amber-700 focus:bg-amber-50 cursor-pointer"
       >
           <RotateCcw class="w-4 h-4 mr-2" /> Storna
+      </DropdownMenuItem>
+
+      <!-- Con pagamenti registrati lo storno non è ammesso: va detto QUI, non dopo
+           aver aperto una modale che promette un'operazione poi rifiutata. -->
+      <DropdownMenuItem
+          v-else-if="stornoBloccatoDaPagamenti"
+          disabled
+          class="opacity-60 cursor-not-allowed"
+          :title="motivoStornoBloccato"
+      >
+          <Ban class="w-4 h-4 mr-2" /> Storna — prima i pagamenti
       </DropdownMenuItem>
 
       <DropdownMenuItem v-if="fattura.dati_extra?.is_stornata" disabled class="opacity-50">
@@ -280,5 +328,26 @@ const downloadPdf = () => {
               </p>
           </div>
       </ConfirmDialog>
+
+      <!-- Esito della guardia server: mostra SEMPRE il motivo del rifiuto.
+           Prima l'operazione veniva negata senza alcun riscontro a schermo. -->
+      <div
+          v-if="erroreStorno"
+          class="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          @click.self="erroreStorno = null"
+      >
+          <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+              <div class="flex items-start gap-3">
+                  <Ban class="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                  <div>
+                      <h3 class="text-lg font-semibold">Storno non consentito</h3>
+                      <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{ erroreStorno }}</p>
+                  </div>
+              </div>
+              <div class="mt-5 flex justify-end">
+                  <Button @click="erroreStorno = null">Ho capito</Button>
+              </div>
+          </div>
+      </div>
   </Teleport>
 </template>

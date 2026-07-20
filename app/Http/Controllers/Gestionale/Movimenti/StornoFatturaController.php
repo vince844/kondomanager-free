@@ -21,11 +21,11 @@ class StornoFatturaController extends Controller
     public function __invoke(Request $request, Condominio $condominio, FatturaPassiva $fattura, FatturaPassivaService $service)
     {
         if ($fattura->dati_extra['is_stornata'] ?? false) {
-            return back()->with($this->flashError('Questa fattura è già stata stornata in precedenza.'));
+            return back()->withErrors(['storno_vietato' => 'Questa fattura è già stata stornata in precedenza.']);
         }
 
         if ($fattura->netto_a_pagare < 0) {
-            return back()->with($this->flashError('Operazione negata: Non puoi stornare una Nota di Credito.'));
+            return back()->withErrors(['storno_vietato' => 'Non puoi stornare una Nota di Credito.']);
         }
 
         // Una fattura con pagamenti vivi non può essere annullata da una sola nota di
@@ -33,11 +33,14 @@ class StornoFatturaController extends Controller
         // primo, altrimenti restano un'uscita di cassa senza debito che la giustifichi e
         // — dopo un'eventuale eliminazione della NC — una fattura "aperta" con pagamenti
         // ancora allocati.
+        // withErrors e non flash: in una visita Inertia il flash impostato da back()
+        // non arriva a schermo, e l'operazione veniva rifiutata in silenzio. Il canale
+        // degli errori di validazione è quello che il frontend riceve sempre.
         if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return back()->with($this->flashError(
-                'Operazione negata: la fattura ha pagamenti registrati. '
-                .'Storna prima i pagamenti, poi la fattura.'
-            ));
+            return back()->withErrors([
+                'storno_vietato' => 'La fattura ha pagamenti registrati. '
+                    .'Storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.',
+            ]);
         }
 
         $gestioneId = null;

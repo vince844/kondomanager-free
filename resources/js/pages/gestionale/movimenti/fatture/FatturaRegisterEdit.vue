@@ -473,7 +473,12 @@ const doSubmit = () => {
             conto_id: r.conto_id ? Number(r.conto_id) : null,
             immobile_id: r.immobile_id ? Number(r.immobile_id) : null,
             importo_imponibile: Number(r.importo_imponibile) || 0,
-            aliquota_iva: Number(r.aliquota_iva) || 22,
+            // NB: `|| 22` trattava lo ZERO come valore assente e lo sostituiva con
+            // l'aliquota ordinaria. Le spese senza IVA sono normalissime in condominio
+            // — commissioni bancarie, professionisti in regime forfetario — e venivano
+            // salvate con il 22% pur essendo state digitate a 0: l'anteprima mostrava
+            // l'importo giusto (usa `|| 0`), il documento salvato no.
+            aliquota_iva: Number.isFinite(Number(r.aliquota_iva)) ? Number(r.aliquota_iva) : 22,
             is_sopravvenienza: Boolean(r.is_sopravvenienza)
         }));
 
@@ -855,7 +860,7 @@ const pageGuides = [
 
                                     <div class="grid grid-cols-12 gap-4 items-start">
                                         <!-- Causale -->
-                                        <div class="col-span-12 md:col-span-4 lg:col-span-5">
+                                        <div class="col-span-12 md:col-span-4 lg:col-span-4">
                                             <Input v-model="riga.descrizione"
                                                 placeholder="Causale riga..."
                                                 class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
@@ -895,10 +900,10 @@ const pageGuides = [
                                         </div>
 
                                         <!-- Totale riga + elimina -->
-                                        <div class="col-span-5 md:col-span-3 lg:col-span-2 flex items-center justify-end gap-3 h-10">
-                                            <div class="text-right">
-                                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1">Totale Riga</span>
-                                                <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none">
+                                        <div class="col-span-5 md:col-span-3 lg:col-span-3 flex items-center justify-end gap-2 h-10">
+                                            <div class="text-right min-w-0 flex-1">
+                                                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1 whitespace-nowrap">Totale Riga</span>
+                                                <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none whitespace-nowrap tabular-nums">
                                                     {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
                                                 </span>
                                             </div>
@@ -1168,9 +1173,33 @@ const pageGuides = [
     position: relative;
     z-index: 1;
 }
+</style>
 
-.style-chooser .vs__dropdown-toggle {
-    border-radius: 0.75rem;
-    min-height: 40px;
+<!-- `scoped` e' deliberato: `.style-chooser` e' usata anche da altre pagine, e un
+     blocco non incapsulato verrebbe iniettato globalmente non appena questo
+     componente viene importato, andando a toccarle. -->
+<style scoped>
+/* Le etichette dei capitoli qui sono lunghe (fornitore + descrizione dell'intervento)
+   e sfondavano il bordo del campo, finendo sotto le icone di cancellazione e apertura.
+   `min-width: 0` e' la chiave: senza, un figlio flex non puo' rimpicciolirsi sotto la
+   propria larghezza naturale e `text-overflow: ellipsis` non ha alcun effetto.
+   Nessuna metrica viene toccata: altezza, raggio e spaziature restano quelle di
+   vue-select, identiche ai menu della colonna di sinistra. */
+:deep(.style-chooser .vs__selected-options) {
+    min-width: 0;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+:deep(.style-chooser .vs__selected) {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Le icone non devono mai finire coperte dall'etichetta. */
+:deep(.style-chooser .vs__actions) {
+    flex: 0 0 auto;
 }
 </style>
