@@ -11,8 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOctagon, TriangleAlert, TrendingDown, Zap, ArrowRightLeft, Briefcase, History, ChevronDown, CheckCircle, Lock, Info } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
+import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -92,21 +92,6 @@ interface Immobile {
     label: string;
 }
 
-interface DebitoPatrimoniale {
-    id: number;
-    fornitore_id: number;
-    descrizione: string;
-    importo_iniziale: number;
-    importo_disponibile: number;
-    fatture_collegate?: any[];
-}
-
-interface FondoRiserva {
-    id: number;
-    nome: string;
-    saldo_attuale: number;
-}
-
 const props = defineProps<{
     condominio: Condominio;
     condomini: Condominio[];
@@ -129,7 +114,6 @@ const props = defineProps<{
 // Form
 // ---------------------------------------------------------------------------
 const fileInput = ref<HTMLInputElement | null>(null);
-const showOverrideModal = ref(false);
 const showSuccessModal = ref(false);
 const showModificaVietataModal = ref(false);
 const modificaVietataMsg = ref('');
@@ -183,11 +167,6 @@ const selectedFornitore = computed(() => props.fattura.fornitore);
 // Computed
 // ---------------------------------------------------------------------------
 
-const hasSpesePrivate = computed(() => {
-    if (!form.righe || !Array.isArray(form.righe)) return false;
-    return form.righe.some(riga => riga.immobile_id !== null);
-});
-
 const totali = computed(() => {
     let imponibile = 0, iva = 0;
     let imponibile_ordinario = 0, iva_ordinaria = 0;
@@ -235,8 +214,6 @@ const totali = computed(() => {
     };
 });
 
-const totaleDocLordoEuro = computed(() => totali.value.imponibile + totali.value.iva);
-
 // Storico capitoli espanso
 const expandedHistory = ref<Record<number, boolean>>({});
 const toggleHistory = (contoId: number) => {
@@ -260,7 +237,7 @@ const budgetImpacts = computed(() => {
         if (!c) return;
 
         const residuoCents = c.residuo_budget || 0;
-        const spesaCents   = Math.round((Number(r.importo_imponibile) || 0) * 100);
+        const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
         const cur = grouped.get(r.conto_id) || {
             id:               c.id,
             nome:             c.nome,
@@ -278,6 +255,21 @@ const budgetImpacts = computed(() => {
         delta_cents: i.residuo_cents - i.speso_cents
     }));
 });
+
+/**
+ * Sforo della SINGOLA riga, per il badge sotto il campo importo.
+ *
+ * Attenzione: `budgetImpacts` aggrega invece per capitolo, quindi due righe sullo stesso
+ * conto possono sforare insieme senza che nessuna delle due sfori da sola. Il badge di riga
+ * e il pannello laterale rispondono deliberatamente a domande diverse.
+ */
+const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+    if (!riga.conto_id) return false;
+    const c = props.conti.find(c => c.id === riga.conto_id);
+    if (!c || c.residuo_budget === undefined) return false;
+
+    return lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva) > c.residuo_budget;
+};
 
 const bancheNormalizzate = computed(() =>
     props.banche.map(b => ({ ...b, saldo_attuale_cents: b.saldo_attuale || 0 }))
@@ -387,76 +379,7 @@ const removeRiga = (idx: number) => {
     if (form.righe.length > 1) form.righe.splice(idx, 1);
 };
 
-const showSpesaImprevistaModal = ref(false);
-
-const spesaImprevistaMode = ref<'corrente' | 'pregressa'>('corrente');
-
-const totaleCopertoPregressoEuro = computed(() => {
-    if (!form.is_pregresso) return 0;
-    let sum = 0;
-    
-    // 1. Aggiungiamo la base del debito patrimoniale selezionato
-    if (form.saldo_patrimoniale_id) {
-        const debito = props.debiti_patrimoniali.find(d => d.id === form.saldo_patrimoniale_id);
-        if (debito) sum += (debito.importo_disponibile / 100);
-    }
-    
-    // 2. Aggiungiamo i fondi extra selezionati (ignorando i click manuali su sopravvenienza)
-    if (form.coperture?.length) {
-        sum += form.coperture
-            .filter((c: any) => c.tipo_copertura !== 'sopravvenienza')
-            .reduce((acc: number, c: any) => acc + (Number(c.importo) || 0), 0);
-    }
-    
-    return sum;
-});
-
-const eccedenzaPregressaEuro = computed(() => {
-    if (!form.is_pregresso) return 0;
-    const eccedenza = totaleDocLordoEuro.value - totaleCopertoPregressoEuro.value;
-    return eccedenza > 0.01 ? eccedenza : 0;
-});
-
 const handleSubmit = () => {
-    // 1. Sforo budget CORRENTE
-    if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET' && !form.dati_extra.override_budget) {
-        showOverrideModal.value = true;
-        return;
-    }
-
-    doSubmit();
-};
-
-/**
- * Chiamato da ModalOverrideBudget al confirm.
- */
-const handleSpesaImprevistaConfirm = (payload: any) => {
-    form.dati_extra.log_legale_sopravvenienza = payload;
-
-    if (payload.is_ordinario) {
-        form.dati_extra.override_budget = {
-            motivazione:           payload.motivazione_sforo,
-            importo_sforo:         Math.round((totali.value.imponibile_sopravvenienza + totali.value.iva_sopravvenienza) * 100),
-            strategia_rientro:     payload.strategia_rientro,
-            fondo_patrimoniale_id: payload.fondo_patrimoniale_id,
-        };
-    }
-
-    showSpesaImprevistaModal.value = false;
-    handleSubmit();
-};
-
-const handleOverrideConfirm = (payload: { strategia: string; fondoId: number | null; motivazione: string }) => {
-    form.dati_extra.override_budget = {
-        motivazione:                payload.motivazione,
-        importo_sforo:              sforoBudgetTotaleCents.value,
-        budget_residuo_al_momento:  -sforoBudgetTotaleCents.value,
-        timestamp:                  new Date().toISOString(),
-        strategia_rientro:          payload.strategia,
-        fondo_patrimoniale_id:      payload.fondoId,
-    };
-
-    showOverrideModal.value = false;
     doSubmit();
 };
 
@@ -537,7 +460,7 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
 const pageGuides = [
     { title: 'Panel + Ledger',   description: 'I dati principali a sinistra, le voci a destra come un registro contabile. Tutto visibile in un\'unica schermata.', icon: ArrowRightLeft, colorVariant: 'blue' as const },
     { title: 'Controllo Budget', description: 'Il sistema verifica il residuo per ogni capitolo di spesa in tempo reale, riga per riga.',                          icon: Zap,            colorVariant: 'amber' as const },
-    { title: 'Audit Trail',      description: 'Ogni sforamento deve essere giustificato con motivazione legale prima della registrazione.',                         icon: ShieldAlert,    colorVariant: 'emerald' as const },
+    { title: 'Audit Trail',      description: 'In modifica lo sforo non può essere motivato: per registrare una motivazione occorre stornare e ri-registrare.',      icon: ShieldAlert,    colorVariant: 'emerald' as const },
 ];
 </script>
 
@@ -563,10 +486,13 @@ const pageGuides = [
                     :class="transactionStatus === 'CRITICAL_BUDGET' ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-amber-50 border-amber-200 text-amber-900'">
                     <AlertOctagon v-if="transactionStatus === 'CRITICAL_BUDGET'" class="w-5 h-5 shrink-0" />
                     <TriangleAlert v-else class="w-5 h-5 shrink-0" />
-                    <p class="text-sm font-medium">
-                        {{ transactionStatus === 'CRITICAL_BUDGET'
-                            ? 'Sforamento budget rilevato — sarà necessaria una motivazione al momento della registrazione.'
-                            : 'Liquidità insufficiente sul conto selezionato.' }}
+                    <p v-if="transactionStatus === 'CRITICAL_BUDGET'" class="text-sm font-medium">
+                        Questa modifica porta il capitolo oltre il budget di {{ euro(sforoBudgetTotaleCents) }}.
+                        In modifica lo sforo <strong>non può essere motivato</strong>: per registrare una motivazione
+                        e la relativa copertura occorre stornare la fattura e registrarla di nuovo.
+                    </p>
+                    <p v-else class="text-sm font-medium">
+                        Liquidità insufficiente sul conto selezionato.
                     </p>
                 </div>
             </Transition>
@@ -747,9 +673,9 @@ const pageGuides = [
                         <Button type="button" :disabled="form.processing" @click="handleSubmit"
                             class="w-full h-12 font-black text-sm uppercase tracking-wider rounded-xl gap-2"
                             :class="transactionStatus === 'CRITICAL_BUDGET' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'">
-                            <ShieldAlert v-if="transactionStatus === 'CRITICAL_BUDGET'" class="w-5 h-5" />
+                            <AlertOctagon v-if="transactionStatus === 'CRITICAL_BUDGET'" class="w-5 h-5" />
                             <Save v-else class="w-5 h-5" />
-                            {{ transactionStatus === 'CRITICAL_BUDGET' ? 'Autorizza e Registra' : 'Registra Documento' }}
+                            Salva Modifiche
                         </Button>
                     </div>
                 </div>
@@ -786,19 +712,11 @@ const pageGuides = [
 
                                         <!-- Capitolo di spesa -->
                                         <div class="col-span-12 md:col-span-8 relative">
+                                            <!-- Nessun toggle "Fuori Preventivo" qui: in modifica le sopravvenienze non sono
+                                                 accettate dal server (UpdateFatturaRequest le respinge con un 422 che questo
+                                                 form non mostra). Il flusso corretto è storno + nuova registrazione. -->
                                             <div class="flex items-center justify-between mb-1.5 min-h-[28px]">
                                                 <Label class="text-[10px] font-bold uppercase text-slate-400">Capitolo di spesa</Label>
-
-                                                <button
-                                                    type="button"
-                                                    @click="riga.is_sopravvenienza = !riga.is_sopravvenienza; riga.is_sopravvenienza && (riga.conto_id = null)"
-                                                    class="flex items-center gap-1.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider transition-all border outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50"
-                                                    :class="riga.is_sopravvenienza
-                                                        ? 'bg-amber-50 border-amber-200 text-amber-600 shadow-sm dark:bg-amber-900/30 dark:border-amber-700/50 dark:text-amber-400'
-                                                        : 'bg-transparent border-slate-200 text-slate-400 hover:bg-slate-50 hover:text-slate-500 dark:border-slate-700 dark:hover:bg-slate-800'">
-                                                    <Zap class="w-3 h-3" :class="riga.is_sopravvenienza ? 'text-amber-500' : 'text-slate-400'" />
-                                                    <span>{{ riga.is_sopravvenienza ? 'Imprevista (Attiva)' : 'Fuori Preventivo' }}</span>
-                                                </button>
                                             </div>
 
                                             <v-select
@@ -880,11 +798,7 @@ const pageGuides = [
                                                 :lazy="false"
                                                 class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                                 placeholder="0,00" />
-                                            <div v-if="riga.conto_id && (() => {
-                                                const c = conti.find(c => c.id === riga.conto_id);
-                                                if (!c || c.residuo_budget === undefined) return false;
-                                                return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
-                                            })()" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                            <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
@@ -1064,28 +978,6 @@ const pageGuides = [
                 </div>
             </div>
         </div>
-
-        <!-- Modali -->
-        <ModalOverrideBudget
-            v-model:show="showOverrideModal"
-            :sforo-totale="sforoBudgetTotaleCents"
-            :has-spese-private="hasSpesePrivate"
-            :fondi-riserva="fondi_riserva"
-            :is-processing="form.processing"
-            @confirm="handleOverrideConfirm" 
-        />
-
-        <ModalSpesaImprevista
-            v-model:show="showSpesaImprevistaModal"
-            :mode="spesaImprevistaMode"
-            :condominio-id="props.condominio.id"
-            :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
-            :fondi-riserva="fondi_riserva"
-            :importo-imprevisto="spesaImprevistaMode === 'corrente' 
-                ? Math.round((totali.imponibile_sopravvenienza + totali.iva_sopravvenienza) * 100) 
-                : Math.round(eccedenzaPregressaEuro * 100)"
-            @confirm="handleSpesaImprevistaConfirm" 
-        />
 
         <!-- Modale di modifica non consentita (stornata, esercizio chiuso, pregressa, ecc.) — non bypassabile -->
         <Teleport to="body">

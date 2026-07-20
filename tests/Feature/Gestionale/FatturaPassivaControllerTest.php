@@ -127,6 +127,37 @@ test('in creazione il residuo budget continua a contare le fatture già registra
     );
 });
 
+test('il residuo budget sottrae il LORDO delle fatture registrate, non il solo imponibile', function () {
+    // Tre fatture consecutive sullo stesso capitolo con aliquote diverse: è lo scenario in cui
+    // una base di confronto sbagliata si accumula fattura dopo fattura.
+    // Budget 500.000 − lordo registrato 260.200 = residuo 239.800.
+    // Sui soli imponibili il residuo sarebbe 270.000: i 30.200 di differenza sono l'IVA, ed è la
+    // ragione per cui il form deve confrontare il LORDO della fattura corrente contro questo residuo.
+    $ctx = setupContabile();
+    [$condominio, , , , $capitolo] = $ctx;
+
+    foreach ([[1000, 22], [500, 10], [800, 4]] as [$imponibile, $aliquota]) {
+        registraFatturaServiceTest($ctx, [
+            'righe' => [[
+                'descrizione' => 'Servizio Test',
+                'importo_imponibile' => $imponibile,
+                'aliquota_iva' => $aliquota,
+                'conto_id' => $capitolo->id,
+                'is_sopravvenienza' => false,
+            ]],
+        ]);
+    }
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', 239800)
+    );
+});
+
 test('una fattura stornata resta leggibile: stato_pagamento=stornata non crasha il cast enum', function () {
     $ctx = setupContabile();
     [$condominio, , , , $capitolo] = $ctx;

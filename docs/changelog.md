@@ -7,6 +7,39 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.18] - Sforo al Lordo & la Modifica che Smette di Fingere
+
+Rilascio nato da una segnalazione sul forum: un utente aveva registrato tre fatture 2026 sullo stesso capitolo di una gestione straordinaria e l'"Eccesso complessivo" mostrato dalla modale di sforamento non tornava con i suoi conti. Aveva ragione. Il difetto è del tutto lato form, ed era presente da beta.11.
+
+Il tema è quello della beta.17 portato dove era rimasto scoperto: **un numero mostrato all'utente deve essere lo stesso che finisce in contabilità, e un'interfaccia che chiede qualcosa deve poi salvarla.**
+
+### Corretto — il calcolo dello sforo
+
+- **`budgetImpacts` confrontava basi disomogenee.** In `FatturaRegisterNew.vue` e `FatturaRegisterEdit.vue` la spesa della fattura in corso era calcolata sul solo `importo_imponibile`, e confrontata con `conti[].residuo_budget` che `FatturaPassivaController::prepareContestoBudget()` calcola invece come budget approvato meno la **somma lorda** (`SUM(importo_imponibile + importo_iva)`) delle fatture già registrate su quel conto. Netto contro lordo-già-decurtato: sottostima sistematica pari all'IVA della fattura corrente, che si amplifica con più fatture consecutive sullo stesso capitolo.
+- **Non era solo visualizzazione.** `handleOverrideConfirm` invia `importo_sforo: sforoBudgetTotaleCents` e `FatturaPassivaService` lo usa **verbatim**, senza ricalcolo lato server, sia per il record `fattura_coperture` sia per le due righe di giroconto dal fondo di riserva. Un eccesso sottostimato per IVA si propagava fino al movimento contabile.
+- **Falso negativo.** Con residuo compreso fra l'imponibile e il lordo, `isOk` risultava vero: la modale non si apriva affatto e la fattura veniva registrata oltre budget senza override né copertura.
+- **Prova che era un'omissione e non una scelta.** Nello stesso file, il percorso "spesa imprevista" (`handleSpesaImprevistaConfirm`) calcolava già lo sforo includendo l'IVA (`imponibile_sopravvenienza + iva_sopravvenienza`).
+- Introdotto **`resources/js/lib/gestionale/fatture/budget.ts`** con `lordoRigaCents()`, che ricalca l'arrotondamento **per riga** del service PHP (`round($impRiga * $aliq / 100)`) invece di quello in euro accumulato di `totali` — così il confronto col residuo usa la stessa base del database. L'arrotondamento dei negativi è allineato a PHP (`round()` arrotonda .5 lontano da zero, `Math.round` verso +∞): rilevante sulle note di credito.
+- L'IIFE dentro il `v-if` del badge "Sforo budget" è diventato un metodo **`rigaInSforo(riga)`**. Documentata nel codice la divergenza deliberata rispetto a `budgetImpacts`, che aggrega per capitolo: due righe sullo stesso conto possono sforare insieme senza che nessuna sfori da sola.
+
+### Modificato — comportamenti che cambiano
+
+- **Rimosso da `FatturaRegisterEdit.vue` l'intero flusso di override budget** (`ModalOverrideBudget`, `showOverrideModal`, `handleOverrideConfirm`). Motivo: `UpdateFatturaRequest::rules()` non accetta `dati_extra` — è deliberato e documentato nel suo docblock — quindi `$request->validated()` scartava l'override, e `FatturaPassivaService::aggiornaFattura()` ricostruisce `dati_extra` dal record esistente. L'utente compilava motivazione (minimo 10 caratteri), strategia di rientro e fondo, e **non veniva persistito nulla**: né copertura, né giroconto, né passaggio a `sforo_motivato`. Al suo posto un banner persistente che dichiara il divieto prima del clic e indica la strada corretta (storno + nuova registrazione). Il salvataggio non cambia. Coerentemente, il pulsante non dice più "Autorizza e Registra" ma "Salva Modifiche", e la guida "Audit Trail" in testa alla pagina è stata riscritta: diceva l'esatto opposto del banner, a venticinque righe di distanza.
+- **Rimosso da `FatturaRegisterEdit.vue` il toggle "Fuori Preventivo".** Impostava `is_sopravvenienza = true` azzerando `conto_id`, ma `UpdateFatturaRequest` respinge le sopravvenienze in modifica con un 422 su `righe.*.is_sopravvenienza` che quel template non renderizza (mostra solo gli errori su `descrizione`) e che `onError` non intercetta (gestisce solo `modifica_vietata`). Il salvataggio falliva in silenzio. Il campo era già forzato a `false` all'inizializzazione del form, con tanto di commento: la UI contraddiceva il proprio modello.
+- Rimosso il flusso spesa imprevista residuo in Edit (`ModalSpesaImprevista` — che era usato **senza import**, terzo caso dopo i due chiusi in beta.17 — più `handleSpesaImprevistaConfirm`, `showSpesaImprevistaModal`, `spesaImprevistaMode`, `totaleCopertoPregressoEuro`, `eccedenzaPregressaEuro`), oltre a `hasSpesePrivate`, `totaleDocLordoEuro` e alle interface morte `DebitoPatrimoniale` e `FondoRiserva`. Erano irraggiungibili: `showSpesaImprevistaModal` non veniva mai messo a `true`. In tutto **−152 righe**, senza toccare un solo comportamento vivo.
+
+### Test
+
+- Nuovo test in `tests/Feature/Gestionale/FatturaPassivaControllerTest.php`: tre fatture consecutive sullo stesso capitolo con aliquote 22/10/4 %, verifica che `residuo_budget` lato server valga 239.800 e non 270.000. Isola il difetto come esclusivamente frontend e ancora l'invariante su cui la correzione si appoggia. Verificato con mutation test: riportando la query a sommare il solo imponibile, il test fallisce.
+- Suite `tests/Feature/Gestionale/`: 254 test passati.
+
+### Note
+
+- **Nessuna migrazione.** La struttura del database non cambia.
+- Le coperture da fondo di riserva già registrate con l'importo sottostimato **non vengono corrette automaticamente**: vanno verificate a mano. Lo scarto è pari all'IVA della fattura che ha generato lo sforamento.
+
+---
+
 ## [1.10.0-beta.17] - Avvisi che Restano & Divieti Dichiarati Prima del Clic
 
 Rilascio nato dal collaudo a video di beta.16. Verificando una per una le guardie contabili appena introdotte, è emerso che **funzionavano ma non si vedevano**: ogni rifiuto veniva comunicato per tre secondi e poi svaniva. Il difetto non era nelle guardie ma nel componente che mostra gli avvisi, ed era presente da prima — riguardava tutti i circa 150 punti dell'applicazione che usano il canale dei messaggi flash.

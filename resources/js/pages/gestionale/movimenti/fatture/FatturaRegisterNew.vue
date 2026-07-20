@@ -15,6 +15,7 @@ import WidgetDoubleLock from '@/components/gestionale/movimenti/fatture/WidgetDo
 import ModalSpesaImprevista from '@/components/gestionale/movimenti/fatture/ModalSpesaImprevista.vue';
 import ModalOverrideBudget from '@/components/gestionale/movimenti/fatture/ModalOverrideBudget.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
+import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -251,7 +252,7 @@ const budgetImpacts = computed(() => {
         if (!c) return;
 
         const residuoCents = c.residuo_budget || 0;
-        const spesaCents   = Math.round((Number(r.importo_imponibile) || 0) * 100);
+        const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
         const cur = grouped.get(r.conto_id) || {
             id:               c.id,
             nome:             c.nome,
@@ -269,6 +270,21 @@ const budgetImpacts = computed(() => {
         delta_cents: i.residuo_cents - i.speso_cents
     }));
 });
+
+/**
+ * Sforo della SINGOLA riga, per il badge sotto il campo importo.
+ *
+ * Attenzione: `budgetImpacts` aggrega invece per capitolo, quindi due righe sullo stesso
+ * conto possono sforare insieme senza che nessuna delle due sfori da sola. Il badge di riga
+ * e il pannello laterale rispondono deliberatamente a domande diverse.
+ */
+const rigaInSforo = (riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown }): boolean => {
+    if (!riga.conto_id) return false;
+    const c = props.conti.find(c => c.id === riga.conto_id);
+    if (!c || c.residuo_budget === undefined) return false;
+
+    return lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva) > c.residuo_budget;
+};
 
 const bancheNormalizzate = computed(() =>
     props.banche.map(b => ({ ...b, saldo_attuale_cents: b.saldo_attuale || 0 }))
@@ -980,11 +996,7 @@ const pageGuides = [
                                                 :lazy="false"
                                                 class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                                 placeholder="0,00" />
-                                            <div v-if="riga.conto_id && (() => {
-                                                const c = conti.find(c => c.id === riga.conto_id);
-                                                if (!c || c.residuo_budget === undefined) return false;
-                                                return Math.round((Number(riga.importo_imponibile) || 0) * 100) > c.residuo_budget;
-                                            })()" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
+                                            <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
                                                 <span class="text-[9px] font-black uppercase">Sforo budget</span>
                                             </div>
