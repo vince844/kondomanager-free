@@ -7,6 +7,27 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.20] - La Modifica Oltre Budget Prende Atto
+
+La beta.18 aveva tolto la finzione (l'override in modifica che non registrava nulla), la beta.19 ha messo in sicurezza la contabilità (guardia sulle fatture con copertura fondo, giroconti reali). Questo blocco chiude i due varchi rimasti sul fronte modifica: il salvataggio oltre budget che passava con un click, e la fattura ratificata che tornava modificabile.
+
+Nessuna migrazione database.
+
+### Modificato — comportamenti che cambiano
+
+- **Presa d'atto sul salvataggio oltre budget in modifica** (`FatturaRegisterEdit.vue`): con un capitolo oltre il residuo, il submit apre un dialogo che dichiara l'importo dello sforo e cosa NON accadrà salvando (nessuna motivazione registrata, nessuna copertura, fattura fuori dal cruscotto sforamenti); si annulla o si salva consapevolmente. Nessun flag persistente: il dialogo si ripresenta a ogni submit oltre budget, così una modifica ulteriore delle righe non eredita una conferma vecchia. Decisione di design (strada "presa d'atto onesta", non "override reale"): motivare uno sforo in modifica resta impossibile — la via è storno + nuova registrazione, come dichiara il banner già presente dalla beta.18.
+- **Guardia sulla fattura ratificata senza copertura** (`FatturaPassivaService::motivoBloccoModifica`): `dati_extra.override_budget` presente → modifica vietata. Le strategie conguaglio/rata integrativa non creano coperture, quindi la guardia beta.19 sul fondo non le vedeva: dopo la ratifica (`sforo_motivato` → `approvata`) la fattura tornava modificabile, con motivazione e importo dello sforo in `dati_extra` riferiti a cifre che l'assemblea non ha mai visto. Ordine dei controlli: lo stato `sforo_motivato` mantiene il suo messaggio specifico ("in attesa di ratifica"); la nuova guardia scatta sulle ratificate.
+
+### Deciso e NON fatto
+
+- **La fattura modificata oltre budget non entra nel cruscotto sforamenti**: il cruscotto conta lo stato `sforo_motivato`, non una condizione calcolata. Dopo una modifica lo sforo è una proprietà del capitolo, non attribuibile a una singola fattura; transitare la fattura a `sforo_motivato` senza motivazione romperebbe l'invariante su cui poggiano ratifica e widget. Nota aperta per il futuro: l'albero del piano dei conti oggi maschera gli sfori non motivati (`PianoContiController` porta `importo` a `speso` quando lo speso supera il budget) — se si vorrà dare visibilità agli sfori "silenziosi", la sede è lì, come delta rispetto a `budgetOriginaliMap`.
+
+### Test
+
+- `FatturaPassivaServiceTest`: nuovo caso — sforo motivato con strategia conguaglio (nessuna copertura), bloccato prima della ratifica dalla guardia sullo stato e dopo la ratifica dalla nuova guardia su `dati_extra`.
+
+---
+
 ## [1.10.0-beta.19] - Giroconti: i Fondi Diventano Movimenti Veri
 
 La beta.18 aveva corretto *quanto* vale uno sforo; questa corregge *quando e come* il fondo lo copre. Il giroconto era predisposto fin dal primo giorno — il caso `giroconto` nell'enum, il prefisso `GIR`, la voce di menu col badge — e almeno quattro pezzi del gestionale erano scritti a metà in sua attesa: le coperture eternamente `pianificata`, lo storno che azzerava i report con un moltiplicatore, il conto 2202 che non si chiude, il Treasury Guardian col TODO sulla liquidità vincolata. Questa beta paga il debito.

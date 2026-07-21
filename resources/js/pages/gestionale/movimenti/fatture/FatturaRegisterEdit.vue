@@ -116,6 +116,7 @@ const props = defineProps<{
 const fileInput = ref<HTMLInputElement | null>(null);
 const showSuccessModal = ref(false);
 const showModificaVietataModal = ref(false);
+const showPresaAttoSforoModal = ref(false);
 const modificaVietataMsg = ref('');
 
 const form = useForm({
@@ -372,7 +373,23 @@ const removeRiga = (idx: number) => {
     if (form.righe.length > 1) form.righe.splice(idx, 1);
 };
 
+/**
+ * In modifica lo sforo non può essere motivato (UpdateFatturaRequest scarta
+ * qualunque override), ma non deve nemmeno passare con un click distratto:
+ * sopra budget il salvataggio richiede una presa d'atto esplicita. Nessun
+ * flag persistente: il dialogo si ripresenta a ogni submit oltre budget,
+ * così una modifica ulteriore delle righe non eredita una conferma vecchia.
+ */
 const handleSubmit = () => {
+    if (!form.is_pregresso && transactionStatus.value === 'CRITICAL_BUDGET') {
+        showPresaAttoSforoModal.value = true;
+        return;
+    }
+    doSubmit();
+};
+
+const confermaPresaAttoSforo = () => {
+    showPresaAttoSforoModal.value = false;
     doSubmit();
 };
 
@@ -993,6 +1010,50 @@ const pageGuides = [
                                 class="w-full h-12 rounded-xl bg-slate-700 hover:bg-slate-800 dark:bg-slate-600 dark:hover:bg-slate-500 text-white font-black uppercase tracking-widest text-[11px]">
                                 Ho capito — Torna al dettaglio
                             </Button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <!-- Modale di presa d'atto sforo — non chiede una motivazione (che non verrebbe
+             registrata): dichiara cosa NON accadrà e chiede una conferma consapevole -->
+        <Teleport to="body">
+            <Transition enter-active-class="transition-all duration-300 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100">
+                <div v-if="showPresaAttoSforoModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 dark:border-slate-800">
+                        <div class="bg-gradient-to-br from-rose-50 to-rose-100/50 dark:from-rose-950/40 dark:to-rose-900/20 px-8 pt-8 pb-6 text-center border-b border-rose-200 dark:border-rose-900/50">
+                            <div class="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-rose-200 dark:border-rose-900/50">
+                                <AlertOctagon class="w-8 h-8 text-rose-500" />
+                            </div>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Salvataggio oltre budget</h3>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">
+                                Questa modifica porta il capitolo di spesa oltre il budget di
+                                <span class="font-black text-rose-600 dark:text-rose-400">{{ euro(sforoBudgetTotaleCents) }}</span>.
+                            </p>
+                        </div>
+
+                        <div class="p-8 space-y-5">
+                            <div class="flex items-start gap-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/50 rounded-xl p-4">
+                                <TriangleAlert class="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                                <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
+                                    In modifica lo sforo <strong>non può essere motivato</strong>: salvando non verrà
+                                    registrata alcuna motivazione né copertura, la fattura resterà "approvata" e
+                                    <strong>non comparirà nel cruscotto sforamenti</strong>. Per motivare lo sforo e
+                                    pianificare una copertura occorre stornare la fattura e registrarla di nuovo.
+                                </p>
+                            </div>
+
+                            <div class="flex flex-col gap-3">
+                                <Button @click="confermaPresaAttoSforo" :disabled="form.processing"
+                                    class="w-full h-12 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-[11px] shadow-lg shadow-rose-600/20">
+                                    Prendo atto e salvo comunque
+                                </Button>
+                                <Button variant="ghost" @click="showPresaAttoSforoModal = false"
+                                    class="w-full h-12 rounded-xl font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    Annulla — torno a correggere
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -486,6 +486,15 @@ class FatturaPassivaService
             return 'La fattura ha uno sforo in attesa di ratifica assembleare: usa lo storno.';
         }
 
+        // Le strategie conguaglio/rata integrativa non creano coperture, quindi il
+        // controllo sul fondo non le vede: dopo la ratifica (sforo_motivato →
+        // approvata) la fattura tornava modificabile, con motivazione e importo
+        // dello sforo in dati_extra riferiti a cifre che l'assemblea non ha mai
+        // visto. Stessa regola della copertura: la ratifica fotografa la fattura.
+        if (! empty($fattura->dati_extra['override_budget'])) {
+            return 'Lo sforo di questa fattura è stato motivato e ratificato in assemblea: usa lo storno e registrala di nuovo.';
+        }
+
         // Controllo piano rate (replica del controllo in destroy())
         $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
         if ($pivotPlan) {

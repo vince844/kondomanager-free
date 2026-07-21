@@ -546,3 +546,38 @@ it('aggiorna fattura aperta riscrivendo il ledger', function () {
     assertQuadraturaPerfetta($scrittura->id);
     expect($scrittura->righe->where('tipo_riga', 'avere')->sum('importo'))->toEqual(220000);
 });
+
+it('sforo motivato senza copertura: resta non modificabile anche dopo la ratifica', function () {
+    // Le strategie conguaglio/rata integrativa non creano coperture: la guardia
+    // sul fondo non le vede. La motivazione in dati_extra fotografa la fattura
+    // che l'assemblea ha ratificato — modificarla dopo la ratifica lascerebbe
+    // la delibera riferita a importi mai visti.
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Lavori urgenti oltre budget',
+            'importo_imponibile' => 1000,
+            'aliquota_iva'       => 22,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+        'dati_extra' => ['fiscal' => [], 'competenza' => null, 'override_budget' => [
+            'motivazione'       => 'Intervento urgente non prorogabile (Art. 1135 c.c.)',
+            'importo_sforo'     => 50000,
+            'strategia_rientro' => 'conguaglio_fine_anno',
+        ]],
+    ]);
+
+    $service = new FatturaPassivaService();
+    $fattura = $service->registraFattura($data, $condominio->id);
+
+    // Prima della ratifica blocca la guardia sullo stato sforo_motivato.
+    expect($fattura->stato_approvazione)->toEqual('sforo_motivato')
+        ->and($service->motivoBloccoModifica($fattura->fresh()))->toContain('ratifica assembleare');
+
+    // Ratifica assembleare: sforo_motivato → approvata (come approvaSforo).
+    $fattura->update(['stato_approvazione' => 'approvata']);
+
+    expect($service->motivoBloccoModifica($fattura->fresh()))->toContain('motivato e ratificato');
+});

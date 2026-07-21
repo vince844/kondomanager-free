@@ -1,0 +1,6 @@
+{
+    "features": [
+        "Important — The behaviour of editing an invoice over budget changes: saving a change that pushes an expense chapter beyond its remaining budget now requires an explicit acknowledgement. A dialog shows the overrun amount and states what will NOT happen on save: no justification recorded, no coverage planned, the invoice stays \"approved\" and will not appear in the overruns dashboard. You can cancel and fix the amounts, or save deliberately; to justify the overrun the path remains reversal and re-registration. Previously an over-budget edit went through with a single click and the only signal was a banner at the top of the page.",
+        "An invoice whose overrun was justified and then ratified by the assembly can no longer be edited, whatever the recovery strategy. Invoices with a fund coverage were already protected since beta.19, but the \"year-end balance\" and \"supplementary instalment\" strategies create no coverage records, and after ratification the invoice became editable again: the justification and the resolution kept referring to amounts the assembly had never seen. The same rule now applies to all: ratification freezes the invoice — to change it, reverse it and register it again."
+    ]
+}
