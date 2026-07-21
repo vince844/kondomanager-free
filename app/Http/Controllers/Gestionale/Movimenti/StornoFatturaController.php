@@ -43,6 +43,18 @@ class StornoFatturaController extends Controller
             ]);
         }
 
+        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale — il
+        // fondo è già stato decurtato per questa fattura. Stornare la fattura
+        // lasciando in piedi il giroconto consumerebbe il fondo per un debito che
+        // non esiste più. Prima si storna il giroconto (la copertura torna in
+        // attesa), poi la fattura.
+        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
+            return back()->withErrors([
+                'storno_vietato' => 'La copertura dal fondo è già stata confermata con un giroconto. '
+                    .'Storna prima il giroconto di conferma dalla pagina Giroconti, poi la fattura.',
+            ]);
+        }
+
         $gestioneId = null;
         $primaScrittura = $fattura->scritture->first();
         if ($primaScrittura) {

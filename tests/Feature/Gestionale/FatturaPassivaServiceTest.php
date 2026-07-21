@@ -91,7 +91,11 @@ it('fattura mista: quota ad personam va su crediti condomini', function () {
     expect($righeDare)->toContain(55000)->and($righeDare)->toContain(22000);
 });
 
-it('fondo di riserva: giroconto DARE fondo + AVERE sopravvenienza', function () {
+it('fondo di riserva: la registrazione NON tocca il fondo, la copertura resta pianificata', function () {
+    // Beta.19: la coppia DARE fondo / AVERE sopravvenienze non si scrive più alla
+    // registrazione — muoveva il fondo prima di ogni conferma, e col segno passivo
+    // in contraddizione col conto attivo del fondo. Il fondo si muove SOLO quando
+    // la copertura viene confermata con un giroconto fondo → banca.
     [$condominio, $esercizio, $gestione, $fornitore, $capitolo, $contoFondo] = setupContabile();
 
     $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
@@ -119,12 +123,19 @@ it('fondo di riserva: giroconto DARE fondo + AVERE sopravvenienza', function () 
 
     assertQuadraturaPerfetta($scrittura->id);
 
-    $dareFondo = DB::table('righe_scritture')
+    // Nessuna riga sul conto del fondo: né dare né avere.
+    $righeFondo = DB::table('righe_scritture')
         ->where('scrittura_id', $scrittura->id)
-        ->where('tipo_riga', 'dare')
         ->where('conto_contabile_id', $contoFondo->id)
-        ->value('importo');
-    expect((int)$dareFondo)->toEqual(220000);
+        ->count();
+    expect($righeFondo)->toEqual(0);
+
+    // La copertura c'è, è pianificata, e aspetta il giroconto di conferma.
+    $copertura = $fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->first();
+    expect($copertura)->not->toBeNull()
+        ->and($copertura->stato)->toEqual('pianificata')
+        ->and((int) $copertura->importo)->toEqual(220000)
+        ->and($copertura->scrittura_giroconto_id)->toBeNull();
 });
 
 it('Scenario D: pregresso senza coperture → tutto su passate gestioni', function () {
@@ -198,7 +209,10 @@ it('Scenario A: pregresso con rata_0 → passate gestioni', function () {
     expect($fattura->coperture()->where('tipo_copertura', 'rata_0')->count())->toEqual(1);
 });
 
-it('Scenario B: pregresso con fondo_riserva → DARE sul fondo', function () {
+it('Scenario B: pregresso con fondo_riserva → DARE su passate gestioni, fondo intatto', function () {
+    // Beta.19: la riga DARE è strutturale (bilancia l'AVERE debiti) ma va su
+    // passate_gestioni, non sul conto del fondo. Il legame col fondo vive su
+    // fattura_coperture.fondo_id e diventa reale alla conferma via giroconto.
     [$condominio, $esercizio, $gestione, $fornitore, , $contoFondo] = setupContabile();
 
     $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
@@ -220,13 +234,22 @@ it('Scenario B: pregresso con fondo_riserva → DARE sul fondo', function () {
 
     assertQuadraturaPerfetta($scrittura->id);
 
-    $dareFondo = DB::table('righe_scritture')
+    // Il conto del fondo non è toccato dalla registrazione.
+    $righeFondo = DB::table('righe_scritture')
+        ->where('scrittura_id', $scrittura->id)
+        ->where('conto_contabile_id', $contoFondo->id)
+        ->count();
+    expect($righeFondo)->toEqual(0);
+
+    // La copertura va su passate gestioni, come le coperture rata_0.
+    $contoPassate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->first();
+    $darePassate  = DB::table('righe_scritture')
         ->where('scrittura_id', $scrittura->id)
         ->where('tipo_riga', 'dare')
-        ->where('conto_contabile_id', $contoFondo->id)
-        ->value('importo');
+        ->where('conto_contabile_id', $contoPassate->id)
+        ->sum('importo');
 
-    expect((int)$dareFondo)->toEqual(100000);
+    expect((int)$darePassate)->toEqual(100000);
     expect($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->count())->toEqual(1);
 });
 

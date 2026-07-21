@@ -13,7 +13,7 @@ import {
     BookOpen, ArrowLeft, Calendar, Building2, Landmark, FileText,
     CircleCheckBig, CircleX, RotateCcw, CreditCard, Banknote,
     ArrowUpRight, ArrowDownLeft, Link2, Shield, Info, ChevronRight,
-    Hash, Clock, Layers, ShieldCheck
+    Hash, Clock, Layers, ShieldCheck, Repeat2
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
 
@@ -94,6 +94,8 @@ const tipoMovimentoBadge = computed(() => {
     if (!tipo) return { class: 'bg-slate-100 text-slate-600 border-slate-200', icon: BookOpen };
 
     if (tipo.includes('storno')) return { class: 'bg-rose-50 text-rose-700 border-rose-200', icon: RotateCcw };
+    if (tipo.includes('giroconto')) return { class: 'bg-violet-50 text-violet-700 border-violet-200', icon: Repeat2 };
+    if (tipo.includes('rettifica')) return { class: 'bg-violet-50 text-violet-700 border-violet-200', icon: Repeat2 };
     if (tipo.includes('pagamento')) return { class: 'bg-blue-50 text-blue-700 border-blue-200', icon: CreditCard };
     if (tipo.includes('incasso')) return { class: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: Banknote };
     if (tipo.includes('fattura') || tipo.includes('nota_credito')) return { class: 'bg-amber-50 text-amber-700 border-amber-200', icon: FileText };

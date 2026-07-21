@@ -57,6 +57,14 @@ enum TipoMovimentoContabile: string
     case APERTURA                    = 'apertura';
     case CHIUSURA                    = 'chiusura';
     case GIROCONTO                   = 'giroconto';
+
+    /**
+     * Scrittura inversa che annulla un giroconto (giornale append-only).
+     * Come il giroconto, NON è entrata né uscita di cassa: sposta liquidità
+     * fra partizioni dell'unico c/c, entrata e uscita si elidono.
+     */
+    case STORNO_GIROCONTO            = 'storno_giroconto';
+
     case RETTIFICA                   = 'rettifica';
 
     // ─── Futuri (v1.10+, non ancora in DB) ───────────────────────────────────
@@ -87,6 +95,7 @@ enum TipoMovimentoContabile: string
             self::APERTURA                   => 'Apertura esercizio',
             self::CHIUSURA                   => 'Chiusura esercizio',
             self::GIROCONTO                  => 'Giroconto',
+            self::STORNO_GIROCONTO           => 'Storno giroconto',
             self::RETTIFICA                  => 'Rettifica',
             self::ACCANTONAMENTO             => 'Accantonamento',
             self::RIPARTO                    => 'Riparto',

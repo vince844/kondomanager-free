@@ -285,11 +285,17 @@ class FatturaPassivaService
                         $importoCoperturaCents = (int) round($copertura['importo'] * 100);
 
                         if ($copertura['tipo_copertura'] === 'fondo_riserva') {
+                            // Beta.19: la riga DARE è strutturale (bilancia l'AVERE
+                            // debiti) ma NON tocca più il conto del fondo — andava
+                            // sul fondo col segno passivo, in contraddizione col suo
+                            // conto attivo. Va su passate_gestioni come le coperture
+                            // rata_0: il legame col fondo vive su fattura_coperture
+                            // (fondo_id) e diventa reale alla conferma via giroconto.
                             $scrittura->righe()->create([
-                                'conto_contabile_id' => $copertura['fonte_id'],
+                                'conto_contabile_id' => $contoPassateGestioni->id,
                                 'tipo_riga' => 'dare',
                                 'importo' => abs($importoCoperturaCents),
-                                'note' => 'Utilizzo fondo riserva per debito pregresso',
+                                'note' => 'Debito pregresso con copertura da fondo (in attesa di giroconto di conferma)',
                             ]);
                         } else {
                             $totaleRata0 += $importoCoperturaCents;
@@ -388,32 +394,17 @@ class FatturaPassivaService
                 ]);
             }
 
-            // Registrazione Contabile Sforo Budget
-            if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])) {
-                $importoSforo = (int) ($overrideData['importo_sforo'] ?? 0);
-
-                if ($importoSforo > 0) {
-                    $scrittura->righe()->create([
-                        'conto_contabile_id' => $overrideData['fondo_patrimoniale_id'],
-                        'tipo_riga' => 'dare',
-                        'importo' => abs($importoSforo),
-                        'note' => 'Utilizzo fondo riserva per sforo budget: '.($overrideData['motivazione'] ?? ''),
-                    ]);
-
-                    $contoSopravvenienza = ContoContabile::where('condominio_id', $condominioId)
-                        ->where('ruolo', 'sopravvenienze_passive')
-                        ->first();
-
-                    if ($contoSopravvenienza) {
-                        $scrittura->righe()->create([
-                            'conto_contabile_id' => $contoSopravvenienza->id,
-                            'tipo_riga' => 'avere',
-                            'importo' => abs($importoSforo),
-                            'note' => 'Giroconto copertura sforo budget da fondo riserva',
-                        ]);
-                    }
-                }
-            }
+            // Sforo con strategia fondo riserva — beta.19: NESSUNA riga contabile qui.
+            // La coppia DARE fondo / AVERE sopravvenienze che si scriveva in questo
+            // punto era una promessa senza conferma: muoveva il fondo alla
+            // registrazione della fattura, prima che qualcuno decidesse davvero di
+            // usarlo (e col segno passivo, in contraddizione col conto attivo del
+            // fondo). Il costo dello sforo resta interamente sul capitolo (righe
+            // DARE sopra): il rendiconto dice la verità. Il fondo si muove SOLO
+            // quando la copertura 'pianificata' (creata più avanti in questa stessa
+            // transazione) viene confermata con un giroconto fondo → banca
+            // (RegistraGirocontoAction), che la porta a 'confermata' e la aggancia
+            // alla scrittura GIR.
 
             // =====================================================================
             // IL FILTRO INVERTITORE
@@ -481,6 +472,14 @@ class FatturaPassivaService
 
         if ($fattura->coperture()->where('tipo_copertura', 'sopravvenienza')->exists()) {
             return 'La fattura ha coperture di sopravvenienza: usa lo storno.';
+        }
+
+        // Beta.19: la copertura fondo — pianificata o confermata — fotografa lo sforo
+        // al momento della registrazione. aggiornaFattura ricrea le scritture ma non
+        // le coperture: una modifica lascerebbe un importo di copertura stantio,
+        // confermabile con un giroconto sbagliato.
+        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->exists()) {
+            return 'La fattura ha una copertura dal fondo di riserva: usa lo storno e registrala di nuovo.';
         }
 
         if ($fattura->stato_approvazione === 'sforo_motivato') {

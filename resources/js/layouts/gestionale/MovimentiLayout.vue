@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText, Zap } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -35,15 +35,10 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
         type:  'link',
         icon:  Repeat2,
         title: 'Giroconti',
-        href:  '#',
-        badge: 'In sviluppo',
+        href:  generatePath('gestionale/:condominio/giroconti', { condominio: condominio.value.id }),
     },
-    {
-        type:  'link',
-        icon:  Zap,
-        title: 'Regolazione immediata',
-        href:  generatePath('gestionale/:condominio/regolazioni-immediate/create', { condominio: condominio.value.id }),
-    },
+    // La regolazione immediata non è più in barra: vive accanto a "Nuova fattura"
+    // nell'elenco fatture — è il fratello minore della fattura, non un registro suo.
     {
         type:  'link',
         icon:  Wallet,

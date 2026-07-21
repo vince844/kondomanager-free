@@ -8,6 +8,7 @@ use App\Http\Controllers\Gestionale\Immobili\Anagrafiche\ImmobileAnagraficaContr
 use App\Http\Controllers\Gestionale\Immobili\Documenti\ImmobileDocumentoController;
 use App\Http\Controllers\Gestionale\Immobili\ImmobileController;
 use App\Http\Controllers\Gestionale\Movimenti\FatturaPassivaController;
+use App\Http\Controllers\Gestionale\Movimenti\GirocontoController;
 use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
@@ -214,6 +215,22 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/regolazioni-immediate/{scrittura}/storno', [RegolazioneImmediataController::class, 'storno'])
         ->name('regolazioni-immediate.storno');
+
+    // --- GIROCONTI: spostamenti di liquidità fra casse (fondi = partizioni del c/c) ---
+    Route::get('/giroconti', [GirocontoController::class, 'index'])
+        ->name('giroconti.index');
+
+    Route::get('/giroconti/create', [GirocontoController::class, 'create'])
+        ->name('giroconti.create');
+
+    Route::post('/giroconti', [GirocontoController::class, 'store'])
+        ->name('giroconti.store');
+
+    Route::post('/giroconti/{scrittura}/storno', [GirocontoController::class, 'storno'])
+        ->name('giroconti.storno');
+
+    Route::post('/giroconti/riallinea-fondi', [GirocontoController::class, 'riallinea'])
+        ->name('giroconti.riallinea');
 
     // --- CICLO PASSIVO: FATTURE ---
     Route::get('/fatture', [FatturaPassivaController::class, 'index'])

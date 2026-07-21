@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, watch } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
+import Alert from '@/components/Alert.vue';
+import RegolazioneImmediataGuide from '@/components/guides/RegolazioneImmediataGuide.vue';
+import type { Flash } from '@/types/flash';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -38,7 +39,7 @@ const { euro } = useCurrencyFormatter({ fromCents: false });
 
 const breadcrumbs = computed<Breadcrumb[]>(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
-    { title: 'Movimenti', href: generatePath('gestionale/:condominio/movimenti', { condominio: props.condominio.id }) },
+    { title: 'Fatture e Uscite', href: generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id }) },
     { title: 'Regolazione immediata' },
 ]);
 
@@ -113,24 +114,40 @@ const puoRegistrare = computed(() =>
     form.causale.trim().length >= 3
 );
 
-const submit = () => {
+const page = usePage<{ flash: { message?: Flash } }>();
+const flashMessage = computed(() => page.props.flash.message);
+const showGuideCompleta = ref(false);
+
+/**
+ * creaAltro: dopo il salvataggio si torna qui, al modulo vuoto — per chi ha
+ * una pila di scontrini e commissioni da registrare in fila.
+ */
+const submit = (creaAltro = false) => {
     if (!puoRegistrare.value) return;
-    form.post(route(generateRoute('gestionale.regolazioni-immediate.store'), { condominio: props.condominio.id }), {
-        preserveScroll: true,
-    });
+    form.transform((data) => ({ ...data, crea_altro: creaAltro }))
+        .post(route(generateRoute('gestionale.regolazioni-immediate.store'), { condominio: props.condominio.id }), {
+            preserveScroll: !creaAltro,
+            // Tornando allo stesso componente, Inertia riusa l'istanza e il form
+            // resterebbe pieno dei valori appena registrati: un click distratto
+            // produrrebbe un doppione identico. Il modulo riparte pulito.
+            onSuccess: () => {
+                if (creaAltro) form.reset();
+            },
+        });
 };
 
 const linkNuovaFattura = computed(() =>
     route(generateRoute('gestionale.fatture.create'), { condominio: props.condominio.id })
 );
 
-const urlMovimenti = computed(() =>
-    generatePath('gestionale/:condominio/movimenti', { condominio: props.condominio.id })
+// La regolazione vive accanto alle fatture: uscendo si torna lì, non ai movimenti rate.
+const urlFatture = computed(() =>
+    generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id })
 );
 
 const annulla = () => {
     if (form.isDirty && !confirm('Uscire senza registrare? I dati inseriti andranno persi.')) return;
-    router.visit(urlMovimenti.value);
+    router.visit(urlFatture.value);
 };
 
 // Inserimento da tastiera: la registrazione di un bollo o di una commissione deve
@@ -164,9 +181,20 @@ function onKeydown(e: KeyboardEvent) {
                 :video-url="null"
                 :condominio="props.condominio"
                 :condomini="props.condomini"
-            />
+                :back-url="generatePath('gestionale/:condominio/fatture', { condominio: props.condominio.id })"
+                back-text="Indietro"
+            >
+                <template #actions>
+                    <Button variant="outline" size="sm" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200" @click="showGuideCompleta = true">
+                        <Zap class="w-4 h-4" />
+                        Guida completa
+                    </Button>
+                </template>
+            </PageHeaderGuide>
 
-            <MovimentiLayout>
+            <div v-if="flashMessage" class="mb-6">
+                <Alert :message="flashMessage.message" :type="flashMessage.type" />
+            </div>
 
             <div v-if="form.errors.regolazione_non_ammessa"
                  class="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100">
@@ -183,11 +211,19 @@ function onKeydown(e: KeyboardEvent) {
             <div class="grid gap-4 lg:grid-cols-3">
                 <!-- ── Form ─────────────────────────────────────────────── -->
                 <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-                    <form class="space-y-5" @submit.prevent="submit">
+                    <form class="space-y-5" @submit.prevent="submit(false)">
                         <div class="grid gap-4 sm:grid-cols-2">
+                            <!-- Con un solo esercizio aperto (il caso normale) la scelta non esiste:
+                                 il campo diventa una constatazione, non un menu. I chiusi non arrivano
+                                 mai qui: il controller lista solo gli aperti e la validazione li esige. -->
                             <div class="space-y-1.5">
                                 <Label for="esercizio">Esercizio *</Label>
+                                <div v-if="props.esercizi.length === 1"
+                                     class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                                    {{ props.esercizi[0].nome }}
+                                </div>
                                 <vSelect
+                                    v-else
                                     id="esercizio"
                                     :clearable="false"
                                     v-model="form.esercizio_id"
@@ -298,13 +334,17 @@ function onKeydown(e: KeyboardEvent) {
                         </div>
 
                         <div class="flex flex-wrap items-center gap-3 pt-2">
-                            <Button type="submit" :disabled="!puoRegistrare || form.processing">
+                            <Button type="submit"
+                                :disabled="!puoRegistrare || form.processing"
+                                class="bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:hover:bg-slate-200 dark:text-slate-900">
                                 {{ form.processing ? 'Registrazione…' : 'Registra movimento' }}
                             </Button>
-                            <Button type="button" variant="ghost" @click="annulla">Annulla</Button>
-                            <span v-if="!puoRegistrare && !bloccoRitenuta" class="text-xs text-slate-500">
-                                Compila tutti i campi obbligatori per procedere.
-                            </span>
+                            <Button type="button" variant="outline"
+                                :disabled="!puoRegistrare || form.processing"
+                                @click="submit(true)">
+                                Registra e nuova
+                            </Button>
+                            <Button type="button" variant="outline" @click="annulla">Annulla</Button>
                             <span class="ml-auto text-xs text-slate-400">
                                 <kbd class="rounded border px-1">Tab</kbd> campo successivo ·
                                 <kbd class="rounded border px-1">Invio</kbd> registra ·
@@ -314,40 +354,60 @@ function onKeydown(e: KeyboardEvent) {
                     </form>
                 </div>
 
-                <!-- ── Anteprima della scrittura ─────────────────────────── -->
-                <div class="rounded-2xl border border-slate-900 bg-slate-900 p-6 text-slate-100 shadow-sm dark:border-slate-700">
-                    <div class="mb-4 flex items-center gap-2">
-                        <Landmark class="h-4 w-4" />
-                        <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
+                <!-- ── Anteprima della scrittura: la pagina di giornale ───── -->
+                <div class="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 p-6 text-slate-100 shadow-lg">
+
+                    <div class="mb-5 flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
+                        </div>
+                        <span class="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 font-mono text-[10px] tracking-wider text-slate-300">
+                            RIM · {{ form.data_operazione ? form.data_operazione.split('-').reverse().join('/') : '—' }}
+                        </span>
                     </div>
 
-                    <div class="space-y-3 text-sm">
-                        <div class="flex items-start justify-between gap-3 border-b border-slate-700 pb-3">
-                            <div>
-                                <Badge class="mb-1 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/15">DARE</Badge>
-                                <p class="text-slate-300">
-                                    {{ capitoloSelezionato?.label ?? 'Capitolo di spesa da selezionare' }}
-                                </p>
+                    <div class="space-y-2.5">
+                        <div class="rounded-lg border-l-2 border-emerald-400/80 bg-white/[0.04] px-4 py-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-[10px] font-black uppercase tracking-widest text-emerald-300">Dare</span>
+                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                    {{ importoValido ? euro(form.importo) : '—' }}
+                                </span>
                             </div>
-                            <span class="shrink-0 font-mono">{{ importoValido ? euro(form.importo) : '—' }}</span>
+                            <p class="mt-1 truncate text-sm" :class="capitoloSelezionato ? 'text-slate-200' : 'text-slate-500 italic'">
+                                {{ capitoloSelezionato?.label ?? 'Capitolo di spesa da selezionare' }}
+                            </p>
                         </div>
 
-                        <div class="flex items-start justify-between gap-3 border-b border-slate-700 pb-3">
-                            <div>
-                                <Badge class="mb-1 bg-rose-500/15 text-rose-300 hover:bg-rose-500/15">AVERE</Badge>
-                                <p class="text-slate-300">
-                                    {{ cassaSelezionata?.nome ?? 'Cassa da selezionare' }}
-                                </p>
+                        <div class="rounded-lg border-l-2 border-rose-400/80 bg-white/[0.04] px-4 py-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <span class="text-[10px] font-black uppercase tracking-widest text-rose-300">Avere</span>
+                                <span class="shrink-0 font-mono text-base tabular-nums" :class="importoValido ? 'text-white' : 'text-slate-500'">
+                                    {{ importoValido ? euro(form.importo) : '—' }}
+                                </span>
                             </div>
-                            <span class="shrink-0 font-mono">{{ importoValido ? euro(form.importo) : '—' }}</span>
+                            <p class="mt-1 truncate text-sm" :class="cassaSelezionata ? 'text-slate-200' : 'text-slate-500 italic'">
+                                {{ cassaSelezionata?.nome ?? 'Cassa da selezionare' }}
+                            </p>
                         </div>
-
-                        <p class="pt-1 text-xs text-slate-400">
-                            {{ form.causale || 'La causale comparirà qui e nel libro giornale.' }}
-                        </p>
                     </div>
 
-                    <div class="mt-5 flex items-start gap-2 rounded-lg bg-slate-800/60 p-3 text-xs text-slate-300">
+                    <!-- Il sigillo della partita doppia: si accende quando la scrittura è completa. -->
+                    <div class="mt-4 flex items-center justify-between border-t border-dashed border-slate-700 pt-3">
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Quadratura</span>
+                        <span v-if="puoRegistrare" class="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                            <span class="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/20 text-[10px]">✓</span>
+                            Dare = Avere
+                        </span>
+                        <span v-else class="text-xs text-slate-500">in attesa dei dati…</span>
+                    </div>
+
+                    <p class="mt-3 min-h-[2rem] text-xs leading-relaxed text-slate-400">
+                        <template v-if="form.causale">«&nbsp;{{ form.causale }}&nbsp;»</template>
+                        <template v-else>La causale comparirà qui e nel libro giornale.</template>
+                    </p>
+
+                    <div class="mt-4 flex items-start gap-2 rounded-lg bg-slate-800/60 p-3 text-xs text-slate-300">
                         <Info class="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                             Nessuna fattura, nessuno stato di pagamento, nessuna scadenza.
@@ -357,7 +417,8 @@ function onKeydown(e: KeyboardEvent) {
                 </div>
             </div>
 
-            </MovimentiLayout>
         </div>
+
+        <RegolazioneImmediataGuide v-model:open="showGuideCompleta" />
     </GestionaleLayout>
 </template>

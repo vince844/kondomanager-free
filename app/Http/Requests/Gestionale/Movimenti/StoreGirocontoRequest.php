@@ -7,17 +7,15 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 /**
- * Registrazione a regolazione immediata — costo → banca/cassa in scrittura unica.
+ * Registrazione di un giroconto — spostamento di liquidità fra casse.
  *
- * Tutti gli `exists` sono SCOPATI sul condominio della rotta: senza scoping si
- * potrebbe registrare un movimento sulla cassa o sul capitolo di un altro
- * condominio (varco già presente in altre request del progetto, qui non replicato).
- *
- * I guard rail di dominio (ritenuta d'acconto, scadenziario) vivono nell'Action,
- * non qui: sono regole contabili, non di forma, e devono valere anche quando
- * l'Action è invocata da un service o da un test senza passare dall'HTTP.
+ * Tutti gli `exists` sono SCOPATI sul condominio della rotta. Le regole di
+ * dominio (capienza, coppie di tipi, governance fondi vincolati, coerenza della
+ * copertura collegata) vivono nell'Action, non qui: sono regole contabili, non
+ * di forma, e devono valere anche quando l'Action è invocata da un service o da
+ * un test senza passare dall'HTTP.
  */
-class StoreRegolazioneImmediataRequest extends FormRequest
+class StoreGirocontoRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -39,19 +37,15 @@ class StoreRegolazioneImmediataRequest extends FormRequest
                     ->where('condominio_id', $condominioId)
                     ->where('stato', 'aperto'),
             ],
-            // Capitolo di spesa: deve appartenere a un piano dei conti del condominio.
-            'conto_id' => [
-                'required',
-                Rule::exists('conti', 'id')->whereIn(
-                    'piano_conto_id',
-                    fn ($q) => $q->select('id')->from('piani_conti')->where('condominio_id', $condominioId)
-                ),
-            ],
-            'cassa_id' => [
+            'cassa_origine_id' => [
                 'required',
                 Rule::exists('casse', 'id')->where('condominio_id', $condominioId),
             ],
-            'fornitore_id' => ['nullable', 'exists:fornitori,id'],
+            'cassa_destinazione_id' => [
+                'required',
+                'different:cassa_origine_id',
+                Rule::exists('casse', 'id')->where('condominio_id', $condominioId),
+            ],
 
             // NB: non chiamarlo 'data' — lato Inertia collide con il metodo form.data()
             // di useForm e il campo non si lega mai al v-model.
@@ -59,7 +53,12 @@ class StoreRegolazioneImmediataRequest extends FormRequest
             'causale' => ['required', 'string', 'min:3', 'max:255'],
             'importo' => ['required', 'numeric', 'gt:0'],
 
-            // "Registra e nuova": dopo il salvataggio si torna al modulo vuoto
+            // Conferma di una copertura sforo: la coerenza (stato, importo, fondo)
+            // è verificata nell'Action.
+            'fattura_copertura_id' => ['nullable', 'integer', 'exists:fattura_coperture,id'],
+            'idempotency_key' => ['nullable', 'uuid'],
+
+            // "Registra e nuovo": dopo il salvataggio si torna al modulo vuoto
             // invece che al dettaglio della scrittura.
             'crea_altro' => ['nullable', 'boolean'],
         ];
@@ -69,8 +68,9 @@ class StoreRegolazioneImmediataRequest extends FormRequest
     {
         return [
             'esercizio_id.exists' => "L'esercizio selezionato non esiste o non è aperto.",
-            'conto_id.exists' => 'Il capitolo di spesa selezionato non appartiene a questo condominio.',
-            'cassa_id.exists' => 'La cassa selezionata non appartiene a questo condominio.',
+            'cassa_origine_id.exists' => 'La cassa di origine non appartiene a questo condominio.',
+            'cassa_destinazione_id.exists' => 'La cassa di destinazione non appartiene a questo condominio.',
+            'cassa_destinazione_id.different' => 'Origine e destinazione devono essere due casse diverse.',
             'importo.gt' => "L'importo deve essere maggiore di zero.",
             'causale.required' => 'La causale è obbligatoria: è ciò che rende leggibile il libro giornale.',
             'data_operazione.before_or_equal' => 'Non è possibile registrare un movimento con data futura.',

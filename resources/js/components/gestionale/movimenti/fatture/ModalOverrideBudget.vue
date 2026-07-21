@@ -174,7 +174,8 @@ const handleConfirm = () => {
                                         Bloccato: presenti spese private (ad personam). Non è possibile usare il fondo riserva del condominio.
                                     </span>
                                     <span v-else>
-                                        Neutralizza lo sforo attingendo al portafoglio di un fondo patrimoniale preesistente.
+                                        Pianifica la copertura dal fondo. Il fondo si decurta solo alla conferma,
+                                        con un giroconto che troverai proposto sulla fattura e nella pagina Giroconti.
                                     </span>
                                 </p>
                             </label>

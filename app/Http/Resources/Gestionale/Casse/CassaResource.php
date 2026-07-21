@@ -16,13 +16,13 @@ class CassaResource extends JsonResource
         $dare  = (int) ($this->totale_entrate ?? 0); 
         $avere = (int) ($this->totale_uscite ?? 0);
 
-        // Per i fondi (passività): AVERE aumenta, DARE diminuisce
-        // Per i conti (attività): DARE aumenta, AVERE diminuisce
-        if ($this->tipo === 'fondo') {
-            $saldoCentesimi = $saldoIniziale + $avere - $dare;
-        } else {
-            $saldoCentesimi = $saldoIniziale + $dare - $avere;
-        }
+        // Convenzione UNICA (attivo): DARE aumenta, AVERE diminuisce — anche per i
+        // fondi. Sono partizioni dell'unico c/c (conti figli del mastro 1010,
+        // attivo/liquidità): un accantonamento è DARE fondo / AVERE banca, un
+        // utilizzo è l'inverso. Prima della beta.19 questo ramo leggeva i fondi
+        // da passivo (avere − dare), in contraddizione con Cassa::saldo_reale e
+        // con il Treasury Guardian sulla stessa riga di giornale.
+        $saldoCentesimi = $saldoIniziale + $dare - $avere;
 
         return [
             'id'          => $this->id,

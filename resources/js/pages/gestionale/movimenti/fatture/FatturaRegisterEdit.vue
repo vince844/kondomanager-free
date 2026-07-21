@@ -321,24 +321,17 @@ const gestioniFiltrate = computed(() => {
 /**
  * Watch unificato su [fornitore_id, data_documento].
  *
- * Ordine di operazioni:
- * 1. Aggiorna is_pregresso (dipende solo dalla data)
- * 2. Aggiorna campi derivati dal fornitore (dipende da entrambi)
- *
- * Avere un unico watch elimina il rischio di side-effect incrociati
- * che si verificavano con i due watch separati che reagivano entrambi
- * a data_documento in sequenza non garantita.
+ * NB: in modifica `is_pregresso` NON si ricalcola mai — viene dalla fattura ed
+ * è immutabile (le pregresse non sono modificabili, e UpdateFatturaRequest
+ * ignora comunque il campo). Il vecchio ricalcolo dalla data poteva accenderlo
+ * a runtime retrodatando il documento: la vista passava al pregresso con i
+ * totali a zero mentre le righe mostravano gli importi veri.
  */
 watch(
     [() => form.fornitore_id, () => form.data_documento],
     ([newFornitoreId, newDataDoc], [oldFornitoreId, oldDataDoc]) => {
 
-        // 1. Aggiorna is_pregresso
-        if (newDataDoc && props.esercizio?.data_inizio) {
-            form.is_pregresso = newDataDoc < props.esercizio.data_inizio.substring(0, 10);
-        }
-
-        // 2. Aggiorna campi derivati dal fornitore
+        // Aggiorna campi derivati dal fornitore
         if (!newFornitoreId || !newDataDoc) return;
         const f = props.fornitori.find(x => x.id === newFornitoreId);
         if (!f) return;
@@ -781,7 +774,7 @@ const pageGuides = [
                                         <div class="col-span-12 md:col-span-4 lg:col-span-4">
                                             <Input v-model="riga.descrizione"
                                                 placeholder="Causale riga..."
-                                                class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
+                                                class="h-10 text-sm"
                                                 :class="{ 'border-red-500 focus-visible:ring-red-500': (form.errors as any)[`righe.${idx}.descrizione`] }"
                                                 @input="form.clearErrors(`righe.${idx}.descrizione` as any)" />
                                             <p v-if="(form.errors as any)[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
@@ -796,7 +789,6 @@ const pageGuides = [
                                                 v-model="riga.importo_imponibile"
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
-                                                class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                                 placeholder="0,00" />
                                             <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
@@ -808,7 +800,7 @@ const pageGuides = [
                                         <div class="col-span-3 md:col-span-2 lg:col-span-2 relative">
                                             <div class="relative">
                                                 <Input min="0" max="100" v-model="riga.aliquota_iva"
-                                                    class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
+                                                    class="h-10 text-center pr-5 pl-1" />
                                                 <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
                                             </div>
                                         </div>

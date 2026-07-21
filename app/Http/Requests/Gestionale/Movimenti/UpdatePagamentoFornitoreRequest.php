@@ -64,7 +64,17 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
                 ? 'required|date'
                 : 'required|date|before_or_equal:'.DateHelper::oggiUtente(),
             'metodo_pagamento' => 'required|string',
-            'conto_corrente_id' => 'required|exists:conti_contabili,id',
+            // Stesse regole dello Store (rafforzate in beta.19): conto del condominio
+            // della rotta E cassa reale — i fondi sono partizioni contabili del c/c
+            // e si consumano via giroconto, mai pagando. Senza questo vincolo la
+            // modifica era la porta di servizio del varco chiuso sullo Store.
+            'conto_corrente_id' => [
+                'required', 'integer',
+                Rule::exists('conti_contabili', 'id')->where('condominio_id', $this->route('condominio')?->id),
+                Rule::exists('casse', 'conto_contabile_id')
+                    ->where('condominio_id', $this->route('condominio')?->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
+            ],
             'importo_lordo_cents' => 'required|integer|min:1',
             'importo_ritenuta_cents' => 'nullable|integer|min:0',
             'importo_netto_cents' => 'required|integer|min:1',

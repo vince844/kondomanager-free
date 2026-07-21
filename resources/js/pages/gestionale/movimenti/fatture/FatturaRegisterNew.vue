@@ -4,6 +4,7 @@ import { ref, computed, watch } from 'vue';
 import { useForm, Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import FatturaRegistrazioneGuide from '@/components/guides/FatturaRegistrazioneGuide.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -132,6 +133,7 @@ const props = defineProps<{
 // ---------------------------------------------------------------------------
 const fileInput = ref<HTMLInputElement | null>(null);
 const showOverrideModal = ref(false);
+const showGuideCompleta = ref(false);
 const showSuccessModal = ref(false);
 
 const form = useForm({
@@ -348,9 +350,21 @@ watch(
     [() => form.fornitore_id, () => form.data_documento],
     ([newFornitoreId, newDataDoc], [oldFornitoreId, oldDataDoc]) => {
 
-        // 1. Aggiorna is_pregresso
-        if (newDataDoc && props.esercizio?.data_inizio) {
+        // 1. Aggiorna is_pregresso — SOLO quando cambia la data. Il watch scatta
+        //    anche al cambio di fornitore: senza questo guard, ricalcolava il flag
+        //    dalla data e cancellava la spunta messa a mano dall'utente (la colonna
+        //    pregresso spariva appena si sceglieva il fornitore).
+        if (newDataDoc !== oldDataDoc && newDataDoc && props.esercizio?.data_inizio) {
             form.is_pregresso = newDataDoc < props.esercizio.data_inizio.substring(0, 10);
+        }
+
+        // Il debito patrimoniale è per-fornitore: cambiando fornitore la selezione
+        // precedente non è più tra le opzioni del menu, che mostrerebbe l'id grezzo.
+        if (newFornitoreId !== oldFornitoreId && form.saldo_patrimoniale_id) {
+            const debito = props.debiti_patrimoniali.find(d => d.id === form.saldo_patrimoniale_id);
+            if (!debito || debito.fornitore_id !== newFornitoreId) {
+                form.saldo_patrimoniale_id = null;
+            }
         }
 
         // 2. Aggiorna campi derivati dal fornitore
@@ -378,6 +392,14 @@ watch(() => form.esercizio_id, (v) => {
     form.gestione_id = props.gestioni.find(g => g.tipo === 'ordinaria')?.id ?? props.gestioni[0].id;
 }, { immediate: true });
 
+// Tornando alla vista corrente, il saldo pregresso selezionato non deve
+// restare nel form come passeggero fantasma del prossimo submit.
+watch(() => form.is_pregresso, (attivo) => {
+    if (!attivo) {
+        form.saldo_patrimoniale_id = null;
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -401,20 +423,20 @@ const spesaImprevistaMode = ref<'corrente' | 'pregressa'>('corrente');
 const totaleCopertoPregressoEuro = computed(() => {
     if (!form.is_pregresso) return 0;
     let sum = 0;
-    
+
     // 1. Aggiungiamo la base del debito patrimoniale selezionato
     if (form.saldo_patrimoniale_id) {
         const debito = props.debiti_patrimoniali.find(d => d.id === form.saldo_patrimoniale_id);
         if (debito) sum += (debito.importo_disponibile / 100);
     }
-    
+
     // 2. Aggiungiamo i fondi extra selezionati (ignorando i click manuali su sopravvenienza)
     if (form.coperture?.length) {
         sum += form.coperture
             .filter((c: any) => c.tipo_copertura !== 'sopravvenienza')
             .reduce((acc: number, c: any) => acc + (Number(c.importo) || 0), 0);
     }
-    
+
     return sum;
 });
 
@@ -510,8 +532,8 @@ const doSubmit = () => {
             ...data,
             dati_extra: JSON.parse(JSON.stringify(data.dati_extra)),
             coperture: data.coperture ? JSON.parse(JSON.stringify(data.coperture)) : []
-        }; 
-        
+        };
+
         payload.righe = payload.righe.map((r: any) => ({
             ...r,
             conto_id: r.conto_id ? Number(r.conto_id) : null,
@@ -530,17 +552,17 @@ const doSubmit = () => {
         if (payload.is_pregresso) {
             // Puliamo eventuali "sopravvenienze" aggiunte per errore dall'utente nel Widget
             payload.coperture = payload.coperture.filter((c: any) => c.tipo_copertura !== 'sopravvenienza');
-            
+
             // AUTO-INIEZIONE: Diciamo al backend che stiamo usando il Saldo Patrimoniale di base
             if (payload.saldo_patrimoniale_id) {
                 const debito = props.debiti_patrimoniali.find(d => d.id === payload.saldo_patrimoniale_id);
                 if (debito) {
                     const fatturaLordo = payload.imponibile_pregresso * (1 + payload.aliquota_iva_pregressa / 100);
                     const copertureExtra = payload.coperture.reduce((a:any, c:any) => a + Number(c.importo), 0);
-                    
+
                     // Calcoliamo quanta parte del debito base stiamo effettivamente usando
                     const importoBase = Math.min(debito.importo_disponibile / 100, fatturaLordo - copertureExtra);
-                    
+
                     if (importoBase > 0) {
                         payload.coperture.unshift({
                             tipo_copertura: 'rata_0',
@@ -555,7 +577,7 @@ const doSubmit = () => {
 
         return payload;
     }).post(route(generateRoute('gestionale.fatture.store'), { condominio: props.condominio.id }), {
-        forceFormData: true, 
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             showSuccessModal.value = true;
@@ -592,7 +614,14 @@ const pageGuides = [
                 :video-url="null"
                 :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
-            />
+            >
+                <template #actions>
+                    <Button variant="outline" size="sm" class="bg-white gap-2 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 border-indigo-200" @click="showGuideCompleta = true">
+                        <FileText class="w-4 h-4" />
+                        Guida completa
+                    </Button>
+                </template>
+            </PageHeaderGuide>
 
             <!-- Banner warning -->
             <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100">
@@ -979,7 +1008,7 @@ const pageGuides = [
                                         <div class="col-span-12 md:col-span-4 lg:col-span-4">
                                             <Input v-model="riga.descrizione"
                                                 placeholder="Causale riga..."
-                                                class="h-10 text-sm bg-slate-50 dark:bg-slate-900/50"
+                                                class="h-10 text-sm"
                                                 :class="{ 'border-red-500 focus-visible:ring-red-500': form.errors[`righe.${idx}.descrizione`] }"
                                                 @input="form.clearErrors(`righe.${idx}.descrizione`)" />
                                             <p v-if="form.errors[`righe.${idx}.descrizione`]" class="text-[11px] text-red-600 font-medium mt-1">
@@ -994,7 +1023,6 @@ const pageGuides = [
                                                 v-model="riga.importo_imponibile"
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
-                                                class="h-10 font-black text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm rounded-md border w-full px-3"
                                                 placeholder="0,00" />
                                             <div v-if="rigaInSforo(riga)" class="flex items-center gap-1 mt-1 text-rose-500 absolute -bottom-5 right-0">
                                                 <TrendingDown class="w-3 h-3" />
@@ -1006,7 +1034,7 @@ const pageGuides = [
                                         <div class="col-span-3 md:col-span-2 lg:col-span-2 relative">
                                             <div class="relative">
                                                 <Input min="0" max="100" v-model="riga.aliquota_iva"
-                                                    class="h-10 text-center font-black text-base pr-5 pl-1 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 shadow-sm" />
+                                                    class="h-10 text-center pr-5 pl-1" />
                                                 <span class="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none font-bold">%</span>
                                             </div>
                                         </div>
@@ -1184,7 +1212,7 @@ const pageGuides = [
             :has-spese-private="hasSpesePrivate"
             :fondi-riserva="fondi_riserva"
             :is-processing="form.processing"
-            @confirm="handleOverrideConfirm" 
+            @confirm="handleOverrideConfirm"
         />
 
         <ModalSpesaImprevista
@@ -1193,10 +1221,10 @@ const pageGuides = [
             :condominio-id="props.condominio.id"
             :fornitore-nome="selectedFornitore?.ragione_sociale || 'Fornitore'"
             :fondi-riserva="fondi_riserva"
-            :importo-imprevisto="spesaImprevistaMode === 'corrente' 
-                ? Math.round((totali.imponibile_sopravvenienza + totali.iva_sopravvenienza) * 100) 
+            :importo-imprevisto="spesaImprevistaMode === 'corrente'
+                ? Math.round((totali.imponibile_sopravvenienza + totali.iva_sopravvenienza) * 100)
                 : Math.round(eccedenzaPregressaEuro * 100)"
-            @confirm="handleSpesaImprevistaConfirm" 
+            @confirm="handleSpesaImprevistaConfirm"
         />
 
         <!-- Modale di successo -->
@@ -1234,6 +1262,8 @@ const pageGuides = [
                 </div>
             </div>
         </Teleport>
+
+        <FatturaRegistrazioneGuide v-model:open="showGuideCompleta" />
 
     </GestionaleLayout>
 </template>

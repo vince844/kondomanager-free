@@ -32,6 +32,7 @@ trait HasProtocolNumber
             'pagamento_fornitore'         => 'PAG',
             'storno_pagamento_fornitore'  => 'STO',
             'giroconto'                   => 'GIR',
+            'storno_giroconto'            => 'STO',
             'rettifica'                   => 'RET',
             'fattura_acquisto'            => 'FTP',
             'regolazione_immediata'       => 'RIM',

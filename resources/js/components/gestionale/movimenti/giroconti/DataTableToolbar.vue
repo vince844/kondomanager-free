@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="TData">
+<script setup lang="ts">
 import { ref, computed } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 import { router, usePage, Link } from '@inertiajs/vue3'
@@ -7,44 +7,35 @@ import { Button } from '@/components/ui/button'
 import { Search, X, Plus } from 'lucide-vue-next'
 import type { Table } from '@tanstack/vue-table'
 import { usePermission } from '@/composables/permissions'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Building } from '@/types/buildings'
+import type { GirocontoRow } from './columns'
 
-const props = defineProps<{
-  table: Table<TData>
+defineProps<{
+  table: Table<GirocontoRow>
 }>()
 
-const page = usePage<{ condominio: Building, filters: any }>()
+const page = usePage<{ condominio: Building, filters: { search?: string } }>()
 const { generateRoute } = usePermission()
 const condominioId = computed(() => page.props.condominio.id)
 
 // Inizializzazione filtri dall'URL
 const globalFilter = ref(page.props.filters?.search || '')
-const selectedMetodo = ref(page.props.filters?.metodo_pagamento || 'all')
-
-const metodiOpzioni = [
-  { value: 'bonifico', label: 'Bonifico' },
-  { value: 'assegno', label: 'Assegno' },
-  { value: 'contanti', label: 'Contanti' },
-  { value: 'f24', label: 'Modello F24' },
-]
 
 // Costruzione dinamica dei parametri da inviare
 const filterParams = computed(() => {
-  const params: Record<string, any> = { page: 1 }
+  const params: Record<string, string | number> = { page: 1 }
 
   if (globalFilter.value) params.search = globalFilter.value
-  if (selectedMetodo.value && selectedMetodo.value !== 'all') params.metodo_pagamento = selectedMetodo.value
 
   return params
 })
 
-// Osservatore con debounce che scatta quando cambia search o metodo
+// Osservatore con debounce che scatta quando cambia la ricerca
 watchDebounced(
-  [globalFilter, selectedMetodo],
+  globalFilter,
   () => {
     router.get(
-      route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: condominioId.value }),
+      route(generateRoute('gestionale.giroconti.index'), { condominio: condominioId.value }),
       filterParams.value,
       { preserveState: true, replace: true, preserveScroll: true }
     )
@@ -52,11 +43,10 @@ watchDebounced(
   { debounce: 300 }
 )
 
-const isFiltered = computed(() => globalFilter.value.length > 0 || (selectedMetodo.value !== '' && selectedMetodo.value !== 'all'))
+const isFiltered = computed(() => globalFilter.value.length > 0)
 
 const resetFilters = () => {
   globalFilter.value = ''
-  selectedMetodo.value = 'all'
 }
 </script>
 
@@ -70,27 +60,10 @@ const resetFilters = () => {
           <Search class="h-4 w-4" />
         </div>
         <Input
-          placeholder="Cerca fornitore o causale..."
+          placeholder="Cerca protocollo o causale..."
           v-model="globalFilter"
           class="pl-9 h-8 w-[200px] lg:w-[250px]"
         />
-      </div>
-
-      <!-- Filtro Metodo -->
-      <div class="w-40 lg:w-48">
-        <Select v-model="selectedMetodo">
-          <SelectTrigger class="w-full bg-white h-8">
-            <SelectValue placeholder="Tutti i metodi" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              <SelectItem value="all">Tutti i metodi</SelectItem>
-              <SelectItem v-for="opzione in metodiOpzioni" :key="opzione.value" :value="opzione.value">
-                {{ opzione.label }}
-              </SelectItem>
-            </SelectGroup>
-          </SelectContent>
-        </Select>
       </div>
 
       <!-- Reset -->
@@ -106,13 +79,13 @@ const resetFilters = () => {
       </Button>
     </div>
 
-    <!-- Pulsante Nuovo (convertito a Link per usare il look del secondo file) -->
+    <!-- Pulsante Nuovo giroconto -->
     <Link
-      :href="route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: condominioId })"
+      :href="route(generateRoute('gestionale.giroconti.create'), { condominio: condominioId })"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
       <Plus class="w-3.5 h-3.5 text-green-500" />
-      Nuovo pagamento
+      Nuovo giroconto
     </Link>
 
   </div>

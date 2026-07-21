@@ -30,8 +30,12 @@ class StoreIncassoRateRequest extends FormRequest
             // arrivava fino alla scrittura contabile.
             'cassa_id' => [
                 'required',
+                // Il tipo è vincolato: un fondo è una partizione contabile del c/c,
+                // non una cassa su cui incassare. Il form espone solo banca/contanti,
+                // ma senza questo whereIn il vincolo via API non esisteva (beta.19).
                 \Illuminate\Validation\Rule::exists('casse', 'id')
-                    ->where('condominio_id', $this->route('condominio')?->id),
+                    ->where('condominio_id', $this->route('condominio')?->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
             ],
             'gestione_id' => [
                 'nullable',

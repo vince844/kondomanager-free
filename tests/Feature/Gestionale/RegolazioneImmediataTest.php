@@ -190,6 +190,18 @@ test('la cassa di un altro condominio viene rifiutata dalla validazione', functi
     expect(DB::table('scritture_contabili')->where('tipo_movimento', 'regolazione_immediata')->count())->toBe(0);
 });
 
+test('store con crea_altro: redirect al modulo di creazione, non al dettaglio scrittura', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    $this->actingAs($this->user)->post(
+        route('admin.gestionale.regolazioni-immediate.store', $condominio),
+        datiRegolazioneImmediata($ctx, ['crea_altro' => true])
+    )->assertRedirect(route('admin.gestionale.regolazioni-immediate.create', ['condominio' => $condominio->id]));
+
+    expect(DB::table('scritture_contabili')->where('tipo_movimento', 'regolazione_immediata')->count())->toBe(1);
+});
+
 // ─── HTTP: happy path e caso reale del bollo ────────────────────────────────
 
 test('via HTTP la registrazione del bollo produce una scrittura sola, senza fornitore fittizio', function () {

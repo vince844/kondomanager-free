@@ -158,6 +158,16 @@ class RegolazioneImmediataController extends Controller
                 ." — condominio #{$condominio->id}, importo {$validated['importo']}, causale: {$validated['causale']}"
             );
 
+            // "Registra e nuova": chi ha una pila di scontrini torna al modulo
+            // vuoto, non al dettaglio scrittura.
+            if ($request->boolean('crea_altro')) {
+                return redirect()
+                    ->route('admin.gestionale.regolazioni-immediate.create', ['condominio' => $condominio->id])
+                    ->with($this->flashSuccess(
+                        "Registrazione {$scrittura->numero_protocollo} eseguita. Il modulo è pronto per la prossima."
+                    ));
+            }
+
             // Destinazione: il dettaglio della scrittura appena creata. `movimenti.index`
             // rimbalza su Incassi rate (MovimentiController:27), dove il movimento non
             // compare: l'utente resterebbe senza riscontro di ciò che ha appena registrato.

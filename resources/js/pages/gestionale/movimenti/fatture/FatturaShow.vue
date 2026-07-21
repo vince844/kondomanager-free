@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
@@ -8,12 +8,11 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import Alert from '@/components/Alert.vue';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, ArrowLeft, Stamp, Tags, Paperclip } from "lucide-vue-next";
-import { useDateConverter } from '@/composables/useDateConverter';
+import { ShieldCheck, FileText, Download, Building2, Calendar, FileSignature, Landmark, ArrowLeft, Stamp, Tags, Paperclip, Repeat2, CircleCheckBig } from "lucide-vue-next";
 
 const props = defineProps<{
     condominio: any;
@@ -25,7 +24,6 @@ const props = defineProps<{
 
 const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
-const { toItalian } = useDateConverter();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
     { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -69,6 +67,21 @@ const statoPagamentoVariant = computed(() => {
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
 
+// ── Coperture da fondo (beta.19) ─────────────────────────────────────────────
+// Una copertura 'pianificata' aspetta il giroconto di conferma: finché non
+// arriva, il fondo non è stato toccato. Una 'confermata' porta con sé il
+// protocollo GIR della scrittura che l'ha resa reale.
+const copertureFondo = computed(() => {
+    // Fattura stornata: il debito non esiste più, nessuna copertura da mostrare.
+    if (props.fattura.stato_pagamento === 'stornata' || props.fattura.dati_extra?.is_stornata) return [];
+
+    return ((props.fattura.coperture ?? []) as any[]).filter(
+        c => c.tipo_copertura === 'fondo_riserva' && Number(c.importo) > 0
+    );
+});
+const coperturePianificate = computed(() => copertureFondo.value.filter(c => c.stato === 'pianificata'));
+const copertureConfermate  = computed(() => copertureFondo.value.filter(c => c.stato === 'confermata'));
+
 const executeDownload = (documentoId: number) => {
     window.location.href = route(generateRoute('gestionale.fatture.download'), {
         condominio: props.condominio.id,
@@ -111,6 +124,66 @@ const executeDownload = (documentoId: number) => {
 
             <div class="w-full">
                 <section class="w-full space-y-6">
+
+            <!-- COPERTURE DA FONDO IN ATTESA DI CONFERMA (beta.19) -->
+            <div v-for="cop in coperturePianificate" :key="'cop-p-' + cop.id"
+                class="bg-gradient-to-r from-violet-50 to-indigo-50 dark:from-violet-950/30 dark:to-indigo-950/20 border border-violet-200 dark:border-violet-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
+                <div class="w-14 h-14 shrink-0 bg-violet-100 dark:bg-violet-900/50 rounded-full flex items-center justify-center border-4 border-violet-50/50 dark:border-violet-900/30">
+                    <Repeat2 class="w-7 h-7 text-violet-600 dark:text-violet-400" />
+                </div>
+                <div class="flex-1 space-y-1">
+                    <h3 class="font-black text-violet-900 dark:text-violet-200 text-lg">
+                        Copertura dal fondo in attesa di conferma — {{ euro(cop.importo) }}
+                    </h3>
+                    <p class="text-sm text-violet-800/80 dark:text-violet-300/80 leading-relaxed max-w-3xl">
+                        Lo sforamento di questa fattura è coperto dal fondo di riserva, ma il fondo
+                        <strong>non è ancora stato toccato</strong>: si decurta solo alla registrazione
+                        del giroconto di conferma, che comparirà nel libro giornale.
+                    </p>
+                </div>
+                <Button
+                    class="shrink-0 h-10 gap-2 bg-violet-600 hover:bg-violet-700 text-white font-bold shadow-sm"
+                    @click="router.visit(route(generateRoute('gestionale.giroconti.create'), { condominio: condominio.id, copertura_id: cop.id }))"
+                >
+                    <Repeat2 class="w-4 h-4" /> Conferma con giroconto
+                </Button>
+            </div>
+
+            <!-- COPERTURE DA FONDO CONFERMATE (beta.19) -->
+            <div v-for="cop in copertureConfermate" :key="'cop-c-' + cop.id"
+                class="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">
+                <div class="w-14 h-14 shrink-0 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center border-4 border-emerald-50/50 dark:border-emerald-900/30">
+                    <CircleCheckBig class="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div class="flex-1 space-y-1">
+                    <h3 class="font-black text-emerald-900 dark:text-emerald-200 text-lg">
+                        Coperta dal fondo — {{ euro(cop.importo) }}
+                        <Badge v-if="cop.scrittura_giroconto" class="ml-1 bg-emerald-200 text-emerald-800 hover:bg-emerald-200 border-none px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">
+                            {{ cop.scrittura_giroconto.numero_protocollo }}
+                        </Badge>
+                    </h3>
+                    <p class="text-sm text-emerald-800/80 dark:text-emerald-300/80 leading-relaxed max-w-3xl">
+                        Il giroconto di conferma è registrato: il fondo è stato decurtato e la liquidità
+                        è tornata sul conto corrente. Puoi procedere al pagamento con il flusso ordinario.
+                    </p>
+                </div>
+                <div class="shrink-0 flex flex-col sm:flex-row gap-2">
+                    <Button
+                        v-if="cop.scrittura_giroconto"
+                        variant="outline"
+                        class="h-10 gap-2 font-bold shadow-sm"
+                        @click="router.visit(route(generateRoute('gestionale.scritture.show'), { condominio: condominio.id, scrittura: cop.scrittura_giroconto.id }))"
+                    >
+                        <FileText class="w-4 h-4" /> Vedi scrittura
+                    </Button>
+                    <Button
+                        class="h-10 gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
+                        @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: condominio.id }))"
+                    >
+                        <Landmark class="w-4 h-4" /> Procedi al pagamento
+                    </Button>
+                </div>
+            </div>
 
             <!-- AUDIT TRAIL RATIFICA ASSEMBLEARE (Se presente) -->
             <div v-if="isSforoRatificato" class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 border border-orange-200 dark:border-orange-800/50 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-5">

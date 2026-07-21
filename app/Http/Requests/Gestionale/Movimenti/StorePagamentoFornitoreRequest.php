@@ -50,6 +50,12 @@ class StorePagamentoFornitoreRequest extends FormRequest
             'conto_corrente_id'  => [
                 'required', 'integer',
                 Rule::exists('conti_contabili', 'id')->where('condominio_id', $this->route('condominio')?->id),
+                // Il denaro esce solo da casse reali: i fondi sono partizioni
+                // contabili del c/c e si consumano via giroconto, mai pagando.
+                // Il form esclude già i fondi; questo chiude il varco via API (beta.19).
+                Rule::exists('casse', 'conto_contabile_id')
+                    ->where('condominio_id', $this->route('condominio')?->id)
+                    ->whereIn('tipo', ['banca', 'contanti', 'virtuale']),
             ],
 
             // Il sigillo per anzianità (30 giorni) si ancora a created_at, ma una

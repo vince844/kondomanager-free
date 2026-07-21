@@ -7,6 +7,53 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.19] - Giroconti: i Fondi Diventano Movimenti Veri
+
+La beta.18 aveva corretto *quanto* vale uno sforo; questa corregge *quando e come* il fondo lo copre. Il giroconto era predisposto fin dal primo giorno — il caso `giroconto` nell'enum, il prefisso `GIR`, la voce di menu col badge — e almeno quattro pezzi del gestionale erano scritti a metà in sua attesa: le coperture eternamente `pianificata`, lo storno che azzerava i report con un moltiplicatore, il conto 2202 che non si chiude, il Treasury Guardian col TODO sulla liquidità vincolata. Questa beta paga il debito.
+
+**⚠ MIGRAZIONE DATABASE**: `fattura_coperture` guadagna `scrittura_giroconto_id` (FK → `scritture_contabili`, nullOnDelete) e `confermata_at`. Eseguire `php artisan migrate` dopo l'aggiornamento. Nessuna migrazione sull'enum `tipo_movimento`: `giroconto` era già previsto, `storno_giroconto` entra come case PHP su colonna VARCHAR.
+
+### La scoperta che ha dettato il design
+
+I fondi avevano il **segno in contraddizione**: tre punti (`CassaResource`, il contesto budget delle fatture, le scritture di sforo) li trattavano da passivo (`avere − dare`), mentre il loro conto contabile nasce **attivo/liquidità** (figlio del mastro 1010, `CreateCassaAccountAction`) e sia `Cassa::saldo_reale` sia il Treasury li leggevano da attivo. Sulla stessa riga di giornale, letture opposte. La convenzione attiva è l'unica in cui l'accantonamento banca→fondo è scrivibile (AVERE banca / DARE fondo, liquidità totale invariata), coerente col vincolo di dominio già dichiarato nel codice: *"i fondi sono partizioni virtuali dell'unico conto corrente reale"* (`RegolazioneImmediataController`). Beta.19 unifica: **fondo = partizione attiva, ovunque**.
+
+### Aggiunto
+
+- **Giroconti** (`RegistraGirocontoAction`, `GirocontoController`, pagine `GirocontiList`/`GirocontoNew`): scrittura a 2 righe — DARE cassa destinazione / AVERE cassa origine, `cassa_id` su entrambe — protocollo `GIR`, causale, anteprima della scrittura nel form, saldi disponibili per cassa (`SaldoCassaService`, fonte unica in convenzione attiva). Voce di menu attivata, badge "In sviluppo" rimosso.
+- **Storno giroconto** (`StornaGirocontoAction`, tipo `storno_giroconto`, protocollo `STO`): righe specchiate, `scrittura_padre_id`, cross-esercizio Variante B1. Sempre ammesso, senza verifica di capienza (dogma: lo storno corregge, non si blocca).
+- **Conferma delle coperture**: un giroconto fondo→banca con `fattura_copertura_id` porta la copertura a `confermata` nella stessa transazione, agganciandola alla scrittura. Guardie: solo coperture `fondo_riserva` `pianificata` con importo positivo, origine = fondo della copertura, destinazione banca, conferma solo integrale. Lo storno riporta a `pianificata`. Entry point doppio: select nella pagina Giroconti + CTA "Conferma con giroconto" su `FatturaShow` (deep-link `?copertura_id=`); a conferma avvenuta la fattura mostra protocollo GIR, link alla scrittura e "Procedi al pagamento".
+- **Riallineamento scritture storiche** (`RiallineaFondiService` + card in `GirocontiList` + comando `kondomanager:riallinea-fondi --dry-run`): le righe pre-beta.19 sul conto del fondo (coppia sforo DARE fondo/AVERE sopravvenienze; DARE strutturale del pregresso) vengono neutralizzate con scritture di **rettifica** append-only collegate all'originale (`RET`, `scrittura_padre_id`). La card compare SOLO se il rilevamento trova qualcosa e sparisce a rettifiche fatte; l'esecuzione richiede conferma esplicita con anteprima. Decisione di design: mai migrazione dati automatica sul libro giornale.
+- **Guardie giroconto**: capienza origine bloccante senza override; fondi vincolati (`sottotipo_fondo` ≠ generico) in uscita solo con `is_override_assemblea`; mai fondo↔contanti/virtuale (la liquidità del fondo vive sul c/c); esercizio aperto; data non futura; `idempotency_key` contro il doppio click.
+
+### Modificato — comportamenti che cambiano
+
+- **Lo sforo con strategia fondo non scrive più la coppia DARE fondo / AVERE sopravvenienze** alla registrazione (`FatturaPassivaService`): il costo resta sul capitolo, il fondo si muove solo alla conferma. La copertura `pianificata` resta il gancio.
+- **Il pregresso con copertura fondo** scrive il DARE strutturale su `passate_gestioni` (come le coperture rata_0), non più sul conto del fondo.
+- **Saldo fondi in convenzione unica** in `CassaResource` e `prepareContestoBudget` (il `max(0,…)` della UI resta).
+- **Treasury Guardian**: `liquiditaVincolataCents` calcolata dalle casse tipo fondo (il TODO v1.10 è saldato); `calcolaFondiVincolati` riscritta (la vecchia cercava `categoria='fondi'`, dove i fondi-cassa non stanno); `condominioHaFondoRiserva` ora guarda le casse (prima era sempre true per la radice PASSIVO 2000). **Il semaforo può cambiare in produzione**: la liquidità disponibile scende del valore dei fondi — è la verità che prima mancava.
+- **Varchi chiusi**: `StoreIncassoRateRequest` e `StorePagamentoFornitoreRequest` ora validano il tipo cassa lato server (via API si poteva incassare/pagare su un fondo).
+
+### Dalla revisione avversariale pre-rilascio (3 revisori + verificatore sul diff completo)
+
+- **Il ciclo di vita `pianificata→confermata` è presidiato nei punti di uscita della fattura**: lo storno fattura è bloccato se la copertura è `confermata` (prima si storna il giroconto), `destroy()` idem (avrebbe cancellato la copertura lasciando il GIR orfano), le coperture di fatture stornate sono escluse da form, guardia dell'Action e banner, e `motivoBloccoModifica` blocca la modifica di fatture con copertura fondo (la copertura fotografa lo sforo; `aggiornaFattura` non la ricalcola).
+- **Race chiuse coi lock in transazione**: doppio storno del giroconto (due tab → doppia inversione) e doppia esecuzione del riallineamento (card web + artisan simultanei → fondo sovra-corretto).
+- **`UpdatePagamentoFornitoreRequest`**: `conto_corrente_id` ora scopato sul condominio e vincolato alle casse reali — era la porta di servizio del varco chiuso sullo Store.
+- **Idempotency key scopata** su condominio+tipo nel giroconto (la colonna è UNIQUE globale e ospita anche le key dei pagamenti).
+- **`fondi_riserva[].saldo_attuale` al netto delle coperture pianificate**: due sfori consecutivi non possono più promettere oltre la capienza dello stesso fondo.
+- Vicolo cieco muto in `GirocontoNew` (fondo senza cassa attiva) ora segnalato; la paginazione di GirocontiList conserva la ricerca attiva.
+
+### Corretto — dal collaudo a video
+
+- **La spunta "Debito esercizio precedente" non sopravviveva alla scelta del fornitore** (`FatturaRegisterNew.vue`): il watch su `[fornitore_id, data_documento]` ricalcolava `is_pregresso` dalla data a ogni scatto — anche quando a cambiare era solo il fornitore — cancellando la scelta manuale e riportando la vista alla fattura normale. Ora il ricalcolo avviene solo quando cambia la data. Correlato: cambiando fornitore, il `saldo_patrimoniale_id` selezionato restava nel form ma non era più fra le opzioni filtrate del WidgetDoubleLock, che mostrava l'id grezzo ("47") al posto della descrizione — la selezione ora si azzera se il debito non appartiene al nuovo fornitore, e comunque uscendo dalla vista pregressa. In `FatturaRegisterEdit.vue` il ricalcolo è stato rimosso del tutto: in modifica `is_pregresso` è immutabile (il server lo ignora), e retrodatare la data poteva accendere una vista pregressa con i totali a zero.
+
+### Test
+
+- `GirocontoTest`: 32 casi — quadratura e saldi per accantonamento/conferma/storno, regressione dell'armonizzazione (CassaResource ≡ SaldoCassaService), capienza, coppie vietate, fondo vincolato con/senza deroga, conferma con tutte le guardie, doppio storno, cross-esercizio B1, riallineamento (coppia sforo e pregresso), idempotenza, coperture di fatture stornate non confermabili, destroy bloccato con copertura confermata, modifica bloccata con copertura fondo, HTTP (redirect, 422 su esercizio chiuso/data futura/motivo corto, props Inertia).
+- `FatturaPassivaServiceTest` riscritto sui due scenari cambiati (nessuna riga sul fondo alla registrazione; pregresso su passate gestioni).
+- Suite completa: 433 test verdi.
+
+---
+
 ## [1.10.0-beta.18] - Sforo al Lordo & la Modifica che Smette di Fingere
 
 Rilascio nato da una segnalazione sul forum: un utente aveva registrato tre fatture 2026 sullo stesso capitolo di una gestione straordinaria e l'"Eccesso complessivo" mostrato dalla modale di sforamento non tornava con i suoi conti. Aveva ragione. Il difetto è del tutto lato form, ed era presente da beta.11.

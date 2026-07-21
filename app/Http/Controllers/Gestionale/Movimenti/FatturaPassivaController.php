@@ -14,6 +14,7 @@ use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\FatturaCopertura;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
@@ -213,6 +214,16 @@ class FatturaPassivaController extends Controller
                 return back()->with($this->flashSuccess('Fattura e Scudo Legale registrati con successo!'));
             }
 
+            // Beta.19: la copertura dal fondo nasce pianificata — il fondo non è
+            // ancora stato toccato. Il flash indica subito il passo successivo.
+            $strategiaFondo = data_get($request->input('dati_extra'), 'override_budget.strategia_rientro') === 'fondo_riserva';
+            if ($strategiaFondo) {
+                return back()->with($this->flashSuccess(
+                    'Fattura registrata. La copertura dal fondo è pianificata: '
+                    .'confermala con il giroconto proposto sulla fattura, il fondo si decurta solo allora.'
+                ));
+            }
+
             return back()->with($this->flashSuccess('Fattura registrata con successo.'));
 
         } catch (ModelNotFoundException $e) {
@@ -242,6 +253,17 @@ class FatturaPassivaController extends Controller
      */
     public function destroy(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
+        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale.
+        // Eliminare la fattura cancellerebbe la copertura lasciando il GIR orfano:
+        // fondo consumato senza più traccia del perché. Prima si storna il
+        // giroconto (la copertura torna in attesa), poi si può eliminare.
+        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
+            return back()->with($this->flashError(
+                'Operazione negata: la copertura dal fondo è stata confermata con un giroconto. '
+                .'Storna prima il giroconto di conferma dalla pagina Giroconti.'
+            ));
+        }
+
         // --- INIZIO FIX: BLOCCO INTELLIGENTE PIANO RATE STRAORDINARIO ---
         $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
 
@@ -625,19 +647,35 @@ class FatturaPassivaController extends Controller
         }
 
         // 3. I Fondi di Riserva disponibili (Presi dalla tabella CASSE)
+        // Beta.19: il saldo esposto è al netto delle coperture PIANIFICATE già
+        // promesse su quel fondo (fatture non stornate in attesa di giroconto):
+        // senza questa sottrazione, due sfori consecutivi potevano pianificare
+        // oltre la capienza — la conferma sarebbe poi fallita, ma l'amministratore
+        // avrebbe promesso una copertura impossibile senza saperlo.
+        $impegnatoPerFondo = FatturaCopertura::where('tipo_copertura', 'fondo_riserva')
+            ->where('stato', 'pianificata')
+            ->where('importo', '>', 0)
+            ->whereHas('fattura', fn ($q) => $q->where('condominio_id', $condominio->id)
+                ->where('stato_pagamento', '!=', 'stornata'))
+            ->selectRaw('fondo_id, SUM(importo) as impegnato')
+            ->groupBy('fondo_id')
+            ->pluck('impegnato', 'fondo_id');
+
         $fondiRiserva = Cassa::where('condominio_id', $condominio->id)
             ->where('tipo', 'fondo')
             ->where('attiva', true)
             ->get()
-            ->map(function ($cassa) {
+            ->map(function ($cassa) use ($impegnatoPerFondo) {
                 $movimenti = DB::table('righe_scritture')
                     ->where('conto_contabile_id', $cassa->conto_contabile_id)
                     ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
                     ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
                     ->first();
 
+                // Convenzione unica (attivo, beta.19): DARE aumenta, AVERE diminuisce.
                 $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + ($movimenti->avere ?? 0) - ($movimenti->dare ?? 0);
+                $saldoAttuale = $saldoIniziale + ($movimenti->dare ?? 0) - ($movimenti->avere ?? 0)
+                    - ($impegnatoPerFondo->get($cassa->conto_contabile_id) ?? 0);
 
                 return [
                     'id' => $cassa->conto_contabile_id,
@@ -822,6 +860,9 @@ class FatturaPassivaController extends Controller
             'fornitore',
             'righe.conto.parent',
             'documenti',
+            // Beta.19: le coperture fondo alimentano il banner "conferma con
+            // giroconto" (pianificata) / "coperta da GIR-…" (confermata).
+            'coperture.scritturaGiroconto:id,numero_protocollo',
         ]);
 
         // Caricamento del nome utente che ha ratificato se presente
