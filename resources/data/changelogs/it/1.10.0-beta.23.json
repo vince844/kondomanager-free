@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Corretta la stampa \"Riparto Bilancio Preventivo per Capitolo e Soggetto\": mostrava una colonna per ogni sottoconto (es. \"Bancarie\", \"Compensi\", \"Dichiarazioni\") invece che una per il capitolo di spesa reale (es. \"Amministrative\"). Su un condominio con molti sottoconti la stampa poteva addirittura non generarsi per un limite tecnico interno; su un condominio più piccolo mostrava solo una parte delle colonne, con un totale a fondo pagina corretto ma che non coincideva con la somma dei valori visibili — confuso da leggere, pur senza errori nei conti.",
+        "Ora ogni capitolo ha una sola colonna con l'importo totale di tutti i suoi sottoconti, molto più leggibile su piani dei conti articolati. La stampa \"Riparto per Tabella\" non è stata toccata: funzionava già correttamente.",
+        "Alzato anche un limite tecnico interno che, su condomini davvero grandi, poteva ancora impedire la generazione della stampa nonostante la correzione sopra: ora regge con margine anche su piani dei conti molto estesi."
+    ]
+}

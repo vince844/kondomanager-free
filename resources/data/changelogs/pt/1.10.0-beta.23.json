@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Corrigida a impressão \"Rateio do Orçamento Preventivo por Capítulo e Sujeito\": mostrava uma coluna por cada subconta (ex.: \"Despesas bancárias\", \"Honorários\", \"Declarações\") em vez de uma por cada capítulo de despesa real (ex.: \"Administrativas\"). Num condomínio com muitas subcontas a impressão podia até não ser gerada por um limite técnico interno; num condomínio mais pequeno mostrava apenas parte das colunas, com um total no rodapé correto mas que não coincidia com a soma dos valores visíveis — confuso de ler, ainda que sem erros nas contas.",
+        "Agora cada capítulo tem uma única coluna com o valor total de todas as suas subcontas, muito mais legível em planos de contas detalhados. A impressão \"Rateio por Tabela\" não foi alterada: já funcionava corretamente.",
+        "Também foi aumentado um limite técnico interno que, em condomínios verdadeiramente grandes, ainda podia impedir a geração da impressão apesar da correção acima: agora aguenta com margem mesmo em planos de contas muito extensos."
+    ]
+}

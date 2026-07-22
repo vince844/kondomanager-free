@@ -110,7 +110,7 @@ class RipartoCapitoliService
         $quoteMill = [];
         $processatiIds = [];
 
-        $this->processaCapitoliPerPesi($conti, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds);
+        $this->processaCapitoliPerPesi($conti, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds, null);
 
         if (empty($weightsPerCapitolo)) {
             return $this->empty();
@@ -244,16 +244,28 @@ class RipartoCapitoliService
 
     /**
      * Elabora l'albero dei conti (padri e figli) e calcola i pesi provvisori per la ripartizione.
-     * 
+     *
      * Se un conto padre ha un override di importo (fissato dal piano rate), quell'importo
      * viene processato. Se non ha tabelle ma ha dei sottoconti, l'importo override viene
      * distribuito proporzionalmente ai sottoconti in base ai loro importi nativi, o in parti uguali.
+     *
+     * Segnalazione amministratore: la stampa mostrava una colonna per ogni
+     * SOTTOCONTO foglia (es. "AM.BK", "AM.CF"...) invece che una per il
+     * CAPITOLO padre ("Amministrative") — su un condominio con molti
+     * sottoconti la tabella HTML diventava enorme (crash mPDF,
+     * pcre.backtrack_limit) e sul chunking a pagine la somma visibile non
+     * coincideva col totale riga. Ogni chiamata a distribuisciConto() ora
+     * riceve anche il capitolo RADICE (l'antenato di primo livello, calcolato
+     * una sola volta per ramo e propagato ai figli) su cui aggregare pesi e
+     * importo, mentre la matematica di ripartizione resta sulla foglia (dove
+     * vivono davvero tabella millesimale e ripartizioni).
      *
      * @param Collection $conti Collezione dei conti da processare.
      * @param array $pivotOverrides Array con eventuali override [conto_id => importo].
      * @param array &$weightsPerCapitolo Referenza all'array in cui accumulare i pesi calcolati.
      * @param array &$capitoliInfo Referenza all'array in cui salvare info di contesto sui capitoli.
      * @param array &$quoteMill Referenza all'array per salvare le quote millesimali per le intestazioni.
+     * @param Conto|null $radice Capitolo radice del ramo corrente (null al primo livello: si calcola per ogni conto).
      * @return void
      */
     private function processaCapitoliPerPesi(
@@ -263,12 +275,15 @@ class RipartoCapitoliService
         array &$capitoliInfo,
         array &$quoteMill,
         array $contiImpegnatiIds = [],
-        array &$processatiIds = []
+        array &$processatiIds = [],
+        ?Conto $radice = null
     ): void {
         foreach ($conti as $conto) {
             if (in_array($conto->id, $contiImpegnatiIds)) continue;
             if (in_array($conto->id, $processatiIds)) continue;
             $processatiIds[] = $conto->id;
+
+            $radiceEffettiva = $radice ?? $this->radiceDi($conto);
 
             $hasOverride = isset($pivotOverrides[$conto->id]);
 
@@ -276,7 +291,7 @@ class RipartoCapitoliService
                 $importo = $pivotOverrides[$conto->id];
 
                 if ($conto->tabelleMillesimali->isNotEmpty()) {
-                    $this->distribuisciConto($conto, $importo, $weightsPerCapitolo, $capitoliInfo, $quoteMill);
+                    $this->distribuisciConto($conto, $importo, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $radiceEffettiva);
                     continue;
                 }
 
@@ -302,34 +317,53 @@ class RipartoCapitoliService
                         }
                     }
 
-                    $this->processaCapitoliPerPesi($figli, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds);
+                    $this->processaCapitoliPerPesi($figli, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds, $radiceEffettiva);
                 }
                 continue;
             }
 
             $importo = (int) ($conto->importo ?? 0);
             if ($importo !== 0 && $conto->tabelleMillesimali->isNotEmpty()) {
-                $this->distribuisciConto($conto, abs($importo), $weightsPerCapitolo, $capitoliInfo, $quoteMill);
+                $this->distribuisciConto($conto, abs($importo), $weightsPerCapitolo, $capitoliInfo, $quoteMill, $radiceEffettiva);
             }
 
             if ($conto->sottoconti && $conto->sottoconti->isNotEmpty()) {
-                $this->processaCapitoliPerPesi($conto->sottoconti, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds);
+                $this->processaCapitoliPerPesi($conto->sottoconti, $pivotOverrides, $weightsPerCapitolo, $capitoliInfo, $quoteMill, $contiImpegnatiIds, $processatiIds, $radiceEffettiva);
             }
         }
     }
 
     /**
-     * Distribuisce l'importo di un singolo conto sugli immobili e relative anagrafiche,
-     * tenendo conto delle tabelle millesimali e delle quote di ripartizione.
-     * 
+     * Risale la catena parent_id fino all'antenato di primo livello (il
+     * capitolo "vero" nel senso del piano dei conti). Si ferma anche se
+     * incontra un parent_id orfano (record mancante), come guardia difensiva.
+     */
+    private function radiceDi(Conto $conto): Conto
+    {
+        $corrente = $conto;
+        while ($corrente->parent_id !== null && $corrente->parent) {
+            $corrente = $corrente->parent;
+        }
+        return $corrente;
+    }
+
+    /**
+     * Distribuisce l'importo di un singolo conto (foglia) sugli immobili e le
+     * relative anagrafiche, tenendo conto delle tabelle millesimali e delle
+     * quote di ripartizione — ma accumula pesi e importo sul capitolo
+     * RADICE, non sulla foglia: più sottoconti sotto lo stesso capitolo
+     * (es. "Amministrative" → AM.BK, AM.CF, AM.DF...) finiscono in un'unica
+     * colonna aggregata invece che una per ciascuno.
+     *
      * Se il ruolo previsto (es. inquilino) manca nell'immobile, la quota ricade a cascata
      * sul ruolo di rango superiore (es. proprietario) in base alla catena di godimento.
      *
-     * @param Conto $conto Il conto da cui prelevare tabelle millesimali e ripartizioni.
+     * @param Conto $conto Il conto FOGLIA da cui prelevare tabelle millesimali e ripartizioni.
      * @param int $importo Importo base (da distribuire) per questo conto.
-     * @param array &$weightsPerCapitolo Referenza all'accumulatore dei pesi.
-     * @param array &$capitoliInfo Referenza all'accumulatore meta-dati capitoli.
-     * @param array &$quoteMill Referenza per salvare le quote di prima tabella.
+     * @param array &$weightsPerCapitolo Referenza all'accumulatore dei pesi, chiave = id capitolo radice.
+     * @param array &$capitoliInfo Referenza all'accumulatore meta-dati capitoli, chiave = id capitolo radice.
+     * @param array &$quoteMill Referenza per salvare le quote di prima tabella, chiave = id capitolo radice.
+     * @param Conto $radice Il capitolo radice (antenato di primo livello) su cui aggregare.
      * @return void
      */
     private function distribuisciConto(
@@ -337,11 +371,13 @@ class RipartoCapitoliService
         int $importo,
         array &$weightsPerCapitolo,
         array &$capitoliInfo,
-        array &$quoteMill
+        array &$quoteMill,
+        Conto $radice
     ): void {
+        $radiceId = $radice->id;
         $primoTabId = null;
         $primoTabQuota = 'mill.';
-        
+
         foreach ($conto->tabelleMillesimali as $ctm) {
             $tabella = $ctm->tabella ?? null;
             if (!$tabella) continue;
@@ -373,9 +409,13 @@ class RipartoCapitoliService
                 $valore = (float) $quota->valore;
                 if ($valore <= 0.0) continue;
 
-                // Salva il valore millesimale della prima tabella collegata, utile per l'intestazione PDF
-                if ($tabella->id === $primoTabId) {
-                    $quoteMill[$conto->id][$immobile->id] = $valore;
+                // Salva il valore millesimale della prima tabella collegata, utile per
+                // l'intestazione PDF — ma solo finché i sottoconti aggregati sotto
+                // questo capitolo usano tutti la STESSA tabella: se differiscono
+                // (vedi sotto, 'quota_mista'), un singolo valore "mill." per il
+                // capitolo sarebbe fuorviante, quindi non se ne mostra nessuno.
+                if ($tabella->id === $primoTabId && empty($capitoliInfo[$radiceId]['quota_mista'])) {
+                    $quoteMill[$radiceId][$immobile->id] = $valore;
                 }
 
                 $pesoImmobile = $valore / $sommaValori;
@@ -418,22 +458,34 @@ class RipartoCapitoliService
                         $pesoAnag = $pesoImmobile * ($percent / 100.0) * ($quotaAnag / $sommaQuote);
                         $key      = $anag->id . '|' . $immobile->id;
 
-                        if (!isset($weightsPerCapitolo[$conto->id])) {
-                            $weightsPerCapitolo[$conto->id] = [];
+                        if (!isset($weightsPerCapitolo[$radiceId])) {
+                            $weightsPerCapitolo[$radiceId] = [];
                         }
-                        $weightsPerCapitolo[$conto->id][$key] = ($weightsPerCapitolo[$conto->id][$key] ?? 0.0) + $parteSuTabella * $pesoAnag;
+                        $weightsPerCapitolo[$radiceId][$key] = ($weightsPerCapitolo[$radiceId][$key] ?? 0.0) + $parteSuTabella * $pesoAnag;
                     }
                 }
             }
         }
 
-        // Salva le info strutturali del capitolo analizzato
-        if ($primoTabId && !isset($capitoliInfo[$conto->id])) {
-            $capitoliInfo[$conto->id] = [
-                'nome'        => $conto->nome,
-                'quota_label' => $primoTabQuota,
-                'tot_importo' => $importo,
-            ];
+        // Salva/aggiorna le info del capitolo RADICE: più sottoconti-foglia
+        // contribuiscono allo stesso capitolo, quindi l'importo si SOMMA
+        // invece di sovrascriversi (a differenza del vecchio comportamento
+        // per-foglia, dove ogni sottoconto era il proprio capitolo).
+        if ($primoTabId) {
+            if (!isset($capitoliInfo[$radiceId])) {
+                $capitoliInfo[$radiceId] = [
+                    'nome'               => $radice->nome,
+                    'quota_label'        => $primoTabQuota,
+                    'tot_importo'        => 0,
+                    'quota_mista'        => false,
+                    '_prima_tabella_id'  => $primoTabId,
+                ];
+            } elseif (!$capitoliInfo[$radiceId]['quota_mista'] && $capitoliInfo[$radiceId]['_prima_tabella_id'] !== $primoTabId) {
+                $capitoliInfo[$radiceId]['quota_mista'] = true;
+                $capitoliInfo[$radiceId]['quota_label'] = '—';
+                unset($quoteMill[$radiceId]);
+            }
+            $capitoliInfo[$radiceId]['tot_importo'] += $importo;
         }
     }
 

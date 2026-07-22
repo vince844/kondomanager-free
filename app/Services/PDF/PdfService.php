@@ -53,7 +53,17 @@ class PdfService
         }
 
         $html = View::make($view, $data)->render();
-        
+
+        // Su un piano dei conti molto articolato (molti capitoli/sottoconti,
+        // molte unità) l'HTML di una stampa può superare il default PHP di
+        // pcre.backtrack_limit (1 MB) e mPDF rifiuta la generazione con un
+        // 500 ("The HTML code size is larger than pcre.backtrack_limit").
+        // Alzarlo è il fix ufficiale raccomandato da mPDF per questo errore
+        // — non cambia nulla per l'HTML che già rientrava nel limite, apre
+        // solo margine per i casi grandi che prima fallivano. Verificato
+        // fino a ~6 MB di HTML (50 capitoli × 80 unità) con questo valore.
+        ini_set('pcre.backtrack_limit', '20000000');
+
         $mpdf->WriteHTML($html);
 
         return $mpdf;

@@ -7,6 +7,26 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.23] - Riparto per Capitolo: una Colonna per Capitolo, non per Sottoconto
+
+Segnalato da un amministratore: la stampa "Riparto Bilancio Preventivo per Capitolo e Soggetto" mostrava una colonna per ogni **sottoconto foglia** (es. "AM.BK Bancarie", "AM.CF Compensi", "AM.DF Dichiarazioni"...) invece che una per il capitolo padre reale ("Amministrative"). Su un condominio con molti sottoconti la tabella HTML generata poteva diventare così grande da far scattare il limite di sicurezza di mPDF (errore 500, `pcre.backtrack_limit`); su un condominio più piccolo il chunking a 6 colonne per pagina della stampa mostrava solo una parte delle colonne sulla prima pagina, con un totale di riga (calcolato correttamente su tutti i capitoli) che non coincideva con la somma dei valori visibili — confuso, anche se nessun dato era davvero sbagliato.
+
+Nessuna migrazione database.
+
+### Corretto
+
+- **`RipartoCapitoliService` aggrega ora sul capitolo radice**, non sul sottoconto foglia: un capitolo con più sottoconti produce una sola colonna nella stampa, con l'importo che è la somma di tutti i suoi sottoconti. La matematica di ripartizione (tabelle millesimali, ripartizioni per soggetto, arrotondamento Hare-Niemeyer) resta calcolata sui sottoconti foglia, dove vivono davvero tabella e percentuali — solo l'aggregazione finale cambia.
+- Se i sottoconti di uno stesso capitolo usano tabelle millesimali diverse tra loro, la colonna dei millesimi per quel capitolo mostra un trattino (nessun valore ambiguo mostrato): l'importo in euro resta sempre esatto, indipendentemente da questo caso.
+- **L'aggregazione da sola non bastava a scala reale**: un test di stress dedicato (25 capitoli × 4 sottoconti, 40 unità) produce comunque ~1,55 MB di HTML — sopra il default PHP di `pcre.backtrack_limit` (1 MB) — e mPDF rifiutava comunque la generazione. `PdfService` alza ora quel limite (20.000.000, il fix ufficiale raccomandato da mPDF per questo esatto errore) prima di ogni stampa: verificato fino a ~6 MB di HTML (50 capitoli × 80 unità) senza errori. Non cambia nulla per le stampe che già rientravano nel limite, apre solo margine per i condomini grandi che prima fallivano — compresa `riparto_tabelle`, mai stata il problema ma protetta dallo stesso margine.
+- **Non toccato nella logica**: la stampa "Riparto per Tabella × Soggetto" (`RipartoTabelleService`, `riparto_tabelle.blade.php`) — funzionava correttamente ed era esplicitamente fuori scope da questa correzione.
+
+### Test
+
+- `RipartoCapitoliAggregazionePadreTest`: 6 casi — un capitolo con più sottoconti produce una sola colonna, il totale di riga coincide sempre con la somma delle celle, sottoconti su tabelle diverse restano esatti in euro pur segnalando la quota come mista, un conto di primo livello senza figli resta invariato (retrocompatibilità), una verifica end-to-end che la stampa PDF risponde 200 con un capitolo a 8 sottoconti, e un caso a scala reale (25 capitoli, 40 unità) che riproduce esattamente il crash originale e verifica che il fix su `PdfService` lo risolva — confermato fallire senza quel fix, prima di essere aggiunto alla suite.
+- Suite completa: 532 test verdi (prima di questa beta: 526).
+
+---
+
 ## [1.10.0-beta.22] - Il Capitolo Diventa un Fatto, non un Indovinello
 
 Un amministratore aveva segnalato: una voce di spesa non ancora budgettizzata quest'anno (importo a zero, ma con tabella millesimale e ripartizioni reali già collegate) perdeva silenziosamente tabella e ripartizioni al primo salvataggio della modale di modifica, senza toccare nulla. La causa: se un conto fosse un "capitolo" (contenitore puro, senza tabella propria) non è mai stato un fatto salvato — era **indovinato** in tre punti diversi del codice dalla stessa euristica fragile (`parent_id` nullo + importo a zero), anche se l'amministratore lo sceglie esplicitamente con un interruttore al momento della creazione. Una voce reale a zero ci finiva dentro per coincidenza, e il controller — corretto a marzo per ripulire i capitoli davvero orfani (commit `e25eefa2`) — cancellava tabella e ripartizioni convinto in buona fede di star pulendo un contenitore vuoto.
