@@ -105,16 +105,16 @@ watchDebounced(
           class="w-full lg:w-auto"
         />
       </div>
-        
+
     </div>
 
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_COMUNICAZIONI])"
-      :href="route(generateRoute('comunicazioni.create'))" 
+      :href="route(generateRoute('comunicazioni.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>{{ trans('comunicazioni.actions.new_communication') }}</span>
     </Link>
 

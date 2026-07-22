@@ -10,7 +10,7 @@ import { usePermission } from '@/composables/permissions'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Building } from '@/types/buildings'
 
-const props = defineProps<{
+defineProps<{
   table: Table<TData>
 }>()
 

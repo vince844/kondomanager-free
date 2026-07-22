@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, nextTick } from 'vue'; 
+import { ref, watch, computed, onMounted, nextTick } from 'vue';
 import { useForm, Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import { Button } from '@/components/ui/button';
@@ -10,14 +10,14 @@ import MoneyInput from '@/components/MoneyInput.vue';
 import InputError from '@/components/InputError.vue';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { AlertCircle, CheckCircle2, RotateCcw,  User, Building, ArrowRight, FileText, Receipt, ArrowRightLeft, Info, Lock, Wallet, Search } from 'lucide-vue-next';
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'; 
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import { usePaymentDistribution } from '@/composables/usePaymentDistribution';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { useDebitiLoader } from '@/composables/useDebitiLoader';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
-import type { Rata } from '@/types/gestionale/rata'; 
+import type { Rata } from '@/types/gestionale/rata';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 
 const props = defineProps<{
@@ -28,7 +28,7 @@ const props = defineProps<{
     gestioni: any[];
 }>();
 
-const { euro } = useCurrencyFormatter({ fromCents: false }); 
+const { euro } = useCurrencyFormatter({ fromCents: false });
 const { generateRoute } = usePermission();
 
 const breadcrumbs = computed<Breadcrumb[]>(() => [
@@ -38,11 +38,11 @@ const breadcrumbs = computed<Breadcrumb[]>(() => [
 ]);
 
 const pageGuides = [
-    { 
-        title: 'Modalità auto/manuale', 
-        description: 'In modalità automatica il sistema distribuisce l\'importo versato sulle rate più urgenti. Passa in manuale per personalizzare riga per riga.', 
-        icon: ArrowRightLeft, 
-        colorVariant: 'blue' as const 
+    {
+        title: 'Modalità auto/manuale',
+        description: 'In modalità automatica il sistema distribuisce l\'importo versato sulle rate più urgenti. Passa in manuale per personalizzare riga per riga.',
+        icon: ArrowRightLeft,
+        colorVariant: 'blue' as const
     },
     {
         title: 'Credito disponibile',
@@ -50,27 +50,27 @@ const pageGuides = [
         icon: Wallet,
         colorVariant: 'amber' as const
     },
-    { 
-        title: 'Ricerca flessibile', 
-        description: 'Cerca i debiti per anagrafica (persona) o per unità immobiliare. In modalità immobile puoi specificare un intestatario diverso per la ricevuta.', 
-        icon: Search, 
-        colorVariant: 'emerald' as const 
+    {
+        title: 'Ricerca flessibile',
+        description: 'Cerca i debiti per anagrafica (persona) o per unità immobiliare. In modalità immobile puoi specificare un intestatario diverso per la ricevuta.',
+        icon: Search,
+        colorVariant: 'emerald' as const
     },
 ];
 
 const moneyOptions = ref({
-    prefix: '€ ',              
-    suffix: '',              
-    thousands: '.',          
-    decimal: ',',          
-    precision: 2,            
+    prefix: '€ ',
+    suffix: '',
+    thousands: '.',
+    decimal: ',',
+    precision: 2,
     allowBlank: false,
-    masked: true 
+    masked: true
 });
 
-const { 
-    rawRateList, 
-    loadingRate, 
+const {
+    rawRateList,
+    loadingRate,
     mode,
     isScaduta,
     priorityRataId,
@@ -83,8 +83,7 @@ const {
     onManualChange,
     resetAllocation: resetAllocationComposable,
     pagaTutto: pagaTuttoComposable,
-    pagaScadute: pagaScaduteComposable,
-    syncFormData
+    pagaScadute: pagaScaduteComposable
 } = usePaymentDistribution();
 
 const { fetchDebiti: fetchDebitiAPI } = useDebitiLoader();
@@ -97,7 +96,7 @@ const form = useForm({
     cassa_id: null as number | null,
     gestione_id: null as number | null,
     data_pagamento: new Date().toISOString().substring(0, 10),
-    importo_totale: '' as string | number, 
+    importo_totale: '' as string | number,
     descrizione: '',
     dettaglio_pagamenti: [] as any[],
     eccedenza: 0,
@@ -129,7 +128,7 @@ const hasSaldoMisto = (r: any) => {
 const isRataZero = (r: any) => {
     const desc = (r.descrizione || '').toLowerCase();
     return desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
-}; 
+};
 
 const importoNumerico = computed(() => parseResiduoQuota(form.importo_totale));
 
@@ -209,21 +208,21 @@ const previewContabile = computed(() => {
     const righePagate = pagamenti.map(p => {
         const r = rateList.value.find(rate => rate.id === p.rata_id);
         if (!r) return null;
-        
+
         const baseRata = parseResiduoQuota(r.residuo);
         const isCredito = baseRata < 0;
-        
+
         let residuoDopoPagamento = 0;
         let status = '';
 
         if (isCredito) {
-            residuoDopoPagamento = baseRata - p.importo; 
+            residuoDopoPagamento = baseRata - p.importo;
             status = (residuoDopoPagamento >= -0.01) ? 'ESAURITO' : 'CREDITO_USATO';
         } else {
             residuoDopoPagamento = Math.max(0, baseRata - p.importo);
             status = (residuoDopoPagamento <= 0.01) ? 'SALDATA' : 'PARZIALE';
         }
-        
+
         return {
             id: r.id,
             descrizione: r.descrizione,
@@ -336,16 +335,16 @@ const runDistribution = async () => {
     syncForm();
 };
 
-const distributeAuto = () => { 
+const distributeAuto = () => {
     runDistribution();
 };
 
-const handleManualChange = (rata: any, val: string | number) => { 
+const handleManualChange = (rata: any, val: string | number) => {
     // 🟢 FIX: Ignoriamo l'evento se siamo in auto per evitare race conditions al mount
     if (mode.value === 'auto') return;
 
-    onManualChange(rata, val.toString()); 
-    
+    onManualChange(rata, val.toString());
+
     const nuovoTotaleVersato = rateList.value.reduce((sum, r) => {
         if (parseResiduoQuota(r.residuo) > 0) {
             return sum + parseResiduoQuota(r.da_pagare);
@@ -354,8 +353,8 @@ const handleManualChange = (rata: any, val: string | number) => {
     }, 0);
 
     form.importo_totale = nuovoTotaleVersato;
-    calculateExcessOnly(); 
-    syncForm(); 
+    calculateExcessOnly();
+    syncForm();
 };
 
 const calculateExcessOnly = () => { form.eccedenza = calculateExcess(rateList.value, importoNumerico.value); };
@@ -365,28 +364,28 @@ const resetAllocation = () => {
     form.importo_totale = '';
     resetAllocationComposable(rateList.value);
     rateList.value = [...rateList.value];
-    calculateExcessOnly(); 
-    syncForm(); 
+    calculateExcessOnly();
+    syncForm();
 };
 
-const pagaTutto = () => { 
-    const somma = pagaTuttoComposable(rateList.value); 
-    form.importo_totale = somma; 
-    calculateExcessOnly(); 
-    syncForm(); 
+const pagaTutto = () => {
+    const somma = pagaTuttoComposable(rateList.value);
+    form.importo_totale = somma;
+    calculateExcessOnly();
+    syncForm();
 };
 
-const pagaScadute = async () => { 
-    mode.value = 'manual'; 
-    const somma = pagaScaduteComposable(rateList.value); 
-    form.importo_totale = somma; 
+const pagaScadute = async () => {
+    mode.value = 'manual';
+    const somma = pagaScaduteComposable(rateList.value);
+    form.importo_totale = somma;
     rateList.value = [...rateList.value];
     await nextTick();
-    calculateExcessOnly(); 
-    syncForm(); 
+    calculateExcessOnly();
+    syncForm();
 };
 
-const syncForm = () => { 
+const syncForm = () => {
     // 🟢 FIX: Formattazione perfetta a 2 decimali per evitare errori 500
     form.dettaglio_pagamenti = rateList.value
         .filter(r => typeof r.da_pagare === 'number' && r.da_pagare !== 0)
@@ -399,10 +398,10 @@ const syncForm = () => {
 const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
     if (searchMode.value !== newMode) {
         searchMode.value = newMode;
-        rawRateList.value = []; 
-        selectedImmobileId.value = null; 
-        form.pagante_id = null; 
-        form.importo_totale = ''; 
+        rawRateList.value = [];
+        selectedImmobileId.value = null;
+        form.pagante_id = null;
+        form.importo_totale = '';
     }
 };
 
@@ -414,7 +413,7 @@ const submit = () => {
         ...data,
         importo_totale: cleanTotal
     }));
-    
+
     payload.post(route(generateRoute('gestionale.movimenti-rate.store'), props.condominio.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -454,7 +453,7 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
     if (importoNumerico.value > 0 || priorityRataId.value) {
         runDistribution();
     }
-}, { deep: true, immediate: true }); 
+}, { deep: true, immediate: true });
 
 onMounted(async () => {
     const params = new URLSearchParams(window.location.search);
@@ -478,7 +477,7 @@ onMounted(async () => {
 
 <template>
     <Head title="Registra Incasso" />
-  
+
     <GestionaleLayout>
         <div class="px-6 py-6 w-full flex flex-col gap-4 h-[calc(100vh-40px)] min-h-[950px]">
 
@@ -491,13 +490,13 @@ onMounted(async () => {
                     :back-url="route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id })"
                     back-text="Indietro"
                 />
-            </div> 
-            
+            </div>
+
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
-                
+
                 <div class="lg:col-span-4 h-full flex flex-col bg-white rounded-xl border shadow-sm overflow-hidden">
                     <div class="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
-                        
+
                         <div class="space-y-2">
                             <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Cerca debiti per anagrafica o immobile</Label>
                             <div class="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-lg">
@@ -514,13 +513,13 @@ onMounted(async () => {
                                     {{ searchMode === 'persona' ? 'Seleziona anagrafica' : 'Seleziona unità immobiliare' }}
                                 </Label>
 
-                                <v-select 
+                                <v-select
                                     v-if="searchMode === 'persona'"
-                                    :options="condomini" 
-                                    v-model="form.pagante_id" 
-                                    label="nome" 
-                                    :reduce="(c: any) => c.id" 
-                                    class="w-full bg-white text-sm" 
+                                    :options="condomini"
+                                    v-model="form.pagante_id"
+                                    label="nome"
+                                    :reduce="(c: any) => c.id"
+                                    class="w-full bg-white text-sm"
                                     placeholder="Cerca per nome o cognome..."
                                 >
                                     <template #option="{ nome, indirizzo, codice_fiscale }">
@@ -532,18 +531,18 @@ onMounted(async () => {
                                 </v-select>
 
                                 <div v-else class="space-y-3">
-                                    <v-select 
-                                        :options="immobili" 
-                                        v-model="selectedImmobileId" 
+                                    <v-select
+                                        :options="immobili"
+                                        v-model="selectedImmobileId"
                                         :getOptionLabel="(i: any) => `Int. ${i.interno}${i.descrizione ? ' - ' + i.descrizione : ''}`"
-                                        :reduce="(i: any) => i.id" 
-                                        class="w-full bg-white text-sm" 
+                                        :reduce="(i: any) => i.id"
+                                        class="w-full bg-white text-sm"
                                         placeholder="Cerca per interno o descrizione..."
                                     >
                                         <template #option="{ interno, descrizione, nome }">
                                             <div class="flex flex-col py-0.5">
                                                 <span class="font-medium text-sm text-slate-800">
-                                                    Interno {{ interno }} 
+                                                    Interno {{ interno }}
                                                     <span v-if="descrizione" class="text-slate-500 font-normal">- {{ descrizione }}</span>
                                                 </span>
                                                 <span class="text-[11px] text-slate-400 truncate">{{ nome || 'Unità immobiliare' }}</span>
@@ -553,12 +552,12 @@ onMounted(async () => {
 
                                     <div>
                                         <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Intestatario della ricevuta</Label>
-                                        <v-select 
-                                            :options="condomini" 
-                                            v-model="form.pagante_id" 
-                                            label="nome" 
-                                            :reduce="(c: any) => c.id" 
-                                            class="w-full bg-white text-sm" 
+                                        <v-select
+                                            :options="condomini"
+                                            v-model="form.pagante_id"
+                                            label="nome"
+                                            :reduce="(c: any) => c.id"
+                                            class="w-full bg-white text-sm"
                                             placeholder="A chi intesterai il pagamento?"
                                         >
                                             <template #option="{ nome, indirizzo, codice_fiscale }">
@@ -575,26 +574,26 @@ onMounted(async () => {
 
                         <div class="space-y-3">
                             <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Importo versato</Label>
-                            <MoneyInput 
+                            <MoneyInput
                                 id="importo_totale"
-                                v-model="form.importo_totale" 
+                                v-model="form.importo_totale"
                                 :money-options="moneyOptions"
                                 :lazy="false"
-                                class="h-10 text-lg font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2" 
-                                placeholder="0,00" 
+                                class="h-10 text-lg font-bold shadow-sm focus:ring-2 focus:ring-primary/20 border-slate-200 w-full rounded-md border bg-background px-3 py-2"
+                                placeholder="0,00"
                             />
                         </div>
 
                         <div class="space-y-3">
                             <div>
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Risorsa finanziaria</Label>
-                                <v-select 
-                                    :options="risorse" 
-                                    v-model="form.cassa_id" 
-                                    label="nome" 
-                                    :reduce="(c: any) => c.id" 
-                                    class="w-full bg-white text-sm shadow-sm" 
-                                    @update:modelValue="form.clearErrors('cassa_id')" 
+                                <v-select
+                                    :options="risorse"
+                                    v-model="form.cassa_id"
+                                    label="nome"
+                                    :reduce="(c: any) => c.id"
+                                    class="w-full bg-white text-sm shadow-sm"
+                                    @update:modelValue="form.clearErrors('cassa_id')"
                                     placeholder="Dove versi i soldi?"
                                 >
                                     <template #option="{ nome, tipo, conto_corrente }">
@@ -609,13 +608,13 @@ onMounted(async () => {
                                 </v-select>
                                 <InputError :message="form.errors.cassa_id" class="mt-1" />
                             </div>
-                            
+
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Data versamento</Label>
                                     <Input type="date" v-model="form.data_pagamento" class="h-9 text-sm border-slate-200 shadow-sm"/>
                                     <InputError :message="form.errors.data_pagamento" class="mt-1" />
-                                </div>         
+                                </div>
                                 <div>
                                     <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Causale</Label>
                                     <div class="relative">
@@ -624,15 +623,15 @@ onMounted(async () => {
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div>
                                 <Label class="text-[11px] uppercase text-slate-500 font-bold tracking-wider mb-1 block">Gestione (filtro)</Label>
-                                <v-select 
-                                    :options="gestioni" 
-                                    v-model="form.gestione_id" 
-                                    label="nome" 
-                                    :reduce="(g: any) => g.id" 
-                                    class="w-full bg-slate-50 text-sm focus-within:bg-white transition-colors" 
+                                <v-select
+                                    :options="gestioni"
+                                    v-model="form.gestione_id"
+                                    label="nome"
+                                    :reduce="(g: any) => g.id"
+                                    class="w-full bg-slate-50 text-sm focus-within:bg-white transition-colors"
                                     placeholder="Tutte (automatica)"
                                 >
                                     <template #option="{ nome, tipo }">
@@ -662,7 +661,7 @@ onMounted(async () => {
                 </div>
 
                 <div class="lg:col-span-8 h-full flex flex-col gap-4 overflow-hidden">
-                    
+
                     <div class="bg-white rounded-xl border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
                         <div class="p-3 border-b bg-gray-50 flex justify-between items-center shrink-0">
                             <div class="flex items-center gap-3">
@@ -688,10 +687,10 @@ onMounted(async () => {
                                 </div>
 
                                 <div class="flex items-center gap-2 ml-2 border-l pl-4">
-                                    <input 
-                                        type="checkbox" 
-                                        id="toggle-scadute" 
-                                        v-model="showOnlyOverdue" 
+                                    <input
+                                        type="checkbox"
+                                        id="toggle-scadute"
+                                        v-model="showOnlyOverdue"
                                         class="w-3.5 h-3.5 text-primary border-gray-300 rounded focus:ring-primary cursor-pointer"
                                     >
                                     <label for="toggle-scadute" class="text-[10px] font-bold uppercase text-slate-500 cursor-pointer select-none">
@@ -767,33 +766,33 @@ onMounted(async () => {
                                                 <span class="text-xs font-medium text-gray-600">{{ r.scadenza_human }}</span>
 
                                                 <div class="mt-1 flex flex-col gap-1">
-    
-                                                    <span v-if="parseResiduoQuota(r.residuo) < 0" 
-                                                        class="inline-flex items-center text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+
+                                                    <span v-if="parseResiduoQuota(r.residuo) < 0"
+                                                        class="inline-flex items-center text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter"
                                                         title="I crediti sono automaticamente attivi e pronti per la compensazione">
                                                         <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Credito Attivo
                                                     </span>
 
                                                     <template v-else>
-                                                        <span v-if="!r.is_emitted || Number(r.is_emitted) === 0" 
-                                                            class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                        <span v-if="!r.is_emitted || Number(r.is_emitted) === 0"
+                                                            class="inline-flex items-center text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter"
                                                             title="Questa rata non ha ancora generato una scrittura contabile">
                                                             <AlertCircle class="w-2.5 h-2.5 mr-1" /> No emissione
                                                         </span>
 
-                                                        <span v-else-if="!r.is_published || Number(r.is_published) === 0" 
-                                                            class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter" 
+                                                        <span v-else-if="!r.is_published || Number(r.is_published) === 0"
+                                                            class="inline-flex items-center text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter"
                                                             title="Rata emessa contabilmente ma attualmente nascosta ai condòmini">
                                                             <Lock class="w-2.5 h-2.5 mr-1" /> Silenziosa
                                                         </span>
 
-                                                        <span v-else 
+                                                        <span v-else
                                                             class="inline-flex items-center text-[9px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-1.5 py-0.5 rounded w-fit uppercase tracking-tighter">
                                                             <CheckCircle2 class="w-2.5 h-2.5 mr-1" /> Emessa
                                                         </span>
                                                     </template>
 
-                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0" 
+                                                    <span v-if="r.scaduta && parseResiduoQuota(r.residuo) > 0"
                                                         class="text-[9px] text-red-500 font-bold uppercase flex items-center bg-red-50 border border-red-100 w-fit px-1.5 py-0.5 rounded tracking-tighter">
                                                         <AlertCircle class="w-2.5 h-2.5 mr-1"/> Scaduta
                                                     </span>
@@ -803,12 +802,12 @@ onMounted(async () => {
                                         </td>
                                         <td class="p-3 align-top">
                                             <div class="text-xs font-bold text-gray-800 mb-0.5">{{ r.descrizione }}</div>
-    
+
                                             <div class="text-[11px] text-blue-600 font-medium flex items-center gap-1 max-w-[200px]" :title="r.intestatari_full || r.intestatario">
-                                                <User class="w-3 h-3 opacity-70 shrink-0"/> 
+                                                <User class="w-3 h-3 opacity-70 shrink-0"/>
                                                 <span class="truncate cursor-help">{{ r.intestatario }}</span>
                                             </div>
-                                            
+
                                             <div class="text-[10px] text-gray-400 mt-0.5 flex flex-wrap items-center gap-1">
                                                 <span>{{ r.gestione }}</span>
                                                 <div v-if="r.dettaglio_quote && r.dettaglio_quote.length > 0">
@@ -817,7 +816,7 @@ onMounted(async () => {
                                                             <TooltipTrigger as-child>
                                                                 <div class="ml-1 inline-flex items-center cursor-help"><Info class="w-3 h-3 text-blue-400" /></div>
                                                             </TooltipTrigger>
-                                                            
+
                                                             <TooltipContent side="bottom" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-2xl rounded-lg z-[100]">
                                                                 <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 text-center">
                                                                     <span v-if="parseResiduoQuota(r.residuo) < 0">Dettaglio Credito</span>
@@ -827,20 +826,20 @@ onMounted(async () => {
                                                                     <li v-for="(dett, idx) in r.dettaglio_quote" :key="idx" class="text-[11px]">
                                                                         <div class="font-bold text-white mb-1.5 pb-0.5 border-b border-slate-700/50 flex items-center justify-between">
                                                                             <div class="flex items-center gap-1.5">
-                                                                                <Building class="w-3 h-3 text-slate-500"/> 
+                                                                                <Building class="w-3 h-3 text-slate-500"/>
                                                                                 <span>{{ dett.unita }}</span>
                                                                             </div>
-                                                                            
+
                                                                             <div class="text-[10px] text-blue-300 flex items-center justify-end gap-1 max-w-[150px]" :title="dett.anagrafica">
-                                                                                <User class="w-2.5 h-2.5 opacity-70 shrink-0"/> 
+                                                                                <User class="w-2.5 h-2.5 opacity-70 shrink-0"/>
                                                                                 <span class="truncate">{{ dett.anagrafica }}</span>
-                                                                                
+
                                                                                 <span v-if="dett.ruolo" class="ml-0.5 bg-blue-950 text-blue-200 text-[8px] font-black px-1.5 py-0.5 rounded border border-blue-800 leading-none shrink-0" :title="dett.ruolo === 'P' ? 'Proprietario' : (dett.ruolo === 'I' ? 'Inquilino' : 'Usufruttuario')">
                                                                                     {{ dett.ruolo }}
                                                                                 </span>
                                                                             </div>
                                                                         </div>
-                                                                        
+
                                                                         <div>
                                                                             <div class="flex justify-between items-center pl-2 mb-1">
                                                                                 <span class="text-slate-400">Quota rata:</span>
@@ -868,7 +867,7 @@ onMounted(async () => {
                                                 <span v-else>• {{ r.unita }}</span>
                                             </div>
                                         </td>
-                                        
+
                                         <td class="p-3 text-right align-top">
                                             <template v-if="hasSaldoMisto(r)">
                                                 <div class="flex flex-col items-end">
@@ -881,7 +880,7 @@ onMounted(async () => {
                                                     </div>
                                                 </div>
                                             </template>
-                                            
+
                                             <template v-else>
                                                 <div v-if="parseResiduoQuota(r.residuo) < 0" class="flex flex-col items-end pt-1">
                                                     <span class="text-sm font-bold text-emerald-600">{{ euro(r.residuo) }}</span>
@@ -889,18 +888,18 @@ onMounted(async () => {
                                                         {{ isRataZero(r) ? 'CREDITO PREGRESSO' : 'CREDITO' }}
                                                     </span>
                                                 </div>
-                                                
+
                                                 <div v-else class="flex flex-col items-end pt-1">
                                                     <span class="text-sm" :class="isRataZero(r) ? 'font-bold text-red-600' : 'font-semibold text-slate-700'">
                                                         {{ euro(r.residuo) }}
                                                     </span>
-                                                    
+
                                                     <div v-if="isRataZero(r) && parseResiduoQuota(r.residuo) > 0" class="mt-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200">
                                                             DEBITO PREGRESSO
                                                         </span>
                                                     </div>
-                                                    
+
                                                     <div v-if="parseResiduoQuota(r.residuo) > 0 && parseResiduoQuota(r.residuo) < r.importo_totale && !isRataZero(r)" class="mt-1">
                                                         <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-200" :title="'Importo originale: ' + euro(r.importo_totale)">
                                                             <RotateCcw class="w-2.5 h-2.5 mr-1" /> PARZIALE
@@ -910,27 +909,27 @@ onMounted(async () => {
                                             </template>
                                         </td>
                                         <td class="p-3 pr-4 text-right align-top w-[140px]">
-                                            <MoneyInput 
-                                                v-if="parseResiduoQuota(r.residuo) > 0" 
+                                            <MoneyInput
+                                                v-if="parseResiduoQuota(r.residuo) > 0"
                                                 :id="'rata_' + r.id"
-                                                :key="'input_' + r.id + '_' + mode + '_' + r.da_pagare" 
-                                                v-model="r.da_pagare" 
-                                                @update:modelValue="handleManualChange(r, $event)" 
-                                                :disabled="mode === 'auto'" 
+                                                :key="'input_' + r.id + '_' + mode + '_' + r.da_pagare"
+                                                v-model="r.da_pagare"
+                                                @update:modelValue="handleManualChange(r, $event)"
+                                                :disabled="mode === 'auto'"
                                                 :money-options="moneyOptions"
                                                 :lazy="false"
-                                                class="text-right font-bold h-8 text-sm transition-all rounded-md border px-2 py-1 w-full outline-none focus:ring-2 focus:ring-primary/20" 
+                                                class="text-right font-bold h-8 text-sm transition-all rounded-md border px-2 py-1 w-full outline-none focus:ring-2 focus:ring-primary/20"
                                                 :class="[
                                                     r.da_pagare > 0 ? 'border-emerald-500 bg-white ring-1 ring-emerald-500/20 text-emerald-700' : 'border-slate-200 bg-transparent hover:border-slate-300 text-slate-800',
                                                     mode === 'auto' ? 'opacity-70 cursor-not-allowed bg-slate-50' : 'bg-white'
-                                                ]" 
-                                                placeholder="0,00" 
+                                                ]"
+                                                placeholder="0,00"
                                             />
-                                            
+
                                             <div v-else-if="parseResiduoQuota(r.residuo) < 0" class="flex justify-end h-8 items-center">
-                                                <Button 
-                                                    size="sm" 
-                                                    variant="outline" 
+                                                <Button
+                                                    size="sm"
+                                                    variant="outline"
                                                     @click="toggleCredito(r)"
                                                     class="h-7 px-2 text-[10px] font-bold tracking-tight uppercase transition-all"
                                                     :class="r.selezionata ? 'bg-emerald-100 text-emerald-700 border-emerald-300 hover:bg-emerald-200' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'"
@@ -978,7 +977,7 @@ onMounted(async () => {
                                 <div v-for="riga in previewContabile.righe" :key="riga.id" class="flex justify-between items-start text-xs border-b border-slate-800 pb-2 last:border-0 last:pb-0">
                                     <div class="flex-1 mr-4">
                                         <div class="font-medium text-slate-200">{{ riga.descrizione }}</div>
-                                        
+
                                         <div v-if="riga.status === 'PARZIALE'" class="mt-0.5 text-amber-500 text-[10px] font-bold">
                                             Resta da pagare: {{ euro(riga.residuo_futuro) }}
                                         </div>
@@ -986,12 +985,12 @@ onMounted(async () => {
                                             Credito rimanente nel salvadanaio: {{ euro(riga.residuo_futuro) }}
                                         </div>
                                     </div>
-                                    
+
                                     <div class="text-right shrink-0">
                                         <div class="font-bold" :class="riga.isCredito ? 'text-blue-400' : 'text-white'">
                                             {{ euro(riga.pagato) }}
                                         </div>
-                                        
+
                                         <span v-if="riga.status === 'SALDATA'" class="text-[9px] text-emerald-500 uppercase font-bold tracking-wider">Saldata</span>
                                         <span v-else-if="riga.status === 'ESAURITO'" class="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Esaurito</span>
                                         <span v-else-if="riga.status === 'CREDITO_USATO'" class="text-[9px] text-blue-400 uppercase font-bold tracking-wider">Usato parzialmente</span>

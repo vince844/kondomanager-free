@@ -8,13 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import MoneyInput from '@/components/MoneyInput.vue';
-import ConfirmDialog from '@/components/ConfirmDialog.vue';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
-    CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
-    AlertOctagon, TriangleAlert, Lock, ChevronDown,
-    Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
+    CheckCircle, Briefcase, FileText, Wallet,
+    AlertOctagon, TriangleAlert, Lock,
+    Save, BadgeAlert,
     Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
@@ -22,7 +20,6 @@ import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
-import axios from 'axios';
 
 // ---------------------------------------------------------------------------
 // Interfaces & Props
@@ -72,27 +69,6 @@ interface Banca {
     saldo_attuale: number;
 }
 
-interface Pendenza {
-    id: number;
-    tipo_documento: string;
-    numero_documento: string;
-    data_documento: string;
-    data_scadenza?: string;
-    data_scadenza_fmt?: string;
-    importo_lordo: number;
-    netto_a_pagare: number;
-    residuo: number;
-    stato_pagamento: string;
-    is_scaduta: boolean;
-    is_nota_credito: boolean;
-    gestione_id?: number;
-    descrizione_righe?: string;
-    stato_approvazione: string;
-    // UI state
-    selezionata?: boolean;
-    importo_allocato?: number;
-    tipo_allocazione?: 'pagamento' | 'compensazione';
-}
 interface PagamentoFornitore {
     id: number;
     fornitore: { id: number, ragione_sociale: string };
@@ -185,12 +161,6 @@ const allocazioniInconsistentiMsg = ref('');
 const showGenericErrorModal = ref(false);
 const genericErrorMsg = ref('');
 
-// --- Ratifica Sforo (inline in PagamentoNew) ---
-const showApprovaSforoModal = ref(false);
-const sforoTarget = ref<Pendenza | null>(null);
-const noteApprovazioneInline = ref('');
-
-const fiscalSentinelExpanded = ref(false);
 const selectedFornitore = computed(() => props.fornitori?.find(f => f.id === form.fornitore_id));
 
 // Metodi pagamento disponibili (porta aperta per futuri)
@@ -369,7 +339,7 @@ const transactionStatus = computed(() => {
     if (!form.conto_corrente_id) return 'SAFE';
     const b = bancheNormalizzate.value.find(b => b.id === form.conto_corrente_id);
     if (!b) return 'SAFE';
-    
+
     const postCents = b.saldo_attuale_cents - form.importo_lordo_cents;
     if (postCents < 0) return 'WARNING_CASH';
     return 'SAFE';
@@ -464,6 +434,9 @@ const pageGuides: never[] = [];
                                                 <div class="flex items-center gap-2 mt-0.5">
                                                     <span v-if="piva" class="text-[10px] text-slate-500 font-medium">P.IVA: {{ piva }}</span>
                                                     <span v-else-if="codice_fiscale" class="text-[10px] text-slate-500 font-medium">C.F.: {{ codice_fiscale }}</span>
+                                                    <span v-if="soggetto_ritenuta" class="text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none">
+                                                        Ritenuta
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -471,7 +444,10 @@ const pageGuides: never[] = [];
                                     <template #selected-option="{ ragione_sociale, soggetto_ritenuta }">
                                         <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
                                             <Briefcase class="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                            <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ form.fornitore_id ? props.fornitori.find(f => f.id === form.fornitore_id)?.ragione_sociale : '' }}</span>
+                                            <span class="font-semibold text-sm truncate text-slate-800 dark:text-slate-200">{{ ragione_sociale }}</span>
+                                            <span v-if="soggetto_ritenuta" class="ml-auto text-[8px] font-black uppercase tracking-wider text-amber-600 border border-amber-200 bg-amber-50 rounded px-1.5 py-0.5 leading-none shrink-0">
+                                                Ritenuta
+                                            </span>
                                         </div>
                                     </template>
                                 </v-select>

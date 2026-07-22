@@ -1,10 +1,10 @@
 <script setup lang="ts">
 
 import { computed } from "vue";
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
-import DataTable from '@/components/gestionale/movimenti/incassi/DataTable.vue'; 
+import DataTable from '@/components/gestionale/movimenti/incassi/DataTable.vue';
 import { createColumns } from '@/components/gestionale/movimenti/incassi/columns';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -99,7 +99,7 @@ const pageGuides = [
               </div>
 
               <!-- Card: Stornati (toggle filtro) -->
-              <button 
+              <button
                 @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id, stato: filters.stato === 'stornato' ? undefined : 'stornato' }), { preserveState: true })"
                 class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 transition-all text-left outline-none hover:opacity-100 hover:border-rose-300 hover:ring-2 hover:ring-rose-100 cursor-pointer"
                 :class="filters.stato === 'stornato' ? 'ring-2 ring-rose-500 border-rose-500 opacity-100' : 'opacity-80'"

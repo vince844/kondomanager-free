@@ -14,6 +14,8 @@ interface DataTableToolbarProps {
   table: Table<Fornitore>
 }
 
+defineProps<DataTableToolbarProps>();
+
 const ragioneSocialeFilter = ref('')
 const { hasPermission, generateRoute } = usePermission();
 
@@ -50,13 +52,13 @@ watchDebounced(
     </div>
 
     <!-- Right Section: Button (force it to the right) -->
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_USERS])"
-      :href="route(generateRoute('fornitori.create'))" 
+      :href="route(generateRoute('fornitori.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>Crea fornitori</span>
     </Link>
 

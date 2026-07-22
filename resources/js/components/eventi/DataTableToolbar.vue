@@ -12,7 +12,7 @@ import { useCategorieEventi } from '@/composables/useCategorieEventi';
 import DataTableFacetedFilter from '@/components/eventi/DataTableFacetedFilter.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RangeCalendar } from '@/components/ui/range-calendar';
-import { DateRange, DateValue, getLocalTimeZone, DateFormatter } from '@internationalized/date';
+import { getLocalTimeZone, DateFormatter } from '@internationalized/date';
 import type { Table } from '@tanstack/vue-table';
 import type { Evento } from '@/types/eventi';
 
@@ -21,7 +21,7 @@ const { generateRoute, hasPermission } = usePermission()
 const { categorie, isLoading, loadCategorie } = useCategorieEventi()
 const { table } = defineProps<{ table: Table<Evento> }>()
 const nameFilter = ref<string>('')
-const dateRange = ref<DateRange<DateValue>>({ start: undefined, end: undefined })
+const dateRange = ref<any>({ start: undefined, end: undefined })
 const categoriaColumn = table.getColumn('categoria')
 
 const categoriaFilter = computed(() => {
@@ -33,11 +33,11 @@ const handleOpenDropdown = () => {
   loadCategorie()
 }
 
-const convertCalendarDateToString = (date?: DateValue): string | undefined => {
+const convertCalendarDateToString = (date: any): string | undefined => {
   // Defensive: date can be undefined
   if (!date) return undefined
   // Convert to JS Date using getLocalTimeZone
-  const jsDate = date.toDate(getLocalTimeZone())
+  const jsDate = typeof date.toDate === 'function' ? date.toDate(getLocalTimeZone()) : new Date(date)
   return jsDate.toISOString().split('T')[0]
 }
 
@@ -110,8 +110,8 @@ const clearDateFilter = () => {
 }
 
 const formattedRange = computed(() => {
-  const startDate = dateRange.value.start?.toDate(getLocalTimeZone())
-  const endDate = dateRange.value.end?.toDate(getLocalTimeZone())
+  const startDate = dateRange.value.start?.toDate ? dateRange.value.start.toDate(getLocalTimeZone()) : (dateRange.value.start ? new Date(dateRange.value.start) : undefined)
+  const endDate = dateRange.value.end?.toDate ? dateRange.value.end.toDate(getLocalTimeZone()) : (dateRange.value.end ? new Date(dateRange.value.end) : undefined)
 
   if (startDate && endDate) {
     return `${df.format(startDate)} - ${df.format(endDate)}`
@@ -189,8 +189,8 @@ const formattedRange = computed(() => {
       :href="route(generateRoute('eventi.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-4 h-4" />
-      <span>Crea</span>
+      <Plus class="w-3.5 h-3.5 text-green-500" />
+      <span>Crea scandenza</span>
     </Link>
   </div>
 </template>

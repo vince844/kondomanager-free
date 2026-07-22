@@ -86,17 +86,29 @@ const pageGuides = [
 
 const oggi = new Date().toISOString().slice(0, 10);
 
+interface FormGiroconto {
+    gestione_id: number | null;
+    esercizio_id: number | null;
+    cassa_origine_id: number | null;
+    cassa_destinazione_id: number | null;
+    data_operazione: string;
+    causale: string;
+    importo: number;
+    fattura_copertura_id: number | null;
+    giroconto_non_ammesso?: string;
+}
+
 // NB: il campo NON può chiamarsi `data` — useForm di Inertia espone già un metodo
 // form.data(), la collisione impedisce al v-model di legarsi e il campo resta vuoto.
-const form = useForm({
-    gestione_id: null as number | null,
-    esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null as number | null,
-    cassa_origine_id: null as number | null,
-    cassa_destinazione_id: null as number | null,
+const form = useForm<FormGiroconto>({
+    gestione_id: null,
+    esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null,
+    cassa_origine_id: null,
+    cassa_destinazione_id: null,
     data_operazione: oggi,
     causale: '',
     importo: 0,
-    fattura_copertura_id: null as number | null,
+    fattura_copertura_id: null,
 });
 
 // Le gestioni disponibili dipendono dall'esercizio scelto (stessa regola del form fattura).

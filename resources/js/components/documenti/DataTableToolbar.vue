@@ -26,7 +26,7 @@ const { table } = defineProps<{
 
 // Read current filters from column state
 const categoriaColumn = table.getColumn('categoria');
-const condominioColumn = table.getColumn('condomini'); 
+const condominioColumn = table.getColumn('condomini');
 
 // LOGICA DROPDOWN CONDOMINI
 const { condomini, isLoading: isLoadingCondomini, loadCondomini } = useCondomini();
@@ -92,7 +92,7 @@ const clearAllFilters = () => {
 
 <template>
 <div class="flex flex-col gap-2 w-full mb-3 lg:flex-row lg:items-center lg:justify-between">
-  
+
   <div class="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-4">
     <Input
       :placeholder="trans('documenti.table.filter_by')"
@@ -137,22 +137,22 @@ const clearAllFilters = () => {
   </div>
 
   <div class="flex items-center space-x-2 mt-2 lg:mt-0 ml-auto">
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
-      :href="route(generateRoute('documenti.create'))" 
+      :href="route(generateRoute('documenti.create'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>{{ trans('documenti.actions.new_document') }}</span>
     </Link>
 
-    <Link 
+    <Link
       as="button"
-      :href="route(generateRoute('categorie.index'))" 
+      :href="route(generateRoute('categorie.index'))"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <List class="w-3.5 h-3.5" />
+      <List class="w-3.5 h-3.5 text-blue-400" />
       <span>{{ trans('documenti.actions.list_categories') }}</span>
     </Link>
   </div>

@@ -66,14 +66,26 @@ const pageGuides = [
 
 const oggi = new Date().toISOString().slice(0, 10);
 
+interface FormRegolazioneImmediata {
+    esercizio_id: number | null;
+    gestione_id: number | null;
+    conto_id: number | null;
+    cassa_id: number | null;
+    fornitore_id: number | null;
+    data_operazione: string;
+    causale: string;
+    importo: number;
+    regolazione_non_ammessa?: string;
+}
+
 // NB: il campo NON può chiamarsi `data` — useForm di Inertia espone già un metodo
 // form.data(), la collisione impedisce al v-model di legarsi e il campo resta vuoto.
-const form = useForm({
-    esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null as number | null,
-    gestione_id: null as number | null,
-    conto_id: null as number | null,
-    cassa_id: props.casse.length === 1 ? props.casse[0].id : null as number | null,
-    fornitore_id: null as number | null,
+const form = useForm<FormRegolazioneImmediata>({
+    esercizio_id: props.esercizi.length === 1 ? props.esercizi[0].id : null,
+    gestione_id: null,
+    conto_id: null,
+    cassa_id: props.casse.length === 1 ? props.casse[0].id : null,
+    fornitore_id: null,
     data_operazione: oggi,
     causale: '',
     importo: 0,

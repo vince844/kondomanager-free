@@ -4,13 +4,13 @@ import { ref, computed } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
-import {  Search, Plus } from 'lucide-vue-next';
+import { Search, Plus, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
 import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 
-const props = defineProps<{ table: Table<any> }>();
+defineProps<{ table: Table<any> }>();
 const page = usePage<{ condominio: Building }>();
 const { generateRoute } = usePermission();
 const condominioId = computed(() => page.props.condominio.id);
@@ -58,6 +58,18 @@ const resetFilter = () => { globalFilter.value = '' }
           class="pl-9 h-8 w-[200px] lg:w-[250px]"
         />
       </div>
+
+      <!-- Reset -->
+      <Button
+        v-if="isFiltered"
+        variant="ghost"
+        @click="resetFilter"
+        class="h-8 px-2 lg:px-3 text-slate-500 hover:text-slate-700"
+      >
+        <X class="h-4 w-4 mr-1 lg:mr-2" />
+        <span class="hidden lg:inline">Azzera filtri</span>
+        <span class="inline lg:hidden">Azzera</span>
+      </Button>
 
     </div>
 

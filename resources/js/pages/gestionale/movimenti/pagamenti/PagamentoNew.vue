@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
     Banknote, CreditCard, Send, ShieldCheck, ShieldAlert, AlertTriangle,
     CheckCircle, Briefcase, FileText, Zap, ArrowRightLeft, Wallet,
-    AlertOctagon, TriangleAlert, Lock, ChevronDown,
+    AlertOctagon, TriangleAlert, Lock,
     Sparkles, Receipt, Save, Clock, BadgeAlert, Search, X, Check, Stamp,
     Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
@@ -184,7 +184,6 @@ const showApprovaSforoModal = ref(false);
 const sforoTarget = ref<Pendenza | null>(null);
 const noteApprovazioneInline = ref('');
 
-const fiscalSentinelExpanded = ref(false);
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
 
 // Metodi pagamento disponibili (porta aperta per futuri)
@@ -219,10 +218,6 @@ const totaleAllocatoCompensazione = computed(() =>
 
 const bonificoEffettivo = computed(() =>
     Math.max(0, totaleAllocatoPagamento.value - totaleAllocatoCompensazione.value)
-);
-
-const commissioniCents = computed(() =>
-    Math.round((Number(form.importo_commissioni_cents) || 0) * 100)
 );
 
 const uscitaCassaTotale = computed(() =>
@@ -265,14 +260,6 @@ const ibanDiscrepanza = computed(() => {
     const anagraficaClean = (selectedFornitore.value.iban_principale || '').replace(/\s/g, '').toUpperCase();
     return inputClean !== anagraficaClean && inputClean.length >= 15;
 });
-
-const fatturePendentiSoloFT = computed(() =>
-    pendenze.value.filter(p => !p.is_nota_credito)
-);
-
-const noteCreditoCompensabili = computed(() =>
-    pendenze.value.filter(p => p.is_nota_credito)
-);
 
 const documentiSelezionati = computed(() =>
     pendenze.value.filter(p => p.selezionata).length
@@ -348,13 +335,10 @@ const applyNetting = () => {
         return (a.data_scadenza || '').localeCompare(b.data_scadenza || '');
     });
 
-    let creditoDisponibile = 0;
-
     // 1. Attiva tutte le NC
     ncs.forEach(nc => {
         nc.selezionata = true;
         nc.importo_allocato = Math.abs(nc.residuo) / 100;
-        creditoDisponibile += nc.importo_allocato;
     });
 
     // 2. Distribuisci il credito sulle FT più vecchie, poi il resto va in pagamento cash
@@ -541,7 +525,7 @@ watch(() => form.fornitore_id, async (newVal) => {
             form.iban_confermato_manualmente = false;
             form.conferma_duplicato_verificato = false;
         }
-        
+
         if (props.preselected_fattura_id) {
             const p = pendenze.value.find((x: any) => x.id === props.preselected_fattura_id);
             if (p && !p.selezionata) {
@@ -592,7 +576,7 @@ const pageGuides = [
                 :guides="pageGuides"
                 :breadcrumbs="(breadcrumbs as any)"
                 :video-url="null"
-                :back-url="route(generateRoute('gestionale.fatture.index'), { condominio: props.condominio.id })"
+                :back-url="route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: props.condominio.id })"
                 back-text="Indietro"
             />
 

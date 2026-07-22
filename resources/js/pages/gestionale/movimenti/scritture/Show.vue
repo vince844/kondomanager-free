@@ -12,7 +12,7 @@ import { usePermission } from '@/composables/permissions';
 import {
     BookOpen, ArrowLeft, Calendar, Building2, Landmark, FileText,
     CircleCheckBig, CircleX, RotateCcw, CreditCard, Banknote,
-    ArrowUpRight, ArrowDownLeft, Link2, Shield, Info, ChevronRight,
+    ArrowUpRight, Shield, Info, ChevronRight,
     Hash, Clock, Layers, ShieldCheck, Repeat2
 } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';

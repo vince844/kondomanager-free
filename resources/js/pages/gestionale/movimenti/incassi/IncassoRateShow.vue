@@ -1,16 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import type { BreadcrumbItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw, AlertTriangle } from "lucide-vue-next";
+import { ArrowLeft, Landmark, Calendar, User, FileText, Banknote, Coins, RotateCcw } from "lucide-vue-next";
 
 const props = defineProps<{
     condominio: any;
@@ -22,7 +21,6 @@ const props = defineProps<{
     utenteStornatore: string | null;
 }>();
 
-const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
@@ -38,10 +36,6 @@ const statoVariant = computed(() => {
         case 'stornato': return 'bg-rose-100 text-rose-800 border-rose-300 line-through';
         default: return 'bg-slate-100 text-slate-600 border-slate-200';
     }
-});
-
-const totaleIncassato = computed(() => {
-    return props.incassoFormatted.importo_totale_raw * 100; // cents
 });
 
 // Il totale versato da solo non basta a capire se una rata è stata saldata
@@ -63,10 +57,10 @@ const modalitaVersamento = computed(() => {
     <Head :title="`Dettaglio Incasso ${props.incasso.numero_protocollo}`" />
 
     <GestionaleLayout>
-        
+
         <div class="px-6 py-8 space-y-6">
-            <PageHeaderGuide 
-                pageTitle="Dettaglio Incasso" 
+            <PageHeaderGuide
+                pageTitle="Dettaglio Incasso"
                 :pageSubtitle="`Protocollo ${props.incasso.numero_protocollo} — Registrato da ${utenteCreatore || 'Sistema'}`"
                 icon="Banknote"
                 :guides="[]"
@@ -75,8 +69,8 @@ const modalitaVersamento = computed(() => {
                 :condomini="(props.condomini as any)"
             >
             <template #actions>
-                <Button 
-                    variant="outline" 
+                <Button
+                    variant="outline"
                     @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominio.id }))"
                     class="h-9 gap-2 shadow-sm font-medium"
                 >
@@ -117,7 +111,7 @@ const modalitaVersamento = computed(() => {
 
             <!-- HEADER INCASSO -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
+
                 <!-- Dati Principali -->
                 <Card class="md:col-span-2 shadow-sm border-slate-200 dark:border-slate-800">
                     <CardHeader class="pb-4">
@@ -163,7 +157,7 @@ const modalitaVersamento = computed(() => {
                                 </p>
                             </div>
                         </div>
-                        
+
                         <div class="mt-6 flex flex-wrap gap-2">
                             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider border shadow-sm" :class="statoVariant">
                                 <FileText class="w-3.5 h-3.5" />
@@ -197,7 +191,7 @@ const modalitaVersamento = computed(() => {
 
             <!-- RIGHE FATTURA E DOCUMENTI -->
             <div class="grid grid-cols-1 gap-6">
-                
+
                 <Card class="shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden">
                     <CardHeader class="bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
                         <CardTitle class="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">

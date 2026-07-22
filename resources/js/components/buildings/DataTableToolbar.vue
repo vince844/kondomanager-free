@@ -15,9 +15,11 @@ interface DataTableToolbarProps {
   table: Table<Building>
 }
 
+defineProps<DataTableToolbarProps>();
+
 const nameFilter = ref('')
 
-const { generateRoute, hasPermission } = usePermission();
+const { hasPermission } = usePermission();
 
 // Debounce search input (300ms delay)
 watchDebounced(
@@ -28,7 +30,7 @@ watchDebounced(
       route('condomini.index'),
       newValue
         ? { nome: newValue, page: 1 }
-        : { page: 1 }, 
+        : { page: 1 },
       {
         preserveState: true,
         replace: true,
@@ -53,15 +55,15 @@ watchDebounced(
       </div>
     </div>
 
-    <Link 
+    <Link
       as="button"
       v-if="hasPermission([Permission.CREATE_CONDOMINI])"
-      :href="route('condomini.create')" 
+      :href="route('condomini.create')"
       class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"
     >
-      <Plus class="w-3.5 h-3.5" />
+      <Plus class="w-3.5 h-3.5 text-green-500" />
       <span>{{ trans('condomini.actions.new_building') }}</span>
     </Link>
-    
+
   </div>
 </template>
