@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Important — This update changes the database: a migration adds a field to the chart of accounts that explicitly records whether an entry is a chapter (a grouping container, with no budget of its own) or a real expense entry. No existing account is classified differently from how it appears today: an entry that already has an allocation table attached stays protected even at zero budget. Run the migrations after updating.",
+        "Fixed a defect where an expense entry not yet budgeted for the year (zero amount, but with a real allocation table and apportionment percentages already attached) could silently lose that data just by reopening and re-saving the edit modal without changing anything. The cause was that the system guessed whether an entry was a chapter from its amount, instead of remembering the choice explicitly made at creation. It is now a saved fact, never a guess again.",
+        "Added a double server-side safeguard: converting an entry with real data attached into a chapter now requires an explicit confirmation, otherwise the save is rejected with a warning instead of silently deleting anything.",
+        "Also fixed a second, related defect: a sub-account already nested under a chapter could reappear in the dropdown as a selectable parent chapter for a new entry. A sub-account is now never offered as a parent, and creating or editing an entry as both a chapter and a sub-account at the same time is always rejected."
+    ]
+}

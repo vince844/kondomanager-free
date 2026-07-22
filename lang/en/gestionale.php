@@ -1145,6 +1145,9 @@ return [
                         'committed_already_text' => 'This expense has already been allocated in an installment plan for a total amount of :amount. To maintain accounting consistency, you cannot reduce the total below this value.',
                         'committed_how_to_fix' => 'If you need a lower value, go to the "Installment plans" module, remove the share assigned to this entry, and then return to edit here.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'This entry already has an allocation table and apportionment percentages attached. Converting it into a chapter will delete them. Continue?',
+                    ],
                     'actions' => [
                         'saving' => 'Saving...',
                         'save_changes' => 'Save changes',

@@ -56,6 +56,10 @@ class UpdateContoRequest extends FormRequest
             'percentuale_proprietario' => 'nullable|numeric|min:0|max:100',
             'percentuale_inquilino' => 'nullable|numeric|min:0|max:100',
             'percentuale_usufruttuario' => 'nullable|numeric|min:0|max:100',
+            // Conferma esplicita, distinta da isCapitolo: richiesta solo quando la
+            // conversione in capitolo cancellerebbe una tabella millesimale reale
+            // già collegata (vedi ContoController::update()).
+            'confermaConversioneCapitolo' => 'nullable|boolean',
         ];
 
         if (!$this->boolean('isCapitolo')) {
@@ -100,6 +104,20 @@ class UpdateContoRequest extends FormRequest
                 $validator->errors()->add(
                     'parent_id',
                     'Un conto non può essere il padre di sé stesso'
+                );
+            }
+
+            // Un capitolo non può avere un padre proprio: le regole "primo livello"
+            // più sotto assumono che un capitolo scelto come padre non abbia mai un
+            // parent_id — un conto isCapitolo=true e isSottoConto=true insieme
+            // violerebbe quell'invariante. È anche la guardia che impedisce al
+            // backfill della migrazione (passo 3, "chi ha sottoconti è capitolo")
+            // di restare l'unica fonte di dati storici incoerenti: da qui in avanti,
+            // nessuna nuova modifica può ricrearli.
+            if ($this->boolean('isCapitolo') && $this->boolean('isSottoConto')) {
+                $validator->errors()->add(
+                    'isCapitolo',
+                    'Una voce non può essere contemporaneamente un capitolo e un sotto-conto'
                 );
             }
 

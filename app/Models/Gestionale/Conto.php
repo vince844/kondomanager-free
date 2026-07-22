@@ -21,6 +21,7 @@ class Conto extends Model
         'conto_contabile_id',
         'default_fornitore_id',
         'parent_id',
+        'is_capitolo', // fatto esplicito, mai indovinato da importo/parent_id — vedi migrazione add_is_capitolo
         'codice',
         'nome',
         'descrizione',
@@ -38,6 +39,7 @@ class Conto extends Model
 
     protected $casts = [
         'is_tecnico' => 'boolean',
+        'is_capitolo' => 'boolean',
     ];
     
     /** * =========================================================================

@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Attenzione — Questo aggiornamento modifica il database: una migrazione aggiunge al piano dei conti un nuovo campo che ricorda esplicitamente se una voce è un capitolo (un contenitore, senza budget proprio) oppure una voce di spesa vera. Nessun conto esistente viene classificato in modo diverso da come appare oggi: chi ha già una tabella millesimale collegata resta protetto anche a importo zero. Esegui le migrazioni dopo l'aggiornamento.",
+        "Corretto un difetto per cui una voce di spesa non ancora budgettizzata (importo a zero, ma con tabella millesimale e ripartizioni già collegate) poteva perdere silenziosamente quei dati riaprendo e risalvando la modale di modifica senza cambiare nulla. La causa era che il sistema indovinava se una voce fosse un capitolo dal suo importo, invece di ricordare la scelta fatta esplicitamente in creazione. Ora è un fatto salvato, mai più un'euristica.",
+        "Aggiunta una doppia protezione lato server: trasformare in capitolo una voce con dati reali collegati richiede ora una conferma esplicita, altrimenti il salvataggio viene rifiutato con un avviso invece di cancellare in silenzio.",
+        "Corretto anche un secondo difetto, imparentato al primo: un sotto-conto già inserito sotto un capitolo poteva ricomparire nel menu a tendina come possibile capitolo padre per una voce nuova. Ora un sotto-conto non è mai proposto come padre, e creare o modificare una voce dichiarandola contemporaneamente capitolo e sotto-conto viene sempre rifiutato."
+    ]
+}

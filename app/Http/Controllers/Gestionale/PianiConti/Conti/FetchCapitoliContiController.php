@@ -36,13 +36,24 @@ class FetchCapitoliContiController extends Controller
             $pianoContoId = $request->input('piano_conto_id');
             $contoId      = $request->input('conto_id');
 
-            // Un "capitolo padre" valido è un conto di PRIMO LIVELLO (parent_id NULL)
-            // e vuoto (importo 0). Un sotto-conto (parent_id valorizzato) non può mai
-            // fare da padre, nemmeno se lasciato a 0: prima la lista si basava solo su
-            // importo == 0, così un sotto-conto a zero veniva scambiato per un capitolo.
+            // Un "capitolo padre" valido è un conto con is_capitolo=true: un fatto
+            // esplicito e persistito, mai più dedotto da importo/parent_id (bug
+            // "voce a zero perde la tabella millesimale" — una voce di spesa non
+            // ancora budgettizzata, importo a zero, veniva scambiata per un
+            // capitolo). Il backfill della migrazione riproduce esattamente il
+            // criterio storico (primo livello + importo 0) per i conti esistenti,
+            // quindi il comportamento osservabile qui non cambia.
+            //
+            // whereNull('parent_id') resta OBBLIGATORIO accanto a is_capitolo:
+            // è la guardia strutturale introdotta dalla beta.16 (commit 073a6885)
+            // contro un sotto-conto già annidato che ricompare come capitolo padre
+            // selezionabile. is_capitolo da solo non la sostituisce — un record con
+            // parent_id valorizzato può avere is_capitolo=true (es. il passo 3 del
+            // backfill della migrazione, "chi ha sottoconti è capitolo", non guarda
+            // il PROPRIO parent_id del record) senza essere un candidato valido.
             $query = Conto::where('piano_conto_id', $pianoContoId)
+                ->where('is_capitolo', true)
                 ->whereNull('parent_id')
-                ->where('importo', 0)
                 ->visibili();  // ← scope: where('is_tecnico', false)
 
             // In modifica (conto_id presente): escludi il conto stesso — così non può

@@ -1145,6 +1145,9 @@ return [
                         'committed_already_text' => 'Questa spesa è già stata allocata in un piano rate per un importo totale di :amount. Per mantenere la coerenza contabile, non puoi ridurre il totale al di sotto di questo valore.',
                         'committed_how_to_fix' => 'Se hai bisogno di un valore inferiore, vai al modulo "Piani rate", rimuovi la quota assegnata a questa voce e poi torna a modificare qui.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'Questa voce ha già una tabella millesimale e delle percentuali di ripartizione collegate. Trasformarla in capitolo le eliminerà. Continuare?',
+                    ],
                     'actions' => [
                         'saving' => 'Salvataggio...',
                         'save_changes' => 'Salva modifiche',

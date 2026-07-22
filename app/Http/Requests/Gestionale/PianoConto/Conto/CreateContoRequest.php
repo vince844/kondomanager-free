@@ -86,6 +86,17 @@ class CreateContoRequest extends FormRequest
     public function withValidator($validator)
     {
         $validator->after(function ($validator) {
+            // Un capitolo non può avere un padre proprio: le regole "primo livello"
+            // più sotto assumono che un capitolo scelto come padre non abbia mai un
+            // parent_id — un conto isCapitolo=true e isSottoConto=true insieme
+            // violerebbe quell'invariante fin dalla creazione.
+            if ($this->boolean('isCapitolo') && $this->boolean('isSottoConto')) {
+                $validator->errors()->add(
+                    'isCapitolo',
+                    'Una voce non può essere contemporaneamente un capitolo e un sotto-conto'
+                );
+            }
+
             // Il capitolo padre deve essere una voce di PRIMO LIVELLO: un sotto-conto
             // non può fare da padre (anche se lasciato a importo 0).
             if ($this->boolean('isSottoConto') && $this->filled('parent_id')) {

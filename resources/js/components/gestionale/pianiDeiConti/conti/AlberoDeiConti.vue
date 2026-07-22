@@ -31,8 +31,11 @@ const hasSottoconti = (conto: Conto) => {
   return conto.sottoconti && conto.sottoconti.length > 0
 }
 
+// Fatto esplicito e persistito lato server — mai indovinato da importo/parent_id
+// (bug "voce a zero perde la tabella millesimale": una voce non ancora
+// budgettizzata, importo a zero, veniva scambiata per un capitolo).
 const isCapitolo = (conto: Conto) => {
-  return conto.parent_id === null && (conto.importo === '€ 0,00' || conto.importo === '0,00' || conto.importo_raw === 0);
+  return !!conto.is_capitolo
 }
 
 const contiOrdinati = computed(() => {

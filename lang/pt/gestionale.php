@@ -1520,6 +1520,9 @@ return [
                         'committed_already_text' => 'Esta despesa já foi alocada num plano de prestações no montante total de :amount. Para manter a coerência contabilística, não pode reduzir o total abaixo deste valor.',
                         'committed_how_to_fix' => 'Se precisar de um valor inferior, vá ao módulo "Planos de prestações", remova a quota atribuída a esta rubrica e depois volte a editar aqui.',
                     ],
+                    'confirm' => [
+                        'convert_to_capitolo_deletes_table' => 'Esta rubrica já tem uma tabela millesimale e percentagens de rateio associadas. Transformá-la em capítulo irá eliminá-las. Continuar?',
+                    ],
                     'actions' => [
                         'saving' => 'A guardar...',
                         'save_changes' => 'Guardar alterações',

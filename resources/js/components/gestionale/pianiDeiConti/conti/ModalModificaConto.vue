@@ -37,6 +37,10 @@ const emit = defineEmits<Emits>()
 
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
+// Confermata esplicitamente dall'admin quando converte in capitolo una voce
+// che ha già una tabella millesimale reale (vedi confirm() nel watch su isCapitolo).
+// Il backend rifiuta la conversione distruttiva senza questo flag.
+const confermaConversioneCapitolo = ref(false)
 
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
 const { euro } = useCurrencyFormatter()
@@ -81,21 +85,12 @@ watch(
   },
 )
 
-const extractNumericValue = (formatted: string): number => {
-  if (!formatted) return 0
-  return Number.parseFloat(formatted.replace('€', '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.')) || 0
-}
-
-const isContoCapitolo = computed(() => {
-  if (!props.conto) return false
-  const importoNumerico = extractNumericValue(props.conto.importo)
-  const hasZeroImporto = importoNumerico === 0
-  const hasSottoconti = (props.conto.sottoconti?.length ?? 0) > 0
-  return (hasZeroImporto && hasSottoconti) || (hasZeroImporto && !props.conto.parent_id)
-})
-
 const isImportoLocked = computed(() => props.conto?.has_rate_emesse === true)
 const hasSottoconti = computed(() => (props.conto?.sottoconti?.length ?? 0) > 0)
+// Ha già una tabella millesimale reale collegata: se true, trasformare questo
+// conto in capitolo cancellerebbe dati veri (tabella + ripartizioni), non un
+// record vuoto — serve conferma esplicita, mai un'eliminazione silenziosa.
+const hasTabellaReale = computed(() => (props.conto?.tabelle_millesimali?.length ?? 0) > 0)
 
 const getPercentualeBySoggetto = (conto: Conto, soggetto: 'proprietario' | 'inquilino' | 'usufruttuario') => {
   const ripartizioni = conto.tabelle_millesimali?.[0]?.ripartizioni || []
@@ -126,12 +121,18 @@ const populateFormFromConto = (newConto: Conto) => {
   form.percentuale_inquilino = getPercentualeBySoggetto(newConto, 'inquilino')
   form.percentuale_usufruttuario = getPercentualeBySoggetto(newConto, 'usufruttuario')
 
-  isCapitolo.value = isContoCapitolo.value
+  // FIX bug "voce a zero perde la tabella millesimale": is_capitolo è un
+  // fatto persistito e scelto esplicitamente in creazione — mai più
+  // indovinato da importo/parent_id. Una voce non ancora budgettizzata
+  // (importo=0) con una tabella millesimale reale non deve mai essere
+  // scambiata per un capitolo solo perché il budget è a zero.
+  isCapitolo.value = !!newConto.is_capitolo
   isSottoConto.value = !!newConto.parent_id
-  form.isCapitolo = isContoCapitolo.value
+  form.isCapitolo = !!newConto.is_capitolo
   form.isSottoConto = !!newConto.parent_id
+  confermaConversioneCapitolo.value = false
 
-  form.importo = !isContoCapitolo.value ? newConto.importo : ''
+  form.importo = !newConto.is_capitolo ? newConto.importo : ''
 }
 
 watch(
@@ -143,7 +144,24 @@ watch(
   { immediate: true },
 )
 
-watch(isCapitolo, (val) => {
+watch(isCapitolo, (val, oldVal) => {
+  // Toggle manuale ON (via Switch) su una voce che ha già una tabella
+  // millesimale reale: è una conversione distruttiva legittima, ma va
+  // confermata esplicitamente — mai silenziosa. Se l'admin annulla, il
+  // toggle torna indietro e non viene inviata alcuna conferma al backend.
+  if (val && !oldVal && hasTabellaReale.value) {
+    const confermato = window.confirm(
+      trans('gestionale.list_pages.piani_conti.show.edit_entry_modal.confirm.convert_to_capitolo_deletes_table'),
+    )
+    if (!confermato) {
+      isCapitolo.value = false
+      return
+    }
+    confermaConversioneCapitolo.value = true
+  } else if (!val) {
+    confermaConversioneCapitolo.value = false
+  }
+
   if (val) {
     isSottoConto.value = false
     form.parent_id = null
@@ -178,6 +196,7 @@ const resetForm = () => {
   form.reset()
   isCapitolo.value = false
   isSottoConto.value = false
+  confermaConversioneCapitolo.value = false
   form.percentuale_proprietario = 100
   form.percentuale_inquilino = 0
   form.percentuale_usufruttuario = 0
@@ -208,6 +227,7 @@ const submit = () => {
       percentuale_proprietario: isCapitolo.value ? null : data.percentuale_proprietario,
       percentuale_inquilino: isCapitolo.value ? null : data.percentuale_inquilino,
       percentuale_usufruttuario: isCapitolo.value ? null : data.percentuale_usufruttuario,
+      confermaConversioneCapitolo: confermaConversioneCapitolo.value,
     }))
     .put(route('admin.gestionale.esercizi.piani-conti.conti.update', routeParams), {
       preserveScroll: true,

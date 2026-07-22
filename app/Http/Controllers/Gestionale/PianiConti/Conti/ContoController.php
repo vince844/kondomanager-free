@@ -43,13 +43,18 @@ class ContoController extends Controller
             $nuovoConto = Conto::create([
                 'piano_conto_id'        => $pianoConto->id,
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
-                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'), 
+                // Fatto esplicito scelto ORA dall'amministratore, persistito subito:
+                // non va più indovinato da importo/parent_id in un secondo momento
+                // (bug "voce a zero perde la tabella millesimale", migrazione
+                // add_is_capitolo_to_conti_table).
+                'is_capitolo'           => $isCapitolo,
+                'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
                 'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
-                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0), 
+                'importo'               => $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0),
                 'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
                 'attivo'                => true,
@@ -122,6 +127,12 @@ class ContoController extends Controller
             $isSottoConto = $data['isSottoConto'] ?? false;
             $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
 
+            // FIX bug "voce a zero perde la tabella millesimale": lo stato
+            // PERSISTITO prima di questo update è l'unica fonte di verità su
+            // se questo conto era già un capitolo. Va letto ORA, prima che
+            // $conto->update() più sotto lo sovrascriva.
+            $eraGiaCapitolo = (bool) $conto->is_capitolo;
+
             // Guard strutturale: un capitolo con sottoconti non può diventare una voce normale
             if ($isCapitolo === false && $conto->sottoconti()->exists()) {
                 throw ValidationException::withMessages([
@@ -164,26 +175,44 @@ class ContoController extends Controller
             // Procediamo con l'aggiornamento dei dati
             $conto->update([
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
+                'is_capitolo'           => $isCapitolo,
                 'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
-                'codice'                => $data['codice'] ?? null, 
+                'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
                 'descrizione'           => $data['descrizione'] ?? null,
                 'tipo'                  => $data['tipo'],
-                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard', 
-                'importo'               => $nuovoImporto, 
-                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null, 
+                'tipo_spesa'            => $data['tipo_spesa'] ?? 'standard',
+                'importo'               => $nuovoImporto,
+                'default_fornitore_id'  => $data['default_fornitore_id'] ?? null,
                 'note'                  => $data['note'] ?? null,
             ]);
 
             // Coerenza dati contabili:
             // - Capitolo => nessuna tabella/ripartizione associata
             // - Voce spesa => almeno una tabella e relative ripartizioni
-            if ($isCapitolo) {
+            //
+            // FIX bug "voce a zero perde la tabella millesimale": il ramo
+            // distruttivo scatta SOLO su una transizione vera (non era
+            // capitolo, ora lo diventa) — mai su un resave a parità di stato,
+            // che prima cancellava tabella/ripartizioni di una voce reale
+            // solo perché isCapitolo veniva (ri)calcolato male a monte.
+            if ($isCapitolo && ! $eraGiaCapitolo) {
                 $contoTabellaIds = DB::table('conto_tabella_millesimale')
                     ->where('conto_id', $conto->id)
                     ->pluck('id');
 
                 if ($contoTabellaIds->isNotEmpty()) {
+                    // Difesa in profondità: c'è REALMENTE qualcosa da perdere.
+                    // Non basta che qualcuno (un frontend, una chiamata diretta)
+                    // dichiari isCapitolo=true — se questo elimina dati veri,
+                    // serve una conferma esplicita e distinta dal solo booleano.
+                    // Mai un'eliminazione silenziosa dedotta da una transizione.
+                    if (empty($data['confermaConversioneCapitolo'])) {
+                        throw ValidationException::withMessages([
+                            'isCapitolo' => "Questa voce ha una tabella millesimale e delle ripartizioni collegate: trasformarla in capitolo le eliminerebbe. Conferma esplicitamente per procedere.",
+                        ]);
+                    }
+
                     DB::table('conto_tabella_ripartizioni')
                         ->whereIn('conto_tabella_millesimale_id', $contoTabellaIds)
                         ->delete();
@@ -192,7 +221,7 @@ class ContoController extends Controller
                         ->where('conto_id', $conto->id)
                         ->delete();
                 }
-            } else {
+            } elseif (! $isCapitolo) {
                 $tabella = Tabella::query()
                     ->where('id', $data['tabella_millesimale_id'])
                     ->where('condominio_id', $condominio->id)
