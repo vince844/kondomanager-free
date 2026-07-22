@@ -7,6 +7,52 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.21] - Ritenuta d'Acconto: Fase 1 (Anagrafica e Calcolo)
+
+Nasce da un fastidio piccolo (l'aliquota IVA proposta in fattura, fissa al 22%, spesso sbagliata) che ha portato a scoprire un problema più grande: la ritenuta d'acconto è oggi un interruttore fisso sul fornitore (`soggetto_ritenuta` + una sola percentuale), ma un fornitore reale può emettere sia fatture soggette sia fatture che non lo sono — l'esempio guida è un fornitore di estintori: la manutenzione è soggetta a ritenuta, la vendita dell'estintore no. Questa beta implementa la **Fase 1** di `docs/design/f24_ritenute_design.md`: anagrafica e calcolo, **zero impatto sul libro giornale** — il momento in cui la ritenuta entra in contabilità resta quello di oggi (alla registrazione). Le Fasi 2 (spostamento del fatto generatore al pagamento — "fase critica" nel design) e 3 (deleghe F24) restano deliberatamente fuori da questo rilascio.
+
+Il documento di design è stato scritto scandagliando normativa e prassi condominiale, ma senza revisione di un commercialista: gli amministratori beta tester sono il collaudo che manca.
+
+**⚠ MIGRAZIONE DATABASE**: due migrazioni, additive e non distruttive. `fornitori` guadagna il regime fiscale (`tipo_ritenuta`, `natura_percipiente`, `residente_fiscale`, `regime_forfetario` con data e riferimento dichiarazione, `provvigioni_base_ridotta`) con un backfill euristico dai campi legacy (`perc_ritenuta = 4` → appalto, `= 20` → lavoro autonomo, `codice_tributo` 1019/1020 → natura del percipiente); dove l'euristica non riconosce un valore noto resta `NULL`, mai un regime inventato. `righe_fattura` guadagna `concorre_base_ritenuta` (default `true`, nessuna riga esistente cambia comportamento) e `natura_riga_ritenuta`. Eseguire `php artisan migrate` dopo l'aggiornamento.
+
+### Aggiunto
+
+- **Namespace `App\Enums\Fiscale`** (`TipoRitenuta`, `NaturaPercipiente`, `PlafondRitenuta`, `TitoloRitenuta`, `MotivoEsclusioneRitenuta`, `NaturaRigaRitenuta`) + `config/fiscale.php`: codici tributo, aliquote storicizzate per regime, riferimenti normativi (incluso lo switch 2027 art. 25-ter → D.Lgs. 33/2025 per gli appalti). Nessun default silenzioso: un'aliquota mancante per la data richiesta lancia un'eccezione, mai uno zero muto.
+- **`RitenutaService`**: motore di calcolo puro (nessuna scrittura contabile). Doppio regime supportato in parallelo — il nuovo (`tipo_ritenuta` + `natura_percipiente`, che pilota da solo la scelta fra codice tributo 1019/1020) e il legacy (i vecchi `perc_ritenuta`/`perc_imponibile_ritenuta`/`codice_tributo`, per i fornitori non ancora migrati) — così nessun fornitore esistente cambia comportamento finché non viene aggiornato. Il regime forfetario esclude la ritenuta sempre, anche se qualcuno la richiede esplicitamente: è un fatto di legge sul fornitore, non una scelta per documento.
+- **Anagrafica fornitore**: selettori "Regime di ritenuta" e "Natura del percipiente", checkbox "Regime forfetario" (con data e riferimento della dichiarazione conservata) e "Residente fiscale in Italia", dichiarazione di provvigioni a base ridotta. I campi storici (percentuale, codice tributo) restano come override manuale facoltativo, non più testo libero obbligatorio.
+- **Fattura**: toggle "Applica ritenuta d'acconto" per singolo documento (motivo obbligatorio quando disattivato su un fornitore soggetto: bonifico parlante, fuori campo, posa accessoria, altro), checkbox per riga "Concorre alla base ritenuta" (il contributo integrativo cassa professionale, ad esempio, non entra mai in base — la rivalsa INPS gestione separata sì).
+- **Prefill intelligente dell'aliquota IVA**: una nuova riga riprende l'ultima aliquota usata per il fornitore selezionato (calcolata server-side dallo storico fatture), non più un 22% fisso — le bancarie restano a 0%, la manodopera edile a 10%, i professionisti a 22%, senza doverla correggere ogni volta.
+- **Warning bloccante su `natura_percipiente` mancante** (design §2.4 M2): se il fornitore ha un regime di ritenuta ma non la natura del percipiente né un codice tributo legacy come override, il salvataggio è bloccato con un avviso e un link diretto all'anagrafica fornitore — a meno di conferma esplicita ("procedo comunque, correggo il codice tributo prima dell'F24"). Il blocco duro, senza possibilità di conferma, resta rimandato a v1.11 come deciso dal design doc: i dati reali hanno oggi codici tributo misti e incoerenti, un blocco immediato avrebbe paralizzato il flusso il giorno dopo l'aggiornamento.
+
+### Corretto — 5 difetti indipendenti individuati durante il design (§8)
+
+- **`applica_ritenuta` non era validato in `StoreFatturaRequest`**: `$request->validated()` scartava la chiave e vinceva sempre il default "applica". Dalla UI non si poteva registrare una fattura senza ritenuta per un fornitore soggetto, nemmeno spuntando l'opzione.
+- **Lo storno fattura forzava `applica_ritenuta = false` incondizionatamente**: se l'originale aveva ritenuta, restava un residuo aperto sul conto Erario invece di essere stornato insieme al resto. Ora lo storno propaga dall'originale se applicare la ritenuta e con quali righe escluse dalla base, in modo che l'importo stornato coincida esattamente con quello versato in origine.
+- **Una nota di credito genuina su un fornitore soggetto a ritenuta calcolava comunque una trattenuta**, producendo una riga contabile che l'anteprima in fattura non mostrava. Ora una nota di credito non applica la ritenuta salvo scelta esplicita.
+- **La nota della scrittura in Erario riportava sempre "Ritenuta d'acconto 4%"**, anche quando l'aliquota reale era 20% o un'altra.
+- **La base della ritenuta includeva indiscriminatamente ogni riga della fattura**, contributo cassa professionale compreso — che per legge va escluso anche dal punto 4 della Certificazione Unica.
+
+### Corretto — dalla revisione avversariale pre-porting (agente indipendente sul diff completo)
+
+- **Critico**: modificare una fattura di un fornitore *non* soggetto a ritenuta veniva rifiutata dal salvataggio. `FatturaRegisterEdit.vue` inizializzava `applica_ritenuta` a un booleano esplicito sempre; per un fornitore non soggetto valeva `false`, e `required_if:applica_ritenuta,false` in `UpdateFatturaRequest` scattava per un campo (`motivo_esclusione_ritenuta`) del tutto irrilevante per quella fattura. Rotto per la maggioranza dei fornitori — quelli non soggetti a ritenuta. Ora il booleano esplicito viene impostato solo quando la ritenuta è davvero rilevante per il fornitore; altrimenti `null`, come in creazione.
+- **Alto**: lo storno ricalcolava la ritenuta sull'anagrafica *attuale* del fornitore invece di annullare l'importo *realmente registrato*. Se l'anagrafica cambiava fra la registrazione e lo storno (es. il fornitore diventava forfetario, o cambiava regime), l'importo stornato divergeva da quello originale, riaprendo lo stesso residuo fantasma su 2201/2202 che il fix del punto 2 doveva chiudere. Lo storno ora **fissa** l'importo, l'aliquota e il codice tributo dell'originale (`RitenutaCalcolo::override()`), senza mai reinterrogare lo stato corrente del fornitore.
+- **Minore**: il regime legacy (`perc_ritenuta`/`perc_imponibile_ritenuta`) calcolava uno zero silenzioso se un fornitore soggetto a ritenuta non aveva la percentuale configurata, in contrasto con la disciplina "mai default silenzioso" già applicata al regime nuovo. Ora lancia un'eccezione esplicita, come `TipoRitenuta::aliquota()`.
+- **Documentato e bloccato con un test**: l'arrotondamento a due passaggi (base ritenuta arrotondata, poi aliquota applicata) diverge di 1 centesimo da un calcolo diretto su circa il 6% degli importi possibili per i regimi provvigioni. Scelta deliberata — la base è di per sé una cifra rilevante per la Certificazione Unica in Fase 2 — ora esplicita e testata invece che implicita.
+
+### Deciso e NON fatto
+
+- **Fase 2** (il fatto generatore della ritenuta si sposta da registrazione a pagamento, tabella `ritenute_operate` come esplosione analitica della riga 2202) resta fuori: è la fase che il design doc definisce critica, perché tocca il libro giornale. Programmata per una beta successiva.
+- **Fase 3** (deleghe F24, generazione del modello, quadro ST/AC) resta fuori: nessun consumatore in questa beta, nessuna colonna aggiunta per essa.
+- **`NaturaRigaRitenuta` non collegato alla UI fattura**: l'enum esiste ed è testato (guida il default di `concorre_base_ritenuta` — cassa professionale esclusa, rivalsa INPS inclusa), ma in fattura resta esposto solo il checkbox grezzo "Concorre alla base ritenuta", senza il menu che ne spiegherebbe il motivo. Comportamento corretto e già coperto da test, manca solo la categorizzazione in UI. Roadmap: prossima release che tocca questa pagina.
+
+### Test
+
+- `RitenutaCalcoloTest`: 23 casi puri (TipoRitenuta, enum di supporto, `RitenutaService`, DTO, arrotondamento provvigioni) — nessuna scrittura contabile, nessuna tabella richiesta.
+- `RitenutaSezione8Test`: 12 casi — 6 sui difetti originali del §8, 2 di riproduzione dei difetti trovati dalla revisione avversariale, 3 sul warning `natura_percipiente`, 1 di non-regressione sul default `concorre_base_ritenuta`.
+- Suite completa: 514 test verdi (prima di questa beta: 479).
+
+---
+
 ## [1.10.0-beta.20] - La Modifica Oltre Budget Prende Atto
 
 La beta.18 aveva tolto la finzione (l'override in modifica che non registrava nulla), la beta.19 ha messo in sicurezza la contabilità (guardia sulle fatture con copertura fondo, giroconti reali). Questo blocco chiude i due varchi rimasti sul fronte modifica: il salvataggio oltre budget che passava con un click, e la fattura ratificata che tornava modificabile.

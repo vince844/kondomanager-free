@@ -32,11 +32,11 @@ Route::prefix('admin')->as('admin.')
 
     Route::get('/dashboard', DashboardController::class)
         ->name('dashboard');
-    
+
     // ROTTA NEWSLETTER
     Route::post('/newsletter/subscribe', [NewsletterController::class, 'subscribe'])
         ->name('newsletter.subscribe');
-    
+
     /*
     |--------------------------------------------------------------------------
     | Inbox console routes
@@ -61,12 +61,12 @@ Route::prefix('admin')->as('admin.')
         ->parameters([
             'anagrafiche' => 'anagrafica'
         ]);
-    
+
     Route::resource('fornitori', FornitoreController::class)
         ->parameters([
             'fornitori' => 'fornitore'
         ]);
-    
+
     Route::resource('fornitori.anagrafiche', FornitoreAnagraficaController::class)
         ->parameters([
             'fornitori' => 'fornitore',
@@ -77,9 +77,9 @@ Route::prefix('admin')->as('admin.')
         ->parameters([
             'fornitori' => 'fornitore',
             'documenti' => 'documento'
-            
+
         ]);
-    
+
     /*
     |--------------------------------------------------------------------------
     | Situazione Debitoria Fornitori (Double Lock Engine)
@@ -108,7 +108,7 @@ Route::prefix('admin')->as('admin.')
 
     Route::get('/fetch-categorie-eventi', EventiFetchCategorieController::class)
         ->name('categorie.eventi');
-    
+
     Route::resource('segnalazioni', SegnalazioneController::class)
         ->parameters([
             'segnalazioni' => 'segnalazione'
@@ -168,16 +168,15 @@ Route::prefix('admin')->as('admin.')
 
     Route::put('segnalazioni/{segnalazione}/toggle-approval', SegnalazioneApprovalController::class)
         ->name('segnalazioni.toggle-approval');
-    
+
     Route::post('segnalazioni/{segnalazione}/toggle-resolve', [SegnalazioneController::class, 'toggleResolve'])
         ->name('segnalazioni.toggleResolve');
-   
+
     Route::get('settings/notifications', [NotificationPreferenceController::class, 'index'])
         ->name('settings.notifications.index');
-    
+
     Route::put('settings/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('settings.notifications.update');
-
 
     // Rotta di TEST per sviluppatori: Verifica Quadratura Partita Doppia
     Route::get('/test-quadratura/{condominio}', [TestContabilitaController::class, 'checkQuadratura']);

@@ -19,6 +19,7 @@ namespace App\Enums;
  *   rettifica, pagamento_f24, incasso_diverso, rimborso_assicurativo
  *
  * Aggiunto in v1.9.1: storno_pagamento_fornitore
+ * Aggiunto in v1.10.0-beta.21: storno_pagamento_f24
  */
 enum TipoMovimentoContabile: string
 {
@@ -52,6 +53,9 @@ enum TipoMovimentoContabile: string
 
     // ─── Adempimenti fiscali ──────────────────────────────────────────────────
     case PAGAMENTO_F24               = 'pagamento_f24';
+
+    /** Scrittura inversa che annulla un pagamento F24 (giornale append-only). */
+    case STORNO_PAGAMENTO_F24        = 'storno_pagamento_f24';
 
     // ─── Movimenti tecnici ────────────────────────────────────────────────────
     case APERTURA                    = 'apertura';
@@ -92,6 +96,7 @@ enum TipoMovimentoContabile: string
             self::REGOLAZIONE_IMMEDIATA      => 'Regolazione immediata',
             self::STORNO_REGOLAZIONE_IMMEDIATA => 'Storno regolazione immediata',
             self::PAGAMENTO_F24              => 'Pagamento F24',
+            self::STORNO_PAGAMENTO_F24       => 'Storno pagamento F24',
             self::APERTURA                   => 'Apertura esercizio',
             self::CHIUSURA                   => 'Chiusura esercizio',
             self::GIROCONTO                  => 'Giroconto',
@@ -121,6 +126,7 @@ enum TipoMovimentoContabile: string
             self::STORNO_PAGAMENTO_FORNITORE,
             // Lo storno di un'uscita di cassa è, per definizione, un rientro.
             self::STORNO_REGOLAZIONE_IMMEDIATA,
+            self::STORNO_PAGAMENTO_F24,
         ]);
     }
 

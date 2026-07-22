@@ -744,8 +744,26 @@ class FatturaPassivaController extends Controller
             ->sortBy('_sort_key')
             ->values();
 
+        // Ultima aliquota IVA usata per fornitore: prefill intelligente delle nuove
+        // righe (invece del 22% fisso, spesso sbagliato in ambito condominiale —
+        // manodopera edile 10%, bancarie/assicurazioni 0%, professionisti 22%).
+        $ultimeAliquoteIva = DB::table('righe_fattura')
+            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+            ->where('fatture_passive.condominio_id', $condominio->id)
+            ->select('fatture_passive.fornitore_id', 'righe_fattura.aliquota_iva')
+            ->orderByDesc('fatture_passive.data_documento')
+            ->orderByDesc('righe_fattura.id')
+            ->get()
+            ->groupBy('fornitore_id')
+            ->map(fn ($righe) => (float) $righe->first()->aliquota_iva);
+
         return [
-            'fornitori' => Fornitore::all(),
+            'fornitori' => Fornitore::all()->map(function (Fornitore $f) use ($ultimeAliquoteIva) {
+                $data = $f->toArray();
+                $data['ultima_aliquota_iva'] = $ultimeAliquoteIva->get($f->id);
+
+                return $data;
+            }),
             'esercizi' => $condominio->esercizi()->where('stato', 'aperto')->get(),
             'debiti_patrimoniali' => $debitiPatrimoniali,
             'fatture_pregresse_registrate' => $fatturePregresseRegistrate,

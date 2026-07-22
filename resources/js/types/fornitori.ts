@@ -39,5 +39,13 @@ export interface Fornitore {
   giorni_scadenza?: number;
   modalita_pagamento_default?: string;
   iban_principale?: string;
+  tipo_ritenuta?: string | null;
+  natura_percipiente?: string | null;
+  residente_fiscale?: boolean;
+  regime_forfetario?: boolean;
+  forfetario_dichiarato_il?: string | null;
+  forfetario_riferimento?: string | null;
+  provvigioni_base_ridotta?: boolean;
+  provvigioni_dichiarazione_il?: string | null;
 }
 

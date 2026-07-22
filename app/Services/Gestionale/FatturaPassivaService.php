@@ -2,6 +2,7 @@
 
 namespace App\Services\Gestionale;
 
+use App\DataTransferObjects\RitenutaCalcolo;
 use App\Enums\ContoContabileCategoria;
 use App\Enums\ContoContabileTipo;
 use App\Enums\StatoPagamentoFattura;
@@ -16,6 +17,7 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
+use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +39,7 @@ class FatturaPassivaService
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
+            $righeRitenuta = [];
             $aliquotaPregressaSalvata = 22; // Default per il DB
 
             $dynamicContoComuneId = null;
@@ -95,27 +98,50 @@ class FatturaPassivaService
                         'conto_id' => $contoIdRiga, // Null se spesa privata
                         'immobile_id' => $rigaInput['immobile_id'] ?? null,
                         'is_sopravvenienza' => $isSopravvenienza,
+                        'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                        'natura_riga_ritenuta' => $rigaInput['natura_riga_ritenuta'] ?? null,
+                    ];
+
+                    $righeRitenuta[] = [
+                        'importo_imponibile' => $impRiga,
+                        'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
                     ];
                 }
             }
 
             // 2. Calcolo Ritenuta
-            $ritenuta = 0;
-            $datiRitenuta = null;
+            // Nota di credito: default a NON applicata (il frontend non invia la
+            // chiave). Lo storno la propaga esplicitamente dall'originale
+            // (StornoFatturaController) — design §8 punti 2 e 3.
+            $richiestaApplicazioneRitenuta = $data['applica_ritenuta'] ?? ! $isNotaCredito;
 
-            // FIX: Calcoliamo SEMPRE la ritenuta, anche per le note di credito
-            // La ritenuta si calcola sempre tranne quando esplicitamente disabilitata
-            // (es. storno di fattura con ritenuta già versata all'erario)
-            $applicaRitenuta = $fornitore->soggetto_ritenuta && ($data['applica_ritenuta'] ?? true);
-            if ($applicaRitenuta) {
-                $base = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
-                $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
-                $datiRitenuta = [
-                    'imponibile_calcolo' => $base,
-                    'aliquota' => $fornitore->perc_ritenuta,
-                    'codice_tributo' => $fornitore->codice_tributo,
-                ];
+            // FIX (revisione avversariale): lo storno passa 'ritenuta_override'
+            // per FISSARE l'importo dell'originale, invece di farlo ricalcolare
+            // da RitenutaService sullo stato ATTUALE del fornitore. Se
+            // l'anagrafica cambia fra registrazione e storno (es. il fornitore
+            // diventa forfetario), ricalcolare produce un importo diverso da
+            // quello davvero registrato — riapre esattamente il residuo
+            // fantasma su 2201/2202 che il design §8 punto 2 doveva chiudere.
+            if (! empty($data['ritenuta_override'])) {
+                $override = $data['ritenuta_override'];
+                $ritenutaCalcolo = RitenutaCalcolo::override(
+                    (int) ($override['importo_cents'] ?? 0),
+                    isset($override['aliquota']) ? (float) $override['aliquota'] : null,
+                    $override['codice_tributo'] ?? null,
+                    isset($override['imponibile_calcolo']) ? (int) $override['imponibile_calcolo'] : null,
+                );
+            } else {
+                $ritenutaCalcolo = app(RitenutaService::class)->calcola(
+                    $fornitore,
+                    $righeRitenuta,
+                    $imponibileTotale,
+                    $richiestaApplicazioneRitenuta,
+                    Carbon::parse($data['data_documento']),
+                );
             }
+
+            $ritenuta = $ritenutaCalcolo->importo;
+            $datiRitenuta = $ritenutaCalcolo->toLegacyDatiExtra();
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
 
@@ -154,7 +180,10 @@ class FatturaPassivaService
                 'dati_extra' => [
                     'fiscal' => array_merge(
                         $data['dati_extra']['fiscal'] ?? [],
-                        ['ritenuta_details' => $datiRitenuta]
+                        [
+                            'ritenuta_details' => $datiRitenuta,
+                            'motivo_esclusione_ritenuta' => $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data),
+                        ]
                     ),
                     'competenza' => $data['dati_extra']['competenza'] ?? null,
                     'override_budget' => $data['dati_extra']['override_budget'] ?? null,
@@ -390,7 +419,7 @@ class FatturaPassivaService
                     'tipo_riga' => 'avere',
                     'importo' => abs($ritenuta),
                     'anagrafica_id' => $anagraficaPrincipale ? $anagraficaPrincipale->id : null,
-                    'note' => "Ritenuta d'acconto 4% fattura fornitore",
+                    'note' => $ritenutaCalcolo->nota,
                 ]);
             }
 
@@ -560,6 +589,7 @@ class FatturaPassivaService
             $imponibileTotale = 0;
             $ivaTotale = 0;
             $righeProcessate = [];
+            $righeRitenuta = [];
 
             foreach ($data['righe'] as $rigaInput) {
                 $impRiga = (int) round($rigaInput['importo_imponibile'] * 100);
@@ -582,22 +612,30 @@ class FatturaPassivaService
                     'conto_id' => $contoIdRiga,
                     'immobile_id' => $rigaInput['immobile_id'] ?? null,
                     'is_sopravvenienza' => false, // bloccato a monte
+                    'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                    'natura_riga_ritenuta' => $rigaInput['natura_riga_ritenuta'] ?? null,
+                ];
+
+                $righeRitenuta[] = [
+                    'importo_imponibile' => $impRiga,
+                    'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
                 ];
             }
 
-            // Ritenuta
-            $ritenuta = 0;
-            $datiRitenuta = null;
-            $applicaRitenuta = $fornitore->soggetto_ritenuta && ($data['applica_ritenuta'] ?? true);
-            if ($applicaRitenuta) {
-                $base = (int) round($imponibileTotale * ($fornitore->perc_imponibile_ritenuta / 100));
-                $ritenuta = (int) round($base * ($fornitore->perc_ritenuta / 100));
-                $datiRitenuta = [
-                    'imponibile_calcolo' => $base,
-                    'aliquota' => $fornitore->perc_ritenuta,
-                    'codice_tributo' => $fornitore->codice_tributo,
-                ];
-            }
+            // Ritenuta — stessa logica di registraFattura(): NC di default esclusa,
+            // storno la propaga esplicitamente (design §8 punti 2 e 3).
+            $richiestaApplicazioneRitenuta = $data['applica_ritenuta'] ?? ! $isNotaCredito;
+
+            $ritenutaCalcolo = app(RitenutaService::class)->calcola(
+                $fornitore,
+                $righeRitenuta,
+                $imponibileTotale,
+                $richiestaApplicazioneRitenuta,
+                Carbon::parse($data['data_documento'] ?? $fattura->data_documento),
+            );
+
+            $ritenuta = $ritenutaCalcolo->importo;
+            $datiRitenuta = $ritenutaCalcolo->toLegacyDatiExtra();
 
             $totaleDoc = $imponibileTotale + $ivaTotale;
             $netto = ($totaleDoc - $ritenuta) * $moltiplicatore;
@@ -605,6 +643,7 @@ class FatturaPassivaService
             // 5. Aggiorna importi sulla fattura
             $datiExtra = $fattura->dati_extra ?? [];
             $datiExtra['fiscal']['ritenuta_details'] = $datiRitenuta;
+            $datiExtra['fiscal']['motivo_esclusione_ritenuta'] = $this->motivoEsclusioneRitenuta($ritenutaCalcolo, $data);
 
             $fattura->update([
                 'importo_imponibile' => $imponibileTotale * $moltiplicatore,
@@ -690,7 +729,7 @@ class FatturaPassivaService
                     'tipo_riga' => 'avere',
                     'importo' => abs($ritenuta),
                     'anagrafica_id' => $anagraficaPrincipale?->id,
-                    'note' => "Ritenuta d'acconto fattura fornitore",
+                    'note' => $ritenutaCalcolo->nota,
                 ]);
             }
 
@@ -756,6 +795,22 @@ class FatturaPassivaService
 
             return $fattura->fresh();
         });
+    }
+
+    /**
+     * Motivo da salvare in dati_extra.fiscal.motivo_esclusione_ritenuta. Il
+     * forfetario è un fatto accertato dal servizio (vince sempre); negli
+     * altri casi di ritenuta non applicata è quanto l'utente ha dichiarato
+     * in fase di registrazione (validato da StoreFatturaRequest/UpdateFatturaRequest).
+     */
+    private function motivoEsclusioneRitenuta(RitenutaCalcolo $calcolo, array $data): ?string
+    {
+        if ($calcolo->applicata) {
+            return null;
+        }
+
+        return $calcolo->motivoEsclusione?->value
+            ?? $data['dati_extra']['fiscal']['motivo_esclusione_ritenuta'] ?? null;
     }
 
     /**

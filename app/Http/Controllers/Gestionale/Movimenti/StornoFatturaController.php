@@ -110,7 +110,25 @@ class StornoFatturaController extends Controller
                 'modalita_pagamento'         => $fattura->modalita_pagamento,
                 'gestione_id'                => $gestioneId,
                 'stato_approvazione'         => 'approvata',
-                'applica_ritenuta'           => false,
+                // Design §8 punto 2: forzare false qui lasciava un DARE fantasma su
+                // 2201 e un AVERE residuo su 2202 quando l'originale aveva ritenuta.
+                // Propaghiamo il fatto dall'originale: se aveva ritenuta, lo storno
+                // deve stornarla assieme al resto.
+                'applica_ritenuta'           => $fattura->importo_ritenuta > 0,
+                // FIX (revisione avversariale): FISSA l'importo dell'originale invece
+                // di farlo ricalcolare da RitenutaService sullo stato ATTUALE del
+                // fornitore. Se l'anagrafica del fornitore cambia fra la
+                // registrazione e lo storno (es. diventa forfetario, o cambia
+                // aliquota), ricalcolare produrrebbe un importo diverso da quello
+                // davvero registrato — riaprendo lo stesso residuo fantasma su
+                // 2201/2202 che questo storno deve chiudere. Lo storno annulla
+                // l'importo REALE, non un importo "ricalcolato secondo le regole di oggi".
+                'ritenuta_override' => $fattura->importo_ritenuta > 0 ? [
+                    'importo_cents' => abs($fattura->importo_ritenuta),
+                    'aliquota' => $fattura->dati_extra['fiscal']['ritenuta_details']['aliquota'] ?? null,
+                    'codice_tributo' => $fattura->dati_extra['fiscal']['ritenuta_details']['codice_tributo'] ?? null,
+                    'imponibile_calcolo' => $fattura->dati_extra['fiscal']['ritenuta_details']['imponibile_calcolo'] ?? null,
+                ] : null,
 
                 'righe' => $fattura->righe->map(fn($r) => [
                     'descrizione'        => '[STORNO] ' . $r->descrizione,
@@ -118,7 +136,11 @@ class StornoFatturaController extends Controller
                     'aliquota_iva'       => (float) $r->aliquota_iva,
                     'importo_iva'        => abs((float) $r->importo_iva / 100),
                     'conto_id'           => $r->conto_id,
-                    'immobile_id'        => $r->immobile_id
+                    'immobile_id'        => $r->immobile_id,
+                    // Propagati dall'originale per far tornare l'importo di ritenuta
+                    // storncato esattamente identico a quello versato in origine.
+                    'concorre_base_ritenuta' => $r->concorre_base_ritenuta,
+                    'natura_riga_ritenuta'   => $r->natura_riga_ritenuta?->value,
                 ])->toArray(),
                 
                 // --- INIZIO FIX: RIMBORSO FONDO E COPERTURE ---

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 
 import { ref, computed, watch } from 'vue';
-import { useForm, Head, router } from '@inertiajs/vue3';
+import { useForm, Head, router, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import FatturaRegistrazioneGuide from '@/components/guides/FatturaRegistrazioneGuide.vue';
@@ -49,7 +49,33 @@ interface Fornitore {
     iban_principale?: string;
     modalita_pagamento_default?: string;
     codice_tributo?: string;
+    regime_forfetario?: boolean;
+    ultima_aliquota_iva?: number | null;
+    tipo_ritenuta?: string | null;
+    natura_percipiente?: string | null;
 }
+
+/**
+ * SOLO per l'anteprima lato client — il backend (RitenutaService) resta
+ * l'unica fonte di verità e ricalcola tutto alla registrazione. Tenere
+ * allineato a config('fiscale.aliquote') se cambiano le aliquote storicizzate.
+ */
+const REGIMI_RITENUTA_PREVIEW: Record<string, { aliquota: number; base: number }> = {
+    appalto_4: { aliquota: 4, base: 100 },
+    lavoro_autonomo_20: { aliquota: 20, base: 100 },
+    provvigioni_base_50: { aliquota: 23, base: 50 },
+    provvigioni_base_20: { aliquota: 23, base: 20 },
+    non_residente_30: { aliquota: 30, base: 100 },
+    lavoro_dipendente: { aliquota: 0, base: 100 },
+};
+
+const MOTIVI_ESCLUSIONE_RITENUTA = [
+    { value: 'bonifico_parlante', label: "Bonifico parlante (ritenuta 11% già operata dalla banca)" },
+    { value: 'forfetario', label: 'Fornitore in regime forfetario' },
+    { value: 'fuori_campo', label: 'Fuori dal campo di applicazione della ritenuta' },
+    { value: 'posa_accessoria', label: 'Posa in opera accessoria alla fornitura' },
+    { value: 'override_manuale', label: 'Altro motivo (specificare)' },
+];
 
 interface Condominio {
     id: number;
@@ -153,8 +179,11 @@ const form = useForm({
     conto_corrente_id:  null as number | null,
     modalita_pagamento: 'bonifico',
     iban_fornitore:     '',
+    // null = eredita il default (applica sempre tranne che sulle note di credito);
+    // true/false = scelta esplicita dell'amministratore per questo documento.
+    applica_ritenuta: null as boolean | null,
     dati_extra: {
-        fiscal:     { cig: '', cup: '' },
+        fiscal:     { cig: '', cup: '', motivo_esclusione_ritenuta: '', motivo_esclusione_ritenuta_note: '', conferma_codice_tributo_mancante: false },
         competenza: { dal: '', al: '' },
         override_budget:          null as any,
         log_legale_sopravvenienza: null as any
@@ -166,7 +195,8 @@ const form = useForm({
         immobile_id: null as number | null,
         importo_imponibile: 0,
         aliquota_iva: 22,
-        is_sopravvenienza: false
+        is_sopravvenienza: false,
+        concorre_base_ritenuta: true,
     }],
     coperture: [] as any[],
     file: null as File | null,
@@ -176,6 +206,33 @@ const form = useForm({
 // Computed
 // ---------------------------------------------------------------------------
 const selectedFornitore = computed(() => props.fornitori.find(f => f.id === form.fornitore_id));
+
+/** Il forfetario esclude la ritenuta per legge, a prescindere da soggetto_ritenuta. */
+const fornitoreRitenutaAttiva = computed(() =>
+    !!selectedFornitore.value?.soggetto_ritenuta && !selectedFornitore.value?.regime_forfetario
+);
+
+/**
+ * Stessa regola di default del backend (FatturaPassivaService): applicata
+ * sempre tranne che sulle note di credito, salvo scelta esplicita dell'utente.
+ */
+const applicaRitenutaEffective = computed<boolean>({
+    get: () => form.applica_ritenuta ?? (form.tipo_documento !== 'nota_credito'),
+    set: (val: boolean) => { form.applica_ritenuta = val; },
+});
+
+/**
+ * Design §2.4 M2: senza natura del percipiente (né un codice tributo legacy
+ * come override) il codice tributo 1019/1020 è indeterminabile. v1.10: warning
+ * bloccante con conferma esplicita — v1.11: blocco duro (design doc).
+ */
+const codiceTributoIndeterminabile = computed(() =>
+    fornitoreRitenutaAttiva.value
+    && applicaRitenutaEffective.value
+    && !!selectedFornitore.value?.tipo_ritenuta
+    && !selectedFornitore.value?.natura_percipiente
+    && !selectedFornitore.value?.codice_tributo
+);
 
 const hasSpesePrivate = computed(() => {
     if (!form.righe || !Array.isArray(form.righe)) return false;
@@ -211,9 +268,19 @@ const totali = computed(() => {
     }
 
     let ritenuta = 0;
-    if (selectedFornitore.value?.soggetto_ritenuta && form.tipo_documento !== 'nota_credito') {
-        const base = imponibile * (Number(selectedFornitore.value.perc_imponibile_ritenuta) || 100) / 100;
-        ritenuta   = base * (Number(selectedFornitore.value.perc_ritenuta) || 0) / 100;
+    if (fornitoreRitenutaAttiva.value && applicaRitenutaEffective.value) {
+        const baseRitenuta = form.is_pregresso
+            ? imponibile
+            : form.righe.reduce((acc, r) => acc + (r.concorre_base_ritenuta !== false ? (Number(r.importo_imponibile) || 0) : 0), 0);
+
+        const regime = selectedFornitore.value?.tipo_ritenuta
+            ? REGIMI_RITENUTA_PREVIEW[selectedFornitore.value.tipo_ritenuta]
+            : null;
+        const percBase  = regime ? regime.base     : (Number(selectedFornitore.value!.perc_imponibile_ritenuta) || 100);
+        const percTratt = regime ? regime.aliquota  : (Number(selectedFornitore.value!.perc_ritenuta) || 0);
+
+        const base = baseRitenuta * percBase / 100;
+        ritenuta   = base * percTratt / 100;
     }
 
     return {
@@ -408,8 +475,13 @@ const addRiga = () => form.righe.push({
     conto_id:           null,
     immobile_id:        null,
     importo_imponibile: 0,
-    aliquota_iva:       22,
-    is_sopravvenienza:  false
+    // Prefill con l'ultima aliquota usata per questo fornitore (calcolata dal
+    // backend), invece di un 22% fisso spesso sbagliato in ambito condominiale
+    // (manodopera edile 10%, bancarie/assicurazioni 0%). 22% resta il fallback
+    // per un fornitore senza storico.
+    aliquota_iva:       selectedFornitore.value?.ultima_aliquota_iva ?? 22,
+    is_sopravvenienza:  false,
+    concorre_base_ritenuta: true,
 });
 
 const removeRiga = (idx: number) => {
@@ -545,8 +617,23 @@ const doSubmit = () => {
             // salvate con il 22% pur essendo state digitate a 0: l'anteprima mostrava
             // l'importo giusto (usa `|| 0`), il documento salvato no.
             aliquota_iva: Number.isFinite(Number(r.aliquota_iva)) ? Number(r.aliquota_iva) : 22,
-            is_sopravvenienza: Boolean(r.is_sopravvenienza)
+            is_sopravvenienza: Boolean(r.is_sopravvenienza),
+            concorre_base_ritenuta: r.concorre_base_ritenuta !== false,
         }));
+
+        // Il motivo di esclusione va inviato solo quando la ritenuta è
+        // effettivamente esclusa: una stringa vuota fallirebbe Rule::in lato
+        // backend, quindi normalizziamo a null quando non applicabile.
+        if (payload.dati_extra?.fiscal) {
+            const fiscal = payload.dati_extra.fiscal;
+            if (applicaRitenutaEffective.value) {
+                fiscal.motivo_esclusione_ritenuta = null;
+                fiscal.motivo_esclusione_ritenuta_note = null;
+            } else {
+                fiscal.motivo_esclusione_ritenuta = fiscal.motivo_esclusione_ritenuta || null;
+                fiscal.motivo_esclusione_ritenuta_note = fiscal.motivo_esclusione_ritenuta_note || null;
+            }
+        }
 
         // --- INIZIO FIX PREGRESSO ---
         if (payload.is_pregresso) {
@@ -716,6 +803,58 @@ const pageGuides = [
                                 </template>
                             </v-select>
                         </div>
+
+                        <!-- Ritenuta d'acconto: toggle per documento -->
+                        <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="-translate-y-1 opacity-0" enter-to-class="translate-y-0 opacity-100">
+                            <div v-if="fornitoreRitenutaAttiva" class="p-3 bg-amber-50/50 dark:bg-amber-900/10 rounded-lg border border-amber-100 dark:border-amber-900/30 space-y-2.5">
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox"
+                                        :checked="applicaRitenutaEffective"
+                                        @change="applicaRitenutaEffective = ($event.target as HTMLInputElement).checked"
+                                        class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                                    <span class="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                                        Applica ritenuta d'acconto su questo documento
+                                    </span>
+                                </label>
+
+                                <div v-if="!applicaRitenutaEffective" class="space-y-2 pt-1">
+                                    <v-select
+                                        v-model="form.dati_extra.fiscal.motivo_esclusione_ritenuta"
+                                        :options="MOTIVI_ESCLUSIONE_RITENUTA"
+                                        :reduce="(o: any) => o.value"
+                                        label="label"
+                                        placeholder="Motivo dell'esclusione..."
+                                        class="text-xs"
+                                    />
+                                    <p v-if="form.errors['dati_extra.fiscal.motivo_esclusione_ritenuta']" class="text-[11px] text-red-600 font-medium">
+                                        {{ form.errors['dati_extra.fiscal.motivo_esclusione_ritenuta'] }}
+                                    </p>
+                                    <Input
+                                        v-if="form.dati_extra.fiscal.motivo_esclusione_ritenuta === 'override_manuale'"
+                                        v-model="form.dati_extra.fiscal.motivo_esclusione_ritenuta_note"
+                                        placeholder="Specifica il motivo..."
+                                        class="h-9 text-xs bg-white" />
+                                </div>
+                            </div>
+                        </Transition>
+
+                        <!-- Codice tributo indeterminabile: warning bloccante con override (design §2.4 M2) -->
+                        <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="-translate-y-1 opacity-0" enter-to-class="translate-y-0 opacity-100">
+                            <div v-if="codiceTributoIndeterminabile" class="p-3 bg-rose-50 dark:bg-rose-900/10 rounded-lg border border-rose-200 dark:border-rose-900/30 space-y-2">
+                                <p class="text-[11px] text-rose-700 dark:text-rose-400 leading-relaxed">
+                                    <strong>Codice tributo indeterminabile.</strong> Manca la natura del percipiente sull'anagrafica di {{ selectedFornitore?.ragione_sociale }}: il sistema non può decidere se il codice è 1019 o 1020.
+                                    <Link :href="route(generateRoute('fornitori.edit'), { fornitore: form.fornitore_id })" target="_blank" class="underline font-semibold">Completa l'anagrafica</Link>
+                                    oppure conferma per procedere comunque.
+                                </p>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" v-model="form.dati_extra.fiscal.conferma_codice_tributo_mancante"
+                                        class="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer" />
+                                    <span class="text-[11px] font-semibold text-rose-800 dark:text-rose-300">
+                                        Confermo di voler procedere: correggerò il codice tributo manualmente prima dell'F24
+                                    </span>
+                                </label>
+                            </div>
+                        </Transition>
 
                         <hr class="border-slate-100 dark:border-slate-800">
 
@@ -1053,6 +1192,14 @@ const pageGuides = [
                                             </Button>
                                         </div>
                                     </div>
+
+                                    <label v-if="fornitoreRitenutaAttiva && applicaRitenutaEffective" class="flex items-center gap-1.5 cursor-pointer select-none w-fit">
+                                        <input type="checkbox" v-model="riga.concorre_base_ritenuta"
+                                            class="w-3.5 h-3.5 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer" />
+                                        <span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                            Concorre alla base ritenuta
+                                        </span>
+                                    </label>
                                 </div>
                             </div>
 

@@ -38,6 +38,7 @@ trait HasProtocolNumber
             'regolazione_immediata'       => 'RIM',
             'storno_regolazione_immediata'=> 'STO',
             'pagamento_f24'               => 'F24',
+            'storno_pagamento_f24'        => 'STO',
             default                       => 'SCR',
         };
 

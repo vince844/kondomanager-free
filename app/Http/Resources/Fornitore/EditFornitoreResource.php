@@ -51,7 +51,17 @@ class EditFornitoreResource extends JsonResource
             'codice_tributo'             => $this->codice_tributo,
             'giorni_scadenza'            => $this->giorni_scadenza ?? 30,
             'modalita_pagamento_default' => $this->modalita_pagamento_default ?? 'bonifico',
-            
+
+            // --- NUOVI CAMPI: Regime Fiscale Ritenuta (V 1.10, Fase 1) ---
+            'tipo_ritenuta'                 => $this->tipo_ritenuta?->value,
+            'natura_percipiente'            => $this->natura_percipiente?->value,
+            'residente_fiscale'             => (bool) ($this->residente_fiscale ?? true),
+            'regime_forfetario'             => (bool) $this->regime_forfetario,
+            'forfetario_dichiarato_il'      => $this->forfetario_dichiarato_il,
+            'forfetario_riferimento'        => $this->forfetario_riferimento,
+            'provvigioni_base_ridotta'      => (bool) $this->provvigioni_base_ridotta,
+            'provvigioni_dichiarazione_il'  => $this->provvigioni_dichiarazione_il,
+
             // Magia 1: Recupera l'IBAN principale (o dalla colonna o dal conto corrente polimorfico associato)
             'iban_principale'          => $this->iban_principale ?? $this->contiCorrenti()->where('tipo', 'ordinario')->value('iban'),
             

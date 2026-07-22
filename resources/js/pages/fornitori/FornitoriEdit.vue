@@ -4,13 +4,14 @@ import { ref, computed } from 'vue';
 import { Link, Head, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
-import { Plus, LoaderCircle, Power, Landmark, ShieldCheck } from 'lucide-vue-next';
+import { Plus, LoaderCircle, Power, Landmark, ShieldCheck, Info } from 'lucide-vue-next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import InputError from '@/components/InputError.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { usePermission } from '@/composables/permissions';
 import vSelect from "vue-select";
@@ -23,11 +24,17 @@ import type { Categoria } from '@/types/categorie';
 import type { Fornitore } from '@/types/fornitori';
 
 
+type RegimeOption = { value: string; label: string };
+
 // Rimosso anagrafiche dalle props, non servono più qui
 const props = defineProps<{
   fornitore: Fornitore;
   categorie: Categoria[];
+  tipiRitenuta: RegimeOption[];
+  natureRecipiente: RegimeOption[];
 }>()
+
+const regimiProvvigioni = ['provvigioni_base_50', 'provvigioni_base_20'];
 
 const page = usePage(); 
 const backUrl = page.props.back_url as string || route('fornitori.index'); 
@@ -96,7 +103,17 @@ const form = useForm({
     codice_tributo: props.fornitore?.codice_tributo ?? '',
     giorni_scadenza: props.fornitore?.giorni_scadenza ?? 30,
     modalita_pagamento_default: props.fornitore?.modalita_pagamento_default ?? 'bonifico',
-    iban_principale: props.fornitore?.iban_principale ?? ''
+    iban_principale: props.fornitore?.iban_principale ?? '',
+
+    // --- Regime fiscale ritenuta (v1.10, Fase 1) ---
+    tipo_ritenuta: props.fornitore?.tipo_ritenuta ?? '',
+    natura_percipiente: props.fornitore?.natura_percipiente ?? '',
+    residente_fiscale: props.fornitore?.residente_fiscale ?? true,
+    regime_forfetario: props.fornitore?.regime_forfetario ?? false,
+    forfetario_dichiarato_il: props.fornitore?.forfetario_dichiarato_il ?? '',
+    forfetario_riferimento: props.fornitore?.forfetario_riferimento ?? '',
+    provvigioni_base_ridotta: props.fornitore?.provvigioni_base_ridotta ?? false,
+    provvigioni_dichiarazione_il: props.fornitore?.provvigioni_dichiarazione_il ?? '',
 });
 
 const moneyOptions = ref({
@@ -329,6 +346,55 @@ const submit = () => {
                             <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-bold">gg</span>
                         </div>
                     </div>
+
+                    <div class="sm:col-span-6 flex flex-wrap items-center gap-x-6 gap-y-2 pt-1">
+                        <div class="flex items-center space-x-2">
+                            <Checkbox id="residente_fiscale" v-model="form.residente_fiscale" />
+                            <Label for="residente_fiscale" class="cursor-pointer text-sm text-slate-600 dark:text-slate-400">
+                                Fornitore fiscalmente residente in Italia
+                            </Label>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <Checkbox id="regime_forfetario" v-model="form.regime_forfetario" />
+                            <Label for="regime_forfetario" class="cursor-pointer text-sm text-slate-600 dark:text-slate-400">
+                                Fornitore in regime forfetario
+                            </Label>
+                            <HoverCard>
+                                <HoverCardTrigger as-child>
+                                    <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                        <Info class="w-4 h-4" />
+                                    </button>
+                                </HoverCardTrigger>
+                                <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                    <p class="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                                        Il regime forfetario esclude per legge la ritenuta d'acconto: se attivo, il sistema non la applicherà mai su questo fornitore, indipendentemente dalle altre impostazioni sottostanti.
+                                    </p>
+                                </HoverCardContent>
+                            </HoverCard>
+                        </div>
+                    </div>
+
+                    <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="-translate-y-2 opacity-0">
+                        <div v-if="form.regime_forfetario" class="sm:col-span-6 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-amber-50/50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                            <div>
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Data dichiarazione forfetario</Label>
+                                <VueDatePicker
+                                    v-model="form.forfetario_dichiarato_il"
+                                    format="dd/MM/yyyy"
+                                    position="left"
+                                    locale="it"
+                                    :enable-time-picker="false"
+                                    auto-apply
+                                    placeholder="Seleziona data"
+                                />
+                                <InputError :message="form.errors.forfetario_dichiarato_il" class="mt-1" />
+                            </div>
+                            <div>
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Riferimento documento conservato</Label>
+                                <Input v-model="form.forfetario_riferimento" placeholder="Es. dichiarazione del 12/01/2026 agli atti" class="h-10 bg-white dark:bg-slate-950" />
+                            </div>
+                        </div>
+                    </Transition>
                 </div>
 
                <Transition enter-active-class="transition duration-300 ease-out" enter-from-class="-translate-y-2 opacity-0" enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-200 ease-in" leave-from-class="translate-y-0 opacity-100" leave-to-class="-translate-y-2 opacity-0">
@@ -344,28 +410,94 @@ const submit = () => {
                         </div>
 
                         <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6 bg-white dark:bg-slate-950 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                            <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Da Trattenere</Label>
-                                <div class="relative">
-                                    <Input v-model="form.perc_ritenuta" placeholder="Es. 4" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
-                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
-                                </div>
-                                <InputError :message="form.errors.perc_ritenuta" class="mt-1" />
+                            <div class="sm:col-span-3">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Regime di ritenuta</Label>
+                                <v-select
+                                    class="premium-select bg-slate-50 dark:bg-slate-900/50"
+                                    :options="tipiRitenuta"
+                                    v-model="form.tipo_ritenuta"
+                                    :reduce="(o: RegimeOption) => o.value"
+                                    label="label"
+                                    placeholder="Seleziona il regime applicabile..."
+                                />
+                                <InputError :message="form.errors.tipo_ritenuta" class="mt-1" />
                             </div>
-                            
-                            <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Base Imponibile</Label>
-                                <div class="relative">
-                                    <Input v-model="form.perc_imponibile_ritenuta" placeholder="Es. 100" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
-                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
-                                </div>
-                                <InputError :message="form.errors.perc_imponibile_ritenuta" class="mt-1" />
+
+                            <div class="sm:col-span-3">
+                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Natura del percipiente</Label>
+                                <v-select
+                                    class="premium-select bg-slate-50 dark:bg-slate-900/50"
+                                    :options="natureRecipiente"
+                                    v-model="form.natura_percipiente"
+                                    :reduce="(o: RegimeOption) => o.value"
+                                    label="label"
+                                    placeholder="IRPEF o IRES: decide 1019 vs 1020..."
+                                />
+                                <InputError :message="form.errors.natura_percipiente" class="mt-1" />
                             </div>
-                            
-                            <div class="sm:col-span-2">
-                                <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Codice Tributo</Label>
-                                <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
-                                <InputError :message="form.errors.codice_tributo" class="mt-1" />
+
+                            <div v-if="regimiProvvigioni.includes(form.tipo_ritenuta)" class="sm:col-span-6 flex flex-wrap items-center gap-4 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                                <div class="flex items-center space-x-2">
+                                    <Checkbox id="provvigioni_base_ridotta" v-model="form.provvigioni_base_ridotta" />
+                                    <Label for="provvigioni_base_ridotta" class="cursor-pointer text-xs text-slate-600 dark:text-slate-400 max-w-md">
+                                        Il percipiente ha dichiarato di avvalersi in via continuativa di dipendenti/collaboratori (base ridotta al 50%)
+                                    </Label>
+                                </div>
+                                <div class="flex-1 min-w-[180px]">
+                                    <VueDatePicker
+                                        v-model="form.provvigioni_dichiarazione_il"
+                                        format="dd/MM/yyyy"
+                                        position="left"
+                                        locale="it"
+                                        :enable-time-picker="false"
+                                        auto-apply
+                                        placeholder="Data dichiarazione"
+                                    />
+                                    <InputError :message="form.errors.provvigioni_dichiarazione_il" class="mt-1" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="flex items-center gap-2 mb-2">
+                                <h5 class="text-xs font-bold uppercase tracking-wider text-slate-500">Override manuale (facoltativo)</h5>
+                                <HoverCard>
+                                    <HoverCardTrigger as-child>
+                                        <button type="button" class="text-slate-400 hover:text-primary outline-none">
+                                            <Info class="w-4 h-4" />
+                                        </button>
+                                    </HoverCardTrigger>
+                                    <HoverCardContent class="w-80 p-4 bg-white dark:bg-slate-900 border-slate-200 shadow-xl">
+                                        <p class="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                                            Se hai selezionato un regime sopra, aliquota e codice tributo si calcolano automaticamente in fase di registrazione fattura. Compila questi campi solo per un caso non coperto dal regime selezionato.
+                                        </p>
+                                    </HoverCardContent>
+                                </HoverCard>
+                            </div>
+                            <div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-6 bg-white dark:bg-slate-950 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                                <div class="sm:col-span-2">
+                                    <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Da Trattenere</Label>
+                                    <div class="relative">
+                                        <Input v-model="form.perc_ritenuta" placeholder="Es. 4" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                                    </div>
+                                    <InputError :message="form.errors.perc_ritenuta" class="mt-1" />
+                                </div>
+
+                                <div class="sm:col-span-2">
+                                    <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">% Base Imponibile</Label>
+                                    <div class="relative">
+                                        <Input v-model="form.perc_imponibile_ritenuta" placeholder="Es. 100" class="pr-8 h-10 bg-slate-50 dark:bg-slate-900/50" />
+                                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-bold">%</span>
+                                    </div>
+                                    <InputError :message="form.errors.perc_imponibile_ritenuta" class="mt-1" />
+                                </div>
+
+                                <div class="sm:col-span-2">
+                                    <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2 block">Codice Tributo</Label>
+                                    <Input v-model="form.codice_tributo" placeholder="Es. 1040" class="h-10 uppercase font-mono bg-slate-50 dark:bg-slate-900/50" />
+                                    <InputError :message="form.errors.codice_tributo" class="mt-1" />
+                                </div>
                             </div>
                         </div>
 

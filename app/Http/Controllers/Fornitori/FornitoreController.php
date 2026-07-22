@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Fornitori;
 
+use App\Enums\Fiscale\NaturaPercipiente;
+use App\Enums\Fiscale\TipoRitenuta;
 use App\Helpers\RedirectHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Fornitore\CreateFornitoreRequest;
@@ -70,6 +72,7 @@ class FornitoreController extends Controller
         return Inertia::render('fornitori/FornitoriNew', [
             'anagrafiche' => AnagraficaResource::collection(Anagrafica::all()),
             'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            ...$this->regimeFiscaleOptions(),
         ]);
     }
 
@@ -158,8 +161,26 @@ class FornitoreController extends Controller
 
         return Inertia::render('fornitori/FornitoriEdit', [
             'fornitore'   => new EditFornitoreResource($fornitore),
-            'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all())
+            'categorie'   => CategoriaFornitoreResource::collection(CategoriaFornitore::all()),
+            ...$this->regimeFiscaleOptions(),
        ]);
+    }
+
+    /**
+     * Opzioni per le select del regime fiscale ritenuta (v1.10, Fase 1).
+     *
+     * @return array{tipiRitenuta: array<int, array{value:string,label:string}>, natureRecipiente: array<int, array{value:string,label:string}>}
+     */
+    private function regimeFiscaleOptions(): array
+    {
+        return [
+            'tipiRitenuta' => collect(TipoRitenuta::cases())
+                ->map(fn (TipoRitenuta $c) => ['value' => $c->value, 'label' => $c->label()])
+                ->values(),
+            'natureRecipiente' => collect(NaturaPercipiente::cases())
+                ->map(fn (NaturaPercipiente $c) => ['value' => $c->value, 'label' => $c->label()])
+                ->values(),
+        ];
     }
 
     /**
