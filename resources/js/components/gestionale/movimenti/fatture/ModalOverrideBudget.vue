@@ -135,7 +135,7 @@ const handleConfirm = () => {
                                 <div class="flex items-start justify-between w-full mb-3">
                                     <div class="font-black text-sm"
                                         :class="overrideStrategia === 'rata_integrativa' ? 'text-amber-800 dark:text-amber-300' : 'text-slate-700 dark:text-slate-300'">
-                                        2. Genera nuovo piano
+                                        2. Rata Integrativa
                                     </div>
                                     <input type="radio" v-model="overrideStrategia" value="rata_integrativa"
                                         class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 shrink-0" />

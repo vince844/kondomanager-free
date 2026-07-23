@@ -123,8 +123,8 @@ defineEmits(['update:open']);
               <ol class="space-y-2 list-decimal pl-5 mb-3">
                 <li><strong>Attesa conguaglio</strong> — registri lo sforo e i soldi mancanti verranno chiesti
                     ai condòmini a chiusura esercizio.</li>
-                <li><strong>Genera nuovo piano</strong> — l'alleanza col ciclo straordinario: emetterai un piano
-                    rate integrativo per coprire l'eccesso.</li>
+                <li><strong>Rata Integrativa</strong> — resta un avviso in Dashboard: emetterai in seguito un piano
+                    rate ordinario integrativo per coprire l'eccesso.</li>
                 <li><strong>Fondo di riserva</strong> — pianifichi la copertura dal fondo. Attenzione alla
                     parola: <em>pianifichi</em>. Il fondo non viene toccato alla registrazione.</li>
               </ol>

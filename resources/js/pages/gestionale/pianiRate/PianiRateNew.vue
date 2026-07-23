@@ -41,7 +41,7 @@ interface CapitoloDettaglio {
   nome: string;
   importo_totale: number;
   residuo: number;
-  importo_da_usare: number | undefined;
+  importo_da_usare: string | number | undefined;
   note: string;
 }
 
@@ -56,7 +56,7 @@ interface SaldoDettaglio {
   is_debito: boolean;
   immobile_id?: number;
   ripartizione_mode: 'automatica' | 'manuale';
-  ripartizioni_custom: { anagrafica_id: number; importo: number }[];
+  ripartizioni_custom: { anagrafica_id: number; importo: string | number }[];
 }
 
 const props = defineProps<{
@@ -215,12 +215,32 @@ const autorizzazioneStraordinaria = ref({
   motivazione_autorizzazione: ''
 })
 
-// Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN)
+// Helper fondamentale per i calcoli con MoneyInput (risolve il problema NaN).
+// Il valore può arrivare in due notazioni diverse a seconda di come è nato:
+// - "1.250,50" (italiana/mascherata) se l'utente ha digitato nel campo MoneyInput
+// - "1250.50" (JS pura) se il campo non è mai stato toccato e resta al valore
+//   iniziale che gli abbiamo passato noi (vedi toMoneyFieldString più sotto)
+// Le due notazioni si distinguono dalla presenza della virgola: solo la prima
+// la usa come separatore decimale. Stessa identica logica di MoneyHelper::toCents() lato PHP.
 const parseMoney = (val: any): number => {
-  if (!val) return 0;
+  if (val === null || val === undefined || val === '') return 0;
   if (typeof val === 'number') return val;
+  const str = val.toString().trim();
+  if (!str.includes(',')) return Number(str) || 0;
   // Trasforma "1.250,50" in 1250.50
-  return Number(val.toString().replace(/\./g, '').replace(',', '.'));
+  return Number(str.replace(/\./g, '').replace(',', '.')) || 0;
+};
+
+// Converte un numero grezzo (es. dal backend) nella stringa da usare come valore
+// INIZIALE di un v-model collegato a MoneyInput. Deve essere già in notazione JS
+// pura (punto decimale, "1250.50"): se le passassimo la notazione italiana
+// "1.250,50", v-money3 non riuscirebbe a fare Number() su di essa al mount e la
+// ri-formatterebbe da solo in "1250.50" — che parseMoney() interpreterebbe già
+// correttamente, ma è comunque più sicuro e prevedibile partire già in quel formato
+// invece di affidarsi al comportamento interno della libreria.
+const toMoneyFieldString = (val: number | string | null | undefined): string => {
+  const n = typeof val === 'number' ? val : Number(val ?? 0);
+  return (Number.isFinite(n) ? n : 0).toFixed(2);
 };
 
 const rimuoviCapitolo = (id: number) => {
@@ -322,7 +342,9 @@ const caricaDettagliGestione = async (idGestione: string | number, caricaAncheSa
     fattureStraordinarie.value = resFatture.data.map((f: any) => ({
       ...f,
       selezionata: preselectedFattureIds.value.includes(f.id.toString()),
-      importo_suggerito: f.residuo_da_finanziare
+      // Stesso fix di importo_da_usare sopra: valore grezzo -> stringa,
+      // altrimenti se l'importo suggerito non viene toccato resta un numero.
+      importo_suggerito: toMoneyFieldString(f.residuo_da_finanziare)
     }));
 
     // Consuma i pre-selezionati: se l'utente cambia gestione, non si ri-applicano
@@ -396,7 +418,8 @@ const apriConfigurazioneSaldi = () => {
 }
 
 const aggiungiRigaRiparto = (saldo: SaldoDettaglio) => {
-  saldo.ripartizioni_custom.push({ anagrafica_id: 0, importo: 0 });
+  // Stringa fin da subito, stesso motivo delle altre due righe corrette sopra.
+  saldo.ripartizioni_custom.push({ anagrafica_id: 0, importo: toMoneyFieldString(0) });
 }
 
 watch(() => form.capitoli_ids, (newIds) => {
@@ -405,12 +428,16 @@ watch(() => form.capitoli_ids, (newIds) => {
     if (!capitoliDettaglio.value.find(c => c.id === id)) {
       const capOriginale = capitoliDisponibili.value.find(c => c.id === id);
       if (capOriginale) {
+        const residuoIniziale = (capOriginale.residuo ?? 0) > 0 ? capOriginale.residuo : 0;
         capitoliDettaglio.value.push({
           id: id,
           nome: capOriginale.nome,
           importo_totale: capOriginale.importo_totale ?? 0,
           residuo: capOriginale.residuo ?? 0,
-          importo_da_usare: (capOriginale.residuo ?? 0) > 0 ? capOriginale.residuo : 0,
+          // Stringa fin da subito (non un numero grezzo): se l'utente non tocca il campo,
+          // il v-model di v-money3 non lo riformatta mai da solo, e un numero grezzo fallisce
+          // la validazione 'string' lato server con un errore silenzioso (nessun redirect, nessun log).
+          importo_da_usare: toMoneyFieldString(residuoIniziale),
           note: ''
         });
       }

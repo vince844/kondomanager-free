@@ -7,6 +7,26 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.24] - Il Piano Rate che Spariva nel Nulla & la Rata Integrativa Ritrova il Nome
+
+Segnalato da un amministratore in un caso di supporto reale: creando un piano rate integrativo su una voce di spesa in sforo, il click su "Salva piano rate" non produceva alcun effetto — nessuna navigazione, nessun errore a video, nessuna riga nei log del server. La causa era annidata su due livelli. Il campo importo, se lasciato al valore suggerito senza essere toccato manualmente, restava un numero grezzo invece che una stringa, e falliva silenziosamente la validazione lato server (che richiede esplicitamente una stringa); il tentativo di risolverlo passando dalla libreria di formattazione monetaria (`v-money3`) introduceva a sua volta un secondo bug — un valore "1.234,56" scritto a mano viene reinterpretato dal componente al primo render come sequenza di cifre grezze da tagliare, producendo importi sbagliati di un fattore 100 negli importi mostrati a schermo (es. "Totale richiesto" e "Residuo").
+
+Nessuna migrazione database.
+
+### Corretto
+
+- **Il piano rate si salva sempre, che l'importo suggerito venga toccato o no**: i tre campi che alimentavano un valore monetario iniziale a un `MoneyInput` (`importo_da_usare` nella selezione capitoli, `importo_suggerito` nelle fatture straordinarie, `importo` nelle righe di ripartizione manuale saldi) ora partono da una stringa in notazione JS pura (`"1234.56"`), mai da un numero grezzo né dalla notazione mascherata italiana — l'unica forma che il componente `Money3` non ri-formatta mai da solo al mount, e che il backend (`MoneyHelper::toCents`) ha sempre saputo interpretare correttamente in entrambi i casi.
+- **`parseMoney()` non assume più un solo formato**: la funzione usata per i calcoli live in pagina (totale selezionato, avviso di sforo sul residuo) ora riconosce la notazione in base alla presenza della virgola — esattamente la stessa logica già usata da `MoneyHelper::toCents()` lato server — invece di trattare ogni punto come separatore delle migliaia a prescindere.
+- **Etichetta "Rata Integrativa" riallineata**: la modale di sforamento sulla fattura (`ModalOverrideBudget.vue`) e la guida in-app alla registrazione fatture mostravano "Genera nuovo piano" per la stessa identica strategia (`rata_integrativa`) che altrove nell'app — inclusa la card della Dashboard — è sempre stata etichettata "Rata Integrativa". Nessun cambio di comportamento, solo coerenza terminologica: la guida di supporto che rimanda l'amministratore a "scegliere Rata Integrativa" ora corrisponde di nuovo a quello che vede a schermo.
+- **Tre errori di sintassi TypeScript corretti** (`EventiEdit.vue`, `EventiNew.vue`, `eventi/user/EventiEdit.vue`): un tipo oggetto anonimo scritto inline dentro un'espressione di template (`:reduce="(opt: { label: string; value: string }) => ..."`) mandava in errore il parser di `vue-tsc`. Nessun impatto a runtime — il template compilava ed eseguiva correttamente anche prima — ma bloccava un type-check pulito del progetto. Risolto estraendo un tipo con nome (`OpzioneSelect`), coerente con come gli altri `:reduce` dello stesso file già referenziano tipi con nome.
+
+### Test
+
+- Nessuna suite di test automatici copre questa parte del frontend: il progetto non ha un ambiente di test JS/Vue (solo Pest lato backend). La correzione è stata verificata dal vivo — riproduzione end-to-end del bug tramite tab Network del browser, e conferma indipendente che il backend (`GeneratePianoRateAction`, `CalcoloQuoteService`) era sempre stato corretto tramite una chiamata diretta al servizio in una transazione poi annullata, sugli stessi dati reali del caso di supporto. `vue-tsc --noEmit` pulito su tutti i file toccati.
+- Segnalato come lacuna nota: questa classe di bug (formato numero/stringa su un campo `MoneyInput` non toccato dall'utente) potrebbe ripetersi altrove nell'app dove esiste lo stesso pattern — nessuno sweep sistematico è stato fatto in questa beta, per restare nello scope della segnalazione originale.
+
+---
+
 ## [1.10.0-beta.23] - Riparto per Capitolo: una Colonna per Capitolo, non per Sottoconto
 
 Segnalato da un amministratore: la stampa "Riparto Bilancio Preventivo per Capitolo e Soggetto" mostrava una colonna per ogni **sottoconto foglia** (es. "AM.BK Bancarie", "AM.CF Compensi", "AM.DF Dichiarazioni"...) invece che una per il capitolo padre reale ("Amministrative"). Su un condominio con molti sottoconti la tabella HTML generata poteva diventare così grande da far scattare il limite di sicurezza di mPDF (errore 500, `pcre.backtrack_limit`); su un condominio più piccolo il chunking a 6 colonne per pagina della stampa mostrava solo una parte delle colonne sulla prima pagina, con un totale di riga (calcolato correttamente su tutti i capitoli) che non coincideva con la somma dei valori visibili — confuso, anche se nessun dato era davvero sbagliato.

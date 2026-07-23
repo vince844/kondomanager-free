@@ -21,6 +21,14 @@ import type { Anagrafica } from '@/types/anagrafiche';
 import type { CategoriaEvento } from '@/types/categorie-eventi';
 import { VisibilityType } from '@/types/eventi';
 
+// Tipo con nome per le opzioni { label, value } dei v-select (ricorrenza, condomini):
+// un tipo oggetto inline scritto direttamente dentro l'espressione :reduce="..." nel
+// template manda in errore il parser di vue-tsc (TS1005), un tipo con nome no.
+interface OpzioneSelect {
+  label: string;
+  value: string;
+}
+
 const { generatePath, generateRoute } = usePermission();
 
 const props = defineProps<{
@@ -207,7 +215,7 @@ const submit = () => {
                   :options="frequencies" 
                   label="label" 
                   v-model="form.recurrence_frequency" 
-                  :reduce="(opt: { label: string; value: string }) => opt.value"
+                  :reduce="(opt: OpzioneSelect) => opt.value"
                   placeholder="Frequenza" 
                 />
                 <Input type="number" min="1" v-model="form.recurrence_interval" placeholder="Intervallo" />

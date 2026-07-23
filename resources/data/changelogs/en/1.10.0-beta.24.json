@@ -1,0 +1,7 @@
+{
+    "features": [
+        "Fixed a bug where creating a supplementary installment plan on an over-budget expense item would silently do nothing if the suggested amount was left untouched: no navigation, no error shown. The cause was in how the amount was converted internally before being sent to the server. The plan now saves correctly whether the amount is edited or not.",
+        "Also fixed a side effect of the same bug: some on-screen figures (such as the selected total or the chapter's remaining budget) could appear multiplied by 100 compared to their real value, due to an ambiguous number-format interpretation.",
+        "Realigned the \"Supplementary Installment\" label in the invoice over-budget dialog and in the in-app invoice guide: they showed \"Generate new plan\" for the exact same strategy that is labeled \"Supplementary Installment\" everywhere else in the app — no behavior change, just consistent wording."
+    ]
+}
