@@ -7,6 +7,38 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.25] - Il Saldo di Apertura Entra a Giornale & lo Stato Patrimoniale Impara a Quadrare
+
+Fino a ieri il saldo di apertura di una cassa viveva in un campo della tabella `casse` e **non generava alcuna scrittura contabile**: entrava nel sistema come pura attività, senza contropartita. Nessun controllo poteva accorgersene — il validatore di partita doppia verifica che ogni *singola* scrittura abbia DARE = AVERE, ma un valore che non ha proprio una scrittura non viola nulla. Il risultato è che ogni condominio con una cassa avviata con un saldo (praticamente ogni migrazione da un altro gestionale) portava con sé uno scarto patrimoniale invisibile, destinato a saltar fuori il giorno in cui si costruisce lo Stato Patrimoniale.
+
+Questa beta chiude quel buco e, soprattutto, introduce lo strumento che impedisce di riaprirne di simili in futuro.
+
+**⚠ MIGRAZIONE DATABASE**: due migrazioni, entrambe eseguite automaticamente dall'aggiornamento guidato. La prima rende `gestione_id` opzionale sulle scritture (permissiva, non tocca alcun dato esistente); la seconda **sposta il saldo di apertura delle casse dal campo al giornale**, creando la scrittura di contropartita e azzerando il campo nella stessa transazione. Il saldo mostrato non cambia mai: né prima, né durante, né dopo.
+
+### Aggiunto
+
+- **Stato Patrimoniale con verifica di quadratura** (`StatoPatrimonialeService`): calcola attivo, passivo e risultato d'esercizio e verifica l'equazione fondamentale **Attività = Passività + Patrimonio Netto**. È insieme un report e un sistema d'allarme: qualunque valore che entri in contabilità senza contropartita produce qui uno sbilancio, invece di restare invisibile fino alla segnalazione di un amministratore. Espone anche l'eventuale liquidità non ancora contabilizzata, così un'installazione a metà aggiornamento lo dichiara invece di nasconderlo. *(Il motore di calcolo; la pagina dedicata arriverà in una prossima beta.)*
+- **Il saldo di apertura di una cassa è ora una scrittura contabile vera** (`DARE cassa / AVERE Fondo Passate Gestioni`), sia per le casse già esistenti (migrazione di backfill) sia per quelle create da qui in avanti. Un saldo di apertura negativo (conto scoperto) resta bilanciato invertendo i versi, senza mai scrivere importi negativi a giornale.
+
+### Corretto
+
+- **Saldi che contavano movimenti annullati**: il saldo di una cassa poteva risultare diverso a seconda di *chi* lo chiedeva — alcune schermate escludevano le scritture annullate, altre no. Con una scrittura stornata da 500 € la stessa cassa poteva mostrare due valori diversi a distanza di un clic. Ora il saldo ha un'unica fonte di calcolo, che esclude sempre le scritture annullate.
+- **Creazione o modifica di una cassa di tipo Banca senza compilare "intestatario"**: il campo è facoltativo, ma lasciarlo vuoto generava un errore invece di ricadere sul nome del condominio come previsto (relazione mancante nel modello, usata in due punti del codice).
+- **Liquidità per gestione nel Treasury Guardian**: il saldo di apertura di una cassa non appartiene ad alcuna gestione (i soldi in banca sono del condominio). Filtrando il predittore di liquidità per una singola gestione, quel saldo sarebbe stato escluso e la liquidità disponibile sarebbe crollata a zero pur essendoci denaro reale in banca, con falsi allarmi di cassa. Ora le scritture senza gestione restano sempre incluse.
+
+### Modificato
+
+- **Un solo calcolo del saldo cassa**: la formula era replicata in otto punti diversi tra servizi, controller e risorse, con divergenze silenziose tra l'uno e l'altro. Ora passano tutti dallo stesso servizio.
+- **La scrittura di apertura non conta come "movimento" ai fini delle restrizioni di modifica**: la genera il sistema, non l'amministratore. Una cassa appena creata resta quindi pienamente modificabile (tipo e saldo di apertura), mentre resta bloccata — come prima — non appena ha un movimento reale.
+
+### Test
+
+- 26 nuovi test: contratto di retrocompatibilità 1.9.x → 1.10 (il saldo non cambia in nessuno stato), backfill reale con idempotenza, saldo negativo, salto sicuro in caso di dati insufficienti, rollback simmetrico, guardie di modifica, liquidità per gestione e invariante di quadratura.
+- Suite completa: 558 test verdi (prima di questa beta: 532).
+- **Nota di sicurezza sulla migrazione**: ogni caso dubbio viene *saltato*, mai forzato. Una cassa saltata resta nello stato precedente, che è comunque corretto — non esiste percorso in cui questa migrazione possa falsare un saldo.
+
+---
+
 ## [1.10.0-beta.24] - Il Piano Rate che Spariva nel Nulla & la Rata Integrativa Ritrova il Nome
 
 Segnalato da un amministratore in un caso di supporto reale: creando un piano rate integrativo su una voce di spesa in sforo, il click su "Salva piano rate" non produceva alcun effetto — nessuna navigazione, nessun errore a video, nessuna riga nei log del server. La causa era annidata su due livelli. Il campo importo, se lasciato al valore suggerito senza essere toccato manualmente, restava un numero grezzo invece che una stringa, e falliva silenziosamente la validazione lato server (che richiede esplicitamente una stringa); il tentativo di risolverlo passando dalla libreria di formattazione monetaria (`v-money3`) introduceva a sua volta un secondo bug — un valore "1.234,56" scritto a mano viene reinterpretato dal componente al primo render come sequenza di cifre grezze da tagliare, producendo importi sbagliati di un fattore 100 negli importi mostrati a schermo (es. "Totale richiesto" e "Residuo").

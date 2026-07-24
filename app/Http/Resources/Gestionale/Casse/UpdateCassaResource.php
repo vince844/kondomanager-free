@@ -19,7 +19,10 @@ class UpdateCassaResource extends JsonResource
             'descrizione'    => $this->descrizione,
             'note'           => $this->note,
             'attiva'         => (bool) $this->attiva,
-            'has_movements'  => $this->contoContabile?->movimenti()->exists() ?? false,
+            // Coerente con la guardia di UpdateCassaAction: la scrittura di apertura
+            // non è un movimento dell'amministratore, quindi non deve disabilitare
+            // i campi "tipo" e "saldo di apertura" nel form.
+            'has_movements'  => $this->resource->hasMovimentiOperativi(),
             
             // --- CAMPI GOVERNANCE FONDI ---
             // Usa 'generico' come fallback di sicurezza per i vecchi fondi creati prima dell'aggiornamento

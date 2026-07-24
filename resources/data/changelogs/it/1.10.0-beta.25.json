@@ -1,0 +1,10 @@
+{
+    "features": [
+        "⚠ Questo aggiornamento comprende due migrazioni del database, eseguite automaticamente durante l'aggiornamento guidato. Il saldo delle tue casse non cambia: viene semplicemente registrato in contabilità nel modo corretto.",
+        "Nuovo Stato Patrimoniale con verifica automatica della quadratura (Attività = Passività + Patrimonio Netto). Oltre a essere un prospetto, funziona da sistema d'allarme: se un importo entra in contabilità senza contropartita, lo segnala subito invece di lasciarlo passare inosservato.",
+        "Il saldo di apertura di una cassa è ora una scrittura contabile a tutti gli effetti, con la sua contropartita sul Fondo Passate Gestioni. Prima viveva solo come dato a sé, lasciando lo stato patrimoniale scoperto di quell'importo — un problema che riguardava praticamente ogni condominio migrato da un altro gestionale.",
+        "Corretto un caso in cui il saldo di una cassa poteva risultare diverso a seconda della schermata da cui lo si guardava: alcune viste escludevano i movimenti annullati, altre li contavano ancora. Ora il saldo ha un unico calcolo, che esclude sempre le scritture annullate.",
+        "Corretto un errore che si presentava creando o modificando una cassa di tipo Banca senza compilare il campo \"intestatario\": ora, se lasciato vuoto, viene usato il nome del condominio come previsto.",
+        "Corretto il calcolo della liquidità disponibile quando filtrata per singola gestione: il saldo di apertura del conto corrente non veniva incluso e la liquidità poteva risultare a zero pur essendoci denaro in banca, generando falsi allarmi di cassa."
+    ]
+}

@@ -1,0 +1,10 @@
+{
+    "features": [
+        "⚠ This update includes two database migrations, applied automatically during the guided update. Your cash account balances do not change: they are simply recorded properly in the ledger.",
+        "New Balance Sheet with an automatic accounting check (Assets = Liabilities + Equity). Beyond being a report, it acts as an alarm: if an amount ever enters the books without a matching counter-entry, it is flagged immediately instead of slipping through unnoticed.",
+        "A cash account's opening balance is now a real ledger entry, with its counter-entry on the Previous Years' Fund. Before it lived only as a standalone figure, leaving the balance sheet short by that amount — an issue affecting virtually every condominium migrated from another software.",
+        "Fixed a case where a cash account balance could differ depending on which screen you looked at: some views excluded reversed entries, others still counted them. The balance now has a single calculation, which always excludes reversed entries.",
+        "Fixed an error when creating or editing a Bank-type cash account without filling in the \"account holder\" field: if left blank, the condominium name is now used as intended.",
+        "Fixed the available-liquidity calculation when filtered by a single management: the bank account's opening balance was left out, so liquidity could read as zero despite real money being in the bank, triggering false cash alerts."
+    ]
+}

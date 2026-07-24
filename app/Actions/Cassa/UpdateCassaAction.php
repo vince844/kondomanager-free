@@ -19,7 +19,10 @@ class UpdateCassaAction
             // --- 1. CONTROLLO DI SICUREZZA ---
             // Questo blocco viene eseguito PRIMA di qualsiasi modifica.
             // Se scatta l'eccezione, la transazione si ferma e nulla cambia.
-            $hasMovimenti = $cassa->movimenti()->exists();
+            // Movimenti OPERATIVI: la scrittura di apertura non conta, la genera il
+            // sistema. Senza questa distinzione, dalla beta.25 ogni cassa risulterebbe
+            // "con movimenti" fin dalla creazione e non sarebbe più modificabile.
+            $hasMovimenti = $cassa->hasMovimentiOperativi();
 
             if ($cassa->tipo !== $data['tipo'] && $hasMovimenti) {
                 throw ValidationException::withMessages([

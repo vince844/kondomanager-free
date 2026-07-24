@@ -129,8 +129,8 @@ class PagamentoFornitoreController extends Controller
             ->map(function ($cassa) {
                 $entrate = $cassa->totale_entrate ?? 0;
                 $uscite = $cassa->totale_uscite ?? 0;
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                $saldoAttuale = (int) $cassa->saldo_reale;
 
                 return [
                     'id' => $cassa->conto_contabile_id,
@@ -455,8 +455,8 @@ class PagamentoFornitoreController extends Controller
             ->map(function ($cassa) {
                 $entrate = $cassa->totale_entrate ?? 0;
                 $uscite = $cassa->totale_uscite ?? 0;
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                $saldoAttuale = (int) $cassa->saldo_reale;
 
                 return [
                     'id' => $cassa->conto_contabile_id,

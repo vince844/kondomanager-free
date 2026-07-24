@@ -439,6 +439,7 @@ Nel progetto sono presenti numerosi documenti di design e specifiche tecniche al
 - [`registrazione_incasso_rata.md`](registrazione_incasso_rata.md) — Flusso e scritture per la registrazione degli incassi.
 - [`gestione_debiti_pregressi.md`](gestione_debiti_pregressi.md) — Trattamento contabile delle pendenze di esercizi passati.
 - [`rettifiche_saldo_in_corso_gestione.md`](rettifiche_saldo_in_corso_gestione.md) — Proposta (non pianificata): correzioni puntuali di saldo dopo che il lock di apertura gestione è già scattato, distinte dal saldo di apertura stesso.
+- [`fondo_accantonato_e_quadratura_sp.md`](fondo_accantonato_e_quadratura_sp.md) — **Vincolo di correttezza su v1.10** (non item nuovo): il fondo accantonato manca della contropartita passiva e del ledger per-condòmino del già-versato → lo Stato Patrimoniale non quadrerebbe per i condomini migrati e il riparto raddoppia l'addebito su una spesa coperta da fondo. Gate esplicito: non rilasciare lo SP senza la scrittura di apertura dei saldi cassa e l'invariante `A = P + N`.
 - [`layer-reporting-consuntivo.md`](layer-reporting-consuntivo.md) — Specifiche del motore di reporting e bilancio.
 - [`treasury_guardian_widget.md`](treasury_guardian_widget.md) & [`treasury_guardian_report_page.md`](treasury_guardian_report_page.md) — Design dell'intelligenza finanziaria e widget di cassa.
 

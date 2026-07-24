@@ -12,13 +12,14 @@ class CreateCassaAction
     public function __construct(
         private CreateCassaAccountAction $accountAction,
         private CreateCassaModelAction $modelAction,
-        private CreateCassaBankAccountAction $bankAction
+        private CreateCassaBankAccountAction $bankAction,
+        private RegistraAperturaCassaAction $aperturaAction
     ) {}
 
     public function execute(Condominio $condominio, array $data): Cassa
     {
         return DB::transaction(function () use ($condominio, $data) {
-            
+
             // 1. Crea Conto Contabile
             $conto = $this->accountAction->execute($condominio, $data);
 
@@ -28,12 +29,18 @@ class CreateCassaAction
             // 3. Gestisci Conto Corrente (se banca)
             $this->bankAction->execute($cassa, $data);
 
+            // 4. Porta a giornale il saldo di apertura, se c'è: senza contropartita
+            //    entrerebbe come attività "sospesa" e lo Stato Patrimoniale non
+            //    chiuderebbe. Se non è possibile registrarla, il saldo resta in
+            //    colonna e il calcolo resta comunque corretto.
+            $this->aperturaAction->execute($cassa);
+
             Log::info("Nuova cassa creata", [
                 'condominio_id' => $condominio->id,
                 'cassa_id' => $cassa->id
             ]);
 
-            return $cassa;
+            return $cassa->refresh();
         });
     }
 }

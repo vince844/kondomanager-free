@@ -34,15 +34,40 @@ class SaldoCassaService
             return (int) ($cassa->saldo_iniziale ?? 0);
         }
 
+        return (int) ($cassa->saldo_iniziale ?? 0)
+             + $this->movimentiNetti($cassa->conto_contabile_id);
+    }
+
+    /**
+     * Stesso saldo, per chi ha in mano il conto contabile e non il model Cassa
+     * (es. verifica di capienza sui pagamenti, che ragiona per conto).
+     */
+    public function saldoPerContoContabile(int $contoContabileId): int
+    {
+        $saldoIniziale = (int) (DB::table('casse')
+            ->where('conto_contabile_id', $contoContabileId)
+            ->value('saldo_iniziale') ?? 0);
+
+        return $saldoIniziale + $this->movimentiNetti($contoContabileId);
+    }
+
+    /**
+     * Saldo netto dei soli movimenti a giornale (DARE − AVERE), escluse le
+     * scritture annullate. Unico punto in cui il ledger viene aggregato:
+     * quando il saldo di apertura diventerà una scrittura, sparirà il termine
+     * `saldo_iniziale` dai chiamanti e resterà solo questo.
+     */
+    private function movimentiNetti(int $contoContabileId): int
+    {
         $movimenti = DB::table('righe_scritture')
             ->join('scritture_contabili', 'righe_scritture.scrittura_id', '=', 'scritture_contabili.id')
-            ->where('righe_scritture.conto_contabile_id', $cassa->conto_contabile_id)
+            ->where('righe_scritture.conto_contabile_id', $contoContabileId)
             ->whereNull('scritture_contabili.deleted_at')
             ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
             ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
             ->first();
 
-        return (int) (($cassa->saldo_iniziale ?? 0) + ($movimenti->dare ?? 0) - ($movimenti->avere ?? 0));
+        return (int) ($movimenti->dare ?? 0) - (int) ($movimenti->avere ?? 0);
     }
 
     /**

@@ -162,8 +162,8 @@ class FatturaPassivaController extends Controller
                 ->map(function ($cassa) {
                     $entrate = $cassa->totale_entrate ?? 0;
                     $uscite = $cassa->totale_uscite ?? 0;
-                    $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                    $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                    // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                    $saldoAttuale = (int) $cassa->saldo_reale;
 
                     return [
                         'id' => $cassa->conto_contabile_id,
@@ -491,8 +491,8 @@ class FatturaPassivaController extends Controller
                 ->map(function ($cassa) {
                     $entrate = $cassa->totale_entrate ?? 0;
                     $uscite = $cassa->totale_uscite ?? 0;
-                    $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                    $saldoAttuale = $saldoIniziale + $entrate - $uscite;
+                    // beta.25: saldo da SaldoCassaService (unica fonte), non ricalcolato qui.
+                    $saldoAttuale = (int) $cassa->saldo_reale;
 
                     return [
                         'id' => $cassa->conto_contabile_id,
@@ -666,15 +666,11 @@ class FatturaPassivaController extends Controller
             ->where('attiva', true)
             ->get()
             ->map(function ($cassa) use ($impegnatoPerFondo) {
-                $movimenti = DB::table('righe_scritture')
-                    ->where('conto_contabile_id', $cassa->conto_contabile_id)
-                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as dare")
-                    ->selectRaw("SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as avere")
-                    ->first();
-
                 // Convenzione unica (attivo, beta.19): DARE aumenta, AVERE diminuisce.
-                $saldoIniziale = $cassa->saldo_iniziale ?? 0;
-                $saldoAttuale = $saldoIniziale + ($movimenti->dare ?? 0) - ($movimenti->avere ?? 0)
+                // beta.25: saldo da SaldoCassaService (unica fonte, esclude le scritture
+                // annullate — cosa che questa query locale non faceva). Resta qui solo la
+                // detrazione dell'impegnato, che è specifica di questa vista.
+                $saldoAttuale = (int) $cassa->saldo_reale
                     - ($impegnatoPerFondo->get($cassa->conto_contabile_id) ?? 0);
 
                 return [

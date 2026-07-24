@@ -161,7 +161,14 @@ final class TreasuryGuardianService
             ->whereNull('sc.deleted_at'); // Salvo se serve per retrocompatibilità
 
         if ($gestioneId) {
-            $query->where('sc.gestione_id', $gestioneId);
+            // Le scritture SENZA gestione (saldi di apertura delle casse, beta.25)
+            // restano incluse: la liquidità in banca è del CONDOMINIO, non di una
+            // gestione. Escluderle mostrerebbe meno denaro di quanto ce n'è davvero
+            // e falserebbe il predittore a 30 giorni.
+            $query->where(function ($q) use ($gestioneId) {
+                $q->where('sc.gestione_id', $gestioneId)
+                  ->orWhereNull('sc.gestione_id');
+            });
         }
 
         $movimenti = $query->sum(DB::raw("CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END"));

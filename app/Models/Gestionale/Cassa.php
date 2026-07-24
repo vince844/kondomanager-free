@@ -3,6 +3,8 @@
 namespace App\Models\Gestionale;
 
 use App\Models\ContoCorrente;
+use App\Enums\TipoMovimentoContabile;
+use App\Services\Gestionale\SaldoCassaService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -94,6 +96,43 @@ class Cassa extends Model
         return $this->hasMany(RigaScrittura::class, 'conto_contabile_id', 'conto_contabile_id');
     }
 
+    /**
+     * Movimenti OPERATIVI: esclude la scrittura di apertura.
+     *
+     * L'apertura la genera il sistema (creazione cassa o backfill di aggiornamento),
+     * non è un'operazione dell'amministratore: una cassa appena creata e mai usata
+     * ne ha una, ma resta "vergine" dal suo punto di vista. Le guardie che vietano
+     * di cambiare tipo o saldo di apertura devono guardare QUESTI movimenti,
+     * altrimenti dopo la beta.25 nessuna cassa sarebbe più modificabile.
+     */
+    public function movimentiOperativi(): HasMany
+    {
+        return $this->movimenti()->whereHas(
+            'scrittura',
+            fn ($q) => $q->where('tipo_movimento', '!=', TipoMovimentoContabile::APERTURA->value)
+        );
+    }
+
+    /** La cassa ha movimenti veri (non la sola apertura)? */
+    public function hasMovimentiOperativi(): bool
+    {
+        return $this->movimentiOperativi()->exists();
+    }
+
+    /**
+     * Il condominio proprietario della cassa.
+     *
+     * Mancava, pur essendo già usata da CreateCassaBankAccountAction e
+     * UpdateCassaAction (`$cassa->condominio->nome` come intestatario di default
+     * del conto corrente): creare o modificare una cassa di tipo Banca senza
+     * compilare "intestatario" — campo `nullable` in validazione — leggeva una
+     * relazione inesistente e generava un errore.
+     */
+    public function condominio(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Condominio::class);
+    }
+
     public function contoCorrente(): MorphOne
     {
         return $this->morphOne(ContoCorrente::class, 'contable');
@@ -117,21 +156,18 @@ class Cassa extends Model
     }
 
     /**
-     * ACCESSOR: Calcolo del Saldo Reale in tempo reale (in centesimi)
+     * ACCESSOR: Calcolo del Saldo Reale in tempo reale (in centesimi).
+     *
+     * Delega a SaldoCassaService, fonte unica del saldo cassa. Prima della
+     * beta.25 questo accessor replicava la formula per conto proprio SENZA
+     * escludere le scritture annullate (soft-deleted), mentre il service le
+     * escludeva: due numeri diversi per la stessa cassa a seconda di chi
+     * chiedeva. Ora c'è un solo calcolo, che filtra le annullate.
+     *
+     * @see \App\Services\Gestionale\SaldoCassaService::saldoDisponibile()
      */
     public function getSaldoRealeAttribute(): int
     {
-        $aggregato = $this->movimenti()
-            ->selectRaw("
-                SUM(CASE WHEN tipo_riga = 'dare' THEN importo ELSE 0 END) as entrate,
-                SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) as uscite
-            ")
-            ->first();
-
-        // In contabilità, per i conti finanziari/patrimoniali:
-        // DARE = Aumenti (+), AVERE = Diminuzioni (-)
-        return $this->saldo_iniziale 
-             + ($aggregato->entrate ?? 0) 
-             - ($aggregato->uscite ?? 0);
+        return app(SaldoCassaService::class)->saldoDisponibile($this);
     }
 }

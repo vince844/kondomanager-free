@@ -1290,24 +1290,7 @@ class PagamentoFornitoreService
      */
     private function saldoCorrente(int $contoId): int
     {
-        // 1. Recupera il saldo iniziale della cassa associata al conto
-        $saldoIniziale = DB::table('casse')
-            ->where('conto_contabile_id', $contoId)
-            ->value('saldo_iniziale') ?? 0;
-
-        // 2. Calcola il delta dei movimenti (DARE - AVERE per conti attivi)
-        $movimenti = DB::table('righe_scritture')
-            ->join('scritture_contabili', 'righe_scritture.scrittura_id', '=', 'scritture_contabili.id')
-            ->where('righe_scritture.conto_contabile_id', $contoId)
-            ->whereNull('scritture_contabili.deleted_at')
-            ->selectRaw("
-                SUM(CASE WHEN tipo_riga = 'dare'  THEN importo ELSE 0 END) -
-                SUM(CASE WHEN tipo_riga = 'avere' THEN importo ELSE 0 END) AS saldo
-            ")
-            ->value('saldo');
-
-        // Il saldo reale è il saldo di apertura + il saldo dei movimenti
-        return (int) $saldoIniziale + (int) ($movimenti ?? 0);
+        return app(SaldoCassaService::class)->saldoPerContoContabile($contoId);
     }
 
     /**

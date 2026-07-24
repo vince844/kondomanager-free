@@ -1,0 +1,10 @@
+{
+    "features": [
+        "⚠ Esta atualização inclui duas migrações da base de dados, executadas automaticamente durante a atualização guiada. O saldo das suas contas não muda: passa apenas a ser registado corretamente na contabilidade.",
+        "Novo Balanço Patrimonial com verificação automática de equilíbrio (Ativo = Passivo + Património Líquido). Além de ser um mapa, funciona como alarme: se algum valor entrar na contabilidade sem contrapartida, é assinalado de imediato em vez de passar despercebido.",
+        "O saldo de abertura de uma conta passa a ser um lançamento contabilístico verdadeiro, com a sua contrapartida no Fundo de Gestões Anteriores. Antes existia apenas como um valor isolado, deixando o balanço a descoberto nesse montante — um problema que afetava praticamente todos os condomínios migrados de outro software.",
+        "Corrigido um caso em que o saldo de uma conta podia diferir consoante o ecrã a partir do qual era consultado: algumas vistas excluíam os lançamentos anulados, outras ainda os contabilizavam. O saldo passa a ter um único cálculo, que exclui sempre os lançamentos anulados.",
+        "Corrigido um erro ao criar ou editar uma conta do tipo Banco sem preencher o campo \"titular\": se ficar vazio, passa a ser usado o nome do condomínio, como previsto.",
+        "Corrigido o cálculo da liquidez disponível quando filtrada por uma única gestão: o saldo de abertura da conta bancária não era incluído e a liquidez podia surgir a zero apesar de existir dinheiro real no banco, gerando falsos alertas de tesouraria."
+    ]
+}
