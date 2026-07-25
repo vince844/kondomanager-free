@@ -116,9 +116,29 @@ class PianoRateController extends Controller
 
             // Se Inertia sta chiedendo i dati di una gestione specifica, la cerchiamo
             $gestioneSelezionata = Gestione::where('condominio_id', $condominio->id)->findOrFail($request->gestione_id);
-            
+
             // E usiamo il service per farci dire se è bloccata o meno
             $saldoInfo = $this->saldoService->calcolaSaldoApplicabile($gestioneSelezionata);
+
+            // Segnala al frontend se per questa gestione esiste già un piano rate
+            // "madre" (preventivo iniziale, non un'integrazione né uno
+            // straordinario): usato per rietichettare "Piano rate ordinario"
+            // come "Piano Rata Integrativa" quando non è la prima emissione
+            // dell'anno. Scoping su tipo+contesto_creazione (non un ->exists()
+            // generico) per non confondere un piano straordinario/integrativo
+            // preesistente con un vero preventivo iniziale già emesso.
+            //
+            // LIMITE NOTO: piani_rate non ha esercizio_id (una gestione può
+            // essere riagganciata a più esercizi nel tempo — vedi
+            // GestioneController::update()), quindi un preventivo iniziale
+            // di un esercizio precedente sulla stessa gestione può ancora
+            // far scattare l'etichetta "Integrativa" al primo piano del
+            // nuovo esercizio. Impatto: solo cosmetico (etichetta UI), non
+            // tocca calcoli, validazioni o dati salvati.
+            $hasPianoEsistente = PianoRate::where('gestione_id', $gestioneSelezionata->id)
+                ->where('tipo', 'ordinario')
+                ->where('contesto_creazione', 'preventivo_iniziale')
+                ->exists();
 
         } else {
             // Comportamento di default (al primo caricamento della pagina)
@@ -129,6 +149,7 @@ class PianoRateController extends Controller
                 'motivo' => 'Seleziona una gestione per verificare i saldi.',
                 'is_primo_anno' => false
             ];
+            $hasPianoEsistente = false;
         }
         // -------------------------------------------------------------------
 
@@ -139,6 +160,7 @@ class PianoRateController extends Controller
             'condomini' => $condomini,
             'gestioni' => $gestioni,
             'saldoInfo' => $saldoInfo,
+            'hasPianoEsistente' => $hasPianoEsistente,
             'anagraficheDisponibili' => $condominio->anagrafiche()->orderBy('nome')->get(['anagrafiche.id', 'nome']),
         ]);
     }

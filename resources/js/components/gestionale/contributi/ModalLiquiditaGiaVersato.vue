@@ -255,3 +255,5 @@ const handleConfirm = () => {
         </div>
     </Teleport>
 </template>
+
+<style src="vue-select/dist/vue-select.css"></style>

@@ -71,6 +71,7 @@ const props = defineProps<{
     is_primo_anno?: boolean
     has_movimenti?: boolean
   }
+  hasPianoEsistente?: boolean
   anagraficheDisponibili: { id: number, nome: string }[]
 }>()
 
@@ -129,6 +130,12 @@ const { euro } = useCurrencyFormatter({ fromCents: false });
 const showBannerPreselezione = ref(false);
 // Salva gli ID fatture dal deep-link PRIMA che Inertia sovrascriva l'URL
 const preselectedFattureIds = ref<string[]>([]);
+// Gestione puntata dal deep-link Dashboard: il lock del tipo e l'etichetta
+// "Integrativa" derivati da showBannerPreselezione restano validi SOLO
+// finché l'utente non cambia gestione a mano (stesso principio già usato
+// sopra per preselectedFattureIds: il contesto Dashboard non si ri-applica
+// a una gestione diversa da quella per cui è stato calcolato).
+const preselectedGestioneId = ref<number | null>(null);
 
 const frequencies = [
   { label: 'Mensile', value: 'MONTHLY' },
@@ -201,13 +208,42 @@ onMounted(() => {
 
   if (urlParams.has('gestione_id')) {
     const id = urlParams.get('gestione_id');
-    form.gestione_id = id ? Number(id) : null; 
+    form.gestione_id = id ? Number(id) : null;
+    preselectedGestioneId.value = form.gestione_id;
   }
 });
 
 // --- BIVIO ORDINARIO/STRAORDINARIO ---
 const isLoadingFatture = ref(false)
 const fattureStraordinarie = ref<any[]>([])
+
+// Quando si arriva da un CTA della Dashboard, il tipo di piano non è una
+// scelta dell'utente: la Dashboard lo ha già determinato in base alla voce
+// da finanziare (sforo su capitolo esistente vs sopravvenienza/ad personam).
+// Blocchiamo quindi l'opzione non pertinente invece di lasciarla cliccabile
+// e mandare l'utente a sbattere contro un errore di validazione a valle.
+// Il contesto Dashboard resta valido SOLO finché la gestione selezionata è
+// ancora quella per cui la Dashboard ha calcolato quel contesto: se
+// l'utente la cambia dal select "Gestione di riferimento" (rimane
+// liberamente modificabile), il lock e l'etichetta si sbloccano per la
+// nuova gestione invece di restare ancorati alla precedente.
+const isDashboardContextValid = computed(() =>
+  showBannerPreselezione.value && form.gestione_id === preselectedGestioneId.value
+)
+const isOrdinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'ordinario')
+const isStraordinarioDisabled = computed(() => isDashboardContextValid.value && form.tipo !== 'straordinario')
+
+// Rietichetta la card "Piano rate ordinario" come "Piano Rata Integrativa"
+// quando è chiaro che non si tratta della prima emissione dell'anno:
+// - arrivo dalla Dashboard per uno sforo "orfano" sulla gestione ancora
+//   selezionata (segnale certo)
+// - oppure la gestione selezionata ha già un piano rate "preventivo
+//   iniziale" ordinario (segnale euristico dal backend, utile per chi crea
+//   il piano manualmente senza passare dalla Dashboard)
+const isPianoIntegrativo = computed(() =>
+  form.tipo === 'ordinario' && (isDashboardContextValid.value || !!props.hasPianoEsistente)
+)
+const ordinarioCardTitle = computed(() => isPianoIntegrativo.value ? 'Piano Rata Integrativa' : 'Piano rate ordinario')
 
 // Nuovi campi form necessari per lo straordinario (aggiungili anche all'interfaccia nel backend)
 const autorizzazioneStraordinaria = ref({
@@ -285,10 +321,10 @@ watch(() => form.gestione_id, async (newId) => {
 
   try {
     router.get(
-      window.location.pathname, 
-      { gestione_id: newId },   
+      window.location.pathname,
+      { gestione_id: newId },
       {
-        only: ['saldoInfo'],    
+        only: ['saldoInfo', 'hasPianoEsistente'],
         preserveState: true,    
         preserveScroll: true,   
         onSuccess: (page: any) => {
@@ -523,21 +559,39 @@ const submit = () => {
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
-              :class="form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+          <label class="flex flex-col p-5 rounded-xl border transition-all relative"
+              :class="[
+                form.tipo === 'ordinario' ? 'bg-blue-50 border-blue-400 shadow-md ring-1 ring-blue-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
+                isOrdinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+              ]"
+              :aria-disabled="isOrdinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
-                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">Piano rate ordinario</div>
-                  <input type="radio" v-model="form.tipo" value="ordinario" class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600" />
+                  <div class="font-black text-sm" :class="form.tipo === 'ordinario' ? 'text-blue-800' : 'text-slate-700'">{{ ordinarioCardTitle }}</div>
+                  <input type="radio" v-model="form.tipo" value="ordinario" :disabled="isOrdinarioDisabled"
+                      :aria-describedby="isOrdinarioDisabled ? 'tipo-ordinario-non-disponibile' : undefined"
+                      class="w-4 h-4 mt-0.5 text-blue-600 border-slate-300 focus:ring-blue-600 disabled:cursor-not-allowed" />
               </div>
               <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'ordinario' ? 'text-blue-700/80' : 'text-slate-500'">Finanzia le spese di preventivo approvate a inizio anno (o i loro sforamenti).</p>
+              <p v-if="isOrdinarioDisabled" id="tipo-ordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
+                  <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
+              </p>
           </label>
-          <label class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all relative"
-              :class="form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white'">
+          <label class="flex flex-col p-5 rounded-xl border transition-all relative"
+              :class="[
+                form.tipo === 'straordinario' ? 'bg-amber-50 border-amber-400 shadow-md ring-1 ring-amber-400' : 'border-slate-200 hover:bg-slate-50 bg-white',
+                isStraordinarioDisabled ? 'opacity-50 cursor-not-allowed hover:bg-white' : 'cursor-pointer'
+              ]"
+              :aria-disabled="isStraordinarioDisabled ? 'true' : undefined">
               <div class="flex items-start justify-between w-full mb-3">
                   <div class="font-black text-sm" :class="form.tipo === 'straordinario' ? 'text-amber-800' : 'text-slate-700'">Piano rate straordinario (Art. 1135 c.c.)</div>
-                  <input type="radio" v-model="form.tipo" value="straordinario" class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600" />
+                  <input type="radio" v-model="form.tipo" value="straordinario" :disabled="isStraordinarioDisabled"
+                      :aria-describedby="isStraordinarioDisabled ? 'tipo-straordinario-non-disponibile' : undefined"
+                      class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 disabled:cursor-not-allowed" />
               </div>
               <p class="text-xs leading-relaxed flex-1" :class="form.tipo === 'straordinario' ? 'text-amber-700/80' : 'text-slate-500'">Finanzia fatture per spese impreviste o lavori ad personam non presenti a bilancio.</p>
+              <p v-if="isStraordinarioDisabled" id="tipo-straordinario-non-disponibile" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
+                  <Info class="w-3 h-3 shrink-0" /> Non disponibile: il tipo è già stato determinato in base alla voce da finanziare.
+              </p>
           </label>
         </div>
 

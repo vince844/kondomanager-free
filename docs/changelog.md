@@ -7,13 +7,36 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.28] - Il Piano Rate Impara Da Dove Arriva
+
+La Dashboard, quando propone di creare un piano rate per uno sforo o una sopravvenienza, sa già perfettamente quale dei due tipi serve — lo scrive nell'indirizzo che genera (`?tipo=ordinario` o `?tipo=straordinario`). Ma la pagina di creazione, fino a ieri, si limitava a preselezionare quella scelta lasciando comunque cliccabile l'altra: un amministratore che toccava la card sbagliata arrivava fino in fondo al form e si scontrava con un errore di validazione solo al salvataggio. Questa beta chiude il cerchio: se il contesto è certo, l'altra opzione si disattiva subito, con la spiegazione sempre visibile — non solo al passaggio del mouse.
+
+Insieme al lock, la card "Piano rate ordinario" ora si rietichetta da sola in "Piano Rata Integrativa" quando non è la prima emissione dell'anno per quella gestione — che sia perché la Dashboard sta chiedendo di coprire uno sforo, o perché la gestione selezionata ha già un piano rate "preventivo iniziale" a bilancio.
+
+### Aggiunto
+
+- **Le due card "Piano rate ordinario" / "Piano rate straordinario" si bloccano a vicenda** quando si arriva da un link della Dashboard che ha già determinato il tipo corretto (sforo su capitolo esistente vs sopravvenienza/ad personam): l'opzione non pertinente diventa non selezionabile, con una spiegazione sempre visibile sotto la card. Se l'utente cambia gestione manualmente dal select, il blocco si scioglie: il contesto della Dashboard vale solo per la gestione a cui si riferiva.
+- **La card "Piano rate ordinario" diventa "Piano Rata Integrativa"** quando è chiaro che non si tratta della prima emissione dell'anno: arrivo dalla Dashboard per uno sforo, oppure — per chi crea il piano manualmente — la gestione selezionata ha già un piano rate "preventivo iniziale" ordinario a bilancio.
+
+### Corretto (prima del rilascio, revisione avversariale)
+
+- **Il segnale "la gestione ha già un piano rate" contava anche un piano straordinario preesistente**, facendo apparire "Piano Rata Integrativa" sul primissimo piano ordinario dell'anno per quella gestione. La query è ora vincolata a `tipo=ordinario` e a `contesto_creazione=preventivo_iniziale` (un piano "madre", non un'integrazione).
+- **Il blocco delle card e l'etichetta "Integrativa" restavano ancorati alla gestione con cui la pagina si era aperta**, anche dopo che l'utente ne selezionava manualmente un'altra dal menu "Gestione di riferimento" — bloccando un tipo che per la nuova gestione poteva invece essere corretto, e mostrando un'etichetta falsa. Ora il contesto della Dashboard si applica solo finché la gestione selezionata resta quella originaria.
+- **Il tooltip che spiegava il blocco era un `title` HTML, visibile solo al passaggio del mouse**: chi naviga da tastiera o con uno screen reader non lo riceveva mai, e vedeva semplicemente sparire un'opzione senza spiegazione. Sostituito con un testo sempre visibile.
+- *(Limite noto, non un bug — documentato nel codice)*: il segnale "prima emissione dell'anno" non distingue esercizi diversi per una gestione riutilizzata su più anni (caso raro ma raggiungibile). L'impatto è puramente cosmetico sull'etichetta mostrata, non tocca calcoli, validazioni o dati salvati.
+
+### Test
+
+- 2 nuovi test di regressione per lo scoping tipo+contesto_creazione del segnale "piano già esistente".
+- Suite completa: 616 test verdi (prima di questa beta: 614).
+
+---
+
 ## [1.10.0-beta.27] - Il Già Versato Impara a Chiedere: "Questi Soldi, Dove Sono Oggi?"
 
 Seguito diretto della beta.26. Il "già versato" per voce di spesa aggiusta correttamente il riparto — ma un test con numeri reali ha fatto emergere un buco più sottile: dichiarare un già versato non sposta un solo euro reale. È solo un dato per il riparto, non tocca nessuna cassa, non compare nello Stato Patrimoniale come liquidità — a meno che quei soldi non siano già stati spesi come acconto al fornitore prima di Kondomanager, nel qual caso è il debito verso il fornitore a non essere ancora scontato. Questa beta chiude entrambi i casi, e in più mette in comunicazione il già versato con il resto del gestionale: la registrazione di una fattura in sforo, la generazione del piano rate, e — quando serve — il debito pregresso verso il fornitore.
 
 **⚠ MIGRAZIONE DATABASE**: una migrazione, eseguita automaticamente dall'aggiornamento guidato. Aggiunge due colonne nullable a `contributi_versati` (`liquidita_stato`, `cassa_id`): nessun dato esistente viene toccato, nessuna riga già presente cambia comportamento finché l'amministratore non dichiara esplicitamente dove si trovano quei soldi.
-
-Prima di rilasciare questa beta è stata lanciata una revisione avversariale multi-agente su tutto il codice nuovo (dodici sospetti, ciascuno passato a più verificatori con l'istruzione esplicita di confutarlo). Ha trovato, e questa beta corregge prima ancora del rilascio, cinque problemi indipendenti: il vincolo sul fondo deliberato si applicava solo alla primissima dichiarazione, non ai salvataggi successivi; lo storno di una fattura che aveva alzato automaticamente il budget di una voce (rata integrativa) non lo riportava indietro; il task Inbox per l'eccedenza poteva duplicarsi rigenerando lo stesso piano rate, e il suo link poteva risultare rotto su alcune gestioni; e l'aggiornamento del budget non era protetto da due registrazioni quasi simultanee sulla stessa voce.
 
 ### Aggiunto
 
@@ -38,8 +61,6 @@ Prima di rilasciare questa beta è stata lanciata una revisione avversariale mul
 Caso reale segnalato sul forum: un condominio arriva da un altro gestionale con un accantonamento già raccolto (delibera 2025, €500 a testa per una ristrutturazione). Nel 2026 la fattura finale supera l'accantonato e il piano rate integrativo chiede l'INTERA spesa una seconda volta, perché nel motore di riparto non esiste il concetto di "quanto questa unità ha già versato per questa voce" — l'unica traccia di denaro incassato è legata alla rata che lo ha generato, mai alla voce di spesa. Questa beta introduce quella struttura dati e la pagina per compilarla: **Già versato per voce di spesa**, raggiungibile da Struttura.
 
 **⚠ MIGRAZIONE DATABASE**: una migrazione, eseguita automaticamente dall'aggiornamento guidato. Crea la tabella `contributi_versati` (nuova, nessun dato esistente toccato): una riga per unità immobiliare, per voce di spesa, con l'importo già raccolto. Nessuna installazione esistente ha righe qui finché un amministratore non le inserisce esplicitamente — retrocompatibilità totale, il riparto si comporta esattamente come prima ovunque questa tabella sia vuota.
-
-Prima di rilasciare questa beta è stata lanciata una revisione avversariale multi-agente sul codice del netting (otto letture indipendenti, ciascun sospetto passato a più verificatori con l'istruzione esplicita di confutarlo). Ha trovato, e questa beta corregge, un secondo buco che la funzionalità stessa avrebbe introdotto: il netting non "consumava" mai la copertura, quindi un capitolo rateizzato in più tranche (acconto + saldo) rischiava di veder sottratta l'INTERA copertura da OGNUNA delle tranche — nel caso peggiore azzerando quanto chiesto ai condòmini anche con un residuo vero da centinaia di euro, senza alcun blocco. La stessa revisione ha anche trovato — e questa beta corregge — un bug indipendente già in produzione dalla beta.25, sul saldo di apertura delle casse.
 
 ### Aggiunto
 

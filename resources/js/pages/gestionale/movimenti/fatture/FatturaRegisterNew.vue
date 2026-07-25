@@ -783,7 +783,6 @@ const pageGuides = [
                                 </div>
                             </Transition>
                         </div>
-                        <h3 class="text-[10px] font-black uppercase tracking-widest text-slate-400">Dati Principali</h3>
                     </div>
 
                     <div class="p-5 flex-1 overflow-y-auto space-y-5">
@@ -891,7 +890,20 @@ const pageGuides = [
                                 :reduce="(g: Gestione) => g.id"
                                 label="nome"
                                 placeholder="Seleziona..."
-                            />
+                                class="style-chooser">
+                                <template #option="{ nome, tipo }">
+                                    <div class="flex justify-between items-center gap-2 py-0.5">
+                                        <span class="font-bold text-sm truncate min-w-0">{{ nome }}</span>
+                                        <span class="text-[10px] text-slate-400 capitalize shrink-0">{{ tipo }}</span>
+                                    </div>
+                                </template>
+                                <template #selected-option="{ nome, tipo }">
+                                    <div class="flex items-center gap-2 w-full overflow-hidden pr-2">
+                                        <span class="font-bold text-sm truncate min-w-0">{{ nome }}</span>
+                                        <span class="text-[10px] text-slate-400 capitalize shrink-0">{{ tipo }}</span>
+                                    </div>
+                                </template>
+                            </v-select>
                         </div>
 
                         <!-- N. Documento -->
