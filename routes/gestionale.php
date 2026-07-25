@@ -81,6 +81,14 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('saldi', SaldoInizialeController::class)
         ->parameters(['saldi' => 'saldo']);
 
+    // Già versato per voce di spesa: alimenta il netting del riparto (beta.26).
+    Route::get('contributi', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'index'])
+        ->name('contributi.index');
+    Route::get('contributi/{conto}', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'edit'])
+        ->name('contributi.edit');
+    Route::put('contributi/{conto}', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'update'])
+        ->name('contributi.update');
+
     Route::get('esercizi/{esercizio}/fetch-saldi-analitici/{gestione}', [PianoRateController::class, 'fetchSaldiAnalitici'])
         ->name('fetch-saldi-analitici');
     

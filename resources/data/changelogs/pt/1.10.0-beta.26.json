@@ -1,0 +1,8 @@
+{
+    "features": [
+        "⚠ Esta atualização inclui uma migração da base de dados, executada automaticamente durante a atualização guiada. Não altera nenhum dado existente: cria apenas a nova tabela do \"já pago\".",
+        "Nova página \"Já pago por rubrica de despesa\": se o condomínio vier de outro software com um fundo já angariado (ex.: uma deliberação de 2025), registe-o aqui — o motor de rateio vai pedir aos condóminos apenas o remanescente, não a despesa toda uma segunda vez.",
+        "Corrigido um caso em que, ao fracionar a mesma rubrica em várias tranches (entrada e saldo), a cobertura já paga podia ser subtraída mais do que uma vez em vez de apenas uma: identificado e corrigido antes do lançamento através de uma revisão de código dedicada.",
+        "Corrigido um erro presente desde a atualização anterior: o campo \"Saldo inicial\" de uma conta, depois de lançado na contabilidade, podia aparecer vazio e editável no formulário de edição. Voltar a preenchê-lo podia desequilibrar o Balanço Patrimonial. O campo passa agora a bloquear-se corretamente e mostra o saldo real apenas a título informativo."
+    ]
+}

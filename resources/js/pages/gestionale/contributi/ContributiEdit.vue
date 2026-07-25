@@ -1,0 +1,425 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
+import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { usePermission } from '@/composables/permissions';
+import type { Building } from '@/types/buildings';
+import {
+  Wallet, Scale, ArrowRight, Sparkles, CheckCircle2,
+  AlertTriangle, Info, LoaderCircle, Building2,
+} from 'lucide-vue-next';
+
+interface Riga {
+  immobile_id: number;
+  nome: string;
+  interno: string | null;
+  millesimi: number;
+  quota_lorda: number;   // centesimi
+  gia_versato: number;   // centesimi
+}
+
+const props = defineProps<{
+  condominio: Building;
+  voce: { id: number; nome: string; importo_cents: number; gestione: string | null };
+  righe: Riga[];
+  natura: 'fondo_vincolato' | 'avanzo';
+}>();
+
+const { euro } = useCurrencyFormatter({ fromCents: true });
+const { generatePath } = usePermission();
+
+// ── Stato ──────────────────────────────────────────────────────────────────
+// Gli importi si editano in EURO (stringa), si inviano in centesimi.
+const versato = ref<Record<number, string>>(
+  Object.fromEntries(props.righe.map(r => [r.immobile_id, (r.gia_versato / 100).toFixed(2)]))
+);
+
+const natura = ref(props.natura);
+const descrizione = ref('');
+const totaleRaccolto = ref('');
+const salvando = ref(false);
+
+// Formato italiano, identico al resto del gestionale: senza queste opzioni v-money3
+// usa i suoi default inglesi (decimale ".", migliaia ",") e `parse` sotto leggerebbe
+// "1,500.00" come 1,50 — un errore di mille volte sull'importo.
+const moneyOptions = ref({
+  prefix: '',
+  suffix: '',
+  thousands: '.',
+  decimal: ',',
+  precision: 2,
+  allowBlank: true,
+  masked: true,
+  disableNegative: true,
+});
+
+const parse = (v: string | number | undefined): number => {
+  if (v === undefined || v === null || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim();
+  const n = s.includes(',')
+    ? Number(s.replace(/\./g, '').replace(',', '.'))
+    : Number(s);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const cents = (v: string | number | undefined) => Math.round(parse(v) * 100);
+
+// ── Il gesto che fa risparmiare tempo ──────────────────────────────────────
+// L'accantonamento si raccoglie quasi sempre per millesimi: l'amministratore
+// digita il totale una volta sola e il sistema lo ripartisce, penny-perfect.
+const millesimiTotali = computed(() => props.righe.reduce((a, r) => a + r.millesimi, 0));
+
+const ripartisciPerMillesimi = () => {
+  const totale = cents(totaleRaccolto.value);
+  if (totale <= 0 || millesimiTotali.value <= 0) return;
+
+  let assegnato = 0;
+  props.righe.forEach((r, i) => {
+    const quota = i === props.righe.length - 1
+      ? totale - assegnato                                     // l'ultimo assorbe il resto
+      : Math.floor((totale * r.millesimi) / millesimiTotali.value);
+    assegnato += quota;
+    versato.value[r.immobile_id] = (quota / 100).toFixed(2);
+  });
+};
+
+const azzera = () => {
+  props.righe.forEach(r => { versato.value[r.immobile_id] = '0.00'; });
+};
+
+// ── Effetto sul riparto, calcolato mentre si digita ─────────────────────────
+const righeCalcolate = computed(() =>
+  props.righe.map(r => {
+    const versatoC = cents(versato.value[r.immobile_id]);
+    const residuo = Math.max(0, r.quota_lorda - versatoC);
+    return {
+      ...r,
+      versato_cents: versatoC,
+      residuo,
+      eccedenza: Math.max(0, versatoC - r.quota_lorda),
+    };
+  })
+);
+
+const totali = computed(() => {
+  const c = righeCalcolate.value;
+  return {
+    lordo:     c.reduce((a, r) => a + r.quota_lorda, 0),
+    versato:   c.reduce((a, r) => a + r.versato_cents, 0),
+    residuo:   c.reduce((a, r) => a + r.residuo, 0),
+    eccedenza: c.reduce((a, r) => a + r.eccedenza, 0),
+  };
+});
+
+const scarto = computed(() => cents(totaleRaccolto.value) - totali.value.versato);
+const haScarto = computed(() => cents(totaleRaccolto.value) > 0 && scarto.value !== 0);
+
+// ── Salvataggio ────────────────────────────────────────────────────────────
+const salva = () => {
+  salvando.value = true;
+  router.put(
+    generatePath('gestionale/:condominio/contributi/:conto', {
+      condominio: props.condominio.id,
+      conto: props.voce.id,
+    }),
+    {
+      natura: natura.value,
+      descrizione: descrizione.value || null,
+      righe: props.righe.map(r => ({
+        immobile_id: r.immobile_id,
+        gia_versato: cents(versato.value[r.immobile_id]),
+      })),
+    },
+    { preserveScroll: true, onFinish: () => { salvando.value = false; } }
+  );
+};
+
+const headerBreadcrumbs = computed(() => [
+  { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
+  { title: 'Struttura', href: '#' },
+  { title: 'Già versato', href: '#' },
+]);
+
+const guide = [
+  {
+    title: 'A cosa serve',
+    description: 'Registra quanto ogni unità ha già versato per questa spesa, tipicamente un accantonamento raccolto prima di passare a Kondomanager.',
+    icon: Wallet,
+    colorVariant: 'emerald' as const,
+  },
+  {
+    title: 'Effetto immediato',
+    description: 'Il riparto chiederà a ciascuno solo il residuo. Senza questo dato, la spesa verrebbe richiesta una seconda volta.',
+    icon: Scale,
+    colorVariant: 'blue' as const,
+  },
+];
+</script>
+
+<template>
+  <Head :title="`Già versato — ${voce.nome}`" />
+
+  <GestionaleLayout>
+    <div class="px-6 py-8 space-y-6">
+
+      <PageHeaderGuide
+        page-title="Quanto è già stato versato"
+        :page-subtitle="`Voce di spesa: ${voce.nome}`"
+        :guides="guide"
+        :breadcrumbs="headerBreadcrumbs"
+        :condominio="condominio"
+      />
+
+      <!-- ═══ 1. NATURA — è una qualificazione giuridica, non un'etichetta ═══ -->
+      <div class="bg-white border rounded-2xl p-6">
+        <div class="flex items-start gap-2 mb-4">
+          <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            1. Che cosa sono questi versamenti?
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label
+            class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all"
+            :class="natura === 'fondo_vincolato'
+              ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-400 shadow-sm'
+              : 'border-slate-200 hover:bg-slate-50'">
+            <div class="flex items-start justify-between mb-2">
+              <span class="font-bold text-sm"
+                :class="natura === 'fondo_vincolato' ? 'text-emerald-800' : 'text-slate-700'">
+                Fondo deliberato
+              </span>
+              <input type="radio" v-model="natura" value="fondo_vincolato"
+                class="w-4 h-4 mt-0.5 text-emerald-600 focus:ring-emerald-600" />
+            </div>
+            <p class="text-[11px] leading-relaxed"
+              :class="natura === 'fondo_vincolato' ? 'text-emerald-700/80' : 'text-slate-500'">
+              L'assemblea ha costituito un fondo per quest'opera (art. 1135 c.c.).
+              Le somme hanno un <strong>vincolo di destinazione</strong>: non possono
+              essere usate per altro senza una nuova delibera.
+            </p>
+          </label>
+
+          <label
+            class="flex flex-col p-5 rounded-xl border cursor-pointer transition-all"
+            :class="natura === 'avanzo'
+              ? 'bg-blue-50 border-blue-400 ring-1 ring-blue-400 shadow-sm'
+              : 'border-slate-200 hover:bg-slate-50'">
+            <div class="flex items-start justify-between mb-2">
+              <span class="font-bold text-sm"
+                :class="natura === 'avanzo' ? 'text-blue-800' : 'text-slate-700'">
+                Rate già riscosse
+              </span>
+              <input type="radio" v-model="natura" value="avanzo"
+                class="w-4 h-4 mt-0.5 text-blue-600 focus:ring-blue-600" />
+            </div>
+            <p class="text-[11px] leading-relaxed"
+              :class="natura === 'avanzo' ? 'text-blue-700/80' : 'text-slate-500'">
+              Somme incassate dai condòmini ma non ancora spese, <strong>senza un fondo
+              deliberato</strong>. Restano conguagliabili a fine gestione.
+            </p>
+          </label>
+        </div>
+
+        <div class="mt-4 flex gap-2.5 p-3 bg-slate-50 border border-slate-100 rounded-xl">
+          <Info class="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            La distinzione la stabilisce la <strong>delibera</strong>, non il software:
+            attribuire un vincolo che l'assemblea non ha deliberato — o ignorarne uno
+            esistente — è un problema legale, non contabile.
+          </p>
+        </div>
+      </div>
+
+      <!-- ═══ 2. IL GESTO CHE FA RISPARMIARE TEMPO ═══ -->
+      <div class="bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 rounded-2xl p-6">
+        <div class="flex items-center gap-2 mb-1">
+          <Sparkles class="w-4 h-4 text-indigo-500" />
+          <span class="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+            2. Compilazione rapida
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">
+          L'accantonamento si raccoglie quasi sempre per millesimi: digita il totale una
+          volta sola e lo distribuiamo noi, al centesimo.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div class="flex-1 max-w-xs">
+            <Label class="text-[11px] font-bold text-slate-600">Totale già raccolto</Label>
+            <div class="relative mt-1">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">€</span>
+              <MoneyInput v-model="totaleRaccolto" :money-options="moneyOptions"
+                class="pl-7 h-10 font-bold" />
+            </div>
+          </div>
+          <Button type="button" class="h-10 gap-2" @click="ripartisciPerMillesimi">
+            <Scale class="w-4 h-4" /> Ripartisci per millesimi
+          </Button>
+          <Button type="button" variant="outline" class="h-10" @click="azzera">
+            Azzera
+          </Button>
+        </div>
+
+        <div v-if="haScarto"
+          class="mt-3 flex items-center gap-2 text-[11px] font-bold px-3 py-2 rounded-lg"
+          :class="scarto > 0 ? 'text-amber-700 bg-amber-50 border border-amber-200'
+                             : 'text-rose-700 bg-rose-50 border border-rose-200'">
+          <AlertTriangle class="w-3.5 h-3.5" />
+          <span v-if="scarto > 0">
+            Mancano {{ euro(scarto) }} rispetto al totale dichiarato.
+          </span>
+          <span v-else>
+            Hai distribuito {{ euro(-scarto) }} in più rispetto al totale dichiarato.
+          </span>
+        </div>
+      </div>
+
+      <!-- ═══ 3. TABELLA CON EFFETTO IN TEMPO REALE ═══ -->
+      <div class="bg-white border rounded-2xl overflow-hidden">
+        <div class="px-6 py-4 border-b bg-slate-50/60 flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">
+              3. Dettaglio per unità
+            </span>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Spesa totale {{ euro(voce.importo_cents) }} — puoi correggere i singoli importi
+            </p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="text-[10px] uppercase tracking-wide text-slate-400 border-b">
+                <th class="text-left px-6 py-3 font-bold">Unità</th>
+                <th class="text-right px-3 py-3 font-bold">Millesimi</th>
+                <th class="text-right px-3 py-3 font-bold">Quota dovuta</th>
+                <th class="text-right px-3 py-3 font-bold">Già versato</th>
+                <th class="text-right px-6 py-3 font-bold bg-emerald-50/60 text-emerald-700">
+                  Da chiedere ora
+                </th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr v-for="r in righeCalcolate" :key="r.immobile_id" class="hover:bg-slate-50/60">
+                <td class="px-6 py-2.5">
+                  <div class="flex items-center gap-2">
+                    <Building2 class="w-3.5 h-3.5 text-slate-300" />
+                    <div>
+                      <div class="font-semibold text-slate-800 text-xs">{{ r.nome }}</div>
+                      <div v-if="r.interno" class="text-[10px] text-slate-400">Int. {{ r.interno }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="px-3 py-2.5 text-right text-xs text-slate-500 tabular-nums">
+                  {{ r.millesimi }}
+                </td>
+                <td class="px-3 py-2.5 text-right text-xs text-slate-600 tabular-nums">
+                  {{ euro(r.quota_lorda) }}
+                </td>
+                <td class="px-3 py-2.5">
+                  <div class="relative w-32 ml-auto">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">€</span>
+                    <MoneyInput v-model="versato[r.immobile_id]" :money-options="moneyOptions"
+                      class="pl-5 h-8 text-right text-xs font-semibold" />
+                  </div>
+                </td>
+                <td class="px-6 py-2.5 text-right bg-emerald-50/40">
+                  <span class="font-bold text-sm tabular-nums"
+                    :class="r.residuo === 0 ? 'text-emerald-600' : 'text-slate-800'">
+                    {{ euro(r.residuo) }}
+                  </span>
+                  <div v-if="r.eccedenza > 0" class="text-[10px] text-amber-600 font-semibold mt-0.5">
+                    +{{ euro(r.eccedenza) }} in eccesso
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="border-t-2 border-slate-200 bg-slate-50 font-bold text-xs">
+                <td class="px-6 py-3">Totali</td>
+                <td class="px-3 py-3 text-right tabular-nums text-slate-500">{{ millesimiTotali }}</td>
+                <td class="px-3 py-3 text-right tabular-nums">{{ euro(totali.lordo) }}</td>
+                <td class="px-3 py-3 text-right tabular-nums text-indigo-700">{{ euro(totali.versato) }}</td>
+                <td class="px-6 py-3 text-right tabular-nums text-emerald-700 bg-emerald-50">
+                  {{ euro(totali.residuo) }}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- ═══ 4. IL PRIMA/DOPO — la conseguenza, prima di salvare ═══ -->
+      <div class="bg-slate-900 rounded-2xl p-6 text-white relative overflow-hidden">
+        <div class="absolute inset-0 opacity-[0.07]"
+          style="background-image:linear-gradient(rgba(255,255,255,.5) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.5) 1px,transparent 1px);background-size:28px 28px"></div>
+
+        <div class="relative z-10">
+          <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Effetto sul prossimo piano rate
+          </span>
+
+          <div class="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+            <div class="flex-1 bg-white/5 border border-white/10 rounded-xl p-4">
+              <div class="text-[10px] uppercase tracking-wide text-slate-400 font-bold">Senza questo dato</div>
+              <div class="text-2xl font-black mt-1 tabular-nums text-rose-300">{{ euro(totali.lordo) }}</div>
+              <div class="text-[11px] text-slate-400 mt-1">richiesti ai condòmini</div>
+            </div>
+
+            <ArrowRight class="w-6 h-6 text-slate-500 mx-auto shrink-0 rotate-90 sm:rotate-0" />
+
+            <div class="flex-1 bg-emerald-500/10 border border-emerald-400/30 rounded-xl p-4">
+              <div class="text-[10px] uppercase tracking-wide text-emerald-300/80 font-bold">Con il già versato</div>
+              <div class="text-2xl font-black mt-1 tabular-nums text-emerald-300">{{ euro(totali.residuo) }}</div>
+              <div class="text-[11px] text-emerald-200/60 mt-1">solo il residuo dovuto</div>
+            </div>
+          </div>
+
+          <div v-if="totali.versato > 0"
+            class="mt-4 flex items-center gap-2 text-[11px] text-slate-300">
+            <CheckCircle2 class="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong class="text-white">{{ euro(totali.versato) }}</strong> già versati non
+              verranno richiesti una seconda volta.
+            </span>
+          </div>
+
+          <div v-if="totali.eccedenza > 0"
+            class="mt-2 flex items-center gap-2 text-[11px] text-amber-300">
+            <AlertTriangle class="w-4 h-4 shrink-0" />
+            <span>
+              <strong>{{ euro(totali.eccedenza) }}</strong> versati in eccesso: da restituire
+              o conguagliare, non vengono persi.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══ 5. NOTA + SALVA ═══ -->
+      <div class="bg-white border rounded-2xl p-6 flex flex-col sm:flex-row gap-4 sm:items-end">
+        <div class="flex-1">
+          <Label class="text-[11px] font-bold text-slate-600">
+            Nota (facoltativa) — es. estremi della delibera
+          </Label>
+          <Input v-model="descrizione" class="mt-1 h-10 text-sm"
+            placeholder="Delibera assembleare del 12/05/2025" />
+        </div>
+        <Button class="h-11 px-8 font-bold gap-2" :disabled="salvando" @click="salva">
+          <LoaderCircle v-if="salvando" class="w-4 h-4 animate-spin" />
+          <CheckCircle2 v-else class="w-4 h-4" />
+          Salva
+        </Button>
+      </div>
+
+    </div>
+  </GestionaleLayout>
+</template>

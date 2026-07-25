@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Gestione;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -31,6 +32,9 @@ class CalcoloQuoteService
     /** @var array Accumulatore per le quote non assegnabili per mancanza di anagrafiche attive */
     private array $scopertiAccumulati = [];
 
+    /** Unità che hanno versato più di quanto la spesa richiedeva loro. */
+    private array $eccedenzeCopertura = [];
+
     // =========================================================================
     // MOTORE ORDINARIO
     // =========================================================================
@@ -48,6 +52,7 @@ class CalcoloQuoteService
         $this->pivotOverrides   = [];
         $this->pianoRateCreatedAt = $pianoRate?->created_at;
         $this->scopertiAccumulati = [];
+        $this->eccedenzeCopertura = [];
         $totali = [];
         $pianoConto = $gestione->pianoConto;
 
@@ -161,6 +166,7 @@ class CalcoloQuoteService
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate): array
     {
         $this->scopertiAccumulati = [];
+        $this->eccedenzeCopertura = [];
 
         // Carichiamo le fatture col pivot: importo_collegato è la quota della
         // fattura effettivamente finanziata da QUESTO piano (residuo/split).
@@ -175,6 +181,14 @@ class CalcoloQuoteService
         $totali             = [];
         $righeElaborate     = 0;
         $copertureElaborate = 0;
+
+        // Accumulatore per conto: più fatture (o più componenti della stessa
+        // fattura) possono puntare allo STESSO conto imprevisto — due sopravvenienze
+        // pregresse sul medesimo capitolo, ad esempio. Il netting del già-versato
+        // (dentro distribuisciSuTabelle) va applicato UNA sola volta per conto per
+        // chiamata: chiamarlo una volta per componente lo sottrarrebbe più volte
+        // nella stessa esecuzione, anche a monte di qualunque split fra piani.
+        $importiPerConto = [];
 
         foreach ($fatture as $fattura) {
 
@@ -265,7 +279,8 @@ class CalcoloQuoteService
             }
 
             // -----------------------------------------------------------------
-            // 3. DISTRIBUZIONE DI OGNI COMPONENTE
+            // 3. ACCUMULO PER CONTO (l'addebito diretto invece resta immediato:
+            //    non passa dal netting, ogni immobile ha la sua riga_fattura)
             // -----------------------------------------------------------------
             foreach ($componenti as $i => $c) {
                 $importoComp = (int) ($importiComponenti[$i] ?? 0);
@@ -276,24 +291,32 @@ class CalcoloQuoteService
                     continue;
                 }
 
-                $conto = Conto::with([
-                    'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
-                    'tabelleMillesimali.ripartizioni',
-                ])->find($c['conto_id']);
-
-                if (!$conto) {
-                    Log::warning("calcolaDaFattureStraordinarie: conto_id={$c['conto_id']} non trovato, componente saltato.", [
-                        'fattura_passiva_id' => $fattura->id,
-                    ]);
-                    continue;
-                }
-
-                $importoConto = in_array($conto->tipo, ['spesa', 'uscita'])
-                    ? $importoComp
-                    : -$importoComp;
-
-                $this->distribuisciSuTabelle($conto, $importoConto, $totali);
+                $importiPerConto[$c['conto_id']] = ($importiPerConto[$c['conto_id']] ?? 0) + $importoComp;
             }
+        }
+
+        // Distribuzione: UNA sola chiamata per conto su tutto il piano, sul totale
+        // accumulato da tutte le fatture/componenti che lo riguardano.
+        foreach ($importiPerConto as $contoId => $importoComp) {
+            if ($importoComp === 0) continue;
+
+            $conto = Conto::with([
+                'tabelleMillesimali.tabella.quote.immobile.anagrafiche',
+                'tabelleMillesimali.ripartizioni',
+            ])->find($contoId);
+
+            if (!$conto) {
+                Log::warning("calcolaDaFattureStraordinarie: conto_id={$contoId} non trovato, componente saltato.", [
+                    'piano_rate_id' => $pianoRate->id,
+                ]);
+                continue;
+            }
+
+            $importoConto = in_array($conto->tipo, ['spesa', 'uscita'])
+                ? $importoComp
+                : -$importoComp;
+
+            $this->distribuisciSuTabelle($conto, $importoConto, $totali);
         }
 
         Log::info("=== CALCOLO STRAORDINARIO COMPLETATO ===", [
@@ -665,6 +688,11 @@ class CalcoloQuoteService
 
         $importiDistributi = $this->distribuisciImporto($weights, $importoContoSegno);
 
+        // Sottrae quanto ciascuna unità ha GIÀ versato per questa voce: senza questo
+        // passaggio una spesa già coperta in tutto o in parte verrebbe richiesta una
+        // seconda volta (vedi docs/fondo_accantonato_e_quadratura_sp.md §4).
+        $importiDistributi = $this->nettingGiaVersato($conto, $importiDistributi);
+
         foreach ($importiDistributi as $key => $importoCentesimi) {
             [$aid, $iid] = array_map('intval', explode('|', $key));
 
@@ -673,6 +701,119 @@ class CalcoloQuoteService
 
             $totali[$aid][$iid] += $importoCentesimi;
         }
+    }
+
+    /**
+     * Netting del già-versato: da ogni quota lorda sottrae la copertura che quella
+     * UNITÀ ha già versato verso questa voce di spesa.
+     *
+     * La copertura è per immobile (segue l'unità, non la persona: art. 63 disp. att.
+     * c.c.), quindi se l'unità ha più comproprietari va ripartita tra loro in
+     * proporzione alle rispettive quote lorde, penny-perfect.
+     *
+     * La quota netta non scende mai sotto zero: l'eventuale eccedenza — l'unità ha
+     * versato più di quanto le spetta — non viene inghiottita in silenzio ma
+     * accumulata e resa leggibile da `getEccedenzeCopertura()`, perché è denaro dei
+     * condòmini che va restituito o conguagliato.
+     *
+     * @param  array<string,int>  $importiDistributi  mappa "anagraficaId|immobileId" => centesimi lordi
+     * @return array<string,int>  la stessa mappa, al netto delle coperture
+     */
+    private function nettingGiaVersato(Conto $conto, array $importiDistributi): array
+    {
+        $coperture = ContributoVersato::perImmobile(Conto::class, $conto->id);
+
+        if ($coperture->isEmpty()) {
+            return $importiDistributi;
+        }
+
+        // QUOTA di questa chiamata sul budget nominale del conto.
+        //
+        // Un capitolo può essere finanziato da PIÙ chiamate indipendenti: due
+        // piani rate sullo stesso conto (acconto + saldo), o più fatture
+        // straordinarie collegate allo stesso conto imprevisto. La copertura
+        // storica in `contributi_versati` è il totale versato per l'INTERA voce,
+        // non per questa singola chiamata: applicarla per intero ad ogni chiamata
+        // la sottrarrebbe più volte, lasciando un residuo mai richiesto a
+        // nessuno — vedi BucoBGiaVersatoDoppioPianoRateTest. Qui se ne applica
+        // solo la quota proporzionale a quanto QUESTA chiamata rappresenta del
+        // budget totale (conto->importo). Con una sola chiamata (il caso comune,
+        // nessuna rateizzazione in più tranche) la quota è 1 e il comportamento
+        // resta identico a prima di questa correzione.
+        //
+        // floor(), mai round(): un pareggio fra chiamate indipendenti nel tempo
+        // (l'acconto oggi, il saldo fra un mese) non può ridistribuire un resto
+        // come fa distribuisciImporto() dentro la STESSA chiamata. floor() sbaglia
+        // sempre per difetto sulla copertura applicata: nel peggiore dei casi si
+        // richiede qualche centesimo IN PIÙ del dovuto, mai in meno.
+        $totaleNominale = abs((int) $conto->importo);
+        $totaleQuestaChiamata = abs(array_sum($importiDistributi));
+        $quota = ($totaleNominale > 0 && $totaleQuestaChiamata < $totaleNominale)
+            ? $totaleQuestaChiamata / $totaleNominale
+            : 1.0;
+
+        // Raggruppa le righe per immobile: la copertura è dell'unità, non del soggetto.
+        $righePerImmobile = [];
+        foreach ($importiDistributi as $key => $importo) {
+            [, $iid] = array_map('intval', explode('|', $key));
+            $righePerImmobile[$iid][$key] = $importo;
+        }
+
+        foreach ($righePerImmobile as $immobileId => $righe) {
+            $coperturaStorica = (int) ($coperture[$immobileId] ?? 0);
+
+            if ($coperturaStorica <= 0) {
+                continue;
+            }
+
+            $lordoImmobile = array_sum($righe);
+
+            // Su una quota negativa (nota di credito) il netting non si applica.
+            if ($lordoImmobile <= 0) {
+                continue;
+            }
+
+            $copertura = $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota);
+            $applicata = min($copertura, $lordoImmobile);
+
+            if ($copertura > $lordoImmobile) {
+                $this->eccedenzeCopertura[] = [
+                    'immobile_id' => $immobileId,
+                    'conto_id'    => $conto->id,
+                    'versato'     => $copertura,
+                    'dovuto'      => $lordoImmobile,
+                    'eccedenza'   => $copertura - $lordoImmobile,
+                ];
+            }
+
+            // Ripartisce la copertura tra i comproprietari in proporzione al lordo,
+            // con il resto sull'ultimo per non perdere centesimi.
+            $assegnato = 0;
+            $chiavi    = array_keys($righe);
+            $ultima    = end($chiavi);
+
+            foreach ($righe as $key => $lordoRiga) {
+                $quotaCopertura = $key === $ultima
+                    ? $applicata - $assegnato
+                    : (int) floor($applicata * $lordoRiga / $lordoImmobile);
+
+                $assegnato += $quotaCopertura;
+
+                $importiDistributi[$key] = max(0, $lordoRiga - $quotaCopertura);
+            }
+        }
+
+        return $importiDistributi;
+    }
+
+    /**
+     * Unità che hanno versato PIÙ di quanto la spesa richiedeva loro.
+     *
+     * @return array<int,array{immobile_id:int,conto_id:int,versato:int,dovuto:int,eccedenza:int}>
+     */
+    public function getEccedenzeCopertura(): array
+    {
+        return $this->eccedenzeCopertura;
     }
 
     /**

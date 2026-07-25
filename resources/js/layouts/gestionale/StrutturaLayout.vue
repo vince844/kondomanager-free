@@ -4,7 +4,7 @@ import { computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
-import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins } from 'lucide-vue-next';
+import { Building2, ArrowUpNarrowWide, TextSearch, Wallet, Coins, HandCoins } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 
@@ -46,6 +46,12 @@ const topbarNavItems: LinkItem[] = [
     icon: Coins,
     title: 'Saldi Iniziali',
     href: generatePath('gestionale/:condominio/saldi', { condominio: condominio.value.id }),
+  },
+  {
+    type: 'link',
+    icon: HandCoins,
+    title: 'Già versato',
+    href: generatePath('gestionale/:condominio/contributi', { condominio: condominio.value.id }),
   }
 ];
 

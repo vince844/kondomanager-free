@@ -280,6 +280,73 @@ test('GUARDIA: dopo il backfill la cassa resta modificabile (l\'apertura non è 
     expect($cassa->fresh()->tipo)->toBe('contanti');
 })->group('retrocompatibilita', 'guardia');
 
+/**
+ * REGRESSIONE: revisione avversariale beta.26.
+ *
+ * `hasMovimentiOperativi()` esclude di proposito la scrittura di apertura (serve
+ * a non bloccare il campo "tipo" su una cassa mai davvero usata). Ma per il campo
+ * "saldo di apertura" quell'esclusione è un buco: dopo il backfill la colonna vale
+ * zero e la UI la mostrava vuota e modificabile, con un tooltip che invitava a
+ * "correggerla". Un amministratore che riapre il form — magari solo per cambiare
+ * il nome — e vede quel campo vuoto lo ridigita: la colonna torna piena MENTRE la
+ * scrittura di apertura resta a giornale. SaldoCassaService somma colonna e
+ * movimenti: il saldo raddoppia e lo Stato Patrimoniale si sbilancia esattamente
+ * dell'importo del saldo di apertura.
+ */
+test('GUARDIA: il saldo di apertura non si riscrive più dopo il backfill, anche ridigitando lo stesso importo', function () {
+    [$condominio] = setupContabile();
+    $cassa = arCreaCassa($condominio->id, 100_000);
+
+    arEseguiBackfill();
+    $cassa->refresh();
+
+    // Come la vecchia guardia lo vedeva: nessun movimento operativo, quindi il
+    // campo "sembrerebbe" ancora libero...
+    expect($cassa->hasMovimentiOperativi())->toBeFalse();
+    // ...ma l'apertura è già a giornale: la nuova guardia deve bloccarlo comunque.
+    expect($cassa->hasAperturaRegistrata())->toBeTrue();
+
+    // L'amministratore salva il form senza intenzione di toccare il saldo, ma il
+    // campo arriva comunque valorizzato nel payload (comportamento normale di un
+    // form Inertia), con l'importo originale ridigitato.
+    app(\App\Actions\Cassa\UpdateCassaAction::class)->execute($cassa, [
+        'nome'           => $cassa->nome,
+        'tipo'           => $cassa->tipo,
+        'saldo_iniziale' => '1.000,00',
+    ]);
+
+    // La colonna resta congelata a zero: nessun doppio conteggio.
+    expect((int) $cassa->fresh()->saldo_iniziale)->toBe(0);
+    expect(app(SaldoCassaService::class)->saldoDisponibile($cassa->fresh()))->toBe(100_000);
+})->group('retrocompatibilita', 'guardia', 'apertura');
+
+test('GUARDIA: il flag esposto al frontend blocca il campo e mostra il saldo reale, non la colonna azzerata', function () {
+    [$condominio] = setupContabile();
+    $cassa = arCreaCassa($condominio->id, 100_000);
+
+    arEseguiBackfill();
+    $cassa->refresh();
+
+    $risorsa = (new \App\Http\Resources\Gestionale\Casse\UpdateCassaResource($cassa))
+        ->toArray(request());
+
+    expect($risorsa['saldo_iniziale_bloccato'])->toBeTrue();
+    // Non '' (la colonna azzerata, che sembrerebbe un campo da compilare): il
+    // saldo reale corrente, fonte unica SaldoCassaService.
+    expect($risorsa['saldo_iniziale'])->toBe('1.000,00');
+})->group('retrocompatibilita', 'guardia', 'apertura');
+
+test('GUARDIA: prima del backfill il campo resta libero e mostra la colonna, non il flag bloccato', function () {
+    [$condominio] = setupContabile();
+    $cassa = arCreaCassa($condominio->id, 100_000);
+
+    $risorsa = (new \App\Http\Resources\Gestionale\Casse\UpdateCassaResource($cassa))
+        ->toArray(request());
+
+    expect($risorsa['saldo_iniziale_bloccato'])->toBeFalse();
+    expect($risorsa['saldo_iniziale'])->toBe('1.000,00');
+})->group('retrocompatibilita', 'guardia', 'apertura');
+
 test('GUARDIA: un movimento vero blocca ancora la modifica di tipo e saldo', function () {
     [$condominio, $esercizio, $gestione] = setupContabile();
     $cassa = arCreaCassa($condominio->id, 100_000);

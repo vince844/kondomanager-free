@@ -120,6 +120,30 @@ class Cassa extends Model
     }
 
     /**
+     * Il saldo di apertura è già stato portato a giornale
+     * (RegistraAperturaCassaAction)? Da quel momento il dato è nella scrittura,
+     * non più nella colonna: riscrivere la colonna lo conterebbe due volte in
+     * SaldoCassaService (colonna + movimenti). A differenza di
+     * hasMovimentiOperativi() — che riguarda il tipo di risorsa — questa guardia
+     * riguarda SOLO il campo saldo_iniziale e scatta anche su una cassa "vergine"
+     * dal punto di vista operativo, perché l'apertura da sola basta a spostare il
+     * dato dalla colonna al giornale.
+     */
+    public function hasAperturaRegistrata(): bool
+    {
+        if (! $this->conto_contabile_id) {
+            return false;
+        }
+
+        return \Illuminate\Support\Facades\DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', 'rs.scrittura_id', '=', 'sc.id')
+            ->where('rs.conto_contabile_id', $this->conto_contabile_id)
+            ->where('sc.tipo_movimento', TipoMovimentoContabile::APERTURA->value)
+            ->whereNull('sc.deleted_at')
+            ->exists();
+    }
+
+    /**
      * Il condominio proprietario della cassa.
      *
      * Mancava, pur essendo già usata da CreateCassaBankAccountAction e

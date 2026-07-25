@@ -281,6 +281,59 @@ test('corrente ad personam: la riga con immobile_id viene addebitata diretta', f
         ->and($totali)->toHaveKey($base['anagraficaId']);
 });
 
+// =============================================================================
+// REGRESSIONE — revisione avversariale beta.26 (netting del già-versato)
+// =============================================================================
+
+/**
+ * `nettingGiaVersato()` rileggeva l'INTERA copertura storica ad ogni chiamata di
+ * distribuisciSuTabelle(): se lo stesso conto era raggiunto da PIÙ componenti
+ * nella STESSA esecuzione di calcolaDaFattureStraordinarie() (due fatture con una
+ * riga sopravvenienza ciascuna sul medesimo capitolo, qui), la copertura veniva
+ * sottratta una volta per fattura invece che una volta sola per conto.
+ */
+test('BUCO B RISOLTO: due fatture straordinarie sullo stesso conto non duplicano la copertura nella stessa chiamata', function () {
+    $base = baseStraordinario();
+    $base['capitolo']->forceFill(['importo' => 100_000])->save(); // budget nominale noto
+
+    \App\Models\Gestionale\ContributoVersato::create([
+        'condominio_id' => $base['condominio']->id,
+        'target_type'   => \App\Models\Gestionale\Conto::class,
+        'target_id'     => $base['capitolo']->id,
+        'immobile_id'   => $base['immobileId'],
+        'importo_cents' => 30_000, // €300 già versati
+        'natura'        => 'fondo_vincolato',
+    ]);
+
+    // DUE fatture correnti, ciascuna con una riga sopravvenienza da €500 sullo
+    // STESSO capitolo, entrambe finanziate al 100% dallo stesso piano.
+    $fattura1 = fatturaCorrente($base);
+    inserisciRighe($fattura1->id, [
+        ['conto_id' => $base['capitolo']->id, 'importo' => 50_000, 'is_sopravvenienza' => true],
+    ]);
+    $fattura2 = fatturaCorrente($base);
+    inserisciRighe($fattura2->id, [
+        ['conto_id' => $base['capitolo']->id, 'importo' => 50_000, 'is_sopravvenienza' => true],
+    ]);
+
+    $piano = PianoRate::create([
+        'gestione_id'   => $base['gestione']->id,
+        'condominio_id' => $base['condominio']->id,
+        'nome'          => 'Piano Straordinario Due Fatture',
+        'stato'         => 'bozza',
+        'tipo'          => 'straordinario',
+    ]);
+    $piano->fatture()->attach($fattura1->id, ['importo_collegato' => 50_000]);
+    $piano->fatture()->attach($fattura2->id, ['importo_collegato' => 50_000]);
+
+    $totali = app(CalcoloQuoteService::class)->calcolaDaFattureStraordinarie($piano);
+
+    // Lordo totale €1.000, copertura €300: il dovuto vero è €700. Prima della
+    // correzione ogni fattura sottraeva l'intera copertura dal proprio lordo
+    // (€500 − €300 = €200 ciascuna, totale €400 invece di €700).
+    expect(sommaTotali($totali))->toBe(70_000);
+});
+
 test('E2E — finanziamento parziale di fattura corrente: le rate generate sommano importo_collegato', function () {
     $base    = baseStraordinario();
     $fattura = fatturaCorrente($base);

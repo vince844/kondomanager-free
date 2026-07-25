@@ -60,7 +60,7 @@ const pageGuides = computed(() => [
   },
   {
     title: 'Saldo di apertura',
-    description: 'Puoi correggere il saldo di apertura solo finché la risorsa non ha movimenti contabili registrati: una volta presenti, il campo si blocca perché modificarlo altererebbe retroattivamente il saldo reale.',
+    description: 'Puoi correggere il saldo di apertura solo finché non è stato registrato in contabilità: da quel momento il campo mostra il saldo reale corrente, a solo titolo informativo, e non è più modificabile da qui.',
     icon: Wallet,
     colorVariant: 'amber' as const
   },
@@ -244,11 +244,11 @@ const submit = () => {
                       :lazy="true"
                       placeholder="0,00"
                       class="mt-1"
-                      :disabled="cassaData.has_movements"
+                      :disabled="cassaData.saldo_iniziale_bloccato"
                       @focus="form.clearErrors('saldo_iniziale')"
                     />
-                    <p v-if="cassaData.has_movements" class="text-xs text-amber-600 mt-1">
-                      Impossibile modificare il saldo di apertura: risorsa già utilizzata in contabilità.
+                    <p v-if="cassaData.saldo_iniziale_bloccato" class="text-xs text-amber-600 mt-1">
+                      Già registrato in contabilità: qui sopra è mostrato il saldo reale corrente, non più modificabile.
                     </p>
                     <InputError :message="form.errors.saldo_iniziale" />
                   </div>

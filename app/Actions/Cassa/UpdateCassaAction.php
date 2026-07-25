@@ -41,7 +41,18 @@ class UpdateCassaAction
                 ? MoneyHelper::toCents($data['saldo_iniziale'])
                 : $saldoInizialeAttuale;
 
-            if ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale) {
+            // Guardia SEPARATA da $hasMovimenti: l'apertura sposta il saldo dalla
+            // colonna alla scrittura anche su una cassa senza nessun altro
+            // movimento (RegistraAperturaCassaAction). Da quel momento la colonna
+            // vale 0 e riscriverla la riporterebbe in vita accanto alla scrittura
+            // già a giornale — SaldoCassaService la conterebbe due volte.
+            if ($cassa->hasAperturaRegistrata()) {
+                // Il campo è diventato puramente informativo (il frontend vi mostra
+                // il saldo reale corrente, disabilitato): qualunque cosa arrivi nel
+                // payload — anche un salvataggio che non tocca affatto questo campo,
+                // che comunque lo re-invia — la colonna resta congelata a zero.
+                $nuovoSaldoIniziale = $saldoInizialeAttuale;
+            } elseif ($hasMovimenti && $nuovoSaldoIniziale !== $saldoInizialeAttuale) {
                 throw ValidationException::withMessages([
                     'saldo_iniziale' => 'Impossibile modificare il saldo di apertura: questa risorsa ha già movimenti contabili registrati.'
                 ]);

@@ -7,6 +7,37 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.26] - Il Già Versato Chiude il Buco B & la Revisione Ferma un Secondo Buco Prima di Aprirlo
+
+Caso reale segnalato sul forum: un condominio arriva da un altro gestionale con un accantonamento già raccolto (delibera 2025, €500 a testa per una ristrutturazione). Nel 2026 la fattura finale supera l'accantonato e il piano rate integrativo chiede l'INTERA spesa una seconda volta, perché nel motore di riparto non esiste il concetto di "quanto questa unità ha già versato per questa voce" — l'unica traccia di denaro incassato è legata alla rata che lo ha generato, mai alla voce di spesa. Questa beta introduce quella struttura dati e la pagina per compilarla: **Già versato per voce di spesa**, raggiungibile da Struttura.
+
+**⚠ MIGRAZIONE DATABASE**: una migrazione, eseguita automaticamente dall'aggiornamento guidato. Crea la tabella `contributi_versati` (nuova, nessun dato esistente toccato): una riga per unità immobiliare, per voce di spesa, con l'importo già raccolto. Nessuna installazione esistente ha righe qui finché un amministratore non le inserisce esplicitamente — retrocompatibilità totale, il riparto si comporta esattamente come prima ovunque questa tabella sia vuota.
+
+Prima di rilasciare questa beta è stata lanciata una revisione avversariale multi-agente sul codice del netting (otto letture indipendenti, ciascun sospetto passato a più verificatori con l'istruzione esplicita di confutarlo). Ha trovato, e questa beta corregge, un secondo buco che la funzionalità stessa avrebbe introdotto: il netting non "consumava" mai la copertura, quindi un capitolo rateizzato in più tranche (acconto + saldo) rischiava di veder sottratta l'INTERA copertura da OGNUNA delle tranche — nel caso peggiore azzerando quanto chiesto ai condòmini anche con un residuo vero da centinaia di euro, senza alcun blocco. La stessa revisione ha anche trovato — e questa beta corregge — un bug indipendente già in produzione dalla beta.25, sul saldo di apertura delle casse.
+
+### Aggiunto
+
+- **Pagina "Già versato per voce di spesa"** (`ContributiEdit.vue`): per ogni voce, elenca le unità con i rispettivi millesimi e la quota lorda dovuta. La compilazione rapida distribuisce un totale raccolto per millesimi, penny-perfect; ogni riga resta comunque correggibile a mano. Un pannello mostra in tempo reale l'effetto sul prossimo piano rate — "senza questo dato" vs "con il già versato" — prima ancora di salvare.
+- **Elenco "Già versato"** (`ContributiList.vue`): tutte le voci di spesa del condominio con lo stato di copertura di ciascuna (barra di avanzamento, importo coperto, unità coperte). Nuova voce nel menu Struttura.
+- **Netting nel motore di riparto** (`CalcoloQuoteService::nettingGiaVersato`): sottrae dalla quota lorda di ogni unità quanto quell'unità ha già versato per quella specifica voce. La copertura segue l'IMMOBILE (art. 63 disp. att. c.c.): se l'unità ha più comproprietari, si ripartisce tra loro in proporzione alle rispettive quote lorde, senza perdere un centesimo. Chi ha versato più del dovuto non va mai sotto zero — l'eccedenza si accumula e resta leggibile (`getEccedenzeCopertura()`), non sparisce in silenzio.
+- **Qualificazione legale del versamento**: "Fondo deliberato" (art. 1135 c.c., vincolo di destinazione) o "Rate già riscosse" (senza vincolo, conguagliabili a fine gestione). Il software non decide da solo: un testo esplicito ricorda che la distinzione la stabilisce la delibera, non l'interfaccia.
+
+### Corretto
+
+- **Il netting non veniva mai "consumato"**: rileggeva l'INTERA copertura storica a ogni chiamata sullo stesso conto. Con un capitolo finanziato da due piani rate separati (acconto + saldo), ciascuno sottraeva la copertura per intero dal proprio lordo invece che la propria quota — nell'esempio verificato, un residuo vero di €400 veniva richiesto per €0, senza alcun avviso bloccante. Corretto applicando la copertura in proporzione al peso di ciascuna chiamata sul budget nominale del conto: con un solo piano rate (il caso comune, nessuna rateizzazione in tranche) il comportamento resta identico a prima. Lo stesso principio corregge il caso gemello nel motore straordinario, quando due fatture diverse puntano allo stesso conto imprevisto nella stessa esecuzione.
+- **Il saldo di apertura di una cassa poteva essere contato due volte** *(bug in produzione dalla beta.25)*: dopo che l'apertura viene portata a giornale, il campo "Saldo iniziale" nel form di modifica risultava vuoto e modificabile — con un testo guida che invitava esplicitamente a "correggerlo". Un amministratore che riapre il form per qualunque motivo (anche solo rinominare la cassa) e ridigita l'importo che vede mancante fa tornare in vita la colonna mentre la scrittura di apertura resta comunque a giornale: lo Stato Patrimoniale si sbilancia esattamente di quella cifra. Il campo ora si blocca non appena l'apertura è registrata (non solo quando esistono altri movimenti) e mostra il saldo reale corrente a scopo informativo, non una colonna azzerata che sembra da compilare.
+- **`immobile_id` non era vincolato al condominio** nella validazione del salvataggio: un payload con l'id di un immobile di UN ALTRO condominio veniva accettato dal server. Ora la validazione lo respinge esplicitamente.
+- **I capitoli (voci contenitore, beta.22) comparivano fra le voci su cui registrare un versamento**, con importo €0: aprirli portava a una schermata senza senso. Esclusi dall'elenco e bloccati anche via URL diretto.
+- **Formattazione degli importi in inglese**: i due campi monetari della pagina non ricevevano le opzioni di formato del resto dell'app (decimale `,`, migliaia `.`) e digitare "1500" produceva "15.00" — stesso bug della famiglia già corretta in beta.24, qui intercettato prima del rilascio.
+
+### Test
+
+- 20 nuovi test: il ciclo end-to-end della pagina (mostra, salva, sostituisce, elenca), il caso del forum riprodotto esattamente, copertura parziale/totale, eccedenza, comproprietari, retrocompatibilità con tabella vuota; la riproduzione esatta del bug acconto+saldo e della sua correzione, il caso gemello nello straordinario con due fatture sullo stesso conto, lo scoping multi-condominio, l'esclusione dei capitoli; la riproduzione dal vivo del doppio conteggio sul saldo di apertura e la sua correzione.
+- Suite completa: 578 test verdi (prima di questa beta: 558).
+- Nessuna delle correzioni di questa sezione è stata scoperta da un utente: la revisione avversariale è girata PRIMA del rilascio, sullo stesso codice che sarebbe altrimenti uscito così com'era.
+
+---
+
 ## [1.10.0-beta.25] - Il Saldo di Apertura Entra a Giornale & lo Stato Patrimoniale Impara a Quadrare
 
 Fino a ieri il saldo di apertura di una cassa viveva in un campo della tabella `casse` e **non generava alcuna scrittura contabile**: entrava nel sistema come pura attività, senza contropartita. Nessun controllo poteva accorgersene — il validatore di partita doppia verifica che ogni *singola* scrittura abbia DARE = AVERE, ma un valore che non ha proprio una scrittura non viola nulla. Il risultato è che ogni condominio con una cassa avviata con un saldo (praticamente ogni migrazione da un altro gestionale) portava con sé uno scarto patrimoniale invisibile, destinato a saltar fuori il giorno in cui si costruisce lo Stato Patrimoniale.
