@@ -22,6 +22,7 @@ class Conto extends Model
         'default_fornitore_id',
         'parent_id',
         'is_capitolo', // fatto esplicito, mai indovinato da importo/parent_id — vedi migrazione add_is_capitolo
+        'richiede_gia_versato', // filtra l'elenco "Già versato" (beta.27) — stesso principio di is_capitolo
         'codice',
         'nome',
         'descrizione',
@@ -40,6 +41,7 @@ class Conto extends Model
     protected $casts = [
         'is_tecnico' => 'boolean',
         'is_capitolo' => 'boolean',
+        'richiede_gia_versato' => 'boolean',
     ];
     
     /** * =========================================================================
@@ -93,6 +95,12 @@ class Conto extends Model
     public function sottoconti()
     {
         return $this->hasMany(self::class, 'parent_id');
+    }
+
+    /** Quanto le unità hanno già versato per questa voce (beta.26/27). */
+    public function contributiVersati()
+    {
+        return $this->morphMany(ContributoVersato::class, 'target');
     }
 
     public function contoContabile()

@@ -75,6 +75,85 @@ class GeneratePianoRateAction
 
         $scoperti = $this->calcolatore->getScoperti();
 
+        // Eccedenze del netting "già versato" (beta.26): unità che avevano versato
+        // più del dovuto per una voce. Non bloccano la generazione — è denaro dei
+        // condòmini, non un errore — ma resta nei log soltanto (invisibile
+        // all'amministratore) finché non apriamo anche un task Inbox, sullo
+        // stesso pattern usato qui sotto per gli scoperti.
+        $eccedenze = $this->calcolatore->getEccedenzeCopertura();
+        if (!empty($eccedenze)) {
+            $totaleEccedenzeCents = array_sum(array_column($eccedenze, 'eccedenza'));
+
+            Log::warning("GeneratePianoRate: eccedenze di copertura rilevate — versato più del dovuto, da restituire o conguagliare.", [
+                'piano_rate_id' => $pianoRate->id,
+                'totale_cents'  => $totaleEccedenzeCents,
+                'unita'         => count($eccedenze),
+            ]);
+
+            try {
+                // REVISIONE AVVERSARIALE: senza questo controllo, ogni "Ricalcola"
+                // di un piano rate ancora in bozza (rotta .regenerate, nessun
+                // vincolo sul numero di rigenerazioni) apriva un NUOVO task
+                // identico per la stessa eccedenza mai risolta — stesso principio
+                // di AUTO-CHIUSURA più sotto in questo file, che infatti controlla
+                // prima di agire.
+                $eventoEsistente = Evento::where('meta->type', EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA->value)
+                    ->where('meta->context->piano_rate_id', $pianoRate->id)
+                    ->where('meta->requires_action', true)
+                    ->exists();
+
+                if (! $eventoEsistente) {
+                    // condominio_id è una colonna diretta su piani_rate — più
+                    // affidabile della catena gestione->esercizio (Gestione ha solo
+                    // esercizi(), plurale: un ->esercizio singolare non esiste).
+                    $condominioIdEccedenze = $pianoRate->condominio_id;
+                    // REVISIONE AVVERSARIALE: senza fallback, una gestione senza
+                    // alcun esercizio con pivot attiva=true produceva un segmento
+                    // vuoto nell'URL ("/esercizi//piani-rate/12") — 404 al click.
+                    // Stesso fallback già usato da PianoRateQuoteService.
+                    $esercizioAttivoId = $pianoRate->gestione
+                        ?->esercizi()->wherePivot('attiva', true)->value('esercizi.id')
+                        ?? $pianoRate->gestione?->esercizi()->first()?->id;
+
+                    $immobiliNomiEcc = Immobile::whereIn('id', array_column($eccedenze, 'immobile_id'))
+                        ->pluck('nome', 'id')
+                        ->toArray();
+                    $dettaglioUnita = collect($eccedenze)
+                        ->map(fn ($e) => ($immobiliNomiEcc[$e['immobile_id']] ?? "Immobile #{$e['immobile_id']}")
+                            .': € '.number_format($e['eccedenza'] / 100, 2, ',', '.'))
+                        ->implode(', ');
+
+                    InboxService::createTask(
+                        tipo: EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA,
+                        title: "Eccedenza già-versato — {$pianoRate->nome}",
+                        description: '€ '.number_format($totaleEccedenzeCents / 100, 2, ',', '.')
+                            .' versati in più del dovuto su '.count($eccedenze).' unità, per una o più voci con '
+                            .'già-versato registrato. La quota non è mai andata sotto zero, ma questo denaro dei '
+                            .'condòmini resta da restituire o conguagliare a fine gestione. Dettaglio: '.$dettaglioUnita,
+                        scadenza: now(),
+                        createdByUserId: $pianoRate->created_by ?? 1,
+                        condominioId: $condominioIdEccedenze,
+                        context: [
+                            'piano_rate_id' => $pianoRate->id,
+                            'piano_rate_nome' => $pianoRate->nome,
+                            'totale_cents' => $totaleEccedenzeCents,
+                            'eccedenze' => $eccedenze,
+                        ],
+                        actionUrl: '/gestionale/'.($condominioIdEccedenze ?? '').'/esercizi/'
+                            .($esercizioAttivoId ?? '').'/piani-rate/'.$pianoRate->id,
+                        priorita: 'normale'
+                    );
+                }
+            } catch (\Throwable $e) {
+                // Non blocca la generazione se il task inbox fallisce — stesso
+                // principio usato sotto per lo scoperto documentato.
+                Log::warning("GeneratePianoRate: Impossibile creare task inbox per eccedenza già-versato.", [
+                    'piano_rate_id' => $pianoRate->id,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+        }
+
         if (!empty($scoperti) && !$accettaScoperti) {
             // Arricchisce gli scoperti con nomi leggibili per la UI (singola query per tipo)
             $immobiliIds = array_unique(array_column($scoperti, 'immobile_id'));

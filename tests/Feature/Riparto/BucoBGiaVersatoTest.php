@@ -250,6 +250,95 @@ test('eccedenza: chi ha versato più del dovuto non va sotto zero, ma viene segn
     expect($ecc[0]['eccedenza'])->toBe(20_000);
 })->group('buco-b', 'riparto');
 
+/**
+ * REGRESSIONE: l'eccedenza calcolata da CalcoloQuoteService::getEccedenzeCopertura()
+ * finiva solo nei log del server — invisibile all'amministratore. Verifica che
+ * GeneratePianoRateAction, quando la rileva, apra un task Inbox azionabile,
+ * sullo stesso pattern già usato per SCOPERTO_DOCUMENTATO.
+ */
+test('ECCEDENZA: la generazione del piano rate apre un task Inbox, non solo un log', function () {
+    // InboxService::createTask richiede un created_by valido (FK reale): questo
+    // file di test non ha un utente autenticato di contesto come i test Http.
+    \App\Models\User::factory()->create();
+
+    $sc = bbScenarioLavori(60_000); // fattura €600 → €300 a testa
+    $a  = bbImmobileConProprietario($sc->tabella, 500);
+    $b  = bbImmobileConProprietario($sc->tabella, 500);
+
+    bbGiaVersato($sc, $a, 50_000); // ha versato €500 ma ne doveva €300 → €200 di eccedenza
+    bbGiaVersato($sc, $b, 30_000); // ha versato esattamente il dovuto → nessuna eccedenza
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
+    ]);
+
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+
+    $evento = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA)->first();
+    expect($evento)->not->toBeNull();
+    expect($evento->description)->toContain('200,00');
+    expect($evento->meta['context']['totale_cents'])->toBe(20_000);
+    expect($evento->meta['context']['eccedenze'])->toHaveCount(1);
+
+    // REGRESSIONE: l'actionUrl non deve avere un segmento vuoto tra due slash
+    // (es. ".../esercizi//piani-rate/1") — 404 al click sul task.
+    expect($evento->meta['action_url'])->not->toContain('//');
+    expect($evento->meta['action_url'])->toContain("/esercizi/{$sc->esercizio->id}/piani-rate/{$piano->id}");
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+test('ECCEDENZA REGRESSIONE: rigenerare lo stesso piano non duplica il task Inbox', function () {
+    \App\Models\User::factory()->create();
+
+    $sc = bbScenarioLavori(60_000);
+    $a  = bbImmobileConProprietario($sc->tabella, 500);
+    $b  = bbImmobileConProprietario($sc->tabella, 500);
+    bbGiaVersato($sc, $a, 50_000);
+    bbGiaVersato($sc, $b, 30_000);
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
+    ]);
+
+    $action = app(\App\Actions\PianoRate\GeneratePianoRateAction::class);
+    $action->execute($piano, accettaScoperti: false);
+    // "Ricalcola" (PianoRateGenerationController) cancella prima le rate
+    // esistenti — stesso passo, per riprodurre esattamente il percorso reale.
+    $piano->rate()->delete();
+    $action->execute($piano, accettaScoperti: false); // stessa eccedenza, ancora non risolta
+
+    expect(\App\Models\Evento::where('tipo', \App\Enums\EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA)->count())->toBe(1);
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+test('ECCEDENZA REGRESSIONE: actionUrl resta valido anche senza un esercizio con pivot attiva', function () {
+    \App\Models\User::factory()->create();
+
+    $sc = bbScenarioLavori(60_000);
+    $a  = bbImmobileConProprietario($sc->tabella, 500);
+    $b  = bbImmobileConProprietario($sc->tabella, 500);
+    bbGiaVersato($sc, $a, 50_000);
+    bbGiaVersato($sc, $b, 30_000);
+
+    // Nessun esercizio con pivot attiva=true sulla gestione: il fallback deve
+    // comunque risolvere un esercizio reale (il primo disponibile), non lasciare
+    // il segmento vuoto nell'URL.
+    DB::table('esercizio_gestione')
+        ->where('gestione_id', $sc->gestione->id)
+        ->update(['attiva' => false]);
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Piano Test Eccedenza', 'attivo' => true, 'numero_rate' => 1,
+    ]);
+
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+
+    $evento = \App\Models\Evento::where('tipo', \App\Enums\EventoTipo::ECCEDENZA_GIA_VERSATO_RILEVATA)->first();
+    expect($evento)->not->toBeNull();
+    expect($evento->meta['action_url'])->toContain("/esercizi/{$sc->esercizio->id}/piani-rate/{$piano->id}");
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
 test('comproprietari: la copertura dell\'unità si divide tra loro senza perdere centesimi', function () {
     $sc = bbScenarioLavori(110_000);
 
@@ -375,6 +464,229 @@ test('BUCO B RISOLTO: senza rateizzazione in tranche, un solo piano rate si comp
 
     expect($quote[$a->anagrafica->id][$a->immobile->id])->toBe(5_000);
     expect($quote[$b->anagrafica->id][$b->immobile->id])->toBe(5_000);
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+/**
+ * REGRESSIONE: revisione avversariale beta.27. Scaricare il resto per intero
+ * sull'ultima riga in ordine di iterazione poteva assegnarle più copertura di
+ * quanta il suo stesso lordo potesse assorbire: il clamp max(0,...) faceva
+ * "evaporare" quel centesimo invece di farlo scorrere su un altro comproprietario
+ * con ancora capienza — la somma delle quote nette non tornava più esattamente
+ * a lordoImmobile − applicata.
+ */
+test('BUCO B RISOLTO: comproprietari molto sbilanciati non perdono centesimi di copertura', function () {
+    $sc = bbScenarioLavori(100_000); // lordo immobile: €1.000 (unica unità)
+
+    $immobile = Immobile::forceCreate([
+        'condominio_id' => $sc->condominio->id,
+        'nome' => 'Interno sbilanciato', 'descrizione' => 'App', 'interno' => '1',
+    ]);
+
+    // Tre comproprietari 1% / 1% / 98% — esattamente il caso limite verificato.
+    $ids = [];
+    foreach ([1, 1, 98] as $n => $quota) {
+        $an = Anagrafica::forceCreate([
+            'nome' => "Comproprietario sbilanciato $n",
+            'email' => "sbil$n@example.com",
+            'indirizzo' => 'Via Roma 1',
+            'codice_fiscale' => 'SBIL'.str_pad((string) $n, 12, '0', STR_PAD_LEFT),
+        ]);
+        DB::table('anagrafica_immobile')->insert([
+            'anagrafica_id' => $an->id, 'immobile_id' => $immobile->id,
+            'tipologia' => 'proprietario', 'quota' => (float) $quota, 'attivo' => true,
+            'data_inizio' => now()->format('Y-m-d'),
+        ]);
+        $ids[] = $an->id;
+    }
+    DB::table('quote_tabella')->insert([
+        'tabella_id' => $sc->tabella->id, 'immobile_id' => $immobile->id,
+        'valore' => 1000, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    // Copertura quasi totale: €999,99 su un lordo di €1.000.
+    \App\Models\Gestionale\ContributoVersato::create([
+        'condominio_id' => $sc->condominio->id,
+        'target_type'   => Conto::class,
+        'target_id'     => $sc->conto->id,
+        'immobile_id'   => $immobile->id,
+        'importo_cents' => 99_999,
+        'natura'        => 'fondo_vincolato',
+    ]);
+
+    $quote = (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione);
+
+    // Il residuo VERO è 100.000 − 99.999 = 1 centesimo, indipendentemente da come
+    // viene distribuito fra i tre comproprietari. Prima della correzione poteva
+    // risultare 2 (un centesimo "sdoppiato" dal clamp sul comproprietario minore).
+    $totale = ($quote[$ids[0]][$immobile->id] ?? 0)
+        + ($quote[$ids[1]][$immobile->id] ?? 0)
+        + ($quote[$ids[2]][$immobile->id] ?? 0);
+    expect($totale)->toBe(1);
+
+    // Nessun comproprietario riceve una quota negativa "nascosta" dal clamp:
+    // ciascuno resta entro il proprio lordo individuale (100/100/9.800 cent).
+    expect($quote[$ids[0]][$immobile->id] ?? 0)->toBeLessThanOrEqual(100);
+    expect($quote[$ids[1]][$immobile->id] ?? 0)->toBeLessThanOrEqual(100);
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+/**
+ * REGRESSIONE: revisione avversariale beta.27. Un'unità con copertura totale
+ * (quota netta zero) veniva saltata da GenerateRateQuotesAction — nessuna riga in
+ * rate_quote, nessuna traccia. Guardando le rate generate non c'era modo di
+ * distinguere "l'unità non doveva nulla perché coperta" da "un errore l'ha
+ * esclusa per sbaglio".
+ */
+test('BUCO B RISOLTO: un\'unità interamente coperta lascia comunque una riga a zero, non sparisce', function () {
+    $sc = bbScenarioLavori(100_000); // €1.000, due unità da 500 millesimi
+    $a  = bbImmobileConProprietario($sc->tabella, 500);
+    $b  = bbImmobileConProprietario($sc->tabella, 500);
+
+    bbGiaVersato($sc, $a, 50_000); // A copre l'intera sua quota (€500 su €500 dovuti)
+    bbGiaVersato($sc, $b, 20_000); // B copre solo in parte
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id'   => $sc->gestione->id,
+        'condominio_id' => $sc->condominio->id,
+        'nome'          => 'Piano Test Copertura Totale',
+        'attivo'        => true,
+        'numero_rate'   => 1,
+    ]);
+
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+
+    $righeA = DB::table('rate_quote')
+        ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+        ->where('rate.piano_rate_id', $piano->id)
+        ->where('rate_quote.immobile_id', $a->immobile->id)
+        ->get();
+
+    // A non deve nulla, ma la sua riga esiste, a zero, con un tipo che lo dichiara.
+    expect($righeA)->toHaveCount(1);
+    expect((int) $righeA->first()->importo)->toBe(0);
+    expect($righeA->first()->tipo)->toBe('coperta_da_versamento');
+
+    // B, che deve ancora qualcosa, ha una riga ordinaria col residuo reale.
+    $righeB = DB::table('rate_quote')
+        ->join('rate', 'rate_quote.rata_id', '=', 'rate.id')
+        ->where('rate.piano_rate_id', $piano->id)
+        ->where('rate_quote.immobile_id', $b->immobile->id)
+        ->get();
+    expect((int) $righeB->first()->importo)->toBe(30_000); // 50.000 - 20.000
+    expect($righeB->first()->tipo)->toBe('ordinaria');
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+/**
+ * REGRESSIONE: revisione avversariale beta.27. RipartoCapitoliService calcolava
+ * la matrice della stampa "Riparto per Capitolo di Spesa" sul solo importo LORDO
+ * del conto, senza mai passare dal netting del già-versato: un condominio con un
+ * accantonamento registrato vedrebbe in stampa un importo diverso da quello
+ * davvero addebitato sulle rate. RipartoTabelleService (la stampa gemella) aveva
+ * già la correzione — un riallineamento a rate_quote — questo test verifica che
+ * anche RipartoCapitoliService la applichi allo stesso modo.
+ */
+test('BUCO B RISOLTO: la stampa "Riparto per Capitolo" mostra l\'importo netto, non il lordo', function () {
+    $sc = bbScenarioLavori(100_000); // capitolo €1.000, due unità da 500 millesimi
+    $a  = bbImmobileConProprietario($sc->tabella, 500);
+    $b  = bbImmobileConProprietario($sc->tabella, 500);
+
+    bbGiaVersato($sc, $a, 50_000); // A copre l'intera sua quota (€500 su €500)
+    bbGiaVersato($sc, $b, 20_000); // B copre solo in parte
+
+    $piano = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id'   => $sc->gestione->id,
+        'condominio_id' => $sc->condominio->id,
+        'nome'          => 'Piano Test Stampa Capitoli',
+        'attivo'        => true,
+        'numero_rate'   => 1,
+    ]);
+
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
+
+    $matrice = (new \App\Services\RipartoCapitoliService())->buildMatrice($piano);
+
+    $rigaA = $matrice['righe'][$a->immobile->id]['soggetti'][$a->anagrafica->id] ?? null;
+    $rigaB = $matrice['righe'][$b->immobile->id]['soggetti'][$b->anagrafica->id] ?? null;
+
+    // Il lordo sarebbe €500/€500: la stampa deve mostrare il netto, come le rate
+    // realmente emesse (0 per A, 300 per B — 500 meno i 200 già versati).
+    expect($rigaA['totale'] ?? null)->toBe(0);
+    expect($rigaB['totale'] ?? null)->toBe(30_000);
+
+    // Il totale generale della stampa coincide col totale delle rate reali, non
+    // con la somma dei lordi (che sarebbe 100.000).
+    expect($matrice['gran_totale'])->toBe(30_000);
+})->group('buco-b', 'riparto', 'regressione-avversariale');
+
+/**
+ * REGRESSIONE: revisione avversariale beta.27, scoperta rispondendo a una
+ * domanda dell'utente sul flusso "sforo di budget + Piano Rate Integrativo".
+ *
+ * Un piano rate "base" sul budget originale (pivot = intero conto->importo) e
+ * un secondo piano "integrativo" per il solo sforo (pivot = eccesso), creati
+ * separatamente SENZA aggiornare conto->importo al nuovo fabbisogno reale,
+ * fanno sì che il netting proporzionale accrediti la STESSA copertura due
+ * volte (una volta per chiamata): entrambi i piani chiedono zero, il residuo
+ * vero sparisce senza essere mai richiesto a nessuno. La guardia blocca la
+ * generazione del SECONDO piano con un errore esplicito.
+ */
+test('GUARDIA: due piani sullo stesso conto che sommano oltre il budget, con già versato attivo, vengono bloccati', function () {
+    $sc = bbScenarioLavori(100_000); // budget ORIGINALE €1.000, mai aggiornato al vero fabbisogno €1.100
+    $a  = bbImmobileConProprietario($sc->tabella, 1000);
+
+    bbGiaVersato($sc, $a, 100_000); // già versato: copre l'intero budget originale
+
+    $pianoBase = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Base', 'attivo' => true,
+    ]);
+    $pianoBase->capitoli()->attach($sc->conto->id, ['importo' => 100_000]);
+    (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoBase); // non lancia: da solo è nei limiti
+
+    $pianoIntegrativo = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Integrativo', 'attivo' => true,
+    ]);
+    $pianoIntegrativo->capitoli()->attach($sc->conto->id, ['importo' => 10_000]); // lo sforo, €100
+
+    // 100.000 (base, ancora attivo) + 10.000 (integrativo) = 110.000 > 100.000 (budget mai aggiornato).
+    (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoIntegrativo);
+})->throws(\RuntimeException::class)
+  ->group('buco-b', 'riparto', 'regressione-avversariale');
+
+test('GUARDIA: se il budget della voce viene aggiornato al fabbisogno reale, i due piani convivono senza errori', function () {
+    $sc = bbScenarioLavori(100_000);
+    $a  = bbImmobileConProprietario($sc->tabella, 1000);
+
+    bbGiaVersato($sc, $a, 100_000);
+
+    // Correzione corretta: il budget della voce sale al vero fabbisogno (€1.100)
+    // PRIMA di creare il secondo piano — esattamente quello che la guardia chiede.
+    $sc->conto->forceFill(['importo' => 110_000])->save();
+
+    $pianoBase = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Base', 'attivo' => true,
+    ]);
+    $pianoBase->capitoli()->attach($sc->conto->id, ['importo' => 100_000]);
+    $quoteBase = (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoBase);
+
+    $pianoIntegrativo = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $sc->gestione->id, 'condominio_id' => $sc->condominio->id,
+        'nome' => 'Integrativo', 'attivo' => true,
+    ]);
+    $pianoIntegrativo->capitoli()->attach($sc->conto->id, ['importo' => 10_000]);
+    $quoteInt = (new CalcoloQuoteService())->calcolaPerGestione($sc->gestione, $pianoIntegrativo);
+
+    $totBase = collect($quoteBase)->flatMap(fn ($i) => array_values($i))->sum();
+    $totInt  = collect($quoteInt)->flatMap(fn ($i) => array_values($i))->sum();
+
+    // 1.100 di budget reale − 1.000 già versati = 100 dovuti, ripartiti in
+    // proporzione fra i due piani (90,9% + 9,1% del budget). floor() per
+    // chiamata indipendente (mai round()) può perdere un centesimo di
+    // copertura fra le due — mai chiesto in MENO del dovuto, al più 1 cent
+    // in più: è il compromesso già documentato in nettingGiaVersato().
+    expect($totBase + $totInt)->toBeGreaterThanOrEqual(10_000);
+    expect($totBase + $totInt)->toBeLessThanOrEqual(10_001);
 })->group('buco-b', 'riparto', 'regressione-avversariale');
 
 test('BUCO B: nessuna struttura dati registra il "già versato" per voce di spesa', function () {

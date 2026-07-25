@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue' 
-import { Folder, FolderOpen, FileText, Lock, Plus } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { Folder, FolderOpen, FileText, Lock, History, Plus } from 'lucide-vue-next'
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import type { Conto } from '@/types/gestionale/conti'
@@ -108,15 +108,18 @@ const getTextColor = (conto: Conto) => {
                       class="w-4 h-4 transition-colors" 
                       :class="props.selectedId === conto.id ? 'text-slate-700' : 'text-slate-400'" />
 
-            <div class="flex-1 truncate text-sm font-medium">
+            <div class="flex-1 truncate text-sm font-medium flex items-center gap-1.5">
               <span v-if="conto.codice" class="text-xs text-slate-400 mr-1.5">[{{ conto.codice }}]</span>
-              <span class="transition-colors" :class="{
+              <span class="truncate transition-colors" :class="{
                 'font-bold text-slate-950': isCapitolo(conto),
                 'text-slate-800': !isCapitolo(conto) && props.selectedId === conto.id,
                 'text-slate-600': !isCapitolo(conto) && props.selectedId !== conto.id
               }">
                 {{ conto.nome }}
               </span>
+              <History v-if="!isCapitolo(conto) && conto.richiede_gia_versato"
+                        class="w-3.5 h-3.5 text-indigo-500 shrink-0"
+                        title="Voce da esercizio precedente — richiede il già versato" />
             </div>
 
             <div class="flex items-center gap-1.5">

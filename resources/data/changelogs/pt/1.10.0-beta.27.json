@@ -1,0 +1,13 @@
+{
+    "features": [
+        "⚠ Esta atualização inclui uma migração da base de dados, executada automaticamente durante a atualização guiada. Adiciona duas colunas opcionais à tabela do \"já pago\": nenhum dado existente é alterado.",
+        "Nova pergunta \"Onde está este dinheiro, hoje?\": na primeira declaração de um já pago, escolha se esse dinheiro ainda está numa conta ou num fundo (registamo-lo já como liquidez real) ou se já foi pago ao fornecedor como sinal (abrimos um lembrete na Caixa de Entrada para registar a dívida remanescente).",
+        "Um fundo deliberado com vínculo de destinação já não pode ser registado numa conta livremente disponível para outros imprevistos — a verificação passa a valer também nas gravações seguintes à primeira.",
+        "A prestação suplementar passa agora a ter em conta o já pago: o modal de estouro de orçamento mostra o remanescente líquido estimado, e ao escolher \"Prestação Suplementar\" o valor da rubrica atualiza-se sozinho para o custo real. Se depois a fatura for estornada, o orçamento volta corretamente atrás.",
+        "Quem pagou mais do que o devido numa rubrica recebe agora uma tarefa na Caixa de Entrada com o detalhe do excedente a devolver ou compensar — antes só ficava visível nos registos do servidor.",
+        "As rubricas \"de exercício anterior\" mostram agora um pequeno ícone de relógio na árvore do plano de contas, para serem reconhecidas de imediato.",
+        "Corrigido um caso em que gerar um plano de prestações suplementar sem antes atualizar o orçamento da rubrica podia fazer desaparecer silenciosamente um estouro real: a geração bloqueia agora com uma mensagem que indica o que corrigir.",
+        "Corrigida a impressão \"Rateio por Capítulo de Despesa\", que mostrava o valor bruto em vez do líquido já descontado do já pago.",
+        "Corrigido um erro da beta.26: na página \"Já pago\", os links do menu para Gestões, Plano de Contas e Planos de Prestações levavam a um erro 404."
+    ]
+}

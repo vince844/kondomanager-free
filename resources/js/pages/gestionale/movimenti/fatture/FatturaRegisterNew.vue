@@ -102,6 +102,7 @@ interface Conto {
     parent_nome?: string | null
     residuo_budget?: number
     is_capiente?: boolean
+    gia_versato_cents?: number
     ultimi_movimenti?: {
         data: string
         fornitore: string
@@ -312,6 +313,7 @@ const budgetImpacts = computed(() => {
     const grouped = new Map<number, {
         id: number; nome: string;
         speso_cents: number; residuo_cents: number;
+        gia_versato_cents: number;
         ultimi_movimenti: any[]
     }>();
 
@@ -323,11 +325,12 @@ const budgetImpacts = computed(() => {
         const residuoCents = c.residuo_budget || 0;
         const spesaCents   = lordoRigaCents(r.importo_imponibile, r.aliquota_iva);
         const cur = grouped.get(r.conto_id) || {
-            id:               c.id,
-            nome:             c.nome,
-            speso_cents:      0,
-            residuo_cents:    residuoCents,
-            ultimi_movimenti: c.ultimi_movimenti || []
+            id:                c.id,
+            nome:              c.nome,
+            speso_cents:       0,
+            residuo_cents:     residuoCents,
+            gia_versato_cents: c.gia_versato_cents || 0,
+            ultimi_movimenti:  c.ultimi_movimenti || []
         };
         cur.speso_cents += spesaCents;
         grouped.set(r.conto_id, cur);
@@ -336,7 +339,12 @@ const budgetImpacts = computed(() => {
     return Array.from(grouped.values()).map(i => ({
         ...i,
         isOk:        i.speso_cents <= i.residuo_cents,
-        delta_cents: i.residuo_cents - i.speso_cents
+        delta_cents: i.residuo_cents - i.speso_cents,
+        // Stima: presume che questa fattura rappresenti il costo TOTALE reale
+        // della voce (nessun'altra spesa storica quest'anno) — il numero
+        // autorevole resta quello calcolato da CalcoloQuoteService quando il
+        // piano rate viene davvero generato. Vedi ModalOverrideBudget.
+        residuoNettoStimatoCents: Math.max(0, i.speso_cents - i.gia_versato_cents),
     }));
 });
 
@@ -386,6 +394,22 @@ const isDataDocumentoVecchia = computed(() => {
 
 const sforoBudgetTotaleCents = computed(() =>
     budgetImpacts.value.filter(i => !i.isOk).reduce((acc, i) => acc + (i.speso_cents - i.residuo_cents), 0)
+);
+
+// Dettaglio per voce delle sole voci in sforo: una fattura può toccare più
+// capitoli, solo alcuni dei quali con già-versato attivo — il modale deve
+// mostrare il quadro per voce, non un unico numero aggregato che nasconde
+// quali capitoli hanno già-versato e quali no.
+const vociInSforo = computed(() =>
+    budgetImpacts.value
+        .filter(i => !i.isOk)
+        .map(i => ({
+            id: i.id,
+            nome: i.nome,
+            sforoLordoCents: i.speso_cents - i.residuo_cents,
+            giaVersatoCents: i.gia_versato_cents,
+            residuoNettoStimatoCents: i.residuoNettoStimatoCents,
+        }))
 );
 
 const gestioniFiltrate = computed(() => {
@@ -1356,6 +1380,7 @@ const pageGuides = [
         <ModalOverrideBudget
             v-model:show="showOverrideModal"
             :sforo-totale="sforoBudgetTotaleCents"
+            :voci-in-sforo="vociInSforo"
             :has-spese-private="hasSpesePrivate"
             :fondi-riserva="fondi_riserva"
             :is-processing="form.processing"

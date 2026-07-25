@@ -9,6 +9,7 @@ use Illuminate\Foundation\Http\FormRequest;
  * @method bool merge(string $key)
  * @property-read string $isCapitolo
  * @property-read string $isSottoConto
+ * @property-read string $richiedeGiaVersato
  * @property-read string $importo
  * @property-read string $parent_id
  * @property-read string $percentuale_proprietario
@@ -31,7 +32,8 @@ class CreateContoRequest extends FormRequest
             'tipo'                   => 'required|in:spesa,entrata',
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
-            'isSottoConto'           => 'required|boolean', 
+            'isSottoConto'           => 'required|boolean',
+            'richiedeGiaVersato'     => 'nullable|boolean',
             'tabella_millesimale_id' => 'nullable|exists:tabelle,id',
             // Il padre deve vivere nello STESSO piano dei conti: senza questo
             // vincolo un sottoconto poteva essere agganciato a un capitolo di un
@@ -80,6 +82,7 @@ class CreateContoRequest extends FormRequest
         $this->merge([
             'isCapitolo' => $this->boolean('isCapitolo'),
             'isSottoConto' => $this->boolean('isSottoConto'),
+            'richiedeGiaVersato' => $this->boolean('richiedeGiaVersato'),
         ]);
     }
 

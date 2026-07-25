@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
+import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import MoneyInput from '@/components/MoneyInput.vue';
+import ModalLiquiditaGiaVersato from '@/components/gestionale/contributi/ModalLiquiditaGiaVersato.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/components/ui/toast';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
@@ -24,15 +27,41 @@ interface Riga {
   gia_versato: number;   // centesimi
 }
 
+interface CassaOpzione {
+  id: number;
+  nome: string;
+  tipo: string;
+  saldo_cents: number;
+  is_utilizzabile_per_imprevisti: boolean;
+}
+
 const props = defineProps<{
   condominio: Building;
   voce: { id: number; nome: string; importo_cents: number; gestione: string | null };
   righe: Riga[];
   natura: 'fondo_vincolato' | 'avanzo';
+  descrizione: string | null;
+  // true quando questa voce ha ripartizioni per soggetto non standard
+  // (proprietario/inquilino) o unità senza un proprietario attivo: la "Quota
+  // dovuta" qui sotto è una stima sui soli millesimi, il motore di riparto reale
+  // al momento della generazione del piano rate può calcolare un valore diverso.
+  stima_semplificata: boolean;
+  // true quando la voce ha una ripartizione per soggetto (proprietario/inquilino):
+  // il "già versato" è per unità, non per soggetto — un versamento fatto da uno
+  // solo dei due finisce comunque per scontare anche l'altro (D8, docs/fondo_
+  // accantonato_e_quadratura_sp.md). Non bloccato: solo segnalato.
+  ripartizione_mista: boolean;
+  // "Dove sono questi soldi?" (D8-bis). null finché non ancora dichiarato per
+  // questa voce: in tal caso la modale si apre alla prima dichiarazione con
+  // già-versato > 0 e non viene più richiesta sui salvataggi successivi.
+  liquidita_stato: 'registrata_in_cassa' | 'gia_speso_acconto' | null;
+  cassa_id: number | null;
+  casse: CassaOpzione[];
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: true });
 const { generatePath } = usePermission();
+const { toast } = useToast();
 
 // ── Stato ──────────────────────────────────────────────────────────────────
 // Gli importi si editano in EURO (stringa), si inviano in centesimi.
@@ -41,9 +70,23 @@ const versato = ref<Record<number, string>>(
 );
 
 const natura = ref(props.natura);
-const descrizione = ref('');
+// Riparte da quanto già salvato: senza questo, ogni ri-salvataggio che non
+// tocca il campo lo azzererebbe (il backend sostituisce, non fa merge).
+const descrizione = ref(props.descrizione ?? '');
 const totaleRaccolto = ref('');
 const salvando = ref(false);
+
+// ── "Dove sono questi soldi?" (D8-bis) ──────────────────────────────────────
+// Una volta dichiarato (qui o in un salvataggio precedente), va RIMANDATO ad
+// ogni resave: il backend sostituisce integralmente le righe di questa voce,
+// quindi se non lo reinviamo la dichiarazione andrebbe persa silenziosamente
+// e il salvataggio successivo la richiederebbe di nuovo da capo.
+const liquiditaStato = ref(props.liquidita_stato);
+const cassaIdSelezionata = ref(props.cassa_id);
+// Solo per la primissima dichiarazione: non è persistita sulla riga, serve
+// solo a comporre il promemoria Inbox — non va rimandata sui resave.
+const notaAccontoTransiente = ref('');
+const mostraModaleLiquidita = ref(false);
 
 // Formato italiano, identico al resto del gestionale: senza queste opzioni v-money3
 // usa i suoi default inglesi (decimale ".", migliaia ",") e `parse` sotto leggerebbe
@@ -122,7 +165,35 @@ const scarto = computed(() => cents(totaleRaccolto.value) - totali.value.versato
 const haScarto = computed(() => cents(totaleRaccolto.value) > 0 && scarto.value !== 0);
 
 // ── Salvataggio ────────────────────────────────────────────────────────────
+// La domanda "dove sono questi soldi?" va posta una volta sola, alla prima
+// dichiarazione di un già versato > 0 per questa voce: né prima (non c'è
+// ancora nulla da localizzare), né sui resave successivi (il backend la
+// ignorerebbe comunque — vedi ContributoVersatoController::update()).
+const richiedeDichiarazioneLiquidita = computed(() =>
+  liquiditaStato.value === null && totali.value.versato > 0
+);
+
 const salva = () => {
+  if (richiedeDichiarazioneLiquidita.value) {
+    mostraModaleLiquidita.value = true;
+    return;
+  }
+  eseguiSalvataggio();
+};
+
+const onConfirmLiquidita = (payload: {
+  liquiditaStato: 'registrata_in_cassa' | 'gia_speso_acconto';
+  cassaId: number | null;
+  notaAcconto: string;
+}) => {
+  liquiditaStato.value = payload.liquiditaStato;
+  cassaIdSelezionata.value = payload.cassaId;
+  notaAccontoTransiente.value = payload.notaAcconto;
+  mostraModaleLiquidita.value = false;
+  eseguiSalvataggio();
+};
+
+const eseguiSalvataggio = () => {
   salvando.value = true;
   router.put(
     generatePath('gestionale/:condominio/contributi/:conto', {
@@ -136,8 +207,37 @@ const salva = () => {
         immobile_id: r.immobile_id,
         gia_versato: cents(versato.value[r.immobile_id]),
       })),
+      liquidita_stato: liquiditaStato.value,
+      cassa_id: liquiditaStato.value === 'registrata_in_cassa' ? cassaIdSelezionata.value : null,
+      nota_acconto: notaAccontoTransiente.value || null,
     },
-    { preserveScroll: true, onFinish: () => { salvando.value = false; } }
+    {
+      preserveScroll: true,
+      onSuccess: () => {
+        // Consumata: non deve essere rimandata su un eventuale prossimo resave.
+        notaAccontoTransiente.value = '';
+        toast({ title: 'Salvato', description: 'Contributi già versati aggiornati.', variant: 'default' });
+      },
+      // Senza questo handler un 422 (validazione fallita, es. un immobile non
+      // di questo condominio) non dava alcun segnale: il pulsante si
+      // riabilitava e la pagina restava lì, senza dire perché nulla è cambiato.
+      onError: (errors) => {
+        const primo = Object.values(errors)[0];
+        toast({
+          title: 'Salvataggio non riuscito',
+          description: typeof primo === 'string' ? primo : 'Controlla i dati inseriti e riprova.',
+          variant: 'destructive',
+        });
+        // Se l'errore riguarda proprio la dichiarazione (es. cassa_id), la
+        // dichiarazione locale non era in realtà completa: la si azzera così
+        // il prossimo tentativo di salvataggio riapre la modale invece di
+        // ripetere silenziosamente lo stesso invio incompleto.
+        if (errors.cassa_id || errors.nota_acconto) {
+          liquiditaStato.value = null;
+        }
+      },
+      onFinish: () => { salvando.value = false; },
+    }
   );
 };
 
@@ -160,6 +260,12 @@ const guide = [
     icon: Scale,
     colorVariant: 'blue' as const,
   },
+  {
+    title: 'Compilazione rapida',
+    description: 'Se conosci solo il totale raccolto, digitalo una volta sola: lo distribuiamo per millesimi, penny-perfect. Ogni riga resta comunque correggibile a mano.',
+    icon: Sparkles,
+    colorVariant: 'amber' as const,
+  },
 ];
 </script>
 
@@ -176,6 +282,10 @@ const guide = [
         :breadcrumbs="headerBreadcrumbs"
         :condominio="condominio"
       />
+
+      <div class="w-full">
+        <StrutturaLayout>
+          <div class="container mx-auto p-0 mt-4 space-y-6">
 
       <!-- ═══ 1. NATURA — è una qualificazione giuridica, non un'etichetta ═══ -->
       <div class="bg-white border rounded-2xl p-6">
@@ -234,6 +344,18 @@ const guide = [
             La distinzione la stabilisce la <strong>delibera</strong>, non il software:
             attribuire un vincolo che l'assemblea non ha deliberato — o ignorarne uno
             esistente — è un problema legale, non contabile.
+          </p>
+        </div>
+
+        <div v-if="ripartizione_mista"
+          class="mt-3 flex gap-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle class="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <p class="text-[11px] text-amber-800 leading-relaxed">
+            Questa voce ha una <strong>ripartizione per soggetto</strong> (proprietario/
+            inquilino). Il già versato è registrato per unità, non per soggetto: viene
+            sottratto dal totale dell'immobile <strong>prima</strong> di dividerlo fra
+            proprietario e inquilino. Se il versamento riguarda solo uno dei due,
+            verifica a mano il piano rate generato — il software non lo distingue.
           </p>
         </div>
       </div>
@@ -295,6 +417,18 @@ const guide = [
           </div>
         </div>
 
+        <div v-if="stima_semplificata"
+          class="mx-6 mt-4 flex items-start gap-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+          <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>
+            Questa voce ha ripartizioni per soggetto (proprietario/inquilino) o unità
+            senza un proprietario attivo: la <strong>quota dovuta</strong> qui sotto è
+            una stima sui soli millesimi. Il piano rate reale, generato dal motore di
+            riparto, può calcolare un importo diverso per le unità coinvolte — il
+            "già versato" resta comunque corretto e verrà applicato regolarmente.
+          </span>
+        </div>
+
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
@@ -346,7 +480,7 @@ const guide = [
             <tfoot>
               <tr class="border-t-2 border-slate-200 bg-slate-50 font-bold text-xs">
                 <td class="px-6 py-3">Totali</td>
-                <td class="px-3 py-3 text-right tabular-nums text-slate-500">{{ millesimiTotali }}</td>
+                <td class="px-3 py-3 text-right tabular-nums text-slate-500">{{ millesimiTotali.toFixed(2) }}</td>
                 <td class="px-3 py-3 text-right tabular-nums">{{ euro(totali.lordo) }}</td>
                 <td class="px-3 py-3 text-right tabular-nums text-indigo-700">{{ euro(totali.versato) }}</td>
                 <td class="px-6 py-3 text-right tabular-nums text-emerald-700 bg-emerald-50">
@@ -420,6 +554,20 @@ const guide = [
         </Button>
       </div>
 
+          </div>
+        </StrutturaLayout>
+      </div>
+
     </div>
+
+    <ModalLiquiditaGiaVersato
+      :show="mostraModaleLiquidita"
+      :totale-gia-versato="totali.versato"
+      :casse="casse"
+      :natura="natura"
+      :is-processing="salvando"
+      @update:show="mostraModaleLiquidita = $event"
+      @confirm="onConfirmLiquidita"
+    />
   </GestionaleLayout>
 </template>

@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Info } from 'lucide-vue-next'
 import InputError from '@/components/InputError.vue'
 import { useTabelle } from '@/composables/useTabelle'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
@@ -32,6 +34,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
+const richiedeGiaVersato = ref(false)
 const { tabelle, isLoading: isLoadingTabelle, fetchTabelle } = useTabelle()
 const { capitoli, isLoading: isLoadingCapitoli, fetchCapitoliConti, reset: resetCapitoli } = useCapitoliConti()
 
@@ -61,14 +64,21 @@ const form = useForm({
   percentuale_usufruttuario: 0,
   isCapitolo: false,
   isSottoConto: false,
+  richiedeGiaVersato: false,
 })
 
 watch(isCapitolo, (val) => {
   if (val) {
     isSottoConto.value = false
     form.parent_id = null
+    richiedeGiaVersato.value = false
+    form.richiedeGiaVersato = false
   }
-  form.isCapitolo = val 
+  form.isCapitolo = val
+})
+
+watch(richiedeGiaVersato, (val) => {
+  form.richiedeGiaVersato = val
 })
 
 watch(isSottoConto, (val) => {
@@ -114,6 +124,7 @@ const submit = () => {
       form.reset()
       isCapitolo.value = false
       isSottoConto.value = false
+      richiedeGiaVersato.value = false
       resetCapitoli()
       emit('success')
       closeModal()
@@ -137,6 +148,7 @@ const submit = () => {
           <form @submit.prevent="submit" class="space-y-4 mt-2">
             <input type="hidden" v-model="form.isCapitolo" />
             <input type="hidden" v-model="form.isSottoConto" />
+            <input type="hidden" v-model="form.richiedeGiaVersato" />
 
             <div class="grid grid-cols-4 gap-4">
                <div class="col-span-1">
@@ -175,6 +187,26 @@ const submit = () => {
                <div class="flex items-center justify-between">
                  <Label for="isSottoConto" class="cursor-pointer">È un sotto-conto di spesa?</Label>
                  <Switch id="isSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
+               </div>
+               <div v-if="!isCapitolo" class="flex items-center justify-between">
+                 <div class="flex items-center gap-1.5">
+                   <Label for="richiedeGiaVersato" class="cursor-pointer">Voce di spesa da esercizio precedente</Label>
+                   <TooltipProvider :delay-duration="300">
+                     <Tooltip>
+                       <TooltipTrigger as-child>
+                         <Info class="w-3.5 h-3.5 text-slate-400 cursor-default" />
+                       </TooltipTrigger>
+                       <TooltipContent side="top" class="text-xs max-w-[280px]">
+                         Attiva questa opzione se la voce riporta una spesa già in parte
+                         raccolta prima di passare a Kondomanager (es. un accantonamento
+                         deliberato l'anno scorso). Comparirà nell'elenco "Già versato",
+                         dove potrai registrare quanto ogni unità ha già versato: il
+                         riparto chiederà poi solo il residuo.
+                       </TooltipContent>
+                     </Tooltip>
+                   </TooltipProvider>
+                 </div>
+                 <Switch id="richiedeGiaVersato" v-model="richiedeGiaVersato" />
                </div>
             </div>
 

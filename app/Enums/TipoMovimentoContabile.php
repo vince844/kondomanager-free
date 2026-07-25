@@ -71,8 +71,14 @@ enum TipoMovimentoContabile: string
 
     case RETTIFICA                   = 'rettifica';
 
-    // ─── Futuri (v1.10+, non ancora in DB) ───────────────────────────────────
+    // Attivato in beta.27: RegistraContributoInCassaAction — porta a giornale
+    // un "già versato" (beta.26) che l'amministratore dichiara ancora fermo su
+    // una cassa/fondo del condominio. DARE cassa / AVERE Fondo Passate Gestioni,
+    // sullo stesso schema di APERTURA ma senza toccare saldo_iniziale né essere
+    // soggetto alla sua guardia "una volta sola per cassa".
     case ACCANTONAMENTO              = 'accantonamento';
+
+    // ─── Futuri (v1.10+, non ancora in DB) ───────────────────────────────────
     case RIPARTO                     = 'riparto';
     case RICONCILIAZIONE_BANCARIA    = 'riconciliazione_bancaria';
 
@@ -127,6 +133,7 @@ enum TipoMovimentoContabile: string
             // Lo storno di un'uscita di cassa è, per definizione, un rientro.
             self::STORNO_REGOLAZIONE_IMMEDIATA,
             self::STORNO_PAGAMENTO_F24,
+            self::ACCANTONAMENTO,
         ]);
     }
 

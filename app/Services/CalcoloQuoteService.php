@@ -71,6 +71,8 @@ class CalcoloQuoteService
                 }
             }
 
+            $this->guardiaSovraFinanziamentoGiaVersato($pianoRate);
+
             // [DIAG] Log capitoli senza override (importo pivot NULL)
             $senzaOverride = $pianoRate->capitoli->filter(fn($c) => is_null($c->pivot->importo));
             if ($senzaOverride->isNotEmpty()) {
@@ -151,6 +153,104 @@ class CalcoloQuoteService
         }
 
         return $totali;
+    }
+
+    /**
+     * Guardia di sicurezza: un conto con già-versato registrato non deve mai
+     * essere finanziato in modo incoerente con `conto->importo`.
+     *
+     * Il netting proporzionale (`nettingGiaVersato`) presuppone che
+     * `conto->importo` sia il vero fabbisogno totale, e che la somma delle
+     * chiamate indipendenti sullo stesso conto non lo ecceda — è il caso
+     * testato e corretto di acconto+saldo, dove i due pivot sommano
+     * esattamente al budget. Due modi distinti in cui questa premessa può
+     * saltare, entrambi verificati con un test reale prima di scrivere questa
+     * guardia:
+     *
+     *   1. SOMMA CHE ECCEDE — es. un piano "base" da 100.000 più uno
+     *      "integrativo" da 10.000 sullo stesso conto da 100.000: ogni
+     *      chiamata calcola la propria quota contro lo STESSO denominatore
+     *      statico, e la stessa copertura viene accreditata due volte —
+     *      entrambi i piani chiedono zero invece di sommare ai 10.000 dovuti.
+     *   2. BUDGET STANTIO — un conto rimasto a 100.000 mentre una fattura REALE
+     *      da 110.000 è già stata registrata (lo sforo): un piano "solo per lo
+     *      sforo" (pivot 10.000, il 10% del budget VECCHIO) fa calcolare al
+     *      netting una quota del 10% sulla copertura, azzerando quei 10.000
+     *      invece di chiederli — il primo caso cattura il pivot troppo
+     *      GRANDE, questo cattura il budget troppo PICCOLO rispetto al vero
+     *      speso, indipendentemente da quanto vale il pivot in sé.
+     *
+     * Si blocca PRIMA di generare, con un messaggio che dice cosa correggere,
+     * sullo stesso principio di `ScopertiNonAccettatiException`: meglio un
+     * errore esplicito che un buco silenzioso nello Stato Patrimoniale.
+     *
+     * @throws \RuntimeException
+     */
+    private function guardiaSovraFinanziamentoGiaVersato(PianoRate $pianoRate): void
+    {
+        foreach ($this->pivotOverrides as $contoId => $pivotImporto) {
+            $haCopertura = ContributoVersato::where('target_type', Conto::class)
+                ->where('target_id', $contoId)
+                ->exists();
+
+            if (!$haCopertura) {
+                continue;
+            }
+
+            $conto = Conto::find($contoId);
+            if (!$conto) {
+                continue;
+            }
+
+            // Caso 2 — budget stantio: una fattura REALE già registrata (non
+            // pregressa: stesso filtro già usato da FatturaPassivaController
+            // per rilevare lo sforamento) supera conto->importo. Blocca a
+            // prescindere dal pivot: qualunque frazione calcolata contro un
+            // denominatore troppo piccolo è sbagliata, sia per eccesso che
+            // per difetto.
+            $spesoReale = (int) DB::table('righe_fattura')
+                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                ->where('righe_fattura.conto_id', $contoId)
+                ->where('fatture_passive.is_pregresso', false)
+                ->selectRaw('COALESCE(SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva), 0) as tot')
+                ->value('tot');
+
+            $budgetConto = max(abs((int) $conto->importo), $spesoReale);
+
+            if ($spesoReale > abs((int) $conto->importo)) {
+                throw new \RuntimeException(
+                    "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
+                    ."ma risulta una fattura reale (".number_format($spesoReale / 100, 2, ',', '.')." €) "
+                    ."superiore al suo budget (".number_format(abs((int) $conto->importo) / 100, 2, ',', '.')." €). "
+                    ."Aggiorna prima l'importo della voce al costo reale della spesa: altrimenti il già "
+                    ."versato viene applicato contro un budget sbagliato, e la quota calcolata — qualunque "
+                    ."sia il piano rate — non corrisponde a quanto realmente dovuto."
+                );
+            }
+
+            // Caso 1 — somma che eccede: come prima di questa correzione.
+            $altriPivot = (int) DB::table('piano_rate_capitoli')
+                ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')
+                ->where('piano_rate_capitoli.conto_id', $contoId)
+                ->where('piani_rate.attivo', true)
+                ->where('piani_rate.id', '!=', $pianoRate->id)
+                ->whereNotNull('piano_rate_capitoli.importo')
+                ->sum('piano_rate_capitoli.importo');
+
+            $totaleImpegnato = $altriPivot + $pivotImporto;
+
+            if ($totaleImpegnato > $budgetConto) {
+                throw new \RuntimeException(
+                    "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
+                    ."ma la somma degli importi richiesti dai piani rate attivi su questa voce ("
+                    .number_format($totaleImpegnato / 100, 2, ',', '.')." €) supera il suo budget ("
+                    .number_format($budgetConto / 100, 2, ',', '.')." €). "
+                    ."Aggiorna prima l'importo della voce al fabbisogno reale, oppure disattiva uno dei piani "
+                    ."rate in conflitto: altrimenti il già versato verrebbe conteggiato più volte e parte "
+                    ."della spesa non verrebbe mai richiesta ai condòmini."
+                );
+            }
+        }
     }
 
     // =========================================================================
@@ -727,6 +827,26 @@ class CalcoloQuoteService
             return $importiDistributi;
         }
 
+        // D8 (docs/fondo_accantonato_e_quadratura_sp.md): la copertura è per
+        // IMMOBILE, non per soggetto. Su un conto con ripartizione mista
+        // (proprietario/inquilino) viene sottratta dal lordo aggregato
+        // dell'unità PRIMA che questo venga spaccato fra i soggetti — un
+        // versamento del solo proprietario finisce per scontare anche
+        // l'inquilino. Non bloccante (deciso di segnalare, non correggere): la
+        // UI (ContributiEdit.vue) lo mostra già in fase di inserimento, qui
+        // resta traccia anche lato motore, al momento in cui conta davvero.
+        $haRipartizioneMista = $conto->tabelleMillesimali->contains(function ($ctm) {
+            $rip = $ctm->ripartizioni;
+            return $rip->isNotEmpty() && !($rip->count() === 1
+                && $rip->first()->soggetto === 'proprietario'
+                && (float) $rip->first()->percentuale === 100.0);
+        });
+        if ($haRipartizioneMista) {
+            Log::warning("nettingGiaVersato: conto con ripartizione per soggetto (proprietario/inquilino) e copertura già-versato registrata — la copertura è per immobile e viene sottratta dal lordo aggregato prima della spaccatura per soggetto (D8).", [
+                'conto_id' => $conto->id,
+            ]);
+        }
+
         // QUOTA di questa chiamata sul budget nominale del conto.
         //
         // Un capitolo può essere finanziato da PIÙ chiamate indipendenti: due
@@ -759,6 +879,22 @@ class CalcoloQuoteService
             $righePerImmobile[$iid][$key] = $importo;
         }
 
+        // Copertura orfana: un'unità con un già-versato registrato ma che non
+        // compare fra le righe distribuite (tipicamente perché la cascata di
+        // risoluzione soggetto/ruolo non trova nessuna anagrafica attiva e
+        // l'unità finisce nel bucket "scoperto"). La copertura non viene persa —
+        // resta nel ledger per la prossima volta — ma qui non ha nulla da
+        // scontare: se ne resta traccia solo nei log, senza bloccare nulla.
+        foreach ($coperture as $immobileId => $importo) {
+            if ($importo > 0 && !isset($righePerImmobile[$immobileId])) {
+                Log::warning("nettingGiaVersato: copertura registrata su un'unità che non compare fra le righe distribuite (probabile unità scoperta, senza anagrafiche attive).", [
+                    'conto_id'      => $conto->id,
+                    'immobile_id'   => $immobileId,
+                    'importo_cents' => $importo,
+                ]);
+            }
+        }
+
         foreach ($righePerImmobile as $immobileId => $righe) {
             $coperturaStorica = (int) ($coperture[$immobileId] ?? 0);
 
@@ -786,20 +922,50 @@ class CalcoloQuoteService
                 ];
             }
 
-            // Ripartisce la copertura tra i comproprietari in proporzione al lordo,
-            // con il resto sull'ultimo per non perdere centesimi.
+            // Ripartisce la copertura tra i comproprietari in proporzione al lordo.
+            //
+            // Scaricare il resto per intero sull'ULTIMA riga (come prima di questa
+            // correzione) può assegnarle più copertura di quanta ne possa assorbire
+            // il suo stesso lordo, se le quote sono molto sbilanciate: es. lordo
+            // immobile 10.000, comproprietari 1%/1%/98% (100/100/9.800), copertura
+            // applicata 9.999 — al comproprietario che finisce per ultimo in
+            // iterazione, col vecchio schema, tocca 9.999 − 9.898 = 101, contro un
+            // suo lordo di soli 100: 1 centesimo di copertura "evapora" nel clamp
+            // max(0, ...) invece di finire su un altro comproprietario che ha
+            // ancora capienza. Qui ogni riga riceve al più il proprio lordo, e il
+            // resto (mai negativo: $applicata ≤ $lordoImmobile per costruzione) va
+            // — un centesimo alla volta — a chi ha ancora capienza, iniziando da
+            // chi ha il resto frazionario più alto (stesso principio di
+            // distribuisciImporto(), qui vincolato dalla capienza di ogni riga).
+            $quote = [];
             $assegnato = 0;
-            $chiavi    = array_keys($righe);
-            $ultima    = end($chiavi);
+            foreach ($righe as $key => $lordoRiga) {
+                $base = (int) floor($applicata * $lordoRiga / $lordoImmobile);
+                $quote[$key] = min($base, $lordoRiga);
+                $assegnato += $quote[$key];
+            }
+
+            $resto = $applicata - $assegnato;
+            if ($resto > 0) {
+                $chiaviOrdinate = array_keys($righe);
+                usort($chiaviOrdinate, function ($a, $b) use ($righe, $applicata, $lordoImmobile) {
+                    $fracA = fmod($applicata * $righe[$a] / $lordoImmobile, 1);
+                    $fracB = fmod($applicata * $righe[$b] / $lordoImmobile, 1);
+                    return $fracB <=> $fracA;
+                });
+
+                foreach ($chiaviOrdinate as $key) {
+                    if ($resto <= 0) break;
+                    $capienza = $righe[$key] - $quote[$key];
+                    if ($capienza <= 0) continue;
+                    $incremento = min($capienza, $resto);
+                    $quote[$key] += $incremento;
+                    $resto -= $incremento;
+                }
+            }
 
             foreach ($righe as $key => $lordoRiga) {
-                $quotaCopertura = $key === $ultima
-                    ? $applicata - $assegnato
-                    : (int) floor($applicata * $lordoRiga / $lordoImmobile);
-
-                $assegnato += $quotaCopertura;
-
-                $importiDistributi[$key] = max(0, $lordoRiga - $quotaCopertura);
+                $importiDistributi[$key] = max(0, $lordoRiga - $quote[$key]);
             }
         }
 

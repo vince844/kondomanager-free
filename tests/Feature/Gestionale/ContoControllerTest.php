@@ -491,3 +491,70 @@ test('Flusso reale: resave senza modifiche invia isCapitolo=false (stato vero) e
     expect($ripartizione)->not->toBeNull()
         ->and((float) $ripartizione->percentuale)->toBe(100.0);
 });
+
+/**
+ * beta.27: "richiede_gia_versato" segue lo stesso principio di is_capitolo —
+ * fatto esplicito scelto in creazione, mai indovinato, che filtra l'elenco
+ * "Già versato". Questi test coprono lo stesso schema store/update/capitolo
+ * già validato per is_capitolo.
+ */
+test('Store: richiedeGiaVersato=true viene persistito su una voce di spesa', function () {
+    $condominio = Condominio::factory()->create();
+    $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
+    $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
+
+    $response = $this->actingAs($this->user)
+        ->post(route('admin.gestionale.esercizi.piani-conti.conti.store', [$condominio, $esercizio, $pianoConti]), [
+            'nome' => 'Ristrutturazione 2025', 'tipo' => 'spesa',
+            'isCapitolo' => false, 'isSottoConto' => false,
+            'richiedeGiaVersato' => true,
+            'importo' => '1100', 'tabella_millesimale_id' => $tabellaId,
+            'percentuale_proprietario' => 100, 'percentuale_inquilino' => 0, 'percentuale_usufruttuario' => 0,
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    $conto = Conto::where('nome', 'Ristrutturazione 2025')->firstOrFail();
+    expect($conto->richiede_gia_versato)->toBeTrue();
+});
+
+test('Store: un capitolo non può avere richiedeGiaVersato=true, a prescindere dal payload', function () {
+    $condominio = Condominio::factory()->create();
+    $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
+    $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+
+    $response = $this->actingAs($this->user)
+        ->post(route('admin.gestionale.esercizi.piani-conti.conti.store', [$condominio, $esercizio, $pianoConti]), [
+            'nome' => 'Capitolo con flag incoerente', 'tipo' => 'spesa',
+            'isCapitolo' => true, 'isSottoConto' => false,
+            'richiedeGiaVersato' => true, // un capitolo non versa nulla direttamente (beta.22)
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    $conto = Conto::where('nome', 'Capitolo con flag incoerente')->firstOrFail();
+    expect($conto->richiede_gia_versato)->toBeFalse();
+});
+
+test('Update: richiedeGiaVersato può essere attivato in un secondo momento', function () {
+    $condominio = Condominio::factory()->create();
+    $pianoConti = PianoConto::factory()->create(['condominio_id' => $condominio->id]);
+    $esercizio  = Esercizio::factory()->create(['condominio_id' => $condominio->id, 'stato' => 'aperto']);
+    $tabellaId  = \Illuminate\Support\Facades\DB::table('tabelle')->insertGetId(['condominio_id' => $condominio->id, 'nome' => 'A']);
+
+    $voce = Conto::factory()->create([
+        'piano_conto_id' => $pianoConti->id, 'parent_id' => null, 'is_capitolo' => false,
+        'richiede_gia_versato' => false, 'importo' => 110_000, 'nome' => 'Lavori tetto', 'tipo' => 'spesa',
+    ]);
+
+    $response = $this->actingAs($this->user)
+        ->put(route('admin.gestionale.esercizi.piani-conti.conti.update', [$condominio, $esercizio, $pianoConti, $voce]), [
+            'nome' => 'Lavori tetto', 'tipo' => 'spesa',
+            'isCapitolo' => false, 'isSottoConto' => false,
+            'richiedeGiaVersato' => true,
+            'importo' => '1100', 'tabella_millesimale_id' => $tabellaId,
+            'percentuale_proprietario' => 100, 'percentuale_inquilino' => 0, 'percentuale_usufruttuario' => 0,
+        ]);
+
+    $response->assertSessionHasNoErrors();
+    expect($voce->fresh()->richiede_gia_versato)->toBeTrue();
+});

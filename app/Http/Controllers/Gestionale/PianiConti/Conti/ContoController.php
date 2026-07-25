@@ -38,7 +38,8 @@ class ContoController extends Controller
             // Estrazione sicura dei flag booleani (previene errori se la chiave non esiste nel payload)
             $isCapitolo = $data['isCapitolo'] ?? false;
             $isSottoConto = $data['isSottoConto'] ?? false;
-                
+            $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
+
             // Creazione del record principale del Conto
             $nuovoConto = Conto::create([
                 'piano_conto_id'        => $pianoConto->id,
@@ -48,6 +49,11 @@ class ContoController extends Controller
                 // (bug "voce a zero perde la tabella millesimale", migrazione
                 // add_is_capitolo_to_conti_table).
                 'is_capitolo'           => $isCapitolo,
+                // Filtra l'elenco "Già versato" (beta.27): senza flag esplicito
+                // ogni voce di spesa vi compariva, confuso su un piano dei conti
+                // con decine di voci. Un capitolo non versa nulla direttamente
+                // (beta.22): non ha senso per lui, resta sempre false.
+                'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
                 'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],
@@ -125,6 +131,7 @@ class ContoController extends Controller
             // Estrazione sicura
             $isCapitolo = $data['isCapitolo'] ?? false;
             $isSottoConto = $data['isSottoConto'] ?? false;
+            $richiedeGiaVersato = $data['richiedeGiaVersato'] ?? false;
             $nuovoImporto = $isCapitolo ? 0 : MoneyHelper::toCents($data['importo'] ?? 0);
 
             // FIX bug "voce a zero perde la tabella millesimale": lo stato
@@ -176,6 +183,9 @@ class ContoController extends Controller
             $conto->update([
                 'parent_id'             => $isSottoConto ? ($data['parent_id'] ?? null) : null,
                 'is_capitolo'           => $isCapitolo,
+                // Un capitolo non versa nulla direttamente (beta.22): non ha senso
+                // per lui, resta sempre false a prescindere da cosa arriva dal form.
+                'richiede_gia_versato'  => $isCapitolo ? false : $richiedeGiaVersato,
                 'conto_contabile_id'    => $this->resolveContoContabileId($condominio->id, $data['tipo_spesa'] ?? 'standard'),
                 'codice'                => $data['codice'] ?? null,
                 'nome'                  => $data['nome'],

@@ -1,0 +1,13 @@
+{
+    "features": [
+        "⚠ Questo aggiornamento comprende una migrazione del database, eseguita automaticamente durante l'aggiornamento guidato. Aggiunge due colonne nullable alla tabella del \"già versato\": nessun dato esistente viene toccato.",
+        "Nuova domanda \"Dove sono questi soldi, oggi?\": alla prima dichiarazione di un già versato, scegli se quei soldi sono ancora fermi su una cassa o un fondo (li registriamo subito come liquidità reale) oppure se sono già stati spesi come acconto al fornitore (apriamo un promemoria in Inbox per registrare il debito residuo).",
+        "Un fondo deliberato con vincolo di destinazione non può più essere registrato su una cassa liberamente prelevabile per altri imprevisti — il controllo ora vale anche sui salvataggi successivi al primo.",
+        "La rata integrativa ora tiene conto del già versato: la modale di sforamento budget mostra il residuo netto stimato, e scegliendo \"Rata Integrativa\" l'importo della voce si aggiorna da solo al costo reale. Se poi la fattura viene stornata, il budget torna correttamente indietro.",
+        "Chi ha versato più del dovuto per una voce ora riceve un task in Inbox con il dettaglio dell'eccedenza da restituire o conguagliare — prima restava visibile solo nei log del server.",
+        "Le voci di spesa \"da esercizio precedente\" mostrano ora una piccola icona a orologio nell'albero del piano dei conti, per riconoscerle a colpo d'occhio.",
+        "Corretto un caso in cui generare un piano rate integrativo senza aggiornare prima il budget della voce poteva far sparire silenziosamente uno sforo reale: ora la generazione si blocca con un messaggio che dice cosa correggere.",
+        "Corretta la stampa \"Riparto per Capitolo di Spesa\", che mostrava l'importo lordo invece del netto già scontato del già versato.",
+        "Corretto un bug della beta.26: nella pagina \"Già versato\", i link del menu a Gestioni, Piani dei Conti e Piano Rate portavano a un errore 404."
+    ]
+}

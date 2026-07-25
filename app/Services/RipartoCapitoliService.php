@@ -175,6 +175,24 @@ class RipartoCapitoliService
             $this->extractEntities($c, $immobiliDict, $anagraficheDict, $contiImpegnatiIds, $processatiEntitiesIds);
         }
 
+        // Totali reali da rate_quote: la matrice fin qui è calcolata sui soli
+        // importi LORDI dei capitoli (conto->importo o override), che NON
+        // conoscono il netting del "già versato" (beta.26) né qualunque altro
+        // aggiustamento applicato dal motore prima di generare le rate. Senza
+        // questo riallineamento, un condominio con un accantonamento registrato
+        // vedrebbe stampato un importo diverso da quello davvero addebitato —
+        // esattamente la garanzia "riga stampata = rate_quote" che
+        // RipartoTabelleService applica già per la stampa gemella.
+        $pianoRate->loadMissing(['rate.rateQuote.anagrafica', 'rate.rateQuote.immobile']);
+        $totaliReali = [];
+        foreach ($pianoRate->rate as $rata) {
+            foreach ($rata->rateQuote as $rq) {
+                if (!$rq->anagrafica_id || !$rq->immobile_id) continue;
+                $totaliReali[$rq->anagrafica_id][$rq->immobile_id] =
+                    ($totaliReali[$rq->anagrafica_id][$rq->immobile_id] ?? 0) + (int) round($rq->importo);
+            }
+        }
+
         // Assemblaggio della struttura finale delle righe da passare alla view/pdf
         foreach ($importiAssegnati as $key => $importiPerCapitolo) {
             [$aid, $iid] = explode('|', $key);
@@ -187,6 +205,36 @@ class RipartoCapitoliService
             $ruoloRaw = $pivot?->tipologia ?? 'proprietario';
             $quotaSogg = $pivot?->quota ?? 100;
             $siglRuolo = $sigleRuolo[$ruoloRaw] ?? strtoupper(substr($ruoloRaw, 0, 1));
+
+            // Riallineamento di sicurezza: se il totale reale (rate_quote) per
+            // questo soggetto diverge dal lordo appena calcolato — tipicamente
+            // perché il netting ha ridotto una o più quote — il residuo va sul
+            // capitolo a peso maggiore per quel soggetto, la stessa strategia già
+            // in produzione in RipartoTabelleService. Se il piano non è ancora
+            // stato generato ($totaliReali vuoto), non c'è nulla da riallineare:
+            // resta il lordo, come sempre stato.
+            $importoReale = $totaliReali[$aid][$iid] ?? null;
+            if ($importoReale !== null) {
+                $lordoRiga = array_sum($importiPerCapitolo);
+                $residuo = $importoReale - $lordoRiga;
+                if ($residuo !== 0) {
+                    $pesiSogg = [];
+                    foreach ($capitoliInfo as $contoId => $_) {
+                        $w = $weightsPerCapitolo[$contoId][$key] ?? 0.0;
+                        if ($w > 0.0) $pesiSogg[$contoId] = $w;
+                    }
+                    if (!empty($pesiSogg)) {
+                        arsort($pesiSogg);
+                        $contoMax = array_key_first($pesiSogg);
+                        $importiPerCapitolo[$contoMax] = ($importiPerCapitolo[$contoMax] ?? 0) + $residuo;
+                        Log::debug("RipartoCapitoliService: residuo di {$residuo} cent riallineato a rate_quote.", [
+                            'piano_rate_id' => $pianoRate->id,
+                            'anagrafica_id' => $aid,
+                            'immobile_id'   => $iid,
+                        ]);
+                    }
+                }
+            }
 
             $totSogg = 0;
             $quotaPerCapitolo = [];

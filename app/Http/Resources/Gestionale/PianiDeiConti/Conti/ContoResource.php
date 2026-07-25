@@ -186,6 +186,7 @@ class ContoResource extends JsonResource
             // Fatto esplicito e persistito — mai indovinato da importo/parent_id
             // (bug "voce a zero perde la tabella millesimale").
             'is_capitolo'           => (bool) $this->is_capitolo,
+            'richiede_gia_versato'  => (bool) $this->richiede_gia_versato,
             'importo'               => MoneyHelper::format($this->importo),
             'importo_raw'           => $this->importo,
             // Valori aggiunti per il widget Audit:

@@ -143,6 +143,8 @@ class GenerateRateQuotesAction
             // -----------------------------------------------------------------------------
             // FASE 1: CREAZIONE RATE ORDINARIE (1..N)
             // -----------------------------------------------------------------------------
+            $soggettiQuotaZeroDocumentati = [];
+
             foreach ($dateRate as $index => $dataScadenza) {
                 $numeroRata = $index + 1;
 
@@ -182,13 +184,36 @@ class GenerateRateQuotesAction
                         }
 
                         $importoFinale = $quotaOrdinariaRata + $quotaSaldoRata;
+                        $eZero = $importoFinale == 0 && $quotaOrdinariaRata == 0 && $quotaSaldoRata == 0;
 
-                        if ($importoFinale == 0 && $quotaOrdinariaRata == 0 && $quotaSaldoRata == 0) {
-                            continue; // Ignora se tutto è a zero
+                        // Un soggetto presente nel calcolo ($totaliPerImmobile ha
+                        // la sua chiave) ma a quota zero — tipicamente perché il
+                        // netting del già-versato ha azzerato l'intera quota — non
+                        // deve sparire senza lasciare traccia: senza questa riga,
+                        // guardando le rate generate non c'è modo di distinguere
+                        // "l'unità non doveva nulla" da "un errore di
+                        // configurazione l'ha esclusa per sbaglio". Una sola riga
+                        // documentaria per soggetto (sulla prima rata), non una per
+                        // rata: sarebbe rumore senza aggiungere informazione.
+                        $chiaveSoggetto = $aid.'|'.$iid;
+                        $daDocumentare = $eZero
+                            && $numeroRata === 1
+                            && array_key_exists($aid, $totaliPerImmobile)
+                            && array_key_exists($iid, $totaliPerImmobile[$aid])
+                            && !isset($soggettiQuotaZeroDocumentati[$chiaveSoggetto]);
+
+                        if ($eZero && !$daDocumentare) {
+                            continue; // Ignora se tutto è a zero e già documentato (o non documentabile)
+                        }
+
+                        if ($daDocumentare) {
+                            $soggettiQuotaZeroDocumentati[$chiaveSoggetto] = true;
                         }
 
                         $statoQuota = $importoFinale <= 0 ? 'credito' : 'da_pagare';
-                        $tipoRiga = ($quotaOrdinariaRata == 0 && $quotaSaldoRata != 0) ? 'saldo_iniziale' : 'ordinaria';
+                        $tipoRiga = $daDocumentare
+                            ? 'coperta_da_versamento'
+                            : (($quotaOrdinariaRata == 0 && $quotaSaldoRata != 0) ? 'saldo_iniziale' : 'ordinaria');
 
                         // 3. Costruzione JSON Meta Tracciabile
                         $snapshot = [

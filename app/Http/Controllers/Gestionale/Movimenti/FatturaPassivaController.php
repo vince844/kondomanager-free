@@ -14,6 +14,7 @@ use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\FatturaCopertura;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
@@ -703,12 +704,23 @@ class FatturaPassivaController extends Controller
                 });
         }
 
+        // Già-versato per voce (beta.27): quanto i condòmini hanno già contribuito
+        // per ciascuna voce, indipendentemente da quanto risulta fatturato finora.
+        // Serve al frontend per avvisare, quando c'è uno sforo su una voce con
+        // già-versato attivo, che la rata integrativa chiederà solo il residuo
+        // netto — non l'intero sforo lordo (vedi CalcoloQuoteService::
+        // guardiaSovraFinanziamentoGiaVersato per la ragione tecnica).
+        $giaVersatoPerConto = ContributoVersato::where('target_type', Conto::class)
+            ->groupBy('target_id')
+            ->selectRaw('target_id, SUM(importo_cents) as totale')
+            ->pluck('totale', 'target_id');
+
         // 5. Conti con residuo budget e storico movimenti recenti
         $conti = Conto::whereIn('piano_conto_id', $condominio->pianiDeiConti()->pluck('id'))
             ->with('parent')
             ->whereDoesntHave('sottoconti')
             ->get()
-            ->map(function ($conto) use ($ultimeSpese, $spesePerConto) {
+            ->map(function ($conto) use ($ultimeSpese, $spesePerConto, $giaVersatoPerConto) {
                 $budgetApprovato = $conto->importo ?? 0;
                 $spesaAttuale = $spesePerConto->get($conto->id, 0);
                 $residuo = $budgetApprovato - $spesaAttuale;
@@ -735,6 +747,7 @@ class FatturaPassivaController extends Controller
                     'residuo_budget' => $residuo,
                     'is_capiente' => $residuo >= 0,
                     'ultimi_movimenti' => $storicoRecente,
+                    'gia_versato_cents' => (int) ($giaVersatoPerConto->get($conto->id) ?? 0),
                 ];
             })
             ->sortBy('_sort_key')

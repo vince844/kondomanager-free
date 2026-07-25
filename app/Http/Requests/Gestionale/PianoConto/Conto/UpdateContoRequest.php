@@ -10,6 +10,7 @@ use Illuminate\Validation\Rule;
  * @method bool merge(string $key)
  * @property-read string $isCapitolo
  * @property-read string $isSottoConto
+ * @property-read string $richiedeGiaVersato
  * @property-read string $importo
  * @property-read string $parent_id
  * @property-read string $percentuale_proprietario
@@ -23,6 +24,7 @@ class UpdateContoRequest extends FormRequest
         $this->merge([
             'isCapitolo' => $this->boolean('isCapitolo'),
             'isSottoConto' => $this->boolean('isSottoConto'),
+            'richiedeGiaVersato' => $this->boolean('richiedeGiaVersato'),
         ]);
     }
 
@@ -41,7 +43,8 @@ class UpdateContoRequest extends FormRequest
             'tipo'                   => 'required|in:spesa,entrata',
             'note'                   => 'nullable|string',
             'isCapitolo'             => 'required|boolean',
-            'isSottoConto'           => 'required|boolean', 
+            'isSottoConto'           => 'required|boolean',
+            'richiedeGiaVersato'     => 'nullable|boolean',
             // Oltre a livello e cicli, il padre va vincolato al piano dei conti:
             // era l'unico controllo mancante e lasciava passare capitoli altrui.
             'parent_id'              => [

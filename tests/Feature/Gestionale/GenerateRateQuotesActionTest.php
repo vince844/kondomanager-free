@@ -157,7 +157,15 @@ describe('riga con importo finale a zero', function () {
             ->and($quote->first()->stato)->toBe('credito');
     });
 
-    it('viene scartata quando sia la quota ordinaria sia la quota saldo sono realmente zero', function () {
+    /**
+     * REGRESSIONE (aggiornato in beta.27, revisione avversariale): un soggetto
+     * presente nel calcolo con quota realmente zero non viene più scartato senza
+     * traccia. Prima di questa correzione un'unità interamente coperta dal
+     * "già versato" (beta.26) spariva dalle rate generate: guardandole non c'era
+     * modo di distinguere "non doveva nulla" da "esclusa per errore". Ora riceve
+     * una riga documentaria a importo zero, una sola volta (sulla prima rata).
+     */
+    it('un soggetto a quota realmente zero riceve una riga documentaria, non viene scartato', function () {
         $pianoRate = creaPianoRatePerQuoteTest([
             'metodo_distribuzione' => 'prima_rata',
             'numero_rate'          => 1,
@@ -178,7 +186,30 @@ describe('riga con importo finale a zero', function () {
             ->where('anagrafica_id', $anagrafica->id)
             ->get();
 
-        expect($quote)->toHaveCount(0);
+        expect($quote)->toHaveCount(1);
+        expect((int) $quote->first()->importo)->toBe(0);
+        expect($quote->first()->tipo)->toBe('coperta_da_versamento');
+    });
+
+    it('un soggetto del tutto ASSENTE dal calcolo (non in totaliPerImmobile né in saldi) non genera alcuna riga', function () {
+        $pianoRate = creaPianoRatePerQuoteTest([
+            'metodo_distribuzione' => 'prima_rata',
+            'numero_rate'          => 1,
+        ]);
+
+        // Nessun soggetto affatto: array completamente vuoto, non una chiave a
+        // valore zero. Deve continuare a non generare nulla — questo distingue
+        // "il calcolo non conosce questa unità" da "il calcolo la conosce e le
+        // deve zero", che sono due situazioni diverse.
+        app(GenerateRateQuotesAction::class)->execute(
+            $pianoRate,
+            [],
+            ['2026-01-05'],
+            []
+        );
+
+        expect(RataQuote::whereHas('rata', fn ($q) => $q->where('piano_rate_id', $pianoRate->id))->count())
+            ->toBe(0);
     });
 
 });

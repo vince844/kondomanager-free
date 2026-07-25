@@ -91,6 +91,116 @@ it('fattura mista: quota ad personam va su crediti condomini', function () {
     expect($righeDare)->toContain(55000)->and($righeDare)->toContain(22000);
 });
 
+it('rata integrativa con già-versato: aggiorna l\'importo della voce al costo reale', function () {
+    // Il "caso del forum" (beta.27): budget deliberato €5.000, già versato
+    // €5.000, la variante porta il costo reale a €5.500. Scegliendo "rata
+    // integrativa" con già-versato attivo su questa voce, la registrazione
+    // della fattura deve aggiornare da sola conto->importo al costo reale —
+    // altrimenti CalcoloQuoteService::guardiaSovraFinanziamentoGiaVersato()
+    // bloccherebbe qualunque piano rate generato più tardi su questa voce.
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo, , $immobileId] = setupContabile();
+
+    expect($capitolo->importo)->toBe(500000); // €5.000, il default di setupContabile()
+
+    \App\Models\Gestionale\ContributoVersato::create([
+        'condominio_id' => $condominio->id,
+        'target_type'   => Conto::class,
+        'target_id'     => $capitolo->id,
+        'immobile_id'   => $immobileId,
+        'importo_cents' => 500000,
+        'natura'        => 'fondo_vincolato',
+    ]);
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Variante lavori',
+            'importo_imponibile' => 5000, // €5.500 lordo con IVA 10%
+            'aliquota_iva'       => 10,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+        'dati_extra' => [
+            'fiscal'          => [],
+            'competenza'      => null,
+            'override_budget' => ['strategia_rientro' => 'rata_integrativa'],
+        ],
+    ]);
+
+    (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+
+    expect($capitolo->fresh()->importo)->toBe(550000); // €5.500, il costo reale
+})->group('fattura-passiva', 'rata-integrativa', 'gia-versato');
+
+it('REGRESSIONE: lo storno di una fattura rata-integrativa riporta indietro conto->importo', function () {
+    // Bug trovato dalla revisione avversariale: il bump automatico (test sopra)
+    // non aveva un percorso inverso sullo storno. Un budget mai ratificato in
+    // assemblea per l'eccedenza restava permanentemente "approvato" — nessun
+    // allarme di sforo su una fattura futura fino al vecchio importo gonfiato.
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo, , $immobileId] = setupContabile();
+    expect($capitolo->importo)->toBe(500000); // €5.000
+
+    \App\Models\Gestionale\ContributoVersato::create([
+        'condominio_id' => $condominio->id,
+        'target_type'   => Conto::class,
+        'target_id'     => $capitolo->id,
+        'immobile_id'   => $immobileId,
+        'importo_cents' => 500000,
+        'natura'        => 'fondo_vincolato',
+    ]);
+
+    $fattura = (new FatturaPassivaService())->registraFattura(
+        datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+            'righe' => [[
+                'descrizione' => 'Variante lavori', 'importo_imponibile' => 5000, 'aliquota_iva' => 10,
+                'conto_id' => $capitolo->id, 'is_sopravvenienza' => false,
+            ]],
+            'dati_extra' => [
+                'fiscal' => [], 'competenza' => null,
+                'override_budget' => ['strategia_rientro' => 'rata_integrativa'],
+            ],
+        ]),
+        $condominio->id
+    );
+
+    expect($capitolo->fresh()->importo)->toBe(550000); // bump: €5.000 -> €5.500
+
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    $user = User::factory()->create();
+    $user->givePermissionTo('Accesso pannello amministratore');
+    $this->actingAs($user);
+
+    $this->post(route('admin.gestionale.fatture.storno', ['condominio' => $condominio->id, 'fattura' => $fattura->id]))
+        ->assertSessionHasNoErrors();
+
+    // Lo storno annulla la fattura: il budget torna al deliberato originale.
+    expect($capitolo->fresh()->importo)->toBe(500000);
+})->group('fattura-passiva', 'rata-integrativa', 'gia-versato', 'regressione-avversariale');
+
+it('rata integrativa SENZA già-versato: non tocca l\'importo della voce (comportamento invariato)', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $capitolo] = setupContabile();
+
+    $data = datiBase([$condominio, $esercizio, $gestione, $fornitore], [
+        'righe' => [[
+            'descrizione'        => 'Variante lavori',
+            'importo_imponibile' => 5000,
+            'aliquota_iva'       => 10,
+            'conto_id'           => $capitolo->id,
+            'is_sopravvenienza'  => false,
+        ]],
+        'dati_extra' => [
+            'fiscal'          => [],
+            'competenza'      => null,
+            'override_budget' => ['strategia_rientro' => 'rata_integrativa'],
+        ],
+    ]);
+
+    (new FatturaPassivaService())->registraFattura($data, $condominio->id);
+
+    // Senza già-versato, BudgetCoverageService resta tollerante da solo
+    // (max(budget, speso)): non c'è ragione di toccare il budget dichiarato.
+    expect($capitolo->fresh()->importo)->toBe(500000);
+})->group('fattura-passiva', 'rata-integrativa', 'gia-versato');
+
 it('fondo di riserva: la registrazione NON tocca il fondo, la copertura resta pianificata', function () {
     // Beta.19: la coppia DARE fondo / AVERE sopravvenienze non si scrive più alla
     // registrazione — muoveva il fondo prima di ogni conferma, e col segno passivo

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Gestionale\Movimenti;
 use App\Enums\StatoPagamentoFattura;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Services\Gestionale\FatturaPassivaService;
@@ -181,6 +182,27 @@ class StornoFatturaController extends Controller
             }
             
             $notaCredito->update(['numero_protocollo' => $protocolloNC]);
+
+            // FIX 3 (revisione avversariale): RIENTRO DEL BUDGET "RATA INTEGRATIVA"
+            // Se la fattura originale aveva alzato conto->importo automaticamente
+            // (beta.27, strategia_rientro='rata_integrativa' — vedi FatturaPassivaService::
+            // registraFattura(), che registra ogni bump in dati_extra.rata_integrativa_bump
+            // con l'importo PRECEDENTE), lo storno lo ripristina esattamente. Senza questo,
+            // un budget mai ratificato in assemblea per l'eccedenza restava permanentemente
+            // "approvato": una fattura futura fino al vecchio importo gonfiato non avrebbe
+            // più generato alcun allarme di sforo, aggirando in silenzio la garanzia di
+            // ratifica (Art. 1135 c.c.) che l'intero flusso ModalOverrideBudget protegge.
+            // Ripristino ESATTO, non ricalcolo dalle righe_fattura residue: dopo uno storno
+            // completo quella somma tornerebbe a 0, cancellando un budget deliberato
+            // legittimamente più alto del semplice speso reale (es. €5.000 deliberati anche
+            // se questa era l'unica fattura mai registrata su quella voce).
+            foreach (($fattura->dati_extra['rata_integrativa_bump'] ?? []) as $bump) {
+                $contoDaRipristinare = Conto::lockForUpdate()->find($bump['conto_id'] ?? null);
+                if ($contoDaRipristinare) {
+                    $contoDaRipristinare->importo = (int) $bump['importo_precedente_cents'];
+                    $contoDaRipristinare->save();
+                }
+            }
 
             // CONGELAMENTO FATTURA ORIGINALE
             $datiExtra = $fattura->dati_extra ?? [];

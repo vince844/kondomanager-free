@@ -32,6 +32,8 @@ export interface Conto {
   // Fatto esplicito e persistito lato server — mai indovinato da importo/parent_id
   // (bug "voce a zero perde la tabella millesimale").
   is_capitolo: boolean
+  // Voce di spesa "da esercizio precedente": filtra l'elenco "Già versato".
+  richiede_gia_versato: boolean
   codice?: string | null
   nome: string
   descrizione: string | null

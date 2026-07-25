@@ -33,6 +33,8 @@ class ContributoVersato extends Model
         'natura',
         'origine',
         'descrizione',
+        'liquidita_stato',
+        'cassa_id',
     ];
 
     protected $casts = [
@@ -45,6 +47,12 @@ class ContributoVersato extends Model
     /** Riscosso e non speso, senza vincolo: conguagliabile. */
     public const NATURA_AVANZO = 'avanzo';
 
+    /** I soldi sono ancora fermi: portati a giornale su una cassa/fondo esistente. */
+    public const LIQUIDITA_REGISTRATA_IN_CASSA = 'registrata_in_cassa';
+
+    /** I soldi sono già usciti come acconto al fornitore, prima di Kondomanager. */
+    public const LIQUIDITA_GIA_SPESO_ACCONTO = 'gia_speso_acconto';
+
     public function target(): MorphTo
     {
         return $this->morphTo();
@@ -53,6 +61,11 @@ class ContributoVersato extends Model
     public function condominio(): BelongsTo
     {
         return $this->belongsTo(Condominio::class);
+    }
+
+    public function cassa(): BelongsTo
+    {
+        return $this->belongsTo(Cassa::class);
     }
 
     public function immobile(): BelongsTo

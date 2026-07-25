@@ -7,6 +7,32 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.27] - Il Già Versato Impara a Chiedere: "Questi Soldi, Dove Sono Oggi?"
+
+Seguito diretto della beta.26. Il "già versato" per voce di spesa aggiusta correttamente il riparto — ma un test con numeri reali ha fatto emergere un buco più sottile: dichiarare un già versato non sposta un solo euro reale. È solo un dato per il riparto, non tocca nessuna cassa, non compare nello Stato Patrimoniale come liquidità — a meno che quei soldi non siano già stati spesi come acconto al fornitore prima di Kondomanager, nel qual caso è il debito verso il fornitore a non essere ancora scontato. Questa beta chiude entrambi i casi, e in più mette in comunicazione il già versato con il resto del gestionale: la registrazione di una fattura in sforo, la generazione del piano rate, e — quando serve — il debito pregresso verso il fornitore.
+
+**⚠ MIGRAZIONE DATABASE**: una migrazione, eseguita automaticamente dall'aggiornamento guidato. Aggiunge due colonne nullable a `contributi_versati` (`liquidita_stato`, `cassa_id`): nessun dato esistente viene toccato, nessuna riga già presente cambia comportamento finché l'amministratore non dichiara esplicitamente dove si trovano quei soldi.
+
+Prima di rilasciare questa beta è stata lanciata una revisione avversariale multi-agente su tutto il codice nuovo (dodici sospetti, ciascuno passato a più verificatori con l'istruzione esplicita di confutarlo). Ha trovato, e questa beta corregge prima ancora del rilascio, cinque problemi indipendenti: il vincolo sul fondo deliberato si applicava solo alla primissima dichiarazione, non ai salvataggi successivi; lo storno di una fattura che aveva alzato automaticamente il budget di una voce (rata integrativa) non lo riportava indietro; il task Inbox per l'eccedenza poteva duplicarsi rigenerando lo stesso piano rate, e il suo link poteva risultare rotto su alcune gestioni; e l'aggiornamento del budget non era protetto da due registrazioni quasi simultanee sulla stessa voce.
+
+### Aggiunto
+
+- **La domanda "dove sono questi soldi, oggi?"**: alla prima dichiarazione di un già versato per una voce, una modale chiede all'amministratore di scegliere fra due scenari reali — **sono ancora fermi, mai spesi** (li registriamo subito come liquidità reale su una cassa o un fondo, esattamente come un saldo di apertura) oppure **sono già stati spesi come acconto al fornitore** prima di Kondomanager (nessuna liquidità da registrare, ma apriamo un promemoria in Inbox che guida a registrare il debito residuo come fattura pregressa). La domanda si pone una volta sola per voce.
+- **Un fondo deliberato non può finire su una cassa libera per imprevisti**: se il già versato ha un vincolo di destinazione (art. 1135 c.c.), il selettore della cassa esclude i fondi liberamente prelevabili per altri imprevisti — altrimenti quei soldi vincolati diventerebbero disponibili per qualunque sforo futuro su una voce diversa. Con un avanzo (nessun vincolo deliberato) questa restrizione non si applica.
+- **La rata integrativa ora tiene conto del già versato**: quando si registra una fattura che sfora il budget di una voce con già versato attivo, la modale "Sforamento budget rilevato" mostra il residuo netto stimato — non l'intero sforo lordo — prima ancora di confermare. Scegliendo "Rata Integrativa" per una voce del genere, l'importo della voce nel piano dei conti si aggiorna da solo al costo reale: non serve più il passaggio manuale separato.
+- **Eccedenza già versato ora visibile**: quando un'unità ha versato più del dovuto per una voce, la differenza non va mai sotto zero — ma prima restava visibile solo nei log del server. Ora apre un task in Inbox, con il dettaglio per unità di quanto va restituito o conguagliato.
+- **Voce di spesa "da esercizio precedente"**: in creazione di una nuova voce nel piano dei conti, un checkbox dedicato (con tooltip esplicativo) marca le voci che richiedono il già versato — l'elenco della pagina "Già versato" mostra solo quelle, non l'intero piano dei conti. La stessa voce, nell'albero del piano dei conti, mostra ora una piccola icona a orologio per riconoscerla a colpo d'occhio.
+- **Tre card guida** nella pagina "Già versato", sullo stesso modello delle altre pagine del gestionale.
+
+### Corretto
+
+- **Doppio conteggio del già versato quando il budget della voce non viene aggiornato**: generare un piano rate integrativo senza prima portare l'importo della voce al costo reale poteva far applicare il già versato contro un budget sbagliato, azzerando uno sforo vero senza mai chiederlo ai condòmini. Ora il sistema blocca la generazione con un messaggio esplicito che dice cosa correggere, invece di lasciare passare un calcolo silenziosamente sbagliato.
+- **La stampa "Riparto per Capitolo di Spesa"** mostrava l'importo lordo della voce invece del netto (già versato scontato), disallineata dalle rate realmente emesse — corretta con lo stesso riallineamento già applicato alla stampa "Riparto per Tabella".
+- **Ripartizione mista proprietario/inquilino con già versato**: la copertura è per immobile, non per soggetto — un versamento fatto solo dal proprietario finiva per scontare anche l'inquilino. Non ancora risolto nel calcolo (caso raro): la pagina ora lo segnala esplicitamente, invitando a verificare a mano.
+- **Bug della beta.26**: nella pagina "Già versato", i link del menu a Gestioni, Piani dei Conti e Piano Rate portavano a un errore 404. La pagina non passava l'esercizio corrente al menu — unico punto del gestionale a non farlo, perché è l'unica pagina raggiungibile senza passare da un esercizio specifico nell'indirizzo.
+
+---
+
 ## [1.10.0-beta.26] - Il Già Versato Chiude il Buco B & la Revisione Ferma un Secondo Buco Prima di Aprirlo
 
 Caso reale segnalato sul forum: un condominio arriva da un altro gestionale con un accantonamento già raccolto (delibera 2025, €500 a testa per una ristrutturazione). Nel 2026 la fattura finale supera l'accantonato e il piano rate integrativo chiede l'INTERA spesa una seconda volta, perché nel motore di riparto non esiste il concetto di "quanto questa unità ha già versato per questa voce" — l'unica traccia di denaro incassato è legata alla rata che lo ha generato, mai alla voce di spesa. Questa beta introduce quella struttura dati e la pagina per compilarla: **Già versato per voce di spesa**, raggiungibile da Struttura.

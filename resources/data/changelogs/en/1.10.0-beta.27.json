@@ -1,0 +1,13 @@
+{
+    "features": [
+        "⚠ This update includes one database migration, applied automatically during the guided update. Adds two nullable columns to the \"already paid\" table: no existing data is touched.",
+        "New question \"Where is this money, today?\": the first time you declare an already-paid amount, choose whether it's still sitting in a cash account or fund (we post it right away as real liquidity) or whether it was already paid to the supplier as a down payment (we open an Inbox reminder to record the remaining debt).",
+        "A resolution-bound fund can no longer be recorded on a cash account that's freely available for other unforeseen expenses — the check now also applies to saves after the first one.",
+        "The supplementary installment now accounts for already-paid amounts: the budget-overrun modal shows the estimated net remainder, and choosing \"Supplementary Installment\" updates the expense item's amount to the real cost on its own. Reversing that invoice now correctly rolls the budget back too.",
+        "Owners who paid more than owed for an expense item now get an Inbox task with the surplus breakdown to refund or offset — previously this only showed up in server logs.",
+        "Expense items \"from a prior fiscal year\" now show a small clock icon in the chart-of-accounts tree, so they're recognizable at a glance.",
+        "Fixed a case where generating a supplementary installment plan without first updating the expense item's budget could silently make a real overrun disappear: generation now blocks with a message explaining what to fix.",
+        "Fixed the \"Cost-sharing by Chapter\" printout, which showed the gross amount instead of the net amount after already-paid coverage.",
+        "Fixed a bug from beta.26: on the \"Already paid\" page, the menu links to Gestioni, Chart of Accounts, and Installment Plans led to a 404 error."
+    ]
+}

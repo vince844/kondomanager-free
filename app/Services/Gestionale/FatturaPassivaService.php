@@ -13,6 +13,7 @@ use App\Models\Evento;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContoContabile;
+use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
@@ -199,6 +200,17 @@ class FatturaPassivaService
             // NOTA: le coperture sono registri informativi (audit trail).
             // L'effetto contabile reale è esclusivamente nelle righe_scritture.
             // Non esiste doppio movimento: coperture ≠ contabilità.
+            //
+            // NON C'È UN RAMO per strategia_rientro === 'conguaglio_fine_anno': è il
+            // default implicito, non crea nessuna copertura né piano rate qui — lo
+            // sforo resta "in attesa", da chiedere alla chiusura esercizio.
+            // TODO(chiusura esercizio, non ancora costruita): quando quella
+            // funzionalità nascerà, dovrà leggere il già-versato (contributi_versati)
+            // esattamente come fa CalcoloQuoteService::guardiaSovraFinanziamentoGiaVersato()
+            // per la rata integrativa — altrimenti un conguaglio di fine anno su una
+            // voce con già-versato attivo chiederebbe di nuovo l'intero importo lordo,
+            // stesso identico bug del "caso del forum" (beta.27), solo spostato a fine
+            // esercizio invece che sulla rata integrativa.
             // =====================================================================
             $overrideData = $data['dati_extra']['override_budget'] ?? null;
             if ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'fondo_riserva' && ! empty($overrideData['fondo_patrimoniale_id'])) {
@@ -211,6 +223,81 @@ class FatturaPassivaService
                     'fondo_id' => $overrideData['fondo_patrimoniale_id'],
                     'nota_amministratore' => 'Copertura sforo budget (Art. 1135 c.c.): '.($overrideData['motivazione'] ?? ''),
                 ]);
+            } elseif ($overrideData && ($overrideData['strategia_rientro'] ?? '') === 'rata_integrativa') {
+                // Per ogni voce coinvolta in questa fattura (non pregressa) che ha
+                // già-versato registrato, portiamo `conto->importo` al costo reale
+                // adesso — lo stesso passo che CalcoloQuoteService::
+                // guardiaSovraFinanziamentoGiaVersato() richiederebbe comunque
+                // prima di poter generare un piano rate su quella voce (beta.27,
+                // "il caso del forum"). Farlo qui, atomicamente con la
+                // registrazione della fattura, elimina il passo manuale separato:
+                // scegliere "rata integrativa" per uno sforo reale implica già che
+                // questo sia il vero costo dell'opera. Nessun effetto per le voci
+                // senza già-versato: la loro `importo` non viene mai toccata qui,
+                // il fabbisogno tollerante di BudgetCoverageService resta invariato.
+                $contiCoinvolti = collect($righeProcessate)->pluck('conto_id')->filter()->unique();
+                // Ogni bump viene registrato qui con l'importo PRECEDENTE — non
+                // per ricalcolarlo, ma per poterlo ripristinare esattamente allo
+                // storno (vedi StornoFatturaController "FIX 3"). Ricalcolare a
+                // fresco dalle righe_fattura residue allo storno sembrava
+                // equivalente ma non lo è: dopo uno storno completo la somma
+                // netta tornerebbe a 0, cancellando il budget ORIGINALE
+                // deliberato (che può essere più alto del semplice speso reale,
+                // es. €5.000 deliberati anche se questa era l'unica fattura).
+                // Il rollback esatto evita questo, senza bisogno di "indovinare".
+                $bumpRegistrati = [];
+
+                foreach ($contiCoinvolti as $contoId) {
+                    $haGiaVersato = ContributoVersato::where('target_type', Conto::class)
+                        ->where('target_id', $contoId)
+                        ->exists();
+                    if (! $haGiaVersato) {
+                        continue;
+                    }
+
+                    // REVISIONE AVVERSARIALE: senza lockForUpdate() qui, due
+                    // fatture registrate quasi in contemporanea sullo stesso
+                    // conto (due tab, due admin) leggono entrambe la SOMMA
+                    // PRIMA che l'altra transazione committi il proprio insert
+                    // (lost update classico) — il conto->importo finale riflette
+                    // solo l'ULTIMA scrittura vinta, non la somma reale di
+                    // entrambe le fatture. Il resto della codebase blocca questa
+                    // stessa classe di problema con lockForUpdate() ovunque tocca
+                    // un saldo/budget dentro una transazione (BudgetMovementService,
+                    // PagamentoFornitoreService, StoreIncassoRateAction) — qui
+                    // replichiamo lo stesso pattern: il lock sulla riga `conti`
+                    // serializza le transazioni concorrenti sullo stesso conto,
+                    // così la seconda a passare rilegge la SOMMA con già dentro
+                    // l'insert della prima (ormai committata).
+                    $contoDaAggiornare = Conto::lockForUpdate()->find($contoId);
+                    if (! $contoDaAggiornare) {
+                        continue;
+                    }
+
+                    $importoPrecedente = (int) $contoDaAggiornare->importo;
+
+                    $spesoRealeTotale = (int) DB::table('righe_fattura')
+                        ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
+                        ->where('righe_fattura.conto_id', $contoId)
+                        ->where('fatture_passive.is_pregresso', false)
+                        ->selectRaw('COALESCE(SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva), 0) as tot')
+                        ->value('tot');
+
+                    if ($spesoRealeTotale > abs($importoPrecedente)) {
+                        $contoDaAggiornare->importo = $spesoRealeTotale;
+                        $contoDaAggiornare->save();
+                        $bumpRegistrati[] = [
+                            'conto_id' => $contoId,
+                            'importo_precedente_cents' => $importoPrecedente,
+                        ];
+                    }
+                }
+
+                if (! empty($bumpRegistrati)) {
+                    $datiExtraConBump = $fattura->dati_extra;
+                    $datiExtraConBump['rata_integrativa_bump'] = $bumpRegistrati;
+                    $fattura->update(['dati_extra' => $datiExtraConBump]);
+                }
             }
 
             // 4. SALVATAGGIO COPERTURE E CALCOLO ECCEDENZA (Pregresso)

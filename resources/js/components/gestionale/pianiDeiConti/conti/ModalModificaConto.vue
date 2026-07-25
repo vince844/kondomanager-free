@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import InputError from '@/components/InputError.vue'
 import { useCapitoliConti, type CapitoloDropdown } from '@/composables/useCapitoliConti'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
@@ -37,6 +38,7 @@ const emit = defineEmits<Emits>()
 
 const isCapitolo = ref(false)
 const isSottoConto = ref(false)
+const richiedeGiaVersato = ref(false)
 // Confermata esplicitamente dall'admin quando converte in capitolo una voce
 // che ha già una tabella millesimale reale (vedi confirm() nel watch su isCapitolo).
 // Il backend rifiuta la conversione distruttiva senza questo flag.
@@ -71,6 +73,7 @@ const form = useForm({
   percentuale_usufruttuario: 0,
   isCapitolo: false,
   isSottoConto: false,
+  richiedeGiaVersato: false,
 })
 
 watch(
@@ -130,6 +133,8 @@ const populateFormFromConto = (newConto: Conto) => {
   isSottoConto.value = !!newConto.parent_id
   form.isCapitolo = !!newConto.is_capitolo
   form.isSottoConto = !!newConto.parent_id
+  richiedeGiaVersato.value = !!newConto.richiede_gia_versato
+  form.richiedeGiaVersato = !!newConto.richiede_gia_versato
   confermaConversioneCapitolo.value = false
 
   form.importo = !newConto.is_capitolo ? newConto.importo : ''
@@ -170,6 +175,8 @@ watch(isCapitolo, (val, oldVal) => {
     form.percentuale_proprietario = 100
     form.percentuale_inquilino = 0
     form.percentuale_usufruttuario = 0
+    richiedeGiaVersato.value = false
+    form.richiedeGiaVersato = false
   }
   form.isCapitolo = val
 })
@@ -180,6 +187,10 @@ watch(isSottoConto, (val) => {
     form.isCapitolo = false
   }
   form.isSottoConto = val
+})
+
+watch(richiedeGiaVersato, (val) => {
+  form.richiedeGiaVersato = val
 })
 
 watch(() => form.tabella_millesimale_id, () => {
@@ -196,6 +207,7 @@ const resetForm = () => {
   form.reset()
   isCapitolo.value = false
   isSottoConto.value = false
+  richiedeGiaVersato.value = false
   confermaConversioneCapitolo.value = false
   form.percentuale_proprietario = 100
   form.percentuale_inquilino = 0
@@ -255,6 +267,7 @@ const submit = () => {
         <form v-if="props.conto" class="space-y-4 mt-4" @submit.prevent="submit">
           <input v-model="form.isCapitolo" type="hidden" />
           <input v-model="form.isSottoConto" type="hidden" />
+          <input v-model="form.richiedeGiaVersato" type="hidden" />
 
           <div
             v-if="!isCapitolo && (isImportoLocked || (props.conto?.impegnato ?? 0) > 0)"
@@ -345,6 +358,25 @@ const submit = () => {
                 {{ trans('gestionale.list_pages.piani_conti.show.new_entry_modal.labels.is_expense_subaccount') }}
               </Label>
               <Switch id="editIsSottoConto" v-model="isSottoConto" :disabled="isCapitolo" />
+            </div>
+            <div v-if="!isCapitolo" class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <Label for="editRichiedeGiaVersato" class="cursor-pointer">Voce di spesa da esercizio precedente</Label>
+                <TooltipProvider :delay-duration="300">
+                  <Tooltip>
+                    <TooltipTrigger as-child>
+                      <Info class="w-3.5 h-3.5 text-slate-400 cursor-default" />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" class="text-xs max-w-[280px]">
+                      Attiva questa opzione se la voce riporta una spesa già in parte
+                      raccolta prima di passare a Kondomanager. Comparirà nell'elenco
+                      "Già versato", dove potrai registrare quanto ogni unità ha già
+                      versato: il riparto chiederà poi solo il residuo.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <Switch id="editRichiedeGiaVersato" v-model="richiedeGiaVersato" />
             </div>
           </div>
 
