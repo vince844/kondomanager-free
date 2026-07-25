@@ -7,6 +7,35 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.29] - Nasce il Libro Giornale, e lo Stato Patrimoniale Impara a Spiegarsi
+
+Fino a ieri il Libro Giornale esisteva solo come dettaglio di una singola scrittura, raggiungibile solo per drill-down da altre pagine (fatture, pagamenti, giroconti...). Mancava un vero registro sfogliabile. Questa beta lo costruisce: elenco cronologico per esercizio, con filtri estesi (ricerca, tipo movimento, stato, intervallo date), switch reale fra esercizi per consultare gli anni precedenti, e un widget che espone per la prima volta a video `StatoPatrimonialeService` — il motore di verifica quadratura scritto in beta.25 ma mai collegato a nessuna pagina.
+
+Durante la verifica dal vivo (non nella revisione automatica) è emerso un problema più sottile del previsto: un amministratore che non mastica contabilità vedeva un badge verde "quadra" accanto a due numeri (Attivo e Passivo) visibilmente diversi fra loro, e giustamente non si fidava — perché "quadra" verifica un'equazione a tre termini (Attivo = Passivo + Risultato d'esercizio), non il pareggio fra le due masse. Il widget ora traduce l'equazione in una frase in linguaggio corrente, e quando lo sbilancio è reale prova a indicarne la causa più probabile — con link diretto a dove intervenire — invece di lasciare l'amministratore a caccia di un errore invisibile.
+
+### Aggiunto
+
+- **Pagina Libro Giornale**: elenco paginato delle scritture contabili di un esercizio, annidato sotto `/esercizi/{esercizio}/scritture` così il selettore esercizio esistente funziona da subito, senza logica nuova. Filtri: ricerca testuale (causale/descrizione/protocollo), tipo movimento, stato, intervallo date di registrazione.
+- **Widget verifica quadratura**: badge quadra/non quadra con una spiegazione in linguaggio corrente che cambia a seconda della situazione — un disavanzo a esercizio in corso è descritto come normale, uno sbilancio reale no. Sotto, l'equazione compatta (Attivo = Passivo + Risultato d'esercizio) per chi vuole il riscontro numerico immediato, e un link "Dettagli calcolo" che apre una tabella completa (Attivo, Passivo, Costi, Ricavi, Risultato d'esercizio, Liquidità non contabilizzata, Sbilancio) — vista provvisoria in attesa della pagina Stato Patrimoniale dedicata.
+- **Diagnosi automatica dello sbilancio**: quando lo Stato Patrimoniale non quadra, il widget cerca le due cause riconoscibili con certezza — scritture non bilanciate al loro interno (Dare ≠ Avere sulla singola scrittura) e casse con un saldo di apertura non ancora portato a giornale — e le elenca con link diretto alla scrittura o alla cassa da correggere. Oltre questi due casi la diagnosi si ferma onestamente: un importo digitato male ma comunque bilanciato non lascia traccia distinguibile, e il messaggio lo dice esplicitamente invece di indovinare.
+- **Widget riepilogo Dare/Avere** del periodo filtrato, con un bollino di conferma pareggio — un secondo segnale diagnostico gratuito, visto che in un registro corretto Dare e Avere aggregati tornano sempre.
+- **Voce di menu "Libro Giornale"** nella barra Movimenti, accanto a "Prima nota" (non toccata: resta il placeholder di una feature diversa, già progettata a parte).
+
+### Corretto (prima del rilascio, revisione avversariale)
+
+- **Link "Libro Giornale" rotto (404)** quando il condominio non ha nessun esercizio in stato aperto (es. l'amministratore lo ha appena chiuso): ora si disabilita come già fa "Prima nota", invece di generare un indirizzo con id 0.
+- **Il selettore "righe per pagina" della tabella non veniva rispettato dal server**: il controller ignorava il parametro e restituiva sempre 20 righe, contraddicendo la selezione fatta in tabella.
+- **Cambiare esercizio da una pagina successiva alla prima poteva mostrare una lista vuota senza alcun modo di uscirne**: il numero di pagina residuo dal cambio esercizio non veniva mai riportato entro il range disponibile per il nuovo esercizio. Ora la pagina richiesta viene sempre ricondotta all'ultima disponibile.
+- **Le colonne Data e Importo sembravano ordinabili ma non lo erano davvero**: il riordino avveniva solo sulla pagina corrente già in memoria, non sull'intero registro filtrato — tolto l'ordinamento su queste colonne, mai stato previsto lato server.
+- *(Trovato in verifica dal vivo con l'utente, non dalla revisione automatica)*: la frase in linguaggio corrente del widget quadratura non distingueva "non quadra" da "in disavanzo ma quadrato" — un condominio con uno sbilancio reale vedeva lo stesso messaggio rassicurante di uno semplicemente a metà esercizio. Ora la frase ramifica esplicitamente sullo stato di quadratura prima di guardare il segno del risultato d'esercizio.
+
+### Test
+
+- Nuovo file `ScritturaContabileControllerTest.php`: scoping condominio/esercizio, ogni filtro isolato, riflesso fedele di `StatoPatrimonialeService::calcola`, whitelist e clamp di `per_page`/`page`, diagnosi automatica per entrambe le cause riconoscibili (12 test in totale).
+- Suite completa: 628 test verdi (prima di questa beta: 616).
+
+---
+
 ## [1.10.0-beta.28] - Il Piano Rate Impara Da Dove Arriva
 
 La Dashboard, quando propone di creare un piano rate per uno sforo o una sopravvenienza, sa già perfettamente quale dei due tipi serve — lo scrive nell'indirizzo che genera (`?tipo=ordinario` o `?tipo=straordinario`). Ma la pagina di creazione, fino a ieri, si limitava a preselezionare quella scelta lasciando comunque cliccabile l'altra: un amministratore che toccava la card sbagliata arrivava fino in fondo al form e si scontrava con un errore di validazione solo al salvataggio. Questa beta chiude il cerchio: se il contesto è certo, l'altra opzione si disattiva subito, con la spiegazione sempre visibile — non solo al passaggio del mouse.

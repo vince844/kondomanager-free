@@ -4,12 +4,14 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText, ScrollText } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
+import type { Esercizio } from '@/types/gestionale/esercizi';
 
-const page = usePage<{ condominio: Building }>();
+const page = usePage<{ condominio: Building; esercizio?: Esercizio }>();
 const condominio = computed(() => page.props.condominio);
+const esercizio = computed(() => page.props.esercizio);
 const { generatePath } = usePermission();
 
 const topbarNavItems: (LinkItem & { badge?: string })[] = [
@@ -37,6 +39,21 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
         title: 'Giroconti',
         href:  generatePath('gestionale/:condominio/giroconti', { condominio: condominio.value.id }),
     },
+    {
+        type:  'link',
+        icon:  ScrollText,
+        title: 'Libro Giornale',
+        // Senza un esercizio aperto (es. l'amministratore lo ha appena chiuso) non c'è un
+        // esercizio su cui costruire la rotta annidata: link disabilitato, come "Prima nota",
+        // invece di un href con id 0 che il route model binding rifiuterebbe con un 404.
+        href:  esercizio.value
+            ? generatePath('gestionale/:condominio/esercizi/:esercizio/scritture', {
+                  condominio: condominio.value.id,
+                  esercizio:  esercizio.value.id,
+              })
+            : '#',
+        badge: esercizio.value ? undefined : 'Nessun esercizio aperto',
+    },
     // La regolazione immediata non è più in barra: vive accanto a "Nuova fattura"
     // nell'elenco fatture — è il fratello minore della fattura, non un registro suo.
     {
@@ -59,7 +76,7 @@ const currentPath = window.location.pathname;
         <nav class="flex flex-wrap items-center gap-2 w-fit max-w-full shadow ring-1 ring-black/5 md:rounded-lg p-2 mb-4">
             <Button
                 v-for="item in topbarNavItems"
-                :key="item.href"
+                :key="item.title"
                 variant="ghost"
                 :class="['justify-start', { 'bg-muted': currentPath.startsWith(item.href) && item.href !== '#' }]"
                 :disabled="item.href === '#'"

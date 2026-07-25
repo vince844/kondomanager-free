@@ -201,7 +201,12 @@ Route::prefix('/gestionale/{condominio}')
     
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)
     ->name('esercizi.piani-rate.regenerate');
-    
+
+    // Libro Giornale — elenco scritture contabili, annidato per esercizio così
+    // il dropdown esercizio di PageHeaderGuide funziona out-of-the-box.
+    Route::get('esercizi/{esercizio}/scritture', [ScritturaContabileController::class, 'index'])
+        ->name('esercizi.scritture.index');
+
     Route::get('situazione-debitoria', SituazioneDebitoriaController::class)
         ->name('situazione-debitoria');
     

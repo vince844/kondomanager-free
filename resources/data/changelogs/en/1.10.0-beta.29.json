@@ -1,0 +1,8 @@
+{
+    "features": [
+        "New \"General Ledger\" page in the Movements bar: a chronological list of all accounting entries for the selected fiscal year, with text search, filters by movement type/status/date range, and the ability to switch fiscal years to review past ones.",
+        "The \"Balance Sheet\" widget now explains in plain language whether the condominium's assets and liabilities balance out — and when they don't, it points to the most likely cause (an entry that's unbalanced within itself, or a cash account with an opening balance not yet recorded) with a direct link to fix it.",
+        "A \"Calculation details\" button opens a full table with every value behind the check (assets, liabilities, costs, revenues, fiscal year result, unrecorded liquidity, imbalance).",
+        "New widget showing the total Debit and total Credit of the entries visible under the current filters, with a checkmark confirming they balance."
+    ]
+}

@@ -167,7 +167,7 @@ const confirmRiallinea = () => {
                                     <h3 class="text-sm font-bold text-amber-900">Scritture storiche da riallineare</h3>
                                     <p class="text-xs text-amber-700 mt-1 leading-relaxed">
                                         Prima di questa versione le coperture da fondo scrivevano righe direttamente sul conto del fondo.
-                                        Queste {{ props.riallineamento.length }} scritture vanno neutralizzate con rettifiche automatiche:
+                                        Queste scritture vanno neutralizzate con rettifiche automatiche:
                                         i saldi dei fondi torneranno a riflettere i soli giroconti.
                                     </p>
 

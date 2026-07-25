@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Nuova pagina \"Libro Giornale\" nella barra Movimenti: elenco cronologico di tutte le scritture contabili dell'esercizio selezionato, con ricerca testuale, filtri per tipo movimento/stato/intervallo date, e la possibilità di cambiare esercizio per consultare le operazioni di anni precedenti.",
+        "Il widget \"Stato Patrimoniale\" ora spiega in linguaggio corrente se attivo e passivo del condominio tornano — e quando non tornano, indica la causa più probabile (una scrittura non bilanciata al suo interno, o una cassa con un saldo di apertura non ancora registrato) con un link diretto per correggerla.",
+        "Un pulsante \"Dettagli calcolo\" apre una tabella completa con tutti i valori usati nella verifica (attivo, passivo, costi, ricavi, risultato d'esercizio, liquidità non contabilizzata, sbilancio).",
+        "Nuovo widget con il totale Dare e il totale Avere delle scritture visibili con i filtri correnti, con un bollino di conferma pareggio."
+    ]
+}

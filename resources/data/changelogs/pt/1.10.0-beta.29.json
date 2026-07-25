@@ -1,0 +1,8 @@
+{
+    "features": [
+        "Nova página \"Livro Diário\" na barra Movimentos: lista cronológica de todos os lançamentos contabilísticos do exercício selecionado, com pesquisa de texto, filtros por tipo de movimento/estado/intervalo de datas, e a possibilidade de mudar de exercício para consultar operações de anos anteriores.",
+        "O widget \"Balanço Patrimonial\" explica agora em linguagem simples se o ativo e o passivo do condomínio batem certo — e quando não batem, indica a causa mais provável (um lançamento não equilibrado internamente, ou uma conta de caixa com um saldo de abertura ainda não registado) com uma ligação direta para o corrigir.",
+        "Um botão \"Detalhes do cálculo\" abre uma tabela completa com todos os valores usados na verificação (ativo, passivo, custos, receitas, resultado do exercício, liquidez não contabilizada, desequilíbrio).",
+        "Novo widget com o total a Débito e o total a Crédito dos lançamentos visíveis com os filtros atuais, com um selo de confirmação do equilíbrio."
+    ]
+}
