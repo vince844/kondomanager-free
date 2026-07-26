@@ -653,6 +653,77 @@ test('index elenca i giroconti e la prop di riallineamento', function () {
         );
 });
 
+test('index filtro stato: isola solo le scritture nello stato richiesto', function () {
+    $user = adminGiroconti();
+    $ctx = setupContabile();
+    [$condominio, $esercizio] = $ctx;
+    $banca = creaCassaConConto($condominio->id, 'banca', 200000);
+    $fondo = creaCassaConConto($condominio->id, 'fondo', 0);
+
+    $registrata = app(RegistraGirocontoAction::class)
+        ->execute(datiGiroconto($ctx, $banca, $fondo, 100.00), $condominio, $esercizio);
+    $altra = app(RegistraGirocontoAction::class)
+        ->execute(datiGiroconto($ctx, $banca, $fondo, 50.00), $condominio, $esercizio);
+
+    // Il workflow non prevede bozze per i giroconti: forziamo lo stato per
+    // verificare che il filtro isoli comunque correttamente in base alla colonna.
+    ScritturaContabile::where('id', $altra->id)->update(['stato' => 'riconciliata']);
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.giroconti.index', ['condominio' => $condominio->id, 'stato' => 'riconciliata']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('giroconti.data', 1)
+            ->where('giroconti.data.0.id', $altra->id)
+        );
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.giroconti.index', ['condominio' => $condominio->id, 'stato' => 'registrata']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('giroconti.data', 1)
+            ->where('giroconti.data.0.id', $registrata->id)
+        );
+});
+
+test('index filtro data_da/data_a: isola le scritture per data_competenza', function () {
+    $user = adminGiroconti();
+    $ctx = setupContabile();
+    [$condominio, $esercizio] = $ctx;
+    $banca = creaCassaConConto($condominio->id, 'banca', 200000);
+    $fondo = creaCassaConConto($condominio->id, 'fondo', 0);
+
+    $vecchio = app(RegistraGirocontoAction::class)
+        ->execute(datiGiroconto($ctx, $banca, $fondo, 100.00), $condominio, $esercizio);
+    $recente = app(RegistraGirocontoAction::class)
+        ->execute(datiGiroconto($ctx, $banca, $fondo, 50.00), $condominio, $esercizio);
+
+    ScritturaContabile::where('id', $vecchio->id)->update(['data_competenza' => '2026-01-10']);
+    ScritturaContabile::where('id', $recente->id)->update(['data_competenza' => '2026-06-20']);
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.giroconti.index', [
+            'condominio' => $condominio->id,
+            'data_da' => '2026-06-01',
+        ]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('giroconti.data', 1)
+            ->where('giroconti.data.0.id', $recente->id)
+        );
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.giroconti.index', [
+            'condominio' => $condominio->id,
+            'data_a' => '2026-02-01',
+        ]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('giroconti.data', 1)
+            ->where('giroconti.data.0.id', $vecchio->id)
+        );
+});
+
 test('storno HTTP: motivo sotto i 10 caratteri respinto', function () {
     $user = adminGiroconti();
     $ctx = setupContabile();

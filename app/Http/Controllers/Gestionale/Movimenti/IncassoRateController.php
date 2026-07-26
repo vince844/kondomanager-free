@@ -28,6 +28,9 @@ class IncassoRateController extends Controller
 {
     use HandleFlashMessages, HasEsercizio, HasCondomini;
 
+    /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
+    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
+
     /**
      * Inizializza il controller iniettando il servizio per la gestione incassi.
      *
@@ -49,7 +52,9 @@ class IncassoRateController extends Controller
         $query = $this->incassoService->getIncassiQuery(
             $condominio,
             $request->input('search'),
-            $request->input('stato')
+            $request->input('stato'),
+            $request->input('data_da'),
+            $request->input('data_a')
         );
 
         $movimenti = $query->paginate(config('pagination.default_per_page'))
@@ -91,7 +96,8 @@ class IncassoRateController extends Controller
             'esercizio'  => $esercizio,
             'esercizi'   => $esercizi,
             'stats'      => $stats,
-            'filters'    => $request->all(['search', 'stato']),
+            'stati'      => self::STATI,
+            'filters'    => $request->all(['search', 'stato', 'data_da', 'data_a']),
         ]);
     }
 

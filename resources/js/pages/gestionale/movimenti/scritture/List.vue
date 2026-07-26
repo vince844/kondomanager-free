@@ -9,6 +9,7 @@ import { createColumns } from '@/components/gestionale/movimenti/scritture/colum
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { ScrollText, Scale, CheckCircle2, XCircle, AlertTriangle, ArrowDownCircle, ArrowUpCircle, ListTree } from 'lucide-vue-next';
 import Alert from "@/components/Alert.vue";
@@ -120,15 +121,32 @@ const pareggioDareAvere = computed(() => props.riepilogoDareAvere.totale_dare ==
 
 const isDettagliOpen = ref(false);
 
-const righeDettaglio = computed(() => [
-    { voce: 'Totale Attivo', valore: euro(props.quadratura.totale_attivo) },
-    { voce: 'Totale Passivo', valore: euro(props.quadratura.totale_passivo) },
-    { voce: 'Costi', valore: euro(props.quadratura.costi) },
-    { voce: 'Ricavi', valore: euro(props.quadratura.ricavi) },
-    { voce: 'Risultato d\'esercizio (ricavi − costi)', valore: euro(props.quadratura.risultato_esercizio) },
-    { voce: 'Liquidità non contabilizzata', valore: euro(props.quadratura.liquidita_non_contabilizzata) },
-    { voce: 'Sbilancio', valore: `${euro(props.quadratura.sbilancio)} → ${props.quadratura.quadra ? 'quadra' : 'non quadra'}` },
+/** "Disavanzo"/"Avanzo"/"Pareggio" a seconda del segno — stessa logica di spiegazioneQuadratura. */
+const esito = (importo: number) => importo < 0 ? 'Disavanzo' : (importo > 0 ? 'Avanzo' : 'Pareggio');
+
+/**
+ * Sezione 1: la storia economica dell'anno — perché c'è (o non c'è) un buco.
+ * Letta PRIMA della quadratura patrimoniale: "abbiamo speso X e incassato Y,
+ * quindi siamo a Z" è più immediato di un'equazione a tre termini.
+ */
+const sintesiEconomica = computed(() => [
+    { voce: 'Totale Spese (Costi)', valore: euro(props.quadratura.costi) },
+    { voce: 'Totale Entrate (Ricavi)', valore: euro(props.quadratura.ricavi) },
+    { voce: `${esito(props.quadratura.risultato_esercizio)} di Gestione`, valore: euro(props.quadratura.risultato_esercizio), evidenzia: true },
 ]);
+
+/**
+ * Sezione 2: la prova che il disavanzo/avanzo di sezione 1 bilancia esattamente
+ * la differenza fra Attivo e Passivo — la "fotografia dei conti" oggi.
+ */
+const quadraturaPatrimoniale = computed(() => {
+    const differenza = props.quadratura.totale_attivo - props.quadratura.totale_passivo;
+    return [
+        { voce: 'A. Totale Attivo (Cassa, Crediti)', valore: euro(props.quadratura.totale_attivo) },
+        { voce: 'B. Totale Passivo (Debiti, Fondi)', valore: euro(props.quadratura.totale_passivo) },
+        { voce: `C. ${esito(differenza)} da coprire (A − B)`, valore: euro(differenza), evidenzia: true },
+    ];
+});
 
 const pageGuides = [
     { title: 'Registro cronologico', description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione.', icon: ScrollText, colorVariant: 'blue' as const },
@@ -179,15 +197,30 @@ const pageGuides = [
                                          due numeri diversi accanto a un bollino verde e non si fida. -->
                                     <p class="text-xs text-slate-700 mt-1 leading-relaxed">{{ spiegazioneQuadratura }}</p>
 
-                                    <!-- Equazione compatta come riscontro numerico immediato: il "Dettagli
-                                         calcolo" sotto resta un extra per chi vuole anche Costi/Ricavi/
-                                         Liquidità non contabilizzata, non un sostituto di questi tre numeri. -->
+                                    <!-- Equazione compatta come riscontro numerico immediato: l'icona a fianco
+                                         resta un extra per chi vuole anche Costi/Ricavi/Liquidità non
+                                         contabilizzata, non un sostituto di questi tre numeri. -->
                                     <div class="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-2 text-[11px] text-slate-400">
                                         <span>Attivo <strong class="text-slate-600">{{ euro(quadratura.totale_attivo) }}</strong></span>
                                         <span>=</span>
                                         <span>Passivo <strong class="text-slate-600">{{ euro(quadratura.totale_passivo) }}</strong></span>
                                         <span>+</span>
                                         <span>Risultato esercizio <strong :class="quadratura.risultato_esercizio < 0 ? 'text-rose-600' : 'text-slate-600'">{{ euro(quadratura.risultato_esercizio) }}</strong></span>
+                                        <TooltipProvider :delay-duration="200">
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex items-center justify-center w-4 h-4 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                                        aria-label="Dettagli calcolo"
+                                                        @click="isDettagliOpen = true"
+                                                    >
+                                                        <ListTree class="w-3 h-3" />
+                                                    </button>
+                                                </TooltipTrigger>
+                                                <TooltipContent><p>Dettagli calcolo</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
                                     </div>
 
                                     <!-- Diagnosi: le due cause riconoscibili con certezza, con link diretto
@@ -213,15 +246,6 @@ const pageGuides = [
                                             <span class="text-slate-500">— apertura mancante, {{ euro(c.saldo_iniziale) }}</span>
                                         </li>
                                     </ul>
-
-                                    <button
-                                        type="button"
-                                        class="inline-flex items-center gap-1 mt-2 text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors"
-                                        @click="isDettagliOpen = true"
-                                    >
-                                        <ListTree class="w-3 h-3" />
-                                        Dettagli calcolo
-                                    </button>
                                 </div>
                             </div>
 
@@ -276,41 +300,79 @@ const pageGuides = [
             </div>
         </div>
 
-        <!-- Modale: dettaglio completo del calcolo di StatoPatrimonialeService::calcola -->
+        <!-- Modale: dettaglio completo del calcolo di StatoPatrimonialeService::calcola,
+             in due passaggi — prima la storia economica, poi la prova che quadra con i
+             conti. Un'unica tabella con 7 righe eterogenee obbligava a leggere l'equazione
+             prima di sapere da dove venisse il numero; separare i due piani rende esplicito
+             che il disavanzo/avanzo di gestione È la differenza fra Attivo e Passivo. -->
         <Dialog v-model:open="isDettagliOpen">
-            <DialogContent class="sm:max-w-[440px]">
+            <DialogContent class="sm:max-w-[480px]">
                 <DialogHeader>
                     <DialogTitle class="flex items-center gap-2">
                         <Scale class="w-5 h-5 text-slate-500" />
                         Dettaglio Stato Patrimoniale
                     </DialogTitle>
                     <DialogDescription>
-                        Esercizio {{ props.esercizio.nome }} — ogni riga concorre alla verifica
-                        Attivo = Passivo + Risultato d'esercizio.
+                        Esercizio {{ props.esercizio.nome }}.
                     </DialogDescription>
                 </DialogHeader>
 
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-slate-200">
-                            <th class="text-left font-bold text-[10px] uppercase tracking-wider text-slate-400 pb-2">Voce</th>
-                            <th class="text-right font-bold text-[10px] uppercase tracking-wider text-slate-400 pb-2">Importo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr
-                            v-for="riga in righeDettaglio"
-                            :key="riga.voce"
-                            class="border-b border-slate-100 last:border-0"
-                            :class="{ 'font-bold': riga.voce === 'Sbilancio' }"
-                        >
-                            <td class="py-2 pr-4 text-slate-600">{{ riga.voce }}</td>
-                            <td class="py-2 text-right tabular-nums" :class="riga.voce === 'Sbilancio' ? (quadratura.quadra ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-900'">
-                                {{ riga.valore }}
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="space-y-5">
+                    <div>
+                        <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                            1. Sintesi economica — come è andato l'esercizio
+                        </h4>
+                        <table class="w-full text-sm">
+                            <tbody>
+                                <tr
+                                    v-for="riga in sintesiEconomica"
+                                    :key="riga.voce"
+                                    class="border-b border-slate-100 last:border-0"
+                                    :class="{ 'font-bold': riga.evidenzia }"
+                                >
+                                    <td class="py-2 pr-4 text-slate-600">{{ riga.voce }}</td>
+                                    <td
+                                        class="py-2 text-right tabular-nums"
+                                        :class="riga.evidenzia ? (quadratura.risultato_esercizio < 0 ? 'text-rose-700' : 'text-emerald-700') : 'text-slate-900'"
+                                    >
+                                        {{ riga.valore }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div>
+                        <h4 class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                            2. Quadratura patrimoniale — la fotografia dei conti oggi
+                        </h4>
+                        <table class="w-full text-sm">
+                            <tbody>
+                                <tr
+                                    v-for="riga in quadraturaPatrimoniale"
+                                    :key="riga.voce"
+                                    class="border-b border-slate-100 last:border-0"
+                                    :class="{ 'font-bold': riga.evidenzia }"
+                                >
+                                    <td class="py-2 pr-4 text-slate-600">{{ riga.voce }}</td>
+                                    <td class="py-2 text-right tabular-nums text-slate-900">{{ riga.valore }}</td>
+                                </tr>
+                                <tr class="font-bold">
+                                    <td class="py-2 pr-4 text-slate-600">Controllo Quadratura</td>
+                                    <td class="py-2 text-right tabular-nums" :class="quadratura.quadra ? 'text-emerald-700' : 'text-rose-700'">
+                                        {{ euro(quadratura.sbilancio) }}
+                                        <span class="font-normal text-xs text-slate-500">({{ quadratura.quadra ? 'il bilancio quadra' : 'il bilancio NON quadra' }})</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p v-if="quadratura.liquidita_non_contabilizzata > 0" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
+                        Nell'Attivo sono inclusi {{ euro(quadratura.liquidita_non_contabilizzata) }} di saldi di apertura
+                        cassa non ancora registrati con una scrittura a giornale.
+                    </p>
+                </div>
 
                 <p class="text-[11px] text-slate-400 leading-relaxed">
                     Questa tabella è una vista provvisoria: una pagina Stato Patrimoniale dedicata,

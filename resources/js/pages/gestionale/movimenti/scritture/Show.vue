@@ -146,10 +146,28 @@ const navigaAllaFattura = (fatturaId: number) => {
     }));
 };
 
-const tornaPagamenti = () => {
-    router.visit(route(generateRoute('gestionale.pagamenti-fornitori.index'), {
-        condominio: props.condominio.id,
-    }));
+// Questa pagina è raggiungibile da molte tabelle diverse (pagamenti, fatture,
+// giroconti, incassi, Libro Giornale...): "Indietro" non può puntare a una sola
+// di quelle senza sbagliare per tutte le altre. window.history.state.back è
+// l'URL Inertia della pagina di provenienza reale, indipendentemente da quale
+// sia — stesso pattern già usato in EstrattoContoAnagrafica.vue. Il fallback
+// (nessuna history, es. link diretto) va al Libro Giornale dell'esercizio della
+// scrittura: è l'unico registro che la contiene sempre.
+const backUrl = computed(() => {
+    if (typeof window !== 'undefined' && window.history.state?.back) {
+        return window.history.state.back as string;
+    }
+    if (props.scrittura.esercizio) {
+        return route(generateRoute('gestionale.esercizi.scritture.index'), {
+            condominio: props.condominio.id,
+            esercizio: props.scrittura.esercizio.id,
+        });
+    }
+    return route(generateRoute('gestionale.movimenti.index'), { condominio: props.condominio.id });
+});
+
+const tornaIndietro = () => {
+    router.visit(backUrl.value);
 };
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -220,7 +238,7 @@ const confermaStorno = () => {
                     </Button>
                     <Button
                         variant="outline"
-                        @click="tornaPagamenti"
+                        @click="tornaIndietro"
                         class="h-9 gap-2 shadow-sm font-medium"
                     >
                         <ArrowLeft class="w-4 h-4" /> Indietro

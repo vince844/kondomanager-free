@@ -58,10 +58,10 @@ class FatturaPassivaController extends Controller
     /**
      * Mostra l'elenco delle fatture passive del condominio selezionato.
      *
-     * Permette di filtrare i documenti per stato di pagamento, stato di approvazione e testo libero
-     * (numero documento o ragione sociale del fornitore).
+     * Permette di filtrare i documenti per stato di pagamento, stato di approvazione, testo libero
+     * (numero documento o ragione sociale del fornitore) e intervallo di data documento.
      *
-     * @param  Request  $request  La richiesta HTTP contenente i filtri (search, stato_pagamento, ecc).
+     * @param  Request  $request  La richiesta HTTP contenente i filtri (search, stato_pagamento, data_da, data_a, ecc).
      * @param  Condominio  $condominio  Il condominio di cui si stanno visualizzando le fatture.
      * @return Response Vista Inertia con i dati paginati e le statistiche sommarie.
      */
@@ -74,6 +74,8 @@ class FatturaPassivaController extends Controller
             ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
                 ->orWhereHas('fornitore', fn ($qf) => $qf->where('ragione_sociale', 'like', "%{$v}%"))
             )
+            ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_documento', '>=', $v))
+            ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_documento', '<=', $v))
             ->orderByDesc('data_documento')
             ->paginate(20)
             ->withQueryString();
@@ -93,7 +95,11 @@ class FatturaPassivaController extends Controller
             'stats' => $stats,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
-            'filters' => $request->only(['stato_pagamento', 'stato_approvazione', 'search']),
+            'statiPagamento' => collect(StatoPagamentoFattura::cases())->map(fn ($c) => [
+                'value' => $c->value,
+                'label' => $c->label(),
+            ])->values(),
+            'filters' => $request->only(['stato_pagamento', 'stato_approvazione', 'search', 'data_da', 'data_a']),
         ]);
     }
 

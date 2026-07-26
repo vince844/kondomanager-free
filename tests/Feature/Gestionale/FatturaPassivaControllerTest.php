@@ -243,3 +243,57 @@ test('il salvataggio di una modifica bloccata restituisce un errore nella errors
     $response->assertSessionHasErrors(['modifica_vietata']);
     $response->assertSessionDoesntHaveErrors(['error']);
 });
+
+test('elenco fatture: filtro stato_pagamento isola le fatture per stato', function () {
+    // NB: registraFatturaServiceTest() senza override di 'righe' usa internamente un
+    // $capitolo mal destrutturato (punta al conto Fondo Riserva, non al capitolo di
+    // spesa) — bug preesistente nell'helper condiviso, mascherato altrove perché ogni
+    // altro test in questo file passa già un override esplicito di 'righe'. Facciamo
+    // lo stesso qui invece di toccare l'helper (fuori scope).
+    $ctx = setupContabile();
+    [$condominio, , , , $capitolo] = $ctx;
+    $righe = ['righe' => [[
+        'descrizione' => 'Servizio Test',
+        'importo_imponibile' => 1000,
+        'aliquota_iva' => 22,
+        'conto_id' => $capitolo->id,
+        'is_sopravvenienza' => false,
+    ]]];
+
+    registraFatturaServiceTest($ctx, $righe);
+    $pagata = registraFatturaServiceTest($ctx, $righe);
+    DB::table('fatture_passive')->where('id', $pagata->id)->update(['stato_pagamento' => 'pagata']);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]).'?stato_pagamento=pagata');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->has('fatture.data', 1)
+        ->where('fatture.data.0.id', $pagata->id)
+    );
+});
+
+test('elenco fatture: filtro data_da/data_a isola le fatture per data documento', function () {
+    $ctx = setupContabile();
+    [$condominio, , , , $capitolo] = $ctx;
+    $righeBase = [
+        'descrizione' => 'Servizio Test',
+        'importo_imponibile' => 1000,
+        'aliquota_iva' => 22,
+        'conto_id' => $capitolo->id,
+        'is_sopravvenienza' => false,
+    ];
+
+    registraFatturaServiceTest($ctx, ['data_documento' => '2026-01-10', 'righe' => [$righeBase]]);
+    $dentroRange = registraFatturaServiceTest($ctx, ['data_documento' => '2026-03-15', 'righe' => [$righeBase]]);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]).'?data_da=2026-03-01&data_a=2026-03-31');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->has('fatture.data', 1)
+        ->where('fatture.data.0.id', $dentroRange->id)
+    );
+});

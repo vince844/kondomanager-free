@@ -43,6 +43,9 @@ class GirocontoController extends Controller
     use HasCondomini;
     use HasEsercizio;
 
+    /** Valori ammessi per il filtro stato — colonna DB enum, nessun PHP enum dietro. */
+    private const STATI = ['bozza', 'registrata', 'riconciliata', 'annullata'];
+
     public function index(Request $request, Condominio $condominio, RiallineaFondiService $riallinea): Response
     {
         $scritture = ScritturaContabile::where('condominio_id', $condominio->id)
@@ -57,6 +60,9 @@ class GirocontoController extends Controller
                         ->orWhere('numero_protocollo', 'like', "%{$v}%");
                 });
             })
+            ->when($request->stato, fn ($q, $v) => $q->where('stato', $v))
+            ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_competenza', '>=', $v))
+            ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_competenza', '<=', $v))
             ->orderByDesc('data_competenza')
             ->orderByDesc('id')
             ->paginate(20)
@@ -121,7 +127,8 @@ class GirocontoController extends Controller
                 ],
             ],
             'stats' => $stats,
-            'filters' => $request->only(['search']),
+            'stati' => self::STATI,
+            'filters' => $request->only(['search', 'stato', 'data_da', 'data_a']),
             // Card di riallineamento: compare SOLO se esistono scritture storiche
             // sui fondi da neutralizzare (pre-beta.19). A rettifiche fatte, il
             // rilevamento non trova più nulla e la card sparisce da sola.

@@ -360,3 +360,125 @@ test('un pagamento stornato non è raggiungibile in modifica: edit() reindirizza
 
     $updateResponse->assertSessionHasErrors('modifica_vietata');
 });
+
+test('filtro stato isola il pagamento stornato dagli altri', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fatturaConfermata = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+    $fatturaStornata = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaConfermata->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoConfermato = PagamentoFornitore::first();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => now()->toDateString(),
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaStornata->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoDaStornare = PagamentoFornitore::where('id', '!=', $pagamentoConfermato->id)->firstOrFail();
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.storno', [$condominio, $pagamentoDaStornare]), [
+            'motivo' => 'Storno di test per isolare il filtro stato.',
+        ]);
+
+    // Lo storno genera un terzo record (la scrittura di storno stessa nasce
+    // "confermato"): a questo punto ci sono 2 pagamenti confermati e 1 stornato,
+    // quindi il filtro stato=stornato è quello che isola in modo inequivocabile
+    // il pagamento originale appena stornato.
+    expect(PagamentoFornitore::count())->toBe(3);
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.index', [$condominio]).'?stato=stornato');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('gestionale/movimenti/pagamenti/PagamentiList')
+        ->has('pagamenti.data', 1)
+        ->where('pagamenti.data.0.id', $pagamentoDaStornare->id)
+        ->where('pagamenti.data.0.stato', 'stornato')
+    );
+});
+
+test('filtro intervallo date isola i pagamenti per data_pagamento', function () {
+    [$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo] = setupPagamentiHttp();
+    $fatturaFuoriRange = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+    $fatturaDentroRange = registraFatturaServiceTest([$condominio, $esercizio, $gestione, $fornitore, $contoCorrenteId, $capitolo]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => '2026-01-10',
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaFuoriRange->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $this->actingAs($this->user)
+        ->post(route('admin.gestionale.pagamenti-fornitori.store', [$condominio]), [
+            'fornitore_id' => $fornitore->id,
+            'esercizio_id' => $esercizio->id,
+            'conto_corrente_id' => $contoCorrenteId,
+            'data_pagamento' => '2026-03-15',
+            'metodo_pagamento' => MetodoPagamento::BONIFICO->value,
+            'allocazioni' => [
+                [
+                    'fattura_id' => $fatturaDentroRange->id,
+                    'tipo' => TipoAllocazioneFattura::PAGAMENTO->value,
+                    'importo_allocato_cents' => 122000,
+                ],
+            ],
+            'bonifico_parlante' => false,
+            'allow_overdraft' => true,
+        ]);
+
+    $pagamentoDentroRange = PagamentoFornitore::whereDate('data_pagamento', '2026-03-15')->firstOrFail();
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.pagamenti-fornitori.index', [$condominio]).'?data_da=2026-03-01&data_a=2026-03-31');
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->component('gestionale/movimenti/pagamenti/PagamentiList')
+        ->has('pagamenti.data', 1)
+        ->where('pagamenti.data.0.id', $pagamentoDentroRange->id)
+    );
+});

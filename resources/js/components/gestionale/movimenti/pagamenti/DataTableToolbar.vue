@@ -14,13 +14,20 @@ defineProps<{
   table: Table<TData>
 }>()
 
-const page = usePage<{ condominio: Building, filters: any }>()
+const page = usePage<{
+  condominio: Building
+  filters: any
+  stati: { value: string; label: string }[]
+}>()
 const { generateRoute } = usePermission()
 const condominioId = computed(() => page.props.condominio.id)
 
 // Inizializzazione filtri dall'URL
 const globalFilter = ref(page.props.filters?.search || '')
 const selectedMetodo = ref(page.props.filters?.metodo_pagamento || 'all')
+const selectedStato = ref(page.props.filters?.stato || 'all')
+const dataDa = ref(page.props.filters?.data_da || '')
+const dataA = ref(page.props.filters?.data_a || '')
 
 const metodiOpzioni = [
   { value: 'bonifico', label: 'Bonifico' },
@@ -35,13 +42,16 @@ const filterParams = computed(() => {
 
   if (globalFilter.value) params.search = globalFilter.value
   if (selectedMetodo.value && selectedMetodo.value !== 'all') params.metodo_pagamento = selectedMetodo.value
+  if (selectedStato.value && selectedStato.value !== 'all') params.stato = selectedStato.value
+  if (dataDa.value) params.data_da = dataDa.value
+  if (dataA.value) params.data_a = dataA.value
 
   return params
 })
 
-// Osservatore con debounce che scatta quando cambia search o metodo
+// Osservatore con debounce che scatta quando cambia search, metodo, stato o intervallo date
 watchDebounced(
-  [globalFilter, selectedMetodo],
+  [globalFilter, selectedMetodo, selectedStato, dataDa, dataA],
   () => {
     router.get(
       route(generateRoute('gestionale.pagamenti-fornitori.index'), { condominio: condominioId.value }),
@@ -52,11 +62,20 @@ watchDebounced(
   { debounce: 300 }
 )
 
-const isFiltered = computed(() => globalFilter.value.length > 0 || (selectedMetodo.value !== '' && selectedMetodo.value !== 'all'))
+const isFiltered = computed(() =>
+  globalFilter.value.length > 0
+  || (selectedMetodo.value !== '' && selectedMetodo.value !== 'all')
+  || (selectedStato.value !== '' && selectedStato.value !== 'all')
+  || dataDa.value.length > 0
+  || dataA.value.length > 0
+)
 
 const resetFilters = () => {
   globalFilter.value = ''
   selectedMetodo.value = 'all'
+  selectedStato.value = 'all'
+  dataDa.value = ''
+  dataA.value = ''
 }
 </script>
 
@@ -92,6 +111,27 @@ const resetFilters = () => {
           </SelectContent>
         </Select>
       </div>
+
+      <!-- Filtro Stato -->
+      <div class="w-40 lg:w-48">
+        <Select v-model="selectedStato">
+          <SelectTrigger class="w-full bg-white h-8">
+            <SelectValue placeholder="Tutti gli stati" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              <SelectItem value="all">Tutti gli stati</SelectItem>
+              <SelectItem v-for="opzione in page.props.stati" :key="opzione.value" :value="opzione.value">
+                {{ opzione.label }}
+              </SelectItem>
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <!-- Intervallo date -->
+      <Input type="date" v-model="dataDa" class="h-8 w-[140px] text-xs" title="Data pagamento da" />
+      <Input type="date" v-model="dataA" class="h-8 w-[140px] text-xs" title="Data pagamento a" />
 
       <!-- Reset -->
       <Button

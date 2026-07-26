@@ -1,9 +1,10 @@
 <script setup lang="ts">
 
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { watchDebounced } from '@vueuse/core';
 import { router, usePage, Link } from '@inertiajs/vue3';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Plus, X } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { usePermission } from "@/composables/permissions";
@@ -11,41 +12,53 @@ import type { Table } from '@tanstack/vue-table';
 import type { Building } from '@/types/buildings';
 
 defineProps<{ table: Table<any> }>();
-const page = usePage<{ condominio: Building }>();
+const page = usePage<{
+  condominio: Building;
+  stati: string[];
+  filters: { search?: string; stato?: string; data_da?: string; data_a?: string };
+}>();
 const { generateRoute } = usePermission();
 const condominioId = computed(() => page.props.condominio.id);
-const globalFilter = ref('')
 
-const filterParams = computed(() => {
+const globalFilter = ref(page.props.filters?.search || '')
+const stato = ref(page.props.filters?.stato || '')
+const dataDa = ref(page.props.filters?.data_da || '')
+const dataA = ref(page.props.filters?.data_a || '')
+
+const applyFilters = () => {
   const params: Record<string, any> = { page: 1 }
   if (globalFilter.value) params.search = globalFilter.value
-  return params
-})
+  if (stato.value) params.stato = stato.value
+  if (dataDa.value) params.data_da = dataDa.value
+  if (dataA.value) params.data_a = dataA.value
 
-watchDebounced(
-  globalFilter,
-  () => {
-    router.get(
-      route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominioId.value }),
-      filterParams.value,
-      {
-        preserveState: true,
-        replace: true,
-        preserveScroll: true,
-      }
-    )
-  },
-  { debounce: 300 }
-)
+  router.get(
+    route(generateRoute('gestionale.movimenti-rate.index'), { condominio: condominioId.value }),
+    params,
+    {
+      preserveState: true,
+      replace: true,
+      preserveScroll: true,
+    }
+  )
+}
 
-const isFiltered = computed(() => globalFilter.value.length > 0)
-const resetFilter = () => { globalFilter.value = '' }
+watchDebounced(globalFilter, applyFilters, { debounce: 300 })
+watch([stato, dataDa, dataA], applyFilters)
+
+const isFiltered = computed(() => !!(globalFilter.value || stato.value || dataDa.value || dataA.value))
+const resetFilter = () => {
+  globalFilter.value = ''
+  stato.value = ''
+  dataDa.value = ''
+  dataA.value = ''
+}
 </script>
 
 <template>
-  <div class="flex items-center justify-between w-full">
+  <div class="flex flex-wrap items-center justify-between gap-2 w-full">
 
-    <div class="flex items-center space-x-2">
+    <div class="flex flex-wrap items-center gap-2">
 
       <!-- Ricerca libera -->
       <div class="relative">
@@ -58,6 +71,22 @@ const resetFilter = () => { globalFilter.value = '' }
           class="pl-9 h-8 w-[200px] lg:w-[250px]"
         />
       </div>
+
+      <!-- Stato -->
+      <Select v-model="stato">
+        <SelectTrigger class="h-8 w-[140px] text-xs style-chooser">
+          <SelectValue placeholder="Stato" />
+        </SelectTrigger>
+        <SelectContent position="popper" :style="{ width: 'var(--reka-select-trigger-width)' }">
+          <SelectItem v-for="s in page.props.stati" :key="s" :value="s" class="capitalize">
+            {{ s }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+
+      <!-- Intervallo date -->
+      <Input type="date" v-model="dataDa" class="h-8 w-[140px] text-xs" title="Data registrazione da" />
+      <Input type="date" v-model="dataA" class="h-8 w-[140px] text-xs" title="Data registrazione a" />
 
       <!-- Reset -->
       <Button

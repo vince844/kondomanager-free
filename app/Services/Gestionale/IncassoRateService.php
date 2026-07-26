@@ -16,7 +16,7 @@ class IncassoRateService
     /**
      * Recupera la query per gli incassi con filtri ed Eager Loading
      */
-    public function getIncassiQuery(Condominio $condominio, ?string $search = null, ?string $stato = null): Builder
+    public function getIncassiQuery(Condominio $condominio, ?string $search = null, ?string $stato = null, ?string $dataDa = null, ?string $dataA = null): Builder
     {
         $query = ScritturaContabile::query()
             ->where('condominio_id', $condominio->id)
@@ -48,6 +48,10 @@ class IncassoRateService
         if ($stato) {
             $query->where('stato', $stato);
         }
+
+        $query
+            ->when($dataDa, fn ($q, $v) => $q->whereDate('data_registrazione', '>=', $v))
+            ->when($dataA, fn ($q, $v) => $q->whereDate('data_registrazione', '<=', $v));
 
         return $query->orderByDesc('data_registrazione')
             ->orderByDesc('numero_protocollo');

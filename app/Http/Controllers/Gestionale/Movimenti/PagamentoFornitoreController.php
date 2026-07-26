@@ -69,6 +69,8 @@ class PagamentoFornitoreController extends Controller
             ->when($request->metodo_pagamento, fn ($q, $v) => $q->where('metodo_pagamento', $v))
             ->when($request->has('has_ritenuta'), fn ($q) => $q->where('importo_ritenuta', '>', 0))
             ->when($request->stato, fn ($q, $v) => $q->where('stato', $v))
+            ->when($request->data_da, fn ($q, $v) => $q->whereDate('data_pagamento', '>=', $v))
+            ->when($request->data_a, fn ($q, $v) => $q->whereDate('data_pagamento', '<=', $v))
             ->orderByDesc('data_pagamento')
             ->orderByDesc('id')
             ->paginate(20)
@@ -100,7 +102,11 @@ class PagamentoFornitoreController extends Controller
             'esercizio' => $esercizio,
             'pagamenti' => PagamentoFornitoreResource::collection($pagamenti),
             'stats' => $stats,
-            'filters' => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato']),
+            'stati' => collect(StatoPagamentoFornitore::cases())->map(fn ($c) => [
+                'value' => $c->value,
+                'label' => $c->label(),
+            ])->values(),
+            'filters' => $request->only(['search', 'metodo_pagamento', 'has_ritenuta', 'stato', 'data_da', 'data_a']),
         ]);
     }
 
