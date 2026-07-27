@@ -68,8 +68,13 @@ const COLORI_STATO: Record<string, string> = {
   bozza: 'bg-slate-100 text-slate-600 border border-slate-200',
   registrata: 'bg-blue-50 text-blue-700 border border-blue-200',
   riconciliata: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  annullata: 'bg-rose-50 text-rose-700 border border-rose-200 line-through',
+  annullata: 'bg-rose-50 text-rose-700 border border-rose-200',
 };
+
+// 'annullata' è il valore reale in DB, ma nel resto del gestionale (incassi,
+// pagamenti, fatture, giroconti) l'etichetta per un movimento invertito è
+// sempre "Stornata/o": qui si allinea la stessa convenzione.
+export const STATO_LABELS: Record<string, string> = { annullata: 'Stornata' };
 
 export const createColumns = (condominioId: number, esercizioId: number): ColumnDef<ScritturaRow>[] => {
   return [
@@ -129,8 +134,10 @@ export const createColumns = (condominioId: number, esercizioId: number): Column
     },
     {
       accessorKey: 'importo',
-      header: ({ column }) => h(DataTableColumnHeader, { column: column as any, title: 'Importo' }),
+      header: ({ column }) => h('div', { class: 'text-right w-full flex justify-end items-center' }, h(DataTableColumnHeader, { column: column as any, title: 'Importo' })),
       size: 120,
+      // Niente ordinamento server-side: vedi il commento sulla colonna 'data_registrazione'.
+      enableSorting: false,
       cell: ({ row }) => {
         const scrittura = row.original;
         return h('div', { class: 'flex items-center justify-end gap-1.5' }, [
@@ -148,7 +155,7 @@ export const createColumns = (condominioId: number, esercizioId: number): Column
       size: 120,
       cell: ({ row }) => {
         const stato = row.original.stato;
-        return h('span', { class: `${badgeBase} ${COLORI_STATO[stato] ?? COLORI_STATO.bozza}` }, stato);
+        return h('span', { class: `${badgeBase} ${COLORI_STATO[stato] ?? COLORI_STATO.bozza}` }, STATO_LABELS[stato] ?? stato);
       },
       enableSorting: false,
     },

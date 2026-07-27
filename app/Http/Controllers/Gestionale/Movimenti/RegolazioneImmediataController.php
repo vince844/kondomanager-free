@@ -12,6 +12,7 @@ use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
+use App\Models\Gestionale\ScritturaContabile;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -82,6 +83,11 @@ class RegolazioneImmediataController extends Controller
                     'tipo' => $g->tipo,
                     'esercizio_ids' => $g->esercizi->pluck('id')->toArray(),
                 ]),
+            // Non vincolante: serve solo perché l'amministratore possa annotarlo
+            // subito sul documento cartaceo mentre compila. Il numero definitivo
+            // è quello assegnato al salvataggio (può scostarsi di poco se nel
+            // frattempo viene registrato un altro movimento con lo stesso prefisso).
+            'prossimo_protocollo' => ScritturaContabile::previewNextProtocolNumber($condominio->id, 'RIM'),
             'capitoli' => $capitoli,
             // I fondi sono partizioni virtuali dell'unico conto corrente reale, non
             // casse da cui far uscire denaro: una regolazione immediata è un'uscita

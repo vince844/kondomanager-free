@@ -46,6 +46,12 @@ const applyFilters = () => {
 watchDebounced(globalFilter, applyFilters, { debounce: 300 })
 watch([stato, dataDa, dataA], applyFilters)
 
+// 'annullata' è il valore reale in DB (StornoIncassoRateAction), ma per
+// l'amministratore "Stornata" è il termine corretto: è lui che ha cliccato
+// "Storna" per arrivarci.
+const statoLabels: Record<string, string> = { annullata: 'Stornata' }
+const statoLabel = (s: string) => statoLabels[s] ?? s
+
 const isFiltered = computed(() => !!(globalFilter.value || stato.value || dataDa.value || dataA.value))
 const resetFilter = () => {
   globalFilter.value = ''
@@ -79,7 +85,7 @@ const resetFilter = () => {
         </SelectTrigger>
         <SelectContent position="popper" :style="{ width: 'var(--reka-select-trigger-width)' }">
           <SelectItem v-for="s in page.props.stati" :key="s" :value="s" class="capitalize">
-            {{ s }}
+            {{ statoLabel(s) }}
           </SelectItem>
         </SelectContent>
       </Select>

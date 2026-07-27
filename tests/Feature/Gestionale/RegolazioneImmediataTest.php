@@ -266,6 +266,55 @@ test('il form espone i capitoli agganciati alla partita doppia e nasconde quelli
         ->assertInertia(fn ($page) => $page->has('capitoli', 0));
 });
 
+// ─── Anteprima protocollo: visibile prima del salvataggio, non vincolante ───
+
+test('il form mostra il prossimo numero di protocollo RIM previsto', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.regolazioni-immediate.create', $condominio))
+        ->assertInertia(fn ($page) => $page
+            ->where('prossimo_protocollo', 'RIM-'.now()->format('Y').'-00001')
+        );
+});
+
+test('la richiesta ripetuta del form non fa avanzare il numero previsto: è una sola lettura, non una prenotazione', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    $primo = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.regolazioni-immediate.create', $condominio))
+        ->viewData('page')['props']['prossimo_protocollo'];
+
+    $secondo = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.regolazioni-immediate.create', $condominio))
+        ->viewData('page')['props']['prossimo_protocollo'];
+
+    expect($primo)->toBe($secondo);
+});
+
+test('il numero previsto in form coincide con quello davvero assegnato al salvataggio', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, $esercizio] = $ctx;
+
+    $previsto = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.regolazioni-immediate.create', $condominio))
+        ->viewData('page')['props']['prossimo_protocollo'];
+
+    $scrittura = (new RegistraRegolazioneImmediataAction())
+        ->execute(datiRegolazioneImmediata($ctx), $condominio, $esercizio);
+
+    expect($scrittura->numero_protocollo)->toBe($previsto);
+
+    // Dopo il salvataggio il form ne prevede uno nuovo, non lo stesso.
+    $prossimo = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.regolazioni-immediate.create', $condominio))
+        ->viewData('page')['props']['prossimo_protocollo'];
+
+    expect($prossimo)->toBe('RIM-'.now()->format('Y').'-00002');
+});
+
 test('i fondi non compaiono tra le casse: sono partizioni virtuali, non uscite di cassa reali', function () {
     $ctx = setupPagamentiService();
     [$condominio] = $ctx;

@@ -42,28 +42,43 @@ trait HasProtocolNumber
             default                       => 'SCR',
         };
 
+        return DB::transaction(fn () => static::nextNumberFor($model->condominio_id, $prefix));
+    }
+
+    /**
+     * Anteprima non vincolante del prossimo numero, per mostrarlo in form PRIMA
+     * del salvataggio (es. Regolazione immediata). Nessuna transazione/lock: è
+     * solo indicativo e può scostarsi se nel frattempo viene registrato un altro
+     * movimento con lo stesso prefisso — il numero vero resta quello assegnato
+     * da generateProtocolNumber() al salvataggio effettivo.
+     */
+    public static function previewNextProtocolNumber(int $condominioId, string $prefix): string
+    {
+        return static::nextNumberFor($condominioId, $prefix);
+    }
+
+    private static function nextNumberFor(int $condominioId, string $prefix): string
+    {
         $year = now()->format('Y');
 
-        return DB::transaction(function () use ($model, $prefix, $year) {
-            $maxInFatture = DB::table('fatture_passive')
-                ->where('condominio_id', $model->condominio_id)
-                ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
-                ->max('numero_protocollo');
+        $maxInFatture = DB::table('fatture_passive')
+            ->where('condominio_id', $condominioId)
+            ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
+            ->max('numero_protocollo');
 
-            $maxInScritture = DB::table('scritture_contabili')
-                ->where('condominio_id', $model->condominio_id)
-                ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
-                ->max('numero_protocollo');
+        $maxInScritture = DB::table('scritture_contabili')
+            ->where('condominio_id', $condominioId)
+            ->where('numero_protocollo', 'like', "{$prefix}-{$year}-%")
+            ->max('numero_protocollo');
 
-            $lastProtocol = max($maxInFatture, $maxInScritture);
+        $lastProtocol = max($maxInFatture, $maxInScritture);
 
-            $lastNumber = 0;
-            if ($lastProtocol) {
-                $parts = explode('-', $lastProtocol);
-                $lastNumber = (int) end($parts);
-            }
+        $lastNumber = 0;
+        if ($lastProtocol) {
+            $parts = explode('-', $lastProtocol);
+            $lastNumber = (int) end($parts);
+        }
 
-            return sprintf('%s-%s-%05d', $prefix, $year, $lastNumber + 1);
-        });
+        return sprintf('%s-%s-%05d', $prefix, $year, $lastNumber + 1);
     }
 }

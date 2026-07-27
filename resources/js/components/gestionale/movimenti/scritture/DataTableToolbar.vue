@@ -11,6 +11,7 @@ import { usePermission } from '@/composables/permissions'
 import type { Building } from '@/types/buildings'
 import type { Esercizio } from '@/types/gestionale/esercizi'
 import type { ScritturaRow } from './columns'
+import { STATO_LABELS } from './columns'
 
 defineProps<{
   table: Table<ScritturaRow>
@@ -105,7 +106,7 @@ const resetFilters = () => {
       </SelectTrigger>
       <SelectContent position="popper" :style="{ width: 'var(--reka-select-trigger-width)' }">
         <SelectItem v-for="s in page.props.stati" :key="s" :value="s" class="capitalize">
-          {{ s }}
+          {{ STATO_LABELS[s] ?? s }}
         </SelectItem>
       </SelectContent>
     </Select>

@@ -1,7 +1,7 @@
 import { h } from 'vue'
 import DropdownAction from './DataTableRowActions.vue'
 import DataTableColumnHeader from './DataTableColumnHeader.vue'
-import { CalendarDays, Info, Banknote, Coins, Building2, CheckCircle, RotateCcw, Clock } from 'lucide-vue-next'
+import { CalendarDays, Info, Banknote, Coins, Building2, CheckCircle, RotateCcw } from 'lucide-vue-next'
 import { useFormat } from '@/composables/useFormat'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
 import type { ColumnDef } from '@tanstack/vue-table'
@@ -203,15 +203,10 @@ export const createColumns = (condominioId: number): ColumnDef<Incasso>[] => [
           class: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
           icon: CheckCircle,
         },
-        stornato: {
-          label: 'Stornato',
-          class: 'bg-slate-100 text-slate-500 border border-slate-200',
-          icon: RotateCcw,
-        },
         annullata: {
-          label: 'Annullato',
+          label: 'Stornato',
           class: 'bg-rose-50 text-rose-700 border border-rose-200',
-          icon: Clock,
+          icon: RotateCcw,
         },
       }
 

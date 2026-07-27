@@ -746,3 +746,44 @@ automaticamente da un observer).
 
 **Stato:** Aperto, bassa priorità — puramente informativo/audit, nessun impatto contabile.
 Rimandato (2026-07-26).
+
+---
+
+### 🔧 [APERTO] ScritturaContabile — SoftDeletes senza meccanismo di pulizia generale
+
+**File:** `app/Models/Gestionale/ScritturaContabile.php` (trait `SoftDeletes`). Unico punto di
+pulizia oggi: `app/Http/Controllers/Gestionale/Movimenti/StornoFatturaController.php:88-92`.
+
+**Causa.** Il modello mantiene `SoftDeletes` per retrocompatibilità con dati pre-v1.9.1 (nessuna
+operazione nuova deve mai usare soft-delete: il ledger è append-only, gli storni creano scritture
+inverse, mai cancellazioni — vedi commento in testa al modello). Il problema è che non esiste
+nessun meccanismo generale che svuoti le scritture soft-deleted. L'unica pulizia esistente è
+locale a un solo controller — commento "FIX 1: LO SVUOTA-CESTINO" in `StornoFatturaController`,
+presente da quando la funzione storno-fattura è stata introdotta — che forza il `forceDelete()` di
+tutte le scritture trashed del condominio prima di generare un nuovo protocollo NC-, per evitare
+la collisione con il vincolo unique `(condominio_id, numero_protocollo)`. Fuori da quel flusso
+specifico, le scritture soft-deleted (es. da pulizie manuali via tinker, o da dati storici) restano
+per sempre — nessun "cestino" da svuotare altrove.
+
+**Trovato.** Durante la verifica dell'anteprima protocollo in Regolazione immediata (2026-07-27):
+28 scritture soft-deleted accumulate da sessioni di verifica passate (causale sempre
+"demo"/"verifica"), mai ripulite, che gonfiano inutilmente i numeri di protocollo del condominio
+di test.
+
+**Perché non si è rimosso SoftDeletes.** Sembrava la soluzione ovvia, ma romperebbe subito lo
+storno di una fattura passiva: `ScritturaContabile::onlyTrashed()` in `StornoFatturaController`
+non esisterebbe più (errore fatale), e `FatturaPassivaService.php:759` perderebbe un fallback che
+legge `gestione_id` da una scrittura trashed durante la modifica di una fattura. Diversi servizi di
+calcolo (`StatoPatrimonialeService`, `SaldoCassaService`, `TreasuryGuardianService`, `Cassa`,
+`RegistraContributoInCassaAction`, `RegistraAperturaCassaAction`, `PagamentoFornitoreService`)
+filtrano `whereNull('deleted_at')` in query SQL dirette: non dipendono dal trait, ma dipendono
+dalla colonna `deleted_at` — va lasciata.
+
+**Fix proposto.** Non toccare il modello. Aggiungere invece un comando Artisan schedulato (es.
+`scritture:svuota-cestino`) che forza periodicamente il `forceDelete()` delle scritture trashed più
+vecchie di una soglia di sicurezza (es. 24-48h), per tutti i condomini — generalizzando il pattern
+già esistente in `StornoFatturaController` invece di lasciarlo isolato a un solo flusso.
+
+**Stato:** Aperto, bassa priorità — innocuo (le scritture trashed sono invisibili a ogni query e
+vista normale, `SoftDeletingScope` le esclude di default), solo un accumulo di dati morti.
+Rimandato (2026-07-27).

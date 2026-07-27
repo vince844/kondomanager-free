@@ -32,6 +32,7 @@ const props = defineProps<{
     capitoli: Capitolo[];
     casse: Cassa[];
     fornitori: FornitoreOpt[];
+    prossimo_protocollo: string;
 }>();
 
 const { generateRoute, generatePath } = usePermission();
@@ -224,6 +225,20 @@ function onKeydown(e: KeyboardEvent) {
                 <!-- ── Form ─────────────────────────────────────────────── -->
                 <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950">
                     <form class="space-y-5" @submit.prevent="submit(false)">
+                        <!-- Prima cosa visibile aprendo il form: chi registra una pila di
+                             documenti lo annota subito sul cartaceo. Non è un campo — è
+                             assegnato dal sistema, mai digitabile — resta previsto fino al
+                             salvataggio (v. title). Stesso stile "campo disabilitato" già
+                             usato sotto per Esercizio a scelta singola. -->
+                        <div class="space-y-1.5">
+                            <Label for="protocollo_previsto">Protocollo previsto</Label>
+                            <div id="protocollo_previsto"
+                                 class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                 title="Numero previsto: diventa definitivo al salvataggio">
+                                {{ props.prossimo_protocollo }}
+                            </div>
+                        </div>
+
                         <div class="grid gap-4 sm:grid-cols-2">
                             <!-- Con un solo esercizio aperto (il caso normale) la scelta non esiste:
                                  il campo diventa una constatazione, non un menu. I chiusi non arrivano
@@ -369,13 +384,8 @@ function onKeydown(e: KeyboardEvent) {
                 <!-- ── Anteprima della scrittura: la pagina di giornale ───── -->
                 <div class="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 p-6 text-slate-100 shadow-lg">
 
-                    <div class="mb-5 flex items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
-                        </div>
-                        <span class="rounded-full border border-slate-700 bg-slate-800/80 px-2.5 py-0.5 font-mono text-[10px] tracking-wider text-slate-300">
-                            RIM · {{ form.data_operazione ? form.data_operazione.split('-').reverse().join('/') : '—' }}
-                        </span>
+                    <div class="mb-5 flex items-center gap-2">
+                        <span class="text-xs font-semibold uppercase tracking-wide">Anteprima scrittura</span>
                     </div>
 
                     <div class="space-y-2.5">

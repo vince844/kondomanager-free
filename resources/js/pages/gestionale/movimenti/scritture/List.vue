@@ -313,7 +313,7 @@ const pageGuides = [
                         Dettaglio Stato Patrimoniale
                     </DialogTitle>
                     <DialogDescription>
-                        Esercizio {{ props.esercizio.nome }}.
+                        {{ props.esercizio.nome }}.
                     </DialogDescription>
                 </DialogHeader>
 
