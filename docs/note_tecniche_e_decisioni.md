@@ -4,6 +4,15 @@ Raccolta di vincoli di design, decisioni e note di conformità che **non** sono 
 con una versione assegnata (quelle stanno nella roadmap), ma promemoria da tenere
 presenti quando si tocca l'area relativa.
 
+> **Come leggere questo file.** Ogni sezione con un'implicazione implementativa riporta ora
+> un tag `→ Roadmap:` che punta alla versione/sezione corrispondente in
+> [`roadmap.md`](roadmap.md), e uno stato verificato sul codice reale (non solo dichiarato):
+> **✅ implementato**, **🔧 [APERTO]** (non ancora fatto), **⚠️ parziale** (backend c'è,
+> frontend/copy no o viceversa). Verifica di riallineamento doc↔codice fatta il 2026-07-26
+> (audit multi-agente su 8 claim di questo file, incrociato anche con `docs/changelog.md` per
+> le voci risultate implementate — dà la beta esatta di rilascio dove trovata). Dove non c'è
+> tag, la nota è un principio/decisione senza una singola feature versionabile a cui agganciarsi.
+
 ---
 
 ## Conformità normativa
@@ -27,15 +36,24 @@ generali *grezzi*. Non serve riproporzionare a 1000 manualmente:
 Il motore esegue quindi da sé l'operazione aritmetica richiesta dalla Cassazione.
 Vale sia per il motore ordinario sia per quello straordinario (stesso core di distribuzione).
 
-**Evoluzione — v1.9.10 (Tables Infrastructure).** Comando "Genera tabella parziale dai
-millesimi generali per le unità selezionate": seleziona i beneficiari → il sistema eredita
-i loro millesimi generali. Implementa letteralmente il principio, toglie il calcolo manuale
-e impedisce all'amministratore di creare per errore una tabella egualitaria (il caso che
+**🔧 [APERTO] Evoluzione — comando "Genera tabella parziale dai millesimi generali".**
+Selezionare i beneficiari → il sistema eredita i loro millesimi generali, invece di doverli
+ribattere a mano. Implementa letteralmente il principio, toglie il calcolo manuale e
+impedisce all'amministratore di creare per errore una tabella egualitaria (il caso che
 l'ordinanza sanziona). Possibile argomento autentico per forum/changelog.
+
+**→ Roadmap:** `v1.10.0` — Iniziativa A, "Tabelle Millesimali avanzate + motore" (vedi
+[`tabelle_millesimali.md`](tabelle_millesimali.md)). *Nota storica:* questa sezione citava in
+origine una "v1.9.10 (Tables Infrastructure)" che non esiste più come milestone a sé nella
+roadmap attuale — è stata assorbita nell'Iniziativa A della v1.10.0.
+**Verificato sul codice (2026-07-26): non implementato.** `TabellaController` espone solo
+CRUD standard; nessun endpoint/comando "genera dai millesimi generali", nessuna colonna che
+distingua una tabella ufficiale da una ripartizione derivata. Dettaglio in
+*Architettura tabelle*, sotto.
 
 ---
 
-### ✅ [AGGIUNTO] Stampe — blocco dati amministratore configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
+### ✅ [AGGIUNTO — beta.9] Stampe — blocco dati amministratore configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
 
 **Principio.** Non hardcodare nelle stampe diciture come "professione esercitata ai sensi
 della L. 4/2013": valgono solo per chi opera come professionista sotto quel regime. Una
@@ -55,6 +73,12 @@ conservazione dei registri da indicare). Si aggancia naturalmente alle **Stampe 
 ---
 
 ### Libro giornale — immutabilità *a soglia*, non assoluta (art. 1130 n. 7 c.c.)
+
+> Nota: questa sezione è sul **principio di editabilità**, non sulla UI di consultazione. La
+> pagina di sfoglio del registro (elenco cronologico delle scritture per esercizio, con
+> filtri e verifica di quadratura patrimoniale) esiste dalla **v1.10.0-beta.29** — prima era
+> raggiungibile solo per drill-down dal documento collegato. Non versionata in questo file
+> perché non tocca il principio di immutabilità qui sotto, solo la lettura.
 
 **Quadro normativo.** Il registro di contabilità (art. 1130 n. 7) è documento obbligatorio:
 annotazione cronologica dei movimenti **entro 30 giorni**. L'estratto conto bancario ne è
@@ -162,20 +186,33 @@ sopravvenienze), **non** con la riapertura letterale del periodo a DB.
 Gli edge case — in particolare gli effetti di un annullamento giudiziale — vanno disegnati con
 cura nel **Year End Master**.
 
+**→ Roadmap:** `v1.17` — "Year End Master" (procedura di chiusura esercizio guidata,
+transizione consuntivo→preventivo, chiusura/apertura conti automatica, cambio gestione).
+**Verificato sul codice (2026-07-26): non implementato.** `EsercizioController` oggi ha solo
+un CRUD standard; lo stato esercizio è un semplice `aperto`/`chiuso` cambiabile via update
+generico, senza nessuna delle capacità sopra — coerente con l'essere pianificato per v1.17,
+non ancora iniziato.
+
 ---
 
-## Guardrail UX da implementare
+## 🔧 [APERTO] Guardrail UX da implementare
+
+**→ Roadmap:** nessuna versione la nomina esplicitamente — è condizionale ("se mai
+introdotta" una modalità "parti uguali" nelle tabelle), da riprendere se/quando ci si lavora
+sull'Iniziativa A (`v1.10.0`) o sul motore riparto unificato (`v1.11`).
 
 - **Modalità "parti uguali" (se mai introdotta).** Segnalare in interfaccia che il riparto
   in parti uguali è legittimo *solo* con regolamento contrattuale o delibera all'unanimità
   (deroga ai criteri legali ex art. 1123 c.c.). Serve a non indurre l'amministratore
   nell'errore sanzionato da Cass. 1095/2026.
+  **Verificato (2026-07-26): non implementato** — nessun componente tabelle menziona
+  "parti uguali"/"unanimità"/"1123"; atteso, dato che il documento lo marca condizionale.
 
 ---
 
-## Architettura tabelle — ufficiali vs ripartizioni di calcolo
+## 🔧 [APERTO] Architettura tabelle — ufficiali vs ripartizioni di calcolo
 
-*(rilevante quando si sviluppa la Tables Infrastructure — vedi nota versioni in fondo alla sezione)*
+**→ Roadmap:** `v1.10.0` — Iniziativa A, "Tabelle Millesimali avanzate + motore".
 
 **Distinzione da introdurre.** Separare due concetti che oggi nel modello dati coincidono:
 
@@ -200,22 +237,44 @@ Perché:
 - tiene pulite le tabelle ufficiali, che non vanno popolate di un oggetto per ogni spesa
   una tantum.
 
-**Stato attuale (v1.9.5).** La via odierna — creare una tabella parziale con i millesimi dei
-beneficiari — dà i numeri giusti ma lascia un oggetto-tabella permanente. Target: trattare la
-ripartizione parziale come *derivata* (comando "genera dai millesimi generali sulle unità
-selezionate"), distinta dalle tabelle ufficiali nell'UI e nel modello dati.
-
-> **Nota versioni.** Questo è lavoro sull'area *tabelle* → sulla roadmap è la
-> **v1.9.10 (Tables Infrastructure)**, non la v1.10.0 (che è la migrazione dell'installer in
-> `Kondomanager\Installer`). Confermare dove agganciarlo.
+**Stato attuale (v1.9.5) — verificato invariato al 2026-07-26.** La via odierna — creare una
+tabella parziale con i millesimi dei beneficiari — dà i numeri giusti ma lascia un
+oggetto-tabella permanente. Target: trattare la ripartizione parziale come *derivata* (comando
+"genera dai millesimi generali sulle unità selezionate"), distinta dalle tabelle ufficiali
+nell'UI e nel modello dati. Confermato via audit codice: `TabellaController` (CRUD puro),
+migrazione `tabelle` (nessun campo ufficiale/derivata) — nessun cambiamento rispetto a v1.9.5.
 
 ---
 
-## Validatore Coerenza Millesimi — fail-fast multilivello (Tier 1)
+## 🔧 [APERTO] Validatore Coerenza Millesimi — fail-fast multilivello (Tier 1)
 
-*(È l'automazione base, priorità assoluta Tier 1; sulla roadmap sta nell'area v1.9.x. Qui sono
-fissate le decisioni di design e i guardrail; lo scheduling resta in roadmap. Il precursore
-leggero — totale in fase di inserimento — è anticipabile senza attendere la feature completa.)*
+**→ Roadmap:** `v1.10.0` — Iniziativa A, "Validatore Coerenza Millesimi (Tier 1)" (testo
+identico a questa sezione in [`roadmap.md`](roadmap.md)). È l'automazione base, priorità
+assoluta Tier 1. Qui sono fissate le decisioni di design e i guardrail; lo scheduling resta
+in roadmap.
+
+**Verificato sul codice (2026-07-26): nessuno dei 5 fronti è implementato.**
+- Fronte 1 (blocco emissione rate) — `CalcoloQuoteService::distribuisciSuTabelle()` fa solo
+  `Log::warning` + skip silenzioso se la somma è zero; nessun campo "totale di riferimento"
+  sul modello `Tabella`, nessun blocco reale in emissione rate.
+- Fronte 2 (widget dashboard) — nessun riferimento a millesimi/tabelle in `Dashboard.vue` o
+  nei suoi widget.
+- Fronte 3 (forzatura tracciata) — nessun meccanismo di override trovato.
+- Fronte 4 (Griglia Valori + import Excel) — `QuoteList.vue` è un editing riga-per-riga
+  semplice, senza totale live né import; nessuna libreria Excel nel progetto.
+- Fronte 5 (log diagnostici) — esistono solo log generici sul caso "somma zero", non il log
+  mirato sulla riga/quota che fa sballare il totale contro il riferimento dichiarato.
+
+**✅ [RISOLTO — 2026-07-26] Effetto collaterale trovato durante la verifica — copy fuorviante
+in `TabelleList.vue`.** Il testo di guida della pagina diceva che il sistema "controlla in
+tempo reale che la somma dei millesimi di ogni tabella sia esattamente 1000" (card) e che
+"il validatore di coerenza ti assisterà per evitare errori matematici" (sottotitolo pagina) —
+nessuna delle due era vera (nessuna verifica reale esiste), e la prima **contraddiceva anche
+la decisione di design qui sotto** (mai contro 1000 fisso, sempre contro il totale di
+riferimento dichiarato). Corretto in entrambi i punti con un testo onesto su cosa fa davvero
+il motore oggi (normalizza sul totale effettivo, non richiede 1000) — nessuna menzione di un
+validatore che non esiste. Fix di solo copy, indipendente dal validatore vero (Tier 1, sopra),
+che resta 🔧 [APERTO].
 
 **Filosofia.** Approccio **fail-fast** per prevenire gli errori silenziosi, lasciando sempre
 un'uscita di sicurezza **tracciata**. Cinque fronti:
@@ -240,7 +299,7 @@ un'uscita di sicurezza **tracciata**. Cinque fronti:
    resta documentato.
 4. **Fronte Gestione Dati.** "Griglia Valori" per editing massivo e veloce dei millesimi +
    import da **Excel**. Si lega al comando "Genera tabella parziale dai millesimi generali"
-   della Tables Infrastructure (v1.9.10).
+   (vedi *Architettura tabelle*, sopra).
 5. **Fronte Diagnostico.** Log diagnostici precisi per individuare la **riga/quota esatta** che
    fa sballare il calcolo.
 
@@ -371,7 +430,15 @@ del salvataggio.
 
 ---
 
-### Feature 1 — Inserimento manuale importi IVA (Modalità "Importi Liberi")
+### 🔧 [APERTO] Feature 1 — Inserimento manuale importi IVA (Modalità "Importi Liberi")
+
+**→ Roadmap:** nessuna versione la nomina più — è sparita anche dalla roadmap attuale (era
+"da schedulare" già in questo documento, riga *Post-v1.9.1* più sotto, e non è mai stata
+ripresa in nessuna release da v1.9.2 in poi). Va o riportata esplicitamente in roadmap se è
+ancora voluta, o tolta da qui se è stata scartata.
+**Verificato sul codice (2026-07-26): non implementato.** Nessuna colonna `iva_manuale` /
+`importo_iva_manuale` su `righe_fattura`, nessun toggle in `FatturaRegisterNew.vue`,
+`FatturaPassivaService` calcola sempre `imponibile × aliquota%`.
 
 **Segnalazione.** Le bollette di energia/utenze hanno IVA non calcolabile come semplice
 aliquota sull'imponibile (include accise, contributi, arrotondamenti). Il form forza
@@ -494,7 +561,13 @@ fattura `sforo_motivato` → approva-sforo con nota → stato `'approvata'` → 
 (nessuna `FatturaNonApprovataException`). Verificare che la nota del campo esistente venga
 persistita.
 
-**Stato:** Da fare — solo testo.
+**Stato: ✅ Fatto.** *(Corretto il 2026-07-26 — questa riga diceva ancora "Da fare — solo
+testo", in contraddizione con l'header "✅ [RISOLTO — beta.9]" sopra: refuso di
+aggiornamento, non doppio stato reale. Verificato sul codice: il testo del `ConfirmDialog` in
+`PagamentoNew.vue` corrisponde parola per parola alla dicitura proposta qui sopra. Confermato
+anche nel changelog — `docs/changelog.md:971`, beta.9: "Dicitura modal Approva Sforo riscritta
+(Feature 3, Art. 1135 c.c.): Il testo del modal e del tooltip badge... è stato riscritto per
+coprire esplicitamente i due scenari previsti dall'art. 1135 c.c....".)*
 
 ---
 
@@ -572,25 +645,104 @@ persistita.
 
 ### 📋 Post-v1.9.1
 
-- Acconti, anticipi admin, compensazione pura, assegni → v1.9.2
-- Export SEPA Pain.001.001.03 → v1.9.3
-- Feature 1 (IVA manuale bollette) → da schedulare
+*(Stato verificato sul codice il 2026-07-26 — la numerazione v1.9.2/v1.9.3 di questa lista è
+storica: nella roadmap attuale queste voci sono state rinumerate, vedi tag `→ Roadmap` su
+ciascuna.)*
+
+- **⚠️ Acconti, anticipi admin, compensazione pura, assegni** — *(era → v1.9.2)*
+  **→ Roadmap:** `v1.10.0` — "Pagamenti Avanzati" (*"idea da valutare in corso d'opera —
+  scoping non ancora definitivo"*, testualmente in roadmap.md). **Verificato: parziale.**
+  Solo la **compensazione NC>Fattura** ha vero backend (`TipoAllocazioneFattura::COMPENSAZIONE`,
+  `PagamentoFornitoreService::trovaNoteCreditoCompensabili()`, test di netting verdi) — ma il
+  docblock dello stesso service la elenca ancora come "rimandata", e non è confermato che il
+  frontend copra il caso di compensazione pura al 100% (nessun euro di cassa). Acconti fornitori,
+  anticipi amministratore e assegni con doppia data: **assenti**, nessun case enum, nessuna
+  colonna dedicata.
+- **🔧 Export SEPA Pain.001.001.03** — *(era → v1.9.3)*
+  **→ Roadmap:** `v1.10.1` — "Export SEPA" (sezione dedicata, rinumerata rispetto a questa
+  lista). **Verificato: non implementato** — nessun generatore XML nel repo.
+- **🔧 Feature 1 (IVA manuale bollette)** — *(era "da schedulare")* tuttora non ripresa in
+  nessuna versione della roadmap attuale. Vedi sezione dedicata sopra (Segnalazioni
+  beta.10) per lo stato verificato e la nota "va riportata o tolta".
 - [x] Feature 2 (Modifica fattura pre-pagamento) → completata
 - [x] Feature 4 (Modifica pagamento) → completata
 
 ---
 
-## Decisione — Footer stampe configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
+## ✅ Decisione — Footer stampe configurabile (L. 4/2013 · art. 1129 · art. 71-bis disp. att.)
 
-*(Decisione presa in data 2026-06-14.)*
+*(Decisione presa in data 2026-06-14. Duplica/precisa la sezione "✅ [AGGIUNTO]" in cima al
+file — stesso campo `nota_legale_stampe`, qui il dettaglio implementativo completo.)*
 
 **Decisione.** Campo testo libero `nota_legale_stampe` gestito tramite **Spatie Settings**.
 Textarea in Impostazioni. Stampato as-is nel footer mPDF di tutte le stampe PDF.
 
 **Scartato:** tabella `profili_stampa`, enum `tipo_soggetto`, campi strutturati — over-engineering.
 
+**Verificato sul codice (2026-07-26): implementato per intero.** `PrintSettings` (Spatie
+Settings, group `print`) → `ImpostazioniStampeController` → textarea in
+`impostazioniStampe.vue` → `PdfService::generate()` inietta il valore in ogni stampa →
+`pdf/base.blade.php` lo stampa nel footer mPDF su tutte le pagine (`sethtmlpagefooter
+page="ALL"`). Tutte le 7 viste PDF del gestionale ereditano da `pdf.base`, quindi tutte
+mostrano il footer configurato.
+
+**Confermato anche nel changelog** — `docs/changelog.md:981`, rilasciato in **beta.9**:
+*"Impostazioni Stampe PDF: Aggiunto un nuovo pannello di configurazione globale dedicato alle
+stampe. È ora possibile definire una Nota Legale (es. professione esercitata ex l. 4/2013,
+P.IVA, Polizza RC) che apparirà come piè di pagina in tutti i prospetti generati."* Un
+miglioramento successivo (`docs/changelog.md:514`, beta successiva) ha aggiunto anche la data
+di emissione della stampa sopra la nota legale nello stesso footer.
+
 ---
 
 ## Note varie
 
-_(da popolare)_
+### 🔧 [APERTO] Helper di test `registraFatturaServiceTest()` — due forme incompatibili di `$ctx`
+
+**File:** `tests/Feature/Gestionale/GestionaleTestHelpers.php` — funzione `registraFatturaServiceTest()` (riga ~199).
+
+**Causa.** L'array `$ctx` passato alla funzione viene costruito in due forme posizionali diverse
+a seconda di chi lo chiama: da `setupContabile()` direttamente (capitolo in posizione 4) oppure
+da `setupPagamentiService()`/`setupPagamentiHttp()` (capitolo in posizione 5, perché in mezzo c'è
+anche `contoCorrenteId`). La destrutturazione attuale
+(`[$condominio, $esercizio, $gestione, $fornitore, , $capitolo] = $ctx;`) è corretta solo per la
+seconda forma.
+
+**Impatto.** Nullo sulla produzione — è un helper di test. Chi lo chiama con la prima forma senza
+un override esplicito di `righe` ottiene un errore di vincolo FK rumoroso (il test fallisce, non
+produce un falso verde con dati sbagliati). Decine di test esistenti
+(`PagamentoFornitoreServiceTest.php`, `PagamentoFornitoreControllerTest.php`,
+`HardeningFase0Test.php`, `TenancyScopingTest.php`, `StornoPagamentoControllerTest.php`,
+`SyncF24WithPagamentoTest.php`, `GirocontoTest.php:392`) dipendono dalla forma attuale — non
+toccare la destrutturazione senza aggiornarli tutti.
+
+**Fix proposto.** Due helper distinti con nomi che rendono esplicita la forma attesa (es.
+`registraFatturaDaContestoBase()` / `registraFatturaDaContestoPagamenti()`), oppure un array
+associativo a chiavi nominate invece che posizionale.
+
+**Stato:** Aperto, non urgente — non causa dati sbagliati, solo un errore rumoroso per chi scrive
+un nuovo test senza saperlo. Rimandato a una sessione dedicata (2026-07-26).
+
+---
+
+### 🔧 [APERTO] Incassi rate — audit "chi ha stornato" mai stato funzionante
+
+**File:** `app/Http/Controllers/Gestionale/Movimenti/IncassoRateController.php` — riga ~329.
+
+**Causa.** Il codice legge `$scrittura->dati_extra['stornato_da_user_id']` per popolare il nome
+di chi ha stornato un incasso, ma `dati_extra` non è mai esistita come colonna su
+`scritture_contabili` (nessuna migrazione la crea) — e `StornoIncassoRateAction` non la scrive
+comunque. In più il confronto di stato usava `'stornato'` invece del vero valore `'annullata'`
+(bug gemello di quello corretto in beta.29 sul contatore "Stornati", vedi changelog).
+
+**Impatto.** Nullo su calcoli, quadratura, riparto — riguarda solo l'informazione "chi ha
+stornato" nel dettaglio di un incasso, che non si è mai popolata da quando questo codice esiste.
+Non è una regressione introdotta da beta.29: non ha mai funzionato.
+
+**Fix.** Richiede o una migrazione (colonna `dati_extra` JSON su `scritture_contabili`) con
+`StornoIncassoRateAction` aggiornata per scriverci dentro, oppure recuperare l'informazione dal
+`created_by` della scrittura di "rettifica" figlia (da verificare se già valorizzato
+automaticamente da un observer).
+
+**Stato:** Aperto, bassa priorità — puramente informativo/audit, nessun impatto contabile.
+Rimandato (2026-07-26).

@@ -82,9 +82,12 @@ class IncassoRateController extends Controller
                 ->whereMonth('data_registrazione', now()->month)
                 ->whereYear('data_registrazione', now()->year)
                 ->count(),
+            // StornoIncassoRateAction sigilla la scrittura originale con stato='annullata'
+            // (giornale append-only: la scrittura resta, viene solo marcata). 'stornato'
+            // non è un valore ammesso dalla colonna: il confronto non ha mai trovato nulla.
             'stornati' => ScritturaContabile::where('condominio_id', $condominio->id)
                 ->where('tipo_movimento', 'incasso_rata')
-                ->where('stato', 'stornato')
+                ->where('stato', 'annullata')
                 ->count(),
         ];
 

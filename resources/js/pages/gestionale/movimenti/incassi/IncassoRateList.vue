@@ -100,18 +100,18 @@ const pageGuides = [
 
               <!-- Card: Stornati (toggle filtro) -->
               <button
-                @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id, stato: filters.stato === 'stornato' ? undefined : 'stornato' }), { preserveState: true })"
+                @click="router.visit(route(generateRoute('gestionale.movimenti-rate.index'), { condominio: props.condominio.id, stato: filters.stato === 'annullata' ? undefined : 'annullata' }), { preserveState: true })"
                 class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-4 transition-all text-left outline-none hover:opacity-100 hover:border-rose-300 hover:ring-2 hover:ring-rose-100 cursor-pointer"
-                :class="filters.stato === 'stornato' ? 'ring-2 ring-rose-500 border-rose-500 opacity-100' : 'opacity-80'"
+                :class="filters.stato === 'annullata' ? 'ring-2 ring-rose-500 border-rose-500 opacity-100' : 'opacity-80'"
               >
-                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'bg-rose-50 border-rose-100' : ''">
-                  <RotateCcw class="w-5 h-5 text-slate-500" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'text-rose-600' : ''" />
+                <div class="bg-slate-100 p-2.5 rounded-lg border border-slate-200" :class="stats.stornati > 0 || filters.stato === 'annullata' ? 'bg-rose-50 border-rose-100' : ''">
+                  <RotateCcw class="w-5 h-5 text-slate-500" :class="stats.stornati > 0 || filters.stato === 'annullata' ? 'text-rose-600' : ''" />
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 flex-wrap">
                     <p class="text-xs text-slate-500 font-medium uppercase tracking-wider">Stornati</p>
                   </div>
-                  <p class="text-2xl font-black text-slate-900" :class="stats.stornati > 0 || filters.stato === 'stornato' ? 'text-rose-700' : ''">
+                  <p class="text-2xl font-black text-slate-900" :class="stats.stornati > 0 || filters.stato === 'annullata' ? 'text-rose-700' : ''">
                     {{ stats.stornati }}
                   </p>
                 </div>

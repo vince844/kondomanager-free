@@ -125,6 +125,24 @@ test('index combina stato e intervallo date insieme', function () {
         );
 });
 
+test('lo stat "stornati" conta le scritture annullata, non un valore stato inesistente', function () {
+    // StornoIncassoRateAction sigilla la scrittura originale con stato='annullata':
+    // non esiste un valore 'stornato' nella colonna, il confronto sbagliato dava
+    // sempre 0 indipendentemente da quanti incassi fossero stati davvero stornati.
+    $user = adminIncassiRate();
+    $ctx = setupContabile();
+    [$condominio] = $ctx;
+
+    creaIncassoRata($ctx, 'registrata', '2026-03-10');
+    creaIncassoRata($ctx, 'annullata', '2026-03-11');
+    creaIncassoRata($ctx, 'annullata', '2026-03-12');
+
+    $this->actingAs($user)
+        ->get(route('admin.gestionale.movimenti-rate.index', ['condominio' => $condominio->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('stats.stornati', 2));
+});
+
 test('index espone i 4 stati ammessi come prop stati', function () {
     $user = adminIncassiRate();
     $ctx = setupContabile();

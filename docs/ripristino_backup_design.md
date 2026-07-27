@@ -539,3 +539,42 @@ scattata da un backup di prova). Quindi:
 | 15/07/2026 | Cambio dominio: nessun lavoro aggiuntivo (verificato: nessun URL assoluto nel DB; APP_URL gestito per-flusso; storage:link nella finalizzazione) | Domanda di Vincenzo sul trasferimento verso altro dominio |
 | 15/07/2026 | installer_php84.php: nessuna modifica per beta.13 | Il bootstrap crea .env con APP_KEY temporanea e delega al wizard, che nel ramo ripristino la sostituisce; .htaccess protegge già gli zip |
 | 15/07/2026 | Ambiguità wizard risolta: gira SOLO il wizard custom (vendor eii/laravel-installer completamente sostituito) | Conferma diretta di Vincenzo |
+| 23/07/2026 | Ripristino da backup salvato ESTERNAMENTE: sì via **upload dal browser** (no file-browser del server). Distinzione origine via **fingerprint di installazione** nel manifest. Vedi §14. | Richiesta utente sul forum |
+| 23/07/2026 | Raccomandazione: la funzione è **core open source**, non plugin a pagamento (è disaster recovery). Decisione finale a Vincenzo. | §14.4 |
+
+---
+
+## 14. Ripristino da un backup salvato ESTERNAMENTE (upload) — design & decisioni
+
+**Richiesta (utente, forum 23/07/2026):** poter ripristinare anche un backup NON presente nella lista (scaricato / salvato su un disco esterno), non solo quelli generati da questa installazione. Idea originale: un file-browser che naviga i dischi del server.
+
+**Scartato — file-browser del filesystem del server:** navigare percorsi arbitrari del disco è una superficie di **path-traversal / lettura file arbitrari** (`.env`, chiavi, e su hosting condiviso file di ALTRI siti). Il nostro pubblico (hosting condivisi) è il più esposto → non si fa. Con Vincenzo si è chiarito che l'utente intendeva l'**upload dal browser**.
+
+### 14.1 I due sotto-casi (identità del backup)
+- **(a) Backup di QUESTA installazione, salvato altrove** → sicuro: stessa `APP_KEY`, nessun tema 2FA/dominio. Va solo rimesso in circolo e ripristinato.
+- **(b) Backup di un'ALTRA installazione** → è un TRASFERIMENTO: `APP_KEY` diversa (2FA/SMTP illeggibili → la sonda li azzera), dominio diverso. Territorio del wizard **M2**. Dal pannello NON lo permettiamo: lo blocchiamo e indirizziamo al flusso di trasferimento.
+
+### 14.2 Come distinguere (a) da (b) — la domanda chiave di Vincenzo ("gli utenti possono aver confuso i backup")
+Serve una verifica **automatica**, non affidata all'occhio.
+
+**Fingerprint di installazione nel manifest** (nuovo campo, da una beta futura): al momento del backup si scrive nel `manifest.json` un'impronta **non segreta** = `hash('sha256', APP_KEY)`. La chiave grezza NON entra mai nel manifest (resta segreta); il suo SHA-256 non è reversibile (256 bit di entropia) → esporlo è sicuro ed è **stabile e univoco per installazione**.
+
+Al ripristino di un archivio caricato si confronta `hash('sha256', APP_KEY corrente)` con `manifest.installation_fingerprint`:
+- **combacia** → "backup di QUESTA installazione" ✓ → procede;
+- **non combacia** → "backup di un'ALTRA installazione" ⚠ → bloccato dal pannello (rimando al trasferimento/M2);
+- **assente** (backup creati prima dell'introduzione del fingerprint — beta.11→14) → fallback: se è FULL, si legge la `APP_KEY` da `files/.env` nell'archivio e si confronta (stesso check affidabile); se è db_only (niente .env) → non verificabile → avviso esplicito + conferma consapevole.
+
+**Doppio controllo umano:** nel dialog di conferma si mostrano comunque `app.url`, `app.name`, data di creazione, versione e dimensione, così l'utente riconosce a colpo d'occhio "sì, è il backup di test.karibusana.org del 12 luglio" — copre proprio il caso "ho confuso i backup".
+
+### 14.3 Come entra l'archivio
+- **Upload dal browser** (selettore file nativo): il server riceve lo zip → validazione (manifest leggibile, `manifest_format` supportato, SHA-256 del dump, guardie zip-slip/allowlist già esistenti) → salvato in `storage/app/backups` → flusso di ripristino normale con il gate d'identità sopra. Limite: `upload_max_filesize`/`post_max_size` → su hosting condivisi i backup grandi non passano.
+- **FTP + "Rescansiona la cartella backup"** (per gli archivi grandi): l'utente mette lo zip in `storage/app/backups`, un pulsante riesegue la ri-registrazione degli orfani (`reregisterOrphanBackups`, logica già esistente) e il backup ricompare nella lista. Niente navigazione dischi, niente limite di upload. Entrambe le vie convergono sullo stesso validate + gate + restore.
+
+### 14.4 Core open source vs plugin a pagamento — RACCOMANDAZIONE: **CORE OPEN SOURCE**
+- È **disaster recovery / sicurezza dei dati**: mettere dietro paywall "ripristina il TUO backup salvato fuori" = se l'unica copia è esterna, devi pagare per riavere i tuoi dati. Contraddice l'ethos del progetto e l'impegno già pubblicato (blog/changelog: motore backup+ripristino interamente nel nucleo open source, nessuna funzione di sicurezza dei dati dietro paywall).
+- È **piccolo** (riusa `reregisterOrphanBackups` + un campo manifest + upload/validate), non una feature a costo ricorrente.
+- Tiene pulita la linea: **creazione + ripristino (anche da file esterno) = core open source; automazione (backup programmati + destinazioni cloud) = plugin a pagamento** (`plugin_backup_roadmap.md`). L'upload-restore NON è automazione.
+- Decisione finale a Vincenzo; raccomandazione tecnica: **core**.
+
+### 14.5 Collocazione
+Tema **Migrazione & Onboarding** (roadmap), dopo il core 1.10. Il caso (a) è piccolo e a sé (candidabile prima); il caso (b) confluisce in M2. Il **fingerprint di installazione** è un prerequisito trasversale (piccola aggiunta a `ManifestBuilder`, retro-compatibile: i backup vecchi senza fingerprint usano il fallback §14.2).
