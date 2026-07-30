@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from '@/composables/permissions';
+import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import {
     BookOpen, ArrowLeft, Calendar, Building2, Landmark, FileText,
     CircleCheckBig, CircleX, RotateCcw, CreditCard, Banknote,
@@ -80,6 +81,7 @@ const props = defineProps<{
 
 const { euro } = useCurrencyFormatter();
 const { generateRoute, generatePath } = usePermission();
+const { urlPrecedente } = useUrlPrecedente();
 
 // ── Breadcrumbs ──────────────────────────────────────────────────────────────
 const breadcrumbs = computed(() => [
@@ -147,15 +149,21 @@ const navigaAllaFattura = (fatturaId: number) => {
 };
 
 // Questa pagina è raggiungibile da molte tabelle diverse (pagamenti, fatture,
-// giroconti, incassi, Libro Giornale...): "Indietro" non può puntare a una sola
-// di quelle senza sbagliare per tutte le altre. window.history.state.back è
-// l'URL Inertia della pagina di provenienza reale, indipendentemente da quale
-// sia — stesso pattern già usato in EstrattoContoAnagrafica.vue. Il fallback
-// (nessuna history, es. link diretto) va al Libro Giornale dell'esercizio della
-// scrittura: è l'unico registro che la contiene sempre.
+// giroconti, incassi, Libro Giornale, drill-down del Piano dei Conti...):
+// "Indietro" non può puntare a una sola di quelle senza sbagliare per tutte le
+// altre. La provenienza reale arriva da useUrlPrecedente().
+//
+// beta.30: prima si leggeva `window.history.state.back`, che è una convenzione di
+// Vue Router — Inertia v3 in `history.state` mette solo `page`. Quel ramo era
+// quindi sempre falso e l'Indietro cadeva SEMPRE sul fallback, da qualunque
+// pagina si arrivasse.
+//
+// Il fallback (accesso diretto, nessuna provenienza) resta il Libro Giornale
+// dell'esercizio della scrittura: è l'unico registro che la contiene sempre.
 const backUrl = computed(() => {
-    if (typeof window !== 'undefined' && window.history.state?.back) {
-        return window.history.state.back as string;
+    const precedente = urlPrecedente();
+    if (precedente) {
+        return precedente;
     }
     if (props.scrittura.esercizio) {
         return route(generateRoute('gestionale.esercizi.scritture.index'), {

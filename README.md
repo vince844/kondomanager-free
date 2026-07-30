@@ -164,9 +164,19 @@ A partire dalla v1.9.0 puoi configurare i processi pianificati direttamente dal 
 
 Accedi al tuo pannello hosting nella sezione "Cron Jobs" o "Pianificazione Attività" e imposta l'esecuzione ogni minuto (`* * * * *`).
 
-**Esempio per ambiente locale MAMP (Mac):**
+**Esempio per ambiente locale ServBay** (da KondoManager 1.10.0 il riferimento è PHP 8.4, non
+supportato dalla versione gratuita di MAMP — se stai migrando da MAMP, segui la
+[guida di migrazione a ServBay](https://kondomanager.com/docs/migrazione-mamp-a-servbay.html)):
+
+*macOS — crontab (`crontab -e`):*
 ```bash
-/Applications/MAMP/bin/php/php8.2.0/bin/php tuacartella/artisan schedule:run >> /dev/null 2>&1
+/Applications/ServBay/script/alias/php tuacartella/artisan schedule:run >> /dev/null 2>&1
+```
+
+*Windows — Utilità di pianificazione (Windows non ha crontab):* apri il Prompt dei comandi,
+verifica il percorso PHP effettivo con `where php`, poi registra l'attività ogni minuto:
+```bash
+schtasks /create /tn "KondoManager Scheduler" /tr "php C:\tuacartella\artisan schedule:run" /sc minute /mo 1
 ```
 
 **Esempio per server condiviso (cPanel / Linux):**

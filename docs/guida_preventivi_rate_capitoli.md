@@ -92,8 +92,13 @@ Queste modifiche permettono di gestire casi reali complessi (es. lavori straordi
 4. Seleziona i **Capitoli** da includere:  
    - **Tutti** → per la classica gestione ordinaria (lascia il campo vuoto per l'emissione globale).  
    - **Selezione parziale** → per emettere rate solo su specifici centri di costo (scenario Supercondominio).
-5. Definisci numero di rate, data prima scadenza e eventuali arrotondamenti.
+5. Definisci numero di rate, giorno di scadenza e eventuali arrotondamenti.
 6. Il sistema genera automaticamente le rate, calcolando i millesimi **solo sulle voci dei Capitoli selezionati**.
+
+> **Nota sulle date delle rate (agg. 2026-07-29).** Oggi puoi scegliere il **giorno del
+> mese** di scadenza, non il mese di partenza: la prima rata cade sempre nel mese di
+> inizio della gestione. Il campo "data prima scadenza" (con calendario manuale e
+> modifica delle date già generate) è pianificato — vedi [`calendario_rate.md`](calendario_rate.md).
 
 > **Nota:** Le voci di sopravvenienza (generate automaticamente da fatture impreviste) non appaiono mai nella lista capitoli del piano ordinario.
 

@@ -7,6 +7,51 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.30] - Il Consuntivo Esce allo Scoperto & Tre Numeri Smettono di Mentire
+
+Un amministratore scrive: «Ho fatto 2 registrazioni ma non si trovano da nessuna parte». Un altro, guardando la barra colorata del Piano dei Conti, dice: «pensavo che i 2 colori si riferissero a preventivato e già consumato». Sembrano due lamentele scollegate. Sono lo stesso bug.
+
+Lo "speso" di una voce veniva ricostruito da una query su `righe_fattura`, duplicata identica in **sei** punti del codice. Quella fonte è incompleta per costruzione: solo le fatture passive scrivono lì. Una Regolazione Immediata scrive direttamente a giornale, quindi i soldi uscivano davvero dalla cassa — il saldo scendeva, l'amministratore lo vedeva — ma il capitolo restava apparentemente libero, il cruscotto sfori taceva, e la registrazione era introvabile partendo da Fatture Passive. Questa beta sposta il calcolo sul libro giornale, dove i movimenti stanno tutti, e lo espone finalmente a video accanto al preventivo.
+
+**Nessuna migrazione del database.** Ma tre numeri già visibili cambiano valore: sono elencati per primi qui sotto, perché un amministratore che confronta prima e dopo li noterà.
+
+### ⚠ Numeri che cambiano
+
+- **Lo speso di una voce ora comprende le regolazioni immediate.** Capitoli che sembravano liberi possono risultare parzialmente impegnati o in sforo. Non è un errore nuovo: è una spesa che c'era già e non veniva contata. Il caso segnalato dall'amministratore — 6,72 € di regolazione su una voce — era invisibile al budget.
+- **Il totale "Preventivo" non si gonfia più con gli sfori.** Sommava `$conto->importo`, che il controller porta allo speso quando il costo reale supera il budget: cresceva quindi insieme alle spese e smetteva di essere un preventivo. Accanto al nuovo totale Consuntivo l'incoerenza sarebbe stata evidente. Ora usa il budget deliberato.
+- **Le spese ad personam non si sommano più allo speso comune** nel Piano dei Conti. Delle sei copie della query, quella era l'unica a non escluderle: la stessa voce mostrava un numero diverso a seconda della pagina da cui la si guardava.
+
+### Aggiunto
+
+- **Colonna "Consuntivo" accanto al Preventivo** nell'elenco conti e sottoconti, con intestazioni di colonna esplicite. Le voci in sforo sono in rosso con icona di allarme (il colore da solo non basta per chi ha una deficienza cromatica) e il dettaglio dell'eccedenza compare al passaggio del mouse. Le voci senza spesa mostrano `—` invece di `€ 0,00`: distingue "non ancora speso" da uno zero calcolato.
+- **Totale "Consuntivo" in testata**, accanto a Preventivo e Sopravvenienze — la spesa complessiva del piano, che prima non era leggibile da nessuna parte in quella pagina.
+- **Drill-down sul consuntivo**: cliccando l'importo si apre l'elenco dei movimenti che lo compongono, con data, causale, tipo e importo, e da lì si raggiunge la scrittura nel Libro Giornale. Il totale mostrato è quello vero della voce, ricalcolato a parte: con più di 200 movimenti l'elenco viene tagliato, e il taglio è dichiarato in pagina invece di far sembrare completo un elenco che non lo è. Gli storni compaiono con importo negativo, perché fanno parte della storia che spiega il totale.
+- **Ordinamento della distinta per codice** *(richiesta di un'amministratrice)*, con selettore Nome/Codice sopra l'elenco. Il default resta "nome": `conti.codice` è nullable e senza formato imposto, quindi renderlo criterio unico avrebbe rotto l'elenco a chi non lo compila. L'ordinamento è **naturale** — `A.2` prima di `A.10`, `999` prima di `1020` — e le voci senza codice finiscono in fondo raggruppate invece di sparpagliarsi. Il selettore compare solo se almeno una voce ha un codice. La stampa "Distinta base" eredita la scelta: stampare per nome ciò che a schermo è ordinato per codice avrebbe reso la funzione mezza inutile.
+- **Avviso ponte in Fatture Passive**: quante regolazioni immediate esistono nell'esercizio, con link al Libro Giornale già filtrato per tipo movimento. Si chiude con una × e **riappare dopo sei mesi** — chi le usa quotidianamente non ha bisogno del promemoria, ma passata una stagione contabile è più probabile che torni utile che fastidioso.
+- **Azione "Registra pagamento"** nel menu di ogni fattura, che apre il modulo con fornitore, IBAN e fattura già selezionati con l'importo. Compare **solo sulle fatture pagabili**: il motore accetta il pagamento unicamente in stato `approvata`, quindi una fattura in attesa di ratifica, da approvare o contestata portava a un vicolo cieco. Il menu offre già l'azione corretta per lo sforo ("Ratifica assembleare"), quindi nascondere quella sbagliata non lascia l'utente senza strada.
+- **Scorciatoia dallo sforo alla creazione del piano rate**, con gestione e tipo già impostati. Compare solo sulla strategia "rata integrativa": con la copertura da fondo o a consuntivo una rata non è la risposta, e il link inviterebbe a fare la cosa sbagliata.
+
+### Modificato
+
+- **"Copertura" si chiama ora "Coperto da piano rate"**, in tutte e quattro le occorrenze della pagina, con una frase sempre visibile sotto la barra che chiarisce cosa misura: la quota di preventivo già inserita in un piano rate emesso ai condòmini, non la spesa sostenuta. È il malinteso da cui è partita tutta la beta. Testo, non tooltip: la beta.28 aveva già insegnato che un suggerimento al passaggio del mouse non arriva a chi naviga da tastiera.
+- **"Richiede rate" → "Da coprire con rata integrativa"**, e ogni strategia di rientro ha ora il suo ramo esplicito. Prima l'ultima era un `v-else` generico: qualunque strategia nuova sarebbe finita etichettata come rata integrativa.
+- **Una voce senza preventivo non è più marcata come "in sforo"**: le sopravvenienze nascono fuori preventivo per definizione, e segnarle tutte in rosso toglieva forza al rosso dove indica uno sforo vero. Il loro preventivo mostra `—`, non `€ 0,00`.
+
+### Corretto
+
+- **Il pulsante "Indietro" non ha mai funzionato** nel dettaglio scrittura e nell'estratto conto condòmino: leggeva `window.history.state.back`, una convenzione di Vue Router che Inertia non popola. Il ramo era sempre falso e si tornava sistematicamente al registro di fallback, da qualunque pagina si arrivasse. Ora la provenienza reale è tracciata sull'evento di navigazione.
+- **L'azione "Registra pagamento" esisteva già nel codice, commentata**, e puntava a una rotta inesistente: riattivarla così com'era avrebbe prodotto un errore. Il resto della catena — inclusa la preselezione della fattura — era completo e funzionante da tempo.
+
+### Test
+
+- Suite completa: **685 test verdi** (prima di questa beta: 644).
+- Nuovi file `SpesaPerVoceServiceTest.php`, `PianoContiSpesoTest.php`, `OrdinamentoContiTest.php`; test aggiuntivi su `FatturaPassivaControllerTest.php` e `StampePDFTest.php`.
+- Coperti i casi contabili che toccano il segno: nota di credito che scomputa, storno che azzera, fattura contestata che non pesa, spese ad personam fuori per costruzione, e l'invariante fra lettura analitica (`voce_spesa_id`) e sintetica (conto contabile).
+- **Tre difetti della suite corretti**: due test fallivano a intermittenza per collisione di dati faker su colonne con vincolo di unicità (`PianoRateFactory.nome`, `AnagraficaFactory.email_secondaria`/`pec`); un `codice_immobile` hardcodato negli helper impediva di creare due condomini nello stesso test, rendendo impossibile scrivere le verifiche di isolamento multi-condominio — proprio quelle che in un gestionale multi-fabbricato servono di più.
+- **La pagina Piano dei Conti era impossibile da testare via HTTP**: una query usava `GROUP_CONCAT ... SEPARATOR`, sintassi MySQL che SQLite rifiuta, e ogni richiesta finiva in errore 500 nella suite. Resa portabile per driver, la pagina è ora coperta.
+
+---
+
 ## [1.10.0-beta.29] - Nasce il Libro Giornale, e lo Stato Patrimoniale Impara a Spiegarsi
 
 Fino a ieri il Libro Giornale esisteva solo come dettaglio di una singola scrittura, raggiungibile solo per drill-down da altre pagine (fatture, pagamenti, giroconti...). Mancava un vero registro sfogliabile. Questa beta lo costruisce: elenco cronologico per esercizio, con filtri estesi (ricerca, tipo movimento, stato, intervallo date), switch reale fra esercizi per consultare gli anni precedenti, e un widget che espone per la prima volta a video `StatoPatrimonialeService` — il motore di verifica quadratura scritto in beta.25 ma mai collegato a nessuna pagina.

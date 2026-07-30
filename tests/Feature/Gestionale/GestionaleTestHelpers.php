@@ -115,7 +115,12 @@ function setupContabile(): array
         'interno'         => '1',
         'nome'            => 'Appartamento Test',
         'descrizione'     => '',
-        'codice_immobile' => 'APP-TEST-1',
+        // `immobili.codice_immobile` è UNIQUE a livello globale, non per condominio:
+        // con un valore fisso, chiamare setupContabile() due volte nello stesso test
+        // esplodeva, rendendo impossibile scrivere test multi-condominio (per esempio
+        // le verifiche di scoping, che in un'app multi-tenant sono proprio quelle che
+        // servono di più). Lo leghiamo al condominio, che è già univoco.
+        'codice_immobile' => 'APP-TEST-'.$condominio->id,
         'attivo'          => true,
         'created_at'      => now(),
         'updated_at'      => now(),

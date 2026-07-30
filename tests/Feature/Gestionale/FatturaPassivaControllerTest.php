@@ -297,3 +297,172 @@ test('elenco fatture: filtro data_da/data_a isola le fatture per data documento'
         ->where('fatture.data.0.id', $dentroRange->id)
     );
 });
+
+// ─── beta.30: le regolazioni immediate pesano sull'avviso di sforo ───────────
+// Il residuo esposto qui guida `is_capiente` e l'avviso di sforamento del form.
+// Prima della beta.30 leggeva solo `righe_fattura`: una regolazione immediata non
+// ne crea, quindi il capitolo risultava più capiente del reale e l'avviso non
+// scattava — mentre la Dashboard, che legge dal libro giornale, lo segnalava.
+
+function regolazioneSuCapitolo(array $ctx, float $importo): \App\Models\Gestionale\ScritturaContabile
+{
+    [$condominio, $esercizio, $gestione, , , $capitolo] = $ctx;
+
+    return (new \App\Actions\Gestionale\Movimenti\RegistraRegolazioneImmediataAction())->execute([
+        'gestione_id' => $gestione->id,
+        'esercizio_id' => $esercizio->id,
+        'conto_id' => $capitolo->id,
+        'cassa_id' => DB::table('casse')->where('condominio_id', $condominio->id)->value('id'),
+        'fornitore_id' => null,
+        'data_operazione' => now()->toDateString(),
+        'causale' => 'Spesa di cassa',
+        'importo' => $importo,
+    ], $condominio, $esercizio);
+}
+
+test('una regolazione immediata riduce il residuo budget esposto in creazione fattura', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    regolazioneSuCapitolo($ctx, 1200.00); // 120.000 cent sul budget da 500.000
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', 380000)
+        ->where('conti.0.is_capiente', true)
+    );
+});
+
+test('una regolazione immediata che supera il budget rende la voce non capiente', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    regolazioneSuCapitolo($ctx, 5100.00); // 510.000 cent > budget 500.000
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', -10000)
+        ->where('conti.0.is_capiente', false)
+    );
+});
+
+test('lo storno della regolazione immediata restituisce la capienza', function () {
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    $scrittura = regolazioneSuCapitolo($ctx, 5100.00);
+
+    (new \App\Actions\Gestionale\Movimenti\StornaRegolazioneImmediataAction())
+        ->execute($scrittura, $condominio, 'Importo errato');
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.create', [$condominio]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        ->where('conti.0.residuo_budget', 500000)
+        ->where('conti.0.is_capiente', true)
+    );
+});
+
+test('in modifica la fattura è esclusa ma la regolazione immediata continua a pesare', function () {
+    // Le due esclusioni devono convivere: si toglie solo la fattura in modifica,
+    // non tutto ciò che sta a giornale sul capitolo.
+    $ctx = setupPagamentiService();
+    [$condominio, , , , , $capitolo] = $ctx;
+
+    $fattura = registraFatturaServiceTest($ctx, [
+        'righe' => [[
+            'descrizione' => 'Servizio Test',
+            'importo_imponibile' => 1000,
+            'aliquota_iva' => 22,
+            'conto_id' => $capitolo->id,
+            'is_sopravvenienza' => false,
+        ]],
+    ]);
+
+    regolazioneSuCapitolo($ctx, 300.00); // 30.000 cent
+
+    $response = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.edit', [$condominio, $fattura]));
+
+    $response->assertOk();
+    $response->assertInertia(fn ($page) => $page
+        ->where('conti.0.id', $capitolo->id)
+        // 500.000 − 30.000 di regolazione; la fattura in modifica (122.000) NON pesa.
+        ->where('conti.0.residuo_budget', 470000)
+        ->where('conti.0.is_capiente', true)
+    );
+});
+
+// ─── beta.30: ponte verso il Libro Giornale ─────────────────────────────────
+// Le Regolazioni Immediate si creano dalla toolbar di questa pagina ma non vi
+// compaiono mai (non generano righe in fatture_passive). Il conteggio esposto qui
+// deve coincidere con quello che l'amministratore trova cliccando il link.
+
+test('senza regolazioni immediate la pagina espone un conteggio a zero', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('regolazioniImmediate', 0));
+});
+
+test('le regolazioni immediate dell esercizio sono contate per il ponte', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    regolazioneSuCapitolo($ctx, 16.68);
+    regolazioneSuCapitolo($ctx, 42.00);
+
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('regolazioniImmediate', 2));
+});
+
+test('il conteggio del ponte coincide con le righe filtrate nel Libro Giornale', function () {
+    // Invariante del ponte: se i due numeri divergessero, la card prometterebbe
+    // movimenti che poi non si trovano — o viceversa.
+    $ctx = setupPagamentiService();
+    [$condominio, $esercizio] = $ctx;
+
+    regolazioneSuCapitolo($ctx, 10.00);
+    regolazioneSuCapitolo($ctx, 20.00);
+    regolazioneSuCapitolo($ctx, 30.00);
+    registraFatturaServiceTest($ctx); // rumore: una fattura non deve essere contata
+
+    $conteggio = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]))
+        ->viewData('page')['props']['regolazioniImmediate'];
+
+    $nelGiornale = $this->actingAs($this->user)
+        ->get(route('admin.gestionale.esercizi.scritture.index', [$condominio, $esercizio]).'?tipo_movimento=regolazione_immediata')
+        ->viewData('page')['props']['scritture']['meta']['total'] ?? null;
+
+    expect($conteggio)->toBe(3)
+        ->and($nelGiornale)->toBe(3);
+});
+
+test('una fattura da sola non fa comparire il ponte', function () {
+    $ctx = setupPagamentiService();
+    [$condominio] = $ctx;
+
+    registraFatturaServiceTest($ctx);
+
+    $this->actingAs($this->user)
+        ->get(route('admin.gestionale.fatture.index', [$condominio]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('regolazioniImmediate', 0));
+});

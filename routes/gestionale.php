@@ -24,6 +24,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
+use App\Http\Controllers\Gestionale\PianiConti\MovimentiPerVoceController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiPrintController;
 use App\Http\Controllers\Gestionale\PianiRate\BudgetMovementController;
@@ -147,6 +148,12 @@ Route::prefix('/gestionale/{condominio}')
             'conti'       => 'conto'
         ]); 
     
+    // Drill-down della colonna Consuntivo: i movimenti che compongono lo speso di
+    // una voce. Non annidata sotto {pianoConto} perché il conto identifica già la
+    // voce e il controller ne verifica l'appartenenza al condominio.
+    Route::get('esercizi/{esercizio}/voci/{conto}/movimenti', MovimentiPerVoceController::class)
+        ->name('esercizi.voci.movimenti');
+
     Route::post('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/associa-tabella', AssociaTabellaController::class)
         ->name('esercizi.piani-conti.conti.associa-tabella');
 

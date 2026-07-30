@@ -779,11 +779,125 @@ calcolo (`StatoPatrimonialeService`, `SaldoCassaService`, `TreasuryGuardianServi
 filtrano `whereNull('deleted_at')` in query SQL dirette: non dipendono dal trait, ma dipendono
 dalla colonna `deleted_at` — va lasciata.
 
-**Fix proposto.** Non toccare il modello. Aggiungere invece un comando Artisan schedulato (es.
-`scritture:svuota-cestino`) che forza periodicamente il `forceDelete()` delle scritture trashed più
-vecchie di una soglia di sicurezza (es. 24-48h), per tutti i condomini — generalizzando il pattern
-già esistente in `StornoFatturaController` invece di lasciarlo isolato a un solo flusso.
+**Fix proposto — CORRETTO dopo ulteriore verifica (2026-07-27, stessa giornata).** La prima idea
+("comando Artisan schedulato dedicato") era sbagliata: avrebbe duplicato un'infrastruttura di
+scheduling che esiste già ed è più matura del previsto. Il progetto ha:
+
+- Uno scheduler Laravel standard in `routes/console.php` (heartbeat ogni minuto, `model:prune`
+  giornaliero, controllo aggiornamenti, worker per hosting condivisi).
+- `App\Models\Evento` usa già `MassPrunable` con un metodo `prunable()` — il meccanismo nativo
+  Laravel per la pulizia automatica — agganciato al `model:prune` già schedulato.
+- **Tre livelli già pronti per far girare lo scheduler**, a seconda di come l'amministratore
+  ospita l'istanza: (1) stack Docker fornito (`docker/supervisord.conf`) — Supervisor avvia
+  `php artisan schedule:work` come processo persistente nel container `kondo_worker`, **nessun
+  cron di sistema né internet necessari**, gira in locale e basta; (2) hosting/VPS con accesso
+  shell — crontab reale (`* * * * * php artisan schedule:run`), anche questo puramente locale,
+  nessun internet richiesto; (3) hosting condiviso senza accesso shell ma con URL pubblico —
+  webhook `/system/run-scheduler?token=...` chiamato da un servizio esterno gratuito
+  (cron-job.org), blindato con un'architettura di sicurezza a 5 livelli
+  (`docs/security_cron_scheduler.md`), configurabile da Impostazioni → Automazione
+  (`CronSettingsController`, pagina `impostazioniCron`) con heartbeat visibile
+  all'amministratore. Il livello (3) è l'unico che richiede una URL pubblica raggiungibile
+  dall'esterno — non si applica a un'istanza puramente locale senza tunnel (es. ngrok) — ma per
+  quel caso si applica il livello (1) o (2), entrambi già a costo zero.
+
+**Fix effettivo:** aggiungere `MassPrunable` a `ScritturaContabile` con un `prunable()` che
+seleziona le scritture trashed più vecchie di una soglia di sicurezza (es. 48h) — stesso identico
+pattern già in produzione su `Evento`. Zero nuova infrastruttura, si aggancia al `model:prune` già
+schedulato su tutti e tre i livelli sopra.
 
 **Stato:** Aperto, bassa priorità — innocuo (le scritture trashed sono invisibili a ogni query e
 vista normale, `SoftDeletingScope` le esclude di default), solo un accumulo di dati morti.
 Rimandato (2026-07-27).
+
+---
+
+### 💡 [FUTURA] Scheduler — quarto livello "pigro" agganciato al traffico HTTP
+
+**Contesto.** Il progetto ha già tre livelli per far girare `php artisan schedule:run` (vedi nota
+sopra): (1) Docker/Supervisor (`docker/supervisord.conf`, `schedule:work` come processo
+persistente, zero configurazione se si usa lo stack fornito), (2) crontab/Task Scheduler reale sul
+server, (3) webhook `/system/run-scheduler` per hosting condivisi senza accesso shell, chiamato da
+un servizio esterno gratuito (cron-job.org). Tutti e tre richiedono comunque un passo di setup da
+parte dell'amministratore — anche il più semplice (ServBay o MAMP in locale) richiede di aprire un
+terminale e configurare manualmente crontab (Mac) o l'Utilità di pianificazione (Windows).
+
+**Il problema reale.** La maggior parte di chi installa KondoManager in locale usa ServBay
+(verificato: **ServBay non ha nessuna funzione di cron/scheduled task integrata**, né su Mac né su
+Windows — solo web server, PHP, DB, proxy). Per un amministratore di condominio non tecnico, il
+passo del crontab è facile da saltare del tutto e restare invisibile: lo stato dell'heartbeat si
+vede solo se si visita specificamente Impostazioni → Automazione, non c'è nessun avviso altrove
+nell'app. Se lo scheduler non gira mai, non girano nemmeno `model:prune`, il controllo
+aggiornamenti, e qualunque futuro task schedulato (es. il fix Prunable proposto nella nota sopra).
+
+**Idea.** Un quarto livello di fallback, automatico e a zero configurazione, sul modello del
+"wp-cron" di WordPress (che infatti non richiede un cron reale nella stragrande maggioranza delle
+installazioni WordPress al mondo): se l'heartbeat (`system_cron_heartbeat`, già esistente) mostra
+che nessuno dei tre livelli ha girato negli ultimi N minuti (es. 5-10), la prossima richiesta HTTP
+in arrivo innesca in background un `schedule:run` — senza rallentare la risposta all'utente (es.
+via un dispatch `afterResponse()`, o un processo detached). Si attiva solo come riserva: quando
+Docker/Supervisor, un cron reale o il webhook stanno già girando, questo livello resta silenzioso
+e non fa nulla, evitando esecuzioni duplicate o spreco di risorse. Copre gratis ogni installazione
+locale batteries-included senza cron nativo (ServBay su Mac e Windows, MAMP, XAMPP), semplicemente
+perché l'app viene usata — se nessuno la apre, non serve nemmeno pulire nulla.
+
+**Perché non è ancora stato costruito.** Emerso il 2026-07-28 durante la discussione sul fix
+Prunable di `ScritturaContabile` e sulla domanda "come fa a girare in locale senza internet chi
+usa ServBay". È un miglioramento più ampio del singolo caso: tocca il bootstrap dell'app per ogni
+richiesta, va progettato con attenzione (non bloccare la risposta, evitare race condition fra
+richieste concorrenti che arrivano nello stesso istante, gestire correttamente Windows dove il
+detach di un processo ha semantica diversa da Unix).
+
+**Stato:** Futura, da valutare — nessuna urgenza: i tre livelli esistenti coprono già hosting
+condivisi, VPS e Docker; il vuoto riguarda solo installazioni locali senza cron nativo. Non ancora
+pianificata per una versione specifica.
+### 🔧 [APERTO] Deep-link dal Piano dei Conti alla creazione del piano rate — blocco tipo e preselezione capitolo
+
+**Introdotto in beta.30.** La card "Gestione sfori budget" del pannello di dettaglio voce
+(`resources/js/components/gestionale/pianiDeiConti/conti/DettaglioConto.vue`) ora espone un link
+"Crea il piano rate" verso `piani-rate/create`, ma **solo** sulla strategia `rata_integrativa`:
+con `fondo_riserva` o `conguaglio_fine_anno` una rata non è la risposta, e il link inviterebbe a
+fare la cosa sbagliata. Il link passa `?tipo={ordinario|straordinario}&gestione_id=X`, dove il tipo
+segue il criterio di dominio consolidato (capitolo già a preventivo → ordinario; sopravvenienza /
+voce tecnica → straordinario).
+
+**Cosa manca — punto 1: il blocco delle card tipo.** La Dashboard, per lo stesso scenario, passa
+anche `origine=dashboard`, che in `resources/js/pages/gestionale/pianiRate/PianiRateNew.vue`
+(`onMounted`, ~riga 194) attiva `showBannerPreselezione` e il lock reciproco delle due card
+introdotto in beta.28. Dal Piano dei Conti quel valore **non** viene passato di proposito: sarebbe
+un dato falso (non veniamo dalla Dashboard) e mostrerebbe un banner che mente sulla provenienza.
+Conseguenza: arrivando da qui le due card restano entrambe selezionabili.
+
+*Fix proposto:* insegnare a `PianiRateNew.vue` un `origine=piano_conti`, con lo stesso lock e un
+testo di banner adeguato alla provenienza reale. La logica di lock della beta.28 va estesa, non
+duplicata: oggi è condizionata su `origine === 'dashboard'`, dovrebbe diventare "origine nota".
+Stima: ~30 minuti.
+
+*Priorità:* media, **non è un rischio per i dati**. Scegliendo il tipo sbagliato la validazione
+lato server blocca comunque il salvataggio (comportamento già descritto nel changelog beta.28):
+l'utente non corrompe nulla, ma compila l'intero form per scoprire l'errore solo alla fine. È
+quindi un problema di feedback precoce, non di integrità.
+
+**Cosa manca — punto 2: preselezione del capitolo specifico.** Oggi il deep-link preseleziona la
+*gestione*, non la voce di spesa in sforo: l'amministratore arriva sul form giusto ma deve ancora
+ritrovare a mano il capitolo da cui è partito. `PianiRateNew.vue` legge `gestione_id`, `tipo` e
+`fatture[]`, ma non un `conto_id`/`capitolo_id`.
+
+*Fix proposto:* nuovo parametro letto in `onMounted` e propagato alla selezione capitoli (che
+arriva da `FetchCapitoliPerGestioneController`, quindi la preselezione va applicata **dopo** il
+fetch asincrono, non prima — stesso ordine di problemi già risolto per `preselected_fattura_id` in
+`PagamentoNew.vue:529`, dove la preselezione vive dentro il watcher su `fornitore_id`).
+Stima: 1-2 ore.
+
+*Priorità:* bassa, pura comodità.
+
+**Precedente utile.** Il pattern "deep-link che precompila un form" è già implementato e
+funzionante per il pagamento fattura: `PagamentoFornitoreController` legge `?fattura_id=`, ne
+ricava il fornitore e `PagamentoNew.vue` spunta la pendenza con l'importo pieno. Da riusare come
+modello per entrambi i punti sopra.
+
+**Nota di contesto (beta.30).** La voce di menu "Registra pagamento" che sfrutta quel deep-link
+esisteva già nel codice ma **commentata**, e puntava a `gestionale.pagamenti.create` — rotta
+inesistente (il nome vero è `gestionale.pagamenti-fornitori.create`). Riattivarla così com'era
+avrebbe prodotto un errore di rotta: probabilmente è per questo che era stata disattivata a suo
+tempo, senza accorgersi che il resto della catena era già completo.

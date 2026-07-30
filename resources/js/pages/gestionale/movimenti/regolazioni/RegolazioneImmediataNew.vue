@@ -230,12 +230,16 @@ function onKeydown(e: KeyboardEvent) {
                              assegnato dal sistema, mai digitabile — resta previsto fino al
                              salvataggio (v. title). Stesso stile "campo disabilitato" già
                              usato sotto per Esercizio a scelta singola. -->
-                        <div class="space-y-1.5">
-                            <Label for="protocollo_previsto">Protocollo previsto</Label>
-                            <div id="protocollo_previsto"
-                                 class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                                 title="Numero previsto: diventa definitivo al salvataggio">
-                                {{ props.prossimo_protocollo }}
+                        <!-- Stessa griglia a due colonne dei campi sotto, così il campo ha
+                             la larghezza di "Esercizio" invece di occupare tutta la riga. -->
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div class="space-y-1.5">
+                                <Label for="protocollo_previsto">Protocollo previsto</Label>
+                                <div id="protocollo_previsto"
+                                     class="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                                     title="Numero previsto: diventa definitivo al salvataggio">
+                                    {{ props.prossimo_protocollo }}
+                                </div>
                             </div>
                         </div>
 

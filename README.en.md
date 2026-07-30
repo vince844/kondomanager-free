@@ -127,10 +127,21 @@ The automatic update system automatically manages the update lifecycle, ensuring
 
 Access your hosting panel (cPanel, Plesk) in the "Cron Jobs" or "Task Scheduler" section. Set execution every minute (* * * * *).
 
-**Example for MAMP local environment (Mac):**
+**Example for ServBay local environment** (from KondoManager 1.10.0 the baseline is PHP 8.4,
+not supported by MAMP's free tier — if you're migrating from MAMP, follow the
+[MAMP to ServBay migration guide](https://kondomanager.com/docs/migrazione-mamp-a-servbay.html)):
+
+*macOS — crontab (`crontab -e`):*
 ```bash
-/Applications/MAMP/bin/php/php8.2.0/bin/php yourfolder/artisan schedule:run >> /dev/null 2>&1
+/Applications/ServBay/script/alias/php yourfolder/artisan schedule:run >> /dev/null 2>&1
 ```
+
+*Windows — Task Scheduler (Windows has no crontab):* open Command Prompt, check the actual
+PHP path with `where php`, then register the task to run every minute:
+```bash
+schtasks /create /tn "KondoManager Scheduler" /tr "php C:\yourfolder\artisan schedule:run" /sc minute /mo 1
+```
+
 **Example for Shared Server (cPanel/Linux):**
 ```bash
 /usr/local/bin/php /home/yoursite/public_html/artisan schedule:run >> /dev/null 2>&1

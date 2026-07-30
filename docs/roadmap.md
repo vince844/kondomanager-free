@@ -85,6 +85,9 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
 - **Gestione Code Fallite (System Health):**
   - Pannello UI per il monitoraggio della tabella `failed_jobs` con azioni dirette per riprovare (Retry) o eliminare definitivamente (Forget) email e processi di background bloccati.
 - **Rateazione per origine e quadratura al centesimo** (vedi [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md)): rateazione per origine di addebito (es. preventivo, saldo iniziale, fondo) su scadenze multiple, quadratura al centesimo bidimensionale (per-immobile-first) e predisposizione al calcolo esatto dei subentri.
+- **Calendario rate — Fase 1: data prima scadenza** (vedi [`calendario_rate.md`](calendario_rate.md)): campo `data_prima_scadenza` esplicito sul piano, oggi cablato su `gestione.data_inizio`. Nullable = comportamento storico invariato. Include due bonifiche preesistenti dello stesso codice: il check duplicati degli eventi condòmino sensibile a `start_time` (latente solo finché le date non cambiano) e il default di `giorno_scadenza` scavalcato (`PianoRateCreatorService` passa `?? 1` e impedisce al `default(5)` del DB di applicarsi: il piano viene persistito al giorno 1 e generato al giorno 5).
+  > *Origine: tre richieste indipendenti da amministratori beta. Allinea inoltre il software alla sua stessa documentazione — `logica_piani_rate.md` e `guida_preventivi_rate_capitoli.md` descrivono da tempo un campo "data prima scadenza" che non esiste.*
+  ⚠️ **Tocca il database:** una colonna nullable su `piani_rate`, nessun backfill.
 - **Iniziativa A — Tabelle Millesimali avanzate + motore (Livello 1 + cascata)** (vedi [`tabelle_millesimali.md`](tabelle_millesimali.md)):
   - Supporto Art. 1124 c.c. (scale e ascensori)
   - Tipo `manuale` aggiunto all'enum
@@ -115,7 +118,15 @@ Include inoltre le funzionalità avanzate di pagamento originariamente previste 
 
 ---
 
-## v1.10.1 — Export SEPA
+## v1.10.1 — Export SEPA + Calendario rate
+
+**Calendario rate — Fasi 2 e 3** (vedi [`calendario_rate.md`](calendario_rate.md)). Collocate qui, e non in v1.10, perché toccano scadenzario ed eventi condòmino — superfici già stabilizzate nella 1.10 — e perché un export di incassi ricorrenti ha comunque bisogno di date correggibili: le due funzionalità si rinforzano.
+- **Calendario manuale**: modalità alternativa alla ricorrenza, con date arbitrarie per ogni rata e precompilazione dalla regola ricorrenziale (il caso reale è "mensile, ma agosto slitta a settembre"). Intervento chirurgico: il consumatore delle date è già un vettore.
+- **Modifica delle date post-generazione**: ammessa anche su rate emesse — la scadenza non entra mai nel giornale (la scrittura di emissione usa `data_registrazione`/`data_competenza`), quindi ri-datare è ri-schedulare, non stornare. Vietata sulle rate chiuse. Modalità "solo questa" / "questa e le successive".
+- Propagazione a scadenzario e task Inbox sul pattern già in uso in `FatturaPassivaService` (riallineamento `start_time`, filtro sui task non completati, log before/after).
+⚠️ **Tocca il database:** colonna `modalita_calendario` su `piani_rate`.
+
+**Export SEPA**
 
 - Generazione XML Pain.001.001.03 (standard SEPA)
 - Variante CBI italiana (Unicredit, Intesa, BPER)
@@ -451,7 +462,8 @@ Nel progetto sono presenti numerosi documenti di design e specifiche tecniche al
 - [`stampa_riparto_per_condomino.md`](stampa_riparto_per_condomino.md) — Spec estensione stampa riparto: Opzione A (PDF multi-pagina) e Opzione B (ZIP individuale) per il condòmino (v1.21).
 - [`guida_preventivi_rate_capitoli.md`](guida_preventivi_rate_capitoli.md) — Gestione del bilancio preventivo.
 - [`logica_piani_rate.md`](logica_piani_rate.md) & [`creazione_piano_rate.md`](creazione_piano_rate.md) — Gestione scadenze e generazione rate.
-- [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md) — Rateazione per origine e quadratura al centesimo (v1.10).
+- [`v1.10_rateazione_origine.md`](v1.10_rateazione_origine.md) — Rateazione per origine e quadratura al centesimo (v1.10). *Asse degli importi: **quanto** cade su ogni rata.*
+- [`calendario_rate.md`](calendario_rate.md) — Data prima scadenza, calendario manuale e modifica delle date post-generazione (v1.10 / v1.10.1). *Asse delle date: **quando** cade. Documento gemello del precedente, ortogonale.*
 - [`anagrafica-fornitore.md`](anagrafica-fornitore.md) — Specifiche del DNA Fiscale Fornitori (v1.12).
 
 ### 🛠 Strumenti, Utility e Moduli Speciali

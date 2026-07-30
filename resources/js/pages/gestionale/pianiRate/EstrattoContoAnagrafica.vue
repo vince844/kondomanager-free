@@ -12,6 +12,7 @@ import { useDateConverter } from '@/composables/useDateConverter';
 import { ArrowLeft, Printer, Mail, Wallet, ArrowDownCircle, ArrowUpCircle, Building2, Landmark,FileText, Banknote, HelpCircle, RotateCcw, CheckCircle2, AlertCircle, PieChart, Coins, Info, XCircle, ChevronDown } from 'lucide-vue-next';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import type { Building } from '@/types/buildings';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -37,6 +38,7 @@ const props = defineProps<{
 const { euro } = useCurrencyFormatter({ fromCents: false }); 
 const { toItalian } = useDateConverter();
 const { generatePath } = usePermission();
+const { urlPrecedente } = useUrlPrecedente();
 
 const goBack = () => {
     if (window.history.length > 1) window.history.back();
@@ -57,9 +59,13 @@ const formatIndirizzoImmobile = (immobile: any) => {
     return base;
 };
 
+// beta.30: leggeva `window.history.state.back`, convenzione di Vue Router che
+// Inertia v3 non popola — il ramo era sempre falso e si tornava sempre al
+// fallback. La provenienza reale ora arriva da useUrlPrecedente().
 const backUrlString = computed(() => {
-    if (typeof window !== 'undefined' && window.history.state?.back) {
-        return window.history.state.back;
+    const precedente = urlPrecedente();
+    if (precedente) {
+        return precedente;
     }
     // Fallback alla lista dei piani rate dell'esercizio corrente
     return route('admin.gestionale.esercizi.piani-rate.index', { 

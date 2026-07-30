@@ -127,10 +127,21 @@ O sistema de atualização automática gere automaticamente o ciclo de vida das 
 
 Aceda ao seu painel de alojamento (cPanel, Plesk) na secção "Cron Jobs" ou "Agendamento de Tarefas". Configure a execução a cada minuto (* * * * *).
 
-**Exemplo para ambiente local MAMP (Mac):**
+**Exemplo para ambiente local ServBay** (a partir do KondoManager 1.10.0 a base é PHP 8.4, não
+suportado pela versão gratuita do MAMP — se está a migrar do MAMP, siga o
+[guia de migração para ServBay](https://kondomanager.com/docs/migrazione-mamp-a-servbay.html)):
+
+*macOS — crontab (`crontab -e`):*
 ```bash
-/Applications/MAMP/bin/php/php8.2.0/bin/php suapasta/artisan schedule:run >> /dev/null 2>&1
+/Applications/ServBay/script/alias/php suapasta/artisan schedule:run >> /dev/null 2>&1
 ```
+
+*Windows — Agendador de Tarefas (o Windows não tem crontab):* abra o Prompt de Comando,
+verifique o caminho real do PHP com `where php`, depois registe a tarefa a cada minuto:
+```bash
+schtasks /create /tn "KondoManager Scheduler" /tr "php C:\suapasta\artisan schedule:run" /sc minute /mo 1
+```
+
 **Exemplo para Servidor Partilhado (cPanel/Linux):**
 ```bash
 /usr/local/bin/php /home/seusite/public_html/artisan schedule:run >> /dev/null 2>&1

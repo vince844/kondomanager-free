@@ -54,6 +54,10 @@ export interface Conto {
 
   // Radar Copertura & Lucchetto
   impegnato?: number
+  /** Preventivo vero, prima che il controller lo gonfi allo speso in caso di sforo. */
+  budget_originale_raw?: number
+  /** Speso reale in centesimi: fatture registrate (anche non pagate) + regolazioni immediate. */
+  speso_raw?: number
   percentuale_copertura?: number
   stato_copertura?: 'empty' | 'partial' | 'full' | 'over'
   piani_collegati?: string[]

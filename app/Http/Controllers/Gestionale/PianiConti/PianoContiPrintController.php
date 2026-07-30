@@ -9,6 +9,7 @@ use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Services\PDF\PdfService;
+use App\Support\OrdinamentoConti;
 use Illuminate\Http\Request;
 
 class PianoContiPrintController extends Controller
@@ -24,14 +25,25 @@ class PianoContiPrintController extends Controller
         PianoConto $pianoConto,
         PdfService $pdfService
     ) {
+        // Il criterio arriva dalla pagina, così la Distinta stampata rispetta l'ordine
+        // che l'amministratore vede a schermo: stamparla per nome mentre la pagina è
+        // ordinata per codice renderebbe la scelta a schermo praticamente inutile.
+        $ordina = OrdinamentoConti::criterioValido($request->query('ordina'));
+
         // Carica i conti radice (senza parent) con i sottoconti, esclusi i tecnici (sopravvenienze)
-        $conti = Conto::with(['sottoconti' => function ($q) {
-            $q->orderBy('nome');
-        }])
-        ->where('piano_conto_id', $pianoConto->id)
-        ->whereNull('parent_id')
-        ->orderBy('nome')
-        ->get();
+        $conti = Conto::with('sottoconti')
+            ->where('piano_conto_id', $pianoConto->id)
+            ->whereNull('parent_id')
+            ->get();
+
+        // Ordinamento in PHP e non in SQL: il criterio "codice" deve confrontare in
+        // modo naturale (A.2 prima di A.10) e spingere in fondo le voci senza codice,
+        // regole che un ORDER BY non esprime in modo portabile fra MySQL e SQLite.
+        $conti = OrdinamentoConti::applica($conti, $ordina);
+
+        $conti->each(function ($conto) use ($ordina) {
+            $conto->setRelation('sottoconti', OrdinamentoConti::applica($conto->sottoconti, $ordina));
+        });
 
         $totalePreventivo     = 0;
         $totaleSopravvenienze = 0;

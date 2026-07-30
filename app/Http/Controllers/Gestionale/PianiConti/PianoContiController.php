@@ -17,7 +17,8 @@ use App\Models\Tabella;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestione;
-use App\Services\Gestionale\BudgetCoverageService; 
+use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -126,8 +127,29 @@ class PianoContiController extends Controller
         }
     }
 
-    public function show(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto): Response
+    /**
+     * Concatenazione di gruppo portabile fra MySQL e SQLite.
+     *
+     * MySQL vuole `GROUP_CONCAT(col SEPARATOR ', ')`, SQLite `group_concat(col, ', ')`:
+     * la forma MySQL fa fallire la query su SQLite con «near "SEPARATOR": syntax error».
+     * Finché era hardcodata, l'intera pagina Piano dei Conti era impossibile da testare
+     * (ogni richiesta HTTP restituiva 500 nella suite, che gira su SQLite).
+     */
+    private function groupConcat(string $colonna, string $separatore): string
     {
+        $sep = "'".str_replace("'", "''", $separatore)."'";
+
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "group_concat({$colonna}, {$sep})"
+            : "GROUP_CONCAT({$colonna} SEPARATOR {$sep})";
+    }
+
+    public function show(Condominio $condominio, Esercizio $esercizio, PianoConto $pianoConto, SpesaPerVoceService $spesaPerVoce): Response
+    {
+        // Serve alla scorciatoia "crea piano rate" sulla card sforo: senza la relazione
+        // caricata, PianoDeiContiResource la omette (whenLoaded) e il link non si forma.
+        $pianoConto->loadMissing(['gestione']);
+
         $conti = Conto::with([
             'sottoconti' => function ($query) {
                 $query->with([
@@ -153,19 +175,13 @@ class PianoContiController extends Controller
             }
         }
 
-        $rawFatturato = DB::table('righe_fattura')
-            ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-            ->where('fatture_passive.esercizio_id', $esercizio->id)
-            ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-            ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
-            ->groupBy('righe_fattura.conto_id')
-            ->get();
+        // Speso reale letto dal libro giornale: include regolazioni immediate e
+        // fatture pregresse, invisibili alla vecchia query su righe_fattura.
+        // Le spese ad personam restano fuori (nascono con voce_spesa_id = null):
+        // qui la vecchia query era anche l'unica delle quattro copie a NON
+        // escluderle, quindi questa pagina le sommava allo speso comune.
+        $fatturatoMap = $spesaPerVoce->perEsercizio($esercizio);
 
-        $fatturatoMap = [];
-        foreach ($rawFatturato as $row) {
-            $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
-        }
-        
         // 4. Addebiti Personali (Widget Audit) - FIX Comproprietà
         // Leggiamo la riga fattura, raggruppando i nomi dei proprietari con GROUP_CONCAT
         $addebitiRaw = DB::table('righe_fattura')
@@ -181,7 +197,7 @@ class PianoContiController extends Controller
                 'righe_fattura.immobile_id', 
                 'immobili.nome as imm_nome', 
                 'immobili.interno as imm_int', 
-                DB::raw('GROUP_CONCAT(anagrafiche.nome SEPARATOR ", ") as ana_nome'), // Unisce Cecilia e Marta
+                DB::raw($this->groupConcat('anagrafiche.nome', ', ').' as ana_nome'), // Unisce Cecilia e Marta
                 DB::raw('(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as riga_tot')
             )
             ->groupBy(
@@ -390,25 +406,44 @@ class PianoContiController extends Controller
         ContoResource::$addebitiMap = $addebitiMap; // Passata
         ContoResource::$strategieSforoMap = $strategieSforoMap; // Passata
         ContoResource::$budgetOriginaliMap = $budgetOriginaliMap; // Passata
+        ContoResource::$spesoMap = $fatturatoMap;
         ContoResource::$pianiStraordinariMap = $pianiStraordinariMap;
 
         // --- FIX v1.9.23: TOTALI SEPARATI (Preventivo vs Sopravvenienze) ---
+        // beta.30: i totali usano il budget ORIGINALE, non `$conto->importo` — che poco
+        // sopra viene gonfiato allo speso in caso di sforo. Sommando quello, il badge
+        // "Preventivo" includeva già gli sfori e non era più un preventivo: accanto al
+        // nuovo totale Consuntivo l'incoerenza sarebbe stata evidente (due numeri che
+        // convergono man mano che si sfora, invece di divergere).
         $totalePreventivo = 0;
         $totaleSopravvenienze = 0;
+        $totaleConsuntivo = 0;
+
+        // Il budget originale vale per il PREVENTIVO. Non per le sopravvenienze: quelle
+        // nascono fuori preventivo, il loro budget originale è zero per definizione, e
+        // sommarlo darebbe un badge sempre a € 0,00 — inutile. Lì il numero che informa
+        // resta l'importo corrente, come prima di questa modifica.
+        $preventivoDi = fn ($c) => (int) ($budgetOriginaliMap[$c->id] ?? $c->importo);
+        $spesoDi = fn ($c) => (int) ($fatturatoMap[$c->id] ?? 0);
 
         foreach ($conti as $conto) {
+            $totaleConsuntivo += $spesoDi($conto);
+
             if ($conto->is_tecnico) {
-                $totaleSopravvenienze += $conto->importo;
+                $totaleSopravvenienze += (int) $conto->importo;
                 foreach ($conto->sottoconti as $sottoconto) {
-                    $totaleSopravvenienze += $sottoconto->importo;
+                    $totaleSopravvenienze += (int) $sottoconto->importo;
+                    $totaleConsuntivo += $spesoDi($sottoconto);
                 }
             } else {
-                $totalePreventivo += $conto->importo;
+                $totalePreventivo += $preventivoDi($conto);
                 foreach ($conto->sottoconti as $sottoconto) {
+                    $totaleConsuntivo += $spesoDi($sottoconto);
+
                     if ($sottoconto->is_tecnico) {
-                        $totaleSopravvenienze += $sottoconto->importo;
+                        $totaleSopravvenienze += (int) $sottoconto->importo;
                     } else {
-                        $totalePreventivo += $sottoconto->importo;
+                        $totalePreventivo += $preventivoDi($sottoconto);
                     }
                 }
             }
@@ -426,6 +461,7 @@ class PianoContiController extends Controller
             'tabelle'               => Tabella::query()->where('condominio_id', $condominio->id)->orderBy('nome')->get(['id', 'nome']),
             'totalePreventivo'      => $totalePreventivo,
             'totaleSopravvenienze'  => $totaleSopravvenienze,
+            'totaleConsuntivo'      => $totaleConsuntivo,
         ]);
     }
 

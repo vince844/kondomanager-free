@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Gestionale\PianiRate;
 use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
+use App\Models\Esercizio;
 use App\Models\Gestione;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\Log;
 
 class FetchCapitoliPerGestioneController extends Controller
 {
-    public function __invoke(Condominio $condominio, Request $request): JsonResponse
+    public function __invoke(Condominio $condominio, Request $request, SpesaPerVoceService $spesaPerVoce): JsonResponse
     {
         try {
             $request->validate([
@@ -43,24 +45,13 @@ class FetchCapitoliPerGestioneController extends Controller
             $contiById = $conti->keyBy('id');
             $allContiIds = $conti->pluck('id')->toArray();
 
-            // --- AGGIUNTO IL FILTRO SALVA-VITA SULLE SPESE PERSONALI ---
-            $rawFatturato = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.esercizio_id', $esercizioId) 
-                ->whereIn('righe_fattura.conto_id', $allContiIds)
-                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id') // Esclude le righe ad personam
-                ->select(
-                    'righe_fattura.conto_id', 
-                    DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
-                )
-                ->groupBy('righe_fattura.conto_id')
-                ->get();
-
-            $fatturatoMap = [];
-            foreach ($rawFatturato as $row) {
-                $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
-            }
+            // Speso reale letto dal libro giornale: include regolazioni immediate e
+            // fatture pregresse. Le spese ad personam restano fuori da sé (nascono
+            // con voce_spesa_id = null), il filtro esplicito non serve più.
+            $fatturatoMap = $spesaPerVoce->perEsercizio(
+                Esercizio::findOrFail($esercizioId),
+                $allContiIds
+            );
 
             $rawImpegni = DB::table('piano_rate_capitoli')
                 ->join('piani_rate', 'piano_rate_capitoli.piano_rate_id', '=', 'piani_rate.id')

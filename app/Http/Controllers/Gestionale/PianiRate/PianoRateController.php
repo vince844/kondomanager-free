@@ -23,6 +23,7 @@ use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\PianoRateCreatorService;
 use App\Services\PianoRateQuoteService;
 use App\Traits\HandleFlashMessages;
@@ -282,15 +283,10 @@ class PianoRateController extends Controller
                     }
                 } else {
                     // Logica intelligenza sui deficit (preservata)
-                    $rawFatturato = DB::table('righe_fattura')
-                        ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                        ->where('fatture_passive.esercizio_id', $esercizio->id)
-                        ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                        ->whereNull('righe_fattura.immobile_id')
-                        ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
-                        ->groupBy('righe_fattura.conto_id')->get();
-                    $fatturatoMap = $rawFatturato->pluck('totale', 'conto_id')->toArray();
-                    
+                    // Speso reale dal libro giornale: include regolazioni immediate
+                    // e fatture pregresse, e scarta da sé le spese ad personam.
+                    $fatturatoMap = app(SpesaPerVoceService::class)->perEsercizio($esercizio);
+
                     $fattureSforo = DB::table('righe_fattura')
                         ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                         ->where('fatture_passive.esercizio_id', $esercizio->id)
@@ -474,16 +470,10 @@ class PianoRateController extends Controller
             $coverageService = app(BudgetCoverageService::class);
             
             // 1. Recupero Veloce Fatturato e Virtuale
-            $rawFatturato = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id')
-                ->select('righe_fattura.conto_id', DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale'))
-                ->groupBy('righe_fattura.conto_id')->get();
-                
-            $fatturatoMap = $rawFatturato->pluck('totale', 'conto_id')->toArray();
-            
+            // Speso reale dal libro giornale: include regolazioni immediate e
+            // fatture pregresse, e scarta da sé le spese ad personam.
+            $fatturatoMap = app(SpesaPerVoceService::class)->perEsercizio($esercizio);
+
             $fattureSforo = DB::table('righe_fattura')
                 ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
                 ->where('fatture_passive.esercizio_id', $esercizio->id)

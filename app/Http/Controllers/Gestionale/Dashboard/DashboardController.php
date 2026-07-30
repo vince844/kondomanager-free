@@ -10,6 +10,7 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Services\Dashboard\Widgets\CreditiDaCompensareWidget;
@@ -23,7 +24,7 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget): Response
     {
         $widgetManager->registerMany([$treasuryWidget, $creditiWidget]);
 
@@ -40,23 +41,10 @@ class DashboardController extends Controller
             $totBudgetPuro = 0;
             $vociScoperte = [];
 
-            // --- 1. Recupero Fatturato Reale dell'esercizio (SOLO SPESE COMUNI) ---
-            $rawFatturato = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
-                ->whereNull('righe_fattura.immobile_id') // Esclude le spese ad personam
-                ->select(
-                    'righe_fattura.conto_id', 
-                    DB::raw('SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale')
-                )
-                ->groupBy('righe_fattura.conto_id')
-                ->get();
-
-            $fatturatoMap = [];
-            foreach ($rawFatturato as $row) {
-                $fatturatoMap[(int)$row->conto_id] = (int)$row->totale;
-            }
+            // --- 1. Speso reale dell'esercizio (SOLO SPESE COMUNI) ---
+            // Letto dal libro giornale: include anche regolazioni immediate e
+            // fatture pregresse, invisibili alla vecchia query su righe_fattura.
+            $fatturatoMap = $spesaPerVoce->perEsercizio($esercizio);
 
             // --- NUOVO: Recupero spese ad personam totali ---
             // Nelle righe_fattura il false in MySQL spesso è salvato come 0.

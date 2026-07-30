@@ -24,6 +24,8 @@ interface Props {
   conto: Conto | null
   condominioId: number
   esercizioId: number
+  /** Gestione del piano dei conti: serve alla scorciatoia "crea piano rate". */
+  gestioneId?: number | null
 }
 
 interface Emits {
@@ -38,6 +40,23 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 const { euro } = useCurrencyFormatter()
+
+// Scorciatoia dallo sforo alla creazione del piano rate, con gestione già scelta e
+// tipo corretto: ordinario se il capitolo era già a preventivo, straordinario per le
+// sopravvenienze (il criterio è come è nata la spesa, non la sua importanza).
+//
+// Non passiamo `origine=dashboard` come fa la Dashboard: quel valore fa comparire un
+// banner «arrivi dalla Dashboard» e blocca le card, e qui sarebbe un dato falso.
+// Conseguenza: le due card restano entrambe selezionabili. Se volessimo il blocco
+// anche da qui servirebbe insegnare a PianiRateNew.vue un `origine=piano_conti`.
+const linkPianoRate = computed(() => {
+  if (!props.conto || !props.gestioneId) return null
+
+  const tipo = props.conto.is_tecnico ? 'straordinario' : 'ordinario'
+
+  return `/admin/gestionale/${props.condominioId}/esercizi/${props.esercizioId}/piani-rate/create`
+    + `?tipo=${tipo}&gestione_id=${props.gestioneId}`
+})
 
 const aggiungiTabella  = () => { if (props.conto) emit('aggiungi-tabella', props.conto) }
 const modificaTabella  = (tabella: TabellaAssociata) => { if (props.conto) emit('modifica-tabella', { conto: props.conto, tabella }) }
@@ -166,7 +185,7 @@ const statusColorClass = computed(() => {
                 <CheckCircle  v-if="props.conto.stato_copertura === 'full'"      class="w-3.5 h-3.5" />
                 <AlertCircle  v-else-if="props.conto.stato_copertura === 'over'" class="w-3.5 h-3.5" />
                 <CircleDashed v-else class="w-3.5 h-3.5" />
-                Copertura {{ props.conto.percentuale_copertura }}%
+                Coperto da piano rate {{ props.conto.percentuale_copertura }}%
               </Badge>
             </div>
           </div>
@@ -218,14 +237,14 @@ const statusColorClass = computed(() => {
       <Card v-if="!isCapitolo(props.conto) && props.conto.importo_raw" class="mt-3">
         <CardHeader class="p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
-            <PieChart class="w-4 h-4 text-indigo-600" /> Analisi copertura
+            <PieChart class="w-4 h-4 text-indigo-600" /> Copertura da piano rate
           </CardTitle>
         </CardHeader>
         <CardContent class="p-3 space-y-6">
           <div>
             <div class="space-y-2 mb-4">
               <div class="flex justify-between text-sm">
-                <span class="font-medium text-muted-foreground">Impegnato / Preventivato</span>
+                <span class="font-medium text-muted-foreground">Coperto da piano rate / Preventivato</span>
                 <span class="font-bold">
                   {{ euro(props.conto.impegnato || 0) }}
                   <span class="text-muted-foreground font-normal">/ {{ props.conto.importo }}</span>
@@ -238,6 +257,10 @@ const statusColorClass = computed(() => {
                   :style="{ width: `${Math.min(props.conto.percentuale_copertura || 0, 100)}%` }"
                 ></div>
               </div>
+              <p class="text-xs text-muted-foreground leading-relaxed pt-1">
+                Quota del preventivo già inserita in un piano rate emesso ai condòmini.
+                Non indica la spesa realmente sostenuta o pagata ai fornitori.
+              </p>
             </div>
             <div class="flex flex-wrap items-center gap-3 px-1">
               <div class="flex items-center gap-1.5">
@@ -417,11 +440,27 @@ const statusColorClass = computed(() => {
                   }">
                 <div class="flex-1 min-w-0 pr-3">
                   <div class="flex items-center gap-2 mb-1.5">
+                    <!-- Un ramo esplicito per ogni strategia di rientro. Prima l'ultima
+                         era un `v-else` generico: qualunque valore nuovo o inatteso
+                         sarebbe finito etichettato come rata integrativa. -->
                     <Badge v-if="sforo.strategia === 'fondo_riserva'" class="text-[9px] rounded-md font-black bg-emerald-600 text-white uppercase border-transparent">Coperto da Fondo</Badge>
                     <Badge v-else-if="sforo.strategia === 'conguaglio_fine_anno'" class="text-[9px] rounded-md font-black bg-indigo-600 text-white uppercase border-transparent">A Consuntivo</Badge>
-                    <Badge v-else class="text-[9px] font-black bg-amber-600 text-white uppercase rounded-md border-transparent">Richiede Rate</Badge>
+                    <Badge v-else-if="sforo.strategia === 'rata_integrativa'" class="text-[9px] font-black bg-amber-600 text-white uppercase rounded-md border-transparent">Da coprire con rata integrativa</Badge>
+                    <Badge v-else class="text-[9px] font-black bg-slate-500 text-white uppercase rounded-md border-transparent">Copertura da definire</Badge>
                   </div>
                   <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">{{ sforo.motivazione }}</p>
+
+                  <!-- Solo per la rata integrativa: con la copertura da fondo o a
+                       consuntivo una rata non è la risposta, e il link sarebbe un
+                       invito a fare la cosa sbagliata. -->
+                  <Link
+                    v-if="sforo.strategia === 'rata_integrativa' && linkPianoRate"
+                    :href="linkPianoRate"
+                    class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:text-amber-800 hover:underline"
+                  >
+                    Crea il piano rate
+                    <ArrowRight class="w-3 h-3" />
+                  </Link>
                 </div>
                 <div class="shrink-0 text-right self-center">
                   <span class="text-sm font-black" :class="sforo.strategia === 'fondo_riserva' ? 'text-emerald-600' : 'text-indigo-600'">
@@ -436,19 +475,6 @@ const statusColorClass = computed(() => {
 
       <!-- ===== RIPARTIZIONE ORDINARIA ===== -->
       <Card v-if="!isCapitolo(props.conto)">
-
-        <!-- BANNER LOCK: piano approvato con rate emesse -->
-        <div
-          v-if="props.conto.has_rate_emesse"
-          class="mx-3 mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50/70 text-sm"
-        >
-          <Lock class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-          <p class="text-amber-800 text-xs leading-relaxed">
-            <span class="font-bold">Ripartizione bloccata.</span>
-            Questa voce è inclusa in un piano rate approvato o con rate già emesse.
-            Per modificare le tabelle è necessario prima annullare il piano rate associato.
-          </p>
-        </div>
 
         <CardHeader class="flex flex-row items-center justify-between space-y-0 p-3 border-b bg-indigo-50/30 dark:bg-indigo-900/10 border-indigo-100/50 dark:border-indigo-900/50">
           <CardTitle class="text-sm font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
@@ -501,6 +527,22 @@ const statusColorClass = computed(() => {
             </TooltipProvider>
           </div>
         </CardHeader>
+
+        <!-- BANNER LOCK: piano approvato con rate emesse.
+             Sta DENTRO la sezione, sotto la sua intestazione: spiega perché è
+             bloccata questa ripartizione, non è un avviso di pagina. Sopra
+             l'header sembrava riferirsi a tutto il pannello. -->
+        <div
+          v-if="props.conto.has_rate_emesse"
+          class="mx-3 mt-3 flex items-start gap-2.5 px-3 py-2.5 rounded-lg border border-amber-200 bg-amber-50/70 text-sm"
+        >
+          <Lock class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+          <p class="text-amber-800 text-xs leading-relaxed">
+            <span class="font-bold">Ripartizione bloccata.</span>
+            Questa voce è inclusa in un piano rate approvato o con rate già emesse.
+            Per modificare le tabelle è necessario prima annullare il piano rate associato.
+          </p>
+        </div>
 
         <CardContent class="p-2">
           <div v-if="getTabelleAssociate().length === 0" class="text-center py-6 text-muted-foreground border border-dashed rounded-md">

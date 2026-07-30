@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue'
 import { usePermission } from '@/composables/permissions'
 import { Button } from '@/components/ui/button'
-import { Plus, AlertTriangle, Wallet, FolderTree, Settings2, Calculator, Lock, Printer, ChevronDown } from 'lucide-vue-next'
+import { Plus, AlertTriangle, Wallet, Receipt, FolderTree, Settings2, Calculator, Lock, Printer, ChevronDown } from 'lucide-vue-next'
 import Alert from "@/components/Alert.vue";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -14,6 +14,7 @@ import OperazioniContiGuide from '@/components/guides/OperazioniContiGuide.vue';
 import ModalNuovoConto from '@/components/gestionale/pianiDeiConti/conti/ModalNuovoConto.vue'
 import ModalModificaConto from '@/components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue'
 import AlberoDeiConti from '@/components/gestionale/pianiDeiConti/conti/AlberoDeiConti.vue'
+import MovimentiVoceDialog from '@/components/gestionale/pianiDeiConti/conti/MovimentiVoceDialog.vue'
 import DettaglioConto from '@/components/gestionale/pianiDeiConti/conti/DettaglioConto.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ModalAssociaTabella from '@/components/gestionale/pianiDeiConti/conti/ModalAssociaTabella.vue'
@@ -44,6 +45,7 @@ const props = defineProps<{
   tabelle: Array<{ id: number, nome: string }>
   totalePreventivo: number
   totaleSopravvenienze: number
+  totaleConsuntivo: number
 }>()
 
 const { generatePath } = usePermission()
@@ -52,6 +54,13 @@ const showModalEdit             = ref(false)
 const showModalDelete           = ref(false)
 const contoSelezionato          = ref<Conto | null>(null)
 const contoDaEliminare          = ref<Conto | null>(null)
+const showModalMovimenti        = ref(false)
+const contoMovimenti            = ref<Conto | null>(null)
+
+const apriMovimenti = (conto: Conto) => {
+  contoMovimenti.value = conto
+  showModalMovimenti.value = true
+}
 const tabellaDaRimuovere        = ref<number | null>(null)
 const showModalAssociaTabella   = ref(false)
 const showModalRimuoviTabella   = ref(false)
@@ -93,8 +102,8 @@ const pageGuides = [
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Monitoraggio Preventivo',
-    description: 'Tieni d\'occhio il totale preventivato per assicurarti che il budget assegnato sia sempre sotto controllo.',
+    title: 'Preventivo e Consuntivo',
+    description: 'Per ogni voce vedi quanto avevi previsto e quanto hai speso davvero. Clicca il consuntivo per scoprire da quali movimenti nasce.',
     icon: Calculator,
     colorVariant: 'amber' as const
   }
@@ -152,6 +161,39 @@ const onChiudiModalAssociaTabella = (val: boolean) => {
   showModalAssociaTabella.value = val
   if (!val) tabellaDaModificare.value = null
 }
+
+// Ordinamento dell'elenco. Il default resta "nome", cioè il comportamento storico:
+// il codice è un campo nullable e senza formato imposto, quindi renderlo criterio
+// unico romperebbe l'elenco a chi non lo compila. La scelta è una preferenza di
+// visualizzazione e vive nel browser, per condominio — non serve un campo in
+// database né una voce nelle impostazioni.
+type CriterioOrdinamento = 'nome' | 'codice'
+
+const chiaveOrdinamento = `km.ordinamento-conti.${props.condominio.id}`;
+
+const ordinamento = ref<CriterioOrdinamento>(
+  (typeof window !== 'undefined' && window.localStorage.getItem(chiaveOrdinamento) === 'codice')
+    ? 'codice'
+    : 'nome'
+)
+
+const impostaOrdinamento = (criterio: CriterioOrdinamento) => {
+  ordinamento.value = criterio
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(chiaveOrdinamento, criterio)
+  }
+}
+
+// Quante voci hanno davvero un codice: senza nessuna, offrire l'ordinamento per
+// codice sarebbe un pulsante che non fa nulla di visibile.
+const vociConCodice = computed(() => {
+  const conta = (elenco: Conto[]): number => elenco.reduce((tot, c) => {
+    const suo = (c.codice ?? '').trim() !== '' ? 1 : 0
+    return tot + suo + (c.sottoconti?.length ? conta(c.sottoconti) : 0)
+  }, 0)
+
+  return conta(props.conti)
+})
 
 const contiPreventivo = computed(() => props.conti.filter(c => !c.is_tecnico))
 const contiTecnici    = computed(() => props.conti.filter(c => c.is_tecnico))
@@ -251,7 +293,8 @@ const printDistinta = () => {
   window.open(route('admin.gestionale.esercizi.piani-conti.print-distinta', {
     condominio: props.condominio.id,
     esercizio: props.esercizio.id,
-    pianoConto: props.pianoConti.id
+    pianoConto: props.pianoConti.id,
+    ordina: ordinamento.value
   }), '_blank');
 }
 
@@ -337,9 +380,11 @@ const printRiparto = () => {
 
             <!-- ELENCO CONTI -->
             <div class="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+              <!-- Titolo e totali su righe separate: affiancati, con tre badge, il
+                   titolo andava a capo e i numeri si accalcavano nel pannello stretto. -->
+              <div class="p-4 border-b border-gray-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Elenco conti e sottoconti</h3>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2 mt-3">
                   <span v-if="contiTecnici.length > 0"
                         class="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
                     <AlertTriangle class="w-3 h-3" />
@@ -349,7 +394,37 @@ const printRiparto = () => {
                     <Wallet class="w-3 h-3" />
                     Preventivo: {{ euro(props.totalePreventivo) }}
                   </span>
+                  <span class="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold px-2 py-1 rounded-md flex items-center gap-1 shadow-sm">
+                    <Receipt class="w-3 h-3" />
+                    Consuntivo: {{ euro(props.totaleConsuntivo) }}
+                  </span>
                 </div>
+              </div>
+
+              <div class="flex items-center px-5 py-1.5 bg-slate-50/70 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800">
+                <span class="flex-1 text-[9px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                  Voce di spesa
+                  <!-- Il selettore compare solo se almeno una voce ha un codice:
+                       altrove sarebbe un pulsante che non cambia nulla di visibile. -->
+                  <span v-if="vociConCodice > 0" class="flex items-center rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden normal-case tracking-normal">
+                    <button
+                      type="button"
+                      class="px-1.5 py-0.5 text-[9px] font-semibold transition-colors"
+                      :class="ordinamento === 'nome' ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                      title="Ordina per nome"
+                      @click="impostaOrdinamento('nome')"
+                    >Nome</button>
+                    <button
+                      type="button"
+                      class="px-1.5 py-0.5 text-[9px] font-semibold transition-colors"
+                      :class="ordinamento === 'codice' ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'"
+                      title="Ordina per codice — le voci senza codice vanno in fondo"
+                      @click="impostaOrdinamento('codice')"
+                    >Codice</button>
+                  </span>
+                </span>
+                <span class="w-24 text-right text-[9px] font-semibold uppercase tracking-wider text-slate-400">Preventivo</span>
+                <span class="w-24 text-right text-[9px] font-semibold uppercase tracking-wider text-slate-400 ml-1.5">Consuntivo</span>
               </div>
 
               <div class="pl-2 pt-4 pr-2 max-h-[600px] overflow-y-auto">
@@ -362,7 +437,9 @@ const printRiparto = () => {
                     <AlberoDeiConti
                       :conti="contiPreventivo"
                       :selected-id="contoSelezionato?.id"
+                      :ordinamento="ordinamento"
                       @seleziona="selezionaConto"
+                      @apri-movimenti="apriMovimenti"
                     />
                   </div>
                 </div>
@@ -377,7 +454,9 @@ const printRiparto = () => {
                     <AlberoDeiConti
                       :conti="contiTecnici"
                       :selected-id="contoSelezionato?.id"
+                      :ordinamento="ordinamento"
                       @seleziona="selezionaConto"
+                      @apri-movimenti="apriMovimenti"
                     />
                   </div>
                 </div>
@@ -394,6 +473,7 @@ const printRiparto = () => {
                   :conto="contoSelezionato"
                   :condominio-id="props.condominio.id"
                   :esercizio-id="props.esercizio.id"
+                  :gestione-id="props.pianoConti.gestione?.id ?? null"
                   @elimina="confermaEliminazione"
                   @modifica="modificaConto"
                   @aggiungi-tabella="onAggiungiTabella"
@@ -460,6 +540,13 @@ const printRiparto = () => {
       variant="destructive"
       @confirm="eliminaConto"
       @cancel="annullaEliminazione"
+    />
+
+    <MovimentiVoceDialog
+      v-model:open="showModalMovimenti"
+      :conto="contoMovimenti"
+      :condominio-id="props.condominio.id"
+      :esercizio-id="props.esercizio.id"
     />
 
   </GestionaleLayout>

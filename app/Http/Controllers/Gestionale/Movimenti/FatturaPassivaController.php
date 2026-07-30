@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
 use App\Enums\StatoPagamentoFattura;
+use App\Enums\TipoMovimentoContabile;
 use App\Exceptions\Pagamenti\FatturaModificaVietataException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\StoreFatturaRequest;
@@ -23,6 +24,7 @@ use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Services\Gestionale\FatturaPassivaService;
 use App\Services\Gestionale\PagamentoFornitoreService;
+use App\Services\Gestionale\SpesaPerVoceService;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -53,7 +55,10 @@ class FatturaPassivaController extends Controller
      *
      * @param  FatturaPassivaService  $service  Il servizio che contiene la logica di business e la partita doppia.
      */
-    public function __construct(private FatturaPassivaService $service) {}
+    public function __construct(
+        private FatturaPassivaService $service,
+        private SpesaPerVoceService $spesaPerVoce,
+    ) {}
 
     /**
      * Mostra l'elenco delle fatture passive del condominio selezionato.
@@ -83,6 +88,20 @@ class FatturaPassivaController extends Controller
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
 
+        // beta.30 — ponte verso il Libro Giornale. Una Regolazione Immediata non crea
+        // mai una riga in `fatture_passive`, quindi in questa pagina non comparirà mai:
+        // è corretto, ma il pulsante per crearle sta proprio in questa toolbar, e chi
+        // le registra da qui poi non le ritrova da qui («ho fatto 2 registrazioni ma non
+        // si trovano da nessuna parte» — segnalazione di un amministratore in beta.29).
+        // Stesse condizioni della query del Libro Giornale, così il numero mostrato
+        // coincide con quello che si trova cliccando.
+        $regolazioniImmediate = $esercizio
+            ? ScritturaContabile::where('condominio_id', $condominio->id)
+                ->where('esercizio_id', $esercizio->id)
+                ->where('tipo_movimento', TipoMovimentoContabile::REGOLAZIONE_IMMEDIATA)
+                ->count()
+            : 0;
+
         $stats = [
             'totale_aperte' => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_pagamento', StatoPagamentoFattura::APERTA)->count(),
             'totale_sfori' => FatturaPassiva::where('condominio_id', $condominio->id)->where('stato_approvazione', 'sforo_motivato')->count(),
@@ -93,6 +112,7 @@ class FatturaPassivaController extends Controller
             'condominio' => $condominio,
             'fatture' => $fatture,
             'stats' => $stats,
+            'regolazioniImmediate' => $regolazioniImmediate,
             'esercizio' => $esercizio,
             'condomini' => $listaCondomini,
             'statiPagamento' => collect(StatoPagamentoFattura::cases())->map(fn ($c) => [
@@ -560,15 +580,19 @@ class FatturaPassivaController extends Controller
                 ->get()
                 ->groupBy('conto_id');
 
-            $spesePerConto = DB::table('righe_fattura')
-                ->join('fatture_passive', 'righe_fattura.fattura_passiva_id', '=', 'fatture_passive.id')
-                ->where('fatture_passive.condominio_id', $condominio->id)
-                ->where('fatture_passive.esercizio_id', $esercizio->id)
-                ->where('fatture_passive.is_pregresso', false)
-                ->when($escludiFattura, fn ($q) => $q->where('righe_fattura.fattura_passiva_id', '!=', $escludiFattura->id))
-                ->groupBy('righe_fattura.conto_id')
-                ->selectRaw('righe_fattura.conto_id, SUM(righe_fattura.importo_imponibile + righe_fattura.importo_iva) as totale_spesa')
-                ->pluck('totale_spesa', 'righe_fattura.conto_id');
+            // beta.30: lo speso che alimenta `residuo_budget` e l'avviso di sforo arriva
+            // ora dal libro giornale, non da `righe_fattura`. Motivo: una REGOLAZIONE
+            // IMMEDIATA non crea righe fattura, quindi il residuo risultava più capiente
+            // del reale e l'avviso non scattava — mentre la Dashboard, che legge dalla
+            // stessa fonte nuova, lo segnalava. Due schermate dello stesso flusso che si
+            // contraddicevano.
+            //
+            // Il filtro `is_pregresso = false` non serve più: una fattura pregressa non
+            // scrive mai su un capitolo di budget (la parte coperta va su passate_gestioni
+            // senza voce_spesa_id, l'eccedenza sulla voce sopravvenienza designata).
+            $spesePerConto = collect(
+                $this->spesaPerVoce->perEsercizio($esercizio, null, $escludiFattura?->id)
+            );
         }
 
         // --- DATI PER IL WIDGET DOUBLE LOCK ---

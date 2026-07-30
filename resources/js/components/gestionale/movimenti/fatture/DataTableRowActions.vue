@@ -21,6 +21,24 @@ const isModificabile = computed(() =>
   props.fattura.stato_approvazione !== 'sforo_motivato'
 );
 
+// Solo una fattura APPROVATA è pagabile: PagamentoFornitoreService (riga ~1060)
+// respinge con FatturaNonApprovataException qualunque altro stato di approvazione.
+// Non riguarda quindi solo lo sforo da ratificare — vale anche per "da approvare" e
+// "contestata". Senza questo filtro l'azione portava a un vicolo cieco: il form si
+// apriva ma la fattura vi risultava non selezionabile, e l'utente non capiva perché.
+// Il menu offre già l'azione giusta per lo sforo ("Ratifica assembleare"), quindi
+// nascondere quella sbagliata non lascia l'utente senza strada.
+//
+// Il gate è una scelta di flusso deliberata, non un blocco da aggirare:
+// vedi docs/note_tecniche_e_decisioni.md — «Bug 5 — sforo_motivato "blocca" il
+// pagamento (art. 1135 c.c.)».
+const isPagabile = computed(() =>
+  props.fattura.stato_approvazione === 'approvata' &&
+  props.fattura.stato_pagamento !== 'pagata' &&
+  props.fattura.stato_pagamento !== 'stornata' &&
+  !props.fattura.dati_extra?.is_stornata
+);
+
 // Lo storno è ammesso solo su una fattura senza pagamenti vivi: il denaro già
 // uscito va rimesso a posto per primo, altrimenti resterebbe un'uscita di cassa
 // senza un debito che la giustifichi. Stessa regola della guardia server, esposta
@@ -165,14 +183,21 @@ const downloadPdf = () => {
         <Edit class="w-4 h-4 mr-2" /> Modifica
       </DropdownMenuItem>
       
-     <!--  <DropdownMenuItem 
-        v-if="fattura.stato_pagamento !== 'pagata' && fattura.stato_pagamento !== 'stornata' && !fattura.dati_extra?.is_stornata"
-        @click="router.visit(route(generateRoute('gestionale.pagamenti.create'), { condominio: condominioId, fattura_id: fattura.id }))"
+      <!-- Scorciatoia al pagamento con la fattura già scelta: il controller legge
+           `fattura_id`, la preseleziona e ne ricava il fornitore, quindi il form si
+           apre pronto invece di far ricercare a mano la fattura appena vista.
+           Era già scritta e commentata, ma puntava a `gestionale.pagamenti.create`,
+           rotta che non esiste (il nome vero è `gestionale.pagamenti-fornitori.create`):
+           riattivarla così com'era avrebbe dato errore.
+           "Registra pagamento" e non "Paga": il programma annota un pagamento, non lo
+           esegue — la banca resta fuori. -->
+      <DropdownMenuItem
+        v-if="isPagabile"
+        @click="router.visit(route(generateRoute('gestionale.pagamenti-fornitori.create'), { condominio: condominioId, fattura_id: fattura.id }))"
         class="text-blue-600 focus:text-blue-700 focus:bg-blue-50 font-medium cursor-pointer"
       >
-        <CreditCard class="w-4 h-4 mr-2" /> Ordina bonifico
+        <CreditCard class="w-4 h-4 mr-2" /> Registra pagamento
       </DropdownMenuItem>
- -->
       <!-- Ratifica Assembleare: visibile solo per fatture in sforo_motivato -->
       <DropdownMenuItem
         v-if="fattura.stato_approvazione === 'sforo_motivato'"
