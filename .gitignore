@@ -23,8 +23,15 @@ yarn-error.log
 /.vscode
 /.zed
 .DS_Store
-/docs/treasury_guardian_report_page.md
-/docs/plugin_backup_roadmap.md
-/docs/design/restyling_2.0_mockups.html
-/docs/design/restyling_2.0_direzione_design.md
-/docs/fondo_accantonato_e_quadratura_sp.md
+
+# ─── Documentazione interna ──────────────────────────────────────────────────
+# Regola INVERTITA: tutto ciò che sta in docs/ è privato, tranne quello che serve
+# a chi installa e usa KondoManager. Così un documento nuovo nasce privato senza
+# doversi ricordare di aggiungerlo qui — che è il modo in cui, con una lista di
+# esclusioni, prima o poi qualcosa finisce pubblicato per distrazione.
+# I file restano sul disco: sono solo esclusi dal repository.
+docs/*
+!docs/changelog.md
+!docs/docker_local_dev.*.md
+!docs/synology_nas_install.*.md
+!docs/plesk_cronjob_guide.md
