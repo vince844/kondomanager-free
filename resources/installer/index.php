@@ -38,6 +38,63 @@ ini_set('display_errors', 0);
 ini_set('memory_limit', '512M');
 
 // ============================================================================
+// 1-bis. IDENTITÀ VISIVA
+// Stesso linguaggio del setup standalone (fondo scuro, card bianca, logo Km):
+// per l'amministratore che aggiorna sono lo stesso strumento, e finché il
+// bridge aveva un suo gradiente viola sembravano due prodotti diversi.
+// Foglio unico condiviso dalle tre schermate (errore bridge, avvio, avanzamento).
+// ============================================================================
+
+$logo = <<<SVG
+<svg class="logo-svg" viewBox="0 0 16 16">
+    <circle cx="8" cy="8" r="8" fill="#030712"/>
+    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="8" fill="white" font-weight="bold">Km</text>
+</svg>
+SVG;
+
+$footer = <<<HTML
+<p class="powered-footer">
+    Powered by <a href="https://www.kondomanager.com" target="_blank" rel="noopener noreferrer">Kondomanager</a>
+    &mdash;
+    <a href="https://github.com/vince844/kondomanager-free" target="_blank" rel="noopener noreferrer">Software Open Source (AGPL-3.0) per la gestione condominiale</a>
+</p>
+HTML;
+
+$css = <<<CSS
+:root { --primary: #030712; --danger: #dc2626; --success: #22c55e; --warning: #f59e0b; --info: #3b82f6; --bg: #030712; --card: #ffffff; --text: #374151; }
+body { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; margin: 0; }
+.installer-card { background: var(--card); width: 100%; max-width: 600px; padding: 2.5rem; border-radius: 16px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.3); border: 1px solid #e5e7eb; }
+.header { text-align: center; margin-bottom: 2rem; }
+.logo-svg { width: 3.5rem; height: 3.5rem; margin-bottom: 1rem; }
+h1 { font-size: 1.5rem; font-weight: 700; color: #030712; margin: 0 0 0.5rem 0; }
+.tagline { color: #6b7280; font-size: 0.95rem; line-height: 1.5; margin: 0; }
+.intro-text { color: #6b7280; font-size: .85rem; line-height: 1.6; margin-top: .75rem; padding-top: .75rem; border-top: 1px solid #f3f4f6; }
+.update-alert { background: #eff6ff; border-left: 3px solid var(--info); color: #1e40af; padding: 0.75rem; font-size: 0.85rem; margin-bottom: 1.5rem; border-radius: 6px; }
+.error-alert { background: #fef2f2; border-left: 3px solid var(--danger); color: #b91c1c; padding: 0.75rem; font-size: 0.85rem; margin-bottom: 1.5rem; border-radius: 6px; }
+.progress-container { margin: 2rem 0; }
+.progress-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; }
+.progress-track { background: #f3f4f6; height: 10px; border-radius: 10px; overflow: hidden; }
+.progress-fill { background: #34d399; height: 100%; width: 0%; transition: width 0.4s ease; }
+.progress-fill.error { background: #dc2626; }
+.log-window { background: #111827; color: #e5e7eb; padding: 1rem; border-radius: 12px; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; border: 1px solid #1f2937; }
+.log-entry { margin-bottom: 4px; display: flex; gap: 8px; }
+.icon-ok { color: #4ade80; } .icon-err { color: #f87171; }
+.btn { display: flex; width: 100%; justify-content: center; padding: 1rem; background: #1f2937; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+.btn:disabled { background: #d1d5db !important; color: #9ca3af !important; cursor: not-allowed !important; opacity: 1; }
+.btn:hover:not(:disabled) { background: #030712; }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+a { color: #3b82f6; text-decoration: none; font-weight: bold; }
+a:hover { text-decoration: underline; }
+.code { background: #f3f4f6; padding: 2px 8px; border-radius: 6px; font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85em; color: #1f2937; font-weight: 600; }
+.hint { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px 14px; margin-top: 1.25rem; text-align: left; }
+.hint strong { color: #075985; font-size: .9rem; }
+.hint p { color: #0c4a6e; font-size: 13px; line-height: 1.6; margin: 6px 0 0; }
+.powered-footer { text-align: center; color: #9ca3af; font-size: .75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #f3f4f6; margin-bottom: 0; }
+.powered-footer a { color: #6b7280; font-weight: 600; text-decoration: none; }
+.powered-footer a:hover { color: var(--primary); text-decoration: underline; }
+CSS;
+
+// ============================================================================
 // 2. BRIDGE VALIDATION (CRITICAL)
 // ============================================================================
 
@@ -51,36 +108,46 @@ $bridgeFile = __DIR__ . '/update_bridge.json';
 if (!file_exists($bridgeFile)) {
     logTech("FATAL: Bridge file missing - cannot proceed");
     http_response_code(503);
-    die("
+    die(<<<HTML
     <!DOCTYPE html>
-    <html lang=\"it\">
+    <html lang="it">
     <head>
-        <meta charset=\"UTF-8\">
-        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-        <title>KondoManager - Bridge required</title>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-            .container { background: white; border-radius: 16px; padding: 40px; max-width: 500px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; }
-            h1 { color: #1f2937; margin: 0 0 16px; font-size: 24px; }
-            p { color: #6b7280; line-height: 1.6; margin: 0 0 12px; }
-            .icon { font-size: 64px; margin-bottom: 20px; }
-            a { color: #3b82f6; text-decoration: none; font-weight: 600; }
-            .code { background: #f3f4f6; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 14px; color: #1f2937; }
-        </style>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>KondoManager &mdash; Motore di aggiornamento</title>
+        <style>{$css}</style>
     </head>
     <body>
-        <div class=\"container\">
-            <div class=\"icon\">⚙️</div>
-            <h1>Auto-Update engine</h1>
-            <p><strong>Questo file funziona solo in modalità aggiornamento automatico.</strong></p>
-            <p class=\"code\">update_bridge.json</p>
-            <p>File mancante. Avvia l'aggiornamento dalla <a href=\"/system/upgrade\">dashboard di Kondomanager</a></p>
-            <hr style=\"border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;\">
-            <p style=\"font-size: 14px; color: #9ca3af;\">Per installazioni nuove, usa il file standalone di setup che puoi scaricare dal sito ufficiale di Kondomanager.</p>
+        <div class="installer-card">
+            <div class="header">
+                {$logo}
+                <h1>Motore di aggiornamento</h1>
+                <p class="tagline">Questo file funziona solo in modalità aggiornamento automatico.</p>
+            </div>
+
+            <div class="error-alert">
+                File mancante: <span class="code">update_bridge.json</span>
+            </div>
+
+            <p class="tagline" style="text-align:center">
+                Avvia l'aggiornamento dalla <a href="/system/upgrade">dashboard di Kondomanager</a>.
+            </p>
+
+            <div class="hint">
+                <strong>L'aggiornamento non riparte?</strong>
+                <p>Puoi aggiornare con il <a href="https://kondomanager.short.gy/km-installer" target="_blank" rel="noopener">file standalone di setup</a>
+                (sempre l'ultima versione ufficiale): va bene sia per una nuova installazione sia per
+                aggiornarne una esistente &mdash; riconosce da solo il caso dalla presenza del file
+                <span class="code">.env</span> e, in aggiornamento, <strong>preserva database, storage
+                e configurazione</strong>, sostituendo i soli file di sistema. Al termine ti riporta su
+                <span class="code">/system/upgrade/finalize</span>.</p>
+            </div>
+
+            {$footer}
         </div>
     </body>
     </html>
-    ");
+    HTML);
 }
 
 $bridge = json_decode(file_get_contents($bridgeFile), true);
@@ -181,10 +248,35 @@ function getLang() {
     return substr($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? 'en', 0, 2) === 'it' ? 'it' : 'en';
 }
 
+/**
+ * Traduzione con segnaposto.
+ *
+ * L'iniezione automatica di APP_VERSION è una comodità per le stringhe di tipo
+ * "Versione target: v%s", ma va applicata SOLO quando il chiamante non passa
+ * argomenti propri: prima scattava sempre, e produceva due difetti seri proprio
+ * sul percorso d'errore dell'aggiornamento.
+ *
+ *   - `sprintf(t('err_generic'), $e->getMessage())` mostrava "Errore: 1.10.0-beta.x"
+ *     al posto del guasto reale, che restava leggibile solo in install.log.
+ *   - `t('err_php')` ha DUE segnaposto: con un solo argomento iniettato
+ *     `vsprintf` solleva ValueError. Con display_errors=0 significa pagina
+ *     bianca — e quel ramo si raggiunge quando l'hosting ha PHP troppo vecchio,
+ *     cioè quando quel messaggio è l'unica cosa che serve leggere.
+ *
+ * Il pareggiamento finale degli argomenti rende la funzione incapace di
+ * sollevare: in un aggiornatore, la schermata d'errore non può essere essa
+ * stessa una fonte di errori fatali.
+ */
 function t(string $key, mixed ...$args) {
     global $langs;
     $txt = $langs[getLang()][$key] ?? $key;
+
+    $needed = substr_count($txt, '%s');
+    if ($needed === 0) return $txt;
+
     if (empty($args)) $args = [APP_VERSION];
+    $args = array_pad(array_slice($args, 0, $needed), $needed, '');
+
     return vsprintf($txt, $args);
 }
 
@@ -264,33 +356,30 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= t('title') ?></title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .card { background: white; padding: 2.5rem; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); width: 100%; max-width: 450px; text-align: center; }
-        h2 { color: #1f2937; margin: 0 0 8px; font-size: 24px; }
-        .version { color: #3b82f6; font-size: 32px; font-weight: 700; margin: 16px 0 24px; }
-        p { color: #6b7280; margin: 0 0 24px; line-height: 1.6; }
-        .btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; transition: opacity 0.2s; }
-        .btn:hover { opacity: 0.9; }
-        .icon { font-size: 48px; margin-bottom: 16px; }
-    </style>
+    <style><?= $css ?></style>
 </head>
 <body>
-    <div class="card">
-        <div class="icon">🚀</div>
-        <h2><?= t('welcome') ?></h2>
-        <div class="version">v<?= htmlspecialchars(APP_VERSION) ?></div>
-        <p><?= sprintf(t('tagline'), APP_VERSION) ?></p>
+    <div class="installer-card">
+        <div class="header">
+            <?= $logo ?>
+            <h1><?= t('welcome') ?></h1>
+            <p class="tagline"><?= t('tagline', APP_VERSION) ?></p>
+        </div>
+
         <?php if (version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')): ?>
-            <div style="background: #fee2e2; color: #991b1b; padding: 12px; border-radius: 8px; margin-bottom: 24px; font-weight: bold; font-size: 14px;">
-                <?= sprintf(t('err_php'), MIN_PHP_VERSION, PHP_VERSION) ?>
-            </div>
+            <div class="error-alert"><?= t('err_php', MIN_PHP_VERSION, PHP_VERSION) ?></div>
+            <button class="btn" disabled><?= t('btn_text') ?></button>
         <?php else: ?>
+            <div class="update-alert">
+                Verranno sostituiti i file di sistema. Database, documenti e configurazione restano al sicuro.
+            </div>
             <form method="post">
                 <input type="hidden" name="token" value="<?= $_SESSION['token'] ?>">
                 <button type="submit" class="btn"><?= t('btn_text') ?></button>
             </form>
         <?php endif; ?>
+
+        <?= $footer ?>
     </div>
 </body>
 </html>
@@ -305,43 +394,59 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 <head>
     <meta charset="UTF-8">
     <title><?= t('title') ?></title>
-    <style>
-        body { font-family: -apple-system, sans-serif; background: #f8fafc; color: #334155; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .card { background: #fff; width: 100%; max-width: 550px; padding: 2.5rem; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        .bar-container { background: #f1f5f9; height: 10px; border-radius: 5px; overflow: hidden; margin: 20px 0; }
-        .bar-fill { background: #3b82f6; height: 100%; width: 0%; transition: width 0.3s; }
-        .bar-fill.error { background: #dc2626; }
-        .log { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; }
-        .log-line { margin-bottom: 5px; }
-        .ok { color: #4ade80; } .err { color: #f87171; }
-    </style>
+    <style><?= $css ?></style>
 </head>
 <body>
-    <div class="card">
-        <h2 style="text-align:center; margin-top:0"><?= t('welcome') ?></h2>
-        <div class="bar-container"><div class="bar-fill" id="bar"></div></div>
-        <div class="log" id="log"></div>
+    <div class="installer-card">
+        <div class="header">
+            <?= $logo ?>
+            <h1><?= t('welcome') ?></h1>
+            <p class="tagline">Non chiudere questa pagina fino al completamento.</p>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-header">
+                <span>Avanzamento</span>
+                <span id="pct-text">0%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" id="progress-bar"></div>
+            </div>
+        </div>
+
+        <div class="log-window" id="log-box"></div>
+        <div id="final-msg" style="display:none; text-align:center; margin-top:1.5rem;"></div>
+
+        <?= $footer ?>
     </div>
 
 <script nonce="<?= $nonce ?>">
-function updateProgress(p, m, s, replace) {
-    document.getElementById('bar').style.width = p + '%';
-    const log = document.getElementById('log');
-    if (replace && log.lastElementChild) { log.lastElementChild.innerHTML = '• ' + m; }
-    else {
-        const d = document.createElement('div');
-        d.className = 'log-line';
-        let icon = s === 'success' ? '<span class="ok">✓</span>' : (s === 'error' ? '<span class="err">✕</span>' : '•');
-        d.innerHTML = icon + ' ' + m;
-        log.appendChild(d); log.scrollTop = log.scrollHeight;
+function updateProgress(p, m, s, replaceLast = false) {
+    const bar = document.getElementById('progress-bar');
+    const pctText = document.getElementById('pct-text');
+    const log = document.getElementById('log-box');
+    bar.style.width = p + '%';
+    pctText.innerText = Math.round(p) + '%';
+    if (replaceLast && log.lastElementChild) {
+        log.lastElementChild.innerHTML = '• ' + m;
+    } else {
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        let icon = '•';
+        if (s === 'success') icon = '<span class="icon-ok">✓</span>';
+        if (s === 'error') icon = '<span class="icon-err">✕</span>';
+        entry.innerHTML = icon + ' ' + m;
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
     }
-    if (s === 'error') document.getElementById('bar').classList.add('error');
+    if (s === 'error') {
+        bar.classList.add('error');
+    }
 }
 function showFinal(url) {
-    const el = document.getElementById('log');
-    const d = document.createElement('div');
-    d.innerHTML = '<br><strong style="color:#4ade80">REDIRECT...</strong> <a href="'+url+'" style="color:#fff">Click here if stuck</a>';
-    el.appendChild(d); el.scrollTop = el.scrollHeight;
+    const el = document.getElementById('final-msg');
+    el.style.display = 'block';
+    el.innerHTML = '<p style="color:#16a34a; font-weight:bold;">Operazione completata.</p><p>Reindirizzamento in corso...<br>Se non vieni reindirizzato, <a href="'+url+'">clicca qui</a>.</p>';
 }
 </script>
 
@@ -367,10 +472,10 @@ try {
     // ============================================================================
     
     if (version_compare(PHP_VERSION, MIN_PHP_VERSION, '<')) {
-        throw new Exception(sprintf(t('err_php'), MIN_PHP_VERSION, PHP_VERSION));
+        throw new Exception(t('err_php', MIN_PHP_VERSION, PHP_VERSION));
     }
 
-    sendProgress(10, sprintf(t('step_down'), APP_VERSION));
+    sendProgress(10, t('step_down', APP_VERSION));
     
     $fp = fopen(ZIP_FILE, 'wb');
     $ch = curl_init(PACKAGE_URL);
@@ -672,9 +777,15 @@ try {
     $redirect = '/system/upgrade/finalize';
     echo "<script nonce='{$nonce}'>showFinal('{$redirect}'); setTimeout(() => { window.location.href = '{$redirect}'; }, 2500);</script>";
 
-} catch (Exception $e) {
+} catch (\Throwable $e) {
+    // \Throwable e non solo \Exception: PHP 8.4 solleva \Error/\TypeError/\ValueError
+    // in punti imprevisti, e quelli NON discendono da \Exception. Con display_errors=0
+    // un errore del genere ucciderebbe lo script in silenzio a metà aggiornamento,
+    // dando l'impressione che i file si scarichino ma non si venga mai reindirizzati —
+    // e senza far scattare il rollback qui sotto. Stesso irrobustimento già applicato
+    // al setup standalone.
     logTech("FATAL ERROR: " . $e->getMessage());
-    sendProgress(100, sprintf(t('err_generic'), $e->getMessage()), 'error');
+    sendProgress(100, t('err_generic', $e->getMessage()), 'error');
     
     if ($backupCreated) {
         sendProgress(100, t('step_rollback'), 'error');

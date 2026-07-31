@@ -34,6 +34,16 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // MySQL non ha DDL transazionale: se l'esecuzione precedente è morta
+        // dopo la CREATE ma prima di registrare la migrazione (timeout PHP o
+        // del web server su hosting condiviso), la tabella esiste già e un
+        // secondo tentativo fallirebbe con "Table already exists", bloccando
+        // per sempre un aggiornamento che la pagina di conferma dichiara
+        // riprendibile. Stessa guardia di create_backups_table.
+        if (Schema::hasTable('contributi_versati')) {
+            return;
+        }
+
         Schema::create('contributi_versati', function (Blueprint $table) {
             $table->id();
 

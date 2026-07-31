@@ -100,12 +100,29 @@ class SystemUpgradeController extends Controller
             'currentVersion' => $dbVersion,
             'newVersion' => $fileVersion,
             'needsUpgrade' => version_compare($fileVersion, $dbVersion, '>'),
-            // Il backup di sicurezza pre-aggiornamento è possibile solo se
-            // l'infrastruttura backup esiste già nel database corrente (un
-            // upgrade da una versione precedente alla feature backup non ha
-            // ancora la tabella: le migrazioni la creeranno più avanti).
-            'canBackup' => Schema::hasTable('backups'),
+            'canBackup' => $this->preUpgradeBackupAvailable($dbVersion),
         ]);
+    }
+
+    /**
+     * Il backup di sicurezza gira PRIMA delle migrazioni, quindi può contare
+     * solo sull'infrastruttura backup GIÀ presente nel database che sta per
+     * essere migrato — non su quella che le migrazioni in arrivo creeranno.
+     *
+     * Chi aggiorna da una versione anteriore alla 1.10 quella tabella non ce
+     * l'ha, e non gliela creiamo al volo: il primo aggiornamento alla 1.10
+     * resta senza rete automatica — esattamente come ogni aggiornamento fatto
+     * fino ad oggi — e la pagina di conferma gli chiede una copia del database
+     * dal pannello dell'hosting.
+     *
+     * Il controllo si riapre da solo: dalla 1.11 in poi si aggiorna partendo
+     * da una 1.10.0 o successiva, la tabella c'è, e il backup automatico torna
+     * disponibile senza che nessuno debba ricordarsi di togliere un interruttore.
+     */
+    private function preUpgradeBackupAvailable(string $dbVersion): bool
+    {
+        return version_compare($dbVersion, '1.10.0', '>=')
+            && Schema::hasTable('backups');
     }
 
     /**
@@ -116,9 +133,15 @@ class SystemUpgradeController extends Controller
      * funzione backup dell'utente. Il frontend poi lo fa avanzare via
      * backupStep() finché non è completato, quindi lancia le migrazioni.
      */
-    public function backupStart(BackupManager $manager): JsonResponse
+    public function backupStart(BackupManager $manager, GeneralSettings $settings): JsonResponse
     {
-        abort_unless(Schema::hasTable('backups'), 409, 'Infrastruttura di backup non disponibile.');
+        // Stessa condizione della pagina di conferma: le due parti non possono
+        // discordare su quando il backup pre-aggiornamento è disponibile.
+        abort_unless(
+            $this->preUpgradeBackupAvailable($settings->version ?? '0.0.0'),
+            409,
+            'Infrastruttura di backup non disponibile.'
+        );
 
         // Il backup di sicurezza gira PRIMA delle migrazioni: se si aggiorna da
         // una versione anteriore alla beta.12, la tabella backups non ha ancora

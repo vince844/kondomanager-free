@@ -33,10 +33,28 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // MySQL non ha DDL transazionale: le due colonne vengono aggiunte con
+        // ALTER separate, quindi un'interruzione a metà ne lascia una sola,
+        // senza che la migrazione risulti registrata. Si riparte da uno stato
+        // pulito (stesso pattern di add_conferma_to_fattura_coperture).
+        $this->cleanupPartialMigration();
+
         Schema::table('contributi_versati', function (Blueprint $table) {
             $table->string('liquidita_stato', 30)->nullable()->after('origine');
             $table->foreignId('cassa_id')->nullable()->after('liquidita_stato')
                 ->constrained('casse')->nullOnDelete();
+        });
+    }
+
+    private function cleanupPartialMigration(): void
+    {
+        Schema::table('contributi_versati', function (Blueprint $table) {
+            if (Schema::hasColumn('contributi_versati', 'cassa_id')) {
+                $table->dropConstrainedForeignId('cassa_id');
+            }
+            if (Schema::hasColumn('contributi_versati', 'liquidita_stato')) {
+                $table->dropColumn('liquidita_stato');
+            }
         });
     }
 

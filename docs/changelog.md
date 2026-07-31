@@ -7,6 +7,53 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.31] - La Porta Chiusa dal di Dentro
+
+Un amministratore segnala che l'aggiornamento dalla 1.9.1 non parte: la schermata di conferma mostra le due versioni, l'avviso, e un pulsante «Avvia aggiornamento» grigio che non risponde al click. Non è un problema della sua installazione. Partendo da una 1.9.1 pulita succede sempre.
+
+Dalla beta.13 quella schermata propone un backup di sicurezza prima delle migrazioni, con un attrito voluto per chi sceglie di saltarlo: una conferma esplicita da spuntare. Ma il backup esiste solo dalla beta.11 in poi, e la conferma esplicita era renderizzata **dentro** il riquadro del backup. Quando il backup non c'era non compariva nemmeno la casella che avrebbe permesso di proseguire senza: la via di fuga viveva dentro la stanza chiusa a chiave.
+
+Nessun dato è mai stato a rischio — il blocco avviene prima che il database venga toccato — ma l'amministratore restava murato fuori dal proprio gestionale, perché il sistema lo riporta su quella schermata a ogni accesso finché l'aggiornamento non è completato. E poiché le beta non escono ufficialmente, `1.9.1 → 1.10.0` non è il percorso di qualche installazione vecchia: è il percorso di **tutte**.
+
+**Nessuna migrazione nuova e nessuna modifica di schema.** Tre migrazioni esistenti vengono rese rieseguibili, ma il risultato che producono è identico a prima — chi le ha già eseguite non se ne accorge. Cambia invece il comportamento dell'aggiornamento, ed è la prima voce qui sotto.
+
+### ⚠ Cambia il comportamento dell'aggiornamento
+
+- **Il backup automatico di sicurezza non viene più proposto aggiornando da una versione anteriore alla 1.10.** Quel backup gira *prima* delle migrazioni, quindi può contare solo sull'infrastruttura già presente nel database che sta per essere aggiornato — e chi arriva da una 1.9.x non ce l'ha. Invece di crearla al volo nel momento più delicato della vita dell'installazione, il primo aggiornamento alla 1.10 resta senza rete automatica, esattamente come ogni aggiornamento fatto fino ad oggi, e la pagina chiede una copia del database dal pannello dell'hosting. Il controllo **si riapre da solo**: dalla 1.11 in poi si parte sempre da una 1.10.0 o successiva, la tabella c'è, e il backup automatico torna disponibile senza che nessuno debba ricordarsi di togliere un interruttore.
+
+### Corretto
+
+- **L'aggiornamento dalla 1.9.1 era impossibile da avviare**: il pulsante «Avvia aggiornamento» restava disabilitato per sempre, perché la condizione che lo sblocca dipendeva da una casella di conferma renderizzata solo nel ramo in cui il backup *era* disponibile. La regola che ne esce, e che vale oltre questa pagina: l'azione primaria di una schermata su cui il sistema ti costringe non può mai dipendere da un valore il cui unico modo di cambiare vive dentro una condizione diversa.
+- **Tre delle dodici migrazioni non erano rieseguibili**, e sono le tre di `contributi_versati` — le ultime aggiunte, mai passate per il trattamento `cleanupPartialMigration` che hanno le altre nove. Rilanciate dopo un'interruzione fallivano con *Table already exists*, *Duplicate key name* e *Duplicate column name*; `runMigrationsWithRetry()` riprova tre volte e si arrende. Un amministratore che seguiva l'indicazione appena aggiunta — «ricarica e premi di nuovo» — avrebbe ripremuto all'infinito sullo stesso errore, con il database a metà e senza backup automatico. La frase in pagina e queste guardie sono la stessa correzione: senza le seconde, la prima è una bugia.
+- **La pagina di errore del bridge di aggiornamento presentava il setup standalone come strumento per le sole installazioni nuove**, lasciando senza risposta proprio chi ci arriva: qualcuno con un'installazione esistente il cui aggiornamento non è ripartito. Quel file invece riconosce da sé l'installazione esistente dalla presenza di `.env` e lavora in modalità aggiornamento — sostituisce i soli file di sistema, preserva database, storage e configurazione, svuota la cache compilata e rimanda a `/system/upgrade/finalize`. È lo strumento giusto per sbloccarsi, e ora la pagina lo dice.
+- **Il motore di aggiornamento automatico mostrava il numero di versione al posto dell'errore.** `t()` iniettava `APP_VERSION` in ogni stringa con segnaposto ogni volta che il chiamante non passava argomenti propri: `sprintf(t('err_generic'), $e->getMessage())` produceva «Errore: 1.10.0-beta.x» e buttava via il guasto reale, leggibile solo in `install.log`. Un aggiornamento fallito non diceva a nessuno perché.
+- **Con PHP più vecchio del richiesto, la stessa pagina restava bianca.** Il messaggio `err_php` ha due segnaposto; con un solo argomento iniettato `vsprintf` solleva `ValueError` — che discende da `\Error`, non da `\Exception`, e quindi **non veniva nemmeno intercettato** dal `catch` del bridge. Con `display_errors=0` il risultato era una schermata vuota, senza rollback, proprio nel caso in cui quel messaggio («Richiesto PHP 8.4…») è l'unica cosa che serve leggere. Colpiva entrambi i punti in cui il blocco PHP scatta: la schermata di avvio e la guardia lato server che intercetta un POST diretto. `t()` ora pareggia gli argomenti e non può più sollevare: in un aggiornatore, la schermata d'errore non può essere essa stessa una fonte di errori fatali.
+- **Il bridge intercettava solo `Exception`, non `Throwable`.** Qualunque `Error`/`TypeError`/`ValueError` sollevato durante l'aggiornamento usciva dal `try` senza essere gestito: script morto in silenzio a metà, nessun rollback, e per l'amministratore la sensazione che «i file si scarichino ma non reindirizzi mai». Il setup standalone era già stato irrobustito su questo punto; il bridge no.
+- **La disponibilità del backup era decisa in due punti diversi** — la pagina guardava l'esistenza della tabella, l'endpoint la ricontrollava per conto suo. Ora entrambe passano dalla stessa condizione e non possono più discordare.
+
+### Modificato
+
+- **La schermata di conferma dichiara che l'aggiornamento è riprendibile.** Su hosting condiviso le migrazioni possono superare il tempo massimo di esecuzione imposto dal server, che PHP non può alzare: la pagina va in errore o resta bianca. Non è un danno — ogni migrazione viene registrata singolarmente e il popolamento delle aperture di cassa è idempotente — ma finora nessuno lo diceva, e un errore in quel momento fa pensare di aver rotto tutto. Ora la pagina istruisce a ricaricare e premere di nuovo.
+- **Il motore di aggiornamento automatico ha ora lo stesso aspetto del setup guidato**: fondo scuro, card bianca, logo Km, barra di avanzamento con percentuale e finestra di log, al posto del gradiente viola che si portava dietro da versioni. Erano tre schermate — bridge mancante, avvio, avanzamento — ciascuna con un proprio foglio di stile, ora unificate. Per l'amministratore che aggiorna sono lo stesso strumento; finché avevano due identità visive sembravano due prodotti diversi. Nessun cambiamento di logica: solo presentazione.
+- **Riscritto l'avviso mostrato quando il backup automatico non è disponibile.** Diceva «Backup consigliato»; è il messaggio che leggerà ogni amministratore che aggiorna alla 1.10.0, nel momento in cui è l'unica protezione che ha. Ora chiede la copia del database in modo esplicito e spiega che dagli aggiornamenti successivi sarà Kondomanager a farla.
+
+### Test
+
+- Suite completa: **702 test verdi** (prima di questa beta: 685).
+- `PreUpgradeBackupTest.php` passa da 6 a **11 test**. I nuovi coprono il percorso di aggiornamento da una 1.9.x: che il backup non venga offerto, che l'endpoint lo rifiuti, che una versione illeggibile nel database disattivi il backup senza bloccare nulla, e che torni disponibile da solo partendo da una 1.10, 1.10.3 o 1.11.
+- Aggiunta la copertura dell'**invariante che conta più di tutte**: la finalizzazione deve restare raggiungibile anche quando il backup non è disponibile. È la prima volta che `POST /system/upgrade/run` viene testato via HTTP.
+- Nuovo `UpgradeMigrationsRerunTest.php`, **guidato da dataset sulle dodici migrazioni** del salto 1.9.1 → 1.10: ognuna viene rieseguita a database già migrato e deve completare senza errore, senza aggiungere né perdere tabelle. È un presidio, non un test una tantum — **ogni migrazione nuova che tocca quel percorso va aggiunta all'elenco**.
+- Entrambi i gruppi sono stati verificati per contrasto, ripristinando il codice pre-fix: 3 test rossi su 11 nel primo, 3 su 12 nel secondo, con esattamente gli errori attesi. Un test che passa anche senza la correzione non sta presidiando niente — e la prima stesura di questo, che usava `expect(closure)->not->toThrow()`, era proprio in quel caso.
+- **Limite dichiarato**: il difetto del pulsante vive in una proprietà calcolata di Vue, e il progetto non ha un runner di test JavaScript. I test qui sopra bloccano il contratto lato server — che l'uscita esista sempre, e che le migrazioni siano riprendibili — ma non avrebbero intercettato *quel* bug. A coprirlo resta la prova manuale del percorso completo su un dump 1.9.1 reale, da rifare prima della 1.10.0 finale. L'adozione di Vitest è rimandata a dopo il rilascio: non si fa debuttare infrastruttura di test nuova sulla release più critica.
+
+### Nota per chi è su una beta precedente
+
+Un'installazione già bloccata sulla schermata di conferma non può essere sbloccata dall'interfaccia. La via d'uscita verificata è passare prima dalla **1.10.0-beta.11** — che precede l'introduzione del difetto e crea la tabella dei backup — completare l'aggiornamento del database, e da lì tornare alla versione corrente. Lo strumento è il file standalone di setup puntato a quel pacchetto: su un'installazione esistente riconosce il `.env`, lavora in modalità aggiornamento e non tocca il database.
+
+Da evitare: modificare a mano la versione nella tabella `settings` per far sparire l'avviso. Marca il database come aggiornato senza averlo aggiornato, e produce un guasto molto più difficile da recuperare di quello di partenza.
+
+---
+
 ## [1.10.0-beta.30] - Il Consuntivo Esce allo Scoperto & Tre Numeri Smettono di Mentire
 
 Un amministratore scrive: «Ho fatto 2 registrazioni ma non si trovano da nessuna parte». Un altro, guardando la barra colorata del Piano dei Conti, dice: «pensavo che i 2 colori si riferissero a preventivato e già consumato». Sembrano due lamentele scollegate. Sono lo stesso bug.

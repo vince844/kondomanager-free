@@ -5,8 +5,10 @@ use App\Enums\Permission;
 use App\Models\Backup;
 use App\Models\User;
 use App\Services\Backup\BackupPasswordStore;
+use App\Settings\GeneralSettings;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Role;
@@ -19,6 +21,11 @@ uses(RefreshDatabase::class);
  * di upgrade (SystemUpgradeController), guidati a step dalla pagina di
  * conferma. Protetti dal ruolo amministratore, indipendenti dal permesso e
  * dal kill-switch della feature backup.
+ *
+ * Il backup gira prima delle migrazioni, quindi è disponibile solo se la
+ * tabella `backups` esiste GIÀ nel database che si sta per migrare: chi
+ * aggiorna da una 1.9.x non ce l'ha e aggiorna senza rete automatica
+ * (SystemUpgradeController::preUpgradeBackupAvailable).
  */
 function upgradeAdmin(): User
 {
@@ -31,6 +38,21 @@ function upgradeAdmin(): User
     return $user;
 }
 
+/**
+ * Versione registrata nel database, cioè quella DA CUI si sta aggiornando.
+ * Spatie tiene i settings come singleton nel container: senza dimenticare
+ * l'istanza, il controller continuerebbe a leggere il valore caricato prima.
+ */
+function setDbVersion(string $version): void
+{
+    DB::table('settings')
+        ->where('group', 'general')
+        ->where('name', 'version')
+        ->update(['payload' => json_encode($version)]);
+
+    app()->forgetInstance(GeneralSettings::class);
+}
+
 beforeEach(function () {
     Storage::fake('backups');
     app(BackupPasswordStore::class)->clear();
@@ -39,6 +61,10 @@ beforeEach(function () {
     foreach ([Permission::MANAGE_GENERAL_SETTINGS, Permission::ACCESS_ADMIN_PANEL] as $permission) {
         Spatie\Permission\Models\Permission::firstOrCreate(['name' => $permission->value, 'guard_name' => 'web']);
     }
+
+    // Salvo diverso avviso, questi test descrivono il comportamento a gate
+    // aperto: si aggiorna partendo da una 1.10.0 o successiva.
+    setDbVersion('1.10.0');
 });
 
 afterEach(function () {
@@ -110,10 +136,11 @@ test('senza la tabella backups l endpoint risponde 409', function () {
         ->assertStatus(409);
 });
 
-test('il backup pre-aggiornamento funziona anche se manca type/encrypted (upgrade da < beta.12)', function () {
-    // Simula lo schema di una versione anteriore alla beta.12: il backup di
-    // sicurezza gira PRIMA delle migrazioni, quindi le colonne type/encrypted
-    // (aggiunte in beta.12) potrebbero non esistere ancora.
+test('il backup pre-aggiornamento funziona anche se manca type/encrypted', function () {
+    // Difesa in profondità: se per qualsiasi motivo la tabella backups
+    // esistesse senza le colonne type/encrypted (aggiunte in un secondo
+    // momento), lo schema viene allineato al volo invece di far fallire il
+    // backup con "Unknown column".
     Schema::table('backups', function (Blueprint $table) {
         $table->dropColumn(['type', 'encrypted']);
     });
@@ -121,8 +148,6 @@ test('il backup pre-aggiornamento funziona anche se manca type/encrypted (upgrad
 
     $admin = upgradeAdmin();
 
-    // Prima della fix: 500 "Unknown column 'type'". Dopo: lo schema viene
-    // allineato al volo (solo infrastruttura) e il backup parte regolarmente.
     $response = $this->actingAs($admin)->post('/system/upgrade/backup');
     $response->assertOk();
 
@@ -140,4 +165,78 @@ test('il backup pre-aggiornamento funziona anche se manca type/encrypted (upgrad
     }
 
     expect($status)->toBe('completed');
+});
+
+/**
+ * Aggiornamento da una versione anteriore alla 1.10: il backup di sicurezza
+ * non è disponibile, ma l'aggiornamento deve restare possibile.
+ *
+ * È il caso 1.9.1 → 1.10.0, cioè il percorso di ogni installazione ufficiale.
+ */
+test('aggiornando da una 1.9.x il backup pre-aggiornamento non è disponibile', function () {
+    setDbVersion('1.9.1');
+
+    $this->actingAs(upgradeAdmin())
+        ->get('/system/upgrade/finalize')
+        ->assertInertia(fn ($page) => $page
+            ->component('system/upgrade/Confirm')
+            ->where('currentVersion', '1.9.1')
+            ->where('needsUpgrade', true)
+            ->where('canBackup', false)
+        );
+});
+
+test('aggiornando da una 1.9.x l endpoint del backup risponde 409', function () {
+    setDbVersion('1.9.1');
+
+    // La tabella esiste (RefreshDatabase ha eseguito tutte le migrazioni), ma
+    // il gate di versione la considera comunque non disponibile: su
+    // un'installazione reale a 1.9.1 quella tabella non ci sarebbe.
+    expect(Schema::hasTable('backups'))->toBeTrue();
+
+    $this->actingAs(upgradeAdmin())
+        ->post('/system/upgrade/backup')
+        ->assertStatus(409);
+});
+
+test('anche una versione illeggibile nel database disattiva il backup senza bloccare nulla', function () {
+    setDbVersion('');
+
+    $this->actingAs(upgradeAdmin())
+        ->get('/system/upgrade/finalize')
+        ->assertInertia(fn ($page) => $page->where('canBackup', false));
+});
+
+/**
+ * L'invariante che conta più di tutte: la finalizzazione deve restare
+ * raggiungibile anche quando il backup non è disponibile.
+ *
+ * Regressione beta.29: la pagina di conferma disabilitava il pulsante quando
+ * canBackup era falso, perché la conferma esplicita necessaria a sbloccarlo
+ * era renderizzata solo nel ramo in cui il backup ERA disponibile. Ogni
+ * aggiornamento da 1.9.1 restava murato sulla schermata di conferma.
+ */
+test('la finalizzazione resta raggiungibile quando il backup non è disponibile', function () {
+    setDbVersion('1.9.1');
+
+    $this->actingAs(upgradeAdmin())
+        ->post('/system/upgrade/run')
+        ->assertRedirect(route('system.upgrade.changelog'));
+
+    $version = json_decode(
+        DB::table('settings')->where('group', 'general')->where('name', 'version')->value('payload'),
+        true
+    );
+
+    expect($version)->toBe(config('app.version'));
+});
+
+test('il backup torna disponibile aggiornando da una 1.10 o successiva', function () {
+    foreach (['1.10.0', '1.10.3', '1.11.0'] as $from) {
+        setDbVersion($from);
+
+        $this->actingAs(upgradeAdmin())
+            ->get('/system/upgrade/finalize')
+            ->assertInertia(fn ($page) => $page->where('canBackup', true));
+    }
 });

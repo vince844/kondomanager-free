@@ -28,6 +28,15 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // MySQL non ha DDL transazionale: se l'esecuzione precedente è morta
+        // dopo la creazione del vincolo ma prima di registrare la migrazione,
+        // un secondo tentativo fallirebbe con "Duplicate key name" e bloccherebbe
+        // per sempre un aggiornamento che la pagina di conferma dichiara
+        // riprendibile. Il vincolo c'è già: non resta nulla da fare.
+        if (Schema::hasIndex('contributi_versati', 'cv_target_immobile_unique')) {
+            return;
+        }
+
         // Difensivo: se per qualunque motivo esistono già righe duplicate,
         // tiene la più vecchia (id più basso) e rimuove le altre, sommandone
         // l'importo in quella superstite — non fa sparire denaro dal ledger.

@@ -32,13 +32,19 @@ const backupError = ref(null);
 const BACKUP_RUNNING = ['pending', 'dumping_database', 'archiving_files', 'finalizing'];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Si può procedere se: si fa il backup, oppure si è confermato esplicitamente
-// di procedere senza (attrito voluto per l'amministratore distratto).
-const canProceed = computed(() => {
-    if (phase.value !== 'idle') return false;
-    if (doBackup.value && props.canBackup) return true;
-    return acknowledgeNoBackup.value;
-});
+// Si può procedere se: il backup automatico non è disponibile (non c'è nulla a
+// cui rinunciare — la pagina chiede una copia dal pannello hosting), oppure lo
+// si sta facendo, oppure si è confermato esplicitamente di procedere senza
+// (attrito voluto per l'amministratore distratto).
+//
+// Il primo ramo NON è ridondante: la conferma esplicita vive dentro il blocco
+// v-if="canBackup", quindi quando il backup non è disponibile non è nemmeno
+// renderizzata e non potrebbe mai diventare true. Senza quel ramo il pulsante
+// resterebbe disabilitato per sempre, murando ogni aggiornamento che parte da
+// una versione priva dell'infrastruttura backup.
+const canProceed = computed(() =>
+    phase.value === 'idle' && (!props.canBackup || doBackup.value || acknowledgeNoBackup.value)
+);
 
 const buttonLabel = computed(() => {
     if (phase.value === 'backing_up') return `Backup di sicurezza… ${backupPercent.value}%`;
@@ -132,6 +138,8 @@ async function startUpgrade() {
                         <AlertTitle class="text-amber-800 font-semibold text-sm">Pronto per l'aggiornamento?</AlertTitle>
                         <AlertDescription class="text-amber-700 text-xs mt-1">
                             L'operazione eseguirà le migrazioni del database e rigenererà la cache di sistema.
+                            Se la pagina si blocca o va in errore, ricaricala e premi di nuovo: l'aggiornamento
+                            riprende da dove si era interrotto.
                         </AlertDescription>
                     </Alert>
 
@@ -173,9 +181,11 @@ async function startUpgrade() {
                     <!-- Se il backup automatico non è disponibile (versione troppo vecchia) -->
                     <Alert v-else class="bg-slate-50 border-slate-200">
                         <ShieldCheck class="h-4 w-4 text-slate-500" />
-                        <AlertTitle class="text-slate-700 font-semibold text-sm">Backup consigliato</AlertTitle>
+                        <AlertTitle class="text-slate-700 font-semibold text-sm">Prima di procedere, fai una copia del database</AlertTitle>
                         <AlertDescription class="text-slate-600 text-xs mt-1">
-                            Il backup automatico non è disponibile per questa versione: esegui una copia del database dal tuo pannello di hosting prima di procedere.
+                            Il backup automatico non è ancora disponibile per la versione da cui stai aggiornando:
+                            esegui una copia del database dal pannello del tuo hosting. Dagli aggiornamenti successivi
+                            a questo sarà Kondomanager a farla per te.
                         </AlertDescription>
                     </Alert>
                 </template>
