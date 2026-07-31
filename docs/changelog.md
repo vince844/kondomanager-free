@@ -7,6 +7,43 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.32] - Il Lucchetto Senza Padrone
+
+Un amministratore segnala dal forum: ha creato un piano rate, si è accorto che era sbagliato, e ha provato a rimediare. I saldi pregressi erano bloccati col lucchetto, così — come indicato dal messaggio a video — ha cancellato il piano. Il lucchetto è rimasto chiuso. Ha ricreato il piano: i vecchi saldi non c'erano più, il piano ripartiva dal solo preventivo.
+
+Il lucchetto era un interruttore senza soggetto: due booleani (`gestioni.saldo_applicato`, `saldi.is_applicato`) che dicevano *«questi saldi sono stati assorbiti da un piano rate»* senza dire **da quale**. Per riaprirlo, la cancellazione del piano doveva dedurlo a posteriori, leggendo le quote generate a caccia di tracce di saldo. Ma «Ricalcola» cancella e rigenera le rate — e con esse quelle tracce. Dopo un ricalcolo nessun piano rivendicava più i saldi: il lucchetto restava chiuso e la chiave non esisteva più. Nessun percorso dell'interfaccia poteva riaprirlo.
+
+Lo stesso difetto ha una faccia contabile, e non è meno grave: siccome la rigenerazione cercava i saldi «liberi» e li trovava già bloccati, il piano ricalcolato ripartiva dal solo preventivo. Il pregresso spariva dalle rate **in silenzio**. Chi non avesse riaperto il dettaglio delle quote avrebbe emesso rate incomplete senza saperlo.
+
+**Questa versione modifica il database (una migrazione).** Il lucchetto ha ora un titolare: `saldi.piano_rate_id` registra quale piano ha assorbito ogni saldo, e la scelta sui saldi viene persistita sul piano (`piani_rate.applica_saldi`) invece di essere dedotta. La stessa migrazione ripara le installazioni già colpite.
+
+### Corretto
+
+- **I saldi pregressi restavano bloccati col lucchetto per sempre.** Dopo un «Ricalcola» — o dopo la rimozione di una voce di spesa dal piano, che passa dallo stesso codice — cancellare il piano non riapriva più il lucchetto. I saldi restavano non modificabili e non eliminabili, e nessun piano successivo li includeva. La regola che ne esce, e che vale oltre questa pagina: **uno stato che protegge qualcosa deve registrare per conto di chi lo fa**, altrimenti nessuno sa quando può essere rimosso.
+- **Il pregresso spariva dalle rate senza alcun avviso.** `GenerateSaldiAction` selezionava i saldi con `is_applicato = false`: dopo la prima generazione erano tutti a `true`, quindi il ricalcolo dello stesso piano ne trovava zero. Ora un saldo è disponibile per un piano se è libero **oppure se è già intestato a quel piano**, e un ricalcolo restituisce quote identiche a quelle di prima.
+- **La cancellazione di un piano sbloccava anche i debiti pregressi verso i fornitori.** Vivono nella tabella `saldi` con `is_applicato = true` proprio per restare fuori dai piani rate, e lo sblocco a tappeto per gestione li travolgeva. Ora si riaprono solo i saldi intestati al piano eliminato.
+- **Un piano creato senza «Genera calcolo scadenze subito» bloccava comunque i saldi**, pur non contenendone nemmeno uno: il `store()` chiudeva il lucchetto a prescindere dalla generazione. Era il modo più rapido di ottenere un lucchetto orfano — bastava creare il piano in bozza e cancellarlo. Ora il lucchetto lo chiude soltanto chi genera le quote, e solo sulle righe finite davvero nelle rate.
+- **I saldi a zero non vengono più bloccati.** Non entrano mai nella generazione (che scarta gli importi nulli): erano bloccati solo perché il vecchio lock agiva su tutta la gestione. Spariscono anche dalla finestra di ripartizione solidale in fase di creazione, dove proponevano di ripartire un importo che non sarebbe mai stato applicato.
+- **Un riparto manuale di 250,00 € ne addebitava 25.000,00.** Difetto indipendente, presente da quando esiste la ripartizione manuale dei saldi solidali (Art. 63) e trovato scrivendo i test di questa versione: l'importo digitato veniva convertito in centesimi due volte, dal controller e di nuovo dalla generazione. Cento volte l'importo dovuto, su una quota che l'amministratore ha deciso a mano proprio perché il riparto automatico non andava bene. Il riparto automatico pro-quota non è mai stato toccato dal difetto.
+- **Il riparto manuale spariva al primo ricalcolo.** La ripartizione decisa dall'amministratore arrivava dal form solo alla creazione e non veniva conservata da nessuna parte: al primo «Ricalcola» tornava il pro-quota automatico, con importi diversi e nessun avviso. Ora è persistita sul piano e sopravvive a ricalcoli e rimozioni di voci.
+- **Un piano straordinario generato in differita si portava dentro i pregressi della gestione.** Il codice dichiarava a log «saldi ignorati di default» ma non lo faceva: valeva solo per la generazione immediata. Ora un piano straordinario assorbe i pregressi soltanto se qualcuno lo chiede esplicitamente.
+
+### Riparazione dei dati esistenti
+
+- La migrazione ricuce le installazioni già colpite: per ogni gestione bloccata cerca il piano che contiene davvero le quote di saldo e glielo intesta; se nessun piano le contiene, il lucchetto è orfano e **viene aperto**, restituendo all'amministratore saldi che erano diventati inaccessibili. I debiti verso fornitori non vengono mai toccati. Verificata su MySQL con dati reali, oltre che nei test.
+- **Quando la situazione è ambigua la riparazione non indovina.** Se due piani della stessa gestione contengono entrambi quote di saldo — stato possibile solo su dati storici — non è dato sapere quale riga appartenga a quale piano: intestarle a caso rischierebbe di sbloccare saldi che un piano continua ad addebitare, cioè un doppio addebito al piano successivo. In quel caso non tocca nulla e lo scrive nel log. Meglio un lucchetto da aprire a mano che un addebito doppio.
+- **Ogni decisione della riparazione è tracciata nel log** (gestione, esito, piano scelto, elenco dei saldi toccati, nota precedente): una migrazione che modifica dati contabili deve poter essere ispezionata e ricostruita a posteriori.
+
+### Sotto il cofano
+
+- Il flag `gestioni.saldo_applicato` non è più una decisione ma un derivato: è acceso finché esiste almeno un saldo di condòmino bloccato su quella gestione. Non può più divergere dalle singole righe.
+- Rimosso `SaldoEsercizioService::marcaSaldoApplicato()`, che chiudeva il lucchetto a tappeto su tutta la gestione: era l'origine del difetto ed è ora sostituito da `sincronizzaLucchetti()` / `rilasciaLucchetti()`, che agiscono per piano.
+- Tredici nuovi test (`SaldiLockOrfanoTest`) coprono il percorso segnalato dall'amministratore, la migrazione di riparazione e le guardie emerse dalla revisione avversariale del fix; la migrazione è aggiunta anche alla batteria di rieseguibilità post-interruzione introdotta nella beta.31.
+- La colonna `saldi.piano_rate_id` e il suo vincolo hanno guardie separate nella migrazione: su MySQL sono due statement distinti, e un'interruzione fra i due avrebbe lasciato la colonna senza `ON DELETE SET NULL` per sempre — cioè un saldo intestabile a un piano inesistente, di nuovo bloccato senza chiave.
+- I debiti verso fornitori sono ora esclusi dalla selezione dei saldi con un filtro esplicito. Ne restavano fuori perché nascono già bloccati: un'invariante non scritta nello schema non è una difesa.
+
+---
+
 ## [1.10.0-beta.31] - La Porta Chiusa dal di Dentro
 
 Un amministratore segnala che l'aggiornamento dalla 1.9.1 non parte: la schermata di conferma mostra le due versioni, l'avviso, e un pulsante «Avvia aggiornamento» grigio che non risponde al click. Non è un problema della sua installazione. Partendo da una 1.9.1 pulita succede sempre.

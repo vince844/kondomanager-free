@@ -1,5 +1,10 @@
 # 🐳 Local Development with Docker
 
+<!-- verifica-documentazione -->
+> **Status:** Matches the code — verified and corrected on 31/07/2026 against 1.10.0-beta.32
+> The four wrong statements found in the audit have been fixed: the clone branch (was `v1.9.1-beta`, which does not exist), the missing `chmod` on `docker/frankenphp/worker-entrypoint.sh`, the APP_URL rewrite (it is conditional) and the supervisord.conf excerpt, now including `[inet_http_server]` and the scheduler.
+<!-- /verifica-documentazione -->
+
 > **Platforms supported:** Windows (WSL2), macOS, Linux, Synology NAS
 
 ---
@@ -44,7 +49,7 @@ git clone ...
 Open your terminal (on macOS/Linux) or WSL terminal (on Windows) and run:
 
 ```bash
-git clone -b v1.9.1-beta https://github.com/vince844/kondomanager-free.git
+git clone -b v1.9.1 https://github.com/vince844/kondomanager-free.git
 cd kondomanager-free
 ```
 
@@ -63,6 +68,7 @@ chmod +x docker/standard/worker-entrypoint.sh
 **If using the FrankenPHP stack:**
 ```bash
 chmod +x docker/frankenphp/entrypoint.sh
+chmod +x docker/frankenphp/worker-entrypoint.sh
 ```
 
 ---
@@ -153,6 +159,13 @@ The configuration file is located at [`docker/supervisord.conf`](../docker/super
 ```ini
 [supervisord]
 nodaemon=true
+logfile=/var/www/storage/logs/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[inet_http_server]
+port = *:9001
+username = admin
+password = password
 
 [program:laravel-worker]
 process_name=%(program_name)s_%(process_num)02d
@@ -162,6 +175,13 @@ autorestart=true
 numprocs=1
 redirect_stderr=true
 stdout_logfile=/var/www/storage/logs/worker.log
+
+[program:laravel-scheduler]
+command=php /var/www/artisan schedule:work
+autostart=true
+autorestart=true
+redirect_stderr=true
+stdout_logfile=/var/www/storage/logs/scheduler.log
 ```
 
 **Key parameters:**
@@ -263,6 +283,7 @@ chmod +x docker/standard/entrypoint.sh
 chmod +x docker/standard/worker-entrypoint.sh
 # or for FrankenPHP:
 chmod +x docker/frankenphp/entrypoint.sh
+chmod +x docker/frankenphp/worker-entrypoint.sh
 ```
 
 ### The `app` container keeps restarting
@@ -298,7 +319,7 @@ If the browser shows a `Cross-Origin Request Blocked` error or the page tries to
 
 **Cause:** the `.env` in your project folder was previously created by Herd, Coolify, or another environment, and contains `APP_URL=https://...`. Docker mounts host files directly into the container (volume mount), so it uses that `.env` as-is.
 
-**Automatic fix (recent versions):** the `entrypoint.sh` automatically sets `APP_URL=http://localhost:8889` on every startup — no manual intervention needed.
+**Automatic fix, but conditional:** the `entrypoint.sh` sets `APP_URL=http://localhost:8889` **only if** the current value is empty, is exactly `http://localhost`, or contains `kondomanager-free.test`. Any other value (for example an `https://...` left by Herd or Coolify) is **preserved**, so as not to break installations behind a reverse proxy: in that case use the manual fix below.
 
 **Manual fix (if needed):**
 ```bash

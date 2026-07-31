@@ -1,5 +1,10 @@
 # Configurazione Cron Job su Plesk — KondoManager
 
+<!-- verifica-documentazione -->
+> **Stato:** Contiene affermazioni false — verificato il 31/07/2026 su 1.10.0-beta.32
+> La procedura operativa (due cron nativi, disattivazione di cron-job.org, verifica via heartbeat) è corretta e verificata sul codice; è falso solo il presupposto che `SCHEDULE_QUEUE_WORKER` valga `true` di default — nel codice e in .env.example il default è `false`, quindi il Passo 1 su un'installazione recente conferma un valore già impostato e sono semmai gli hosting condivisi a dover mettere `true` esplicitamente.
+<!-- /verifica-documentazione -->
+
 > **Versione applicabile:** KondoManager v1.9.1+  
 > **Versione raccomandata:** v1.10.0-beta.1 (include il monitor heartbeat in Impostazioni → Automazioni)  
 > **Ambiente:** Hosting condiviso o VPS con pannello Plesk (PHP 8.x via PHP-FPM)
@@ -36,6 +41,11 @@ KondoManager ha una variabile d'ambiente che controlla se il worker delle code d
 SCHEDULE_QUEUE_WORKER=true   # default nella distro → worker sincrono dentro schedule:run
 SCHEDULE_QUEUE_WORKER=false  # corretto per Plesk → worker separato come cron autonomo
 ```
+
+<!-- rettifica -->
+> ⚠️ **Non è più vero — verificato il 31/07/2026 su 1.10.0-beta.32.** Il default nel codice è `false` dall'11/02/2026, e anche .env.example distribuisce `SCHEDULE_QUEUE_WORKER=false`. Conseguenze: (a) su Plesk il Passo 1 è già soddisfatto di default (non è la causa dell'Error 500 in un'installazione fresca); (b) le installazioni su hosting condiviso NON hanno il worker sincrono se non lo attivano esplicitamente — il documento afferma l'esatto contrario di quello che serve loro. Nota: anche il commento dentro config/app.php:158-161 dice «TRUE (default distro)» e contraddice il codice due righe sotto — quel commento è stato scritto il 01/07/2026, cinque mesi dopo che il default era già false.
+> *Prova:* config/app.php:169 `'scheduler_queue_worker' => env('SCHEDULE_QUEUE_WORKER', false)`; .env.example:18 `SCHEDULE_QUEUE_WORKER=false`; git blame config/app.php L169 = 7a7ad1d2 (2026-02-11); commento contraddittorio in config/app.php:158-161 introdotto da 82c5bb06 (2026-07-01)
+<!-- /rettifica -->
 
 Con il flag a `true` (default), lo scheduler tenta di processare le code durante la stessa chiamata HTTP di cron-job.org. Su Plesk, questa chiamata dura fino a 55 secondi e viene terminata dal server web → **Error 500**.
 

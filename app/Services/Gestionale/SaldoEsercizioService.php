@@ -4,6 +4,7 @@ namespace App\Services\Gestionale;
 
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Helpers\MoneyHelper; 
@@ -57,23 +58,94 @@ class SaldoEsercizioService
         ];
     }
     
-    public function marcaSaldoApplicato(Gestione $gestione, int $saldoApplicato): void
+    /**
+     * Allinea il lucchetto a ciò che il piano rate contiene DAVVERO, dopo ogni
+     * generazione o rigenerazione delle rate.
+     *
+     * È l'unico punto in cui un piano chiude il lucchetto, e lo chiude a proprio
+     * nome (`saldi.piano_rate_id`). L'invariante che mantiene è: i saldi
+     * intestati a un piano sono esattamente quelli finiti nelle sue quote —
+     * così un ricalcolo che assorbe saldi diversi (o nessuno) non lascia
+     * lucchetti orfani dietro di sé.
+     *
+     * @param int[] $saldiConsumatiIds Le righe della tabella `saldi` realmente
+     *                                 finite nelle quote appena generate.
+     */
+    public function sincronizzaLucchetti(PianoRate $pianoRate, Gestione $gestione, array $saldiConsumatiIds, ?int $saldoTotale = null): void
+    {
+        $consumati = array_values(array_unique(array_map('intval', $saldiConsumatiIds)));
+
+        // 1. Rilascia i saldi che questo piano teneva bloccati ma che non
+        //    compaiono più nelle sue quote (tipicamente dopo un ricalcolo).
+        Saldo::where('piano_rate_id', $pianoRate->id)
+            ->when(!empty($consumati), fn ($q) => $q->whereNotIn('id', $consumati))
+            ->update(['is_applicato' => false, 'piano_rate_id' => null]);
+
+        // 2. Blocca (o riconferma) i saldi assorbiti, intestandoli a questo piano.
+        //    Il filtro sui fornitori è ridondante oggi (non entrano nella
+        //    generazione) ma è la stessa difesa applicata in ogni altro punto:
+        //    un debito verso terzi non può finire intestato a un piano rate.
+        if (!empty($consumati)) {
+            Saldo::whereIn('id', $consumati)
+                ->whereNull('fornitore_id')
+                ->update(['is_applicato' => true, 'piano_rate_id' => $pianoRate->id]);
+        }
+
+        $this->allineaFlagGestione($gestione, $saldoTotale);
+    }
+
+    /**
+     * Riapre il lucchetto tenuto da un piano rate che sta per essere eliminato.
+     * Tocca solo i saldi intestati a quel piano: i debiti verso fornitori, che
+     * vivono nella stessa tabella con is_applicato=true per restare fuori dai
+     * piani rate, non sono mai stati intestati a nessuno e restano chiusi.
+     */
+    public function rilasciaLucchetti(PianoRate $pianoRate, ?Gestione $gestione = null): int
+    {
+        $rilasciati = Saldo::where('piano_rate_id', $pianoRate->id)
+            ->update(['is_applicato' => false, 'piano_rate_id' => null]);
+
+        if ($gestione) {
+            $this->allineaFlagGestione($gestione);
+        }
+
+        return $rilasciati;
+    }
+
+    /**
+     * Il flag di gestione è un derivato, non una decisione: è acceso finché
+     * esiste almeno un saldo di condòmino bloccato su quella gestione.
+     */
+    public function allineaFlagGestione(Gestione $gestione, ?int $saldoTotale = null): void
+    {
+        $restaBloccato = Saldo::where('gestione_id', $gestione->id)
+            ->where('is_applicato', true)
+            ->whereNull('fornitore_id')
+            ->exists();
+
+        // Se il lucchetto resta chiuso ma non stiamo processando un nuovo
+        // importo, la nota esistente descrive ancora la situazione: riscriverla
+        // con uno zero inventato la renderebbe falsa.
+        $nota = match (true) {
+            !$restaBloccato        => null,
+            $saldoTotale !== null  => $this->notaSaldo($saldoTotale),
+            default                => $gestione->nota_saldo,
+        };
+
+        $gestione->update([
+            'saldo_applicato' => $restaBloccato,
+            'nota_saldo'      => $nota,
+        ]);
+    }
+
+    private function notaSaldo(int $saldoApplicato): string
     {
         $importoFormattato = ($saldoApplicato > 0 ? '+' : '') . MoneyHelper::format($saldoApplicato);
 
-        // 1. LOCK MACRO: Aggiorna lo stato della Gestione
-        $gestione->update([
-            'saldo_applicato' => true,
-            'nota_saldo' => sprintf(
-                "Saldo Netto %s processato il %s",
-                $importoFormattato,
-                now()->format('d/m/Y H:i')
-            )
-        ]);
-
-        // 2. LOCK MICRO (IL FIX): Chiude le singole righe nella tabella Saldi
-        Saldo::where('gestione_id', $gestione->id)
-             ->where('is_applicato', false)
-             ->update(['is_applicato' => true]);
+        return sprintf(
+            "Saldo Netto %s processato il %s",
+            $importoFormattato,
+            now()->format('d/m/Y H:i')
+        );
     }
 }

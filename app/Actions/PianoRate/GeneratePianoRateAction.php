@@ -8,9 +8,11 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Models\Immobile;
+use App\Models\Saldo;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
+use App\Services\Gestionale\SaldoEsercizioService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -27,6 +29,7 @@ class GeneratePianoRateAction
         private GenerateSaldiAction $saldiAction,
         private GenerateDateRateAction $dateRateAction,
         private GenerateRateQuotesAction $rateQuotesAction,
+        private SaldoEsercizioService $saldoService,
     ) {}
 
     /**
@@ -250,15 +253,40 @@ class GeneratePianoRateAction
         // =========================================================================
 
         // 3. GESTIONE SALDI
-        $flagDb   = $gestione->fresh()->saldo_applicato;
-        $applicare = $forzaApplicazioneSaldi !== null ? $forzaApplicazioneSaldi : $flagDb;
+        //
+        // Ordine di precedenza, dal più esplicito al più debole:
+        //   a) l'override passato dal chiamante (creazione del piano);
+        //   b) il piano possiede già dei saldi — un ricalcolo non può perderli
+        //      per strada, è esattamente il bug del "lucchetto orfano";
+        //   c) i piani straordinari non assorbono pregressi se nessuno lo chiede
+        //      esplicitamente: è ciò che il log qui sotto dichiara da sempre, ma
+        //      che senza questo ramo non era vero per i piani generati in differita;
+        //   d) la scelta persistita alla creazione (piani generati più tardi);
+        //   e) il vecchio flag di gestione, per i piani antecedenti alla beta.32.
+        $possiedeSaldi = Saldo::where('piano_rate_id', $pianoRate->id)->exists();
+
+        $applicare = match (true) {
+            $forzaApplicazioneSaldi !== null      => $forzaApplicazioneSaldi,
+            $possiedeSaldi                        => true,
+            $pianoRate->tipo === 'straordinario'  => false,
+            $pianoRate->applica_saldi !== null    => (bool) $pianoRate->applica_saldi,
+            default                               => (bool) $gestione->fresh()->saldo_applicato,
+        };
 
         if ($pianoRate->tipo === 'straordinario') {
             Log::info("▶ Piano Straordinario: Saldi ignorati di default (salvo override esplicito).");
         }
 
         if ($applicare) {
-            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $saldiConfig);
+            // La ripartizione manuale dei saldi solidali (Art. 63) arriva dal form
+            // solo alla creazione. Senza il fallback su quanto persistito, ogni
+            // ricalcolo la sostituirebbe in silenzio con il riparto pro-quota
+            // automatico: stessi soggetti, importi diversi, nessun avviso.
+            $configEffettiva = !empty($saldiConfig)
+                ? $saldiConfig
+                : ($pianoRate->saldi_config ?? []);
+
+            $saldi = $this->saldiAction->execute($pianoRate, $gestione, $configEffettiva);
             Log::info("Generazione: Saldi INCLUSI (" . count($saldi) . " anagrafiche)");
         } else {
             $saldi = [];
@@ -275,6 +303,21 @@ class GeneratePianoRateAction
             $dateRate,
             $saldi
         );
+
+        // 6. LUCCHETTO SALDI
+        // Chi genera le quote è anche l'unico che chiude (o riapre) il lucchetto,
+        // e lo fa a proprio nome: così lo stato del wallet non può divergere da
+        // ciò che il piano contiene davvero.
+        if ($gestione) {
+            [$saldiConsumatiIds, $totaleSaldi] = $this->riepilogaSaldiConsumati($saldi);
+
+            $this->saldoService->sincronizzaLucchetti(
+                $pianoRate,
+                $gestione,
+                $saldiConsumatiIds,
+                empty($saldiConsumatiIds) ? null : $totaleSaldi
+            );
+        }
 
         // =========================================================================
         // AUTO-CHIUSURA TASK "EMISSIONE RATA SOPRAVVENIENZA"
@@ -328,5 +371,40 @@ class GeneratePianoRateAction
             'piano_rate_id' => $pianoRate->id,
             'rate_create'   => $stats['rate_create'] ?? count($dateRate),
         ], $stats);
+    }
+
+    /**
+     * Estrae dalla distribuzione le righe della tabella `saldi` realmente
+     * consumate e il loro totale netto in centesimi.
+     *
+     * @param array $saldi Formato di GenerateSaldiAction: [anagrafica][immobile] => ['importo', 'meta_storico']
+     * @return array{0: int[], 1: int}
+     */
+    private function riepilogaSaldiConsumati(array $saldi): array
+    {
+        $ids = [];
+        $totale = 0;
+
+        foreach ($saldi as $immobiliSaldi) {
+            foreach ($immobiliSaldi as $dati) {
+                // Una coppia che si azzera (un debito e un credito che si
+                // compensano) non produce alcuna quota: GenerateRateQuotesAction
+                // la salta. Bloccare quei saldi renderebbe falsa l'invariante
+                // "intestati = finiti nelle quote" su cui poggia lo sblocco.
+                if ((int) ($dati['importo'] ?? 0) === 0) {
+                    continue;
+                }
+
+                $totale += (int) $dati['importo'];
+
+                foreach ($dati['meta_storico'] ?? [] as $meta) {
+                    if (!empty($meta['saldo_origine_id'])) {
+                        $ids[] = (int) $meta['saldo_origine_id'];
+                    }
+                }
+            }
+        }
+
+        return [array_values(array_unique($ids)), $totale];
     }
 }

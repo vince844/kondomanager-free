@@ -32,6 +32,8 @@ class PianoRate extends Model
         'nome',
         'descrizione',
         'metodo_distribuzione',
+        'applica_saldi',
+        'saldi_config',
         'numero_rate',
         'giorno_scadenza',
         'data_inizio',
@@ -57,6 +59,10 @@ class PianoRate extends Model
         'data_delibera_assemblea' => 'date',      // Cast automatico a Carbon per formattazione agevole
         'approvato_il'            => 'datetime',  // Cast automatico a Carbon con orario
         'attivo'                  => 'boolean',
+        // NULL = piani antecedenti alla beta.32, dove la scelta non veniva persistita.
+        'applica_saldi'           => 'boolean',
+        // Riparto manuale dei saldi solidali (Art. 63) deciso alla creazione.
+        'saldi_config'            => 'array',
     ];
 
     /*

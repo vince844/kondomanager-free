@@ -26,6 +26,7 @@ class Saldo extends Model
         'anagrafica_id',  // Il soggetto (proprietario/inquilino)
         'immobile_id',    // L'unità immobiliare specifica
         'gestione_id',    // La gestione a cui appartiene il debito/credito (Novità v1.9)
+        'piano_rate_id',  // Il piano rate che ha assorbito questo saldo (chi ha chiuso il lucchetto)
         'saldo_iniziale', // Debito (-) o Credito (+) pregresso in centesimi
         'saldo_finale',   // Saldo risultante a fine esercizio
         'origine',        // 'manuale', 'importato', 'automatico'
@@ -54,6 +55,16 @@ class Saldo extends Model
     public function gestione(): BelongsTo
     {
         return $this->belongsTo(Gestione::class);
+    }
+
+    /**
+     * Il piano rate che ha assorbito questo saldo, cioè chi ha chiuso il
+     * lucchetto. Null quando il saldo è libero: senza questo legame lo sblocco
+     * andava dedotto leggendo le quote generate, e ogni ricalcolo lo perdeva.
+     */
+    public function pianoRate(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Gestionale\PianoRate::class, 'piano_rate_id');
     }
 
     /**

@@ -15,8 +15,21 @@ class GenerateSaldiAction
      */
     public function execute(PianoRate $pianoRate, Gestione $gestione, array $saldiConfig = []): array
     {
+        // Un saldo è disponibile per questo piano se è libero, OPPURE se è già
+        // intestato proprio a questo piano: senza il secondo caso, ricalcolare
+        // un piano che aveva assorbito i pregressi li faceva sparire dalle
+        // quote (il piano ripartiva dal solo preventivo) e il lucchetto restava
+        // chiuso senza più nessuno in grado di riaprirlo.
         $saldiDaApplicare = Saldo::where('gestione_id', $gestione->id)
-            ->where('is_applicato', false)
+            // I debiti verso fornitori vivono nella stessa tabella e non devono
+            // MAI essere candidati a un piano rate. Oggi ne restano fuori perché
+            // nascono già bloccati: è un'invariante non scritta nello schema, e
+            // quindi non è una difesa.
+            ->whereNull('fornitore_id')
+            ->where(function ($q) use ($pianoRate) {
+                $q->where('is_applicato', false)
+                  ->orWhere('piano_rate_id', $pianoRate->id);
+            })
             ->where('saldo_iniziale', '!=', 0)
             ->get();
 
@@ -51,7 +64,12 @@ class GenerateSaldiAction
                         $distribuzione,
                         $rip['anagrafica_id'],
                         $saldo->immobile_id,
-                        (int) ($rip['importo'] * 100), // Convertiamo l'input manuale (Euro) in centesimi
+                        // CENTESIMI, non euro. Il chiamante ha già convertito con
+                        // MoneyHelper::toCents (PianoRateController::store), l'unico
+                        // che sa leggere la stringa mascherata "1.200,50" del form.
+                        // Il vecchio `* 100` qui la convertiva una seconda volta:
+                        // un riparto manuale di 250,00 € addebitava 25.000,00 €.
+                        (int) $rip['importo'],
                         $this->creaMeta($saldo, 'solidale_manuale')
                     );
                 }

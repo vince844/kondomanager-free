@@ -213,6 +213,13 @@ class PianoRateController extends Controller
             $tipoPiano = $validated['tipo'] ?? 'ordinario';
             $pianoRate->tipo = $tipoPiano;
 
+            // La scelta sui saldi va persistita, non dedotta dal lucchetto: un
+            // piano creato senza "genera subito" deve poter ritrovare la stessa
+            // intenzione quando le rate verranno generate più tardi.
+            // (Non è una spunta dell'amministratore: è lo stato del wallet al
+            // momento della creazione, congelato per le generazioni successive.)
+            $pianoRate->applica_saldi = $applicareSaldi;
+
             // 1. Determiniamo la Genesi del Piano (Il Contesto)
             $pianoRate->contesto_creazione = match(true) {
                 $request->input('origine') === 'dashboard' => 'integrazione_dashboard',
@@ -392,6 +399,15 @@ class PianoRateController extends Controller
             }
             unset($configSaldo, $rip);
 
+            // Il riparto manuale di un saldo solidale (Art. 63) è una decisione
+            // dell'amministratore, non un dato ricalcolabile: va persistita, o
+            // il primo ricalcolo la sostituisce col pro-quota automatico senza
+            // dirlo. Arriva dal form solo qui, alla creazione.
+            if (!empty($saldiConfigCents)) {
+                $pianoRate->saldi_config = $saldiConfigCents;
+                $pianoRate->save();
+            }
+
             // 6. Generazione Rate fisiche (IMPORTANTE: L'Action ora troverà il tipo corretto)
             $statistiche = [];
             if (!empty($validated['genera_subito'])) {
@@ -404,9 +420,13 @@ class PianoRateController extends Controller
                 );
             }
 
-            // 7. Applicazione Saldi (Invariato)
+            // 7. Applicazione Saldi
+            // Il lucchetto lo chiude GeneratePianoRateAction, intestandolo al
+            // piano e solo sui saldi finiti davvero nelle quote. Bloccarlo qui
+            // significava bloccarlo anche quando le rate non venivano generate:
+            // saldi congelati da un piano che non li conteneva, e nessun modo
+            // di riaprirli dalla UI.
             if ($applicareSaldi) {
-                $this->saldoService->marcaSaldoApplicato($gestione, $saldoInfo['saldo']);
                 $gestione->refresh();
                 $pianoRate->setRelation('gestione', $gestione);
             }
@@ -679,6 +699,9 @@ class PianoRateController extends Controller
     {
         $saldi = Saldo::where('gestione_id', $gestione->id)
             ->where('is_applicato', false)
+            // Le righe a zero non entrano mai nella generazione: mostrarle qui
+            // farebbe configurare una ripartizione che non verrà mai applicata.
+            ->where('saldo_iniziale', '!=', 0)
             ->with(['anagrafica', 'immobile'])
             ->get()
             ->map(function($s) use ($condominio) {
@@ -712,8 +735,9 @@ class PianoRateController extends Controller
      * 1. Blocca se ci sono pagamenti registrati.
      * 2. Blocca se ci sono emissioni in partita doppia (Libro Giornale).
      * 3. Blocca se il piano è Approvato (forzando il ripristino in Bozza per eliminare gli eventi dello scadenziario).
-     * Se i controlli passano, elimina il piano e rimuove i lucchetti (is_applicato=false) dai saldi originari,
-     * MA SOLO SE i saldi erano stati effettivamente inclusi in questo specifico piano rate.
+     * Se i controlli passano, elimina il piano e riapre il lucchetto sui saldi intestati
+     * a questo piano (saldi.piano_rate_id), lasciando intatti quelli di altri piani e i
+     * debiti verso fornitori.
      *
      * @param Condominio $condominio Il condominio corrente
      * @param Esercizio $esercizio L'esercizio contabile corrente
@@ -756,46 +780,33 @@ class PianoRateController extends Controller
             ));
         }
 
-        // 2. VERIFICA PRESENZA SALDI IN QUESTO PIANO (Il Fix Integrativi)
-        $hasSaldiInThisPlan = false;
-        $rate = $pianoRate->rate()->with('rateQuote')->get();
-        
-        foreach($rate as $rata) {
-            foreach($rata->rateQuote as $quota) {
-                // Controllo retrocompatibilità (V1.8)
-                if ($quota->tipo === 'saldo_iniziale') {
-                    $hasSaldiInThisPlan = true;
-                    break 2;
-                }
-
-                // FIX V1.9: regole_calcolo è già un array grazie al cast nel modello
-                $regole = $quota->regole_calcolo;
-
-                if (is_array($regole) && isset($regole['importi']['saldo_usato']) && $regole['importi']['saldo_usato'] != 0) {
-                    $hasSaldiInThisPlan = true;
-                    break 2;
-                }
-            }
-        }
-
-        // 3. ELIMINAZIONE E SBLOCCO SALDI
+        // 2. ELIMINAZIONE E SBLOCCO SALDI
         try {
             DB::beginTransaction();
 
             $gestione = $pianoRate->gestione;
 
-            // Rimuoviamo il blocco saldi SOLO SE questo piano è quello che li aveva assorbiti
-            if ($hasSaldiInThisPlan && $gestione && $gestione->saldo_applicato) {
-                // Sblocca la Gestione Macro
-                $gestione->update([
-                    'saldo_applicato' => false,
-                    'nota_saldo' => null
-                ]);
+            if ($gestione) {
+                // Lo sblocco segue l'intestazione (saldi.piano_rate_id): si
+                // riaprono i saldi che QUESTO piano teneva chiusi, non tutti
+                // quelli della gestione — i debiti verso fornitori vivono nella
+                // stessa tabella con is_applicato=true e non vanno toccati.
+                $rilasciati = $this->saldoService->rilasciaLucchetti($pianoRate, $gestione);
 
-                // Sblocca le singole righe Saldo Micro relative a questa gestione
-                Saldo::where('gestione_id', $gestione->id)
-                    ->where('is_applicato', true)
-                    ->update(['is_applicato' => false]);
+                // Rete di sicurezza per i piani antecedenti alla beta.32 che la
+                // migrazione di riparazione non è riuscita a intestare: si torna
+                // al vecchio criterio, dedotto dal contenuto delle quote.
+                if ($rilasciati === 0 && $gestione->saldo_applicato && $this->pianoContieneSaldi($pianoRate)) {
+                    Saldo::where('gestione_id', $gestione->id)
+                        ->where('is_applicato', true)
+                        ->whereNull('fornitore_id')
+                        // Mai toccare un lucchetto che ha già un titolare: quello
+                        // appartiene a un altro piano, che continua ad addebitarlo.
+                        ->whereNull('piano_rate_id')
+                        ->update(['is_applicato' => false, 'piano_rate_id' => null]);
+
+                    $this->saldoService->allineaFlagGestione($gestione);
+                }
             }
 
            // 1. RIACCENSIONE SEMAFORO DASHBOARD (Per Piani Straordinari)
@@ -838,6 +849,32 @@ class PianoRateController extends Controller
                 'esercizio' => $esercizio->id
             ])->with($this->flashError(__('gestionale.error_delete_piano_rate')));
         }
+    }
+
+    /**
+     * Vecchio criterio (pre beta.32): il piano contiene tracce di saldo pregresso
+     * nelle quote generate? Usato solo come rete di sicurezza per dati storici —
+     * è fragile per costruzione, perché un ricalcolo cancella proprio quelle quote.
+     */
+    private function pianoContieneSaldi(PianoRate $pianoRate): bool
+    {
+        foreach ($pianoRate->rate()->with('rateQuote')->get() as $rata) {
+            foreach ($rata->rateQuote as $quota) {
+                // Retrocompatibilità V1.8
+                if ($quota->tipo === 'saldo_iniziale') {
+                    return true;
+                }
+
+                // regole_calcolo è già un array grazie al cast nel modello
+                $regole = $quota->regole_calcolo;
+
+                if (is_array($regole) && !empty($regole['importi']['saldo_usato'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

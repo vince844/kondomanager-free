@@ -58,4 +58,5 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_07_25_090000_add_unique_constraint_to_contributi_versati',
     '2026_07_25_100000_add_richiede_gia_versato_to_conti_table',
     '2026_07_25_150000_add_liquidita_stato_to_contributi_versati',
+    '2026_07_31_120000_add_piano_rate_id_to_saldi_table',
 ]);

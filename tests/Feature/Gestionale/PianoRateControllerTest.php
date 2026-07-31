@@ -80,16 +80,14 @@ test('permette creazione piano rate se i saldi sono liberi e applica il lock', f
     $this->mock(SaldoEsercizioService::class, function (MockInterface $mock) use ($ordinaria) {
         $mock->shouldReceive('calcolaSaldoApplicabile')
              ->andReturn([
-                 'saldo' => 10000, 
+                 'saldo' => 10000,
                  'applicabile' => true,
                  'motivo' => 'Saldo disponibile'
              ]);
 
-        $mock->shouldReceive('marcaSaldoApplicato')
-             ->zeroOrMoreTimes()
-             ->andReturnUsing(function ($gestione) {
-                 return DB::table('gestioni')->where('id', $gestione->id)->update(['saldo_applicato' => 1]);
-             });
+        // Da beta.32 il lucchetto lo chiude GeneratePianoRateAction sulle righe
+        // effettivamente finite nelle quote, non più lo store a tappeto.
+        $mock->shouldReceive('sincronizzaLucchetti')->zeroOrMoreTimes();
     });
 
     // 4. Chiamata
