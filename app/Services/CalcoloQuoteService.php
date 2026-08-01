@@ -600,9 +600,32 @@ class CalcoloQuoteService
         $weights      = [];
         $pesiScoperti = [];
 
-        // [DIAG] Nessuna tabella millesimale collegata al conto
+        // Nessuna tabella millesimale collegata al conto.
+        //
+        // Fino alla beta.32 qui c'era un `return` con un Log::warning: l'importo
+        // spariva dal piano rate in silenzio — nessun errore, nessuno scoperto,
+        // solo una riga nel file di log. I condòmini venivano addebitati di meno
+        // e nessuno se ne accorgeva.
+        //
+        // Quell'importo è per definizione SCOPERTO: non è assegnabile a nessuno.
+        // Va quindi nello stesso bucket delle quote senza destinatario, che già
+        // blocca la generazione e chiede all'amministratore una motivazione
+        // scritta per procedere. Nessun meccanismo nuovo: quello giusto esisteva
+        // già venti righe più in basso.
         if ($conto->tabelleMillesimali->isEmpty()) {
-            Log::warning("distribuisciSuTabelle: conto ID={$conto->id} ('{$conto->nome}') non ha tabelle millesimali collegate. Importo {$importoConto} non distribuito.");
+            Log::warning("distribuisciSuTabelle: conto ID={$conto->id} ('{$conto->nome}') non ha tabelle millesimali collegate. Importo {$importoConto} registrato come scoperto.");
+
+            if ($importoConto != 0) {
+                $this->scopertiAccumulati[] = [
+                    'immobile_id'     => null,   // l'intero capitolo, non una singola unità
+                    'conto_id'        => $conto->id,
+                    'tabella_id'      => null,
+                    'ruolo_richiesto' => null,
+                    'importo'         => abs($importoConto),
+                    'motivo'          => 'conto_senza_tabella',
+                ];
+            }
+
             return;
         }
 

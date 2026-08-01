@@ -8,14 +8,20 @@ use App\Http\Requests\Gestionale\Saldi\UpdateSaldoRequest;
 use App\Models\Condominio;
 use App\Models\Gestione;
 use App\Models\Saldo;
+use App\Services\Gestionale\SaldoEsercizioService;
 use App\Traits\HasEsercizio;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class SaldoInizialeController extends Controller
 {
     use HasEsercizio;
     use HandleFlashMessages;
+
+    public function __construct(
+        private readonly SaldoEsercizioService $saldoService,
+    ) {}
 
     public function index(Condominio $condominio)
     {
@@ -30,7 +36,9 @@ class SaldoInizialeController extends Controller
                 'anagrafiche',
                 'saldi' => function ($q) use ($esercizioAttivo) {
                     $q->where('esercizio_id', $esercizioAttivo->id)
-                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome']);
+                      // pianoRate serve alla UI per dire QUALE piano tiene il lucchetto,
+                      // invece di limitarsi a mostrare un'icona muta.
+                      ->with(['gestione:id,nome,tipo', 'anagrafica:id,nome', 'pianoRate:id,nome']);
                 },
                 'palazzina',
                 'scala',
@@ -87,14 +95,72 @@ class SaldoInizialeController extends Controller
         return back()->with($this->flashSuccess('Saldo aggiornato.'));
     }
 
+    /**
+     * Riapre a mano un lucchetto che nessun piano rate rivendica.
+     *
+     * Serve ai due casi che il sistema non sa risolvere da solo: i saldi bloccati
+     * prima della beta.32 (quando il lucchetto non aveva un titolare) e quelli che
+     * la migrazione di riparazione lascia deliberatamente chiusi perché più piani
+     * della stessa gestione contengono quote di saldo e attribuirli a caso
+     * rischierebbe un doppio addebito.
+     *
+     * Non è una scorciatoia: se il saldo ha un titolare, la strada resta agire sul
+     * piano che lo tiene.
+     */
+    public function sblocca(Condominio $condominio, Saldo $saldo)
+    {
+        abort_unless($saldo->condominio_id === $condominio->id, 403);
+
+        // I debiti verso fornitori vivono nella stessa tabella con is_applicato=true
+        // proprio per restare fuori dai piani rate: non sono lucchetti da aprire.
+        abort_if(
+            $saldo->fornitore_id !== null,
+            403,
+            'Questo non è un saldo di un condòmino ma un debito verso un fornitore: non va sbloccato.'
+        );
+
+        abort_if(
+            $saldo->piano_rate_id !== null,
+            403,
+            "Questo saldo è intestato al piano rate «{$saldo->pianoRate?->nome}»: per liberarlo agisci su quel piano, non a mano."
+        );
+
+        abort_unless($saldo->is_applicato, 400, 'Questo saldo è già libero.');
+
+        $saldo->update(['is_applicato' => false]);
+
+        Log::info('Sblocco manuale di un saldo senza titolare', [
+            'saldo_id'       => $saldo->id,
+            'gestione_id'    => $saldo->gestione_id,
+            'saldo_iniziale' => $saldo->saldo_iniziale,
+            'user_id'        => auth()->id(),
+        ]);
+
+        // Il flag di gestione è un derivato: va ricalcolato, o resta acceso
+        // raccontando un blocco che non c'è più.
+        if ($saldo->gestione) {
+            $this->saldoService->allineaFlagGestione($saldo->gestione);
+        }
+
+        return back()->with($this->flashSuccess('Saldo sbloccato: nessun piano rate lo rivendicava.'));
+    }
+
     public function destroy(Condominio $condominio, Saldo $saldo)
     {
         abort_unless($saldo->condominio_id === $condominio->id, 403);
-        
-        // --- MODIFICA 2: Controlla se è bloccata la riga specifica OPPURE l'intera gestione madre ---
-        $gestioneBloccata = $saldo->gestione && $saldo->gestione->saldo_applicato;
-        abort_if($saldo->is_applicato || $gestioneBloccata, 403, 'Non puoi eliminare un saldo già applicato a un piano rate.');
-        // ------------------------------------------------------------------------------------------
+
+        // La riga, non la gestione. Il flag `gestioni.saldo_applicato` è un
+        // derivato dalla beta.32: usarlo qui come autorità significava vietare
+        // di cancellare un saldo LIBERO solo perché un altro saldo della stessa
+        // gestione era finito in un piano — cioè impedire la correzione in
+        // corso di gestione, che è un bisogno legittimo e diverso.
+        abort_if(
+            $saldo->eBloccato(),
+            403,
+            $saldo->pianoRate
+                ? "Non puoi eliminare questo saldo: è incluso nel piano rate «{$saldo->pianoRate->nome}», già emesso o incassato."
+                : 'Non puoi eliminare un saldo già applicato a un piano rate.'
+        );
 
         $saldo->delete();
 

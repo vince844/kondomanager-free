@@ -67,6 +67,46 @@ class PianoRate extends Model
 
     /*
     |--------------------------------------------------------------------------
+    | SOGLIA DI IMMUTABILITÀ
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Il piano ha incassi registrati su almeno una quota.
+     */
+    public function haIncassiRegistrati(): bool
+    {
+        return $this->rate()
+            ->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))
+            ->exists();
+    }
+
+    /**
+     * Almeno una quota è stata emessa in contabilità, cioè ha una scrittura collegata.
+     */
+    public function haRateEmesse(): bool
+    {
+        return $this->rate()
+            ->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))
+            ->exists();
+    }
+
+    /**
+     * La soglia oltre la quale il piano — e i dati che lo alimentano — non si
+     * correggono più, si stornano.
+     *
+     * Finché è false il sistema è già disposto a distruggere e riscrivere tutte
+     * le quote (è quello che fa «Ricalcola»): non ha senso vietare la correzione
+     * del saldo che le alimenta. Quando diventa true il numero è uscito dallo
+     * studio — è stato emesso a giornale o incassato — e va rettificato, non riscritto.
+     */
+    public function eImmutabile(): bool
+    {
+        return $this->haRateEmesse() || $this->haIncassiRegistrati();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | RELAZIONI
     |--------------------------------------------------------------------------
     */

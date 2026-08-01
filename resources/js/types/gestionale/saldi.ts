@@ -9,8 +9,11 @@ export interface Saldo {
   saldo_iniziale: number;
   is_applicato: boolean;
   origine: string;
-  gestione_id: number; 
-  anagrafica_id: number | null; 
+  gestione_id: number;
+  anagrafica_id: number | null;
+  /** Il piano rate che ha assorbito questo saldo, cioè chi tiene il lucchetto. */
+  piano_rate_id: number | null;
+  piano_rate?: { id: number; nome: string } | null;
   gestione: Gestione;
   anagrafica: { 
     id: number;

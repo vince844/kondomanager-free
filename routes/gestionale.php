@@ -82,6 +82,12 @@ Route::prefix('/gestionale/{condominio}')
     Route::resource('saldi', SaldoInizialeController::class)
         ->parameters(['saldi' => 'saldo']);
 
+    // Sblocco manuale di un lucchetto senza titolare (dati storici anteriori alla
+    // beta.32, o il caso ambiguo che la migrazione di riparazione lascia chiuso
+    // di proposito quando più piani rivendicano gli stessi saldi).
+    Route::post('saldi/{saldo}/sblocca', [SaldoInizialeController::class, 'sblocca'])
+        ->name('saldi.sblocca');
+
     // Già versato per voce di spesa: alimenta il netting del riparto (beta.26).
     Route::get('contributi', [\App\Http\Controllers\Gestionale\Contributi\ContributoVersatoController::class, 'index'])
         ->name('contributi.index');

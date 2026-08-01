@@ -55,7 +55,7 @@ const pageGuides = [
   },
   {
     title: 'Dati Blindati',
-    description: 'I saldi inclusi in un piano rate emesso mostreranno un lucchetto e non potranno essere modificati per garantire la quadratura.',
+    description: 'I saldi assorbiti da un piano rate mostrano un lucchetto e non sono modificabili, per garantire la quadratura. Eliminando quel piano tornano liberi.',
     icon: Lock,
     colorVariant: 'blue' as const
   },

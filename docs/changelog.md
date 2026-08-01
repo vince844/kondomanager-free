@@ -7,6 +7,37 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.33] - Il Lucchetto Si Apre Quando Serve
+
+La beta.32 ha dato un titolare al lucchetto sui saldi. Restava la domanda successiva, che un amministratore ha posto senza girarci intorno: *«dovevo modificare i saldi, erano bloccati»*. Non era un difetto tecnico — era il lucchetto che scattava troppo presto e agiva troppo largo.
+
+**Troppo presto.** Il lucchetto si chiudeva alla *generazione* del piano rate. Ma un piano generato e non ancora emesso è interamente riscrivibile: «Ricalcola» lo cancella e lo rigenera senza chiedere permesso. Il sistema era disposto a distruggere tutte le quote, e contemporaneamente vietava di correggere di un centesimo il saldo che le aveva prodotte. La soglia giusta era già scritta nel messaggio d'errore — *«un saldo già incluso in un piano rate emesso»* — solo che il codice non la rispettava.
+
+**Troppo largo.** Il lucchetto era per gestione: un solo saldo assorbito da un piano congelava l'intero pannello, comprese le righe libere, nate dopo, mai entrate in nessun piano. Non si potevano modificare, non si potevano eliminare, non se ne potevano aggiungere di nuove. È il *«troppi blocchi»* della segnalazione, ed è anche il motivo per cui una correzione trovata in corso d'anno non aveva strada.
+
+**Nessuna migrazione: nessuna modifica al database.**
+
+### Corretto
+
+- **I saldi si correggono finché il piano non è emesso.** La soglia passa da «esiste un piano» a «il piano è emesso in contabilità o ha incassi registrati». Le due condizioni non sono nuove: sono esattamente quelle che il sistema già usa per decidere se un piano è ricalcolabile. Ora vivono in un posto solo, `PianoRate::eImmutabile()`, invece di essere ricopiate in sei punti del codice.
+- **Il lucchetto guarda la riga, non la gestione.** Un saldo mai assorbito da un piano resta modificabile ed eliminabile anche se un altro saldo della stessa gestione è dentro un piano emesso. E i pulsanti per aggiungere credito o debito non spariscono più: una correzione in corso di gestione è un'esigenza normale, non un'eccezione da vietare.
+- **I messaggi dicono quale piano.** Prima l'unica informazione era un'icona muta e una spiegazione generica; ora il blocco nomina il piano rate che tiene il saldo e dice cosa fare per liberarlo — annullare le emissioni di quel piano, oppure eliminarlo.
+- **Una voce di spesa senza tabella millesimale non sparisce più in silenzio.** Era il difetto più costoso di questa versione: un capitolo con un importo ma senza tabella collegata veniva semplicemente saltato dal calcolo, con una riga di log come unica traccia. Il piano rate si generava senza quell'importo, i condòmini venivano addebitati di meno e nessuno se ne accorgeva. Ora quell'importo finisce dove è sempre appartenuto — fra le **quote non assegnabili**, che bloccano la generazione e chiedono all'amministratore una motivazione scritta per procedere.
+- **Il segno non si digita, e ora è vero ovunque.** Nel pannello Saldi il segno lo decide il pulsante che premi, «Aggiungi credito» o «Aggiungi debito», e il campo importo rifiuta il meno. Tranne nella modifica rapida, dove il meno si poteva scrivere ma veniva scartato in silenzio: chi correggeva un debito di 300 digitando `-100` per trasformarlo in credito otteneva un debito di 100. Ora il campo si comporta come tutti gli altri.
+- **Il credito di un condòmino non paga più il debito di un estraneo.** Quando si usa un credito intestato a un'altra persona — caso legittimo fra comproprietari della stessa unità — il sistema ora verifica che i due condividano davvero quell'unità, e scrive sulla riga contabile di chi era quel denaro. Prima il controllo non c'era.
+
+### Aggiunto
+
+- **Sblocco manuale per i lucchetti senza titolare.** I saldi bloccati prima della 1.10 — quando il lucchetto non registrava da chi era stato chiuso — e i rari casi che la riparazione automatica lascia chiusi di proposito (due piani della stessa gestione che contengono entrambi quote di saldo: lì il sistema preferisce non indovinare) ora si possono riaprire dall'interfaccia, con l'avvertenza di controllare prima che nessun piano stia già addebitando quell'importo. I debiti verso i fornitori non sono sbloccabili per questa via: non sono lucchetti, vivono in quell'archivio per un altro motivo.
+
+### Sotto il cofano
+
+- `PianoRate::eImmutabile()`, `haRateEmesse()` e `haIncassiRegistrati()` raccolgono in un punto solo la soglia che era duplicata in sei file.
+- `Saldo::eBloccato()` distingue i saldi con un titolare — che seguono la sorte del loro piano — da quelli senza, che restano bloccati fino allo sblocco manuale.
+- Sette nuovi test coprono la soglia nei due versi (piano generato: si modifica; piano emesso: no), la granularità, lo sblocco manuale con le sue due guardie, e il capitolo senza tabella che ora diventa una quota non assegnabile.
+
+---
+
 ## [1.10.0-beta.32] - Il Lucchetto Senza Padrone
 
 Un amministratore segnala dal forum: ha creato un piano rate, si è accorto che era sbagliato, e ha provato a rimediare. I saldi pregressi erano bloccati col lucchetto, così — come indicato dal messaggio a video — ha cancellato il piano. Il lucchetto è rimasto chiuso. Ha ricreato il piano: i vecchi saldi non c'erano più, il piano ripartiva dal solo preventivo.

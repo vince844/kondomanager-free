@@ -262,9 +262,29 @@ class StoreIncassoRateAction
                         ->filter(fn($q) => $q->credito_disponibile > 0)
                         ->values();
 
+                    // Il credito è intestato a un'altra persona? Succede nella ricerca
+                    // per immobile, fra comproprietari della stessa unità, ed è
+                    // legittimo — ma sposta denaro fra due soggetti diversi, che è
+                    // cosa più delicata della compensazione fra gestioni (per la quale
+                    // il sistema chiede già una conferma esplicita a schermo).
+                    // Si accetta solo se i due condividono davvero quell'unità.
+                    $creditoDaAltroSoggetto = false;
+
                     if ($quoteCredito->isEmpty() && $quotaRef->credito_disponibile > 0) {
-                        // Fallback (es. ricerca per immobile: la quota può essere
-                        // intestata a un'anagrafica diversa dal pagante).
+                        $condividonoUnita = $quotaRef->immobile_id && DB::table('anagrafica_immobile')
+                            ->where('immobile_id', $quotaRef->immobile_id)
+                            ->where('anagrafica_id', $validated['pagante_id'])
+                            ->exists();
+
+                        if (! $condividonoUnita) {
+                            throw new \RuntimeException(
+                                'Il credito selezionato è intestato a un altro soggetto che non risulta collegato '
+                                . "a quell'unità immobiliare: non può essere usato per pagare questo debito. "
+                                . 'Seleziona un credito del pagante, oppure registra separatamente il rimborso fra i due soggetti.'
+                            );
+                        }
+
+                        $creditoDaAltroSoggetto = true;
                         $quoteCredito = collect([$quotaRef]);
                     }
 
@@ -298,7 +318,12 @@ class StoreIncassoRateAction
                             'immobile_id'        => $quotaCredito->immobile_id,
                             'tipo_riga'          => 'dare',
                             'importo'            => $prelievoCents,
-                            'note'               => 'Utilizzo credito pregresso',
+                            // Se il credito viene da un altro soggetto la riga lo dichiara:
+                            // in estratto conto deve restare leggibile di chi era quel denaro.
+                            'note'               => $creditoDaAltroSoggetto
+                                ? 'Utilizzo credito pregresso di ' . ($quotaCredito->anagrafica?->nome ?? "anagrafica #{$quotaCredito->anagrafica_id}")
+                                    . ' (comproprietario della stessa unità)'
+                                : 'Utilizzo credito pregresso',
                         ]);
 
                         // 1. Attach alla pivot (con importo negativo per ridurre il credito)

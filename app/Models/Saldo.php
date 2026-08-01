@@ -68,6 +68,27 @@ class Saldo extends Model
     }
 
     /**
+     * Questo saldo è ormai intoccabile?
+     *
+     * Non basta che sia stato assorbito da un piano: finché quel piano non è
+     * emesso o incassato è ancora interamente riscrivibile, e vietare la
+     * correzione del saldo che lo alimenta sarebbe più severo di quanto il
+     * sistema sia con il piano stesso.
+     *
+     * Restano bloccati i saldi con `is_applicato` ma senza titolare: sono i
+     * debiti verso fornitori e i dati storici anteriori alla beta.32, per i
+     * quali non è possibile stabilire quale piano li tenga.
+     */
+    public function eBloccato(): bool
+    {
+        if ($this->pianoRate) {
+            return $this->pianoRate->eImmutabile();
+        }
+
+        return (bool) $this->is_applicato;
+    }
+
+    /**
      * L'esercizio contabile in cui questo saldo è stato registrato come "iniziale".
      */
     public function esercizio(): BelongsTo
