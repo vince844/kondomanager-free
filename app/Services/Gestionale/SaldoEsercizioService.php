@@ -13,48 +13,71 @@ use Illuminate\Support\Facades\DB;
 class SaldoEsercizioService
 {
     /**
-     * V1.9: Calcola i saldi basandosi esclusivamente sulla GESTIONE.
+     * Quanto pregresso questa gestione ha ancora da far assorbire da un piano.
+     *
+     * La domanda è «esistono saldi LIBERI?», non «il flag di gestione è acceso?».
+     * Sembra la stessa cosa e non lo è: dalla beta.32 `gestioni.saldo_applicato`
+     * è un derivato che `allineaFlagGestione()` accende con un `exists()`, cioè
+     * appena UN saldo risulta bloccato. Usarlo come gate — com'era fino alla
+     * beta.34 — significava che il primo piano emesso rendeva inassorbibili
+     * tutti i saldi rimasti liberi, compresi quelli inseriti dopo.
+     *
+     * È l'ultimo posto in cui sopravviveva il «troppo largo» della beta.33: là
+     * il pannello si sbloccava riga per riga, qui la creazione del piano
+     * continuava a ragionare per gestione. L'effetto era che una correzione
+     * trovata a marzo si poteva registrare ma non chiedere più a nessuno.
+     *
+     * Il numero proposto deve coincidere con quello che il piano assorbirebbe
+     * davvero, quindi applica gli stessi due filtri di `GenerateSaldiAction`:
+     * righe libere e `fornitore_id` nullo — i debiti verso fornitori vivono
+     * nella stessa tabella ma non entrano mai in un piano rate.
      */
-    public function calcolaSaldoApplicabile(Gestione $gestione): array 
+    public function calcolaSaldoApplicabile(Gestione $gestione): array
     {
-        // 1. Verifica Blocco sulla gestione specifica
-        if ($gestione->saldo_applicato) {
+        $queryLiberi = DB::table('saldi')
+            ->where('gestione_id', $gestione->id)
+            ->where('is_applicato', false)
+            ->whereNull('fornitore_id');
+
+        $saldoInCentesimi = (int) $queryLiberi->sum('saldo_iniziale');
+        $haMovimenti = (clone $queryLiberi)->where('saldo_iniziale', '!=', 0)->exists();
+
+        if ($haMovimenti) {
+            return [
+                'saldo' => $saldoInCentesimi,
+                'has_movimenti' => true,
+                'applicabile' => true,
+                'motivo' => 'Saldi pregressi rilevati nel wallet per questa gestione.',
+                'is_primo_anno' => false,
+            ];
+        }
+
+        // Nessuna riga libera. Restano due situazioni molto diverse, e dirle
+        // con lo stesso messaggio è ciò che confondeva: «non ce n'erano mai
+        // stati» e «ci sono, ma li ha già presi un piano».
+        $giaAssorbiti = DB::table('saldi')
+            ->where('gestione_id', $gestione->id)
+            ->where('is_applicato', true)
+            ->whereNull('fornitore_id')
+            ->exists();
+
+        if ($giaAssorbiti) {
             return [
                 'saldo' => 0,
                 'has_movimenti' => false,
                 'applicabile' => false,
-                'motivo' => "I saldi pregressi sono già stati integrati nel piano rate della gestione \"{$gestione->nome}\".",
+                'motivo' => "I saldi pregressi di questa gestione sono già stati integrati in un piano rate. "
+                          . "Per chiederne altri, registrali prima nei Saldi Iniziali della gestione \"{$gestione->nome}\".",
+                'is_primo_anno' => false,
             ];
-        }
-        
-        $saldoInCentesimi = 0;
-        $haMovimenti = false; 
-        $motivo = "";
-        $isPrimoAnno = false;
-
-        // 2. Interroga direttamente la nuova tabella saldi (Wallet) isolando la gestione_id
-        $queryManuale = DB::table('saldi')
-            ->where('gestione_id', $gestione->id)
-            ->where('is_applicato', false);
-
-        $saldoInCentesimi = (int) $queryManuale->sum('saldo_iniziale');
-        
-        // Verifica se esistono righe con importi reali
-        $haMovimenti = (clone $queryManuale)->where('saldo_iniziale', '!=', 0)->exists();
-        
-        if ($haMovimenti) {
-            $motivo = "Saldi pregressi rilevati nel wallet per questa gestione.";
-        } else {
-            $motivo = "Nessun saldo pregresso da elaborare per questa gestione.";
-            $isPrimoAnno = true;
         }
 
         return [
-            'saldo' => $saldoInCentesimi,
-            'has_movimenti' => $haMovimenti,
-            'applicabile' => true, 
-            'motivo' => $motivo,
-            'is_primo_anno' => $isPrimoAnno
+            'saldo' => 0,
+            'has_movimenti' => false,
+            'applicabile' => true,
+            'motivo' => 'Nessun saldo pregresso da elaborare per questa gestione.',
+            'is_primo_anno' => true,
         ];
     }
     

@@ -49,8 +49,17 @@ class PianoRateQuoteService
                 
                 $saldoIniziale = 0;
                 if ($pianoUsaSaldi && $esercizio) {
+                    // La gestione è il filtro che mancava. Senza, con
+                    // un'ordinaria e una straordinaria aperte sullo stesso
+                    // esercizio l'avviso dell'una stampava anche il pregresso
+                    // dell'altra — e nel verso opposto, un credito altrove
+                    // abbassava il dovuto. È l'asse su cui filtra da sempre
+                    // GenerateSaldiAction: la stampa deve mostrare ciò che il
+                    // piano ha davvero assorbito, non un'altra somma.
                     $saldoRecord = Saldo::where('esercizio_id', $esercizio->id)
                         ->where('condominio_id', $pianoRate->condominio_id)
+                        ->where('gestione_id', $pianoRate->gestione_id)
+                        ->whereNull('fornitore_id')
                         ->where('anagrafica_id', $anagrafica->id)
                         ->sum('saldo_iniziale');
                     $saldoIniziale = (int) $saldoRecord;
@@ -147,8 +156,13 @@ class PianoRateQuoteService
                 $totaleCrediti = 0;
 
                 if ($pianoUsaSaldi && $esercizio) {
+                    // Stesso filtro di quotePerAnagrafica, e per la stessa
+                    // ragione: il totale stampato per l'unità deve essere
+                    // quello della gestione del piano, non di tutte insieme.
                     $saldiRecords = Saldo::where('esercizio_id', $esercizio->id)
                         ->where('condominio_id', $pianoRate->condominio_id)
+                        ->where('gestione_id', $pianoRate->gestione_id)
+                        ->whereNull('fornitore_id')
                         ->where('immobile_id', $immobile->id)
                         ->get();
 

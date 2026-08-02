@@ -7,6 +7,59 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.34] - Quello Che il Sistema Non Diceva
+
+Tre difetti diversi con la stessa forma: il sistema sapeva qualcosa e non lo diceva. Sapeva **perché** una fattura non si poteva eliminare, e faceva sparire la voce dal menu. Sapeva che un saldo era ancora libero, e rispondeva che erano già stati integrati tutti. Sapeva che una fattura aveva la ritenuta, e lo scriveva in un punto ciano di sei pixel.
+
+**Nessuna modifica al database.** Nemmeno una migrazione: le tre voci della beta che ne avrebbero richiesta una sono state rimandate — vedi in fondo, con il perché.
+
+### Corretto — numeri e divieti
+
+- **L'avviso di pagamento sommava il pregresso di tutte le gestioni.** Per scrivere la riga «Saldo iniziale» il servizio che alimenta la stampa filtrava per esercizio e condominio, senza dire quale gestione: con un'ordinaria e una straordinaria aperte nello stesso esercizio, l'avviso dell'una riportava anche il pregresso dell'altra. Nel caso misurato dal test, 800,00 € stampati al posto di 300,00 €. Nel verso opposto è peggio: un credito su un'altra gestione **abbassava** il dovuto — 300,00 € che diventano un credito di 200,00 € — e un numero troppo basso non fa reclamare nessuno, quindi non emerge mai. Il generatore del piano ha sempre filtrato per gestione: erano la stampa e il generatore a guardare assi diversi. La contabilità non era intaccata; il foglio che arriva al condòmino sì, ed è l'unico che nessuno riconcilia.
+
+- **Il divieto sull'«Elimina» della fattura passiva smette di essere muto.** Il server rifiutava l'eliminazione per **sette** motivi distinti — copertura da fondo confermata, piano rate con rate emesse o incassate, piano approvato, fattura pagata o parziale, più scritture collegate, esercizio chiuso, fattura già stornata — ognuno con il suo messaggio. Il menu della riga ne controllava **due**, e quando la condizione era falsa la voce spariva e basta. Due difetti opposti, entrambi reali: chi non poteva eliminare non sapeva quale motivo lo riguardasse né come uscirne; e chi rientrava nei due controlli del menu poteva vedersi comparire la voce e ottenere comunque un rifiuto.
+
+  Ora la voce è **sempre presente**: attiva quando si può, altrimenti disabilitata, con il motivo e **il rimedio** nel tooltip — storna il giroconto, riporta il piano in bozza, storna il pagamento. Il motivo è calcolato dal server e viaggia col dato: il menu e la guardia dell'eliminazione sono ormai la stessa riga di codice, quindi non possono più divergere.
+
+### Aggiunto
+
+- **La pagina dei Saldi Iniziali ha la sua guida.** Pulsante «Guida» nell'header, come le impostazioni e le tabelle millesimali. Non è un riassunto dell'interfaccia: racconta il segno e perché il meno non si digita, l'intestazione all'intero immobile o al singolo soggetto (art. 63), i tre modi in cui i saldi entrano nel piano rate, e il lucchetto per intero — chi lo chiude, che la soglia è l'emissione e non la generazione, che vale per la riga e non per la gestione, e le tre strade per correggere un saldo già bloccato. È la pagina da cui è nata la segnalazione delle beta.32 e .33: era anche l'unica senza una guida.
+
+- **Anche la pagina delle Fatture passive ha la sua guida.** Cosa entra nell'elenco e cosa no, come si legge una riga, sforo e ratifica assembleare, i sette motivi del divieto sull'Elimina con il rimedio di ciascuno, e le coperture da fondo. Contiene una cosa che non era scritta da nessuna parte pur essendo coperta da test: **lo storno è reversibile** — eliminando la nota di credito che genera, la fattura originale torna allo stato calcolato dai pagamenti reali.
+
+- **Stato vuoto con icona e spiegazione** negli elenchi di unità immobiliari, tabelle millesimali, gestioni e piani dei conti, sul modello già usato dai piani rate. Nuovo componente condiviso `TableEmptyState.vue`.
+
+- **La ritenuta d'acconto si vede.** Nell'elenco fatture era un punto ciano di 6 px accanto al numero, con la spiegazione solo nel tooltip — cioè visibile solo a chi già sapeva di doverci passare sopra. Ora è il badge «Ritenuta», identico a quello dei Pagamenti fornitori: la stessa informazione con lo stesso aspetto nelle due pagine.
+
+- Il menu di riga delle fatture era largo 210 px e mandava a capo le voci che spiegano un divieto («Elimina — non consentito», «Storna — prima i pagamenti»). Allargato: l'etichetta è la parte che fa il lavoro, accorciarla avrebbe risolto il sintomo togliendo la spiegazione.
+
+- **«Non c'è ancora niente» e «la ricerca non ha trovato nulla» sono due stati diversi**, e fino a oggi nessun elenco li distingueva — nemmeno quello dei piani rate preso a modello, che a ricerca vuota invitava comunque a creare il primo piano. Con la paginazione lato server il totale è zero in entrambi i casi, quindi la distinzione si legge dai filtri nella query string. Senza questa separazione l'invito all'azione sarebbe comparso proprio a chi stava solo cercando: un peggioramento travestito da miglioramento.
+
+### Corretto
+
+- **Dalla pagina dei Saldi non si poteva cambiare condominio.** Unica pagina della sezione Struttura in cui il nome restava testo fisso. Non era un limite del componente d'intestazione, che accetta già la lista dei condomìni: era il controller a non passarla. Coperto da test.
+
+- **Un saldo registrato dopo l'emissione tornava inchiedibile.** Ultimo posto in cui sopravviveva il difetto della beta.33. La schermata di creazione del piano rate decideva se offrire i saldi guardando il flag di gestione, che dalla beta.32 è un valore derivato: si accende appena **una** riga risulta bloccata. Bastava quindi il primo piano emesso perché il sistema rispondesse *«i saldi pregressi sono già stati integrati»* e non proponesse più nulla — comprese le righe inserite dopo, che la beta.33 aveva reso registrabili proprio per permettere la correzione in corso d'anno. Si poteva scrivere quel pregresso, ma non chiederlo più a nessuno. Ora la domanda è «esistono saldi **liberi**?», e il divieto compare solo quando non ce ne sono davvero — con un messaggio che dice cosa fare.
+
+- **Un debito verso un fornitore veniva proposto fra i saldi da assorbire.** Vive nella stessa tabella dei saldi dei condòmini ma non entra mai in un piano rate: il numero mostrato all'amministratore non era quello che il piano avrebbe davvero addebitato. Emerso scrivendo i test del punto sopra.
+
+### Note per chi sviluppa
+
+- `SaldoInizialeController::index()` ora usa il trait `HasCondomini`, come gli altri controller della sezione. Restano non passati `esercizio`/`esercizi`, che il componente supporterebbe.
+- **Tutti** gli elenchi del gestionale hanno ora uno stato vuoto: ai quattro della prima tornata (unità, tabelle, gestioni, piani dei conti) si aggiungono casse, esercizi, palazzine, scale, anagrafiche e documenti dell'immobile. `gestionale/saldi/DataTable.vue` e il suo `columns.ts` risultano **codice morto**: nessuno li importa, la pagina Saldi usa il pannello a due colonne. Non sono stati toccati — vanno rimossi, non aggiornati.
+- `SaldoEsercizioService::calcolaSaldoApplicabile()` non legge più `gestioni.saldo_applicato`. Regola generale: **un valore derivato non è mai un gate**, perché risponde a «esiste almeno un…» e nessuna decisione utile ha quella forma.
+- La guardia `tryDropIndex()` della migrazione del 01/03/2026 ora funziona anche su SQLite. Su MySQL/MariaDB — gli unici database su cui Kondomanager gira — **il comportamento è identico a prima**: cambia solo il database dei test, dove sopravviveva un indice `UNIQUE` rimosso in produzione da marzo. Lo schema di prova era più severo di quello reale, e rendeva impossibile coprire un caso legittimo.
+
+### Rimandato, e perché
+
+Tre voci previste per questa beta sono state spostate. Il criterio è quello fissato il 31/07: il percorso 1.9.1 → 1.10 è l'**unico aggiornamento senza backup automatico**, quindi ogni migrazione evitabile lì è un rischio evitato.
+
+- **`esercizio_id` su `piani_rate` + backfill → 1.11**, insieme alla correzione che genera il problema (`GestioneController::update()` riaggancia la gestione all'esercizio aperto, e nessuno disattiva il precedente). Nei dati non c'è **nessuna** occorrenza, e la prima possibile è gennaio 2027, al primo cambio d'anno con una gestione straordinaria aperta.
+- **Filtro esercizio in `GenerateSaldiAction` → 1.11**, con la voce sopra: oggi è un no-op verificato, perché ogni gestione appartiene a un solo esercizio.
+- **Sdoppiamento di `metodo_distribuzione` in debiti/crediti → fuori dalla 1.10.** Cercandone l'origine non è emerso nessun richiedente: nessuna segnalazione, nessuna specifica. Si riapre quando qualcuno la chiede, con il suo caso d'uso.
+
+---
+
 ## [1.10.0-beta.33] - Il Lucchetto Si Apre Quando Serve
 
 La beta.32 ha dato un titolare al lucchetto sui saldi. Restava la domanda successiva, che un amministratore ha posto senza girarci intorno: *«dovevo modificare i saldi, erano bloccati»*. Non era un difetto tecnico — era il lucchetto che scattava troppo presto e agiva troppo largo.

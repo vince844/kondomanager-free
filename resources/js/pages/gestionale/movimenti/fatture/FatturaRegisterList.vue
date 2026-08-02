@@ -5,6 +5,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import FattureGuide from '@/components/guides/FattureGuide.vue';
 import DataTable from '@/components/gestionale/movimenti/fatture/DataTable.vue'; 
 import { createColumns } from '@/components/gestionale/movimenti/fatture/columns';
 import { usePermission } from '@/composables/permissions';
@@ -34,6 +35,8 @@ const headerBreadcrumbs = computed(() => [
     { title: 'Movimenti' },
     { title: 'Fatture Passive' },
 ]);
+
+const showGuide = ref(false);
 
 const pageGuides = [
     { title: 'Ciclo Passivo', description: 'Registra le fatture con controllo automatico del budget.', icon: FileText, colorVariant: 'blue' as const },
@@ -130,6 +133,9 @@ const filterSfori = () => {
                 :breadcrumbs="(headerBreadcrumbs as any)"
                 :condominio="(props.condominio as any)"
                 :condomini="(props.condomini as any)"
+                has-text-guide
+                text-guide-title="Guida"
+                @open-text-guide="showGuide = true"
             />
 
             <div class="w-full">
@@ -234,5 +240,7 @@ const filterSfori = () => {
                 </section>
             </div>
         </div>
+
+        <FattureGuide v-model:open="showGuide" />
     </GestionaleLayout>
 </template>

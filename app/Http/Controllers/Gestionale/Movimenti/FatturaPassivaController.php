@@ -18,7 +18,6 @@ use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\FatturaCopertura;
 use App\Models\Gestionale\FatturaPassiva;
-use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\ScritturaContabile;
 use App\Models\Immobile;
 use App\Models\Saldo;
@@ -73,7 +72,10 @@ class FatturaPassivaController extends Controller
     public function index(Request $request, Condominio $condominio): Response
     {
         $fatture = FatturaPassiva::where('condominio_id', $condominio->id)
-            ->with(['fornitore', 'righe', 'documenti'])
+            // `coperture`, `pianiRate`, `scritture` ed `esercizio` servono a
+            // motivoBloccoEliminazione(): caricate qui una volta, invece di
+            // sette query per riga moltiplicate per le venti righe di pagina.
+            ->with(['fornitore', 'righe', 'documenti', 'coperture', 'pianiRate', 'scritture', 'esercizio'])
             ->when($request->stato_pagamento, fn ($q, $v) => $q->where('stato_pagamento', $v))
             ->when($request->stato_approvazione, fn ($q, $v) => $q->where('stato_approvazione', $v))
             ->when($request->search, fn ($q, $v) => $q->where('numero_documento', 'like', "%{$v}%")
@@ -84,6 +86,13 @@ class FatturaPassivaController extends Controller
             ->orderByDesc('data_documento')
             ->paginate(20)
             ->withQueryString();
+
+        // Il motivo del divieto viaggia col dato, non ricostruito dal frontend:
+        // `null` significa eliminabile. Finché il menu deduceva da sé chi fosse
+        // eliminabile, guardava due condizioni su sette e sbagliava in entrambi
+        // i versi — nascondeva la voce senza spiegare, o la mostrava e poi il
+        // server la rifiutava.
+        $fatture->through(fn (FatturaPassiva $fattura) => $fattura->append('motivo_blocco_eliminazione'));
 
         $listaCondomini = CondominioResource::collection($this->getCondomini())->resolve();
         $esercizio = $this->getEsercizioCorrente($condominio);
@@ -280,76 +289,14 @@ class FatturaPassivaController extends Controller
      */
     public function destroy(Condominio $condominio, FatturaPassiva $fattura): RedirectResponse
     {
-        // Beta.19: una copertura CONFERMATA ha un giroconto vivo nel giornale.
-        // Eliminare la fattura cancellerebbe la copertura lasciando il GIR orfano:
-        // fondo consumato senza più traccia del perché. Prima si storna il
-        // giroconto (la copertura torna in attesa), poi si può eliminare.
-        if ($fattura->coperture()->where('tipo_copertura', 'fondo_riserva')->where('stato', 'confermata')->exists()) {
-            return back()->with($this->flashError(
-                'Operazione negata: la copertura dal fondo è stata confermata con un giroconto. '
-                .'Storna prima il giroconto di conferma dalla pagina Giroconti.'
-            ));
-        }
-
-        // --- INIZIO FIX: BLOCCO INTELLIGENTE PIANO RATE STRAORDINARIO ---
-        $pivotPlan = DB::table('piano_rate_fatture')->where('fattura_passiva_id', $fattura->id)->first();
-
-        if ($pivotPlan) {
-            /** @var PianoRate $piano */
-            $piano = PianoRate::find($pivotPlan->piano_rate_id);
-
-            if ($piano) {
-                // 1. Blocco Duro: Ci sono già incassi o emissioni contabili fisiche?
-                $hasPagamenti = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->where('importo_pagato', '>', 0))->exists();
-                $hasEmissioni = $piano->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists();
-
-                if ($hasPagamenti || $hasEmissioni) {
-                    return back()->with($this->flashError(
-                        'Operazione negata: La fattura è in un piano straordinario con rate già emesse o incassate. Usa lo storno.'
-                    ));
-                }
-
-                // 2. Blocco Legale: Il piano è approvato (scudo Art. 1135)?
-                $stato = is_object($piano->stato) ? $piano->stato->value : $piano->stato;
-                if ($stato === 'approvato') {
-                    return back()->with($this->flashError(
-                        'Operazione negata: La fattura è in un piano approvato. Riporta il piano in bozza per poterla eliminare.'
-                    ));
-                }
-
-                // Se arriviamo qui, il piano è in 'bozza' ed è vuoto.
-                // Possiamo procedere! La 'cascadeOnDelete' della tua migration
-                // cancellerà in automatico la riga dalla tabella 'piano_rate_fatture' mantenendo pulito il database.
-            }
-        }
-        // --- FINE FIX ---
-
-        // 1. IL MURO CONTABILE
-        if ($fattura->stato_pagamento !== StatoPagamentoFattura::APERTA) {
-            return back()->with($this->flashError(
-                'Operazione negata: La fattura risulta pagata o parzialmente saldata. '.
-                'Per mantenere la coerenza del libro giornale, devi usare la funzione "Storna".'
-            ));
-        }
-
-        if ($fattura->scritture()->count() > 1) {
-            return back()->with($this->flashError(
-                'Operazione negata: la fattura è collegata a più scritture contabili.'
-            ));
-        }
-
-        $statoEsercizio = DB::table('esercizi')->where('id', $fattura->esercizio_id)->value('stato');
-
-        if ($statoEsercizio === 'chiuso') {
-            return back()->with($this->flashError(
-                'Operazione negata: La fattura appartiene a un esercizio chiuso e rendicontato. Usa lo Storno.'
-            ));
-        }
-
-        if ($fattura->dati_extra['is_stornata'] ?? false) {
-            return back()->with($this->flashError(
-                'Operazione negata: Questa fattura è già stata annullata tramite storno contabile.'
-            ));
+        // I sette motivi di rifiuto vivevano qui, srotolati, e il menu della riga
+        // ne conosceva due. Ora stanno tutti in `motivoBloccoEliminazione()`, che
+        // è anche ciò che la lista mostra all'utente: una guardia sola, quindi
+        // impossibile che il menu prometta un'operazione che il server nega.
+        // Le vie d'uscita (storna il giroconto, riporta il piano in bozza,
+        // storna il pagamento…) sono dentro i messaggi, dove servono.
+        if ($motivo = $fattura->motivoBloccoEliminazione()) {
+            return back()->with($this->flashError('Operazione negata: '.$motivo));
         }
 
         // --- RICERCA DELLA FATTURA ORIGINALE ---

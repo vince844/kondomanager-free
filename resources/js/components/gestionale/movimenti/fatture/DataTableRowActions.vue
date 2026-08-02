@@ -55,6 +55,14 @@ const stornoBloccatoDaPagamenti = computed(() =>
   ['pagata', 'parziale'].includes(props.fattura.stato_pagamento)
 );
 
+// Il perché del divieto sull'Elimina lo calcola il server, con tutti e sette i
+// motivi: `null` significa eliminabile. Il frontend non lo ricostruisce — quando
+// ci provava ne conosceva due, e sbagliava in entrambi i versi (voce nascosta
+// senza spiegazione, oppure mostrata e poi rifiutata dalla destroy).
+const motivoEliminaBloccato = computed<string | null>(
+  () => props.fattura.motivo_blocco_eliminazione ?? null
+);
+
 const motivoStornoBloccato = computed(() =>
   props.fattura.stato_pagamento === 'pagata'
     ? 'La fattura è già stata pagata: storna prima il pagamento dalla sezione Pagamenti fornitori, poi la fattura.'
@@ -160,7 +168,12 @@ const downloadPdf = () => {
         <MoreHorizontal class="h-4 w-4 text-muted-foreground" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-[210px]">
+    <!-- 210px non bastavano: le voci che spiegano un divieto («Elimina — non
+         consentito», «Storna — prima i pagamenti») andavano a capo, e il
+         contenitore ha `overflow-hidden`, quindi nowrap le avrebbe tagliate.
+         Si allarga il menu invece di accorciare l'etichetta: è l'etichetta che
+         fa il lavoro di dire che l'operazione è bloccata. -->
+    <DropdownMenuContent align="end" class="w-[250px]">
       <DropdownMenuLabel class="text-xs font-normal text-muted-foreground">Fattura n. {{ fattura.numero_documento }}</DropdownMenuLabel>
       
       <DropdownMenuItem @click="router.visit(route(generateRoute('gestionale.fatture.show'), { condominio: condominioId, fattura: fattura.id }))" class="cursor-pointer">
@@ -218,12 +231,27 @@ const downloadPdf = () => {
 
       <DropdownMenuSeparator />
       
-      <DropdownMenuItem 
-          v-if="fattura.stato_pagamento === 'aperta' && !fattura.dati_extra?.is_stornata"
-          @click="confirmDeleteFattura" 
+      <DropdownMenuItem
+          v-if="!motivoEliminaBloccato"
+          @click="confirmDeleteFattura"
           class="text-red-600 focus:text-red-700 focus:bg-red-50 cursor-pointer"
       >
           <Trash2 class="w-4 h-4 mr-2" /> Elimina
+      </DropdownMenuItem>
+
+      <!-- Stesso principio già applicato a «Storna» qui sotto: il divieto va detto
+           QUI. Prima la voce spariva e basta, e l'amministratore non aveva modo di
+           sapere quale dei sette motivi lo riguardasse — né cosa fare per uscirne.
+           Il motivo arriva dal server (`motivo_blocco_eliminazione`), quindi è
+           esattamente quello che applicherebbe la destroy(): niente due guardie
+           che divergono. -->
+      <DropdownMenuItem
+          v-else
+          disabled
+          class="opacity-60 cursor-not-allowed"
+          :title="motivoEliminaBloccato"
+      >
+          <Ban class="w-4 h-4 mr-2" /> Elimina — non consentito
       </DropdownMenuItem>
 
       <DropdownMenuItem

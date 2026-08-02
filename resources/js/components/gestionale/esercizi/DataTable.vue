@@ -8,6 +8,8 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/esercizi/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
+import TableEmptyState from '@/components/gestionale/TableEmptyState.vue';
+import { CalendarRange } from 'lucide-vue-next';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Building } from '@/types/buildings';
@@ -84,7 +86,7 @@ const table = useVueTable({
       <DataTableToolbar :table="table" />
     </div>
   
-  <div class="border rounded-md">
+  <div v-if="table.getRowModel().rows?.length" class="border rounded-md">
     <Table>
       <TableHeader>
         <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
@@ -97,27 +99,26 @@ const table = useVueTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        <template v-if="table.getRowModel().rows?.length">
-          <TableRow
-            v-for="row in table.getRowModel().rows" :key="row.id"
-            :data-state="row.getIsSelected() ? 'selected' : undefined"
-          >
-            <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-            </TableCell>
-          </TableRow>
-        </template>
-        <template v-else>
-          <TableRow>
-            <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
-            </TableCell>
-          </TableRow>
-        </template>
+        <TableRow
+          v-for="row in table.getRowModel().rows" :key="row.id"
+          :data-state="row.getIsSelected() ? 'selected' : undefined"
+        >
+          <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+            <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+          </TableCell>
+        </TableRow>
       </TableBody>
     </Table>
   </div>
-  <div class="flex items-center justify-end py-4 space-x-2">
+
+  <TableEmptyState
+    v-else
+    :icon="CalendarRange"
+    title="Nessun esercizio contabile"
+    description="Non è ancora stato aperto nessun esercizio. È il contenitore dell'anno contabile: senza, non si possono creare gestioni, preventivi né piani rate."
+    media-class="bg-sky-50/50 dark:bg-sky-900/20 text-sky-500"
+  />
+  <div v-if="table.getRowModel().rows?.length" class="flex items-center justify-end py-4 space-x-2">
     <DataTablePagination :table="table" :meta="props.meta" />
   </div>
   

@@ -8,6 +8,8 @@ import { valueUpdater } from '@/lib/utils';
 import DataTablePagination from '@/components/DataTablePagination.vue';
 import DataTableToolbar from '@/components/gestionale/gestioni/DataTableToolbar.vue';
 import { usePermission } from "@/composables/permissions";
+import TableEmptyState from '@/components/gestionale/TableEmptyState.vue';
+import { Layers } from 'lucide-vue-next';
 import type { ColumnDef, SortingState } from '@tanstack/vue-table';
 import type { Gestione } from '@/types/gestionale/gestioni';
 import type { Building } from '@/types/buildings';
@@ -84,7 +86,7 @@ const table = useVueTable({
       <DataTableToolbar :table="table" />
     </div>
   
-  <div class="border rounded-md">
+  <div v-if="table.getRowModel().rows?.length" class="border rounded-md">
     <Table>
       <TableHeader>
         <TableRow v-for="headerGroup in table.getHeaderGroups()" :key="headerGroup.id">
@@ -97,27 +99,26 @@ const table = useVueTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        <template v-if="table.getRowModel().rows?.length">
-          <TableRow
-            v-for="row in table.getRowModel().rows" :key="row.id"
-            :data-state="row.getIsSelected() ? 'selected' : undefined"
-          >
-            <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
-              <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
-            </TableCell>
-          </TableRow>
-        </template>
-        <template v-else>
-          <TableRow>
-            <TableCell :colspan="columns.length" class="h-24 text-center">
-              Nessun risultato trovato
-            </TableCell>
-          </TableRow>
-        </template>
+        <TableRow
+          v-for="row in table.getRowModel().rows" :key="row.id"
+          :data-state="row.getIsSelected() ? 'selected' : undefined"
+        >
+          <TableCell v-for="cell in row.getVisibleCells()" :key="cell.id">
+            <FlexRender :render="cell.column.columnDef.cell" :props="cell.getContext()" />
+          </TableCell>
+        </TableRow>
       </TableBody>
     </Table>
   </div>
-  <div class="flex items-center justify-end py-4 space-x-2">
+
+  <TableEmptyState
+    v-else
+    :icon="Layers"
+    title="Nessuna gestione"
+    description="Non è ancora stata creata nessuna gestione per questo esercizio. Le gestioni separano ordinaria e straordinaria, come richiesto dall'art. 1130-bis c.c."
+    media-class="bg-emerald-50/50 dark:bg-emerald-900/20 text-emerald-500"
+  />
+  <div v-if="table.getRowModel().rows?.length" class="flex items-center justify-end py-4 space-x-2">
     <DataTablePagination :table="table" :meta="props.meta" />
   </div>
   

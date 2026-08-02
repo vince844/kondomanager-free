@@ -7,6 +7,7 @@ import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
 import { Coins, Lock, Search, Building2, Users } from 'lucide-vue-next';
 import type { Building } from '@/types/buildings';
@@ -14,6 +15,7 @@ import type { ImmobileConSaldi } from '@/types/gestionale/saldi';
 
 const props = defineProps<{
   condominio: Building;
+  condomini: Building[];
   esercizio: any;
   immobili: ImmobileConSaldi[];
   gestioni: any[];
@@ -25,6 +27,7 @@ const { euro } = useCurrencyFormatter({ fromCents: false, forcePlus: true });
 // ── State ──────────────────────────────────────────────────────────────────
 const selectedId = ref<number | null>(null);
 const search = ref('');
+const showGuide = ref(false);
 
 const selectedImmobile = computed(() =>
   props.immobili.find(i => i.id === selectedId.value) ?? null
@@ -78,6 +81,10 @@ const pageGuides = [
         :guides="pageGuides"
         :breadcrumbs="headerBreadcrumbs"
         :condominio="condominio"
+        :condomini="condomini"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="showGuide = true"
       />
 
       <StrutturaLayout>
@@ -163,5 +170,7 @@ const pageGuides = [
         </div>
       </StrutturaLayout>
     </div>
+
+    <SaldiGuide v-model:open="showGuide" />
   </GestionaleLayout>
 </template>

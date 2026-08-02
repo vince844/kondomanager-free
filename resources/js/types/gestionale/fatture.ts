@@ -71,6 +71,13 @@ export interface FatturaPassiva {
     created_at: string;
     updated_at: string;
 
+    /**
+     * Perché la fattura non si può eliminare, calcolato dal server con tutti e
+     * sette i motivi; `null` (o assente) significa eliminabile. Non è una
+     * colonna: viene aggiunto solo nell'elenco, con `append()`.
+     */
+    motivo_blocco_eliminazione?: string | null;
+
     // Relazioni precaricate dal Backend (Eager Loading)
     fornitore?: FornitoreFattura;
     documenti?: DocumentoFattura[]; // FIX: Aggiunta la relazione dei documenti

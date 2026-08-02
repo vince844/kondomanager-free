@@ -9,6 +9,7 @@ use App\Models\Condominio;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Services\Gestionale\SaldoEsercizioService;
+use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ use Inertia\Inertia;
 
 class SaldoInizialeController extends Controller
 {
+    use HasCondomini;
     use HasEsercizio;
     use HandleFlashMessages;
 
@@ -52,6 +54,10 @@ class SaldoInizialeController extends Controller
 
         return Inertia::render('gestionale/saldi/SaldiList', [
             'condominio' => $condominio,
+            // Popola il selettore di condominio nell'header: senza questa lista
+            // PageHeaderGuide mostra il nome come testo fisso e la pagina resta
+            // l'unica dello Struttura da cui non si può cambiare condominio.
+            'condomini'  => $this->getCondomini(),
             'esercizio'  => $esercizioAttivo,
             'immobili'   => $immobili,
             'gestioni'   => $gestioni,

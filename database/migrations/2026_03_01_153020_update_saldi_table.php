@@ -152,10 +152,34 @@ return new class extends Migration
         }
     }
 
+    /**
+     * Rimuove un indice se c'è, su MySQL e su SQLite.
+     *
+     * Il ramo SQLite mancava, con la motivazione «SQLite non supporta
+     * information_schema» — vera per *verificare* l'esistenza, non per il drop:
+     * SQLite ha `DROP INDEX IF EXISTS`, che non ha bisogno di alcuna verifica
+     * preliminare. L'uscita anticipata faceva quindi sopravvivere su SQLite
+     * l'indice `UNIQUE (esercizio_id, anagrafica_id, immobile_id)` creato dalla
+     * migrazione del 04/10/2025.
+     *
+     * Kondomanager gira su MySQL/MariaDB — l'installer non configura altro — e
+     * lì l'indice è stato rimosso a suo tempo: **su produzione questo metodo si
+     * comporta esattamente come prima.** A cambiare è solo il database dei test,
+     * che è SQLite: lì lo schema era più severo di quello reale, quindi il caso
+     * legittimo «stessa persona, stessa unità, saldi su due gestioni diverse»
+     * era impossibile da coprire con un test. Uno schema di prova più severo di
+     * quello vero non protegge: nasconde.
+     */
     private function tryDropIndex(string $tableName, string $indexName): void
     {
+        if (DB::getDriverName() === 'sqlite') {
+            DB::statement("DROP INDEX IF EXISTS {$indexName}");
+
+            return;
+        }
+
         if (DB::getDriverName() !== 'mysql') {
-            return; // SQLite non supporta information_schema
+            return;
         }
 
         $exists = DB::select("

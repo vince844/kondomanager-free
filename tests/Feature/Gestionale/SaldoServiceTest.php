@@ -53,14 +53,49 @@ test('calcola correttamente il saldo matematico dalla tabella saldi v1.9', funct
 });
 
 // ─── TEST 2 ──────────────────────────────────────────────────────────────────
-// Il service deve restituire applicabile=false se la gestione ha già
-// il lock `saldo_applicato = true`.
+// Il service deve restituire applicabile=false quando i saldi della gestione
+// sono già stati assorbiti da un piano — e il messaggio deve nominarla.
+//
+// RISCRITTO nella beta.34. Prima costruiva una gestione con
+// `saldo_applicato = true` e NESSUN saldo, e si aspettava il divieto. Quello
+// stato è irraggiungibile dalla beta.32: il flag non è più una decisione, è un
+// derivato che `allineaFlagGestione()` accende solo se esiste almeno un saldo
+// bloccato. Il test fotografava quindi una regola — «il flag è l'autorità» —
+// che era proprio quella da togliere: bastava UN saldo bloccato per rendere
+// inassorbibili tutti gli altri, compresi quelli aggiunti dopo.
+//
+// L'intento originale (divieto + messaggio che nomina la gestione) è conservato;
+// cambia lo stato che lo produce, che ora è uno stato reale.
 // ─────────────────────────────────────────────────────────────────────────────
-test('blocca l\'applicazione se la gestione ha già il lock saldo_applicato', function () {
+test('blocca l\'applicazione se i saldi della gestione sono già stati assorbiti', function () {
     $ordinaria = Gestione::factory()->create([
         'condominio_id'   => $this->condominio->id,
         'nome'            => 'Ordinaria',
         'saldo_applicato' => true,
+    ]);
+
+    $esercizio = \App\Models\Esercizio::factory()->create([
+        'condominio_id' => $this->condominio->id,
+    ]);
+    $immobile = \App\Models\Immobile::create([
+        'condominio_id' => $this->condominio->id,
+        'nome'          => 'Int 1',
+        'descrizione'   => 'Test',
+        'interno'       => '1',
+        'foglio'        => '1', 'particella' => '1', 'subalterno' => '1',
+    ]);
+
+    DB::table('saldi')->insert([
+        'gestione_id'    => $ordinaria->id,
+        'esercizio_id'   => $esercizio->id,
+        'condominio_id'  => $this->condominio->id,
+        'immobile_id'    => $immobile->id,
+        'anagrafica_id'  => null,
+        'saldo_iniziale' => 10000,
+        'origine'        => 'manuale',
+        'is_applicato'   => true,   // già finito in un piano
+        'created_at'     => now(),
+        'updated_at'     => now(),
     ]);
 
     $result = $this->service->calcolaSaldoApplicabile($ordinaria);
