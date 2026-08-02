@@ -1,9 +1,4 @@
-/**
- * `Math.round` arrotonda .5 verso +∞ (`Math.round(-27.5) === -27`), `round()` di PHP lo fa
- * lontano da zero (`round(-27.5) === -28.0`). Sugli importi negativi — le note di credito, che
- * `MoneyInput` permette di digitare — i due divergerebbero di un centesimo.
- */
-const arrotonda = (n: number): number => Math.sign(n) * Math.round(Math.abs(n));
+import { euroToCents, ivaRigaCents } from './money';
 
 /**
  * Impatto di una riga fattura sul budget di un capitolo di spesa.
@@ -20,8 +15,7 @@ const arrotonda = (n: number): number => Math.sign(n) * Math.round(Math.abs(n));
  * così il numero mostrato a schermo coincide con quello che finirà a database.
  */
 export const lordoRigaCents = (imponibileEuro: unknown, aliquotaIva: unknown): number => {
-    const imponibileCents = arrotonda((Number(imponibileEuro) || 0) * 100);
-    const ivaCents = arrotonda((imponibileCents * (Number(aliquotaIva) || 0)) / 100);
+    const imponibileCents = euroToCents(imponibileEuro);
 
-    return imponibileCents + ivaCents;
+    return imponibileCents + ivaRigaCents(imponibileCents, aliquotaIva);
 };

@@ -63,6 +63,9 @@ defineEmits(['update:open']);
                 Il pannello scuro <strong>"Simulazione impatto finanziario"</strong> si aggiorna a ogni tasto:
                 a sinistra l'effetto sul budget di ogni capitolo toccato, a destra la previsione di cassa sul
                 conto scelto. Se qualcosa non torna, lo vedi <em>prima</em> di registrare, non dopo.
+                I totali sono calcolati al centesimo con le stesse regole della registrazione, ritenuta
+                compresa: il <strong>netto da pagare</strong> che leggi qui è quello che troverai nell'elenco
+                fatture dopo il salvataggio.
               </div>
             </div>
           </TabsContent>

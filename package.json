@@ -7,7 +7,8 @@
         "dev": "vite",
         "format": "prettier --write resources/",
         "format:check": "prettier --check resources/",
-        "lint": "eslint . --fix"
+        "lint": "eslint . --fix",
+        "test": "vitest run"
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
@@ -21,6 +22,7 @@
         "prettier-plugin-organize-imports": "^4.1.0",
         "prettier-plugin-tailwindcss": "^0.6.9",
         "typescript-eslint": "^8.23.0",
+        "vitest": "^4.1.10",
         "vue-tsc": "^2.2.4"
     },
     "dependencies": {

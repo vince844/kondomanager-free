@@ -13,6 +13,7 @@ import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import MoneyInput from '@/components/MoneyInput.vue';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
+import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
@@ -50,20 +51,6 @@ interface Fornitore {
     tipo_ritenuta?: string | null;
     natura_percipiente?: string | null;
 }
-
-/**
- * SOLO per l'anteprima lato client — il backend (RitenutaService) resta
- * l'unica fonte di verità e ricalcola tutto alla registrazione. Tenere
- * allineato a config('fiscale.aliquote') se cambiano le aliquote storicizzate.
- */
-const REGIMI_RITENUTA_PREVIEW: Record<string, { aliquota: number; base: number }> = {
-    appalto_4: { aliquota: 4, base: 100 },
-    lavoro_autonomo_20: { aliquota: 20, base: 100 },
-    provvigioni_base_50: { aliquota: 23, base: 50 },
-    provvigioni_base_20: { aliquota: 23, base: 20 },
-    non_residente_30: { aliquota: 30, base: 100 },
-    lavoro_dipendente: { aliquota: 0, base: 100 },
-};
 
 const MOTIVI_ESCLUSIONE_RITENUTA = [
     { value: 'bonifico_parlante', label: "Bonifico parlante (ritenuta 11% già operata dalla banca)" },
@@ -239,62 +226,18 @@ const fornitoreConStorico = computed(() => props.fornitori.find(f => f.id === fo
 // Computed
 // ---------------------------------------------------------------------------
 
-const totali = computed(() => {
-    let imponibile = 0, iva = 0;
-    let imponibile_ordinario = 0, iva_ordinaria = 0;
-    let imponibile_sopravvenienza = 0, iva_sopravvenienza = 0;
-
-    if (form.is_pregresso) {
-        imponibile = Number(form.imponibile_pregresso) || 0;
-        iva = imponibile * (Number(form.aliquota_iva_pregressa) || 0) / 100;
-        imponibile_ordinario = imponibile;
-        iva_ordinaria = iva;
-    } else {
-        form.righe.forEach((r: any) => {
-            const imp  = Number(r.importo_imponibile) || 0;
-            const rIva = imp * (Number(r.aliquota_iva) || 0) / 100;
-
-            imponibile += imp;
-            iva        += rIva;
-
-            if (r.is_sopravvenienza) {
-                imponibile_sopravvenienza += imp;
-                iva_sopravvenienza        += rIva;
-            } else {
-                imponibile_ordinario += imp;
-                iva_ordinaria        += rIva;
-            }
-        });
-    }
-
-    let ritenuta = 0;
-    if (fornitoreRitenutaAttiva.value && applicaRitenutaEffective.value) {
-        const baseRitenuta = form.is_pregresso
-            ? imponibile
-            : form.righe.reduce((acc: number, r: any) => acc + (r.concorre_base_ritenuta !== false ? (Number(r.importo_imponibile) || 0) : 0), 0);
-
-        const regime = selectedFornitore.value?.tipo_ritenuta
-            ? REGIMI_RITENUTA_PREVIEW[selectedFornitore.value.tipo_ritenuta]
-            : null;
-        const percBase  = regime ? regime.base     : (Number(selectedFornitore.value.perc_imponibile_ritenuta) || 100);
-        const percTratt = regime ? regime.aliquota  : (Number(selectedFornitore.value.perc_ritenuta) || 0);
-
-        const base = baseRitenuta * percBase / 100;
-        ritenuta   = base * percTratt / 100;
-    }
-
-    return {
-        imponibile:                  Math.round(imponibile * 100) / 100,
-        iva:                         Math.round(iva * 100) / 100,
-        imponibile_ordinario:        Math.round(imponibile_ordinario * 100) / 100,
-        iva_ordinaria:               Math.round(iva_ordinaria * 100) / 100,
-        imponibile_sopravvenienza:   Math.round(imponibile_sopravvenienza * 100) / 100,
-        iva_sopravvenienza:          Math.round(iva_sopravvenienza * 100) / 100,
-        ritenuta:                    Math.round(ritenuta * 100) / 100,
-        netto:                       Math.round((imponibile + iva - ritenuta) * 100) / 100,
-        ha_sopravvenienze:           imponibile_sopravvenienza > 0
-    };
-});
+/**
+ * Anteprima dei totali, in centesimi interi. Stesso modulo condiviso della pagina di
+ * registrazione: qui il rischio è anche più concreto, perché la fattura mostrata è già a
+ * database e l'amministratore confronta a occhio il netto del form con quello dell'elenco.
+ */
+const totali = computed(() => calcolaTotali({
+    is_pregresso:           form.is_pregresso,
+    imponibile_pregresso:   form.imponibile_pregresso,
+    aliquota_iva_pregressa: form.aliquota_iva_pregressa,
+    righe:                  form.righe,
+    ritenuta:               risolviRegimeRitenuta(selectedFornitore.value, applicaRitenutaEffective.value),
+}));
 
 // Storico capitoli espanso
 const expandedHistory = ref<Record<number, boolean>>({});
@@ -363,7 +306,7 @@ const bankForecast = computed(() => {
     if (!b) return null;
 
     const attualeCents = b.saldo_attuale_cents;
-    const spesaCents   = Math.round(totali.value.netto * 100);
+    const spesaCents   = totali.value.netto_cents;
     const postCents    = attualeCents - spesaCents;
 
     return { attuale_cents: attualeCents, post_cents: postCents, isRed: postCents < 0 };
@@ -797,24 +740,24 @@ const pageGuides = [
                         <div class="space-y-2">
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">Imponibile lordo</span>
-                                <span>{{ euro(totali.imponibile, { fromCents: false }) }}</span>
+                                <span>{{ euro(totali.imponibile_cents) }}</span>
                             </div>
 
                             <Transition enter-active-class="transition-all duration-300" enter-from-class="opacity-0 -translate-y-2" enter-to-class="opacity-100 translate-y-0">
                                 <div v-if="totali.ha_sopravvenienze" class="flex justify-between text-[10px] pl-2 border-l-2 border-amber-500/50 ml-1 mt-1 mb-1">
                                     <span class="text-amber-400/80">Di cui imprevisto</span>
-                                    <span class="text-amber-400/80">{{ euro(totali.imponibile_sopravvenienza, { fromCents: false }) }}</span>
+                                    <span class="text-amber-400/80">{{ euro(totali.imponibile_sopravvenienza_cents) }}</span>
                                 </div>
                             </Transition>
 
                             <div class="flex justify-between text-xs">
                                 <span class="text-slate-400">IVA</span>
-                                <span>{{ euro(totali.iva, { fromCents: false }) }}</span>
+                                <span>{{ euro(totali.iva_cents) }}</span>
                             </div>
 
-                            <div v-if="totali.ritenuta > 0" class="flex justify-between text-xs pt-1 border-t border-slate-800">
+                            <div v-if="totali.ritenuta_cents > 0" class="flex justify-between text-xs pt-1 border-t border-slate-800">
                                 <span class="text-amber-400">Ritenuta d'Acconto</span>
-                                <span class="text-amber-400">- {{ euro(totali.ritenuta, { fromCents: false }) }}</span>
+                                <span class="text-amber-400">- {{ euro(totali.ritenuta_cents) }}</span>
                             </div>
                             <div v-else class="flex justify-between text-xs pt-1 border-t border-slate-800">
                                 <span class="text-slate-500 italic">Nessuna Ritenuta</span>
@@ -823,8 +766,8 @@ const pageGuides = [
 
                             <div class="flex justify-between items-baseline pt-3 border-t border-slate-700">
                                 <span class="text-[10px] font-black uppercase tracking-wider text-slate-400">Netto da pagare</span>
-                                <span class="font-black text-2xl" :class="totali.netto > 0 ? 'text-emerald-400' : 'text-white'">
-                                    {{ euro(totali.netto, { fromCents: false }) }}
+                                <span class="font-black text-2xl" :class="totali.netto_cents > 0 ? 'text-emerald-400' : 'text-white'">
+                                    {{ euro(totali.netto_cents) }}
                                 </span>
                             </div>
                         </div>
@@ -976,7 +919,7 @@ const pageGuides = [
                                             <div class="text-right min-w-0 flex-1">
                                                 <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none mb-1 whitespace-nowrap">Totale Riga</span>
                                                 <span class="font-black text-base text-slate-800 dark:text-slate-200 block leading-none whitespace-nowrap tabular-nums">
-                                                    {{ euro(Number(riga.importo_imponibile) * (1 + (Number(riga.aliquota_iva) || 0) / 100), { fromCents: false }) }}
+                                                    {{ euro(lordoRigaCents(riga.importo_imponibile, riga.aliquota_iva)) }}
                                                 </span>
                                             </div>
                                             <Button variant="ghost" size="icon" type="button" @click="removeRiga(Number(idx))"
@@ -1005,7 +948,7 @@ const pageGuides = [
                                                 <Zap class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                             </div>
                                             <div class="text-[11px] text-amber-800 dark:text-amber-300 leading-tight">
-                                                Di cui <strong class="font-black text-amber-900 dark:text-amber-100">{{ euro(totali.imponibile_sopravvenienza + totali.iva_sopravvenienza, { fromCents: false }) }}</strong><span class="opacity-80"> fuori preventivo</span>
+                                                Di cui <strong class="font-black text-amber-900 dark:text-amber-100">{{ euro(totali.imponibile_sopravvenienza_cents + totali.iva_sopravvenienza_cents) }}</strong><span class="opacity-80"> fuori preventivo</span>
                                             </div>
                                         </div>
                                     </Transition>
@@ -1014,17 +957,17 @@ const pageGuides = [
                                 <div class="flex items-center gap-8 pr-2 mt-4 sm:mt-0">
                                     <div class="text-right">
                                         <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">Imponibile</span>
-                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.imponibile, { fromCents: false }) }}</span>
+                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.imponibile_cents) }}</span>
                                     </div>
                                     <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
                                     <div class="text-right">
                                         <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest block mb-0.5">IVA</span>
-                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.iva, { fromCents: false }) }}</span>
+                                        <span class="font-black text-slate-700 dark:text-slate-300 text-lg">{{ euro(totali.iva_cents) }}</span>
                                     </div>
                                     <div class="w-px h-8 bg-slate-200 dark:bg-slate-700"></div>
                                     <div class="text-right">
                                         <span class="text-[10px] text-primary font-bold uppercase tracking-widest block mb-0.5">Totale Doc.</span>
-                                        <span class="font-black text-primary text-xl">{{ euro(totali.imponibile + totali.iva, { fromCents: false }) }}</span>
+                                        <span class="font-black text-primary text-xl">{{ euro(totali.totale_documento_cents) }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1117,7 +1060,7 @@ const pageGuides = [
                                             </div>
                                             <div class="flex justify-between text-xs">
                                                 <span class="text-slate-400">Uscita prevista</span>
-                                                <span class="text-rose-400">- {{ euro(totali.netto, { fromCents: false }) }}</span>
+                                                <span class="text-rose-400">- {{ euro(totali.netto_cents) }}</span>
                                             </div>
                                         </div>
                                         <div class="pt-3 border-t border-slate-700 space-y-1">

@@ -22,7 +22,8 @@ const props = defineProps<{
     fondiRiserva: any[];
     capienzaRataZero: number; 
     incassatoRataZero: number;
-    totaleFatturaLordo: number; 
+    /** Lordo del documento in CENTESIMI: arriva già arrotondato da calcolaTotali(). */
+    totaleFatturaLordoCents: number;
     bankForecast: { attuale_cents: number, post_cents: number, isRed: boolean } | null; 
     fatturePregresseRegistrate: any[];
 }>();
@@ -42,15 +43,14 @@ const fatturePregresseFornitore = computed(() => {
     return props.fatturePregresseRegistrate.filter((f: any) => f.fornitore_id === props.fornitoreId);
 });
 
-const fatturaCents = computed(() => Math.round(props.totaleFatturaLordo * 100));
+const fatturaCents = computed(() => props.totaleFatturaLordoCents);
 
-const scopertoAttualeEuro = computed(() => {
+const scopertoAttualeCents = computed(() => {
     const disponibileCents = debitoSelezionato.value?.importo_disponibile || 0;
-    
+
     // Rimuoviamo la logica delle coperture extra dal calcolo dello scoperto
     // perché ora se ne occupa la modale.
-    const scopertoCents = Math.max(0, fatturaCents.value - disponibileCents);
-    return scopertoCents / 100;
+    return Math.max(0, fatturaCents.value - disponibileCents);
 });
 
 const uscitaNettaCents = computed(() => {
@@ -66,7 +66,7 @@ const bucoRataZeroCents = computed(() => {
 // --- L'INTELLIGENZA DEL SEMAFORO AGGIORNATA ---
 const semaforoContabile = computed(() => {
     if (!props.form.saldo_patrimoniale_id) return 'WAITING';
-    if (scopertoAttualeEuro.value > 0) return 'ORANGE'; 
+    if (scopertoAttualeCents.value > 0) return 'ORANGE'; 
     
     if (bucoRataZeroCents.value > 0) {
         if (props.bankForecast && !props.bankForecast.isRed) {
@@ -90,7 +90,7 @@ const fiscalAssistant = computed(() => {
     }
 
     if (semaforoContabile.value === 'ORANGE') {
-        const descrizioneDinamica = `La fattura è superiore al debito storico. Restano fuori esattamente ${euro(scopertoAttualeEuro.value * 100)} da giustificare.\n\n` +
+        const descrizioneDinamica = `La fattura è superiore al debito storico. Restano fuori esattamente ${euro(scopertoAttualeCents.value)} da giustificare.\n\n` +
                                    `Per poter salvare questa differenza, clicca su "Registra Documento". Si aprirà l'assistente per configurare la copertura (Rata Extra, Conguaglio o Fondo di Riserva).`;
 
         return {
@@ -241,8 +241,8 @@ const rischioPrescrizione = computed(() => {
                                 <div class="border-t border-slate-700 my-2 border-dashed"></div>
                                 <div class="flex justify-between font-bold text-xs">
                                     <span class="text-white">SCARTO</span>
-                                    <span :class="scopertoAttualeEuro > 0 ? 'text-rose-500' : 'text-emerald-500'">
-                                        {{ euro(scopertoAttualeEuro * 100) }}
+                                    <span :class="scopertoAttualeCents > 0 ? 'text-rose-500' : 'text-emerald-500'">
+                                        {{ euro(scopertoAttualeCents) }}
                                     </span>
                                 </div>
                             </div>

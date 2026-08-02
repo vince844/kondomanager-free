@@ -7,6 +7,37 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.35] - Due Aritmetiche per lo Stesso Numero
+
+Un amministratore segnala dal forum: registrando una fattura con ritenuta d'acconto, il riquadro **«Netto da pagare»** del form dice 373,12 €, ma la fattura salvata — quella che compare in Gestionale › Movimenti › Fatture Passive — ne vale 373,11. Un centesimo, su un numero che nessuno ricontrolla due volte perché è il totale.
+
+**Nessuna modifica al database.** Nessuna migrazione e nessun dato riparato. Per il difetto segnalato non serve: le fatture già registrate erano e restano corrette, a sbagliare era solo il numero mostrato *prima* di salvare. Un secondo difetto trovato strada facendo — vedi in fondo — poteva invece lasciare una riga da 0,01 € su una fattura pregressa: da questa versione non succede più, ma le fatture pregresse registrate prima non vengono corrette all'indietro.
+
+### Corretto
+
+- **Il netto da pagare mostrato nel form non coincideva con quello salvato.** I numeri della segnalazione: imponibile 316,20 €, IVA al 22%, ritenuta d'appalto al 4%. L'IVA vera è 69,564 € e la ritenuta vera 12,648 €; il form le mostrava arrotondate — 69,56 e 12,65 — ma calcolava il netto sui grezzi: 316,20 + 69,564 − 12,648 = 373,116, che arrotondato dà 373,12. Il server, che lavora in centesimi interi, sommava i numeri arrotondati — gli stessi che l'amministratore leggeva a schermo — e otteneva 373,11.
+
+  Nessuno dei due sbagliava i conti: erano **due aritmetiche diverse per lo stesso numero**. Quella giusta è la seconda, perché il netto deve quadrare con i numeri scritti sulla fattura, non con i decimi di centesimo che non compaiono da nessuna parte.
+
+- **Lo stesso difetto colpiva altri tre valori, per la stessa ragione.** Andati con lui:
+  - **IVA su fattura con più righe.** Il server arrotonda l'IVA *riga per riga*, il form la arrotondava sul totale. Due righe da 1,15 € al 22% fanno 25 centesimi ciascuna, cioè 50; sommando i grezzi il form ne mostrava 51.
+  - **Ritenuta a base ridotta.** Sulle provvigioni (23% su base 50% o 20%) il server arrotonda *due volte* — prima la base ridotta, poi la trattenuta — mentre il form faceva un solo passaggio. Su 1.000,13 € il primo dà 115,02 €, il secondo 115,01 €.
+  - **Note di credito.** `Math.round` di JavaScript arrotonda −5,5 a −5, `round()` di PHP a −6. Sugli importi negativi i due lati divergevano di un centesimo in direzioni opposte.
+
+- **Una base imponibile della ritenuta configurata a zero veniva letta come 100%.** In anagrafica fornitore, `perc_imponibile_ritenuta = 0` significa «nessuna base, nessuna trattenuta»; il form trattava lo zero come un campo vuoto e ci sostituiva il 100%, annunciando una ritenuta che il salvataggio poi non operava. Difetto trovato mentre si riscriveva il calcolo, non segnalato da nessuno.
+
+- **Su una fattura pregressa la copertura dal debito storico partiva sottostimata di un centesimo, e questo finiva a database.** È l'unico difetto della beta che non riguardava solo ciò che si vede. All'invio, il form calcolava da sé il lordo del documento — imponibile × (1 + aliquota/100), di nuovo in euro — invece di usare il totale che stava già mostrando nel riquadro. Quando il prodotto cadeva esattamente su mezzo centesimo il float scendeva sotto la soglia e la copertura nasceva di 0,01 € più piccola del dovuto: il resto veniva registrato come eccedenza scoperta, cioè **una riga da un centesimo su «passate gestioni»**, con la nota «caricamento debito pregresso senza copertura esplicita», su una fattura che a schermo quadrava alla perfezione. Ora la copertura parte dallo stesso totale mostrato nel riquadro.
+
+### Sotto il cofano
+
+Il calcolo dell'anteprima era **copiato identico** nelle due pagine di registrazione e di modifica: due copie che potevano divergere l'una dall'altra oltre che dal server. Ora vive in un modulo solo, `resources/js/lib/gestionale/fatture/totali.ts`, scritto per ricalcare operazione per operazione `FatturaPassivaService` e `RitenutaService` — e lo dichiara nei commenti, riga per riga, perché la prossima persona che lo tocca sappia che non è codice libero di essere elegante: deve dire quello che dice il PHP.
+
+Con lui se ne va anche la tabella delle aliquote di ritenuta, duplicata nelle stesse due pagine.
+
+- **Il progetto ha ora dei test JavaScript.** Non ne aveva nessuno: il calcolo del denaro lato client era l'unica parte del sistema senza rete di protezione, ed è quella che l'amministratore legge prima di decidere. Sedici casi in `totali.test.ts` (`npm test`), fra cui i numeri esatti della segnalazione.
+
+- I test PHP di riferimento in `TotaliFatturaArrotondamentoTest.php` fissano gli stessi numeri dal lato del server. Sono la metà mancante del patto: se un domani cambia l'arrotondamento del backend, si accendono e ricordano che c'è un secondo calcolo, in un altro linguaggio, che deve seguirlo.
+
 ## [1.10.0-beta.34] - Quello Che il Sistema Non Diceva
 
 Tre difetti diversi con la stessa forma: il sistema sapeva qualcosa e non lo diceva. Sapeva **perché** una fattura non si poteva eliminare, e faceva sparire la voce dal menu. Sapeva che un saldo era ancora libero, e rispondeva che erano già stati integrati tutti. Sapeva che una fattura aveva la ritenuta, e lo scriveva in un punto ciano di sei pixel.
