@@ -12,6 +12,7 @@ import { FileText, Plus, Trash2, AlertTriangle, User, ShieldAlert, Save, AlertOc
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import MoneyInput from '@/components/MoneyInput.vue';
+import { centsToEuro } from '@/lib/gestionale/money';
 import { lordoRigaCents } from '@/lib/gestionale/fatture/budget';
 import { calcolaTotali, risolviRegimeRitenuta } from '@/lib/gestionale/fatture/totali';
 import vSelect from 'vue-select';
@@ -176,7 +177,13 @@ const form = useForm({
         descrizione: r.descrizione || '',
         conto_id: r.conto_id,
         immobile_id: r.immobile_id,
-        importo_imponibile: Number(r.importo_imponibile) / 100,
+        // Valore ASSOLUTO, e non è una difesa: su una nota di credito il database
+        // tiene le righe già negative (`FatturaPassivaService:696`), ma
+        // `aggiornaFattura()` vuole in ingresso la cifra digitata e il segno lo mette
+        // lui (`:682` e `:696`). Rimandandogli il negativo che ha scritto, `-1000 ×
+        // 100 × (-1)` torna positivo e la nota di credito diventa un costo.
+        // Il form lavora in valore assoluto: il segno appartiene al tipo di documento.
+        importo_imponibile: Math.abs(centsToEuro(r.importo_imponibile)),
         aliquota_iva: r.aliquota_iva,
         is_sopravvenienza: false, // Edit non supporta sopravvenienze per fatture esistenti
         concorre_base_ritenuta: r.concorre_base_ritenuta ?? true,

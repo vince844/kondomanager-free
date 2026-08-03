@@ -7,6 +7,44 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.37] - La Nota di Credito Tornava un Costo
+
+Una nota di credito da 1.000,00 € + IVA. La si riapre in modifica — per correggere una data, una causale, qualunque cosa — e la si risalva senza toccare gli importi. A database la nota **cambia segno**: da −1.220,00 € a +1.220,00 €. Cioè smette di essere un accredito e diventa una spesa, e il debito verso il fornitore invece di calare cresce del doppio.
+
+**Nessuna modifica al database.** Nessuna migrazione e nessun dato corretto all'indietro. Una nota di credito ribaltata si riconosce con certezza — è una nota di credito con il totale positivo, cosa che non può esistere — e si sistema stornandola e registrandola di nuovo.
+
+### Corretto
+
+- **Riaprendo in modifica una nota di credito, gli importi cambiavano segno al salvataggio.** Il denaro di una nota di credito è salvato **già negativo**: è la registrazione ad applicare il segno meno, una volta sola, a righe e testata. Il form di modifica però ripresentava al server esattamente quei negativi, e il salvataggio riapplicava il segno per conto suo: meno per meno fa più.
+
+  Non serviva toccare gli importi: bastava aprire e salvare. E nulla lo impediva — una nota di credito aperta è modificabile come qualunque altra fattura, e la validazione degli importi accetta i numeri negativi senza obiezioni.
+
+  La registrazione di una nota di credito **nuova** non è mai stata interessata: lì le cifre si digitano positive e il segno lo mette il sistema, che è esattamente il comportamento a cui la modifica è stata riallineata.
+
+- **Perché nessun controllo se n'era accorto.** La scrittura contabile continuava a **quadrare perfettamente**: il filtro che inverte DARE e AVERE sulle note di credito si applicava comunque, quindi le due colonne restavano uguali e il validatore non aveva niente da segnalare. A cambiare era da che parte stavano i conti — il costo tornava fra le spese invece che in rettifica — non l'equilibrio fra dare e avere.
+
+  È la stessa forma del difetto della versione precedente: **un errore simmetrico è invisibile alla partita doppia**, perché sposta i due piatti della bilancia insieme.
+
+### Due bonifiche, trovate mentre si costruivano i dati della guida
+
+Nessuna delle due è arrivata da una segnalazione: sono emerse il 2 agosto usando il prodotto per popolare gli esempi. Piccole, ma entrambe di quelle che si manifestano nel momento peggiore.
+
+- **Registrare un pagamento poteva far comparire una pagina di errore invece di un messaggio.** Ogni pagamento può portare con sé una chiave che protegge dal doppio invio: se la stessa richiesta arriva due volte — un doppio clic, un timeout di rete che fa ritentare il browser — il sistema riconosce la chiave e restituisce il pagamento già registrato invece di crearne un secondo. La protezione funziona; a essere rotta era la risposta ai casi che non sono un doppio invio.
+
+  Quella chiave è unica su **tutte** le scritture contabili, non solo sui pagamenti — la usano anche i giroconti. Se la chiave apparteneva a un movimento che non era un pagamento, il sistema non aveva niente da restituire e si fermava con un errore tecnico, di quelli che nessuna schermata sa raccontare. E se apparteneva al pagamento di **un altro condominio**, era peggio: lo restituiva in silenzio, facendo credere che il salvataggio fosse riuscito mentre nel condominio corrente non era stato registrato nulla.
+
+  Ora sono due casi distinti con un messaggio proprio — «la chiave è già utilizzata da un altro movimento contabile», «è di un pagamento di un altro condominio» — e in tutti e due si esce rigenerandola. Il vero doppio invio continua a comportarsi come prima: nessun pagamento duplicato.
+
+- **Un avviso di PHP compariva registrando una fattura pregressa.** Sulle fatture pregresse la fonte della copertura è facoltativa — si può registrare un debito storico senza dire da dove sarà coperto — ma due dei tre tipi di copertura, «Rata 0» e «Fondo di riserva», la leggevano come se fosse sempre presente. Il terzo era già a posto. La registrazione andava comunque a buon fine, ma lasciava un avviso nei log a ogni fattura; e su un'installazione configurata per mostrare gli errori a schermo l'avviso finiva **davanti all'amministratore**, in mezzo a un'operazione perfettamente riuscita.
+
+### Da sapere
+
+Ora che gli importi di una nota di credito arrivano al form positivi, il controllo di sforo del budget li conta come farebbe con una spesa, e su una nota di credito può comparire l'avviso «salvataggio oltre budget». **Non è una novità di questa versione**: succede già oggi registrando una nota di credito nuova, perché lì gli importi sono positivi da sempre. Questa correzione allinea la modifica alla registrazione invece di lasciarle divergere; che il budget debba trattare a parte le note di credito è una questione aperta per entrambe le pagine, ed è annotata in roadmap.
+
+### Sotto il cofano
+
+- **Il difetto è fissato da tutte e due le parti**, come si fa dalla beta.35. `FatturaRegisterEdit.test.ts` monta la schermata di modifica e controlla il numero che finisce nella casella dell'importo, perché l'errore viveva nell'inizializzazione del form. `NotaCreditoModificaSegnoTest.php` fissa il contratto del server: che una nota di credito nasca negativa, che sia davvero modificabile — se una guardia la fermasse, il difetto sarebbe irraggiungibile e il test lo direbbe — e che due giri di apri-e-salva non facciano oscillare il segno. Un settimo test controlla che una fattura ordinaria non abbia cambiato comportamento.
+
 ## [1.10.0-beta.36] - Due e Cinquanta Diventavano Venticinquemila
 
 Un pagamento a fornitore con 2,50 € di commissioni bancarie. Lo si riapre in modifica — per correggere una data, una causale, qualunque cosa — e nella casella delle commissioni non c'è più 2,50 €: c'è **25.000,00 €**. Salvando senza toccare quel campo, a database ne finivano 25.000,00 €: la cifra di partenza moltiplicata per diecimila.

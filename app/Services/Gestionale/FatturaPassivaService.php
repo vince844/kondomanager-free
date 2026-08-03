@@ -315,9 +315,14 @@ class FatturaPassivaService
                         // FIX: Moltiplicatore per i report del DB
                         'importo' => $importoCoperturaCents * $moltiplicatore,
                         'stato' => 'pianificata',
-                        'saldo_id' => $copertura['tipo_copertura'] === 'rata_0' ? $copertura['fonte_id'] : null,
+                        // `fonte_id` è `nullable` in StoreFatturaRequest:102 e può davvero
+                        // mancare: senza il `??` i rami rata_0 e fondo_riserva emettevano un
+                        // «Undefined array key» a ogni pregresso senza fonte esplicita — non
+                        // bloccante, ma a schermo dove `display_errors` è acceso. Il ramo
+                        // sopravvenienza era già protetto: erano due su tre.
+                        'saldo_id' => $copertura['tipo_copertura'] === 'rata_0' ? ($copertura['fonte_id'] ?? null) : null,
                         'conto_id' => $copertura['tipo_copertura'] === 'sopravvenienza' ? ($copertura['fonte_id'] ?? null) : null,
-                        'fondo_id' => $copertura['tipo_copertura'] === 'fondo_riserva' ? $copertura['fonte_id'] : null,
+                        'fondo_id' => $copertura['tipo_copertura'] === 'fondo_riserva' ? ($copertura['fonte_id'] ?? null) : null,
                         'nota_amministratore' => $copertura['nota_amministratore'] ?? null,
                     ]);
                 }

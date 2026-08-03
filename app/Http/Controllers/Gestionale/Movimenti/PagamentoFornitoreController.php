@@ -8,6 +8,7 @@ use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
+use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
@@ -267,6 +268,14 @@ class PagamentoFornitoreController extends Controller
             // Errore dati: fatture di fornitori/condomini diversi nello stesso pagamento.
             // Non bypassabile — errore operativo da correggere.
             return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
+
+        } catch (IdempotencyKeyConflittoException $e) {
+            // La chiave di idempotenza è già in uso, ma non da un replay di questo
+            // pagamento: nessuna scrittura è avvenuta e si risolve rigenerandola.
+            // Ha un catch suo perché è un conflitto di dominio, non un guasto: nel
+            // catch generico finirebbe a Log::error con lo stack trace, cioè come
+            // rumore in mezzo agli errori veri.
+            return back()->withErrors(['idempotency_key_conflitto' => $e->getMessage()]);
 
         } catch (\Exception $e) {
             // Errore tecnico non previsto. La transazione atomica garantisce

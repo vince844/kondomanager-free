@@ -15,6 +15,7 @@ use App\Exceptions\Pagamenti\AllocazioniInconsistentiException;
 use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
+use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\NessunEsercizioApertoException;
@@ -141,7 +142,30 @@ class PagamentoFornitoreService
                 if ($key = $data['idempotency_key'] ?? null) {
                     $esistente = ScritturaContabile::where('idempotency_key', $key)->first();
                     if ($esistente) {
-                        return $esistente->pagamentoFornitore;
+                        // La chiave è unica su TUTTE le scritture, non solo su quelle dei
+                        // pagamenti: ci scrivono anche i giroconti. Quindi ciò che si trova
+                        // non è per forza un replay di questo pagamento, e vanno esclusi
+                        // due casi che replay non sono — prima uscivano l'uno con un
+                        // TypeError (null da un metodo che promette un PagamentoFornitore)
+                        // e l'altro in silenzio, restituendo il documento sbagliato.
+                        $pagamentoEsistente = $esistente->pagamentoFornitore;
+
+                        if (! $pagamentoEsistente) {
+                            throw new IdempotencyKeyConflittoException(
+                                "La chiave di idempotenza «{$key}» è già utilizzata da un altro movimento contabile ".
+                                "(scrittura #{$esistente->id}, {$esistente->tipo_movimento->value}). ".
+                                'Rigenerare la chiave e riprovare.'
+                            );
+                        }
+
+                        if ((int) $pagamentoEsistente->condominio_id !== (int) $data['condominio_id']) {
+                            throw new IdempotencyKeyConflittoException(
+                                "La chiave di idempotenza «{$key}» è già utilizzata da un pagamento di un altro condominio ".
+                                "(pagamento #{$pagamentoEsistente->id}). Rigenerare la chiave e riprovare."
+                            );
+                        }
+
+                        return $pagamentoEsistente;
                     }
                 }
 
