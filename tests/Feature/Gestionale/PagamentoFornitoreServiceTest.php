@@ -846,15 +846,28 @@ it('snapshot fornitore: salvato al momento del pagamento e immutabile', function
 
     // Snapshot creato
     expect($pagamento->fornitore_snapshot)->not->toBeNull();
-    expect($pagamento->fornitore_snapshot['schema_version'])->toEqual(1);
+    expect($pagamento->fornitore_snapshot['schema_version'])->toEqual(2);
     expect($pagamento->fornitore_snapshot['ragione_sociale'])->toEqual($fornitore->ragione_sociale);
 
-    // Modifica anagrafica fornitore DOPO il pagamento
-    $fornitore->update(['ragione_sociale' => 'Ragione Sociale Modificata Srl']);
+    // Dalla versione 2 lo snapshot porta anche il REGIME FISCALE, non solo l'identità.
+    // Serve al modulo F24: aliquota e codice tributo dipendono dal regime del percipiente
+    // al momento del pagamento, e un F24 già presentato non si riscrive correggendo oggi
+    // l'anagrafica del fornitore.
+    expect($pagamento->fornitore_snapshot)->toHaveKeys([
+        'tipo_ritenuta', 'natura_percipiente', 'perc_ritenuta',
+        'soggetto_ritenuta', 'regime_forfetario', 'residente_fiscale',
+    ]);
 
-    // Snapshot deve restare immutato
+    // Modifica anagrafica fornitore DOPO il pagamento
+    $fornitore->update([
+        'ragione_sociale' => 'Ragione Sociale Modificata Srl',
+        'perc_ritenuta' => 20,
+    ]);
+
+    // Snapshot deve restare immutato — identità e regime
     $pagamento->refresh();
     expect($pagamento->fornitore_snapshot['ragione_sociale'])->toEqual('Fornitore Test Srl');
+    expect((int) $pagamento->fornitore_snapshot['perc_ritenuta'])->toEqual(4);
 });
 
 it('numero_protocollo generato con prefisso PAG per pagamento_fornitore', function () {

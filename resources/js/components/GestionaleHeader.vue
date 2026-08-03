@@ -183,7 +183,9 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
 <template>
     <div>
         <!-- HEADER -->
-        <div class="border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
+        <!-- `no-print`: su carta la barra dell'applicazione non serve, e nella prima
+             stampa del prospetto F24 lasciava in cima l'hamburger e l'avatar. -->
+        <div class="no-print border-b border-sidebar-border/80 bg-background/95 backdrop-blur">
             <div class="mx-auto flex h-16 items-center px-4 md:max-w-7xl">
 
                 <!-- MOBILE MENU -->

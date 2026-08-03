@@ -195,23 +195,32 @@ const pageGuides = [
                                          tre termini (Attivo = Passivo + Risultato d'esercizio), non il pareggio
                                          fra le due masse — senza spiegazione un amministratore non tecnico legge
                                          due numeri diversi accanto a un bollino verde e non si fida. -->
-                                    <p class="text-xs text-slate-700 mt-1 leading-relaxed">{{ spiegazioneQuadratura }}</p>
+                                    <p class="text-xs mt-1 leading-relaxed" :class="quadratura.quadra ? 'text-slate-700' : 'text-slate-800'">{{ spiegazioneQuadratura }}</p>
 
                                     <!-- Equazione compatta come riscontro numerico immediato: l'icona a fianco
                                          resta un extra per chi vuole anche Costi/Ricavi/Liquidità non
                                          contabilizzata, non un sostituto di questi tre numeri. -->
-                                    <div class="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-2 text-[11px] text-slate-400">
-                                        <span>Attivo <strong class="text-slate-600">{{ euro(quadratura.totale_attivo) }}</strong></span>
+                                    <!-- I grigi chiari (slate-400/500) sono stati scelti per il fondo bianco:
+                                         sul rosa dello stato di errore il contrasto scende sotto la soglia di
+                                         leggibilità e l'equazione diventa un'ombra. Nello stato di errore i
+                                         toni neutri si scuriscono di due gradini — restano neutri, così il
+                                         rosso continua a marcare solo il numero che allarma. -->
+                                    <div
+                                        class="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mt-2 text-[11px]"
+                                        :class="quadratura.quadra ? 'text-slate-400' : 'text-slate-600'"
+                                    >
+                                        <span>Attivo <strong :class="quadratura.quadra ? 'text-slate-600' : 'text-slate-800'">{{ euro(quadratura.totale_attivo) }}</strong></span>
                                         <span>=</span>
-                                        <span>Passivo <strong class="text-slate-600">{{ euro(quadratura.totale_passivo) }}</strong></span>
+                                        <span>Passivo <strong :class="quadratura.quadra ? 'text-slate-600' : 'text-slate-800'">{{ euro(quadratura.totale_passivo) }}</strong></span>
                                         <span>+</span>
-                                        <span>Risultato esercizio <strong :class="quadratura.risultato_esercizio < 0 ? 'text-rose-600' : 'text-slate-600'">{{ euro(quadratura.risultato_esercizio) }}</strong></span>
+                                        <span>Risultato esercizio <strong :class="quadratura.risultato_esercizio < 0 ? 'text-rose-700' : (quadratura.quadra ? 'text-slate-600' : 'text-slate-800')">{{ euro(quadratura.risultato_esercizio) }}</strong></span>
                                         <TooltipProvider :delay-duration="200">
                                             <Tooltip>
                                                 <TooltipTrigger as-child>
                                                     <button
                                                         type="button"
-                                                        class="inline-flex items-center justify-center w-4 h-4 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                                        class="inline-flex items-center justify-center w-4 h-4 rounded hover:text-slate-800 hover:bg-white/60 transition-colors"
+                                                        :class="quadratura.quadra ? 'text-slate-400' : 'text-slate-600'"
                                                         aria-label="Dettagli calcolo"
                                                         @click="isDettagliOpen = true"
                                                     >
@@ -234,7 +243,7 @@ const pageGuides = [
                                             >
                                                 {{ s.numero_protocollo }}
                                             </Link>
-                                            <span class="text-slate-500">— {{ s.causale }}</span>
+                                            <span :class="quadratura.quadra ? 'text-slate-500' : 'text-slate-700'">— {{ s.causale }}</span>
                                         </li>
                                         <li v-for="c in diagnosi.casse_senza_apertura" :key="`c-${c.id}`" class="text-xs">
                                             <Link
@@ -243,7 +252,7 @@ const pageGuides = [
                                             >
                                                 {{ c.nome }}
                                             </Link>
-                                            <span class="text-slate-500">— apertura mancante, {{ euro(c.saldo_iniziale) }}</span>
+                                            <span :class="quadratura.quadra ? 'text-slate-500' : 'text-slate-700'">— apertura mancante, {{ euro(c.saldo_iniziale) }}</span>
                                         </li>
                                     </ul>
                                 </div>

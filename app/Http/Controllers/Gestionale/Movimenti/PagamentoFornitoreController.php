@@ -9,6 +9,7 @@ use App\Exceptions\Pagamenti\FatturaNonApprovataException;
 use App\Exceptions\Pagamenti\FiscalYearClosedException;
 use App\Exceptions\Pagamenti\IbanDiscrepanzaException;
 use App\Exceptions\Pagamenti\IdempotencyKeyConflittoException;
+use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Exceptions\Pagamenti\IllegalCashAmountException;
 use App\Exceptions\Pagamenti\InsufficientFundsException;
 use App\Exceptions\Pagamenti\OverpaymentException;
@@ -268,6 +269,12 @@ class PagamentoFornitoreController extends Controller
             // Errore dati: fatture di fornitori/condomini diversi nello stesso pagamento.
             // Non bypassabile — errore operativo da correggere.
             return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
+
+        } catch (RitenutaIncoerenteException $e) {
+            // L'importo della ritenuta non corrisponde alle fatture allocate. Non è
+            // bypassabile: la ritenuta discende dalle fatture pagate, e il valore giusto
+            // il servizio lo conosce già.
+            return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
 
         } catch (IdempotencyKeyConflittoException $e) {
             // La chiave di idempotenza è già in uso, ma non da un replay di questo
@@ -555,6 +562,11 @@ class PagamentoFornitoreController extends Controller
 
         } catch (AllocazioniInconsistentiException $e) {
             return back()->withErrors(['allocazioni_inconsistenti' => $e->getMessage()]);
+
+        } catch (RitenutaIncoerenteException $e) {
+            // In modifica le allocazioni sono immutabili, quindi la ritenuta non può
+            // cambiare: un valore diverso da quello registrato è sempre un errore.
+            return back()->withErrors(['ritenuta_incoerente' => $e->getMessage()]);
 
         } catch (\Exception $e) {
             Log::error("Errore modifica pagamento ID {$pagamento->id}: ".$e->getMessage());

@@ -114,12 +114,16 @@ class UpdatePagamentoFornitoreRequest extends FormRequest
     }
 
     /**
-     * Normalizza i campi: importo_ritenuta_cents è 0 se non passato.
+     * `importo_ritenuta_cents` assente significa «non toccare», non «azzera».
+     *
+     * Qui c'era il contrario: un `merge(['importo_ritenuta_cents' => 0])` quando il campo
+     * mancava. Poiché il servizio lo scriveva poi pari pari sul pagamento, un aggiornamento
+     * che non rimandava la ritenuta la **azzerava** — e le allocazioni alle fatture non
+     * sono nemmeno modificabili in questa schermata, quindi non c'era modo di dichiarare
+     * legittimamente «questo pagamento non ha più ritenuta». Il flusso reale era salvo solo
+     * perché `PagamentoEdit.vue:113` il campo lo rimanda sempre; nulla lo garantiva.
+     *
+     * Ora l'assenza è assenza: `PagamentoFornitoreService::aggiornaPagamento()` conserva il
+     * valore registrato, e un valore presente che non coincide con quello viene rifiutato.
      */
-    protected function prepareForValidation(): void
-    {
-        if (is_null($this->input('importo_ritenuta_cents'))) {
-            $this->merge(['importo_ritenuta_cents' => 0]);
-        }
-    }
 }

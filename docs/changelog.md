@@ -7,6 +7,57 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.38] - Il Conto Che Non Si Era Mai Chiuso
+
+C'è un conto nel piano dei conti di ogni condominio — **2202, Debiti verso l'Erario per Ritenute** — che finora sapeva solo riempirsi. Ogni volta che si pagava un fornitore soggetto a ritenuta d'acconto, il debito verso lo Stato cresceva. Ma il movimento che quel debito lo estingue non esisteva nel gestionale: si controllava che i conti quadrassero sul foglio a video, e intanto quel numero saliva senza che nulla lo riportasse a zero.
+
+Verificato prima di scrivere una riga di codice: su **tutti** i condomìni a database, quel conto aveva accrediti e nessun addebito. Mai uno.
+
+Da questa versione l'F24 delle ritenute si prepara, si versa e si chiude dentro il gestionale.
+
+**Questa versione modifica il database**: tre tabelle nuove per le deleghe F24, le loro righe e il legame con i pagamenti che coprono. Nessuna tabella esistente viene toccata — sono solo creazioni — ed è la forma più prudente per l'aggiornamento dalla 1.9.x, che è l'unico senza backup automatico.
+
+### Ritenute e F24 — la voce nuova nel menu Movimenti
+
+**Lo scadenzario risponde alla domanda del 16 del mese.** *«Devo versare qualcosa, e quanto?»* Finora la risposta andava ricostruita a mano, pagamento per pagamento, applicando due soglie diverse e tre regole di scadenza che si confondono facilmente.
+
+**Le due soglie, che non sono la stessa cosa.** Il condominio non versa a ogni pagamento: accumula. Per gli **appalti** (4%) si versa quando il cumulo raggiunge 500 €, e comunque entro il 16 giugno e il 16 dicembre. Per i **professionisti** (20%) la soglia è 100 € e la data-limite annuale è **una sola**, il 16 dicembre. I due accumulatori sono separati: 300 € di appalti e 300 € di compensi professionali non fanno 600 € di soglia raggiunta, sono due adempimenti distinti.
+
+**Dicembre fa storia a sé**: le ritenute operate a dicembre si versano entro il 16 gennaio dell'anno dopo, in entrambi i regimi.
+
+**Le scadenze slittano davvero.** Se il 16 cade di sabato o in giorno festivo, il termine va al primo giorno lavorativo successivo — festività nazionali comprese, compreso il lunedì dell'Angelo, che è mobile e può cadere proprio lì.
+
+**Il prospetto da trascrivere.** La scheda della delega mostra i campi *nell'ordine del modello F24*: codice tributo, rateazione, mese e anno di riferimento, importo. Si copiano negli appunti o si stampano su un foglio pulito, da tenere agli atti o consegnare al commercialista. Non è il modello ministeriale — quello serve per pagare allo sportello e arriverà — ma è ciò che serve per compilare l'F24 nell'home banking o sul sito dell'Agenzia, che è come si paga davvero.
+
+**Si vede da dove viene ogni importo.** Sotto il prospetto, ogni riga elenca i pagamenti che sta versando, con fornitore e data. È la risposta alla domanda che arriva sei mesi dopo: *«questi 320 € di cosa erano?»*
+
+**Registrando il versamento il conto si chiude**, con due righe in partita doppia: DARE 2202, AVERE banca. E da lì la delega non si rettifica più: si storna. Un versamento all'Erario è un fatto avvenuto, e si corregge scrivendo il movimento uguale e contrario, non riscrivendo il passato. Dopo lo storno le ritenute tornano da versare e rientrano nel calcolo successivo.
+
+**Il pulsante «Aggiorna scadenze» sa se serve premerlo**: diventa ambra con un numero quando ci sono ritenute operate che non stanno ancora in nessuna delega. Quando è bianco, lo scadenzario è già allineato.
+
+### Corretto
+
+- **Modificando un pagamento senza rimandare la ritenuta, la ritenuta veniva azzerata.** Il campo assente veniva interpretato come «zero» invece che come «non toccare» — e le allocazioni alle fatture non sono nemmeno modificabili in quella schermata, quindi non c'era modo di dichiarare legittimamente che quella ritenuta non c'era più. Ora l'assenza è assenza, e un importo che non corrisponde alle fatture pagate viene **rifiutato** invece di essere accettato: era uno snapshot, con questa versione diventa la cifra che si versa all'Erario.
+
+- **Stornando un pagamento, il promemoria del versamento restava aperto.** Continuava a chiedere di versare una ritenuta che lo storno aveva già annullato, e si chiudeva solo a mano — da chi si accorgeva che non serviva più. Ora si chiude da sé.
+
+- **Il calcolo della scadenza ignorava le festività.** Gestiva sabato e domenica e nient'altro: una scadenza che cadeva in un giorno festivo veniva proposta come valida. Il caso reale è il lunedì dell'Angelo, che essendo mobile può cadere sul 16 o sul lunedì su cui si slitta da una domenica — e il vecchio calcolo, in quel secondo caso, non slittava una seconda volta.
+
+- **Il widget dello Stato Patrimoniale era poco leggibile quando segnalava un problema.** I testi usavano grigi scelti per il fondo bianco: sul rosso dell'errore il contrasto crollava, e l'equazione Attivo/Passivo diventava un'ombra — proprio nel momento in cui quei numeri servono di più.
+
+### Da sapere
+
+Le deleghe in **bozza** non hanno effetto contabile e non compaiono nel Libro Giornale: la scrittura nasce solo registrando il versamento. La scheda della delega ora lo dice, perché l'assenza di un movimento è facile da scambiare per un dato mancante.
+
+Il **codice fiscale del condominio** è obbligatorio sull'F24: se manca, la scheda lo segnala e indica dove inserirlo, invece di lasciarlo scoprire davanti al modulo compilato a metà.
+
+### Sotto il cofano
+
+- **Il calcolo di quando si versa è una funzione pura**, senza contatori salvati: si ricalcola da zero ogni volta a partire dai pagamenti registrati. È il motivo per cui rigenerare le bozze non fa mai danni e per cui il risultato si può confrontare con quanto già versato invece di doversi fidare di uno stato accumulato.
+- **Le soglie stanno in un posto solo.** La schermata non le riscrive: le riceve, così il giorno che cambiano si tocca un file e la guida smette da sola di raccontare un numero superato.
+- **Lo scatto dei dati fiscali del fornitore** salvato con ogni pagamento ora comprende anche il regime di ritenuta. Correggere oggi l'anagrafica di un fornitore non deve riclassificare versamenti già fatti: un F24 presentato non si riscrive.
+- Trentaquattro test nuovi coprono le tre regole di scadenza, il calendario delle festività, la generazione delle deleghe, la chiusura del conto 2202 e il suo storno. Il periodo di riferimento, che è calcolato sia dal server sia dall'interfaccia, è fissato da **entrambi** i lati.
+
 ## [1.10.0-beta.37] - La Nota di Credito Tornava un Costo
 
 Una nota di credito da 1.000,00 € + IVA. La si riapre in modifica — per correggere una data, una causale, qualunque cosa — e la si risalva senza toccare gli importi. A database la nota **cambia segno**: da −1.220,00 € a +1.220,00 €. Cioè smette di essere un accredito e diventa una spesa, e il debito verso il fornitore invece di calare cresce del doppio.

@@ -4,9 +4,11 @@ namespace App\Listeners\Gestionale;
 
 use App\Events\Gestionale\PagamentoAggiornato;
 use App\Events\Gestionale\PagamentoRegistrato;
+use App\Events\Gestionale\PagamentoStornato;
 use App\Models\CategoriaEvento;
 use App\Models\Evento;
 use App\Models\User;
+use App\Services\Gestionale\CalendarioFiscaleService;
 use App\Services\Gestionale\InboxService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Queue\InteractsWithQueue;
@@ -46,6 +48,13 @@ class SyncF24WithPagamento implements ShouldQueue
             PagamentoAggiornato::class,
             [SyncF24WithPagamento::class, 'handleAggiornato']
         );
+
+        // Senza questa iscrizione il promemoria restava aperto dopo uno storno, e
+        // segnalava un versamento non più dovuto (design §8 punto 4).
+        $events->listen(
+            PagamentoStornato::class,
+            [SyncF24WithPagamento::class, 'handleStornato']
+        );
     }
 
     public function handle(PagamentoRegistrato $event): void
@@ -81,11 +90,11 @@ class SyncF24WithPagamento implements ShouldQueue
             return;
         }
 
-        $scadenzaF24 = $dataPagamento->copy()->addMonthNoOverflow()->day(16)->setTime(9, 0);
-
-        if ($scadenzaF24->isWeekend()) {
-            $scadenzaF24->next('Monday')->setTime(9, 0);
-        }
+        // Il 16 del mese successivo, slittato al primo giorno LAVORATIVO: prima qui c'era
+        // solo isWeekend(), quindi una scadenza in giorno festivo passava per valida.
+        $scadenzaF24 = app(CalendarioFiscaleService::class)
+            ->scadenzaVersamentoRitenute($dataPagamento)
+            ->setTime(9, 0);
 
         // ── Creazione task Inbox ──────────────────────────────────────────────
         try {
@@ -195,10 +204,9 @@ class SyncF24WithPagamento implements ShouldQueue
         try {
             $catAdmin = CategoriaEvento::where('name', 'Scadenze amministrative')->firstOrFail();
 
-            $scadenzaF24 = $dataPagamento->copy()->addMonthNoOverflow()->day(16)->setTime(9, 0);
-            if ($scadenzaF24->isWeekend()) {
-                $scadenzaF24->next('Monday')->setTime(9, 0);
-            }
+            $scadenzaF24 = app(CalendarioFiscaleService::class)
+                ->scadenzaVersamentoRitenute($dataPagamento)
+                ->setTime(9, 0);
 
             $importoFormatted = number_format($importoRitenutaAfter / 100, 2, ',', '.');
 
@@ -246,6 +254,36 @@ class SyncF24WithPagamento implements ShouldQueue
 
         } catch (\Exception $e) {
             Log::error("SyncF24WithPagamento::handleAggiornato: errore per pagamento #{$pagamento->id}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Chiude il promemoria F24 quando il pagamento che lo aveva generato viene stornato.
+     *
+     * Difetto §8 punto 4 del design: il listener era iscritto solo a `PagamentoRegistrato` e
+     * `PagamentoAggiornato`, quindi dopo uno storno il task restava aperto e continuava a
+     * chiedere il versamento di una ritenuta che non era più dovuta — chiudibile solo a
+     * mano, e solo da chi si accorgeva che non serviva più.
+     *
+     * L'evento porta il pagamento ORIGINALE, non il record di storno: il task da chiudere è
+     * quello agganciato a quell'id.
+     */
+    public function handleStornato(PagamentoStornato $event): void
+    {
+        $pagamento = $event->pagamento;
+
+        try {
+            $chiusi = Evento::where('meta->context->pagamento_id', $pagamento->id)
+                ->where('meta->type', 'versamento_ritenuta')
+                ->update(['is_completed' => true]);
+
+            if ($chiusi > 0) {
+                InboxService::clearAdminCache();
+                Log::info("SyncF24WithPagamento: task F24 chiuso per storno del pagamento #{$pagamento->id}");
+            }
+
+        } catch (\Exception $e) {
+            Log::error("SyncF24WithPagamento::handleStornato: errore per pagamento #{$pagamento->id}: " . $e->getMessage());
         }
     }
 }

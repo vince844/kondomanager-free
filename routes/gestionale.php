@@ -13,6 +13,7 @@ use App\Http\Controllers\Gestionale\Movimenti\IncassoRateController;
 use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
+use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
@@ -321,6 +322,25 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::post('/pagamenti-fornitori/{pagamento}/storno', StornoPagamentoController::class)
         ->name('pagamenti-fornitori.storno');
+
+    // --- RITENUTE E DELEGHE F24 (v1.10.0-beta.38) ---
+    Route::get('/f24', [DelegaF24Controller::class, 'index'])
+        ->name('f24.index');
+
+    Route::post('/f24/genera', [DelegaF24Controller::class, 'genera'])
+        ->name('f24.genera');
+
+    Route::get('/f24/{delega}', [DelegaF24Controller::class, 'show'])
+        ->name('f24.show');
+
+    Route::post('/f24/{delega}/versa', [DelegaF24Controller::class, 'conferma'])
+        ->name('f24.versa');
+
+    Route::post('/f24/{delega}/storna', [DelegaF24Controller::class, 'storna'])
+        ->name('f24.storna');
+
+    Route::post('/f24/{delega}/annulla', [DelegaF24Controller::class, 'annulla'])
+        ->name('f24.annulla');
 
     // --- DETTAGLIO SCRITTURA CONTABILE (v1.9.1-beta.7) ---
     Route::get('/scritture/{scrittura}', [ScritturaContabileController::class, 'show'])

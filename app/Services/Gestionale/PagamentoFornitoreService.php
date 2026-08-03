@@ -23,6 +23,7 @@ use App\Exceptions\Pagamenti\OverpaymentException;
 use App\Exceptions\Pagamenti\PagamentoGiaStornatoException;
 use App\Exceptions\Pagamenti\PagamentoModificaVietataException;
 use App\Exceptions\Pagamenti\PossibilePagamentoDuplicatoException;
+use App\Exceptions\Pagamenti\RitenutaIncoerenteException;
 use App\Models\Esercizio;
 use App\Models\Fornitore;
 use App\Models\Gestionale\Cassa;
@@ -302,20 +303,15 @@ class PagamentoFornitoreService
                 // Anche se l'anagrafica viene modificata in futuro, questo record
                 // conserva i dati al momento del pagamento.
 
-                $importoRitenuta = (int) ($data['importo_ritenuta_cents'] ?? 0);
+                // La ritenuta NON è un campo libero: discende dalle fatture allocate e dalla
+                // quota pagata di ciascuna. Il server la calcola sempre; un valore in
+                // ingresso serve solo a essere confrontato. Prima veniva preso così com'era
+                // quando diverso da zero, senza alcun controllo (design §8 punto 7):
+                // finché era uno snapshot per la certificazione era un fastidio, con il
+                // modulo F24 è la cifra che si versa all'Erario.
+                $importoRitenuta = $this->calcolaRitenutaProQuota($data['allocazioni'], $fatture);
 
-                // Se non fornita esplicitamente, la calcoliamo pro-quota sulle fatture pagate
-                if ($importoRitenuta === 0) {
-                    foreach ($data['allocazioni'] as $alloc) {
-                        if ($alloc['tipo'] === TipoAllocazioneFattura::PAGAMENTO->value) {
-                            $f = $fatture[(int) $alloc['fattura_id']];
-                            if (($f->importo_ritenuta ?? 0) > 0 && ($f->netto_a_pagare ?? 0) > 0) {
-                                $ratio = min($alloc['importo_allocato_cents'] / $f->netto_a_pagare, 1);
-                                $importoRitenuta += (int) round($f->importo_ritenuta * $ratio);
-                            }
-                        }
-                    }
-                }
+                $this->verificaCoerenzaRitenuta($data['importo_ritenuta_cents'] ?? null, $importoRitenuta);
 
                 $importoNetto = (int) ($data['importo_netto_cents'] ?? $totali['totalePagamento']);
                 $importoLordo = (int) ($data['importo_lordo_cents'] ?? ($importoNetto + $importoRitenuta));
@@ -471,7 +467,12 @@ class PagamentoFornitoreService
 
         // ── Importi nuovi ────────────────────────────────────────────────────
         $nuovoImportoLordo = (int) $data['importo_lordo_cents'];
-        $nuovoImportoRitenuta = (int) ($data['importo_ritenuta_cents'] ?? 0);
+        // Le allocazioni alle fatture sono immutabili in modifica — lo dichiara la
+        // schermata stessa — quindi la ritenuta non può cambiare. Un campo assente
+        // significa «non toccare»: prima diventava 0 e azzerava la ritenuta registrata.
+        $nuovoImportoRitenuta = (int) $importoRitenutaBefore;
+
+        $this->verificaCoerenzaRitenuta($data['importo_ritenuta_cents'] ?? null, $nuovoImportoRitenuta);
         $nuovoImportoNetto = (int) $data['importo_netto_cents'];
         $nuoveCommissioni = (int) ($data['importo_commissioni_cents'] ?? 0);
         $nuovoConto = (int) $data['conto_corrente_id'];
@@ -1289,6 +1290,67 @@ class PagamentoFornitoreService
      *
      * @throws \RuntimeException se il conto non è trovato (configurazione mancante)
      */
+    /**
+     * La ritenuta d'acconto che compete a questo pagamento, calcolata dalle fatture allocate.
+     *
+     * È una funzione pura delle allocazioni: per ogni fattura pagata, la sua ritenuta
+     * ridotta in proporzione alla quota di netto che si sta pagando. Le allocazioni di tipo
+     * diverso da PAGAMENTO (le note di credito in netting) non generano ritenuta.
+     *
+     * Il rapporto è calcolato sul `netto_a_pagare` perché è quello l'importo che il
+     * pagamento sta consumando: la ritenuta è già stata scomputata da lì.
+     *
+     * @param  array<int,array<string,mixed>>  $allocazioni
+     * @param  \Illuminate\Support\Collection<int,FatturaPassiva>  $fatture  indicizzata per id
+     */
+    private function calcolaRitenutaProQuota(array $allocazioni, $fatture): int
+    {
+        $totale = 0;
+
+        foreach ($allocazioni as $alloc) {
+            if ($alloc['tipo'] !== TipoAllocazioneFattura::PAGAMENTO->value) {
+                continue;
+            }
+
+            $fattura = $fatture[(int) $alloc['fattura_id']];
+
+            if (($fattura->importo_ritenuta ?? 0) <= 0 || ($fattura->netto_a_pagare ?? 0) <= 0) {
+                continue;
+            }
+
+            $quota = min($alloc['importo_allocato_cents'] / $fattura->netto_a_pagare, 1);
+            $totale += (int) round($fattura->importo_ritenuta * $quota);
+        }
+
+        return $totale;
+    }
+
+    /**
+     * Rifiuta un importo di ritenuta che non coincide con quello dovuto.
+     *
+     * `null` significa «non dichiarato» ed è legittimo: il chiamante si affida al calcolo.
+     * Un valore presente viene confrontato **esattamente**, senza tolleranza: entrambi i
+     * numeri sono centesimi interi prodotti dallo stesso arrotondamento, quindi una
+     * differenza di un centesimo non è rumore ma un calcolo diverso — cioè esattamente
+     * ciò che va intercettato.
+     *
+     * Un override manuale motivato sarebbe un'altra cosa, e oggi non esiste: sta fra le
+     * richieste non pianificate della roadmap.
+     */
+    private function verificaCoerenzaRitenuta(?int $dichiarato, int $dovuto): void
+    {
+        if ($dichiarato === null || $dichiarato === $dovuto) {
+            return;
+        }
+
+        throw new RitenutaIncoerenteException(sprintf(
+            'La ritenuta indicata (€ %s) non corrisponde a quella dovuta sulle fatture allocate (€ %s). '.
+            'La ritenuta discende dalle fatture pagate e dalla quota pagata di ciascuna: non va inviata a mano.',
+            number_format($dichiarato / 100, 2, ',', '.'),
+            number_format($dovuto / 100, 2, ',', '.')
+        ));
+    }
+
     private function trovaConto(int $condominioId, string $ruolo): ContoContabile
     {
         $conto = ContoContabile::where('condominio_id', $condominioId)
@@ -1377,15 +1439,33 @@ class PagamentoFornitoreService
     private function costruisciSnapshot(Fornitore $fornitore): array
     {
         return [
-            'schema_version' => 1,
+            'schema_version' => 2,
             'snapshot_at' => now()->toIso8601String(),
             'ragione_sociale' => $fornitore->ragione_sociale,
             'partita_iva' => $fornitore->partita_iva,
             'codice_fiscale' => $fornitore->codice_fiscale,
             'iban' => $fornitore->iban,
             'indirizzo' => $fornitore->indirizzo,
-            // In v1.12 (DNA Fiscale) lo schema evolverà a version=2 con:
-            // pec, regime_fiscale, split_payment, reverse_charge, nazione_iso
+
+            // ── Regime fiscale, dalla versione 2 ──────────────────────────────
+            // Serve al modulo F24: l'aliquota e il codice tributo dipendono dal regime
+            // del percipiente **al momento del pagamento**, non da come è configurato oggi.
+            // Senza questo scatto, correggere l'anagrafica di un fornitore riscriverebbe
+            // retroattivamente la classificazione di versamenti già fatti — e un F24 già
+            // presentato non si riscrive.
+            'tipo_ritenuta' => $fornitore->tipo_ritenuta instanceof \BackedEnum
+                ? $fornitore->tipo_ritenuta->value
+                : $fornitore->tipo_ritenuta,
+            'natura_percipiente' => $fornitore->natura_percipiente instanceof \BackedEnum
+                ? $fornitore->natura_percipiente->value
+                : $fornitore->natura_percipiente,
+            'perc_ritenuta' => $fornitore->perc_ritenuta,
+            'soggetto_ritenuta' => (bool) $fornitore->soggetto_ritenuta,
+            'regime_forfetario' => (bool) $fornitore->regime_forfetario,
+            'residente_fiscale' => (bool) ($fornitore->residente_fiscale ?? true),
+
+            // In v1.12 (DNA Fiscale) lo schema evolverà ancora con:
+            // pec, split_payment, reverse_charge, nazione_iso
         ];
     }
 

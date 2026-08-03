@@ -4,7 +4,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { usePermission } from "@/composables/permissions";
-import { LogIn, LogOut, Wallet, Repeat2, FileText, ScrollText } from 'lucide-vue-next';
+import { LogIn, LogOut, Wallet, Repeat2, FileText, BookOpen, Percent } from 'lucide-vue-next';
 import type { LinkItem } from '@/types';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -41,7 +41,13 @@ const topbarNavItems: (LinkItem & { badge?: string })[] = [
     },
     {
         type:  'link',
-        icon:  ScrollText,
+        icon:  Percent,
+        title: 'Ritenute e F24',
+        href:  generatePath('gestionale/:condominio/f24', { condominio: condominio.value.id }),
+    },
+    {
+        type:  'link',
+        icon:  BookOpen,
         title: 'Libro Giornale',
         // Senza un esercizio aperto (es. l'amministratore lo ha appena chiuso) non c'è un
         // esercizio su cui costruire la rotta annidata: link disabilitato, come "Prima nota",
