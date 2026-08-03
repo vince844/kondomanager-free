@@ -16,6 +16,7 @@ import {
     Bug, Scale, Info, FileX, Ban
 } from 'lucide-vue-next';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
+import { centsToEuro } from '@/lib/gestionale/money';
 import { usePermission } from '@/composables/permissions';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -104,7 +105,10 @@ const form = useForm({
     data_pagamento:                 props.pagamento.data_pagamento ? new Date(props.pagamento.data_pagamento).toISOString().substring(0, 10) : new Date().toISOString().substring(0, 10),
     metodo_pagamento:               props.pagamento.metodo_pagamento || 'bonifico',
     iban_beneficiario:              props.pagamento.iban_beneficiario || '',
-    importo_commissioni_cents:      Math.round((props.pagamento.importo_commissione || 0) * 100),
+    // La prop arriva dalla Resource ed è già in centesimi, come importo_lordo/ritenuta/netto
+    // qui sotto: la casella però si digita in euro, quindi qui si DIVIDE. Moltiplicare
+    // sarebbe la seconda conversione della stessa cifra — il bug del ×100 della beta.32.
+    importo_commissioni_cents:      centsToEuro(props.pagamento.importo_commissione),
     importo_lordo_cents:            props.pagamento.importo_lordo,
     importo_ritenuta_cents:         props.pagamento.importo_ritenuta,
     importo_netto_cents:            props.pagamento.importo_netto,

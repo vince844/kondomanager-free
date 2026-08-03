@@ -1,20 +1,15 @@
 /**
- * Arrotondamento al centesimo con la stessa disciplina di PHP.
+ * Aritmetica del denaro specifica delle fatture.
  *
- * `Math.round` arrotonda .5 verso +∞ (`Math.round(-27.5) === -27`), `round()` di PHP lo fa
- * lontano da zero (`round(-27.5) === -28.0`). Sugli importi negativi — le note di credito, che
- * `MoneyInput` permette di digitare — i due divergerebbero di un centesimo.
+ * Le due conversioni generiche euro↔centesimi vivono un livello più su, in
+ * `@/lib/gestionale/money`: sono il confine di ingresso e di uscita di qualunque form del
+ * gestionale, non solo di questo. Qui restano riesportate perché i moduli delle fatture le
+ * usano come se fossero loro, e perché una seconda copia sarebbe esattamente il modo in cui
+ * nasce un ×100 di troppo.
  */
-export const arrotonda = (n: number): number => Math.sign(n) * Math.round(Math.abs(n));
+export { arrotonda, euroToCents, centsToEuro } from '../money';
 
-/**
- * Euro digitati nel form → centesimi interi. È il confine di ingresso: da qui in poi il
- * denaro resta in centesimi e non si moltiplica più per 100 — un secondo `* 100`
- * "difensivo" a valle è il bug del ×100 costato la beta.32.
- *
- * Ricalca `(int) round($euro * 100)` di `FatturaPassivaService`.
- */
-export const euroToCents = (euro: unknown): number => arrotonda((Number(euro) || 0) * 100);
+import { arrotonda } from '../money';
 
 /**
  * IVA di UNA riga, arrotondata al centesimo prima di essere sommata alle altre.

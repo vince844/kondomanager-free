@@ -7,6 +7,28 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.36] - Due e Cinquanta Diventavano Venticinquemila
+
+Un pagamento a fornitore con 2,50 € di commissioni bancarie. Lo si riapre in modifica — per correggere una data, una causale, qualunque cosa — e nella casella delle commissioni non c'è più 2,50 €: c'è **25.000,00 €**. Salvando senza toccare quel campo, a database ne finivano 25.000,00 €: la cifra di partenza moltiplicata per diecimila.
+
+**Nessuna modifica al database.** Nessuna migrazione e nessun dato riparato all'indietro. Chi trovasse una commissione gonfiata su un pagamento già modificato può correggerla riaprendo il pagamento in modifica: ora la casella mostra la cifra giusta, e basta risalvare.
+
+### Corretto
+
+- **Riaprendo in modifica un pagamento fornitore, le commissioni bancarie venivano moltiplicate per cento.** Il denaro nel gestionale viaggia in centesimi interi: 2,50 € sono `250`. La schermata di modifica riceveva quel `250` e — invece di dividerlo per cento per riportarlo in euro, come vuole una casella in cui si digitano euro — lo moltiplicava di nuovo, mostrando `25000`. Al salvataggio quel numero veniva riconvertito in centesimi una seconda volta, e a database arrivavano 2.500.000 centesimi.
+
+  Il difetto colpiva **anche senza toccare il campo**: bastava aprire e salvare. Gli altri importi della stessa schermata — lordo, ritenuta, netto — erano trattati correttamente: erano le sole commissioni ad avere una conversione di troppo, dentro lo stesso oggetto.
+
+  La registrazione di un pagamento nuovo non è mai stata interessata: lì la casella parte da zero e la conversione avviene una volta sola, al momento giusto.
+
+- **Perché nessun controllo se n'era accorto.** La cifra gonfiata entrava in partita doppia da tutte e due le parti — a debito di «spese bancarie» e a credito della banca — quindi la scrittura **quadrava perfettamente**. Il validatore di quadratura, che è la rete di sicurezza del modulo contabile, non aveva niente da segnalare. L'unico segnale possibile era il saldo del conto corrente che scendeva di 25.000 € invece che di 2,50 €, e un eventuale blocco per «saldo insufficiente» su un pagamento che l'amministratore non aveva modificato nell'importo.
+
+### Sotto il cofano
+
+Il modulo del denaro lato client sapeva convertire gli euro digitati in centesimi, ma **non sapeva fare il contrario**: la conversione inversa — quella che serve ogni volta che un form di modifica si precompila con un importo già salvato — non esisteva, e chi ne aveva avuto bisogno se l'era scritta a mano. Al contrario. Ora `centsToEuro` sta accanto a `euroToCents` in `resources/js/lib/gestionale/money.ts`, con scritto in chiaro qual è il confine di ingresso e quale quello di uscita.
+
+- **Il difetto è fissato da tutte e due le parti**, come si è stabilito nella beta precedente. Da un lato `PagamentoEdit.test.ts` monta davvero la schermata e controlla il numero che finisce nella casella — perché l'errore viveva nell'inizializzazione del form, dove una prova sulla sola logica non sarebbe arrivata. Dall'altro `PagamentoCommissioniRoundTripTest.php` fissa il riferimento del server: che la schermata riceva centesimi interi, e che aprire e risalvare due volte di fila lasci la cifra dov'era.
+
 ## [1.10.0-beta.35] - Due Aritmetiche per lo Stesso Numero
 
 Un amministratore segnala dal forum: registrando una fattura con ritenuta d'acconto, il riquadro **«Netto da pagare»** del form dice 373,12 €, ma la fattura salvata — quella che compare in Gestionale › Movimenti › Fatture Passive — ne vale 373,11. Un centesimo, su un numero che nessuno ricontrolla due volte perché è il totale.
