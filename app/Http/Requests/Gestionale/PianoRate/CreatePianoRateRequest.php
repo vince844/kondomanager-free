@@ -50,6 +50,9 @@ class CreatePianoRateRequest extends FormRequest
             'metodo_distribuzione' => ['required', 'in:prima_rata,tutte_rate,rata_zero'],
             'numero_rate'          => ['required', 'integer'],
             'giorno_scadenza'      => ['nullable', 'integer'],
+            // Assente o vuota significa «parte dall'inizio della gestione»: è una scelta, non
+            // un dato mancante, e per questo è `nullable` e non `required`.
+            'data_prima_scadenza'  => ['nullable', 'date'],
             'note'                 => ['nullable', 'string'],
             
             // Ricorrenza

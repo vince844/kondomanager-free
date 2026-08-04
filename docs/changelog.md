@@ -7,6 +7,36 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.42] - Le Rate Scadono Quando Dici Tu
+
+Le parole di un amministratore, che descrivono il problema meglio di qualunque riformulazione: *«nel Piano rate come posso settare che la prima rata è in una data specifica? Di default mi prende come data l'inizio della contabilità»*. Non stava chiedendo una comodità: stava descrivendo un comportamento che subiva e di cui chiedeva la ragione. In tre l'hanno chiesto.
+
+Aveva ragione: la partenza era cablata sull'inizio della gestione in tre punti del codice, e non c'era modo di dirlo altrimenti.
+
+**⚠ MIGRAZIONE DATABASE**: una colonna nuova, `data_prima_scadenza` su `piani_rate`, nullable. Nessun dato esistente viene toccato e nessun piano cambia comportamento.
+
+### La prima rata cade dove dici tu
+
+**Nel piano rate c'è un campo «Prima scadenza».** Se lo lasci vuoto si parte dall'inizio della gestione, esattamente come prima — e la schermata te lo dice, con la data che userebbe.
+
+**Il vuoto non è un dato mancante: è la scelta di seguire la gestione.** Un piano senza data propria si sposta se l'inizio della gestione si sposta; chi lo vuole fermo mette una data. È la ragione per cui la colonna **non è stata riempita all'indietro** sui piani esistenti: riempirla li avrebbe congelati su una data calcolata adesso, trasformando un default vivo in una copia morta.
+
+**La data scelta mantiene il suo giorno.** Se dici «la prima rata il 30 settembre», la prima scadenza è il 30 — non il 5. Dalla seconda in poi comanda il giorno del mese, che è ciò che si intende indicando un giorno.
+
+### Corretto
+
+- **Il giorno di scadenza nasceva al 1 del mese invece che al 5.** Chi non indicava il giorno otteneva un piano che scade il primo, mentre lo schema del database dichiara il cinque: c'era un valore scritto nel codice che non lasciava mai parlare il default. **Chi controllare:** i piani creati senza indicare il giorno del mese hanno le rate al giorno 1. Si correggono indicando il giorno e ricalcolando.
+
+- **Il promemoria a calendario poteva sdoppiarsi.** Il controllo che evita di creare due volte lo stesso evento chiudeva anche sulla data della rata, mentre la rata è già identificata dal suo numero. Finché le scadenze non si spostavano era indifferente; da questa versione si spostano, e senza la correzione ogni spostamento avrebbe lasciato in calendario l'evento vecchio accanto a quello nuovo.
+
+### Sotto il cofano
+
+- La regola «da dove parte il calendario» esiste ora in **due linguaggi**, perché l'interfaccia deve poterla mostrare prima di salvare: `PianoRate::dataPartenzaCalendario()` e `partenzaCalendario()` in `resources/js/lib/`. Sono fissate da **due suite di test gemelle**, PHP e JavaScript, sugli stessi casi — è lo schema che nella beta.35 è costato un centesimo di divergenza sul netto da pagare, e da allora si scrivono sempre insieme.
+- **La sincronizzazione delle scadenze sulle quote non è stata costruita, ed è la cosa giusta.** La specifica la dava per necessaria prima di questa fase. Verificato: cambiare la data richiede un ricalcolo, il ricalcolo cancella e rigenera le rate, e le quote muoiono con la loro rata. La divergenza non è possibile — e c'è ora un test che lo fissa, perché diventerà possibile con la modifica delle date già generate.
+- Ventidue test nuovi, di cui sette in JavaScript.
+
+---
+
 ## [1.10.0-beta.41] - Trattenuto Due Volte allo Stesso Fornitore
 
 Quando un condominio paga i lavori di ristrutturazione con il **bonifico parlante** — quello con la causale che cita la norma, per far valere le detrazioni — la ritenuta la opera **la banca**, non il condominio. È scritto nel testo dell'Agenzia, ed esiste per una ragione semplice: applicarla entrambi significherebbe prelevare due volte sullo stesso corrispettivo.

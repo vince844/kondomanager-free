@@ -36,6 +36,7 @@ class PianoRate extends Model
         'saldi_config',
         'numero_rate',
         'giorno_scadenza',
+        'data_prima_scadenza',
         'data_inizio',
         'attivo',
         'note',
@@ -56,6 +57,8 @@ class PianoRate extends Model
     protected $casts = [
         'stato'                   => StatoPianoRate::class,
         'data_inizio'             => 'date',
+        // NULL = «parte dall'inizio della gestione», che è il comportamento di sempre.
+        'data_prima_scadenza'     => 'date',
         'data_delibera_assemblea' => 'date',      // Cast automatico a Carbon per formattazione agevole
         'approvato_il'            => 'datetime',  // Cast automatico a Carbon con orario
         'attivo'                  => 'boolean',
@@ -225,4 +228,34 @@ class PianoRate extends Model
     {
         return PianoRateFactory::new();
     }
+
+    /**
+     * La data da cui parte il calendario delle rate.
+     *
+     * È `data_prima_scadenza` se l'amministratore l'ha scelta, altrimenti l'inizio della
+     * gestione — che è il comportamento di sempre, e resta il default proprio perché nella
+     * grande maggioranza dei casi è quello giusto.
+     *
+     * `NULL` in colonna non è un dato mancante: **è la scelta di seguire la gestione**. Un
+     * piano che non ha una data propria si sposta se l'inizio della gestione si sposta, e chi
+     * lo vuole fermo mette una data. È la ragione per cui questa colonna non è stata
+     * riempita all'indietro sui piani esistenti.
+     *
+     * ⚠️ La controparte TypeScript è `partenzaCalendario()` in
+     * `resources/js/lib/gestionale/pianiRate/calendario.ts`, che l'interfaccia usa per dire
+     * all'amministratore da dove partirà. Le due devono rispondere allo stesso modo: è lo
+     * schema che nella beta.35 è costato un centesimo di divergenza sul netto da pagare,
+     * perché nessuna delle due copie era sbagliata da sola.
+     */
+    public function dataPartenzaCalendario(): ?\Carbon\CarbonInterface
+    {
+        if ($this->data_prima_scadenza) {
+            return \Carbon\CarbonImmutable::parse($this->data_prima_scadenza);
+        }
+
+        $inizioGestione = $this->gestione?->data_inizio;
+
+        return $inizioGestione ? \Carbon\CarbonImmutable::parse($inizioGestione) : null;
+    }
+
 }

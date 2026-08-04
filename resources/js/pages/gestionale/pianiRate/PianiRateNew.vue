@@ -24,6 +24,7 @@ import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
 import type { Gestione } from '@/types/gestionale/gestioni';
+import { partenzaCalendario } from '@/lib/gestionale/pianiRate/calendario';
 import type { BreadcrumbItem } from '@/types';
 
 interface Capitolo {
@@ -168,6 +169,8 @@ const form = useForm({
   saldi_config: [] as any[],
   numero_rate: 12,
   giorno_scadenza: 5,
+  // Vuota = «parte dall'inizio della gestione», che è il comportamento di sempre.
+  data_prima_scadenza: null as string | null,
   note: '',
   genera_subito: true,
   recurrence_enabled: false,
@@ -182,6 +185,19 @@ const form = useForm({
   accetta_scoperti: false as boolean,
   nota_scoperti: '' as string,
 })
+
+
+/**
+ * La data da cui partirebbe il piano, calcolata con la stessa regola del server —
+ * `partenzaCalendario()`, gemella di `PianoRate::dataPartenzaCalendario()`. Serve solo a
+ * suggerirla: se l'interfaccia dicesse una data e il server ne usasse un'altra, nessuna delle
+ * due sarebbe sbagliata da sola.
+ */
+const partenzaSuggerita = computed<string | null>(() => {
+  const gestione = props.gestioni?.find(g => g.id === form.gestione_id);
+
+  return partenzaCalendario(form.data_prima_scadenza, (gestione as any)?.data_inizio);
+});
 
 // --- LETTURA DEEP-LINK DA DASHBOARD ---
 onMounted(() => {
@@ -652,15 +668,41 @@ const submit = () => {
             <!-- ── BANNER DINAMICO per gestione ─────────────────────────────── -->
             <div v-if="!saldoInfo.is_primo_anno">
 
-              <!-- Bloccato: un'altra gestione ha già consumato il saldo -->
-              <div v-if="!saldoInfo.applicabile"
-                   class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-start gap-3">
-                <AlertTriangle class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <h4 class="font-bold text-amber-900 dark:text-amber-100 text-sm">Saldi non disponibili</h4>
-                  <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">{{ saldoInfo.motivo }}</p>
-                </div>
-              </div>
+              <!--
+                Non aver ancora scelto la gestione NON è un problema, ed è l'unico stato di
+                questa card che non lo è. Finiva nello stesso riquadro ambra con il triangolo
+                di allarme usato per il blocco vero — «un'altra gestione ha già consumato il
+                saldo» — perché il server, al primo caricamento, riusa `applicabile: false`
+                per dire due cose diverse: «non si può» e «non lo so ancora».
+
+                A chi apre la pagina la differenza non arriva: vede un avviso arancione prima
+                ancora di aver toccato qualcosa, e si chiede cosa abbia sbagliato.
+              -->
+              <!--
+                I due stati in cui non c'è niente da decidere — non hai ancora scelto la
+                gestione, oppure i saldi sono già in un altro piano — sono una RIGA, non un
+                riquadro. La card ha già titolo e sottotitolo: metterci dentro un box bordato
+                per dire che non c'è nulla da fare è una scatola dentro una scatola, e pesa
+                più dello stato in cui invece c'è da scegliere.
+
+                E non sono ambra. Nessuno dei due è un problema: il secondo in particolare è
+                la situazione normale dal secondo piano dell'anno in poi. Il triangolo
+                arancione diceva «hai sbagliato qualcosa» a chi non aveva sbagliato niente.
+
+                Nascondere del tutto sarebbe stato peggio: il testo del secondo caso risponde
+                alla domanda che l'amministratore si farebbe comunque — «perché non vedo
+                nessun saldo?» — e gli dice come averne. Un'assenza non spiegata si scambia
+                per un dato mancante.
+              -->
+              <p v-if="!form.gestione_id" class="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                <span>Scegli la gestione di riferimento qui sopra: i debiti e i crediti dell'anno precedente compariranno qui.</span>
+              </p>
+
+              <p v-else-if="!saldoInfo.applicabile" class="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Info class="w-4 h-4 shrink-0 mt-0.5 text-slate-400" />
+                <span>{{ saldoInfo.motivo }}</span>
+              </p>
 
               <template v-else>
 
@@ -1024,6 +1066,59 @@ const submit = () => {
               <div v-if="!usingByDay">
                 <Label for="giorno_scadenza">Giorno del mese</Label>
                 <Input id="giorno_scadenza" v-model.number="form.giorno_scadenza" class="mt-1 bg-white dark:bg-slate-950" />
+              </div>
+              <!--
+                La data di partenza si SUGGERISCE nel segnaposto, non si scrive nel campo:
+                compilarla la trasformerebbe al primo salvataggio in una scelta esplicita che
+                nessuno ha fatto, e il piano smetterebbe di seguire la gestione.
+              -->
+              <div>
+                <!--
+                  La spiegazione sta in un HoverCard e non sotto il campo, come per «Metodo di
+                  distribuzione» qui accanto: tre campi affiancati di cui uno solo con due
+                  righe di testo sotto sbilanciano la riga, e l'icona informativa è
+                  l'affordance che questa pagina insegna già.
+                -->
+                <div class="flex items-center gap-2">
+                  <Label for="data_prima_scadenza">Prima scadenza</Label>
+                  <HoverCard>
+                    <HoverCardTrigger as-child>
+                      <button type="button" class="cursor-pointer">
+                        <Info class="w-4 h-4 text-slate-400 hover:text-slate-600 transition-colors" />
+                      </button>
+                    </HoverCardTrigger>
+                    <HoverCardContent class="w-80 z-50 p-4 shadow-xl border-blue-100">
+                      <div class="space-y-2 text-sm">
+                        <h4 class="font-bold text-slate-800 flex items-center gap-2 border-b pb-2">
+                          <CalendarDays class="w-4 h-4 text-blue-600" /> Quando cade la prima rata
+                        </h4>
+                        <p class="text-xs text-slate-600">
+                          <strong class="text-slate-700">Se la lasci vuota</strong><br>
+                          <span class="opacity-90">
+                            Si parte dall'inizio della gestione<template v-if="partenzaSuggerita">, il
+                            <strong>{{ partenzaSuggerita.split('-').reverse().join('/') }}</strong></template>.
+                            Il piano continua a seguire la gestione anche se un domani la sua data cambia.
+                          </span>
+                        </p>
+                        <p class="text-xs text-slate-600">
+                          <strong class="text-emerald-700">Se indichi una data</strong><br>
+                          <span class="opacity-90">
+                            La prima rata cade esattamente lì, con il suo giorno: il 30 settembre resta
+                            il 30. Dalla seconda in poi comanda il <strong>giorno del mese</strong> qui a
+                            fianco.
+                          </span>
+                        </p>
+                      </div>
+                    </HoverCardContent>
+                  </HoverCard>
+                </div>
+                <Input
+                  id="data_prima_scadenza"
+                  type="date"
+                  v-model="form.data_prima_scadenza"
+                  class="mt-1 bg-white dark:bg-slate-950"
+                />
+                <InputError :message="form.errors.data_prima_scadenza" />
               </div>
               <div class="flex items-center pt-6">
                  <div class="flex items-center gap-2">

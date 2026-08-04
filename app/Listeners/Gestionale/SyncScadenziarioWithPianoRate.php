@@ -145,8 +145,15 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     $anagrafica = $quote->first()->anagrafica;
                     if (!$anagrafica) continue;
 
-                    $esiste = Evento::where('start_time', $rata->data_scadenza->copy()->setTime(0, 0))
-                        ->whereJsonContains('meta->context->rata_id', $rata->id)
+                    // L'evento si riconosce dalla RATA e dalla PERSONA, non dalla data.
+                    //
+                    // Qui c'era anche un filtro su `start_time`: finché le scadenze non si
+                    // spostano è indifferente, perché la data dell'evento coincide sempre con
+                    // quella della rata. Dal momento in cui una scadenza si può cambiare —
+                    // ed è ciò che questa versione introduce — quel filtro rende invisibile
+                    // l'evento che già esiste, e il listener ne crea un secondo per la stessa
+                    // rata e la stessa persona. Il `rata_id` la identifica già da solo.
+                    $esiste = Evento::whereJsonContains('meta->context->rata_id', $rata->id)
                         ->whereHas('anagrafiche', fn($q) => $q->where('anagrafica_id', $anagraficaId))
                         ->exists();
 
