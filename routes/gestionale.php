@@ -14,6 +14,7 @@ use App\Http\Controllers\Gestionale\Movimenti\MovimentiController;
 use App\Http\Controllers\Gestionale\Movimenti\PagamentoFornitoreController;
 use App\Http\Controllers\Gestionale\Movimenti\RegolazioneImmediataController;
 use App\Http\Controllers\Gestionale\Movimenti\DelegaF24Controller;
+use App\Http\Controllers\Gestionale\Movimenti\DelegaF24PrintController;
 use App\Http\Controllers\Gestionale\Movimenti\ScritturaContabileController;
 use App\Http\Controllers\Gestionale\Movimenti\SituazioneDebitoriaController;
 use App\Http\Controllers\Gestionale\Movimenti\StornoFatturaController;
@@ -332,6 +333,10 @@ Route::prefix('/gestionale/{condominio}')
 
     Route::get('/f24/{delega}', [DelegaF24Controller::class, 'show'])
         ->name('f24.show');
+
+    // Il modello ministeriale, per chi paga allo sportello (v1.10.0-beta.39).
+    Route::get('/f24/{delega}/modello', DelegaF24PrintController::class)
+        ->name('f24.modello');
 
     Route::post('/f24/{delega}/versa', [DelegaF24Controller::class, 'conferma'])
         ->name('f24.versa');

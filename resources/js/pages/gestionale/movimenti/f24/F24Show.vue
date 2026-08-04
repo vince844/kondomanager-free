@@ -2,11 +2,12 @@
 /**
  * Una delega F24: il prospetto da trascrivere, e cosa sta versando.
  *
- * **Non è il modello ministeriale** — quello serve a pagare allo sportello ed è la Fase 6
- * del design. Questo è il documento che l'amministratore ha davvero sotto gli occhi mentre
- * compila l'F24 nell'home banking o su F24 online, dove i campi si **digitano**: per questo
- * la tabella ricalca nomi e ordine della sezione Erario del modello, così la trascrizione è
- * uno a uno e non c'è niente da interpretare.
+ * **Non è il modello ministeriale** — quello si scarica come PDF dal pulsante «Modello F24»,
+ * lo compone il server ed è il foglio che si consegna allo sportello. Questa pagina è il
+ * documento che l'amministratore ha sotto gli occhi mentre compila l'F24 nell'home banking o
+ * su F24 online, dove i campi si **digitano**: per questo la tabella ricalca nomi e ordine
+ * della sezione Erario del modello, così la trascrizione è uno a uno e non c'è niente da
+ * interpretare.
  *
  * Sotto il prospetto c'è la parte che nessun altro software mostra: **quali pagamenti** e
  * **a quale fornitore** corrisponde ogni riga. È la risposta alla domanda che arriva sei
@@ -22,7 +23,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-    AlertOctagon, ArrowLeft, Banknote, Check, Copy, Info, Landmark, Lock, Printer, RotateCcw, Users,
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+    DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+    AlertOctagon, ArrowLeft, ArrowRight, Banknote, Check, ChevronDown, Copy, FileText, Info,
+    Landmark, Lock, Printer, RotateCcw, Users,
 } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
@@ -36,6 +42,8 @@ const props = defineProps<{
     delega: any;
     banche: { id: number; cassa_id: number; nome: string; tipo: string }[];
     motivo_blocco_modifica: string | null;
+    /** I campi che il modello ministeriale vuole e che l'anagrafica non sa ancora. */
+    campi_mancanti: string[];
 }>();
 
 const { generatePath, generateRoute } = usePermission();
@@ -100,11 +108,41 @@ const titoloDocumento = computed(() =>
 const motivo = computed(() => descrizioneMotivo(props.delega.motivo_codice));
 
 /**
- * La stampa usa il dialogo del browser su un foglio ripulito via `@media print`: nessuna
- * generazione di PDF lato server, quindi niente da installare e niente da mantenere. È il
- * documento da portare al commercialista o da tenere agli atti — non il modello ministeriale.
+ * Il **prospetto** usa il dialogo di stampa del browser su un foglio ripulito via
+ * `@media print`. È il documento da portare al commercialista o da tenere agli atti, e quello
+ * da avere accanto mentre si digitano i campi nell'home banking.
  */
 const stampa = () => window.print();
+
+/**
+ * Il **modello ministeriale** è un'altra cosa e passa da un'altra strada: lo compone il
+ * server e arriva come PDF già impaginato, in tre copie.
+ *
+ * Non è una preferenza tecnica. Il modulo è una griglia di caselle con misure fisse, e i
+ * margini che ogni browser applica di suo la sposterebbero; e il file scaricato prende un nome
+ * costruito sul protocollo o sulla scadenza, invece di quello che il browser ricava dal titolo
+ * della finestra.
+ */
+const modelloF24 = () =>
+    window.open(
+        route(generateRoute('gestionale.f24.modello'), {
+            condominio: props.condominio.id,
+            delega: props.delega.id,
+        }),
+        '_blank',
+    );
+
+/**
+ * Cosa manca al modello per essere presentabile allo sportello.
+ *
+ * Il codice fiscale ha già un avviso suo, più severo, perché senza quello l'F24 non si
+ * presenta affatto. Qui restano gli altri — il domicilio fiscale — che rendono il foglio
+ * incompleto ma non nullo: si stampa lo stesso e si completa a penna, se l'amministratore
+ * decide così.
+ */
+const mancantiOltreIlCodiceFiscale = computed(() =>
+    (props.campi_mancanti ?? []).filter((campo) => !campo.toLowerCase().includes('codice fiscale')),
+);
 
 /**
  * Arrivando dallo scadenzario con `?stampa=1` il dialogo si apre da solo: dall'elenco il
@@ -175,9 +213,46 @@ const storna = () => {
                 :condomini="[]"
             >
                 <template #actions>
-                    <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="stampa">
-                        <Printer class="h-4 w-4" /> Stampa
-                    </Button>
+                    <!--
+                        Un solo pulsante per due documenti, com'è nel piano dei conti: due
+                        stampe affiancate in testata sembrano due pulsanti in concorrenza, e
+                        chi arriva qui la prima volta non sa quale dei due gli serve. Nel
+                        menu invece stanno una sotto l'altra con la loro spiegazione.
+                    -->
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm">
+                                <Printer class="h-4 w-4" /> Stampe
+                                <ChevronDown class="h-3 w-3 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-64 shadow-xl rounded-xl border-slate-100 p-1.5">
+                            <DropdownMenuLabel class="text-[10px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">
+                                Documenti
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator class="bg-slate-100" />
+                            <DropdownMenuItem
+                                class="cursor-pointer flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                                @click="modelloF24"
+                            >
+                                <FileText class="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Modello F24</div>
+                                    <div class="text-[11px] text-slate-400">Il foglio da consegnare allo sportello</div>
+                                </div>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                class="cursor-pointer flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-indigo-50 focus:bg-indigo-50 text-slate-700"
+                                @click="stampa"
+                            >
+                                <Printer class="mt-0.5 h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                                <div>
+                                    <div class="text-xs font-medium">Prospetto</div>
+                                    <div class="text-[11px] text-slate-400">I campi da digitare nell'home banking</div>
+                                </div>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button
                         variant="outline"
                         class="h-9 gap-2 font-medium shadow-sm"
@@ -280,6 +355,43 @@ const storna = () => {
                 </div>
             </div>
 
+            <!--
+                Il modello ministeriale chiede il domicilio fiscale, che il prospetto non usa:
+                è per questo che l'assenza salta fuori solo adesso. Non blocca la stampa —
+                l'amministratore può volere il foglio da completare a penna, e la decisione se
+                un documento è pronto resta sua. Dirlo qui è però l'ultimo momento in cui
+                l'informazione serve a qualcosa: allo sportello è tardi.
+            -->
+            <div
+                v-if="mancantiOltreIlCodiceFiscale.length"
+                class="border border-slate-300 bg-slate-50 rounded-xl p-4 text-sm text-slate-700 flex gap-3"
+            >
+                <Info class="w-5 h-5 shrink-0 text-slate-500" />
+                <div>
+                    <p class="font-semibold text-slate-800">
+                        Il modello F24 uscirà con dei campi in bianco
+                    </p>
+                    <p class="mt-1">
+                        L'anagrafica del condominio non ha
+                        <span class="font-medium">{{ mancantiOltreIlCodiceFiscale.join(', ').toLowerCase() }}</span>.
+                        La stampa funziona lo stesso e quelle caselle restano vuote, da completare a mano.
+                        Compilando l'anagrafica escono già scritte.
+                        <!--
+                            Il collegamento sta in coda alla frase, non sotto: i campi ci sono
+                            già nell'anagrafica — comune e provincia sono facoltativi, ed è per
+                            questo che possono mancare — quindi qui non serve dire DOVE andare,
+                            ma portarci, senza aprire un blocco a sé per una riga sola.
+                        -->
+                        <a
+                            :href="route('condomini.edit', { id: props.condominio.id })"
+                            class="inline-flex items-center gap-1 font-medium text-slate-800 underline underline-offset-2 hover:text-slate-950"
+                        >
+                            Completa l'anagrafica<ArrowRight class="h-3.5 w-3.5" />
+                        </a>
+                    </p>
+                </div>
+            </div>
+
             <div
                 v-if="totaleDiscorde"
                 class="border border-rose-300 bg-rose-50 rounded-xl p-4 text-sm text-rose-800 flex gap-3"
@@ -300,14 +412,16 @@ const storna = () => {
                             Campi nell'ordine del modello F24: si trascrivono così come sono
                         </p>
                     </div>
+                    <!--
+                        Qui resta la sola «Copia», che è l'azione di QUESTA tabella: prende le
+                        sue righe e le porta negli appunti. Le stampe stanno in testata, nel
+                        menu «Stampe», perché riguardano il documento e non la card — averle in
+                        due posti faceva sembrare che fossero due stampe diverse.
+                    -->
                     <div class="flex items-center gap-2 no-print">
                         <Button variant="outline" size="sm" @click="copia">
                             <component :is="copiato ? Check : Copy" class="w-4 h-4 mr-2" />
                             {{ copiato ? 'Copiato' : 'Copia' }}
-                        </Button>
-                        <Button variant="outline" size="sm" @click="stampa">
-                            <Printer class="w-4 h-4 mr-2" />
-                            Stampa
                         </Button>
                     </div>
                 </div>
@@ -333,20 +447,26 @@ const storna = () => {
                             </tr>
                         </tbody>
                         <tfoot class="bg-slate-50 border-t-2 border-slate-200">
+                            <!--
+                                Etichetta e importo nella STESSA cella: messa nella colonna
+                                dell'anno, «Totale» finiva a mezza tabella di distanza dalla
+                                cifra che nomina, e a colpo d'occhio non si capiva più a quale
+                                numero si riferisse.
+                            -->
                             <tr>
-                                <td colspan="3"></td>
-                                <td class="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider text-slate-500">
-                                    Totale
+                                <td colspan="4"></td>
+                                <td class="px-5 py-3 text-right whitespace-nowrap">
+                                    <span class="mr-3 text-xs font-bold uppercase tracking-wider text-slate-500">Totale</span>
+                                    <span class="text-lg font-black text-slate-900">{{ euro(totaleRighe) }}</span>
                                 </td>
-                                <td class="px-5 py-3 text-right text-lg font-black text-slate-900">{{ euro(totaleRighe) }}</td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
 
                 <p class="px-5 py-3 text-[11px] text-slate-400 border-t border-slate-100">
-                    Questo è un prospetto dei dati da riportare, non il modello ministeriale: l'F24 si compila
-                    nell'home banking o sul sito dell'Agenzia delle Entrate.
+                    Questi sono i dati da digitare nell'home banking o sul sito dell'Agenzia delle Entrate.
+                    Per pagare allo sportello serve invece il foglio compilato: menu «Stampe» → «Modello F24».
                 </p>
             </div>
 
@@ -498,7 +618,8 @@ const storna = () => {
 /**
  * Il foglio da consegnare al commercialista o da tenere agli atti.
  *
- * Non è il modello ministeriale: è il prospetto dei dati, che su carta deve restare
+ * Non è il modello ministeriale — quello lo compone il server come PDF, vedi `modelloF24()`.
+ * Questo è il prospetto dei dati, che su carta deve restare
  * leggibile e senza fronzoli. Via tutto ciò che serve solo a interagire — barra di
  * navigazione, breadcrumb, pulsanti, form — e via ombre e sfondi, che in stampa si
  * traducono in grigi sporchi e in inchiostro sprecato.

@@ -37,8 +37,16 @@ use Illuminate\Support\Str;
  */
 class GeneraDelegheF24Action
 {
-    /** Il tracciato F24 ammette sei righe di sezione Erario per modello. */
-    private const MAX_RIGHE_PER_DELEGA = 6;
+    /**
+     * Il tracciato F24 ammette sei righe di sezione Erario per modello.
+     *
+     * Pubblica da quando esiste la stampa: lo stesso sei vive anche in
+     * `ModelloF24Service::RIGHE_SEZIONE_ERARIO`, perché di là è il numero di righe *stampate*
+     * sul foglio e di qua è il punto in cui la delega si spezza. Sono due fatti distinti che
+     * devono coincidere, e `ModelloF24StampaTest` li tiene agganciati: se divergessero, una
+     * delega da sette righe perderebbe la settima **senza dirlo a nessuno**.
+     */
+    public const MAX_RIGHE_PER_DELEGA = 6;
 
     public function __construct(private PlafondRitenuteService $plafond) {}
 

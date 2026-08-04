@@ -50,4 +50,35 @@ class MoneyHelper
         $cents = $model->{$fieldName} ?? 0;
         return self::format($cents, $withSymbol);
     }
+
+    /**
+     * Un importo spezzato come lo vuole il modello F24: euro da una parte, centesimi
+     * dall'altra.
+     *
+     * Sul modello ministeriale la colonna degli importi è **divisa in due caselle** da una
+     * virgola prestampata, e le avvertenze dell'Agenzia sono esplicite su due punti che
+     * `format()` viola entrambi: i centesimi vanno «sempre indicati con le prime due cifre
+     * decimali anche nel caso che tali cifre siano pari a zero» — quindi mai `52,7` né `52` —
+     * e la casella degli euro non ospita separatori di migliaia, perché è una griglia di
+     * caselle e non un numero scritto.
+     *
+     * `€ 1.060,00` a schermo diventa quindi `1060` + `00` sul modello. Sono due
+     * rappresentazioni dello stesso dato, non due arrotondamenti: la sorgente resta l'intero
+     * in centesimi e qui non si arrotonda niente.
+     *
+     * Il valore assoluto è voluto: le due colonne del modello (debito e credito) portano già
+     * il verso, e un meno stampato dentro la casella dell'importo renderebbe la delega
+     * irricevibile.
+     *
+     * @return array{euro: string, centesimi: string}
+     */
+    public static function perModelloF24(int $cents): array
+    {
+        $assoluto = abs($cents);
+
+        return [
+            'euro' => (string) intdiv($assoluto, 100),
+            'centesimi' => str_pad((string) ($assoluto % 100), 2, '0', STR_PAD_LEFT),
+        ];
+    }
 }

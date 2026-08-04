@@ -23,10 +23,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  *
  * ## Cosa NON è
  *
- * Non è il modello ministeriale. La stampa conforme e il tracciato telematico sono la Fase 6
- * del design, marcata «oltre». Qui la delega è il documento *interno*: raccoglie le ritenute
- * da versare, le raggruppa per codice tributo e periodo, e produce il prospetto con i campi
- * che l'amministratore trascrive nell'home banking o su F24 online.
+ * Non è il tracciato telematico (record A/M/V) e non fa compensazione di crediti: quelli
+ * restano la Fase 6 del design, marcata «oltre».
+ *
+ * La **stampa del modulo cartaceo** invece esiste dalla beta.39, e non è arrivata con la Fase
+ * 6: il design la elencava lì insieme al tracciato, ma guardando il modulo pubblicato
+ * dall'Agenzia si è visto che i due non hanno gli stessi prerequisiti — il foglio non chiede
+ * nessuno dei campi anagrafico-fiscali rimandati alla v1.11. Vedi `ModelloF24Service`.
+ *
+ * La delega resta comunque anche il documento *interno*: raccoglie le ritenute da versare, le
+ * raggruppa per codice tributo e periodo, e produce il prospetto con i campi che
+ * l'amministratore trascrive nell'home banking o su F24 online.
  *
  * ## Il sigillo
  *

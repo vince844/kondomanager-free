@@ -1,10 +1,10 @@
 /**
  * Il prospetto di una delega F24: i campi da trascrivere, nell'ordine del modello.
  *
- * Non è il modello ministeriale — quello è la Fase 6 del design e serve a pagare allo
- * sportello. Questo è il documento che l'amministratore ha davvero in mano quando compila
- * l'F24 nell'home banking o su F24 online, dove i campi si **digitano**: per questo l'ordine
- * e i nomi ricalcano la sezione Erario del modello, così la trascrizione è uno a uno e non
+ * Non è il modello ministeriale — quello si scarica come PDF dalla beta.39 e serve a pagare
+ * allo sportello. Questo è il documento che l'amministratore ha in mano quando compila l'F24
+ * nell'home banking o su F24 online, dove i campi si **digitano**: per questo l'ordine e i
+ * nomi ricalcano la sezione Erario del modello, così la trascrizione è uno a uno e non
  * richiede di interpretare niente.
  *
  * La controparte PHP è `RigaF24::periodoLeggibile()`. Le due devono dire la stessa cosa: la

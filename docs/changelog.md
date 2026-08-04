@@ -7,6 +7,45 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.39] - Quello Che il Modulo Chiedeva Davvero
+
+Nella versione scorsa avevamo scritto, in cinque posti diversi, che il modello F24 cartaceo non si poteva ancora fare: servivano campi rimandati alla 1.11 — firmatario, codice carica, intermediario, IBAN di addebito.
+
+Poi abbiamo aperto il modulo pubblicato dall'Agenzia delle Entrate e guardato casella per casella. **Quei campi, sul foglio, non ci sono.** Appartengono al tracciato telematico e alle dichiarazioni, non al modulo che si porta allo sportello. Sull'F24 Ordinario l'unico IBAN è la casella facoltativa «Autorizzo addebito su conto corrente», che il contribuente compila di suo pugno, e l'intera sezione «Estremi del versamento» porta stampato sopra che va compilata a cura di banca, poste o agente della riscossione.
+
+Quel che il modulo chiede davvero era già tutto in casa: codice fiscale e denominazione sono congelati sulla delega dal momento in cui nasce, la sezione Erario **è** l'elenco delle righe, e il domicilio fiscale sta nell'anagrafica del condominio. Da questa versione il modello si stampa.
+
+**Nessuna modifica al database.** Nessuna migrazione, nessuna colonna nuova, nessun dato toccato: la stampa legge quello che c'era già.
+
+### Il modello F24 da portare allo sportello
+
+**Tre copie, come il modulo vero**: due per la banca o le poste, una per chi versa. L'autorizzazione all'addebito in conto compare sulla sola prima copia, che è quella che resta allo sportello.
+
+**Si compila la sezione Erario, e solo quella.** INPS, Regioni, IMU e altri enti restano vuote e presenti, esattamente come sul modulo prestampato: toglierle darebbe un foglio più pulito e un modello diverso da quello che chi lo riceve si aspetta di avere in mano. Restano in bianco anche «codice ufficio» e «codice atto», che le avvertenze riservano alle somme dovute a seguito di accertamento.
+
+**TOTALE B resta vuoto, non a zero.** Non facendo compensazioni non c'è niente da dichiarare in quella colonna, e uno «0,00» scritto lì racconterebbe una compensazione da zero euro che non esiste. Il saldo A-B coincide quindi con il totale a debito.
+
+**Gli importi seguono le regole dell'Agenzia**, che sono tre e sono tutte diverse da come un importo si scrive a schermo: sempre due cifre decimali anche quando sono zero, nessun separatore di migliaia dentro le caselle degli euro, e mai il segno meno — il verso lo portano già le due colonne, debito e credito. `€ 1.060,00` diventa `1060` e `00` in due caselle distinte.
+
+**Il file ha un nome che si ritrova**, costruito sulla scadenza: `F24-scad-2026-06-16-12.pdf`. È il modo in cui un adempimento fiscale si chiama davvero — «l'F24 del 16 giugno», non «la delega numero dodici». Il numero in coda è l'identificativo della delega, e serve perché due deleghe possono legittimamente avere la stessa scadenza: i due plafond maturano insieme il 16 dicembre, e una delega di più di sei righe si spezza in due modelli per la stessa data. Senza quel numero, scaricandole, la seconda sovrascriverebbe la prima.
+
+**Una delega stornata o annullata esce con la filigrana.** Resta consultabile e ristampabile, perché va conservata dieci anni, ma stampata senza avvisi sarebbe indistinguibile da una viva — e pagarla due volte è un errore che il gestionale può evitare da solo.
+
+**Se all'anagrafica manca il domicilio fiscale, la stampa funziona lo stesso** e quelle caselle escono vuote, da completare a penna. La scheda della delega lo dice prima, che è l'ultimo momento in cui l'informazione serve a qualcosa: allo sportello è tardi. Non è un blocco: se un documento sia pronto lo decide l'amministratore.
+
+**Da sapere: il cartaceo non è per tutti.** Le avvertenze dell'Agenzia impongono il canale telematico ai titolari di partita IVA e a chi compensa crediti. Un condominio ordinario non è né l'uno né l'altro, e allo sportello ci può andare. Il foglio è inoltre un **facsimile**: ricalca sezioni, ordine e nomi dei campi del modulo ministeriale, ma non ne riproduce il logo, e l'accettazione resta dello sportello.
+
+**Il prospetto non va in pensione.** Sono due documenti per due gesti diversi: il prospetto ha i campi nell'ordine in cui si **digitano** nell'home banking, il modello è il foglio che si **consegna**. Nella scheda della delega e nel menu dello scadenzario ora ci sono entrambi.
+
+### Sotto il cofano
+
+- La conversione degli importi per il modulo è una funzione a parte, non un parametro di quella che formatta a schermo: le regole dell'Agenzia contraddicono la formattazione italiana su due punti su tre, e tenerle nello stesso posto avrebbe prodotto un modello sbagliato o una schermata sbagliata.
+- Il totale del modello si **somma dalle righe** invece di leggere il totale della testata: sul foglio TOTALE A è per definizione la somma della colonna che ha sopra, e stampare un numero che non torna con i suoi addendi è un errore che allo sportello vedono prima di noi.
+- Le sei righe della sezione Erario stampate sul foglio e il punto in cui una delega si spezza in due sono lo stesso numero in due posti diversi: ora c'è un test che li tiene agganciati, perché se divergessero una delega da sette righe perderebbe la settima senza dirlo a nessuno.
+- Venti test nuovi sul quadro del modello e sulle regole di formato degli importi.
+
+---
+
 ## [1.10.0-beta.38] - Il Conto Che Non Si Era Mai Chiuso
 
 C'è un conto nel piano dei conti di ogni condominio — **2202, Debiti verso l'Erario per Ritenute** — che finora sapeva solo riempirsi. Ogni volta che si pagava un fornitore soggetto a ritenuta d'acconto, il debito verso lo Stato cresceva. Ma il movimento che quel debito lo estingue non esisteva nel gestionale: si controllava che i conti quadrassero sul foglio a video, e intanto quel numero saliva senza che nulla lo riportasse a zero.
@@ -101,6 +140,8 @@ Ora che gli importi di una nota di credito arrivano al form positivi, il control
 Un pagamento a fornitore con 2,50 € di commissioni bancarie. Lo si riapre in modifica — per correggere una data, una causale, qualunque cosa — e nella casella delle commissioni non c'è più 2,50 €: c'è **25.000,00 €**. Salvando senza toccare quel campo, a database ne finivano 25.000,00 €: la cifra di partenza moltiplicata per diecimila.
 
 **Nessuna modifica al database.** Nessuna migrazione e nessun dato riparato all'indietro. Chi trovasse una commissione gonfiata su un pagamento già modificato può correggerla riaprendo il pagamento in modifica: ora la casella mostra la cifra giusta, e basta risalvare.
+
+> *Integrazione del 03/08/2026 (audit): a questa voce mancavano due informazioni che l'amministratore serve per controllare i propri dati. **Da quando:** il difetto è nato con la pagina di modifica del pagamento, quindi sono a rischio solo i pagamenti **salvati dalla pagina di modifica** — la registrazione iniziale è sempre stata corretta. **Come trovarli:** ordinare i pagamenti fornitore per importo commissioni decrescente; le righe colpite sono inconfondibili, perché la cifra è la commissione vera moltiplicata per 10.000 (2,50 € → 25.000,00 €), tipicamente più grande del pagamento stesso.*
 
 ### Corretto
 
@@ -434,6 +475,8 @@ Insieme al lock, la card "Piano rate ordinario" ora si rietichetta da sola in "P
 Seguito diretto della beta.26. Il "già versato" per voce di spesa aggiusta correttamente il riparto — ma un test con numeri reali ha fatto emergere un buco più sottile: dichiarare un già versato non sposta un solo euro reale. È solo un dato per il riparto, non tocca nessuna cassa, non compare nello Stato Patrimoniale come liquidità — a meno che quei soldi non siano già stati spesi come acconto al fornitore prima di Kondomanager, nel qual caso è il debito verso il fornitore a non essere ancora scontato. Questa beta chiude entrambi i casi, e in più mette in comunicazione il già versato con il resto del gestionale: la registrazione di una fattura in sforo, la generazione del piano rate, e — quando serve — il debito pregresso verso il fornitore.
 
 **⚠ MIGRAZIONE DATABASE**: una migrazione, eseguita automaticamente dall'aggiornamento guidato. Aggiunge due colonne nullable a `contributi_versati` (`liquidita_stato`, `cassa_id`): nessun dato esistente viene toccato, nessuna riga già presente cambia comportamento finché l'amministratore non dichiara esplicitamente dove si trovano quei soldi.
+
+> *Rettifica del 03/08/2026 (audit contro il commit `f8c7cdb7`): le migrazioni erano **tre**, non una — le due colonne su `contributi_versati`, un vincolo unique sulla stessa tabella, e la colonna `richiede_gia_versato` sulla tabella **esistente** `conti` (descritta funzionalmente più sotto ma non dichiarata qui). Tutte idempotenti e nella rerun battery; la sostanza dell'apertura resta vera, il conteggio no.*
 
 ### Aggiunto
 

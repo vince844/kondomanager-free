@@ -9,6 +9,7 @@ use App\Enums\Fiscale\StatoDelegaF24;
 use App\Http\Controllers\Controller;
 use App\Models\Condominio;
 use App\Models\Gestionale\DelegaF24;
+use App\Services\Gestionale\ModelloF24Service;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -138,6 +139,10 @@ class DelegaF24Controller extends Controller
             'delega' => $delega,
             'banche' => $this->banche($condominio),
             'motivo_blocco_modifica' => $delega->motivoBloccoModifica(),
+            // Il modello ministeriale si stampa comunque: questi campi non sbarrano la
+            // stampa, la accompagnano. Dirlo qui — dove il pulsante sta — è l'unico momento
+            // in cui l'informazione serve ancora a qualcosa: allo sportello è tardi.
+            'campi_mancanti' => app(ModelloF24Service::class)->campiMancanti($delega),
         ]);
     }
 

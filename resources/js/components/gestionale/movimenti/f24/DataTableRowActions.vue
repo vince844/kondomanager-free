@@ -21,7 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Ban, Eye, MoreHorizontal, Printer, RotateCcw } from 'lucide-vue-next';
+import { Ban, Eye, FileText, MoreHorizontal, Printer, RotateCcw } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 
 const props = defineProps<{ delega: any; condominioId: number }>();
@@ -41,6 +41,22 @@ const stampa = () => {
     router.visit(
         route(generateRoute('gestionale.f24.show'), { condominio: props.condominioId, delega: props.delega.id }),
         { data: { stampa: 1 } },
+    );
+};
+
+/**
+ * Il modello ministeriale non passa dalla scheda: è un PDF che il server compone e apre in
+ * una scheda nuova. Dall'elenco è il gesto più diretto — «questa la vado a pagare» — e
+ * costringere a un passaggio sulla scheda per premere di nuovo un pulsante sarebbe attrito
+ * senza motivo, come già si era deciso per il prospetto.
+ */
+const modelloF24 = () => {
+    window.open(
+        route(generateRoute('gestionale.f24.modello'), {
+            condominio: props.condominioId,
+            delega: props.delega.id,
+        }),
+        '_blank',
     );
 };
 
@@ -87,6 +103,10 @@ const confermaAnnulla = () => {
         <DropdownMenuContent align="end" class="w-52" @click.stop>
             <DropdownMenuItem @click="vaiAlDettaglio">
                 <Eye class="mr-2 h-4 w-4" /> Apri il dettaglio
+            </DropdownMenuItem>
+
+            <DropdownMenuItem @click="modelloF24">
+                <FileText class="mr-2 h-4 w-4" /> Modello F24 da pagare
             </DropdownMenuItem>
 
             <DropdownMenuItem @click="stampa">

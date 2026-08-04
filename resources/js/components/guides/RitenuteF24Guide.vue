@@ -153,17 +153,39 @@ const soglia = (cents: number) =>
                         </section>
 
                         <section>
-                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il prospetto</h3>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Due documenti, due gesti</h3>
                             <p>
-                                La scheda della delega mostra i campi <strong>nell'ordine del modello F24</strong>:
-                                codice tributo, rateazione, mese e anno di riferimento, importo. Si trascrivono
-                                così come sono nell'home banking o su F24 online. Il pulsante «Copia» li porta
-                                negli appunti, «Stampa» produce il foglio da tenere agli atti o da consegnare al
-                                commercialista.
+                                <strong>Il prospetto</strong> ha i campi nell'ordine in cui si <em>digitano</em>:
+                                codice tributo, rateazione, mese e anno di riferimento, importo. È quello da avere
+                                accanto mentre si compila l'F24 nell'home banking o su F24 online. «Copia» li porta
+                                negli appunti, «Stampa prospetto» produce il foglio da tenere agli atti o da
+                                consegnare al commercialista.
+                            </p>
+                            <p class="mt-2">
+                                <strong>Il modello F24</strong> è il foglio che si <em>consegna</em>: il modulo
+                                ministeriale compilato, in tre copie — due per lo sportello, una per il condominio.
+                                Si scarica come PDF dal pulsante «Modello F24».
+                            </p>
+                        </section>
+
+                        <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Cosa c'è sul modello, e cosa no</h3>
+                            <p>
+                                Si compila la <strong>sezione Erario</strong>, l'unica che riguarda le ritenute di un
+                                condominio. Le altre — INPS, Regioni, IMU, altri enti — restano vuote e presenti,
+                                come sul modulo prestampato. Anche «codice ufficio» e «codice atto» restano in
+                                bianco: servono solo per le somme dovute a seguito di accertamento.
+                            </p>
+                            <p class="mt-2">
+                                Il <strong>domicilio fiscale</strong> arriva dall'anagrafica del condominio. Se manca,
+                                la stampa funziona lo stesso e quelle caselle escono vuote da completare a penna: la
+                                scheda della delega lo segnala prima, così non lo si scopre allo sportello.
                             </p>
                             <p class="mt-2 text-xs text-slate-500">
-                                Non è il modello ministeriale: quello serve per pagare allo sportello e non è
-                                ancora disponibile.
+                                Il foglio è un facsimile: ricalca sezioni, ordine e nomi dei campi del modulo
+                                ufficiale, ma non ne riproduce il logo, e l'accettazione resta dello sportello. Il
+                                canale telematico è obbligatorio per i titolari di partita IVA e per chi compensa
+                                crediti — un condominio ordinario non è né l'uno né l'altro.
                             </p>
                         </section>
 
