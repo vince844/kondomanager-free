@@ -798,6 +798,21 @@ const pageGuides = [
                                                 La causale del bonifico verrà generata automaticamente con i riferimenti normativi richiesti dalla banca.
                                             </p>
                                         </div>
+                                        <!--
+                                            La conseguenza che si vede sul conto corrente, detta nel momento in cui
+                                            si sceglie e non dopo: con il bonifico parlante esce al fornitore
+                                            l'importo pieno, perché la ritenuta la opera la banca. Non è una
+                                            comodità come la causale — è denaro che cambia strada — e per questo sta
+                                            in un riquadro diverso.
+                                        -->
+                                        <div v-if="selectedFornitore?.soggetto_ritenuta" class="flex items-start gap-2 px-2.5 py-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200">
+                                            <AlertTriangle class="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                            <p class="text-[10px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                                                <strong>Il condominio non tratterrà la ritenuta d'acconto</strong> su questo pagamento:
+                                                con il bonifico parlante la opera la banca (11%), e applicarla entrambi sarebbe un
+                                                doppio prelievo. Al fornitore uscirà l'importo pieno, e nulla entrerà nell'F24.
+                                            </p>
+                                        </div>
                                     </div>
                                 </Transition>
                             </div>

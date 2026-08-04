@@ -309,9 +309,19 @@ class PagamentoFornitoreService
                 // quando diverso da zero, senza alcun controllo (design §8 punto 7):
                 // finché era uno snapshot per la certificazione era un fastidio, con il
                 // modulo F24 è la cifra che si versa all'Erario.
-                $importoRitenuta = $this->calcolaRitenutaProQuota($data['allocazioni'], $fatture);
+                $bonificoParlante = (bool) ($data['bonifico_parlante'] ?? false);
 
-                $this->verificaCoerenzaRitenuta($data['importo_ritenuta_cents'] ?? null, $importoRitenuta);
+                $importoRitenuta = $this->calcolaRitenutaProQuota(
+                    $data['allocazioni'],
+                    $fatture,
+                    $bonificoParlante
+                );
+
+                $this->verificaCoerenzaRitenuta(
+                    $data['importo_ritenuta_cents'] ?? null,
+                    $importoRitenuta,
+                    $bonificoParlante
+                );
 
                 $importoNetto = (int) ($data['importo_netto_cents'] ?? $totali['totalePagamento']);
                 $importoLordo = (int) ($data['importo_lordo_cents'] ?? ($importoNetto + $importoRitenuta));
@@ -467,12 +477,34 @@ class PagamentoFornitoreService
 
         // ── Importi nuovi ────────────────────────────────────────────────────
         $nuovoImportoLordo = (int) $data['importo_lordo_cents'];
+
         // Le allocazioni alle fatture sono immutabili in modifica — lo dichiara la
         // schermata stessa — quindi la ritenuta non può cambiare. Un campo assente
         // significa «non toccare»: prima diventava 0 e azzerava la ritenuta registrata.
-        $nuovoImportoRitenuta = (int) $importoRitenutaBefore;
+        //
+        // C'è però una cosa che in modifica cambia eccome, ed è il **bonifico parlante**.
+        // Spuntandolo la ritenuta va a zero (la opera la banca); togliendolo deve tornare
+        // quella che le fatture prevedono, altrimenti resterebbe a zero per sempre e il
+        // condominio smetterebbe di trattenere senza che nessuno l'abbia deciso.
+        //
+        // Si ricalcola **solo quando il flag cambia**: sui pagamenti che non lo toccano il
+        // valore salvato resta intatto, e nessun dato storico viene riscritto di sponda.
+        $bonificoParlanteBefore = (bool) $pagamento->bonifico_parlante;
+        $nuovoBonificoParlanteRitenuta = (bool) ($data['bonifico_parlante'] ?? false);
 
-        $this->verificaCoerenzaRitenuta($data['importo_ritenuta_cents'] ?? null, $nuovoImportoRitenuta);
+        $nuovoImportoRitenuta = match (true) {
+            $nuovoBonificoParlanteRitenuta === $bonificoParlanteBefore => (int) $importoRitenutaBefore,
+            $nuovoBonificoParlanteRitenuta => 0,
+            default => $this->ritenutaProQuotaDelPagamento($scrittura),
+        };
+
+        $this->verificaCoerenzaRitenuta(
+            $data['importo_ritenuta_cents'] ?? null,
+            $nuovoImportoRitenuta,
+            // Solo se la scelta è CAMBIATA: se il flag resta com'era, il valore salvato e
+            // quello dichiarato coincidono e la guardia deve poter fare il suo mestiere.
+            $nuovoBonificoParlanteRitenuta !== $bonificoParlanteBefore
+        );
         $nuovoImportoNetto = (int) $data['importo_netto_cents'];
         $nuoveCommissioni = (int) ($data['importo_commissioni_cents'] ?? 0);
         $nuovoConto = (int) $data['conto_corrente_id'];
@@ -1303,8 +1335,46 @@ class PagamentoFornitoreService
      * @param  array<int,array<string,mixed>>  $allocazioni
      * @param  \Illuminate\Support\Collection<int,FatturaPassiva>  $fatture  indicizzata per id
      */
-    private function calcolaRitenutaProQuota(array $allocazioni, $fatture): int
+    /**
+     * La ritenuta pro-quota di un pagamento già registrato, ricostruita dalle sue allocazioni.
+     *
+     * Serve in **modifica**, e per un caso solo: togliere la spunta al bonifico parlante. Il
+     * valore salvato è zero — l'aveva azzerato la spunta — quindi non c'è niente da cui
+     * ripartire, e va ricalcolato dalle fatture. Le allocazioni sono immutabili in modifica,
+     * perciò il risultato è lo stesso che si sarebbe ottenuto alla registrazione.
+     */
+    private function ritenutaProQuotaDelPagamento(ScritturaContabile $scrittura): int
     {
+        $scrittura->loadMissing('fatture');
+
+        // `FatturaScrittura` casta `tipo` a enum, mentre `calcolaRitenutaProQuota()` riceve
+        // dalle Request un array con la stringa. Passare l'enum così com'è farebbe fallire il
+        // confronto in silenzio, scartando ogni allocazione e restituendo zero: è lo stesso
+        // inciampo enum-contro-stringa già pagato altrove, e qui costerebbe una ritenuta persa.
+        $allocazioni = $scrittura->fatture
+            ->map(fn ($f) => [
+                'tipo' => $f->pivot->tipo instanceof \BackedEnum
+                    ? $f->pivot->tipo->value
+                    : (string) $f->pivot->tipo,
+                'fattura_id' => $f->id,
+                'importo_allocato_cents' => (int) $f->pivot->importo_allocato,
+            ])
+            ->all();
+
+        return $this->calcolaRitenutaProQuota($allocazioni, $scrittura->fatture->keyBy('id'));
+    }
+
+    private function calcolaRitenutaProQuota(array $allocazioni, $fatture, bool $bonificoParlante = false): int
+    {
+        // Bonifico parlante: la ritenuta la opera la banca, il condominio non applica la
+        // propria. Il controllo sta QUI dentro e non nei chiamanti perché la domanda a cui
+        // questo metodo risponde è «quanto trattiene il condominio», e la risposta con il
+        // bonifico parlante è zero: lasciarlo fuori significherebbe che ogni nuovo chiamante
+        // debba ricordarselo, e il primo che se ne dimentica riapre il doppio prelievo.
+        if ($bonificoParlante) {
+            return 0;
+        }
+
         $totale = 0;
 
         foreach ($allocazioni as $alloc) {
@@ -1337,8 +1407,24 @@ class PagamentoFornitoreService
      * Un override manuale motivato sarebbe un'altra cosa, e oggi non esiste: sta fra le
      * richieste non pianificate della roadmap.
      */
-    private function verificaCoerenzaRitenuta(?int $dichiarato, int $dovuto): void
+    private function verificaCoerenzaRitenuta(?int $dichiarato, int $dovuto, bool $ritenutaRideterminata = false): void
     {
+        // Quando il server ha ri-determinato la ritenuta, il confronto non si fa — e non è
+        // un'indulgenza. Il valore dichiarato arriva da un form compilato **prima** della
+        // scelta sul bonifico parlante: la schermata di modifica rimanda la ritenuta già
+        // salvata, quindi è per costruzione quella vecchia. Vale in entrambi i versi, ed è
+        // la parte che sfugge: spuntando il flag il form dichiara la ritenuta della fattura
+        // mentre il dovuto è zero, togliendolo dichiara zero mentre il dovuto è tornato
+        // quello della fattura. Senza questa riga la guardia bloccherebbe il salvataggio
+        // corretto, e l'amministratore vedrebbe un errore incomprensibile dopo aver toccato
+        // una casella.
+        //
+        // Fuori da questo caso la guardia resta stretta: il valore in ingresso serve solo a
+        // essere confrontato, non a fare override.
+        if ($ritenutaRideterminata) {
+            return;
+        }
+
         if ($dichiarato === null || $dichiarato === $dovuto) {
             return;
         }

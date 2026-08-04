@@ -7,6 +7,38 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.41] - Trattenuto Due Volte allo Stesso Fornitore
+
+Quando un condominio paga i lavori di ristrutturazione con il **bonifico parlante** — quello con la causale che cita la norma, per far valere le detrazioni — la ritenuta la opera **la banca**, non il condominio. È scritto nel testo dell'Agenzia, ed esiste per una ragione semplice: applicarla entrambi significherebbe prelevare due volte sullo stesso corrispettivo.
+
+Il gestionale aveva già tutto il necessario per saperlo. La casella «Bonifico Parlante» sul pagamento c'è da versioni, con il tipo di detrazione e i beneficiari; l'elenco dei motivi di esclusione della ritenuta prevedeva esplicitamente il caso. Solo che il calcolo della ritenuta quel dato non lo leggeva: continuava a trattenere il 4% al fornitore, e a portarlo nell'F24 da versare all'Erario.
+
+**Nessuna modifica al database.** Nessuna migrazione, nessuna colonna nuova.
+
+### Corretto
+
+- **Con il bonifico parlante il condominio tratteneva comunque la ritenuta d'acconto.** Il fornitore riceveva il 4% in meno del dovuto, e quello stesso importo finiva nello scadenzario come da versare — mentre la banca aveva già operato la propria ritenuta sulla stessa somma. Ora il pagamento marcato come bonifico parlante non trattiene nulla: al fornitore esce l'**importo pieno**, e nell'F24 non entra niente.
+
+  **La fattura conserva la ritenuta che aveva calcolato**, e non è una svista: quando la fattura viene registrata nessuno sa ancora come verrà pagata. È il bonifico parlante a rimuoverla, ed è una scelta che si fa al momento del pagamento — tant'è che la stessa fattura si può pagare in due volte, un acconto con bonifico ordinario e il saldo con bonifico parlante.
+
+  **Da quando:** dal momento in cui la casella esiste, quindi da prima del modulo F24. Finché la ritenuta era solo uno snapshot per la certificazione il danno era limitato al fornitore; da quando esiste lo scadenzario è diventata anche una somma proposta all'Erario. **Come controllare:** nell'elenco dei pagamenti fornitore, quelli marcati come bonifico parlante che riportano una ritenuta diversa da zero sono quelli colpiti — il fornitore ha ricevuto meno del dovuto.
+
+- **In modifica, togliendo la spunta, la ritenuta ora torna quella prevista dalle fatture.** Senza, sarebbe rimasta a zero per sempre: il condominio avrebbe smesso di trattenere senza che nessuno l'avesse deciso. Il ricalcolo avviene **solo quando la spunta cambia**, così nessun pagamento che non la tocca viene riscritto di sponda.
+
+- **L'aliquota della ritenuta operata dalla banca era indicata all'8%.** È salita all'**11%** per i bonifici disposti dal 1° marzo 2024. Non tocca alcun calcolo — quella ritenuta la versa la banca e non entra nel nostro F24 — ma era l'unico posto in cui il numero era scritto, ed era quello vecchio. *(Anche la pagina divulgativa dell'Agenzia riporta ancora l'8%: è la pagina a essere ferma.)*
+
+### Cambia quello che vedi
+
+Spuntando «Bonifico Parlante» su un pagamento a un fornitore soggetto a ritenuta compare ora un avviso che dice la conseguenza **mentre si sceglie**, non dopo: che il condominio non tratterrà nulla, che la ritenuta la opera la banca, e che al fornitore uscirà l'importo pieno. Non blocca niente: è denaro che cambia strada, e chi decide deve saperlo prima di premere salva.
+
+### Sotto il cofano
+
+- Il motivo dell'esclusione **non viene salvato in una colonna**: si deriva. Un pagamento con la spunta e ritenuta a zero *è* un'esclusione da bonifico parlante, e un campo in più direbbe la stessa cosa con la possibilità di divergere.
+- La guardia di coerenza della beta.38 — quella che rifiuta un importo di ritenuta che non corrisponde alle fatture pagate — avrebbe bloccato proprio il salvataggio corretto: la schermata di modifica rimanda la ritenuta già salvata, che dopo un cambio di spunta è per costruzione quella vecchia. Ora la guardia si sospende **solo quando la scelta cambia**, in entrambi i versi, e fuori da quel caso resta stretta com'era.
+- Undici test nuovi, fra cui uno che verifica che il caso sia davvero **raggiungibile** — se una guardia impedisse di spuntare il bonifico parlante su una fattura con ritenuta, tutto il resto non servirebbe a niente.
+
+---
+
 ## [1.10.0-beta.40] - Quello Che Giugno Si Portava Dietro
 
 Il modulo F24 è uscito con la beta.38 e il modello stampabile con la beta.39. Prima di andare avanti abbiamo fatto una cosa che di solito si fa prima e non dopo: abbiamo preso i testi dell'Agenzia delle Entrate e li abbiamo confrontati con il codice, regola per regola, pretendendo per ogni affermazione il punto esatto che la implementa.
