@@ -96,6 +96,66 @@ test('una ritenuta di marzo e una di settembre non stanno nella stessa delega', 
         ->and($deleghe[1]['scadenza']->format('Y-m-d'))->toEqual('2026-12-16');
 });
 
+/**
+ * Il caso che il test qui sopra NON copre, e che è costato una beta.
+ *
+ * Là la seconda ritenuta è di settembre, cioè **dopo** il 16 giugno: il gruppo si chiudeva
+ * perché la data della ritenuta successiva superava la data-limite. Ma le ritenute operate
+ * fra il **1° e il 15 giugno** cadono *prima* del 16, e appartengono comunque alla finestra
+ * successiva — il 16 giugno chiude ciò che è stato operato fino a maggio.
+ *
+ * Con il vecchio confronto, una ritenuta del 10 giugno faceva da tappo: quelle di
+ * gennaio-maggio le restavano attaccate e finivano al 16 dicembre, cioè **versate in ritardo
+ * di sei mesi**, con sanzione.
+ */
+test('una ritenuta di marzo e una del 10 giugno non stanno nella stessa delega', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-03-10', 20_000),   // 200 €, sotto soglia: matura il 16 giugno
+        ritenuta('2026-06-10', 20_000),   // operata PRIMA del 16, ma è già finestra nuova
+    ]);
+
+    expect($deleghe)->toHaveCount(2);
+
+    $scadenze = array_map(fn ($d) => $d['scadenza']->format('Y-m-d'), $deleghe);
+    expect($scadenze)->toEqual(['2026-06-16', '2026-12-16'])
+        ->and($deleghe[0]['importo'])->toEqual(20_000)
+        ->and($deleghe[1]['importo'])->toEqual(20_000);
+});
+
+/**
+ * Il confine esatto. Una ritenuta operata **il 16 giugno** non si versa quel giorno stesso:
+ * il suo termine è il 16 luglio, quindi appartiene alla finestra che chiude a dicembre.
+ */
+test('una ritenuta operata il 16 giugno appartiene già alla finestra successiva', function () {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta('2026-04-10', 20_000),
+        ritenuta('2026-06-16', 20_000),
+    ]);
+
+    $scadenze = array_map(fn ($d) => $d['scadenza']->format('Y-m-d'), $deleghe);
+    expect($scadenze)->toEqual(['2026-06-16', '2026-12-16']);
+});
+
+/**
+ * Le due controprove: la correzione non deve spezzare ciò che sta legittimamente insieme.
+ * Due ritenute della **stessa** finestra restano in una delega sola — altrimenti avremmo
+ * scambiato un versamento tardivo con una raffica di deleghe inutili.
+ */
+test('due ritenute della stessa finestra restano in una delega sola', function (string $primaData, string $secondaData, string $scadenzaAttesa) {
+    $deleghe = plafondService()->raggruppaPerScadenza([
+        ritenuta($primaData, 10_000),
+        ritenuta($secondaData, 10_000),
+    ]);
+
+    expect($deleghe)->toHaveCount(1)
+        ->and($deleghe[0]['scadenza']->format('Y-m-d'))->toEqual($scadenzaAttesa)
+        ->and($deleghe[0]['importo'])->toEqual(20_000);
+})->with([
+    'prima finestra: marzo e aprile' => ['2026-03-10', '2026-04-10', '2026-06-16'],
+    'seconda finestra: agosto e novembre' => ['2026-08-10', '2026-11-10', '2026-12-16'],
+    'a cavallo del 16 giugno, entrambe dopo' => ['2026-06-20', '2026-07-10', '2026-12-16'],
+]);
+
 // ════════════════════════════════════════════════════════════════════════════
 // Dicembre — termine proprio
 // ════════════════════════════════════════════════════════════════════════════

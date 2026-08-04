@@ -270,21 +270,39 @@ class PlafondRitenuteService
      * Serve a chiudere il gruppo al momento giusto quando le ritenute sono sparse: due
      * ritenute a marzo e a settembre non stanno nella stessa delega, perché in mezzo c'è
      * il 16 giugno.
+     *
+     * ## Si confrontano le FINESTRE, non le date
+     *
+     * La prima versione chiedeva «la prossima ritenuta cade dopo la data-limite?», e su una
+     * coppia marzo/settembre funzionava. Sbagliava però tutto il mezzo mese che sta **fra il
+     * 1° e il 15 giugno**: una ritenuta operata il 10 giugno cade *prima* del 16, quindi non
+     * faceva scattare la chiusura — e si portava dietro tutte quelle di gennaio-maggio fino al
+     * 16 dicembre, cioè **versate in ritardo di sei mesi**, con sanzione.
+     *
+     * La domanda giusta non è *quando* cade la prossima ritenuta, ma **a quale finestra
+     * appartiene**: il 16 giugno chiude ciò che è stato operato fino a maggio, e una ritenuta
+     * di giugno matura già nella finestra successiva, qualunque giorno del mese sia.
+     *
+     * Il caso di dicembre era stato scoperto e corretto separatamente (vedi `maturaGruppi`,
+     * dove dicembre si partiziona prima di accumulare). Era lo **stesso difetto sulla finestra
+     * gemella**: là era stato corretto il caso, qui si corregge la classe.
      */
     private function dataLimiteAttraversata(CarbonImmutable $data, ?CarbonImmutable $prossima, PlafondRitenuta $plafond): ?CarbonImmutable
     {
         $limite = $this->prossimaDataLimite($data, $plafond);
 
-        if ($limite === null) {
-            return null;
-        }
-
         // Se non c'è una ritenuta successiva, la chiusura la fa il chiamante.
-        if ($prossima === null) {
+        if ($limite === null || $prossima === null) {
             return null;
         }
 
-        return $prossima->greaterThan($limite) ? $limite : null;
+        $limiteProssima = $this->prossimaDataLimite($prossima, $plafond);
+
+        // Stessa data-limite = stessa finestra: le due ritenute restano insieme. Data-limite
+        // più avanti = la prossima è già oltre, e il gruppo va chiuso qui.
+        return $limiteProssima === null || $limiteProssima->greaterThan($limite)
+            ? $limite
+            : null;
     }
 
     /** La prima data-limite di legge a partire da una ritenuta operata in quel mese. */

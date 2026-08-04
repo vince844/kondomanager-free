@@ -7,6 +7,31 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.40] - Quello Che Giugno Si Portava Dietro
+
+Il modulo F24 è uscito con la beta.38 e il modello stampabile con la beta.39. Prima di andare avanti abbiamo fatto una cosa che di solito si fa prima e non dopo: abbiamo preso i testi dell'Agenzia delle Entrate e li abbiamo confrontati con il codice, regola per regola, pretendendo per ogni affermazione il punto esatto che la implementa.
+
+Il risultato buono è che quasi tutto teneva. Il risultato utile è che una cosa no, e riguardava le scadenze — cioè la parte che costa sanzioni.
+
+**Nessuna modifica al database.** Nessuna migrazione, nessun dato riscritto.
+
+### Corretto
+
+- **Una ritenuta pagata fra il 1° e il 15 giugno trascinava con sé tutte quelle di gennaio-maggio, fino al 16 dicembre.** Il 16 giugno è una data-limite di legge: chiude quello che è stato trattenuto fino a maggio, anche se il totale è rimasto sotto i 500 €. Il gestionale chiudeva il gruppo solo se la ritenuta *successiva* cadeva **dopo** il 16 giugno — e una del 10 giugno cade prima. Risultato: 200 € trattenuti a marzo venivano proposti per il 16 dicembre invece che per il 16 giugno, cioè **con sei mesi di ritardo**.
+
+  Il difetto non si vedeva guardando una scadenza sola: serviva la combinazione di due pagamenti, uno prima e uno nella prima metà di giugno. Ed è passato sotto il naso di una suite verde perché nessun test esercitava proprio quella mezza mensilità.
+
+  **Da quando:** dal rilascio del modulo, cioè dalla beta.38 di ieri. **Come controllare:** le deleghe in bozza si rifanno da zero premendo «Aggiorna scadenze» nello scadenzario, e da questa versione escono corrette — non c'è niente da riparare a mano. Chi invece ha già **registrato un versamento** seguendo una scadenza proposta a dicembre, con dentro ritenute operate prima di giugno, l'ha versato in ritardo e conviene che lo sappia: la scheda della delega elenca i pagamenti che sta versando, con la loro data.
+
+### Sotto il cofano
+
+- La correzione non aggiunge un caso speciale per giugno: cambia la **domanda**. Prima si chiedeva *«la prossima ritenuta cade dopo la data-limite?»*, ora *«la prossima ritenuta appartiene alla stessa finestra?»* — che è ciò che la norma dice davvero, e vale per qualunque finestra senza doverle elencare.
+- **La specifica era giusta, l'implementazione l'aveva approssimata.** Il dossier normativo del progetto prescriveva da sempre tre finestre esplicite — gennaio-maggio chiusa al 16 giugno, giugno-novembre chiusa al 16 dicembre, dicembre chiusa al 16 gennaio — e il codice le riproduceva confrontando date invece di appartenenze. Su quasi tutte le combinazioni il risultato coincideva, e le due formulazioni sembravano equivalenti: divergevano solo su quindici giorni l'anno.
+- **Lo stesso difetto sulla finestra di dicembre era già stato corretto**, durante la beta.38, quando era emerso da un test. Allora era stato risolto il *caso*: dicembre viene separato prima di accumulare. La finestra gemella di giugno è rimasta rotta per un giro intero, ed è la ragione per cui questa volta la correzione sta nella regola generale invece che accanto.
+- Cinque test nuovi: il caso del 10 giugno, il confine esatto del 16 giugno, e tre controprove che verificano che due ritenute della **stessa** finestra continuino a stare in una delega sola — perché sostituire un versamento tardivo con una raffica di deleghe inutili non sarebbe una correzione.
+
+---
+
 ## [1.10.0-beta.39] - Quello Che il Modulo Chiedeva Davvero
 
 Nella versione scorsa avevamo scritto, in cinque posti diversi, che il modello F24 cartaceo non si poteva ancora fare: servivano campi rimandati alla 1.11 — firmatario, codice carica, intermediario, IBAN di addebito.
