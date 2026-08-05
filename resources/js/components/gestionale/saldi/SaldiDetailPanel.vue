@@ -3,7 +3,7 @@
 import { computed, ref } from "vue";
 import { router } from "@inertiajs/vue3";
 import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
-import { Pencil, Trash2, Lock, Plus, Users, Coins, TrendingUp, TrendingDown, ChevronDown, Building2, User } from "lucide-vue-next";
+import { Pencil, Trash2, Lock, Plus, Users, Coins, TrendingUp, TrendingDown, ChevronDown, Building2, User, AlertTriangle } from "lucide-vue-next";
 import MoneyInput from '@/components/MoneyInput.vue';
 import { unformat } from 'v-money3';
 import vSelect from "vue-select";
@@ -100,7 +100,8 @@ interface GestioneGroup {
   totaleCrediti: number;
   totaleDebiti:  number;
   netto: number;
-  isGestioneBloccata: boolean; 
+  /** Contiene saldi assorbiti da un piano non ancora emesso: correggibili, ma da ricalcolare. */
+  daRicalcolare: boolean;
 }
 
 const gestioniGroups = computed<GestioneGroup[]>(() =>
@@ -129,9 +130,15 @@ const gestioniGroups = computed<GestioneGroup[]>(() =>
     const totaleDebiti  = debiti.reduce( (s, d) => s + (d.saldo.saldo_iniziale ?? 0), 0);
     const netto = totaleDebiti - totaleCrediti;
 
-    const isGestioneBloccata = g.saldo_applicato === 1 || g.saldo_applicato === true;
 
-    return { gestione: g, crediti, debiti, totaleCrediti, totaleDebiti, netto, isGestioneBloccata }; 
+    // Saldi che un piano ha già assorbito ma che restano correggibili, perché quel piano
+    // non è ancora stato emesso. Sono il caso che la beta.44 rende di nuovo raggiungibile,
+    // e vanno accompagnati da un avviso: correggerli non aggiorna da solo le quote già
+    // generate — serve «Ricalcola» sul piano.
+    const daRicalcolare = [...crediti, ...debiti]
+      .some(r => !r.saldo.e_bloccato && r.saldo.piano_rate_id !== null);
+
+    return { gestione: g, crediti, debiti, totaleCrediti, totaleDebiti, netto, daRicalcolare }; 
   })
 );
 
@@ -348,6 +355,15 @@ function submitAddModal() {
             </span>
           </button>
 
+            <div v-if="openGestioni.has(group.gestione.id) && group.daRicalcolare"
+                 class="flex items-start gap-2 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40">
+              <AlertTriangle class="w-3.5 h-3.5 shrink-0 mt-px" />
+              <span>
+                Un piano rate ha già assorbito questi saldi ma <strong>non è ancora stato emesso</strong>, quindi sono ancora correggibili.
+                Se li modifichi, ricordati di premere <strong>«Ricalcola»</strong> sul piano: le quote già generate restano quelle vecchie finché non lo fai.
+              </span>
+            </div>
+
           <Transition enter-active-class="transition-all duration-200 ease-out" enter-from-class="opacity-0 -translate-y-1" enter-to-class="opacity-100 translate-y-0" leave-active-class="transition-all duration-150 ease-in" leave-from-class="opacity-100 translate-y-0" leave-to-class="opacity-0 -translate-y-1">
             <div v-show="openGestioni.has(group.gestione.id)" class="grid grid-cols-2">
 
@@ -357,7 +373,7 @@ function submitAddModal() {
                 </p>
 
                 <div class="space-y-1.5">
-                  <div v-for="item in group.crediti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.is_applicato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
+                  <div v-for="item in group.crediti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.e_bloccato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
                     
                     <span class="flex-1 text-xs text-slate-600 dark:text-slate-400 truncate flex items-center gap-1.5">
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
@@ -393,7 +409,7 @@ function submitAddModal() {
                       <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-400 shrink-0">
                         {{ euro(Math.abs(item.saldo.saldo_iniziale)) }}
                       </span>
-                      <button v-if="item.saldo.is_applicato" 
+                      <button v-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
                               title="Saldo Bloccato">
@@ -426,7 +442,7 @@ function submitAddModal() {
                 </p>
 
                 <div class="space-y-1.5">
-                  <div v-for="item in group.debiti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.is_applicato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
+                  <div v-for="item in group.debiti" :key="item.saldo.id" class="flex items-center gap-2 px-2.5 py-2 rounded-md border transition-colors" :class="item.saldo.e_bloccato ? 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/40 hover:border-slate-300'">
                     
                     <span class="flex-1 text-xs text-slate-600 dark:text-slate-400 truncate flex items-center gap-1.5">
                       <Building2 v-if="item.isSolidale" class="w-3 h-3 text-indigo-500 shrink-0" />
@@ -462,7 +478,7 @@ function submitAddModal() {
                       <span class="text-xs font-semibold text-red-600 dark:text-red-400 shrink-0">
                         {{ euro(item.saldo.saldo_iniziale) }}
                       </span>
-                      <button v-if="item.saldo.is_applicato" 
+                      <button v-if="item.saldo.e_bloccato" 
                               @click.prevent="apriModaleLucchetto(item.saldo)" 
                               class="text-slate-400 hover:text-amber-500 transition-colors shrink-0" 
                               title="Saldo Bloccato">

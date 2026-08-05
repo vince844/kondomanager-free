@@ -7,7 +7,18 @@ export interface Gestione {
 export interface Saldo {
   id: number;
   saldo_iniziale: number;
+  /**
+   * Il flag **grezzo**, acceso alla generazione del piano. Non usarlo per decidere se
+   * mostrare il lucchetto: fra generazione ed emissione è acceso mentre il saldo è ancora
+   * correggibile. Serve solo a distinguere i lucchetti orfani, che non hanno un piano.
+   */
   is_applicato: boolean;
+  /**
+   * Il lucchetto **calcolato**, che è l'autorità: con un piano risponde a «il piano è emesso
+   * o ha incassi», senza piano ripiega su `is_applicato`. Lo calcola il server una volta per
+   * piano — vedi `SaldoInizialeController::esponiLucchettoCalcolato()`.
+   */
+  e_bloccato: boolean;
   origine: string;
   gestione_id: number;
   anagrafica_id: number | null;

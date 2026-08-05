@@ -7,6 +7,37 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.44] - Il Lucchetto Si Apriva Solo sul Server
+
+La beta.33 aveva spostato la soglia del blocco dei saldi da «esiste un piano rate» a «il piano è **emesso** o incassato». Il motore l'ha imparato, con venticinque test a garantirlo. **L'interfaccia no.**
+
+Da lì un anno di malintesi: fra la creazione del piano e la sua emissione il server accettava di correggere un saldo iniziale, e il pannello mostrava il lucchetto. Il campo su cui l'interfaccia decideva viene acceso alla **generazione**, non all'emissione.
+
+**Nessuna migrazione**, e nessun dato cambia.
+
+### Il caso che ha generato la beta.32, chiuso davvero
+
+La modale del lucchetto consiglia: *«annulla le emissioni, il saldo torna modificabile senza bisogno di eliminare il piano»*. Il consiglio era giusto e il sistema lo onorava — ma solo dietro le quinte: annullando l'emissione il saldo tornava correggibile per il server, e l'icona restava chiusa.
+
+L'amministratore seguiva un'istruzione stampata dentro l'applicazione, non otteneva niente, e gli restava una sola strada: **cancellare il piano**. È il percorso esatto della segnalazione per cui la beta.32 era nata, sopravvissuto alla correzione perché nessuno l'aveva guardato con il mouse.
+
+### Quello che cambia sullo schermo
+
+**I saldi di un piano non ancora emesso hanno di nuovo la matita e il cestino.** Il lucchetto compare quando il piano è emesso o ha incassi registrati — cioè quando le quote sono davvero in mano ai condòmini.
+
+**E c'è un avviso che prima non serviva.** Se un piano ha già assorbito quei saldi ma non li ha emessi, il pannello lo dice: sono correggibili, ma dopo va premuto **«Ricalcola»** sul piano, perché le quote già generate restano quelle vecchie. Compare solo sulle gestioni che si trovano in quello stato: un avviso sempre presente è un avviso che si impara a non leggere.
+
+**I lucchetti orfani restano chiusi.** I debiti verso fornitori e i saldi bloccati prima della beta.32 non hanno un piano a cui risalire: per loro il blocco resta, e si riaprono a mano come prima.
+
+### Sotto il cofano
+
+- Il lucchetto **calcolato** ora viaggia nel payload accanto a quello grezzo, e lo calcola il server **una volta per piano**: il predicato fa due query, e chiamarlo per riga significherebbe due query per saldo su una pagina che ne mostra decine.
+- Rimosso un calcolo morto dalla beta.33 — il blocco per gestione, che nessuna parte dell'interfaccia leggeva più. Tolto invece che corretto, per la stessa ragione dei due metodi invertiti rimossi nella beta.43: un nome plausibile è ciò che qualcuno chiamerebbe in buona fede.
+- **Il pannello dei saldi ha il suo primo test.** Non è un dettaglio di igiene: senza, la divergenza fra interfaccia e motore era invisibile alla suite per costruzione, ed è esattamente come questo difetto è sopravvissuto a undici beta. Il test ha ripagato subito, trovando un errore introdotto mentre lo si scriveva che la compilazione non segnalava.
+- Dieci test nuovi, cinque per lato.
+
+---
+
 ## [1.10.0-beta.43] - Metà del Debito all'Inquilino
 
 Un pregresso di **1.000,00 €** lasciato da un'unità immobiliare. Il proprietario ne pagava **500,00**, e gli altri 500,00 finivano addosso all'**inquilino** — che verso il condominio non deve niente, perché il suo rapporto è con il locatore.

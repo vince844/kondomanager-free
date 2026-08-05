@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Saldi\CreateSaldoRequest;
 use App\Http\Requests\Gestionale\Saldi\UpdateSaldoRequest;
 use App\Models\Condominio;
+use App\Models\Gestionale\PianoRate;
 use App\Models\Gestione;
 use App\Models\Saldo;
 use App\Services\Gestionale\SaldoEsercizioService;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use App\Traits\HandleFlashMessages;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -47,6 +49,8 @@ class SaldoInizialeController extends Controller
             ])
             ->get();
 
+        $this->esponiLucchettoCalcolato($immobili);
+
         $gestioni = Gestione::where('condominio_id', $condominio->id)
             ->where('attiva', true)
             // --- MODIFICA 1: Aggiunto 'saldo_applicato' al get() per farlo arrivare al frontend (serve per il lucchetto) ---
@@ -62,6 +66,42 @@ class SaldoInizialeController extends Controller
             'immobili'   => $immobili,
             'gestioni'   => $gestioni,
         ]);
+    }
+
+    /**
+     * Porta al frontend il lucchetto **calcolato**, non il flag grezzo.
+     *
+     * `Saldo::eBloccato()` è l'autorità dalla beta.33: se il saldo ha un piano risponde
+     * `PianoRate::eImmutabile()` — rate emesse o incassi registrati — e solo in assenza di
+     * piano ripiega su `is_applicato`. Quel metodo però non arrivava mai a Vue: qui si
+     * serializza il model grezzo e `Saldo` non ha `$appends`, quindi il pannello decideva sul
+     * booleano nudo. Ma `is_applicato` viene acceso alla **generazione** del piano
+     * (`SaldoEsercizioService`), non alla sua emissione: fra i due momenti il server accettava
+     * la correzione e l'interfaccia mostrava il lucchetto.
+     *
+     * Non è solo un'icona di troppo. La modale consiglia «annulla le emissioni e il saldo torna
+     * modificabile»: l'annullamento funziona davvero, ma nessuno rimette `is_applicato` a
+     * false, quindi l'utente seguiva un'istruzione stampata nell'applicazione senza ottenere
+     * niente — ed è il percorso della segnalazione per cui la beta.32 è nata.
+     *
+     * **Una volta per piano, non per saldo.** `eImmutabile()` fa due `whereHas`: chiamarlo su
+     * ogni riga significherebbe due query per saldo su una pagina che ne mostra decine.
+     */
+    private function esponiLucchettoCalcolato(Collection $immobili): void
+    {
+        $saldi = $immobili->pluck('saldi')->flatten();
+
+        $immutabilita = PianoRate::whereIn('id', $saldi->pluck('piano_rate_id')->filter()->unique())
+            ->get()
+            ->mapWithKeys(fn (PianoRate $piano): array => [$piano->id => $piano->eImmutabile()]);
+
+        foreach ($saldi as $saldo) {
+            // Un `piano_rate_id` che non risolve è un lucchetto orfano: si resta prudenti e
+            // si tiene bloccato, esattamente come fa `eBloccato()` senza piano.
+            $saldo->e_bloccato = $saldo->piano_rate_id !== null
+                ? ($immutabilita[$saldo->piano_rate_id] ?? true)
+                : (bool) $saldo->is_applicato;
+        }
     }
 
     public function store(CreateSaldoRequest $request, Condominio $condominio)
