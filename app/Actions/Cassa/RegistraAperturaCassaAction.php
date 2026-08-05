@@ -2,6 +2,7 @@
 
 namespace App\Actions\Cassa;
 
+use App\Enums\EsitoAperturaCassa;
 use App\Enums\TipoMovimentoContabile;
 use App\Models\Esercizio;
 use App\Models\Gestionale\Cassa;
@@ -37,19 +38,28 @@ use Illuminate\Support\Facades\Log;
 class RegistraAperturaCassaAction
 {
     /**
-     * @return bool true se la scrittura è stata creata, false se saltata
-     *              (importo zero, apertura già presente, o dati insufficienti).
+     * Restituisce un esito **tipizzato** e non un booleano: dalla beta.45 questa azione è
+     * esposta dietro un pulsante, e i cinque modi in cui poteva non fare niente andavano
+     * distinti. Due di essi — importo zero e apertura già presente — non sono nemmeno
+     * errori: sono «non c'è niente da fare».
+     *
+     * Il sesto esito possibile resta un'eccezione: se la partita doppia non quadra è un
+     * guasto, non uno stato da raccontare all'utente.
      */
-    public function execute(Cassa $cassa): bool
+    public function execute(Cassa $cassa): EsitoAperturaCassa
     {
         $importo = (int) $cassa->saldo_iniziale;
 
-        if ($importo === 0 || ! $cassa->conto_contabile_id) {
-            return false;
+        if ($importo === 0) {
+            return EsitoAperturaCassa::IMPORTO_ZERO;
+        }
+
+        if (! $cassa->conto_contabile_id) {
+            return EsitoAperturaCassa::CONTO_MANCANTE;
         }
 
         if ($this->haGiaApertura($cassa)) {
-            return false;
+            return EsitoAperturaCassa::GIA_REGISTRATA;
         }
 
         // L'apertura precede tutto: si aggancia al primo esercizio del condominio.
@@ -62,6 +72,8 @@ class RegistraAperturaCassaAction
             ->whereNull('deleted_at')
             ->first();
 
+        // Due mancanze diverse con due rimedi diversi: prima erano un ramo solo, e il
+        // messaggio non poteva dire quale dei due mancasse.
         if (! $esercizio || ! $contropartita) {
             Log::warning('Apertura cassa non registrata: esercizio o contropartita mancante.', [
                 'cassa_id'      => $cassa->id,
@@ -70,7 +82,9 @@ class RegistraAperturaCassaAction
                 'ha_conto'      => (bool) $contropartita,
             ]);
 
-            return false;
+            return $esercizio
+                ? EsitoAperturaCassa::CONTROPARTITA_MANCANTE
+                : EsitoAperturaCassa::ESERCIZIO_MANCANTE;
         }
 
         DB::transaction(function () use ($cassa, $esercizio, $contropartita, $importo) {
@@ -116,7 +130,7 @@ class RegistraAperturaCassaAction
             $cassa->forceFill(['saldo_iniziale' => 0])->save();
         });
 
-        return true;
+        return EsitoAperturaCassa::REGISTRATA;
     }
 
     private function haGiaApertura(Cassa $cassa): bool

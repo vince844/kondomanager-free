@@ -250,6 +250,14 @@ const submit = () => {
                     <p v-if="cassaData.saldo_iniziale_bloccato" class="text-xs text-amber-600 mt-1">
                       Già registrato in contabilità: qui sopra è mostrato il saldo reale corrente, non più modificabile.
                     </p>
+                    <!-- Il preavviso che mancava. Salvando, l'importo viene portato a giornale
+                         e da quel momento il campo si blocca: è il comportamento giusto, ma
+                         scoprirlo al salvataggio successivo — senza che nessuno l'avesse detto
+                         prima — è il modo tipico in cui nasce una segnalazione. -->
+                    <p v-else-if="!cassaData.has_movements || form.saldo_iniziale" class="text-xs text-slate-500 mt-1">
+                      Salvando, questo importo viene <strong>registrato in contabilità</strong> come saldo di apertura.
+                      Da quel momento il campo non è più modificabile da qui: controllalo adesso.
+                    </p>
                     <InputError :message="form.errors.saldo_iniziale" />
                   </div>
 

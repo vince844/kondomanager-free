@@ -119,6 +119,12 @@ Route::prefix('/gestionale/{condominio}')
     // --- CASSE ---
     Route::resource('casse', CassaController::class)
         ->parameters(['casse' => 'cassa']);
+
+    // Porta a giornale il saldo di apertura di una cassa che l'ha in colonna ma non in
+    // contabilità. È l'azione che mancava alla diagnosi del Libro Giornale: il widget
+    // sapeva nominare la causa dello sbilancio e non offriva niente per curarla.
+    Route::post('casse/{cassa}/registra-apertura', [CassaController::class, 'registraApertura'])
+        ->name('casse.registra-apertura');
     
     Route::resource('tabelle', TabellaController::class)
         ->parameters(['tabelle' => 'tabella']);

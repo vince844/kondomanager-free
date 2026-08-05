@@ -7,6 +7,50 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.45] - La Diagnosi Senza Cura
+
+Il widget del Libro Giornale sapeva dire che lo Stato Patrimoniale non quadrava, sapeva anche **perché** — «c'è una cassa con un saldo di apertura non registrato» — e poi rimandava alla pagina di quella cassa, dove non esiste nessun pulsante che lo registri. Diagnosi perfetta, nessuna cura.
+
+La domanda che ha aperto questa versione era: *«come risolvo? Il widget non me lo dice cosa devo fare»*. La risposta, verificata: **non c'era niente che si potesse fare.**
+
+**Nessuna migrazione**, e nessun dato cambia da solo.
+
+### Adesso c'è un pulsante
+
+Nella diagnosi, accanto a ogni cassa segnalata, c'è **«Registra apertura»**. Un clic porta il saldo a giornale con la sua contropartita, e lo sbilancio si chiude.
+
+Non cambia l'Attivo — quella liquidità c'era già, era solo priva di contropartita — e fa salire il Passivo sul Fondo Passate Gestioni della stessa cifra. È il modo corretto in cui un saldo di apertura entra in contabilità.
+
+**E dice cosa manca quando non può.** L'azione poteva non riuscire per cinque motivi diversi e ne segnalava uno solo, in un file di log che nessuno apre. Ora ognuno ha il suo messaggio, con la via d'uscita: manca l'esercizio, manca il conto «Fondo Passate Gestioni», la risorsa non ha un conto contabile. E i due casi che **non sono errori** — importo a zero, apertura già registrata — non vengono più presentati come tali.
+
+### Il buco che continuava a produrre il problema
+
+Il percorso era riproducibile con il mouse, ed è quello che ha creato lo stato che stiamo curando: **crea una risorsa lasciando vuoto il saldo di apertura** — corretto, non c'è niente da registrare — **poi modificala e scrivi l'importo**. Il valore finiva in archivio e non in contabilità.
+
+Da questa versione la modifica porta il saldo a giornale come già faceva la creazione. E per le risorse che ci sono già finite c'è una via d'uscita che prima non esisteva: **ri-salvarle senza cambiare l'importo** le registra. Prima il divieto di modificare il saldo su una risorsa con movimenti impediva anche questo, che non sposta un centesimo.
+
+Il campo si blocca dopo la registrazione — è giusto, il dato ora vive nella scrittura — e adesso il form **lo dice prima**, non al salvataggio successivo.
+
+### La scorciatoia che faceva sparire il problema insieme ai soldi
+
+Finché non è esistito un modo di registrare l'apertura, l'unico gesto che faceva tornare verde il bollino era **eliminare la risorsa**. E funzionava: le scritture restavano bilanciate, la liquidità spariva, il controllo diventava verde. Nessuno aveva sistemato niente.
+
+Ora l'eliminazione è impedita con il motivo e il rimedio: una risorsa con movimenti si **disattiva**, una con un saldo di apertura non registrato va prima registrata. Una risorsa creata per sbaglio e mai usata si elimina come sempre.
+
+### Corretto
+
+- **La diagnosi era cieca su metà dei casi.** Cercava le risorse con saldo di apertura **positivo**, mentre il calcolo somma anche i negativi: un conto scoperto sbilanciava e finiva nel ramo «causa non nota», l'unico che non offre niente da fare.
+- **Il ramo «causa non nota» ora dice cosa guardare** — l'equazione nei dettagli, e i totali Dare/Avere del riquadro accanto, che se non coincidono indicano una scrittura rotta — invece di rimandare al commercialista e basta.
+- **Le scritture di apertura hanno un protocollo proprio**, `APE`. Cadevano nel prefisso generico `SCR`, che significa «scrittura non classificata».
+
+### Sotto il cofano
+
+- L'esito della registrazione è ora un tipo, non un booleano: sei casi distinti, di cui due non sono errori e uno resta un'eccezione, perché una partita doppia che non quadra è un guasto e non uno stato da raccontare.
+- Il divieto di eliminazione vive sul modello, nella forma già usata dalle fatture passive: una guardia sola, che decide e spiega, così le due non possono divergere.
+- Ventuno test nuovi, fra cui quello che percorre il ciclo intero — la diagnosi nomina, il pulsante cura, la diagnosi tace — e la controprova che una risorsa vuota si elimina ancora.
+
+---
+
 ## [1.10.0-beta.44] - Il Lucchetto Si Apriva Solo sul Server
 
 La beta.33 aveva spostato la soglia del blocco dei saldi da «esiste un piano rate» a «il piano è **emesso** o incassato». Il motore l'ha imparato, con venticinque test a garantirlo. **L'interfaccia no.**

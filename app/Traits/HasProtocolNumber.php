@@ -39,6 +39,17 @@ trait HasProtocolNumber
             'storno_regolazione_immediata'=> 'STO',
             'pagamento_f24'               => 'F24',
             'storno_pagamento_f24'        => 'STO',
+            // Aggiunto nella beta.45, quando l'apertura ha smesso di essere una scrittura
+            // che nasceva solo dentro la creazione di una cassa. Cadeva nel `default`, cioè
+            // in `SCR` — il prefisso che significa «non classificata» — mentre l'apertura è
+            // un fatto classificatissimo.
+            //
+            // Non si è scelto `AP` per somiglianza con le quattro righe del backfill del
+            // 24/07 (`AP-000011`…): quelle non sono protocolli del sistema ma stringhe
+            // inventate da una migrazione, senza anno e fuori dallo schema
+            // `PREFISSO-ANNO-NNNNN`. Con `AP` il generatore produrrebbe `AP-2026-00001`,
+            // che accanto a `AP-000011` confonde due famiglie invece di unirle.
+            'apertura'                    => 'APE',
             default                       => 'SCR',
         };
 

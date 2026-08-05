@@ -174,8 +174,14 @@ class ScritturaContabileController extends Controller
             ])
             ->values();
 
+        // `!= 0` e non `> 0`: `StatoPatrimonialeService` somma TUTTI i saldi non ancora a
+        // giornale, negativi compresi, quindi un conto scoperto sbilancia esattamente come
+        // uno positivo. Cercando i soli positivi la diagnosi era cieca su metà dei casi, e
+        // quello sbilancio finiva nel ramo «causa non nota» — l'unico che non offre niente
+        // da fare. Il saldo negativo non è un caso di frontiera: `RegistraAperturaCassaAction`
+        // lo gestisce esplicitamente invertendo i versi.
         $casseSenzaApertura = Cassa::where('condominio_id', $condominio->id)
-            ->where('saldo_iniziale', '>', 0)
+            ->where('saldo_iniziale', '!=', 0)
             ->get(['id', 'nome', 'saldo_iniziale'])
             ->map(fn (Cassa $c) => [
                 'id'             => $c->id,

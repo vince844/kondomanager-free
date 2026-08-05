@@ -12,6 +12,10 @@ use Illuminate\Support\Facades\Log;
 
 class UpdateCassaAction
 {
+    public function __construct(
+        private RegistraAperturaCassaAction $aperturaAction
+    ) {}
+
     public function execute(Cassa $cassa, array $data): Cassa
     {
         return DB::transaction(function () use ($cassa, $data) {
@@ -71,6 +75,25 @@ class UpdateCassaAction
                 'is_override_assemblea'   => filter_var($data['is_override_assemblea'] ?? false, FILTER_VALIDATE_BOOLEAN),
                 'motivazione_override'    => $data['motivazione_override'] ?? null,
             ]);
+
+            // --- 2bis. IL SALDO DI APERTURA VA A GIORNALE ---
+            //
+            // Senza questa chiamata la colonna restava piena e il giornale vuoto, e lo Stato
+            // Patrimoniale si sbilanciava esattamente di quell'importo. Il percorso era
+            // riproducibile col mouse: cassa creata con il saldo vuoto — dove
+            // `CreateCassaAction` chiama l'azione, che esce subito su importo zero — e importo
+            // aggiunto **dopo**, in modifica, dove non lo chiamava nessuno.
+            //
+            // La beta.26 aveva messo mano a questa stessa guardia guardando la direzione
+            // opposta: là si riscriveva la colonna con l'apertura già a giornale (doppio
+            // conteggio), qui si scrive la colonna con l'apertura mai registrata. Stesso
+            // campo, stesso effetto sullo Stato Patrimoniale, verso contrario.
+            //
+            // L'azione è già idempotente e sa uscire da sola su importo zero, apertura
+            // presente o dati insufficienti: qui non si ripete nessuno dei suoi controlli.
+            // Siamo dentro la transazione della modifica, quindi o la cassa cambia e
+            // l'apertura è a giornale, o non è successo niente.
+            $this->aperturaAction->execute($cassa);
 
             // --- 3. AGGIORNAMENTO CONTO CONTABILE (Nome + Ruolo) ---
             if ($cassa->contoContabile) {

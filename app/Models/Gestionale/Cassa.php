@@ -120,6 +120,42 @@ class Cassa extends Model
     }
 
     /**
+     * Perché questa risorsa non si può eliminare, o `null` se si può.
+     *
+     * Nasce nella beta.45 per chiudere la scorciatoia che l'interfaccia rendeva **conveniente**:
+     * finché non è esistito un modo di registrare l'apertura, l'unico gesto che faceva tornare
+     * verde il bollino dello Stato Patrimoniale era **eliminare la cassa**. E funzionava:
+     * `casse` non ha `deleted_at`, quindi è una cancellazione vera; `righe_scritture.cassa_id`
+     * è `nullOnDelete`, quindi le scritture restano bilanciate; e la liquidità non
+     * contabilizzata spariva insieme alla riga. Il bollino diventava verde e **nessuno aveva
+     * sistemato niente**.
+     *
+     * La forma è quella già collaudata da `FatturaPassiva::motivoBloccoEliminazione()` nella
+     * beta.34: una guardia sola, che `destroy()` usa per decidere e l'elenco può usare per
+     * spiegare, così le due non possono divergere. E ogni motivo nomina **la via d'uscita**:
+     * un divieto muto è il difetto che quella beta era nata per togliere.
+     */
+    public function motivoBloccoEliminazione(): ?string
+    {
+        if ($this->hasMovimentiOperativi()) {
+            return 'Questa risorsa ha movimenti contabili registrati: eliminandola le scritture '
+                . 'resterebbero senza la loro cassa e il saldo non sarebbe più ricostruibile. '
+                . 'Se non la usi più, disattivala invece di eliminarla.';
+        }
+
+        if ((int) $this->saldo_iniziale !== 0) {
+            return 'Questa risorsa ha un saldo di apertura di '
+                . \App\Helpers\MoneyHelper::format((int) $this->saldo_iniziale)
+                . ' non ancora registrato in contabilità: eliminandola quella liquidità '
+                . 'sparirebbe dallo Stato Patrimoniale senza lasciare traccia. Registra prima '
+                . "l'apertura — dal Libro Giornale o risalvando la risorsa — poi valuta se "
+                . 'eliminarla.';
+        }
+
+        return null;
+    }
+
+    /**
      * Il saldo di apertura è già stato portato a giornale
      * (RegistraAperturaCassaAction)? Da quel momento il dato è nella scrittura,
      * non più nella colonna: riscrivere la colonna lo conterebbe due volte in

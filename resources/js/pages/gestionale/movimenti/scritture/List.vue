@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import MovimentiLayout from '@/layouts/gestionale/MovimentiLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
@@ -87,6 +87,28 @@ const headerBreadcrumbs = computed(() => [
 ]);
 
 /**
+ * La cassa su cui si sta registrando l'apertura: serve solo a non far premere due volte lo
+ * stesso pulsante. L'azione lato server è comunque idempotente — non registra due aperture —
+ * ma un doppio clic che sembra non fare niente è un difetto a sé.
+ */
+const registrandoApertura = ref<number | null>(null);
+
+/**
+ * La cura che mancava alla diagnosi: porta a giornale il saldo di apertura di una cassa che
+ * ce l'ha in colonna. Prima qui c'era solo il link alla pagina della cassa, dove nessun
+ * pulsante registra l'apertura — il widget nominava la causa e non offriva niente.
+ */
+function registraApertura(cassaId: number) {
+    registrandoApertura.value = cassaId;
+
+    router.post(
+        route(generateRoute('gestionale.casse.registra-apertura'), { condominio: props.condominio.id, cassa: cassaId }),
+        {},
+        { preserveScroll: true, onFinish: () => { registrandoApertura.value = null; } }
+    );
+}
+
+/**
  * Traduzione in linguaggio corrente dell'equazione patrimoniale, per chi non mastica
  * contabilità. Deve ramificare PRIMA su quadra/non quadra: un condominio in disavanzo ma
  * quadrato è normale, uno sbilanciato non lo è mai, e le due frasi non vanno confuse.
@@ -106,7 +128,7 @@ const spiegazioneQuadratura = computed(() => {
                 ? 'C\'è 1 cassa con un saldo di apertura non ancora registrato a giornale: è la causa più probabile dello sbilancio, vedi sotto.'
                 : `Ci sono ${casseSenzaApertura} casse con un saldo di apertura non ancora registrato a giornale: è la causa più probabile dello sbilancio, vedi sotto.`;
         }
-        return 'Lo sbilancio non è riconducibile a una causa nota automaticamente: verifica con il tuo commercialista o il supporto.';
+        return 'Lo sbilancio non è riconducibile a una causa nota automaticamente. Da dove guardare: apri i dettagli qui sotto e confronta le tre voci dell\'equazione, poi controlla se i totali Dare e Avere del riquadro accanto coincidono — se non coincidono la causa è una scrittura rotta. Se tornano entrambi, sentiamoci con il supporto.';
     }
     if (props.quadratura.risultato_esercizio < 0) {
         return 'Il condominio ha registrato più spese di quante ne abbia finora addebitate ai condòmini: normale a esercizio in corso, non un errore.';
@@ -150,7 +172,7 @@ const quadraturaPatrimoniale = computed(() => {
 
 const pageGuides = [
     { title: 'Registro cronologico', description: 'Tutte le scritture contabili dell\'esercizio selezionato, in ordine di registrazione.', icon: ScrollText, colorVariant: 'blue' as const },
-    { title: 'Verifica quadratura', description: 'Il widget Stato Patrimoniale segnala se Attivo = Passivo + Risultato d\'esercizio torna, non se Attivo e Passivo coincidono fra loro.', icon: Scale, colorVariant: 'emerald' as const },
+    { title: 'Verifica quadratura', description: 'Il widget Stato Patrimoniale segnala se Attivo = Passivo + Risultato d\'esercizio torna, non se Attivo e Passivo coincidono fra loro. Quando non torna ti dice la causa e, dove è possibile, ti dà il pulsante per rimediare.', icon: Scale, colorVariant: 'emerald' as const },
     { title: 'Cambia esercizio', description: 'Usa il selettore esercizio in alto per consultare le operazioni di anni precedenti.', icon: ArrowUpCircle, colorVariant: 'amber' as const },
 ];
 </script>
@@ -245,7 +267,7 @@ const pageGuides = [
                                             </Link>
                                             <span :class="quadratura.quadra ? 'text-slate-500' : 'text-slate-700'">— {{ s.causale }}</span>
                                         </li>
-                                        <li v-for="c in diagnosi.casse_senza_apertura" :key="`c-${c.id}`" class="text-xs">
+                                        <li v-for="c in diagnosi.casse_senza_apertura" :key="`c-${c.id}`" class="text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
                                             <Link
                                                 :href="route(generateRoute('gestionale.casse.edit'), { condominio: props.condominio.id, cassa: c.id })"
                                                 class="text-rose-700 font-semibold hover:underline"
@@ -253,6 +275,17 @@ const pageGuides = [
                                                 {{ c.nome }}
                                             </Link>
                                             <span :class="quadratura.quadra ? 'text-slate-500' : 'text-slate-700'">— apertura mancante, {{ euro(c.saldo_iniziale) }}</span>
+                                            <!-- La cura, non solo la diagnosi. Prima qui c'era il solo link alla pagina
+                                                 della cassa, dove nessun pulsante registra l'apertura: il widget nominava
+                                                 la causa e lasciava l'amministratore senza niente da fare. -->
+                                            <button
+                                                type="button"
+                                                :disabled="registrandoApertura === c.id"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-rose-200 bg-white text-rose-700 font-semibold hover:bg-rose-50 disabled:opacity-50 transition-colors"
+                                                @click="registraApertura(c.id)"
+                                            >
+                                                {{ registrandoApertura === c.id ? 'Registro…' : 'Registra apertura' }}
+                                            </button>
                                         </li>
                                     </ul>
                                 </div>
@@ -377,7 +410,7 @@ const pageGuides = [
                         </table>
                     </div>
 
-                    <p v-if="quadratura.liquidita_non_contabilizzata > 0" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
+                    <p v-if="quadratura.liquidita_non_contabilizzata !== 0" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2.5 leading-relaxed">
                         Nell'Attivo sono inclusi {{ euro(quadratura.liquidita_non_contabilizzata) }} di saldi di apertura
                         cassa non ancora registrati con una scrittura a giornale.
                     </p>
