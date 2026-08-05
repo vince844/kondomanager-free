@@ -80,6 +80,7 @@ const {
     getBilancioFinale,
     distributeGreedy,
     calculateExcess,
+    creditoNecessario,
     onManualChange,
     resetAllocation: resetAllocationComposable,
     pagaTutto: pagaTuttoComposable,
@@ -313,22 +314,30 @@ const runDistribution = async () => {
                 rataTarget.da_pagare = debitoRata;
             }
         } else {
-            const budgetTotale = importoNumerico.value + creditoDisponibile;
-            form.eccedenza = distributeGreedy(rateList.value, budgetTotale);
+            // Il credito si impegna PRIMA di distribuire, e solo per la parte che il contante
+            // lascia scoperta. Prima il budget era `contante + creditoDisponibile` e
+            // l'eccedenza era l'avanzo del greedy: con 300 di credito, zero contante e 100 di
+            // debito avanzavano 200, che finivano nel campo eccedenza come **anticipo** —
+            // mentre sono credito che resta dov'è, mai entrato in cassa. Il server rifiutava
+            // poi la registrazione, perché l'identità `importo_totale = somma + eccedenza`
+            // non tornava. Vedi `creditoNecessario` e `usePaymentDistribution.test.ts`.
+            const creditoEffettivoUsato = righeCredito.length > 0
+                ? creditoNecessario(rateList.value, importoNumerico.value, creditoDisponibile)
+                : 0;
+
+            form.eccedenza = distributeGreedy(rateList.value, importoNumerico.value + creditoEffettivoUsato);
 
             if (righeCredito.length > 0) {
-                const totaleDebitiEmettibili = rateList.value
-                    .filter(r => parseResiduoQuota(r.residuo) > 0)
-                    .reduce((s, r) => s + parseResiduoQuota(r.residuo), 0);
-
-                const creditoEffettivoUsato = Math.min(creditoDisponibile, Math.max(0, totaleDebitiEmettibili - importoNumerico.value));
                 spalmaCredito(creditoEffettivoUsato);
             }
         }
     } else {
-        const budgetContante = importoNumerico.value;
-        const budgetCredito = righeCredito.reduce((s, r) => s + Math.abs(parseResiduoQuota(r.da_pagare)), 0);
-        form.eccedenza = calculateExcess(rateList.value, budgetContante + budgetCredito);
+        // Il **solo** contante: le righe di credito portano un `da_pagare` negativo e sono
+        // quindi già scontate dentro l'allocato che `calculateExcess` sottrae. Qui prima si
+        // sommava anche il credito, e l'eccedenza usciva `contante + 2·credito − allocato`.
+        // Non era un numero storto e basta: la guardia del server rifiutava, il controller
+        // non catturava, e l'amministratore si prendeva un 500 perdendo la compilazione.
+        form.eccedenza = calculateExcess(rateList.value, importoNumerico.value);
     }
 
     rateList.value = [...rateList.value];

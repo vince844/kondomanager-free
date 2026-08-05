@@ -5,7 +5,6 @@ import { Head } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
-import { useCurrencyFormatter } from "@/composables/useCurrencyFormatter";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import SaldiGuide from '@/components/guides/SaldiGuide.vue';
 import SaldiDetailPanel from '@/components/gestionale/saldi/SaldiDetailPanel.vue';
@@ -22,7 +21,6 @@ const props = defineProps<{
 }>();
 
 const { generatePath } = usePermission();
-const { euro } = useCurrencyFormatter({ fromCents: false, forcePlus: true });
 
 // ── State ──────────────────────────────────────────────────────────────────
 const selectedId = ref<number | null>(null);

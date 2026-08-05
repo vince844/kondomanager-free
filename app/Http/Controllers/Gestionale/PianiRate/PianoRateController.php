@@ -695,16 +695,28 @@ class PianoRateController extends Controller
      * @param Gestione $gestione La gestione selezionata nel frontend
      * @return \Illuminate\Http\JsonResponse Un array JSON di Saldi pronti per la modale Vue
      */
-    public function fetchSaldiAnalitici(Condominio $condominio, Esercizio $esercizio, Gestione $gestione)
-    {
+    public function fetchSaldiAnalitici(
+        Condominio $condominio,
+        Esercizio $esercizio,
+        Gestione $gestione,
+        \App\Actions\PianoRate\GenerateSaldiAction $anteprima
+    ) {
         $saldi = Saldo::where('gestione_id', $gestione->id)
             ->where('is_applicato', false)
+            // Terzo posto in cui `saldi` veniva letta senza separare le due famiglie che ci
+            // convivono (beta.43). Un debito verso fornitore non ha anagrafica né immobile,
+            // quindi compariva qui come saldo «solidale» intestato a «Unità Sconosciuta» — e
+            // l'amministratore poteva configurargli un riparto manuale che `GenerateSaldiAction`
+            // non avrebbe mai applicato, visto che di là il filtro `whereNull('fornitore_id')`
+            // c'è da sempre. Stesso filtro, così le due estremità del flusso guardano la stessa
+            // lista.
+            ->whereNull('fornitore_id')
             // Le righe a zero non entrano mai nella generazione: mostrarle qui
             // farebbe configurare una ripartizione che non verrà mai applicata.
             ->where('saldo_iniziale', '!=', 0)
             ->with(['anagrafica', 'immobile'])
             ->get()
-            ->map(function($s) use ($condominio) {
+            ->map(function($s) use ($condominio, $gestione, $anteprima) {
                 $ruolo = null;
                 if ($s->anagrafica_id && $s->immobile_id) {
                     $ruolo = DB::table('anagrafica_immobile')
@@ -722,7 +734,15 @@ class PianoRateController extends Controller
                     'ruolo' => $ruolo ?? ($s->anagrafica_id ? 'Anagrafica' : 'Condominio'),
                     'importo' => $s->saldo_iniziale,
                     'is_debito' => $s->saldo_iniziale > 0,
-                    'immobile_id' => $s->immobile_id
+                    'immobile_id' => $s->immobile_id,
+                    // L'anteprima del riparto automatico: chi pagherebbe cosa se il piano
+                    // venisse generato adesso. Solo per i solidali — un saldo nominale ha già
+                    // il suo destinatario e non c'è niente da risolvere. La calcola il server
+                    // con le stesse funzioni del generatore, non il frontend: un'anteprima che
+                    // ricalcola a modo suo diverge al primo cambio (beta.35).
+                    'riparto_previsto' => $s->anagrafica_id
+                        ? null
+                        : $anteprima->anteprimaSolidale($s, $gestione),
                 ];
             });
 

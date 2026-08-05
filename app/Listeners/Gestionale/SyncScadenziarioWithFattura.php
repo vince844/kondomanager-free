@@ -175,9 +175,14 @@ class SyncScadenziarioWithFattura implements ShouldQueue
             
             $debitoIniziale = abs(Saldo::find($fattura->saldo_patrimoniale_id)->saldo_iniziale ?? 0);
             
+            // Stessa lettura del widget Double Lock, e stesso difetto: `anagrafica_id` non
+            // separa i pregressi dei condòmini dai debiti verso fornitori, `fornitore_id` sì.
+            // Con il filtro vecchio i pregressi intestati all'unità non entravano nel conto e
+            // il «buco» risultava più grande del reale. Corretta insieme alla gemella nella
+            // beta.43: la lezione della beta.40 è che si corregge la classe, non il caso.
             $rataZeroRichiesta = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $fattura->esercizio_id)
-                ->whereNotNull('anagrafica_id')
+                ->whereNull('fornitore_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 

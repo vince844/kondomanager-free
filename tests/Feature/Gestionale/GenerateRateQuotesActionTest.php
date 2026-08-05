@@ -213,3 +213,96 @@ describe('riga con importo finale a zero', function () {
     });
 
 });
+
+/**
+ * beta.43 — Il ramo senza `else` che faceva sparire il pregresso in silenzio.
+ *
+ * La quota di saldo su ogni rata usciva da un `if/elseif` senza terza via:
+ *
+ *     if ($metodo === 'prima_rata' && $numeroRata === 1)  → tutto sulla prima
+ *     elseif ($metodo === 'tutte_rate')                   → spalmato
+ *
+ * Con un valore fuori vocabolario nessuno dei due rami scattava, `$quotaSaldoRata`
+ * restava a zero su **ogni** rata, e il pregresso spariva — senza eccezione e senza log.
+ * Il lucchetto si chiudeva lo stesso e `gestioni.nota_saldo` registrava un importo
+ * «processato» che non esisteva in nessuna quota: il saldo risultava assorbito da un piano
+ * che non lo aveva mai addebitato a nessuno.
+ *
+ * Oggi i valori ammessi sono tre e sono tutti gestiti — `rata_zero` cade fuori dal ciclo
+ * perché la sua rata è generata prima — quindi il difetto è **latente**. È la trappola armata
+ * sotto la prossima modifica di questo file, e la politica del pregresso a due segni prevista
+ * per la 1.11 tocca esattamente qui.
+ *
+ * Il `match` con `default` che solleva è il modo più economico di non riaprire mai la
+ * questione: chi aggiungerà un metodo nuovo lo scoprirà dal test, non da un saldo scomparso.
+ */
+
+use App\Exceptions\Gestionale\MetodoDistribuzioneSconosciutoException;
+
+/** Un saldo da 500,00 € su un soggetto solo, nella forma che l'azione si aspetta. */
+function saldoSingolo(int $anagraficaId, int $cents = 50000): array
+{
+    return [$anagraficaId => [0 => ['importo' => $cents, 'meta_storico' => ['tipo_riparto' => 'nominale']]]];
+}
+
+it('rifiuta un metodo di distribuzione fuori vocabolario invece di perdere il pregresso', function () {
+    $pianoRate = creaPianoRatePerQuoteTest(['numero_rate' => 2]);
+    $anagrafica = Anagrafica::factory()->create();
+
+    // Assegnato sul modello e non a database: la colonna è un ENUM e non accetterebbe il
+    // valore. È il punto della lezione della beta.34 — lo schema dei test non deve impedire
+    // di esercitare un caso che in produzione può nascere da una migrazione a metà o da un
+    // aggiornamento parziale.
+    $pianoRate->metodo_distribuzione = 'metodo_inventato';
+
+    expect(fn () => app(GenerateRateQuotesAction::class)->execute(
+        $pianoRate, [], ['2026-01-05', '2026-02-05'], saldoSingolo($anagrafica->id)
+    ))->toThrow(MetodoDistribuzioneSconosciutoException::class);
+});
+
+it('con «prima rata» il pregresso sta tutto sulla prima e le altre restano a zero', function () {
+    // Controprova indispensabile: sulla rata 2 il ramo non scatta ed è **corretto** che non
+    // scatti. Un `else` che solleva senza distinguere avrebbe rotto proprio questo caso.
+    $pianoRate = creaPianoRatePerQuoteTest(['metodo_distribuzione' => 'prima_rata', 'numero_rate' => 2]);
+    $anagrafica = Anagrafica::factory()->create();
+
+    app(GenerateRateQuotesAction::class)->execute(
+        $pianoRate, [], ['2026-01-05', '2026-02-05'], saldoSingolo($anagrafica->id)
+    );
+
+    $rate = Rata::where('piano_rate_id', $pianoRate->id)->where('numero_rata', '>', 0)
+        ->orderBy('numero_rata')->get();
+
+    expect($rate->firstWhere('numero_rata', 1)->importo_totale)->toBe(50000)
+        ->and($rate->firstWhere('numero_rata', 2)->importo_totale)->toBe(0);
+});
+
+it('con «rata zero» il ciclo delle rate ordinarie non solleva', function () {
+    // Il pregresso vive nella Rata 0, creata prima del ciclo: qui la quota di saldo vale zero
+    // per costruzione, e quello zero è una decisione, non un ramo dimenticato.
+    $pianoRate = creaPianoRatePerQuoteTest(['metodo_distribuzione' => 'rata_zero', 'numero_rate' => 2]);
+    $anagrafica = Anagrafica::factory()->create();
+
+    app(GenerateRateQuotesAction::class)->execute(
+        $pianoRate, [], ['2026-01-05', '2026-02-05'], saldoSingolo($anagrafica->id)
+    );
+
+    $rataZero = Rata::where('piano_rate_id', $pianoRate->id)->where('numero_rata', 0)->first();
+
+    expect($rataZero)->not->toBeNull()
+        ->and($rataZero->importo_totale)->toBe(50000);
+});
+
+it('con «tutte le rate» il pregresso si spalma e la somma resta esatta', function () {
+    $pianoRate = creaPianoRatePerQuoteTest(['metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 3]);
+    $anagrafica = Anagrafica::factory()->create();
+
+    // 100,00 € su tre rate: 33,34 + 33,33 + 33,33, non 33,33 × 3.
+    app(GenerateRateQuotesAction::class)->execute(
+        $pianoRate, [], ['2026-01-05', '2026-02-05', '2026-03-05'], saldoSingolo($anagrafica->id, 10000)
+    );
+
+    $somma = Rata::where('piano_rate_id', $pianoRate->id)->where('numero_rata', '>', 0)->sum('importo_totale');
+
+    expect((int) $somma)->toBe(10000);
+});

@@ -48,7 +48,7 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 const pageGuides = computed(() => [
   {
     title: 'Associazione Soggetti',
-    description: "Collega un'anagrafica all'immobile specificando il suo ruolo (Proprietario o Inquilino).",
+    description: "Collega un'anagrafica all'immobile specificando il suo ruolo: proprietario, nudo proprietario, usufruttuario o inquilino.",
     icon: UserCheck,
     colorVariant: 'blue' as const
   },
@@ -66,10 +66,14 @@ const pageGuides = computed(() => [
   }
 ]);
 
+// I ruoli sono quelli di `App\Enums\RuoloAnagraficaImmobile`. «Nudo proprietario» esiste dalla
+// beta.43: prima l'unico modo di registrare una nuda proprietà era chiamarla «Proprietario»,
+// e da lì il motore non poteva distinguere chi paga l'ordinaria da chi paga la straordinaria.
 const tipologia = [
   { label: 'Proprietario', id: 'proprietario' },
-  { label: "Inquilino", id: 'inquilino' },
-  { label: "Usufruttuario", id: 'usufruttuario' }
+  { label: 'Nudo proprietario', id: 'nuda_proprietario' },
+  { label: 'Usufruttuario', id: 'usufruttuario' },
+  { label: 'Inquilino', id: 'inquilino' }
 ];
 
 const form = useForm({

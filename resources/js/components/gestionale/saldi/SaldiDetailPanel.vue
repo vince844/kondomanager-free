@@ -537,7 +537,7 @@ function submitAddModal() {
                       <span class="font-bold text-sm">Intero immobile</span>
                     </div>
                     <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      Solidale. Verrà ripartito in automatico sui proprietari al momento dell'emissione rate (Art. 63).
+                      Solidale. Verrà ripartito in automatico fra chi ha un diritto reale sull'unità — mai l'inquilino — al momento della generazione del piano rate (Art. 63).
                     </p>
                   </div>
                 </label>

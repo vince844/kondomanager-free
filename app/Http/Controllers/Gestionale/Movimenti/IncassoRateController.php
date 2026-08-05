@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Enums\TipoMovimentoContabile;
 use App\Http\Controllers\Controller;
@@ -158,7 +159,15 @@ class IncassoRateController extends Controller
      */
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
-        $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+        try {
+            $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+        } catch (TotaleIncassoNonCorrispondenteException $e) {
+            // Conflitto di dominio, non guasto: la guardia ha fermato tutto **prima** della
+            // transazione, quindi non c'è niente di scritto da recuperare. Torna indietro con
+            // il modulo compilato e il motivo, invece della pagina 500 che l'amministratore si
+            // prendeva finora — perdendo la distribuzione appena fatta a mano.
+            return back()->withInput()->withErrors(['importo_totale' => $e->getMessage()]);
+        }
 
         // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---
         $paganteId = $request->input('pagante_id');

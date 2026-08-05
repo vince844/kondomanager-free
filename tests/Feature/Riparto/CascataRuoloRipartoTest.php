@@ -190,7 +190,10 @@ test('caso 2: nudo prop + usufruttuario no inquilino, tabella ordinaria (inquili
     expect($quote)->toHaveKey($idUsufruttuario)
         ->and($quote[$idUsufruttuario][$im->immobile->id])->toBe(100000)
         ->and($service->getScoperti())->toBeEmpty();
-})->skip('nuda_proprietario non ancora in enum (v1.10 Fase 1). Il test 9 copre la stessa cascata con ruoli esistenti — questo diventa il test canonico post-migrazione.');
+});
+// ↑ Riattivato nella beta.43: `nuda_proprietario` è ora un valore scrivibile in
+// `anagrafica_immobile.tipologia`. È il test canonico del caso #2 — il bug originale della
+// cascata — sui ruoli veri invece che sui surrogati del caso 9.
 
 test('caso 3: proprietario + inquilino, tabella ordinaria (inquilino)', function () {
     $sc = createScenarioCascata('inquilino');
@@ -237,7 +240,13 @@ test('caso 5: nudo prop + usufruttuario, tabella straordinaria (proprietario) ->
     
     expect($quote)->toHaveKey($idNudo)
         ->and($quote[$idNudo][$im->immobile->id])->toBe(100000);
-})->skip('nuda_proprietario non ancora in enum (v1.10 Fase 1). Il test 9 copre la stessa cascata con ruoli esistenti — questo diventa il test canonico post-migrazione.');
+});
+// ↑ Riattivato nella beta.43, ed è il test che ha trovato il buco aperto dalla migrazione
+// stessa. Un coefficiente straordinario punta al `proprietario`; su un'unità con nuda
+// proprietà e usufrutto nessuno ha quel ruolo, e la vecchia guardia
+// `&& $rip->soggetto !== 'proprietario'` impediva alla cascata di partire: la quota finiva a
+// scoperto e i lavori non venivano ripartiti a nessuno. Rendere registrabile il ruolo senza
+// questa correzione avrebbe rotto proprio chi lo avesse adottato per primo.
 
 test('caso 6: solo proprietario, tabella straordinaria (nuda_proprietario) -> proprietario', function () {
     $sc = createScenarioCascata('nuda_proprietario');
@@ -252,7 +261,7 @@ test('caso 6: solo proprietario, tabella straordinaria (nuda_proprietario) -> pr
     
     expect($quote)->toHaveKey($idProprietario)
         ->and($quote[$idProprietario][$im->immobile->id])->toBe(100000);
-})->skip('nuda_proprietario non ancora in enum (v1.10 Fase 1). Il test 9 copre la stessa cascata con ruoli esistenti — questo diventa il test canonico post-migrazione.');
+})->skip('La beta.43 ha convertito `anagrafica_immobile.tipologia`, non `conto_tabella_ripartizioni.soggetto`: un coefficiente non può ancora PUNTARE al nudo proprietario. Serve la conversione della seconda colonna più la casella nella modale di ripartizione del conto — una capacità nuova del motore spese, non un difetto, e viaggia con la sua interfaccia.');
 
 test('caso 7: nessuna anagrafica risolvibile, tabella inquilino -> scoperto e 0 agli altri', function () {
     $sc = createScenarioCascata('inquilino', 100000); // 1000 EUR

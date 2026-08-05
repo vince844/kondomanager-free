@@ -46,6 +46,12 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     expect(collect(Schema::getTableListing())->sort()->values()->all())
         ->toEqual($tabellePrima);
 })->with([
+    // Aggiunta nella beta.43: era l'unica migrazione del percorso 1.9.1 → 1.10 rimasta fuori
+    // dal dataset. È un `MODIFY` su un ENUM, quindi intrinsecamente rieseguibile — passa senza
+    // toccare niente. Il punto non è che potesse rompersi: è che una migrazione non presidiata
+    // qui dentro smette di essere controllata, e la beta.31 ha già pagato quella distrazione
+    // con tre migrazioni senza guardia.
+    '2026_02_20_093745_update_metodo_distribuzione_in_piani_rate_table',
     '2026_07_10_000010_create_backups_table',
     '2026_07_14_000000_add_type_and_encrypted_to_backups_table',
     '2026_07_21_000000_add_conferma_to_fattura_coperture_table',
@@ -61,4 +67,5 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_07_31_120000_add_piano_rate_id_to_saldi_table',
     '2026_08_03_090000_create_deleghe_f24_tables',
     '2026_08_04_100000_add_data_prima_scadenza_to_piani_rate',
+    '2026_08_05_090000_convert_tipologia_anagrafica_immobile_to_varchar',
 ]);

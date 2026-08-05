@@ -2,6 +2,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
 use App\Models\Condominio;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\Cassa;
@@ -37,7 +38,14 @@ class StoreIncassoRateAction
         $importoTotaleCents     = MoneyHelper::toCents($validated['importo_totale']);
 
         if ($importoTotaleCents !== ($sommaAlgebricaCents + $eccedenzaInizialeCents)) {
-            throw new \RuntimeException('Totale non corrispondente.');
+            // Eccezione dedicata dalla beta.43: prima era un `RuntimeException` generico che
+            // il controller non catturava, e una guardia di dominio finiva addosso
+            // all'amministratore come pagina 500. Vedi la classe per il resto della storia.
+            throw new TotaleIncassoNonCorrispondenteException(
+                $importoTotaleCents,
+                $sommaAlgebricaCents,
+                $eccedenzaInizialeCents
+            );
         }
 
         DB::transaction(function () use (

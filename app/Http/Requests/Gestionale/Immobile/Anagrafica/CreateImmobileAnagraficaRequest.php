@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Traits\ValidatesImmobileAnagraficaPivot;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -37,7 +38,11 @@ class CreateImmobileAnagraficaRequest extends FormRequest
             'anagrafica_id'       => ['required', 'integer', Rule::exists('anagrafiche', 'id')],
             'condominio_id'       => ['required', 'integer', Rule::exists('condomini', 'id')],
             'immobile_id'         => ['required', 'integer', Rule::exists('immobili', 'id')],
-            'tipologia'           => 'required|in:proprietario,inquilino,usufruttuario',
+            // Il vocabolario dei ruoli sta in un posto solo. Prima era ridigitato qui e nella
+            // Request di modifica, e nessuna delle due copie sapeva della colonna: aggiungere
+            // `nuda_proprietario` allo schema senza toccarle avrebbe lasciato il server a
+            // rifiutare un valore che il database accetta.
+            'tipologia'           => ['required', Rule::in(RuoloAnagraficaImmobile::values())],
             'data_inizio'         => 'required|date',
             'data_fine'           => 'sometimes|nullable|date|after_or_equal:data_inizio',
         ];

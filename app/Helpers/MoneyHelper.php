@@ -52,6 +52,85 @@ class MoneyHelper
     }
 
     /**
+     * Spezza un importo in centesimi fra più soggetti in proporzione ai loro pesi, senza
+     * perdere né creare un centesimo.
+     *
+     * **Il problema.** Un `round()` indipendente per ciascuno non somma al totale: cento euro
+     * e un centesimo fra tre quote uguali danno `round(3333,67) = 3334` a testa, cioè 10002
+     * centesimi distribuiti su 10001 disponibili. Un centesimo nato dal nulla, che su un
+     * piano rate diventa una quadratura che non torna — e nel verso opposto un centesimo che
+     * sparisce. Il difetto era in `GenerateSaldiAction` fin dall'inizio ed è la ragione per
+     * cui questa funzione nasce nella beta.43.
+     *
+     * **Il metodo è quello dei resti maggiori.** Si assegna a ognuno la parte intera della
+     * sua quota esatta, poi i centesimi avanzati vanno, uno ciascuno, a chi ha il resto più
+     * grande. È preferito all'alternativa che `CalcoloQuoteService::addebitaDiretto` usava
+     * fino alla beta.43 — «l'ultimo assorbe lo scarto» — per una ragione che si spiega a un
+     * amministratore: lì chi paga l'arrotondamento lo decideva l'ordine con cui il database
+     * restituisce le righe, qui lo decide il calcolo. La differenza è di un centesimo e di
+     * una domanda a cui saper rispondere. Da quella beta i due percorsi chiamano questa.
+     *
+     * **Il segno viaggia a parte.** I saldi possono essere a credito, cioè negativi (la
+     * convenzione del progetto è positivo = debito). Ripartire direttamente un negativo
+     * manderebbe `floor()` dalla parte sbagliata, quindi si lavora sul valore assoluto e il
+     * segno si riapplica alla fine.
+     *
+     * @param  array<int|string, float>  $pesi  [chiave => peso]. Pesi tutti a zero o assenti
+     *                                          → riparto in parti uguali.
+     * @return array<int|string, int>           [chiave => centesimi]. La somma è esattamente
+     *                                          `$totaleCents`.
+     */
+    public static function ripartisciPerQuote(int $totaleCents, array $pesi): array
+    {
+        if ($pesi === []) {
+            return [];
+        }
+
+        $sommaPesi = array_sum($pesi);
+
+        // Senza millesimi non c'è proporzione da rispettare: si divide per teste. È il
+        // comportamento che l'ADR-001 dei saldi iniziali dichiarava e che non era mai stato
+        // scritto — al suo posto un `?: 100` metteva 100 al denominatore, ogni quota usciva
+        // zero e l'importo spariva per intero.
+        if ($sommaPesi <= 0) {
+            $pesi = array_fill_keys(array_keys($pesi), 1.0);
+            $sommaPesi = (float) count($pesi);
+        }
+
+        $segno = $totaleCents < 0 ? -1 : 1;
+        $assoluto = abs($totaleCents);
+
+        $quote = [];
+        $resti = [];
+        $assegnato = 0;
+
+        foreach ($pesi as $chiave => $peso) {
+            $esatto = $assoluto * ((float) $peso) / $sommaPesi;
+            $intero = (int) floor($esatto);
+
+            $quote[$chiave] = $intero;
+            $resti[$chiave] = $esatto - $intero;
+            $assegnato += $intero;
+        }
+
+        // `arsort` conserva le chiavi ed è stabile da PHP 8: a parità di resto vince chi
+        // viene prima, quindi il risultato è deterministico e i test lo possono fissare.
+        arsort($resti);
+
+        $avanzo = $assoluto - $assegnato;
+        foreach (array_keys($resti) as $chiave) {
+            if ($avanzo <= 0) {
+                break;
+            }
+
+            $quote[$chiave]++;
+            $avanzo--;
+        }
+
+        return $segno === 1 ? $quote : array_map(fn (int $c): int => -$c, $quote);
+    }
+
+    /**
      * Un importo spezzato come lo vuole il modello F24: euro da una parte, centesimi
      * dall'altra.
      *

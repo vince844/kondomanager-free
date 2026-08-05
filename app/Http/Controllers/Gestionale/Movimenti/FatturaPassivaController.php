@@ -551,9 +551,19 @@ class FatturaPassivaController extends Controller
         $capienzaRataZeroResidua = 0;
 
         if ($esercizio) {
+            // La provvista della Rata Zero è tutto ciò che i CONDÒMINI devono, nominale o
+            // solidale che sia. Il filtro era `whereNotNull('anagrafica_id')` e faceva
+            // sparire i pregressi intestati all'unità (art. 63), che hanno `anagrafica_id`
+            // a NULL: la copertura risultava più bassa del vero, e il semaforo poteva dire
+            // «manca provvista» a un amministratore che ce l'aveva.
+            //
+            // Il campo che separa davvero le due famiglie di questa tabella è `fornitore_id`,
+            // ed è quello che il resto del codice usa già — `GenerateSaldiAction:28` e
+            // `SaldoEsercizioService`. Qui e nella query gemella dei debiti fornitori era
+            // l'unico posto rimasto a orientarsi su `anagrafica_id`.
             $totaleRataZeroInizialeCents = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $esercizio->id)
-                ->whereNotNull('anagrafica_id')
+                ->whereNull('fornitore_id')
                 ->where('saldo_iniziale', '>', 0)
                 ->sum('saldo_iniziale');
 
@@ -588,9 +598,14 @@ class FatturaPassivaController extends Controller
         // 2. Estraiamo i Debiti verso Fornitori e calcoliamo il loro residuo individuale
         $debitiPatrimoniali = collect();
         if ($esercizio) {
+            // L'errore speculare del precedente, e il più visibile dei due: `anagrafica_id`
+            // nullo con importo negativo pescava anche i **crediti solidali**, cioè soldi che
+            // il condominio deve a un condòmino, elencandoli fra i debiti verso le imprese —
+            // con tanto di riga selezionabile per coprirci sopra una fattura. Un debito verso
+            // fornitore si riconosce dal `fornitore_id`, non dall'assenza di un'anagrafica.
             $debitiPatrimoniali = Saldo::where('condominio_id', $condominio->id)
                 ->where('esercizio_id', $esercizio->id)
-                ->whereNull('anagrafica_id')
+                ->whereNotNull('fornitore_id')
                 ->where('saldo_iniziale', '<', 0)
                 ->get()
                 ->map(function ($saldo) {

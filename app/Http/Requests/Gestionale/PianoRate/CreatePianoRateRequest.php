@@ -74,11 +74,77 @@ class CreatePianoRateRequest extends FormRequest
             'capitoli_config.*.note' => 'nullable|string|max:255',
             
             // Configurazione personalizzata dei saldi (Riparto manuale Art. 63)
-            'saldi_config'                             => ['nullable', 'array'],
+            'saldi_config'                             => ['nullable', 'array', $this->ripartoManualeQuadra()],
             'saldi_config.*.saldo_id'                  => ['required', 'exists:saldi,id'],
             'saldi_config.*.ripartizioni'              => ['required', 'array'],
             'saldi_config.*.ripartizioni.*.anagrafica_id' => ['required', 'exists:anagrafiche,id'],
             'saldi_config.*.ripartizioni.*.importo'    => ['required', 'string'],
         ];
+    }
+
+    /**
+     * Il riparto manuale di un saldo solidale deve sommare **esattamente** al saldo.
+     *
+     * Non è pignoleria contabile. `piano_rate_id` viene scritto sull'**intero** saldo quando il
+     * piano lo assorbe: la parte non distribuita resta quindi bloccata e non addebitata a
+     * nessuno, e nessun avviso la nomina più. È il quarto modo in cui un pregresso poteva
+     * sparire in silenzio, dopo i tre chiusi da questa stessa beta.
+     *
+     * L'avviso c'era già — `PianiRateNew.vue:1303` colora di giallo la somma che non combacia —
+     * ma non legava, e un avviso che si può ignorare non è una guardia. Il controllo sta qui e
+     * non nell'azione di generazione perché il riparto manuale entra **solo** da questo modulo,
+     * alla creazione del piano, ed è il momento in cui l'amministratore ha ancora i suoi numeri
+     * davanti: rifiutarlo alla generazione, giorni dopo, sarebbe un rimprovero fuori tempo.
+     *
+     * Il confronto è in **valore assoluto**: la casella del form vieta il segno meno e la
+     * modale mostra il totale da distribuire senza segno, quindi su un saldo a credito
+     * l'amministratore digita numeri positivi. Il verso lo rimette il server, in
+     * `GenerateSaldiAction`.
+     */
+    private function ripartoManualeQuadra(): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail): void {
+            if (! is_array($value)) {
+                return;
+            }
+
+            foreach ($value as $config) {
+                if (empty($config['ripartizioni']) || ! is_array($config['ripartizioni'])) {
+                    continue;
+                }
+
+                // Un `saldo_id` inesistente lo segnala già `exists`: qui non si raddoppia
+                // l'errore, si tace.
+                $saldo = \App\Models\Saldo::find($config['saldo_id'] ?? null);
+                if (! $saldo) {
+                    continue;
+                }
+
+                $distribuito = 0;
+                foreach ($config['ripartizioni'] as $riga) {
+                    $distribuito += abs(\App\Helpers\MoneyHelper::toCents($riga['importo'] ?? 0));
+                }
+
+                $atteso = abs((int) $saldo->saldo_iniziale);
+
+                // Confronto esatto, in centesimi interi. Una tolleranza qui sarebbe un
+                // centesimo che si perde a ogni piano, cioè la cosa che nessuno ritrova più.
+                if ($distribuito === $atteso) {
+                    continue;
+                }
+
+                $scarto = $atteso - $distribuito;
+
+                $fail(sprintf(
+                    'Il riparto manuale del pregresso da %s non quadra: hai distribuito %s, '
+                    . '%s %s. La differenza resterebbe agganciata al saldo senza essere '
+                    . 'addebitata a nessuno, quindi la registrazione si ferma qui.',
+                    \App\Helpers\MoneyHelper::format($atteso),
+                    \App\Helpers\MoneyHelper::format($distribuito),
+                    $scarto > 0 ? 'mancano' : 'ne hai distribuiti in più',
+                    \App\Helpers\MoneyHelper::format(abs($scarto))
+                ));
+            }
+        };
     }
 }

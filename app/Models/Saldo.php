@@ -27,7 +27,10 @@ class Saldo extends Model
         'immobile_id',    // L'unità immobiliare specifica
         'gestione_id',    // La gestione a cui appartiene il debito/credito (Novità v1.9)
         'piano_rate_id',  // Il piano rate che ha assorbito questo saldo (chi ha chiuso il lucchetto)
-        'saldo_iniziale', // Debito (-) o Credito (+) pregresso in centesimi
+        // Positivo = DEBITO del condòmino, negativo = CREDITO. È la convenzione di tutto il
+        // progetto — vedi `docs/architettura_saldi_iniziali.md`. Il commento diceva il
+        // contrario, e stava proprio sulla riga che chiunque legge per capire il segno.
+        'saldo_iniziale', // Debito (+) o Credito (-) pregresso in centesimi
         'saldo_finale',   // Saldo risultante a fine esercizio
         'origine',        // 'manuale', 'importato', 'automatico'
         'is_applicato',   // Se true, il saldo è bloccato perché già inserito in un piano rate (Novità v1.9)
@@ -122,19 +125,10 @@ class Saldo extends Model
 
     // --- HELPER METODS ---
 
-    /**
-     * Determina se il saldo rappresenta un debito per il condòmino.
-     */
-    public function isDebito(): bool
-    {
-        return $this->saldo_iniziale < 0;
-    }
-
-    /**
-     * Determina se il saldo rappresenta un credito per il condòmino.
-     */
-    public function isCredito(): bool
-    {
-        return $this->saldo_iniziale > 0;
-    }
+    // `isDebito()` e `isCredito()` sono stati RIMOSSI nella beta.43. Erano invertiti rispetto
+    // alla convenzione del progetto — `isDebito()` rispondeva `saldo_iniziale < 0` — e non
+    // avevano un solo chiamante in tutto il codice. Non sono stati corretti ma tolti: un
+    // metodo con quel nome è esattamente ciò che qualcuno chiamerebbe in buona fede scrivendo
+    // logica sui segni, e avrebbe ottenuto il verso opposto senza alcun modo di accorgersene.
+    // Chi serve, scriva il confronto: è una riga, e si legge.
 }

@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Enums\RuoloAnagraficaImmobile;
+use App\Helpers\MoneyHelper;
 use App\Models\Gestione;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
@@ -451,46 +453,50 @@ class CalcoloQuoteService
      */
     private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali): void
     {
-        $proprietari = DB::table('anagrafica_immobile')
+        $occupanti = DB::table('anagrafica_immobile')
             ->where('immobile_id', $immobileId)
             ->where('attivo', true)
-            ->where('tipologia', 'proprietario')
             ->get();
 
-        if ($proprietari->isEmpty()) {
-            $proprietari = DB::table('anagrafica_immobile')
-                ->where('immobile_id', $immobileId)
-                ->where('attivo', true)
-                ->get();
+        // Il ripiego di prima era **piatto**: non trovando un proprietario prendeva qualunque
+        // occupante attivo, quindi anche l'inquilino — che verso il condominio non è debitore.
+        // È lo stesso difetto del riparto dei saldi solidali, un grado più mite perché qui
+        // serve che il proprietario non sia censito; la regola ora è una sola per entrambi.
+        // `titolariDiDirittoReale()` è già in ordine di preferenza: proprietario, nudo
+        // proprietario, usufruttuario.
+        $destinatari = collect();
+        foreach (RuoloAnagraficaImmobile::titolariDiDirittoReale() as $ruolo) {
+            $destinatari = $occupanti->where('tipologia', $ruolo->value)->values();
+
+            if ($destinatari->isNotEmpty()) {
+                break;
+            }
         }
 
-        if ($proprietari->isEmpty()) {
-            Log::warning("addebitaDiretto: nessun occupante attivo per immobile_id={$immobileId}. Importo {$importoCents} centesimi non assegnato.");
+        if ($destinatari->isEmpty()) {
+            Log::warning("addebitaDiretto: nessun titolare di diritto reale attivo per immobile_id={$immobileId}. Importo {$importoCents} centesimi non assegnato.", [
+                'ruoli_attivi' => $occupanti->pluck('tipologia')->unique()->values()->all(),
+            ]);
             return;
         }
 
-        $totaleQuoteMillesimali = (float) $proprietari->sum('quota');
-        if ($totaleQuoteMillesimali <= 0) $totaleQuoteMillesimali = 1.0;
+        // Stessa primitiva del riparto dei saldi: resti maggiori, somma esatta. Prima qui
+        // l'arrotondamento lo assorbiva «l'ultimo», cioè chi capitava ultimo nell'ordine di
+        // ritorno del database — una regola che non si sa spiegare a chi la paga.
+        $quote = MoneyHelper::ripartisciPerQuote(
+            $importoCents,
+            $destinatari->pluck('quota', 'anagrafica_id')->map(fn ($q): float => (float) $q)->all()
+        );
 
-        $assegnato = 0;
-        $count     = $proprietari->count();
-        $i         = 0;
-
-        foreach ($proprietari as $prop) {
-            $i++;
-            if ($i === $count) {
-                $quotaDaPagare = $importoCents - $assegnato;
-            } else {
-                $quotaDaPagare = (int) round($importoCents * ($prop->quota / $totaleQuoteMillesimali));
-                $assegnato += $quotaDaPagare;
-            }
+        foreach ($destinatari as $destinatario) {
+            $quotaDaPagare = $quote[$destinatario->anagrafica_id] ?? 0;
 
             if ($quotaDaPagare === 0) continue;
 
-            if (!isset($totali[$prop->anagrafica_id])) $totali[$prop->anagrafica_id] = [];
-            if (!isset($totali[$prop->anagrafica_id][$immobileId])) $totali[$prop->anagrafica_id][$immobileId] = 0;
+            if (!isset($totali[$destinatario->anagrafica_id])) $totali[$destinatario->anagrafica_id] = [];
+            if (!isset($totali[$destinatario->anagrafica_id][$immobileId])) $totali[$destinatario->anagrafica_id][$immobileId] = 0;
 
-            $totali[$prop->anagrafica_id][$immobileId] += $quotaDaPagare;
+            $totali[$destinatario->anagrafica_id][$immobileId] += $quotaDaPagare;
         }
     }
 
@@ -701,26 +707,23 @@ class CalcoloQuoteService
                         ->where('pivot.attivo', true)
                         ->where('pivot.tipologia', $rip->soggetto);
 
-                    // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura)
-                    if ($anagrafiche->isEmpty() && $rip->soggetto !== 'proprietario') {
-                        $catenaGodimento = ['inquilino', 'usufruttuario', 'proprietario'];
-                        $catenaCapitale  = ['nuda_proprietario', 'proprietario'];
-
-                        $catena = in_array($rip->soggetto, $catenaCapitale, true)
-                            ? $catenaCapitale
-                            : $catenaGodimento;
-
-                        $start     = array_search($rip->soggetto, $catena, true);
-                        $candidati = $start === false ? $catena : array_slice($catena, $start + 1);
+                    // Rule Engine Livello 3: Risoluzione a cascata del ruolo (catena per natura).
+                    // La catena vive in RuoloAnagraficaImmobile::catenaRiparto() — unico posto
+                    // in cui è scritta — e include il ruolo richiesto in testa, quindi qui si
+                    // parte dal secondo. Il vecchio `&& $rip->soggetto !== 'proprietario'` è
+                    // caduto con la beta.43: da quando `nuda_proprietario` è registrabile,
+                    // anche un coefficiente sul proprietario ha un ripiego da cercare.
+                    if ($anagrafiche->isEmpty()) {
+                        $candidati = array_slice(RuoloAnagraficaImmobile::catenaRiparto($rip->soggetto), 1);
 
                         foreach ($candidati as $ruoloFallback) {
                             $anagrafiche = $immobile->anagrafiche
                                 ->where('pivot.attivo', true)
-                                ->where('pivot.tipologia', $ruoloFallback);
+                                ->where('pivot.tipologia', $ruoloFallback->value);
 
                             if ($anagrafiche->isNotEmpty()) {
                                 Log::debug("distribuisciSuTabelle: ruolo '{$rip->soggetto}' assente su immobile "
-                                    . "ID={$immobile->id}, risolto a cascata su '{$ruoloFallback}'.");
+                                    . "ID={$immobile->id}, risolto a cascata su '{$ruoloFallback->value}'.");
                                 break;
                             }
                         }

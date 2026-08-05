@@ -7,6 +7,76 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.43] - Metà del Debito all'Inquilino
+
+Un pregresso di **1.000,00 €** lasciato da un'unità immobiliare. Il proprietario ne pagava **500,00**, e gli altri 500,00 finivano addosso all'**inquilino** — che verso il condominio non deve niente, perché il suo rapporto è con il locatore.
+
+Il danno era doppio, e la seconda metà è quella che si nota meno: la quota del proprietario **si diluiva**, perché il conto divideva il debito anche per i millesimi di chi non doveva pagare.
+
+Nessuno l'aveva segnalato. È emerso rileggendo il codice contro il documento che lo descriveva — e quel documento, scritto quando la funzione è nata, diceva già la cosa giusta: *cerca i proprietari, ripartisci al centesimo, blocca se non ce ne sono*. Nessuna delle tre esisteva davvero.
+
+**⚠ MIGRAZIONE DATABASE**: la colonna del ruolo sulle anagrafiche di un'unità passa da elenco chiuso a testo, per poter contenere un ruolo in più. **Nessun dato esistente cambia**, e chi non usa il ruolo nuovo non si accorge di questa versione.
+
+### Il pregresso dell'unità cade su chi lo deve
+
+**L'inquilino esce dal riparto.** Verso il condominio l'obbligato è chi ha un diritto reale sull'unità: proprietario, nudo proprietario, usufruttuario. Quello che l'inquilino deve al proprietario è un'altra partita, che non passa dal condominio.
+
+**Fra i titolari decide la natura della gestione.** Il pregresso di un'**ordinaria** è dell'usufruttuario (art. 1004 c.c.); quello di una **straordinaria** resta del proprietario (art. 1005 c.c.). Su un'unità in piena proprietà — cioè quasi sempre — non cambia niente rispetto a prima.
+
+**È un default, non un obbligo.** Verso il condominio usufruttuario e nudo proprietario rispondono in solido (art. 67 disp. att. c.c.): quella qui sopra è la ripartizione fra loro, e le parti possono avere pattuito altro. Per quel caso c'è il riparto manuale, che ora si sceglie **sapendo cosa si sta cambiando**.
+
+**C'è un ruolo nuovo: «Nudo proprietario».** Prima l'unico modo di registrare una nuda proprietà era chiamarla «Proprietario», e il sistema non poteva distinguere chi paga l'ordinaria da chi paga la straordinaria.
+
+### Prima di generare vedi chi pagherà
+
+Nella creazione del piano, il riparto automatico di un saldo dell'unità ora **si vede**: a carico di quale ruolo, quali persone, con che quota e per quanto. Prima era invisibile e si scopriva a piano generato.
+
+Se su quell'unità non risulta attivo nessun proprietario, il riquadro lo dice **lì**, quando si è ancora in tempo per censirlo — invece di lasciar sparire il pregresso in silenzio.
+
+### Se hai già emesso: come controllare
+
+La correzione vale per i piani nuovi. Le quote già emesse restano quelle che sono, perché sono un documento contabile e non un calcolo da rifare.
+
+C'è un comando che dice **se e dove** sei toccato, senza modificare niente:
+
+```
+php artisan kondomanager:verifica-saldi-solidali
+```
+
+Elenca piano, unità, persona, ruolo attuale e importo di ogni addebito che oggi verrebbe fatto diversamente. Per correggere un piano: annulla le emissioni, ricalcola, riemetti.
+
+### Corretto
+
+- **Un credito dell'unità ripartito a mano diventava un debito.** Dividendo 600,00 € di credito fra due comproprietari uscivano **due debiti da 300,00 €**: non un importo storto, il verso opposto. La casella del riparto vieta il segno meno — giustamente — ma nessuno lo rimetteva: ora lo riapplica il sistema, dal saldo di partenza.
+
+- **Registrare un incasso usando un credito poteva rispondere con una pagina di errore.** Il credito veniva contato due volte nel calcolo dell'anticipo, il controllo di quadratura rifiutava, e l'amministratore perdeva la distribuzione appena fatta a mano. Stesso effetto quando il credito disponibile superava il debito: comparivano anticipi che nessuno aveva versato.
+
+- **Il riquadro delle fatture pregresse mescolava due cose diverse.** I debiti dell'unità sparivano dalla provvista disponibile — che poteva quindi risultare a zero mentre c'era — e i crediti dell'unità comparivano fra i **debiti verso i fornitori**, cioè soldi dovuti a un condòmino presentati come dovuti a un'impresa.
+
+- **Il più e il meno stavano su poli opposti in due schermate dello stesso flusso.** Nella creazione del piano il `+` marcava il credito, nei Saldi il debito. Ora il più sta sul debito, sempre.
+
+- **Un debito verso un fornitore compariva nella creazione del piano** come saldo dell'unità, intestato a «Unità Sconosciuta», e si poteva configurargli un riparto che non sarebbe mai stato applicato.
+
+- **Non si riusciva a eliminare una gestione** che contenesse un debito verso fornitore: il messaggio rimandava alla sezione «Saldi», dove quei debiti non compaiono. Ora dice dove stanno davvero.
+
+- **Tre modi diversi di far sparire un pregresso in silenzio**, tutti chiusi: nessun proprietario sull'unità, millesimi tutti a zero, e un metodo di distribuzione fuori dai tre previsti. In tutti e tre il saldo svaniva e il piano si chiudeva lo stesso, dichiarando di aver assorbito un importo che non aveva addebitato a nessuno.
+
+### Cambia comportamento — leggere prima di aggiornare
+
+- **Un riparto manuale che non somma al saldo ora viene rifiutato.** Prima l'avviso c'era ma si poteva ignorare, e la parte non distribuita restava agganciata al saldo senza essere chiesta a nessuno. Il messaggio dice di quanto è lo scarto.
+
+- **L'incasso che non quadra torna al modulo con l'errore**, con i dati ancora compilati, invece della pagina di errore del server. Il controllo è lo stesso di prima: cambia come si presenta.
+
+### Sotto il cofano
+
+- Il vocabolario dei ruoli vive ora in un posto solo, `App\Enums\RuoloAnagraficaImmobile`, e con esso le catene di risoluzione: le usano il riparto dei saldi, il motore delle spese e gli addebiti diretti, che prima decidevano ognuno per conto proprio con tre risposte diverse.
+- La colonna del ruolo passa da `ENUM` a `VARCHAR(50)` — il principio 10 della roadmap, dichiarato per questa colonna e mai applicato. Il ruolo successivo non costerà una migrazione, e lo schema dei test smette di essere più severo di quello di produzione.
+- La migrazione ha aperto un buco che si è chiuso nella stessa beta: un coefficiente straordinario intestato al «proprietario», su un'unità con nuda proprietà e usufrutto, non trovava nessuno e mandava la quota a scoperto. Le due facce della proprietà ora si fanno da terminale a vicenda.
+- La ripartizione al centesimo ha una primitiva sola, `MoneyHelper::ripartisciPerQuote()`, con il metodo dei resti maggiori: chi paga l'arrotondamento lo decide il calcolo, non l'ordine con cui il database restituisce le righe.
+- Cinquantadue test nuovi — quarantaquattro in PHP e otto in JavaScript — più due che aspettavano questa migrazione da un ciclo e sono tornati verdi. Fra i nuovi, il primo test dell'endpoint che alimenta la modale dei saldi — che non ne aveva, e in cui un difetto introdotto da questa stessa beta si presentava come «Nessun saldo pregresso per questa gestione», cioè il modo peggiore di fallire.
+
+---
+
 ## [1.10.0-beta.42] - Le Rate Scadono Quando Dici Tu
 
 Le parole di un amministratore, che descrivono il problema meglio di qualunque riformulazione: *«nel Piano rate come posso settare che la prima rata è in una data specifica? Di default mi prende come data l'inizio della contabilità»*. Non stava chiedendo una comodità: stava descrivendo un comportamento che subiva e di cui chiedeva la ragione. In tre l'hanno chiesto.

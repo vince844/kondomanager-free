@@ -63,10 +63,13 @@ const pageGuides = computed(() => [
   }
 ]);
 
+// Vedi la nota gemella in `AnagraficheNew.vue`: l'elenco è quello di
+// `App\Enums\RuoloAnagraficaImmobile`, e «Nudo proprietario» esiste dalla beta.43.
 const tipologiaList = [
   { label: 'Proprietario', id: 'proprietario' },
-  { label: "Inquilino", id: 'inquilino' },
-  { label: "Usufruttuario", id: 'usufruttuario' }
+  { label: 'Nudo proprietario', id: 'nuda_proprietario' },
+  { label: 'Usufruttuario', id: 'usufruttuario' },
+  { label: 'Inquilino', id: 'inquilino' }
 ];
 
 const form = useForm({

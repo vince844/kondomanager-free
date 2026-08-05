@@ -3,6 +3,7 @@
 namespace App\Actions\PianoRate;
 
 use App\Enums\OrigineQuota;
+use App\Exceptions\Gestionale\MetodoDistribuzioneSconosciutoException;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
@@ -175,11 +176,28 @@ class GenerateRateQuotesAction
                         $metaStoricoSaldo = null;
 
                         if ($datiSaldo && $datiSaldo['importo'] != 0) {
-                            if ($pianoRate->metodo_distribuzione === 'prima_rata' && $numeroRata === 1) {
-                                $quotaSaldoRata = $datiSaldo['importo'];
-                            } elseif ($pianoRate->metodo_distribuzione === 'tutte_rate') {
-                                $quotaSaldoRata = $calcolaFettina($datiSaldo['importo'], $numeroRate, $numeroRata);
-                            }
+                            // Era un `if/elseif` **senza else**: con un valore fuori
+                            // vocabolario nessuno dei due rami scattava, la quota restava a
+                            // zero su OGNI rata e il pregresso spariva senza eccezione e senza
+                            // log — mentre il lucchetto si chiudeva lo stesso e
+                            // `gestioni.nota_saldo` registrava un importo «processato» che non
+                            // esisteva in nessuna quota.
+                            //
+                            // Il `match` è esaustivo e lo zero di `rata_zero` è **dichiarato**:
+                            // quel pregresso vive nella Rata 0, creata prima di questo ciclo
+                            // (vedi `:51`), quindi qui non deve toccare le rate ordinarie. Uno
+                            // zero scritto è una decisione; uno zero per caduta è un difetto in
+                            // attesa.
+                            $quotaSaldoRata = match ($pianoRate->metodo_distribuzione) {
+                                'prima_rata' => $numeroRata === 1 ? $datiSaldo['importo'] : 0,
+                                'tutte_rate' => $calcolaFettina($datiSaldo['importo'], $numeroRate, $numeroRata),
+                                'rata_zero' => 0,
+                                default => throw new MetodoDistribuzioneSconosciutoException(
+                                    $pianoRate->metodo_distribuzione,
+                                    $pianoRate->id
+                                ),
+                            };
+
                             $metaStoricoSaldo = $datiSaldo['meta_storico'];
                         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Gestionale\Immobile\Anagrafica;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Traits\ValidatesImmobileAnagraficaPivot;
 use Carbon\Carbon;
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,7 +30,8 @@ class UpdateImmobileAnagraficaRequest extends FormRequest
             'quota'           => 'required|numeric', 
             'note'            => 'sometimes|nullable|string',
             'anagrafica_id'   => ['required','integer', Rule::exists('anagrafiche', 'id')],
-            'tipologia'       => 'required|in:proprietario,inquilino,usufruttuario',
+            // Vedi la nota gemella in `CreateImmobileAnagraficaRequest`.
+            'tipologia'       => ['required', Rule::in(RuoloAnagraficaImmobile::values())],
             'data_inizio'     => 'required|date',
             'data_fine'       => 'sometimes|nullable|date',
         ];

@@ -20,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays, TrendingDown, BookOpen } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, Users, CalendarDays, TrendingDown, BookOpen } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -59,6 +59,17 @@ interface SaldoDettaglio {
   immobile_id?: number;
   ripartizione_mode: 'automatica' | 'manuale';
   ripartizioni_custom: { anagrafica_id: number; importo: string | number }[];
+  /**
+   * Chi pagherebbe cosa in automatico, calcolato dal server con le stesse funzioni del
+   * generatore. `null` sui saldi nominali, che un destinatario ce l'hanno già.
+   */
+  riparto_previsto: {
+    risolvibile: boolean;
+    ruolo: string | null;
+    ruolo_label: string | null;
+    motivo: string | null;
+    quote: { anagrafica_id: number; nome: string; quota: number; importo: number }[];
+  } | null;
 }
 
 const props = defineProps<{
@@ -761,8 +772,10 @@ const submit = () => {
                         {{ saldoGestioneCorrente.countSolidali }} saldi solidali (Art. 63) —
                       </template>
                       Totale netto:
+                      <!-- Il più sta sul DEBITO, come in SaldiDetailPanel: positivo = debito è
+                           la convenzione dei dati, e questa pagina la stampava al rovescio. -->
                       <strong :class="saldoGestioneCorrente.totale > 0 ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldoGestioneCorrente.totale > 0 ? '' : '+ ' }}{{ euro(Math.abs(saldoGestioneCorrente.totale) / 100) }}
+                        {{ euro(saldoGestioneCorrente.totale / 100, { forcePlus: true }) }}
                       </strong>
                     </p>
                   </div>
@@ -848,7 +861,7 @@ const submit = () => {
                       </li>
                       <li class="flex items-start gap-2">
                         <div class="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0"></div>
-                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> usando i coefficienti di quota di proprietà. Usa il pulsante qui sotto se vuoi forzare un riparto manuale per le anagrafiche.</span>
+                        <span><strong>Saldi Solidali:</strong> Legati all'immobile, il sistema li ripartirà <strong>in automatico</strong> fra chi ha un diritto reale sull'unità — mai l'inquilino, che verso il condominio non è debitore. Apri il pulsante qui sotto per <strong>vedere chi pagherà</strong> prima di generare, o per forzare un riparto manuale.</span>
                       </li>
                     </ul>
                   </div>
@@ -1249,7 +1262,7 @@ const submit = () => {
                 <div class="flex items-center gap-1.5 shrink-0">
                   <span class="text-xs text-slate-400 font-semibold">Totale</span>
                   <span class="font-bold text-sm px-2.5 py-1 rounded-lg" :class="gruppo.totale_soggetto > 0 ? 'text-red-700 bg-red-50 border-red-100' : 'text-emerald-700 bg-emerald-50 border-emerald-100'">
-                    {{ gruppo.totale_soggetto > 0 ? '' : '+ ' }}{{ euro(Math.abs(gruppo.totale_soggetto) / 100) }}
+                    {{ euro(gruppo.totale_soggetto / 100, { forcePlus: true }) }}
                   </span>
                 </div>
               </div>
@@ -1268,7 +1281,7 @@ const submit = () => {
                     </div>
                     <div class="text-right shrink-0">
                       <div class="font-bold text-base" :class="saldo.is_debito ? 'text-red-700' : 'text-emerald-700'">
-                        {{ saldo.is_debito ? '' : '+ ' }}{{ euro(Math.abs(saldo.importo) / 100) }}
+                        {{ euro(saldo.importo / 100, { forcePlus: true }) }}
                       </div>
                     </div>
                   </div>
@@ -1281,6 +1294,43 @@ const submit = () => {
                     <div class="flex items-center justify-between gap-3 flex-wrap">
                       <span class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5"><Building2 class="w-3.5 h-3.5 text-indigo-400" /> Modalità riparto subentro:</span>
                       <v-select :options="[{ label: 'Auto — Pro-quota proprietari', value: 'automatica' }, { label: 'Manuale — Split', value: 'manuale' }]" v-model="saldo.ripartizione_mode" :reduce="(o: any) => o.value" :clearable="false" class="w-64 text-xs bg-white" />
+                    </div>
+
+                    <!-- Anteprima del riparto automatico. Prima qui non c'era niente: in
+                         automatico l'amministratore scopriva chi era stato addebitato solo
+                         DOPO aver generato il piano. I numeri arrivano dal server, calcolati
+                         con le stesse funzioni del generatore — non ricalcolati qui. -->
+                    <div v-if="saldo.ripartizione_mode === 'automatica' && saldo.riparto_previsto" class="rounded-xl border p-4 space-y-2"
+                         :class="saldo.riparto_previsto.risolvibile ? 'bg-slate-50/60 border-slate-200' : 'bg-amber-50 border-amber-200'">
+
+                      <template v-if="saldo.riparto_previsto.risolvibile">
+                        <p class="text-[11px] text-slate-500 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                          <Users class="w-3.5 h-3.5 text-slate-400" />
+                          A carico di: {{ saldo.riparto_previsto.ruolo_label }}
+                        </p>
+                        <div v-for="q in saldo.riparto_previsto.quote" :key="q.anagrafica_id"
+                             class="flex items-center justify-between gap-3 text-xs bg-white border border-slate-100 rounded-lg px-3 py-1.5">
+                          <span class="font-semibold text-slate-700 truncate">{{ q.nome }}</span>
+                          <span class="flex items-center gap-3 shrink-0">
+                            <span class="text-[10px] text-slate-400 font-semibold">quota {{ q.quota }}</span>
+                            <span class="font-bold" :class="q.importo > 0 ? 'text-red-700' : 'text-emerald-700'">
+                              {{ euro(q.importo / 100, { forcePlus: true }) }}
+                            </span>
+                          </span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 leading-snug pt-1">
+                          Il criterio è la natura della gestione: l'ordinaria è dell'usufruttuario (art. 1004 c.c.),
+                          la straordinaria del proprietario (art. 1005). L'inquilino non è debitore verso il condominio.
+                          Se fra le parti vale un accordo diverso, passa al riparto manuale.
+                        </p>
+                      </template>
+
+                      <template v-else>
+                        <p class="text-[11px] text-amber-800 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                          <AlertTriangle class="w-3.5 h-3.5" /> Questo pregresso non ha su chi cadere
+                        </p>
+                        <p class="text-[11px] text-amber-700 leading-snug">{{ saldo.riparto_previsto.motivo }}</p>
+                      </template>
                     </div>
 
                     <div v-if="saldo.ripartizione_mode === 'manuale'" class="bg-indigo-50/40 border-2 border-dashed border-indigo-200 rounded-xl p-4 space-y-3">

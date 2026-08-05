@@ -13,13 +13,27 @@ class PianoRateQuoteService
      */
     private function determinaSePianoUsaSaldi(PianoRate $pianoRate): bool
     {
+        // C'era un `take(50)` **senza `orderBy`**, e non era una questione di prestazioni: le
+        // 50 righe erano quelle che il database restituiva per caso. Su un piano con più di
+        // cinquanta quote la risposta dipendeva da quali capitavano nel campione — un piano
+        // che usa i saldi poteva rispondere «no» perché nessuna delle righe pescate ne
+        // conteneva uno. Una domanda a sì/no non si risponde a campione.
+        //
+        // Il cursore legge in streaming e il `return true` esce alla prima riga utile, che è
+        // il caso frequente; quando la risposta è «no» il costo è quello di saperlo davvero.
+        // Non è un `exists()` in SQL perché la condizione vive dentro una colonna JSON con
+        // **due forme storiche** — `importi.saldo_usato` e `audit.saldo_usato` — e una query
+        // per percorso JSON si comporterebbe in modo diverso fra MySQL e lo SQLite dei test:
+        // esattamente il tipo di divergenza fra schema di prova e schema reale che la beta.34
+        // ha pagato.
         $quoteCampione = $pianoRate->rate()
             ->join('rate_quote', 'rate.id', '=', 'rate_quote.rata_id')
             ->whereNotNull('rate_quote.regole_calcolo')
-            ->take(50) 
-            ->pluck('rate_quote.regole_calcolo');
+            ->select('rate_quote.regole_calcolo')
+            ->cursor();
 
-        foreach ($quoteCampione as $json) {
+        foreach ($quoteCampione as $riga) {
+            $json = $riga->regole_calcolo;
             // Qui json_decode serve ancora perché pluck() su query builder restituisce stringhe grezze
             $snapshot = is_array($json) ? $json : json_decode($json, true);
             if (isset($snapshot['importi']['saldo_usato']) && $snapshot['importi']['saldo_usato'] != 0) {

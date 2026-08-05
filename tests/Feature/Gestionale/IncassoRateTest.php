@@ -655,8 +655,13 @@ class IncassoRateTest extends TestCase
             ]
         ];
     
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Totale non corrispondente');
+        // beta.43: il tipo era `RuntimeException` con il messaggio «Totale non corrispondente»,
+        // che il controller non catturava — la guardia arrivava all'amministratore come pagina
+        // 500. Ora è un'eccezione di dominio che dice anche **di quanto** è lo scarto, e
+        // `IncassoTotaleNonQuadraTest` verifica che dall'altra parte diventi un errore di
+        // validazione. L'intento di questo test non cambia: il totale storto non passa.
+        $this->expectException(\App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException::class);
+        $this->expectExceptionMessage('non quadra');
 
         app(StoreIncassoRateAction::class)->execute($payload, $data->condominio, $data->esercizio);
     }
