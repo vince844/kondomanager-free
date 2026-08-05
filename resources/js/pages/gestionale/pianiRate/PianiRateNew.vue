@@ -7,6 +7,7 @@ import axios from 'axios';
 import vSelect from 'vue-select';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
+import PianoRateGuide from '@/components/guides/PianoRateGuide.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,7 +20,7 @@ import { Separator } from '@/components/ui/separator';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import MoneyInput from '@/components/MoneyInput.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
-import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays, TrendingDown } from 'lucide-vue-next';
+import { Plus, LoaderCircle, List, AlertTriangle, CheckCircle, Wallet, Ban, Info, Trash2, Building2, User, CalendarDays, TrendingDown, BookOpen } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -85,6 +86,9 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Piani Rate', href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id }) },
   { title: 'Nuovo Piano Rate', href: '#' },
 ]);
+
+/** Il pannello laterale della guida: chiuso finché non lo si chiede. */
+const mostraGuida = ref(false);
 
 const pageGuides = computed(() => [
   {
@@ -557,7 +561,20 @@ const submit = () => {
         :breadcrumbs="breadcrumbs"
         :back-url="generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: props.condominio.id, esercizio: props.esercizio.id })"
         back-text="Torna all'elenco"
-      />
+      >
+        <template #actions>
+          <!--
+            Le tre card in cima dicono DOVE sono le cose; la guida dice quale scegliere e
+            perché — il tipo di piano, i tre metodi per i saldi, il calendario. È la pagina
+            con più combinazioni del gestionale, e nessuna di quelle scelte è ovvia.
+          -->
+          <Button variant="outline" class="h-9 gap-2 font-medium shadow-sm" @click="mostraGuida = true">
+            <BookOpen class="h-4 w-4" /> Guida
+          </Button>
+        </template>
+      </PageHeaderGuide>
+
+      <PianoRateGuide v-model:open="mostraGuida" />
 
       <form id="pianoRateForm" @submit.prevent="submit" class="space-y-6">
 
