@@ -32,12 +32,17 @@ const props = defineProps<{
     credito_disponibile: string;
     credito_disponibile_raw: number;
     credito_per_gestione: Array<{ gestione_id: number | null; gestione_nome: string; importo_cents: number; importo_formatted: string }>;
+    /** Quanto di quel credito è davvero spendibile sulle rate aperte, e su quale. */
+    compensabile: string;
+    compensabile_raw: number;
+    compensabile_frase: string;
+    compensabile_rata_id: number | null;
   };
 }>();
 
 const { euro } = useCurrencyFormatter({ fromCents: false }); 
 const { toItalian } = useDateConverter();
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 const { urlPrecedente } = useUrlPrecedente();
 
 const goBack = () => {
@@ -72,6 +77,21 @@ const backUrlString = computed(() => {
         condominio: props.condominio.id, 
         esercizio: props.esercizio.id 
     });
+});
+
+/**
+ * Il link «Compensa»: porta l'anagrafica e la rata che il credito copre, così la pagina di
+ * incasso si apre già puntata. Non porta `intent_usa_credito`, che dichiarerebbe una richiesta
+ * del condòmino: qui a muoversi è l'amministratore.
+ */
+const urlCompensazione = computed(() => {
+    const params = new URLSearchParams({
+        prefill_anagrafica_id: String(props.anagrafica.id),
+    });
+    if (props.stats.compensabile_rata_id) {
+        params.set('prefill_rata_id', String(props.stats.compensabile_rata_id));
+    }
+    return `${route(generateRoute('gestionale.movimenti-rate.create'), { condominio: props.condominio.id })}?${params}`;
 });
 
 const breadcrumbs = computed(() => [
@@ -269,9 +289,18 @@ const getImportoStyle = (riga: any) => {
                                 </Tooltip>
                             </TooltipProvider>
                         </div>
-                        <p class="text-[10px] text-muted-foreground mt-1">
-                            {{ stats.credito_per_gestione.length > 0 ? stats.credito_per_gestione[0].gestione_nome + (stats.credito_per_gestione.length > 1 ? ' e altre' : '') : 'Nessun credito attivo' }}
+                        <!-- Non basta dire quanto credito c'è: senza sapere quale rata copre,
+                             l'amministratore deve andarselo a cercare in un elenco. Lo spaccato
+                             per gestione resta nel tooltip qui sopra, dove serve a chi lo cerca. -->
+                        <p v-if="stats.credito_disponibile_raw > 0" class="text-[10px] text-muted-foreground mt-1 leading-tight">
+                            {{ stats.compensabile_frase }}
+                            <a
+                                v-if="stats.compensabile_rata_id"
+                                :href="urlCompensazione"
+                                class="text-blue-600 hover:text-blue-700 underline underline-offset-2 font-medium"
+                            >Compensa</a>
                         </p>
+                        <p v-else class="text-[10px] text-muted-foreground mt-1">Nessun credito attivo</p>
                     </div>
                 </div>
             </div>

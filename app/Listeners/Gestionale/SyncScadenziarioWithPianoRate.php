@@ -132,10 +132,15 @@ class SyncScadenziarioWithPianoRate implements ShouldQueue
                     if ($rateZero) {
                         $quoteRataZero = $rateZero->rateQuote()->whereIn('anagrafica_id', $quotePerAnagrafica->keys())->get();
                         foreach ($quoteRataZero->groupBy('anagrafica_id') as $anagId => $quote0) {
-                            $totaleQuota0 = $quote0->sum('importo');
-                            // Se la Rata 0 è un credito (negativo), lo salviamo in positivo per il frontend
-                            if ($totaleQuota0 < 0) {
-                                $creditiRataZero[$anagId] = abs($totaleQuota0); 
+                            // Stessa formula che il portale usa quando serve l'evento, presa
+                            // dallo stesso posto: due copie divergono alla prima modifica.
+                            // Questo resta comunque uno **snapshot** — il valore che il condòmino
+                            // legge lo ricalcola `EventoResource` al momento, perché qui non si
+                            // torna mai a riscrivere un evento già creato.
+                            $creditoResiduo = \App\Services\Gestionale\CreditoService::nettoSpendibile($quote0);
+
+                            if ($creditoResiduo > 0) {
+                                $creditiRataZero[$anagId] = $creditoResiduo;
                             }
                         }
                     }

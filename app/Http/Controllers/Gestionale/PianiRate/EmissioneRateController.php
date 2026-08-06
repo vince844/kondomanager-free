@@ -206,11 +206,16 @@ class EmissioneRateController extends Controller
             // emesse ha un credito disponibile (saldo a credito o strapagamento),
             // lo segnaliamo così l'amministratore può compensare subito.
             $suggerimentoCrediti = $this->buildSuggerimentoCrediti($condominio, $request->rate_ids);
-            if ($suggerimentoCrediti) {
-                $msg .= ' ' . $suggerimentoCrediti;
-            }
 
-            return back()->with($this->flashSuccess($msg));
+            $risposta = back()->with($this->flashSuccess($msg));
+
+            // In una chiave propria, non accodato a $msg: il banner di `flash.message` viene
+            // dipinto e poi cancellato dal modale di conferma dell'emissione, quindi un
+            // suggerimento scritto lì non fa in tempo a essere letto. Da qui lo raccoglie il
+            // modale, che resta finché non lo si chiude ed è dove l'amministratore guarda.
+            return $suggerimentoCrediti
+                ? $risposta->with('suggerimento_crediti', $suggerimentoCrediti)
+                : $risposta;
 
         } catch (\Throwable $e) {
             Log::error("Errore emissione rate: " . $e->getMessage());
@@ -248,19 +253,34 @@ class EmissioneRateController extends Controller
             return null;
         }
 
-        $elenco = $crediti->take(3)
-            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['totale_cents']) . ')')
-            ->join(', ');
+        // Contano solo quelli il cui credito copre DAVVERO qualcosa: segnalare un credito
+        // che non ha niente da compensare manda l'amministratore su una pagina dove non c'è
+        // nulla da fare, che è il difetto che questa versione sta chiudendo.
+        $compensabili = $crediti->filter(fn($c) => $c['compensabile']['importo_cents'] > 0)->values();
 
-        if ($crediti->count() > 3) {
-            $elenco .= ' e altri ' . ($crediti->count() - 3);
+        if ($compensabili->isEmpty()) {
+            return null;
         }
 
-        $intro = $crediti->count() === 1
-            ? 'Nota: 1 condòmino ha un credito disponibile'
-            : 'Nota: ' . $crediti->count() . ' condòmini hanno un credito disponibile';
+        // Con un solo condòmino si può essere precisi: si dice quale rata copre.
+        if ($compensabili->count() === 1) {
+            $c = $compensabili->first();
 
-        return $intro . ' — ' . $elenco . '. Puoi compensare le nuove rate da "Nuovo incasso" con il pulsante "Usa credito".';
+            return 'Nota: ' . $c['nome'] . ' ha ' . MoneyHelper::format($c['compensabile']['importo_cents'])
+                . ' di credito spendibile subito. ' . $c['compensabile']['frase']
+                . ' Lo compensi da "Nuovo incasso".';
+        }
+
+        $elenco = $compensabili->take(3)
+            ->map(fn($c) => $c['nome'] . ' (' . MoneyHelper::format($c['compensabile']['importo_cents']) . ')')
+            ->join(', ');
+
+        if ($compensabili->count() > 3) {
+            $elenco .= ' e altri ' . ($compensabili->count() - 3);
+        }
+
+        return 'Nota: ' . $compensabili->count() . ' condòmini hanno un credito che copre rate già aperte — '
+            . $elenco . '. Li compensi da "Nuovo incasso".';
     }
 
     /**

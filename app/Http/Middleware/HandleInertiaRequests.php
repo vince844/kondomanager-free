@@ -42,6 +42,11 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'message' => fn () => $request->session()->get('message'),
                 'scoperti_warning' => fn () => $request->session()->get('scoperti_warning'),
+                // Chiave separata e non accodata a `message`: il banner del flash viene
+                // dipinto e subito cancellato dal modale di conferma che gli si sostituisce
+                // (verificato a video sulla beta.46). Il suggerimento deve poter arrivare
+                // dove l'amministratore guarda davvero, cioè dentro quel modale.
+                'suggerimento_crediti' => fn () => $request->session()->get('suggerimento_crediti'),
             ],
 
             'csrf_token' => fn () => $request->user() 

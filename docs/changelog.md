@@ -7,6 +7,64 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.46] - Il Credito Che Non Si Poteva Spendere
+
+Il gestionale sapeva da tempo dire **quanto** credito ha un condòmino. Non ha mai saputo dire **quale rata quel credito copre** — e senza quella frase l'amministratore, arrivato alla pagina di incasso, si trova davanti a un elenco di rate e deve capirlo da solo. Il credito, così, resta lì.
+
+Cercando come chiudere il cerchio sono venuti fuori tre punti in cui il prodotto quel credito lo nascondeva o lo raccontava sbagliato.
+
+**Nessuna migrazione**, e nessun dato cambia da solo.
+
+### Adesso dice cosa copre
+
+Il widget **Crediti da compensare** in dashboard non mostra più solo l'importo:
+
+> **Paolo Ferraris — € 150,00**
+> Copre in parte Rata n.1 - Piano rate ordinario 2026 in scadenza il 05/01/2026.
+
+E il collegamento apre «Nuovo incasso» **già puntato su quella rata**, non solo sull'anagrafica. La stessa frase compare nella card «Credito disponibile» dell'Estratto Conto, con accanto un link «Compensa», e nel messaggio che segue l'emissione delle rate.
+
+Quando non c'è niente da coprire, lo dice: *«Nessuna rata aperta da coprire con questo credito.»* Un credito fermo è un'informazione, non un silenzio — e soprattutto non è un invito a cliccare su una pagina dove non c'è niente da fare.
+
+**Due limiti dichiarati, perché il consiglio sia sempre eseguibile.** Il suggerimento considera solo le **rate emesse**: proporre di compensare una rata ancora in bozza significherebbe proporre un debito che per il condòmino non esiste ancora. E non attraversa da solo **ordinaria e straordinaria**: quel passaggio il sistema lo permette e lo registra a giornale, ma chiede all'amministratore una spunta esplicita, e un suggerimento automatico non può darla per acquisita. Il credito sull'altra gestione resta contato nel totale: semplicemente non entra nella proposta.
+
+### Il credito che il condòmino vedeva e non aveva più
+
+Nel portale, il «Salvadanaio» mostrava il credito **già speso**. Il numero veniva calcolato sommando il credito originario e ignorando quanto ne era già stato consumato: chi aveva un anticipo di 300 € e ne aveva usati 200 continuava a vederne 300, e il pulsante «Sì, salda la rata con il credito» calcolava su quella cifra.
+
+A fermare la richiesta c'era solo il controllo del server, quando l'amministratore apriva il compito.
+
+Il numero ora viene **calcolato nel momento in cui il condòmino apre la sua scadenza**, non più scritto una volta sola quando il piano viene approvato. È una differenza che vale oltre il caso segnalato: quel valore restava fermo anche se le quote cambiavano, se un'emissione veniva annullata, se un incasso veniva stornato. Adesso dice sempre quanto credito c'è davvero.
+
+### Il pulsante che non c'era, e l'avviso che mandava a cercarlo
+
+Quando un condòmino chiede dal portale di saldare con il credito, la pagina di incasso mostra un avviso all'amministratore. Quell'avviso **si comportava al contrario**: spariva quando il credito c'era — proprio nel momento in cui c'era qualcosa da confermare — e restava acceso quando il credito non c'era, dicendo di cliccare un pulsante che in quel caso non è a schermo.
+
+Ora la richiesta resta visibile per tutta l'operazione, e il testo dice quale dei due casi è: il credito è stato selezionato e va confermato, oppure non ce n'è e la richiesta non si può soddisfare.
+
+### Il credito nascosto nelle rate che tornano a zero
+
+Se su una stessa rata un condòmino ha una quota strapagata e una scoperta che si annullano, la riga arriva a zero. La schermata di incasso rispondeva **«N/D»**: niente campo, niente pulsante. Quel credito però esiste ed è spendibile su **altre** rate — il sistema non ha mai richiesto che credito e debito stessero sulla stessa rata.
+
+Da questa versione il pulsante «Usa credito» compare dove il credito c'è davvero, non dove il saldo della riga è negativo. La riga resta marcata SALDO MISTO, perché è quello che è.
+
+Con un limite preciso: viene offerto **solo il credito dell'intestatario scelto**. Cercando per unità immobiliare la riga raccoglie le quote di tutti i comproprietari, e su un'unità con due intestatari poteva capitare che il credito di uno andasse a pagare il debito dell'altro senza che la schermata lo dicesse. Il credito di un comproprietario resta usabile, ma va scelto lui come intestatario.
+
+### Corretto
+
+- **Il messaggio dopo l'emissione non arrivava a destinazione.** Il suggerimento sui crediti veniva scritto nel banner della pagina, che compare per un istante e viene subito sostituito dalla finestra «Emissione completata». Ora viaggia per conto suo e finisce **dentro** quella finestra, che resta finché non la si chiude.
+- **Il suggerimento dopo l'emissione segnalava anche i crediti che non coprono niente**, mandando l'amministratore su una pagina dove non c'era nulla da fare. Ora nomina solo quelli spendibili, e con un solo condòmino dice anche quale rata copre.
+
+### Sotto il cofano
+
+- Il compensabile non è un numero ma una coppia di elenchi — da quali rate il credito si preleva, quali rate copre — perché il motore lo preleva **una rata alla volta** e verifica la capienza su quella rata: un totale per persona non basta a costruire un salvataggio che vada a buon fine.
+- La frase che descrive la copertura vive in un posto solo, nel servizio del credito. Le superfici che la mostrano sono tre, e la stessa frase scritta in tre posti diverge alla prima modifica.
+- I debiti di tutti i condòmini a credito si leggono in **una query sola**: il widget sta su una pagina che si apre a ogni accesso.
+- Il collegamento generato dall'amministratore **non** dichiara una richiesta del condòmino. Sono due cose diverse e il prodotto le teneva insieme: è la ragione per cui l'avviso si comportava al contrario.
+- Venti test nuovi, sette dei quali sul frontend — fra cui i primi due sulla schermata di incasso, che non ne aveva nessuno.
+
+---
+
 ## [1.10.0-beta.45] - La Diagnosi Senza Cura
 
 Il widget del Libro Giornale sapeva dire che lo Stato Patrimoniale non quadrava, sapeva anche **perché** — «c'è una cassa con un saldo di apertura non registrato» — e poi rimandava alla pagina di quella cassa, dove non esiste nessun pulsante che lo registri. Diagnosi perfetta, nessuna cura.

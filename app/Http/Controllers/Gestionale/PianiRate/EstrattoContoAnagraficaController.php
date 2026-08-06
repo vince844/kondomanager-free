@@ -341,6 +341,13 @@ class EstrattoContoAnagraficaController extends Controller
         // Credito disponibile (saldo iniziale a credito + strapagamenti), non
         // riusa $quoteMap perché quella è scoped alle rate presenti in questo
         // esercizio/timeline: qui serve la fotografia completa dell'anagrafica.
+        //
+        // Lo scarto di perimetro vale anche per il `compensabile` qui sotto, ed è più visibile
+        // lì: la frase nomina una RATA, e quella rata può appartenere a un esercizio diverso da
+        // quello della pagina, quindi non comparire nella timeline sopra. È voluto — la
+        // posizione del condòmino non si interrompe al 31 dicembre — ma va saputo. Il PDF non
+        // è coinvolto: `estratto_conto_anagrafica.blade.php` non stampa nessuna di queste
+        // chiavi (verificato il 06/08/2026).
         $credito = app(CreditoService::class)->perAnagrafica($condominio->id, $anagrafica->id);
 
         // COMPILAZIONE STATISTICHE CENTESIMALI FINALI
@@ -354,6 +361,11 @@ class EstrattoContoAnagraficaController extends Controller
             'credito_disponibile'     => $credito['totale_formatted'],
             'credito_disponibile_raw' => $credito['totale_cents'],
             'credito_per_gestione'    => $credito['per_gestione'],
+            // Non solo quanto credito c'è, ma quale rata copre e dove si va a usarlo.
+            'compensabile'            => $credito['compensabile']['importo_formatted'],
+            'compensabile_raw'        => $credito['compensabile']['importo_cents'],
+            'compensabile_frase'      => $credito['compensabile']['frase'],
+            'compensabile_rata_id'    => $credito['compensabile']['rate_coperte'][0]['rata_id'] ?? null,
         ];
 
         return [$timeline, $stats, $saldoInizialeCents];

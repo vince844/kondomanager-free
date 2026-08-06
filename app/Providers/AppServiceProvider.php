@@ -26,7 +26,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // `scoped` e non `singleton`: CreditoService memoizza il credito di Rata 0 per la durata
+        // della richiesta (lo stesso numero viene chiesto una volta per evento in una lista).
+        // Un singleton lo terrebbe anche fra richieste diverse sotto un runtime persistente, e
+        // il condòmino tornerebbe a vedere un valore fermo — il difetto che quel calcolo evita.
+        $this->app->scoped(\App\Services\Gestionale\CreditoService::class);
     }
 
     /**

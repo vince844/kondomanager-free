@@ -319,7 +319,14 @@ const submitEmissione = () => {
         onSuccess: () => {
             isEmissionModalOpen.value = false;
             selectedRateIds.value = [];
-            showFeedback('Emissione completata', `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`, false);
+
+            // Il suggerimento di compensazione arriva in una chiave flash sua e finisce qui
+            // dentro, non nel banner: il banner viene dipinto e poi cancellato da questo
+            // stesso modale, quindi lì nessuno faceva in tempo a leggerlo.
+            const suggerimento = (page.props.flash as any)?.suggerimento_crediti;
+            const base = `Sono state emesse correttamente ${formEmissione.rate_ids.length} rate.`;
+
+            showFeedback('Emissione completata', suggerimento ? `${base}\n\n${suggerimento}` : base, false);
         },
         onError: (errors) => {
             console.error("Errore emissione:", errors);
@@ -1582,7 +1589,10 @@ const printRipartoCapitoli = () => {
                     <DialogTitle class="text-center w-full block" :class="feedbackDialog.isError ? 'text-red-700' : 'text-emerald-700'">
                         {{ feedbackDialog.title }}
                     </DialogTitle>
-                    <DialogDescription class="pt-2 text-center w-full block">
+                    <!-- `whitespace-pre-line`: il messaggio può portare un secondo capoverso
+                         (il suggerimento di compensazione dopo l'emissione), e senza questo
+                         i due si appiccicherebbero in una riga sola. -->
+                    <DialogDescription class="pt-2 text-center w-full block whitespace-pre-line">
                         {{ feedbackDialog.message }}
                     </DialogDescription>
                 </DialogHeader>

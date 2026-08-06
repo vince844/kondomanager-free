@@ -154,7 +154,13 @@ class SituazioneDebitoriaController extends Controller
                 // Ritorniamo i dati formattati per la UI e per il motore composable Vue
                 return [
                     'unita'             => $unita,
-                    'anagrafica'        => $q->anagrafica ? $q->anagrafica->nome : 'Generico', 
+                    'anagrafica'        => $q->anagrafica ? $q->anagrafica->nome : 'Generico',
+                    // Serve all'interfaccia per sapere DI CHI è il credito di questa quota.
+                    // Cercando per immobile il gruppo raccoglie le quote di tutti i
+                    // comproprietari (vedi il filtro a :39-45), quindi una riga a saldo misto
+                    // può contenere il credito di una persona e il debito di un'altra: senza
+                    // questo id la pagina offrirebbe il credito altrui a chi sta incassando.
+                    'anagrafica_id'     => $q->anagrafica_id,
                     'ruolo'             => $ruoloIniziale, // INIETTIAMO IL RUOLO [P, I, U]
                     'residuo'           => MoneyHelper::fromCents($residuoNettoQuota), 
                     'residuo_originale' => MoneyHelper::fromCents($residuoNettoQuota), 

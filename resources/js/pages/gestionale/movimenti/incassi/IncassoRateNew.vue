@@ -46,7 +46,7 @@ const pageGuides = [
     },
     {
         title: 'Credito disponibile',
-        description: 'Se il condomino ha un credito (saldo iniziale a credito, anticipo o rata strapagata), la riga appare in blu con residuo negativo. Clicca "Usa credito" per compensare le rate aperte, anche a cassa zero.',
+        description: 'Se il condòmino ha un credito (saldo iniziale a credito, anticipo o rata strapagata), la riga appare in blu con residuo negativo. Il pulsante "Usa credito" compare anche sulle righe marcate SALDO MISTO, dove un credito e un debito della stessa rata si annullano a zero: quel credito è spendibile sulle altre rate. Compensa anche a cassa zero.',
         icon: Wallet,
         colorVariant: 'amber' as const
     },
@@ -131,6 +131,52 @@ const isRataZero = (r: any) => {
     return desc.includes('saldo') || desc.includes('rata 0') || desc.includes('pregresso');
 };
 
+/**
+ * Il credito che una riga mette a disposizione **di chi sta incassando**, in euro.
+ *
+ * La regola è una sola e vale per ogni riga, mista o pura, e ricalca esattamente quella del
+ * server (`CreditoService::compensabile`), applicata però alla sola fetta del pagante:
+ *
+ *   netto del pagante < 0  →  si può usare |netto|
+ *   netto del pagante = 0  →  se dentro c'è del credito, si può usare quello (riga «mista»)
+ *   netto del pagante > 0  →  niente: il credito interno è già assorbito dal suo debito
+ *
+ * **Perché si guarda sempre l'intestatario.** Cercando per unità immobiliare il server
+ * aggrega le quote di tutti i comproprietari (`SituazioneDebitoriaController:39-45`): una riga
+ * può portare il credito di una persona e il debito di un'altra. Offrire quel credito a chi
+ * sta incassando porta, a seconda di quale quota il database ha inserito per prima, o a una
+ * `RuntimeException` non catturata — pagina 500, distribuzione persa — o al credito di uno
+ * speso sulla ricevuta di un altro senza che lo schermo lo dichiari.
+ *
+ * Prima questa guardia copriva le sole righe a saldo misto, e la riga a **credito puro** —
+ * il percorso più comune — restava scoperta perché si usciva su `Math.abs(netto)` prima
+ * ancora di guardare il pagante.
+ *
+ * Senza `dettaglio_quote` o senza pagante non si può attribuire niente, e allora non si
+ * offre: sul denaro altrui il ripiego prudente è non fare, non indovinare. Il payload reale
+ * porta sempre il dettaglio (`SituazioneDebitoriaController:235`).
+ */
+const creditoRiga = (r: any): number => {
+    if (!form.pagante_id || !Array.isArray(r.dettaglio_quote) || r.dettaglio_quote.length === 0) {
+        return 0;
+    }
+
+    const mie = r.dettaglio_quote.filter((q: any) => q.anagrafica_id === form.pagante_id);
+    if (mie.length === 0) return 0;
+
+    const nettoPagante = mie.reduce((s: number, q: any) => s + parseResiduoQuota(q.residuo), 0);
+
+    if (nettoPagante < -0.001) return Math.abs(nettoPagante);
+
+    if (Math.abs(nettoPagante) < 0.001) {
+        return mie
+            .filter((q: any) => parseResiduoQuota(q.residuo) < 0)
+            .reduce((s: number, q: any) => s + Math.abs(parseResiduoQuota(q.residuo)), 0);
+    }
+
+    return 0;
+};
+
 const importoNumerico = computed(() => parseResiduoQuota(form.importo_totale));
 
 const totalAllocato = computed(() => {
@@ -142,9 +188,72 @@ const bilancioFinale = computed(() => getBilancioFinale(totaleDebito.value, impo
 const showOnlyOverdue = ref(false);
 const intentUsaCredito = ref(false);
 
+/** Acceso quando si clicca «Usa credito» ma il contante copre già tutto: un click che non fa
+ *  niente va spiegato, o sembra che il programma si sia bloccato. */
+const creditoSenzaScoperto = ref(false);
+
+/** Le righe il cui credito l'amministratore ha esplicitamente tolto, per id. Vedi `toggleCredito`. */
+const creditiRifiutati = ref(new Set<number>());
+
 const hasSaldoPregressoInLista = computed(() => {
-    return rateList.value.some(r => isRataZero(r) || parseResiduoQuota(r.residuo) < 0);
+    // Stesso criterio del pulsante: la fascia verde «Situazione pregressa regolare» non deve
+    // accendersi proprio dove c'è del credito da compensare.
+    return rateList.value.some(r => isRataZero(r) || creditoRiga(r) > 0);
 });
+
+/**
+ * C'è, fra i debiti caricati, almeno una riga da cui il credito si possa davvero prendere.
+ * Attenzione: qui NON si può leggere `selezionata` — quella vive sui cloni prodotti da
+ * `getRateListByGestione`, non su queste righe grezze. Vedi `creditoSelezionato`.
+ * È la domanda a cui il banner della richiesta di compensazione deve rispondere prima di
+ * dire all'amministratore cosa fare.
+ *
+ * Si legge `rawRateList` e non `rateList`: la seconda è **filtrata** per gestione e per
+ * «mostra scadute». Bastava un filtro perché il banner dichiarasse «non risulta alcun credito
+ * disponibile: la richiesta non può essere soddisfatta» mentre il credito c'era ed era solo
+ * nascosto — e su quella frase una segnalazione legittima si chiude per errore.
+ */
+const creditoInLista = computed(() => rawRateList.value.some(r => creditoRiga(r) > 0));
+
+/**
+ * C'è del credito **effettivamente selezionato** in questo momento.
+ *
+ * Il banner deve leggere questo, non un flag che ricorda di aver fatto la selezione una
+ * volta: la lista si ricostruisce a ogni cambio di gestione, filtro o modalità di ricerca —
+ * `getRateListByGestione` clona le righe e `useDebitiLoader` le rimette tutte a
+ * `selezionata: false` — e il credito resta in elenco mentre la selezione sparisce. Dedurre
+ * l'azione dalla sola presenza del credito faceva dire al banner «è già stato selezionato»
+ * davanti a zero importi da verificare.
+ */
+const creditoSelezionato = computed(() =>
+    rateList.value.some(r => creditoRiga(r) > 0 && r.selezionata)
+);
+
+/**
+ * Il credito è fra le righe che si vedono **adesso**. Diverso da `creditoInLista`, che guarda
+ * tutto quello che è stato caricato: fra i due c'è il filtro per gestione e «mostra scadute».
+ * Tenerli distinti serve a dire all'amministratore la cosa giusta — «cliccalo» quando la riga
+ * c'è, «togli il filtro» quando esiste ma è nascosta, «non ne ha» solo quando è vero.
+ */
+const creditoVisibile = computed(() => rateList.value.some(r => creditoRiga(r) > 0));
+
+/**
+ * L'auto-selezione si fa **una volta sola per condòmino**, altrimenti riselezionerebbe da
+ * sé una riga che l'amministratore ha appena deselezionato. Si azzera insieme alla
+ * richiesta: vedi `dimenticaRichiestaCompensazione()`.
+ */
+const creditoAutoApplicato = ref(false);
+
+/**
+ * La richiesta di compensazione appartiene a **un** condòmino e a **una** schermata. Quando
+ * si cambia persona, si cambia modo di ricerca o si è finito di registrare, quella richiesta
+ * non descrive più ciò che si ha davanti — e un avviso che racconta la richiesta di Rossi
+ * sopra la posizione contabile di Bianchi è peggio di nessun avviso.
+ */
+const dimenticaRichiestaCompensazione = () => {
+    intentUsaCredito.value = false;
+    creditoAutoApplicato.value = false;
+};
 
 // --- Spaccato e avviso cross-gestione ------------------------------------
 // Il credito non è vincolato alla gestione in cui è nato: nulla nel backend
@@ -155,11 +264,15 @@ const hasSaldoPregressoInLista = computed(() => {
 const spaccatoCreditoDisponibile = computed(() => {
     const mappa = new Map<number, { nome: string; importo: number }>();
     rateList.value.forEach(r => {
-        if (parseResiduoQuota(r.residuo) >= 0 || r.gestione_id == null) return;
+        // `creditoRiga` e non il residuo netto: altrimenti la striscia del credito non
+        // elenca quello delle righe a saldo misto, e tre righe più sotto c'è un pulsante che
+        // offre di spenderlo.
+        const disponibile = creditoRiga(r);
+        if (disponibile <= 0 || r.gestione_id == null) return;
         const prev = mappa.get(r.gestione_id);
         mappa.set(r.gestione_id, {
             nome: r.gestione,
-            importo: (prev?.importo ?? 0) + Math.abs(parseResiduoQuota(r.residuo)),
+            importo: (prev?.importo ?? 0) + disponibile,
         });
     });
     return Array.from(mappa.values());
@@ -210,8 +323,14 @@ const previewContabile = computed(() => {
         const r = rateList.value.find(rate => rate.id === p.rata_id);
         if (!r) return null;
 
-        const baseRata = parseResiduoQuota(r.residuo);
-        const isCredito = baseRata < 0;
+        // Il verso lo dice l'IMPORTO, non il residuo della riga: un importo negativo è un
+        // prelievo di credito, sempre. Dedurlo dal residuo sbagliava proprio sulle righe a
+        // saldo misto, dove il netto vale zero: si prendeva il ramo debito e l'ultima
+        // schermata prima della conferma scriveva «Resta da pagare» su una rata che sarebbe
+        // stata lasciata a saldo zero. È l'unico punto in cui l'amministratore verifica
+        // prima di scrivere in partita doppia.
+        const isCredito = p.importo < 0;
+        const baseRata = isCredito ? -creditoRiga(r) : parseResiduoQuota(r.residuo);
 
         let residuoDopoPagamento = 0;
         let status = '';
@@ -258,38 +377,112 @@ const fetchDebiti = async (params: { anagrafica_id?: number | null; immobile_id?
     }
 };
 
+/**
+ * «Usa credito» su una riga.
+ *
+ * La distribuzione del credito vive in **un posto solo**, il ramo automatico di
+ * `runDistribution` (`spalmaCredito`): quando si clicca in modalità manuale la pagina passa in
+ * automatica e lascia fare a quello.
+ *
+ * Perché non si applica il credito a mano qui. Ci abbiamo provato, e quel ciclo ha prodotto
+ * difetti per tre revisioni di fila — sempre nuovi, sempre nati dall'interazione con l'altra
+ * metà della pagina: impegnava il credito senza pagare nessun debito (il motore lo prelevava e
+ * lo riaccreditava, giro a vuoto); impegnava più del dovuto con due click; lasciava i debiti
+ * coperti quando lo si toglieva; e faceva registrare come contante, alla prima modifica a mano,
+ * denaro che in cassa non era mai entrato. Il difetto non era in nessuna di quelle righe: era
+ * nel fatto che la stessa logica esistesse in due posti, di cui uno dentro un gestore di click,
+ * in una modalità il cui modello è «i numeri li scrive l'amministratore».
+ *
+ * Il totale versato non si perde — è `form.importo_totale` e resta dov'è. Cambia la
+ * ripartizione fra le righe, che l'automatico rifà per urgenza; e il passaggio si vede, perché
+ * l'indicatore auto/manuale è a schermo e si può tornare indietro.
+ */
 const toggleCredito = (rata: Rata) => {
-    rata.selezionata = !rata.selezionata;
-    if (!rata.selezionata) rata.da_pagare = 0;
+    const attivo = !rata.selezionata;
+
+    // Se il contante copre già tutti i debiti, quel credito non ha niente da fare. Commutare
+    // in automatica cancellerebbe la ripartizione decisa a mano — per esempio dopo «Paga
+    // scadute» — senza applicare un centesimo: si dice, e non si tocca niente.
+    if (attivo && mode.value === 'manual'
+        && creditoNecessario(rateList.value, importoNumerico.value, creditoRiga(rata)) <= 0) {
+        creditoSenzaScoperto.value = true;
+        return;
+    }
+
+    rata.selezionata = attivo;
+
+    // Il rifiuto vive FUORI dalle righe.
+    //
+    // `getRateListByGestione` riclona da `rawRateList` a ogni cambio di gestione o del filtro
+    // «mostra scadute»: un flag scritto sul clone sparirebbe lì, riaprendo l'auto-inclusione e
+    // riapplicando da sé un credito che l'amministratore aveva tolto. Scriverlo sulla riga
+    // grezza è peggio: `rawRateList` è osservata in profondità, e mutarla fa ricostruire la
+    // lista e perdere ogni selezione.
+    //
+    // Un insieme di id a parte non ha nessuno dei due problemi. Si svuota al cambio di pagante,
+    // dove è giusto che si svuoti: il rifiuto di un condòmino non riguarda un altro.
+    if (attivo) creditiRifiutati.value.delete(rata.id);
+    else creditiRifiutati.value.add(rata.id);
+    if (!attivo) rata.da_pagare = 0;
+
+    if (mode.value === 'manual') mode.value = 'auto';
+
     runDistribution();
 };
 
 const runDistribution = async () => {
+    // Qualunque ridistribuzione rimette in discussione «non c'è nulla da compensare»: il banner
+    // descrive uno stato, non un evento, e lasciarlo acceso dopo che l'amministratore ha
+    // abbassato l'importo — cioè dopo aver fatto quello che il banner stesso suggerisce —
+    // significa contraddirlo.
+    creditoSenzaScoperto.value = false;
+
     await nextTick();
 
     // 1. Troviamo la rata bersaglio
     const targetRataId = priorityRataId.value;
     const rataTarget = rateList.value.find(r =>
-        (r.id === targetRataId || r.rata_padre_id === targetRataId) &&
+        // Solo `rata_padre_id`: `prefill_rata_id` è una chiave di `rate`, mentre `r.id` è
+        // l'id di una `rate_quote`. Confrontarli entrambi faceva sì che, nei condomini dove
+        // i due intervalli di id si sovrappongono, il credito venisse puntato su una rata
+        // diversa da quella promessa dal widget.
+        (r.rata_padre_id === targetRataId) &&
         parseResiduoQuota(r.residuo) > 0
     );
 
     // 2. Individuiamo le righe di credito attive: qualsiasi riga con residuo
     //    negativo (saldo iniziale a credito, anticipo o strapagamento emerso).
     const isInboxMode = priorityRataId.value !== null && rataTarget !== undefined;
-    const righeCredito = rateList.value.filter(
-        r => parseResiduoQuota(r.residuo) < 0 && (r.selezionata || isInboxMode)
-    );
-    const creditoDisponibile = righeCredito.reduce((s, r) => s + Math.abs(parseResiduoQuota(r.residuo)), 0);
+    // L'auto-inclusione della modalità «arrivo da un link» si ferma alla gestione della rata
+    // bersaglio. Il credito di un'altra gestione il motore lo sa spendere, ma pretende una
+    // spunta esplicita dell'amministratore — ed è la ragione per cui il consiglio lato server
+    // non lo propone mai. Includerlo qui da soli significherebbe far fare alla schermata
+    // esattamente ciò che il servizio si era vietato di suggerire, lasciando fra il click e
+    // lo spostamento solo una casella che nessuno sa di dover leggere.
+    // Una riga scelta a mano resta sempre inclusa: lì la decisione l'ha presa una persona.
+    const righeCredito = rateList.value.filter(r => {
+        if (creditoRiga(r) <= 0) return false;
+        if (r.selezionata) return true;
+
+        // L'auto-inclusione serve a precompilare quando si arriva da un link, non a
+        // sovrascrivere una decisione presa. Senza `creditoRifiutato` il click che toglie il
+        // credito veniva annullato da `spalmaCredito` e il pulsante tornava verde da solo:
+        // nella pagina non c'era modo di non usarlo.
+        return isInboxMode && !creditiRifiutati.value.has(r.id) && r.gestione_id === rataTarget!.gestione_id;
+    });
+    const creditoDisponibile = righeCredito.reduce((s, r) => s + creditoRiga(r), 0);
 
     // Ripartisce il credito effettivamente usato sulle righe di credito attive
     const spalmaCredito = (importoEuro: number) => {
         let restoCents = Math.round(importoEuro * 100);
         righeCredito.forEach(r => {
-            const capienzaCents = Math.round(Math.abs(parseResiduoQuota(r.residuo)) * 100);
+            const capienzaCents = Math.round(creditoRiga(r) * 100);
             const usatoCents = Math.min(restoCents, capienzaCents);
             r.da_pagare = usatoCents > 0 ? -(usatoCents / 100) : 0;
-            r.selezionata = true;
+            // Selezionata solo se qualcosa è stato davvero impegnato: il pulsante verde
+            // «Credito applicato» su un'allocazione di zero dichiara un'operazione che non è
+            // avvenuta, e intanto «Conferma incasso» resta spento senza spiegare perché.
+            r.selezionata = usatoCents > 0;
             restoCents -= usatoCents;
         });
     };
@@ -354,12 +547,24 @@ const handleManualChange = (rata: any, val: string | number) => {
 
     onManualChange(rata, val.toString());
 
-    const nuovoTotaleVersato = rateList.value.reduce((sum, r) => {
-        if (parseResiduoQuota(r.residuo) > 0) {
-            return sum + parseResiduoQuota(r.da_pagare);
-        }
-        return sum;
-    }, 0);
+    // TUTTE le righe, comprese quelle a credito, che portano un `da_pagare` negativo.
+    //
+    // `importo_totale` è il CONTANTE che entra in cassa. Sommando le sole righe a residuo
+    // positivo ci finiva dentro anche la parte coperta dal credito, che in cassa non è mai
+    // entrata: dopo aver applicato un credito bastava ritoccare a mano una riga per registrare
+    // un incasso di denaro mai ricevuto. E il controllo del server non lo intercettava — la
+    // riga a credito è negativa, la differenza usciva come anticipo, l'identità
+    // `importo_totale = somma righe + eccedenza` tornava. Quadrava, ed era falso.
+    //
+    // Sommando anche i negativi resta il netto: quanto l'amministratore ha davvero in mano.
+    // In manuale non esistono righe a credito impegnate — `toggleMode` le rilascia entrando —
+    // quindi questa somma è già il contante e non serve nessuna correzione di segno. Ci era
+    // stato un ciclo che riduceva il credito quando il netto scendeva sotto zero: è stato tolto
+    // insieme alla causa, perché girando a ogni tasto consumava il credito in modo irreversibile.
+    const nuovoTotaleVersato = rateList.value.reduce(
+        (sum, r) => sum + (parseResiduoQuota(r.da_pagare) || 0),
+        0,
+    );
 
     form.importo_totale = nuovoTotaleVersato;
     calculateExcessOnly();
@@ -367,7 +572,41 @@ const handleManualChange = (rata: any, val: string | number) => {
 };
 
 const calculateExcessOnly = () => { form.eccedenza = calculateExcess(rateList.value, importoNumerico.value); };
-const toggleMode = () => { mode.value = mode.value === 'auto' ? 'manual' : 'auto'; if (mode.value === 'auto') distributeAuto(); };
+const toggleMode = () => {
+    mode.value = mode.value === 'auto' ? 'manual' : 'auto';
+
+    if (mode.value === 'auto') {
+        distributeAuto();
+        return;
+    }
+
+    // Passando in MANUALE il credito impegnato viene rilasciato.
+    //
+    // I due meccanismi di allocazione — automatico con il credito, manuale riga per riga — non
+    // compongono: finché una riga a credito resta impegnata mentre si edita a mano, ogni
+    // combinazione produce un numero sbagliato. Il campo importo è `:lazy="false"`, quindi
+    // `handleManualChange` gira a OGNI TASTO: un valore transitorio più basso del credito
+    // impegnato lo consumava per sempre, e ridigitando la cifra giusta il credito non tornava —
+    // il contante dichiarato finiva per includere denaro mai ricevuto, con l'identità del
+    // server che tornava lo stesso.
+    //
+    // Chi vuole il credito torna in automatica e lo riapplica: una strada sola, come per la
+    // sua distribuzione.
+    rateList.value.forEach(r => {
+        if ((parseResiduoQuota(r.da_pagare) || 0) < 0) {
+            r.da_pagare = 0;
+            r.selezionata = false;
+        }
+    });
+
+    // E si ridistribuisce il SOLO contante. Rilasciare il credito senza rilasciare ciò che
+    // copriva era mezzo lavoro: l'importo restava scritto sulla riga a debito, e con zero
+    // contante la pagina mostrava «Allocato: 150,00» con «Conferma incasso» attivo su un
+    // payload che il server rifiuta — l'identità `importo_totale = somma righe + eccedenza`
+    // non torna. Quello che resta allocato dev'essere solo quello che il contante copre.
+    form.eccedenza = distributeGreedy(rateList.value, importoNumerico.value);
+    syncForm();
+};
 
 const resetAllocation = () => {
     form.importo_totale = '';
@@ -407,6 +646,8 @@ const syncForm = () => {
 const toggleSearchMode = (newMode: 'persona' | 'immobile') => {
     if (searchMode.value !== newMode) {
         searchMode.value = newMode;
+        dimenticaRichiestaCompensazione();
+        creditiRifiutati.value.clear();
         rawRateList.value = [];
         selectedImmobileId.value = null;
         form.pagante_id = null;
@@ -435,7 +676,37 @@ const submit = () => {
     });
 };
 
-watch(() => form.pagante_id, (newVal) => { if (searchMode.value === 'persona' && newVal) fetchDebiti({ anagrafica_id: newVal }); });
+let paganteIniziale: number | null = null;
+watch(() => form.pagante_id, (newVal) => {
+    if (paganteIniziale !== null && newVal !== paganteIniziale) {
+        // La richiesta arrivata dal portale vale per il condòmino di quella segnalazione: se
+        // l'amministratore cambia persona, l'avviso deve spegnersi invece di seguirlo.
+        dimenticaRichiestaCompensazione();
+
+        // E soprattutto va buttata via l'allocazione: era costruita per un'altra persona.
+        // Senza questo, cercando per immobile, restava una riga a importo negativo dentro
+        // `form.dettaglio_pagamenti` che l'interfaccia non mostrava più — il pulsante per
+        // deselezionarla sparisce insieme al credito dell'intestatario precedente — e alla
+        // conferma il server o rispondeva 500 o spendeva il credito di uno per la ricevuta
+        // di un altro. Ripulire è l'unica lettura onesta: la distribuzione era di qualcun altro.
+        // Azzerate le righe a mano e NON con `resetAllocation` del composable: quella, come
+        // prima istruzione, commuta `mode` in 'manual'. Cambiare condòmino avrebbe quindi
+        // spento la distribuzione automatica senza dirlo, e da lì digitare un importo non
+        // avrebbe più allocato niente.
+        rateList.value.forEach(r => { r.da_pagare = 0; r.selezionata = false; });
+        rateList.value = [...rateList.value];
+
+        // E si ridistribuisce: azzerare e basta lasciava la pagina con l'importo digitato, le
+        // rate in elenco e nessuna riga allocata, con «Conferma incasso» spento e nessun
+        // messaggio. In ricerca per persona non si vedeva perché `fetchDebiti` ricarica la
+        // lista e il watcher ridistribuisce da sé; in ricerca per immobile quel caricamento non
+        // avviene, e la distribuzione restava spenta in silenzio.
+        runDistribution();
+    }
+    paganteIniziale = newVal;
+
+    if (searchMode.value === 'persona' && newVal) fetchDebiti({ anagrafica_id: newVal });
+});
 watch(selectedImmobileId, (newVal) => { if (searchMode.value === 'immobile' && newVal) fetchDebiti({ immobile_id: newVal }); });
 watch(importoNumerico, () => { if (rateList.value.length > 0) runDistribution(); });
 
@@ -446,11 +717,11 @@ watch([rawRateList, () => form.gestione_id, showOnlyOverdue], async () => {
         list = list.filter(r => isScaduta(r.data_scadenza || r.scadenza_human) || isRataZero(r));
     }
 
-    if (intentUsaCredito.value) {
-        const rataCredito = list.find(r => parseResiduoQuota(r.residuo) < 0);
-        if (rataCredito && !rataCredito.selezionata) {
+    if (intentUsaCredito.value && !creditoAutoApplicato.value) {
+        const rataCredito = list.find(r => creditoRiga(r) > 0);
+        if (rataCredito) {
             rataCredito.selezionata = true;
-            intentUsaCredito.value = false;
+            creditoAutoApplicato.value = true;
         }
     }
 
@@ -723,9 +994,46 @@ onMounted(async () => {
                                 </div>
                                 <div>
                                     <span class="text-xs font-bold block mb-0.5">Richiesta di compensazione</span>
+
+                                    <!-- Tre stati, letti dalla selezione VERA e non da un flag che
+                                         ricorda di averla fatta una volta: la lista si ricostruisce
+                                         a ogni cambio di filtro e la selezione si azzera. -->
+                                    <span v-if="creditoSelezionato" class="text-[11px] leading-snug block opacity-90">
+                                        Il condòmino ha chiesto di saldare questo importo con il suo credito pregresso.
+                                        Il credito disponibile è già stato <strong>selezionato</strong> qui sotto: verifica gli
+                                        importi e conferma l'operazione.
+                                    </span>
+                                    <span v-else-if="creditoVisibile" class="text-[11px] leading-snug block opacity-90">
+                                        Il condòmino ha chiesto di saldare questo importo con il suo credito pregresso.
+                                        Clicca <strong>«Usa credito»</strong> sulla riga che lo porta, poi verifica gli importi
+                                        e conferma.
+                                    </span>
+                                    <span v-else-if="creditoInLista" class="text-[11px] leading-snug block opacity-90">
+                                        Il condòmino ha chiesto di saldare questo importo con il suo credito pregresso.
+                                        Il credito <strong>c'è</strong>, ma i filtri attivi ne nascondono la riga: togli il
+                                        filtro per gestione o «Mostra scadute» per vederla.
+                                    </span>
+                                    <span v-else-if="!loadingRate" class="text-[11px] leading-snug block opacity-90">
+                                        Il condòmino ha chiesto di saldare questo importo con il suo credito pregresso, ma
+                                        <strong>non risulta alcun credito disponibile</strong> per lui: la richiesta non può
+                                        essere soddisfatta così com'è.
+                                    </span>
+                                    <span v-else class="text-[11px] leading-snug block opacity-90">
+                                        Il condòmino ha chiesto di saldare questo importo con il suo credito pregresso.
+                                        Sto caricando la sua situazione…
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div v-if="creditoSenzaScoperto" class="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-start gap-3 text-slate-700 shrink-0">
+                                <div class="p-1 bg-slate-100 rounded-full mt-0.5 shrink-0">
+                                    <Info class="w-4 h-4 text-slate-500" />
+                                </div>
+                                <div>
+                                    <span class="text-xs font-bold block mb-0.5">Nulla da compensare</span>
                                     <span class="text-[11px] leading-snug block opacity-90">
-                                        Il condomino ha chiesto di saldare questo importo usando il suo credito pregresso.
-                                        Clicca sul tasto <strong>"usa credito"</strong> nella riga del saldo iniziale per confermare l'operazione.
+                                        L'importo che stai incassando copre già tutte le rate in elenco: il credito
+                                        resta dov'è. Abbassa l'importo versato se vuoi usarlo al suo posto.
                                     </span>
                                 </div>
                             </div>
@@ -882,7 +1190,7 @@ onMounted(async () => {
                                                 <div class="flex flex-col items-end">
                                                     <span class="text-sm font-bold text-red-600">{{ euro(r.residuo) }}</span>
                                                     <div class="mt-1 flex flex-col items-end gap-1">
-                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 shadow-sm" title="Attenzione: questa voce contiene un debito e un credito che si annullano a vicenda.">
+                                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200 shadow-sm" title="Attenzione: questa voce contiene un debito e un credito che si annullano a vicenda. Il credito non è perso: resta spendibile sulle altre rate.">
                                                             <AlertCircle class="w-3 h-3 mr-1" /> SALDO MISTO
                                                         </span>
                                                         <span class="text-[9px] text-slate-500 font-medium">Seleziona l'anagrafica</span>
@@ -935,7 +1243,7 @@ onMounted(async () => {
                                                 placeholder="0,00"
                                             />
 
-                                            <div v-else-if="parseResiduoQuota(r.residuo) < 0" class="flex justify-end h-8 items-center">
+                                            <div v-else-if="creditoRiga(r) > 0" class="flex justify-end h-8 items-center">
                                                 <Button
                                                     size="sm"
                                                     variant="outline"

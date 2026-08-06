@@ -29,18 +29,44 @@ class CreditiDaCompensareWidget implements DashboardWidget
     public function payload(int $condominioId): array
     {
         return $this->crediti($condominioId)
-            ->map(fn($c) => [
-                'anagrafica_id'    => $c['anagrafica_id'],
-                'nome'             => $c['nome'],
-                'totale_formatted' => $c['totale_formatted'],
-                'url'              => route('admin.gestionale.movimenti-rate.create', [
+            ->map(function ($c) use ($condominioId) {
+                $comp = $c['compensabile'];
+                $bersaglio = $comp['rate_coperte'][0] ?? null;
+
+                // Il link porta la rata bersaglio, e **non** `intent_usa_credito`: quel
+                // parametro dichiara una richiesta arrivata dal condòmino, e qui a muoversi è
+                // l'amministratore di sua iniziativa. Scriverlo accenderebbe un avviso che
+                // attribuisce a qualcun altro una decisione che non ha preso.
+                $parametri = [
                     'condominio'            => $condominioId,
                     'prefill_anagrafica_id' => $c['anagrafica_id'],
-                ]),
-            ])
+                ];
+                if ($bersaglio) {
+                    $parametri['prefill_rata_id'] = $bersaglio['rata_id'];
+                }
+
+                // «Azionabile» non è «ha un bersaglio»: quando il credito sta su un'altra
+                // gestione il consiglio non lo propone — per disegno, serve la spunta
+                // dell'amministratore — ma la frase gli dice che si può fare. Se la riga in
+                // quel caso non fosse cliccabile, l'inviterebbe a un vicolo cieco.
+                $azionabile = $comp['importo_cents'] > 0 || ($comp['debito_altrove_cents'] ?? 0) > 0;
+
+                return [
+                    'anagrafica_id'          => $c['anagrafica_id'],
+                    'azionabile'             => $azionabile,
+                    'nome'                   => $c['nome'],
+                    'totale_formatted'       => $c['totale_formatted'],
+                    'compensabile_cents'     => $comp['importo_cents'],
+                    'compensabile_formatted' => $comp['importo_formatted'],
+                    'copre'                  => $comp['frase'],
+                    'rata_bersaglio_id'      => $bersaglio['rata_id'] ?? null,
+                    'url'                    => route('admin.gestionale.movimenti-rate.create', $parametri),
+                ];
+            })
             ->values()
             ->toArray();
     }
+
 
     private function crediti(int $condominioId): Collection
     {

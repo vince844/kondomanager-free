@@ -149,12 +149,13 @@ class ScritturaContabileController extends Controller
      *
      * 1. Scritture non bilanciate al loro interno (Dare ≠ Avere sulla singola
      *    scrittura) — quasi certamente la causa se ce n'è anche solo una.
-     * 2. Casse con `saldo_iniziale > 0`: per costruzione (vedi
+     * 2. Casse con `saldo_iniziale != 0`: per costruzione (vedi
      *    RegistraAperturaCassaAction, che azzera la colonna nella stessa
-     *    transazione in cui registra l'apertura) un valore residuo positivo
-     *    significa che l'apertura non è mai stata portata a giornale — è
-     *    esattamente la liquidità che StatoPatrimonialeService somma "a mano"
-     *    come liquidita_non_contabilizzata.
+     *    transazione in cui registra l'apertura) un valore residuo — positivo
+     *    o negativo — significa che l'apertura non è mai stata portata a
+     *    giornale ed è esattamente la liquidità che StatoPatrimonialeService
+     *    somma "a mano" come liquidita_non_contabilizzata. Sul perché non basti
+     *    guardare i positivi, vedi il commento accanto alla query.
      *
      * Oltre questi due casi la diagnosi automatica si ferma: un importo
      * digitato male ma comunque bilanciato non lascia traccia distinguibile.
