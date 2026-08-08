@@ -13,6 +13,7 @@ use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
+use App\Services\Dashboard\Widgets\ControlliPostImportWidget;
 use App\Services\Dashboard\Widgets\CreditiDaCompensareWidget;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
@@ -24,9 +25,9 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget, ControlliPostImportWidget $controlliWidget): Response
     {
-        $widgetManager->registerMany([$treasuryWidget, $creditiWidget]);
+        $widgetManager->registerMany([$treasuryWidget, $creditiWidget, $controlliWidget]);
 
         $esercizio = $this->getEsercizioCorrente($condominio);
         $copertura = null;

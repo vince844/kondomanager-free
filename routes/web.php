@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\NewUserPasswordController;
 use App\Http\Controllers\Condomini\CondominioController;
+use App\Http\Controllers\Import\ImportController;
 use App\Http\Controllers\Condomini\FetchCondominiController;
 use App\Http\Controllers\Frontend\WelcomeController;
 use App\Http\Controllers\Inviti\InvitoController;
@@ -92,6 +93,58 @@ Route::get('/condomini/options', [CondominioController::class, 'options'])
 
 Route::get('/fetch-condomini', FetchCondominiController::class)
     ->middleware(['auth', 'verified']);
+
+/*
+|--------------------------------------------------------------------------
+| Importazione dati da altri gestionali
+|--------------------------------------------------------------------------
+|
+| Fuori dal gruppo `/gestionale/{condominio}` **per necessità**, non per gusto:
+| l'importazione precede il condominio — il primo file che si carica è spesso
+| quello che lo crea — mentre quel gruppo ha in testa un condominio esistente e
+| due middleware che pretendono esercizio e piano dei conti.
+|
+| Il permesso è quello della creazione condomìni: chi può importare sta creando
+| condomìni, anagrafiche e unità in blocco.
+*/
+Route::middleware(['auth', 'verified', 'role_or_permission:amministratore|Crea condomini'])
+    ->prefix('/importa-dati')
+    ->name('import.')
+    ->group(function () {
+        Route::get('/', [ImportController::class, 'index'])->name('index');
+        Route::post('/', [ImportController::class, 'store'])->name('store');
+
+        Route::get('/{uuid}/riconoscimento', [ImportController::class, 'riconoscimento'])
+            ->name('riconoscimento');
+
+        Route::get('/{uuid}/verifica', [ImportController::class, 'verificaFile'])
+            ->name('verifica');
+
+        Route::get('/{uuid}/anteprima', [ImportController::class, 'anteprima'])
+            ->name('anteprima');
+
+        Route::put('/{uuid}/decisione', [ImportController::class, 'decidi'])
+            ->name('decisione');
+
+        Route::post('/{uuid}/conferma', [ImportController::class, 'conferma'])
+            ->name('conferma');
+
+        Route::get('/{uuid}/esito', [ImportController::class, 'esito'])
+            ->name('esito');
+
+        Route::get('/{uuid}/rapporto.pdf', [ImportController::class, 'rapportoPdf'])
+            ->name('rapporto');
+
+        // Chiude una sessione lasciata a metà. Non annulla ciò che è già entrato in archivio:
+        // quello ha una condizione da valutare, e arriva con la 1.10.1.
+        Route::delete('/{uuid}', [ImportController::class, 'scarta'])->name('scarta');
+
+        Route::put('/{uuid}/file/{file}/tipo', [ImportController::class, 'forzaTipo'])
+            ->name('file.tipo');
+
+        Route::delete('/{uuid}/file/{file}', [ImportController::class, 'escludiFile'])
+            ->name('file.escludi');
+    });
 
 /*
 |--------------------------------------------------------------------------

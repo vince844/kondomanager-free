@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import TreasuryGuardianWidget from './components/TreasuryGuardianWidget.vue';
+import ControlliPostImportWidget from '@/pages/gestionale/dashboard/components/ControlliPostImportWidget.vue';
 import CreditiDaCompensareWidget from './components/CreditiDaCompensareWidget.vue';
 import type { Building } from '@/types/buildings';
 import type { Esercizio } from '@/types/gestionale/esercizi';
@@ -616,6 +617,18 @@ onUnmounted(() => {
                      riga sopra (Copertura Bilancio : Inbox = 4:8). Crediti a
                      sinistra (piu' stretto, contenuto breve), Tesoreria a destra
                      (piu' denso). Se manca uno dei due, l'altro prende tutta la riga. -->
+                <!--
+                    Sopra gli altri due: dopo una migrazione è la cosa più urgente che ci sia, e
+                    sparisce da sola quando l'ultima voce si chiude.
+                -->
+                <!-- La griglia è a 3 colonne da md e a 12 da lg: servono entrambi gli span,
+                     altrimenti su schermo medio il riquadro si stringe a un terzo. -->
+                <ControlliPostImportWidget
+                    v-if="widgets?.controlli_post_import"
+                    :controlli="widgets.controlli_post_import"
+                    class="md:col-span-3 lg:col-span-12"
+                />
+
                 <div class="lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3 items-stretch">
                     <CreditiDaCompensareWidget
                         v-if="widgets?.crediti_da_compensare"

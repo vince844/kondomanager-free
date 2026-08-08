@@ -12,7 +12,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound } from 'lucide-vue-next';
+import { Settings, GitGraph, BookText, Folders, Megaphone, LayoutGrid, Menu, CalendarClock, House, SquareLibrary, Tags, ChevronRight, BriefcaseBusiness, UsersRound, List, DownloadCloud } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import { usePermission } from "@/composables/permissions";
 import { Permission } from '@/enums/Permission';
@@ -49,7 +49,18 @@ const getAccessibleChildren = (item: NavItem): LinkItem[] =>
 
 const mainNavItems = computed<NavItem[]>(() => [
     { type: 'link', title: trans('appHeader.dashboard'), href: generatePath('dashboard'), icon: LayoutGrid },
-    { type: 'link', title: trans('appHeader.condomini'), href: '/condomini', icon: House, permissions: [Permission.VIEW_CONDOMINI] },
+    {
+        // «Condomini» diventa un raggruppamento invece di un link secco: l'importazione dati è
+        // il modo in cui un condominio **entra** in Kondomanager, e va cercata dove si cercano i
+        // condomìni. Finché non era in nessun menu, all'importatore non ci si arrivava affatto.
+        type: 'parent',
+        title: trans('appHeader.condomini'),
+        icon: House,
+        children: [
+            { type: 'link', title: trans('appHeader.elencoCondomini'), icon: List, href: '/condomini', permissions: [Permission.VIEW_CONDOMINI] },
+            { type: 'link', title: trans('appHeader.importaDati'), icon: DownloadCloud, href: '/importa-dati', permissions: [Permission.CREATE_CONDOMINI] },
+        ],
+    },
     {
         type: 'parent',
         title: trans('appHeader.rubrica'),

@@ -3,6 +3,8 @@
 return [
     'dashboard'     => "Dashboard",
     'condomini'     => "Condomini",
+    'elencoCondomini' => "Elenco condomìni",
+    'importaDati'   => "Importa dati",
     'rubrica'       => "Rubrica",
     'anagrafiche'   => "Anagrafiche",
     'fornitori'     => "Fornitori",

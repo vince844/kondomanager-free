@@ -7,6 +7,146 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.47] - Portare Dentro un Condominio Intero
+
+> ⚠️ **Questa versione tocca il database.** Aggiunge **tre tabelle nuove** — `import_batches`,
+> `import_files`, `import_batch_items` — con una migrazione rieseguibile che non altera nessuna
+> tabella esistente: solo `CREATE TABLE`, ciascuna protetta dalla sua guardia. Nessun dato già in
+> archivio viene toccato, modificato o riletto.
+
+Kondomanager sapeva creare un condominio. Non sapeva **riceverne uno**: chi arrivava da un altro
+gestionale doveva ribattere a mano anagrafiche, unità, millesimi e saldi — mezza giornata per
+condominio, e l'errore di battitura che si scopre a settembre quando il riparto non torna.
+
+Da questa versione carichi gli export del tuo vecchio gestionale e il condominio entra: persone,
+unità, chi possiede cosa, tabelle millesimali e **saldi di apertura quadrati al centesimo**.
+
+Prima sorgente supportata: **Danea Domustudio**.
+
+### Niente entra finché non confermi
+
+Le prime tre schermate **leggono e basta**. Puoi caricare i file, guardare cosa il sistema ha
+capito, tornare indietro e ricaricare quante volte vuoi: in archivio non entra nulla. La scrittura
+comincia solo quando premi «Importa N record», e sotto ogni schermata c'è scritto.
+
+Non è una cortesia: chi migra sta versando in un software che non conosce la contabilità di
+qualcun altro, e la domanda vera che si fa è «se sbaglio, cosa succede?».
+
+### I saldi non entrano se non quadrano
+
+Prima di scrivere una sola riga, la somma dei saldi importati viene confrontata con **il totale
+scritto dentro il tuo riparto**. Quel numero non te lo chiediamo: lo leggiamo nel file che hai
+appena caricato.
+
+Se lo scarto non è zero, i saldi **non entrano** e il messaggio dice di quanto. Un saldo sbagliato
+non si nota subito: si trascina in ogni riparto successivo e riemerge in un sollecito.
+
+Quando il riparto non porta la riga del totale, la schermata lo dice — «non verificabile» — invece
+di far credere che sia stato controllato.
+
+### Le scelte le fai tu, prima che si scriva
+
+Alcune cose il sistema non può deciderle:
+
+- **Chi esiste già in archivio.** «Unisci» aggiorna quello che hai con i dati del file, «lascia
+  com'è» tiene il tuo e ci collega comunque unità, tabelle e saldi. Sul solo nome ci si sbaglia,
+  e la schermata lo dice: due «Rossi Mario» esistono davvero.
+- **I nomi doppi in una cella sola** («ROSSI M. / BIANCHI L.»): il tracciato di Danea non ha un
+  campo per la comproprietà. Puoi dividerli in due persone o lasciarli. Se dividi, il loro saldo
+  **resta in solido sull'unità**: il file non dice in che proporzione spezzarlo, e inventarla
+  sarebbe decidere su denaro altrui.
+
+Le decisioni restano sul lotto: se chiudi la scheda e torni domani, le ritrovi.
+
+### Da controllare dopo l'importazione
+
+Gli avvisi non muoiono nella schermata di esito. Diventano una lista **dentro il condominio**, con
+un richiamo sul cruscotto — perché la domanda «cosa dovevo sistemare?» arriva tre giorni dopo,
+quando quella schermata non la ritrovi più.
+
+Non è una lista da spuntare a mano. **La maggior parte delle voci si chiude da sola**: «le tabelle
+sono collegate a un capitolo di spesa?» è una domanda a cui il sistema risponde da solo, e la
+rifà ogni volta che apri la pagina. Se il problema torna, la voce si riapre.
+
+Le voci che nessuna verifica automatica può decidere **dicono perché**, invece di lasciar sospettare
+una dimenticanza. E c'è sempre «Non mi riguarda», perché una riga che non si può chiudere è
+l'immagine speculare del pulsante che promette e non fa.
+
+### Il rapporto, da allegare
+
+Ogni importazione produce un **rapporto in PDF**: cosa è entrato per livello, cosa è stato saltato
+e perché, lo scarto sulla quadratura, e le cose ancora da controllare con lo stato di oggi. È il
+documento che si allega al verbale o si conserva come prova.
+
+### Cosa non entra, e viene detto
+
+- **La prima nota e le rate versate degli esercizi chiusi.** Di quei file si legge solo la testata,
+  per riconoscere condominio ed esercizio: l'archivio storico arriva con la 1.10.1, e la schermata
+  lo dichiara invece di lasciarlo scoprire a cose fatte.
+- **Le pratiche e le attività**: Kondomanager non le gestisce. Se carichi quel file te lo dice,
+  invece di lasciarlo fra i «non riconosciuti» dove sembrerebbe un difetto del sistema.
+- **Il collegamento fra tabelle e capitoli di spesa.** L'export non dice quale spesa vada su quale
+  tabella, e indovinarlo significherebbe decidere come si dividono i soldi. Le tabelle entrano
+  scollegate — in elenco le vedi come «Orfane» — e l'importazione te lo segnala.
+- **I subentri.** Quando la titolarità cambia a metà anno, Danea lo scrive nel ruolo (`ex Pr 336
+  gg`). Il titolare attuale entra e il saldo di chi è uscito va sull'unità in solido, ma la
+  ripartizione pro-rata fra i due non esiste ancora: viene detto, unità per unità.
+
+### Sette difetti trovati sui file veri, prima che li trovassi tu
+
+Il motore è stato provato sugli export reali di due condomìni, non solo su dati costruiti a
+tavolino. Ne sono usciti due difetti che nessuna prova di laboratorio aveva mostrato:
+
+- **Il ruolo con il conteggio dei giorni.** Danea scrive `ex Pr 336 gg` quando la titolarità cambia
+  durante l'esercizio — il caso più comune che esista, una compravendita a metà anno. Il confronto
+  era esatto su `ex Pr`, quindi quella riga non risultava cessata, il suo saldo veniva cercato fra
+  le persone attuali e l'importazione si fermava con un errore irrisolvibile.
+- **La divisione che rompeva i saldi.** Il riparto intesta la posizione al nome unito: scegliendo
+  «dividi in due» — la decisione che l'interfaccia consiglia per prima — quel nome spariva e il
+  saldo non trovava più nessuno.
+
+Una revisione critica del codice, condotta prima del rilascio, ne ha trovati altri cinque:
+
+- **Ogni pulsante della pagina «Da controllare» rispondeva 404**: il collegamento inviava un
+  identificatore e la ricerca ne usava un altro.
+- **Tre livelli scrivevano prima di sapere se dovevano fermarsi**, lasciando in archivio righe di
+  un'importazione dichiarata non riuscita — e al tentativo successivo quelle righe risultavano
+  «già presenti», chiedendo decisioni che nessuno aveva mai posto.
+- **Gli importi sopra i mille euro scritti come testo venivano scartati** come «non numeri»,
+  perché il separatore delle migliaia veniva trattato dopo la virgola decimale anziché prima.
+- **Un'unità con il solo inquilino risultava a posto.** Verso il condominio risponde chi ha un
+  diritto reale — proprietà, nuda proprietà, usufrutto — e il conduttore non è fra questi: quella
+  unità sarebbe rimasta fuori da ogni riparto, e il controllo diceva verde.
+
+### Come ci si arriva
+
+**Condomini → Importa dati** nel menu principale. Serve il permesso «Crea condomini», lo stesso
+che serve per creare un condominio a mano — perché è la stessa cosa, fatta più in fretta.
+
+Le cinque schermate hanno ora l'intestazione delle altre pagine del gestionale, con la **guida in
+app** che spiega cosa esportare dal vecchio gestionale e cosa aspettarsi.
+
+### Sotto il cofano
+
+Il motore lavora a **sette livelli** in ordine di dipendenza — condominio, esercizi, persone,
+unità, titolarità, tabelle, saldi — e ciascuno è una transazione: se un livello si ferma, di quel
+livello non resta scritto niente. Il gate dei prerequisiti sta nell'orchestratore, non nel singolo
+livello, così un livello che dimenticasse di controllare i propri non potrebbe scavalcarlo.
+
+I file caricati vivono su disco privato, con deduplica per impronta: un file corrotto non fa
+fallire gli altri del gruppo. Il riconoscimento del tipo pesa la testata e le intestazioni di
+colonna, e resta **correggibile a mano** — è la schermata che esiste perché tu possa smentirci.
+
+La regola su chi risponde verso il condominio vive in un posto solo,
+`RuoloAnagraficaImmobile::titolariDiDirittoReale()`, e da questa versione la usa anche
+l'importazione: era riscritta a mano, ed è così che un'unità col solo inquilino passava per
+completa.
+
+**Circa 100 test nuovi sull'importazione**, fra cui quelli che riproducono i difetti trovati sui
+file veri — perché quella forma non torni a mancare.
+
+---
+
 ## [1.10.0-beta.46] - Il Credito Che Non Si Poteva Spendere
 
 Il gestionale sapeva da tempo dire **quanto** credito ha un condòmino. Non ha mai saputo dire **quale rata quel credito copre** — e senza quella frase l'amministratore, arrivato alla pagina di incasso, si trova davanti a un elenco di rate e deve capirlo da solo. Il credito, così, resta lì.

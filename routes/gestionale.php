@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Gestionale\Controlli\ControlliPostImportController;
 use App\Http\Controllers\Gestionale\Casse\CassaController;
 use App\Http\Controllers\Gestionale\Dashboard\DashboardController;
 use App\Http\Controllers\Gestionale\Esercizi\EsercizioController;
@@ -58,6 +59,15 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('/', DashboardController::class)
         ->name('index');
     
+    // «Da controllare dopo l'importazione». Sta qui e non nel gruppo dell'import perché la
+    // domanda arriva giorni dopo, quando l'uuid del lotto non ce l'ha più nessuno — e perché il
+    // permesso giusto è quello del gestionale: chi non poteva importare deve poter sistemare.
+    Route::get('/controlli-import', [ControlliPostImportController::class, 'index'])
+        ->name('controlli-import.index');
+
+    Route::put('/controlli-import/{batch}', [ControlliPostImportController::class, 'aggiorna'])
+        ->name('controlli-import.aggiorna');
+
     Route::get('/struttura', [StrutturaController::class, 'index'])
         ->name('struttura.index');
 

@@ -68,4 +68,9 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     '2026_08_03_090000_create_deleghe_f24_tables',
     '2026_08_04_100000_add_data_prima_scadenza_to_piani_rate',
     '2026_08_05_090000_convert_tipologia_anagrafica_immobile_to_varchar',
+    // Aggiunta nella beta.47: le tre tabelle dell'importatore. Sono `CREATE TABLE` pure,
+    // senza un solo `ALTER` su tabelle popolate — la categoria a rischio più basso — ma
+    // valgono anche per loro le regole del salto, e una migrazione fuori da questo dataset
+    // smette di essere presidiata (lezione della beta.31).
+    '2026_08_06_090000_create_import_tables',
 ]);
