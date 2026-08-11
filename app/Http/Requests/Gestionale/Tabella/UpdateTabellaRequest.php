@@ -31,7 +31,11 @@ class UpdateTabellaRequest extends FormRequest
             'nome'            => 'required|string|max:255',
             'tipo'            => 'required|string|in:standard,ascensore,riscaldamento,acqua,lastrico,speciale,altro',
             'quota'           => 'required|string|in:millesimi,persone,kwatt,mtcubi,quote',
-            'numero_decimali' => 'required|integer|min:0|max:6',
+            // `max:5` e non 6: `quote_tabella.valore` è un `decimal(12,5)`, quindi un sesto
+            // decimale il database non lo può conservare — verrebbe troncato in silenzio.
+            // In creazione il limite era già 5 (`CreateTabellaRequest:34`): erano due numeri
+            // diversi per lo stesso vincolo, e quello sbagliato era qui.
+            'numero_decimali' => 'required|integer|min:0|max:5',
             'updated_by'      => 'required|exists:users,id',
             'descrizione'     => 'nullable|string',
             'note'            => 'nullable|string',

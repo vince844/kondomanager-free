@@ -9,6 +9,7 @@ use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Conto;
 use App\Models\Immobile;
 use App\Models\Saldo;
+use App\Models\Tabella;
 use App\Exceptions\Gestionale\ScopertiNonAccettatiException;
 use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\InboxService;
@@ -162,16 +163,34 @@ class GeneratePianoRateAction
             $immobiliIds = array_unique(array_column($scoperti, 'immobile_id'));
             $contiIds    = array_unique(array_column($scoperti, 'conto_id'));
 
+            // Dalla beta.48 gli scoperti hanno tre forme, non una: la quota orfana per
+            // immobile (`motivo` null, quella storica), il capitolo senza tabella
+            // (`conto_senza_tabella`) e la tabella senza millesimi
+            // (`tabella_senza_millesimi`). Le ultime due non riguardano un immobile —
+            // `immobile_id` è null — e vanno nominate con la tabella, non con l'unità.
+            $tabelleIds = array_unique(array_filter(array_column($scoperti, 'tabella_id')));
+
             $immobiliNomi = Immobile::whereIn('id', $immobiliIds)
                 ->pluck('nome', 'id')
                 ->toArray();
             $contiNomi = Conto::whereIn('id', $contiIds)
                 ->pluck('nome', 'id')
                 ->toArray();
+            $tabelleNomi = empty($tabelleIds)
+                ? []
+                : Tabella::whereIn('id', $tabelleIds)->pluck('nome', 'id')->toArray();
 
             $scopertiArricchiti = array_map(fn ($s) => array_merge($s, [
-                'immobile_nome' => $immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'],
-                'conto_nome'    => $contiNomi[$s['conto_id']]       ?? 'Conto #'    . $s['conto_id'],
+                // Senza immobile non si inventa un'etichetta: la schermata sa già che in
+                // quel caso deve mostrare altro. «Immobile #» seguito da niente era il
+                // testo che compariva prima, ed è peggio di un campo vuoto.
+                'immobile_nome' => $s['immobile_id']
+                    ? ($immobiliNomi[$s['immobile_id']] ?? 'Immobile #' . $s['immobile_id'])
+                    : null,
+                'conto_nome'    => $contiNomi[$s['conto_id']] ?? 'Conto #' . $s['conto_id'],
+                'tabella_nome'  => ($s['tabella_id'] ?? null)
+                    ? ($tabelleNomi[$s['tabella_id']] ?? 'Tabella #' . $s['tabella_id'])
+                    : null,
             ]), $scoperti);
 
             throw new ScopertiNonAccettatiException($scopertiArricchiti);

@@ -566,12 +566,38 @@ class CalcoloQuoteService
                     continue;
                 }
 
-                // [DIAG] Silent discard intercettato — questo è il bug che causa quote_create:0
-                Log::warning("processaConti: SILENT DISCARD — conto ID={$conto->id} ('{$conto->nome}') ha override ma nessuna tabella millesimale e nessun sottoconto.", [
-                    'importo_override_ignorato_cents' => $importoOverride,
+                // Capitolo con importo forzato dal piano, senza tabelle millesimali e senza
+                // sottoconti: quell'importo non è assegnabile a nessuno.
+                //
+                // Fino alla beta.47 qui c'era un `continue` con un Log::warning. L'importo
+                // spariva dal piano e il prodotto non lo diceva: il cruscotto chiedeva un
+                // ricalcolo, «Ricalcola» rispondeva «Operazione Completata» e non cambiava
+                // niente — per sempre, perché nessun numero di clic poteva risolverlo.
+                //
+                // La guardia della beta.32 esisteva già ma vive DENTRO distribuisciSuTabelle
+                // (vedi il ramo `tabelleMillesimali->isEmpty()`), e questo ramo lì non ci
+                // arriva mai. Era la stessa guardia, corretta in un verso solo — e il verso
+                // scoperto era quello di *tutti* i piani rate, perché un piano forza sempre
+                // l'importo dei suoi capitoli.
+                //
+                // Stesso bucket, stesso motivo, stessa richiesta di motivazione scritta.
+                Log::warning("processaConti: conto ID={$conto->id} ('{$conto->nome}') ha override ma nessuna tabella millesimale e nessun sottoconto. Importo registrato come scoperto.", [
+                    'importo_override_cents' => $importoOverride,
                     'conto_tipo'  => $conto->tipo,
                     'conto_nome'  => $conto->nome,
                 ]);
+
+                if ($importoOverride != 0) {
+                    $this->scopertiAccumulati[] = [
+                        'immobile_id'     => null,   // l'intero capitolo, non la quota di qualcuno
+                        'conto_id'        => $conto->id,
+                        'tabella_id'      => null,
+                        'ruolo_richiesto' => null,
+                        'importo'         => abs($importoOverride),
+                        'motivo'          => 'conto_senza_tabella',
+                    ];
+                }
+
                 continue;
             }
 
@@ -654,24 +680,42 @@ class CalcoloQuoteService
             $weightCoeff = $coeff / 100.0;
             $quote = $tabella->quote;
 
-            // [DIAG] Tabella senza quote millesimali
-            if ($quote->isEmpty()) {
-                Log::warning("distribuisciSuTabelle: tabella millesimale ID={$tabella->id} ('{$tabella->nome}') non ha quote inserite. Importo non distribuito per conto ID={$conto->id}.", [
+            // Tabella collegata al capitolo ma inutilizzabile: nessun immobile assegnato,
+            // oppure tutti i millesimi a zero. In entrambi i casi la sua fetta di spesa non
+            // è ripartibile su nessuno.
+            //
+            // Fino alla beta.47 erano due `continue` con un Log::warning, e il danno
+            // dipendeva da quante tabelle avesse il capitolo:
+            //
+            //  - tabella unica → il peso restava vuoto e :765 usciva con un `return` nudo:
+            //    l'importo spariva dal piano;
+            //  - più tabelle → il peso della tabella saltata non entrava né in $weights né
+            //    in $pesiScoperti, quindi la rinormalizzazione finale (`$w / $pesoSoggetti`)
+            //    faceva pagare la sua fetta ai partecipanti delle ALTRE tabelle. Peggio che
+            //    perderla: la pagava chi non c'entrava.
+            //
+            // Registrandola fra i pesi scoperti si ottengono entrambe le cose giuste: la
+            // generazione si ferma e chiede la motivazione, e se l'amministratore forza,
+            // l'aritmetica esistente decurta la fetta invece di scaricarla sugli altri.
+            $sommaValori = (float) $quote->sum('valore');
+            $tabellaInutilizzabile = $quote->isEmpty() || $sommaValori <= 0.0;
+
+            if ($tabellaInutilizzabile) {
+                Log::warning("distribuisciSuTabelle: tabella ID={$tabella->id} ('{$tabella->nome}') non ha millesimi utilizzabili. Fetta del conto ID={$conto->id} registrata come scoperto.", [
                     'conto_nome'   => $conto->nome,
                     'tabella_nome' => $tabella->nome,
+                    'num_quote'    => $quote->count(),
+                    'somma_valori' => $sommaValori,
                 ]);
-                continue;
-            }
 
-            $sommaValori = (float) $quote->sum('valore');
+                $pesiScoperti[] = [
+                    'immobile_id'     => null,   // l'intera fetta della tabella
+                    'tabella_id'      => $tabella->id,
+                    'ruolo_richiesto' => null,
+                    'peso'            => $weightCoeff,
+                    'motivo'          => 'tabella_senza_millesimi',
+                ];
 
-            // [DIAG] Somma millesimi = 0
-            if ($sommaValori <= 0.0) {
-                Log::warning("distribuisciSuTabelle: tabella ID={$tabella->id} ('{$tabella->nome}') ha quote ma la somma dei valori è zero. Verificare i millesimi inseriti.", [
-                    'conto_id'    => $conto->id,
-                    'conto_nome'  => $conto->nome,
-                    'num_quote'   => $quote->count(),
-                ]);
                 continue;
             }
 
@@ -790,6 +834,10 @@ class CalcoloQuoteService
                         'tabella_id'      => $ps['tabella_id'],
                         'ruolo_richiesto' => $ps['ruolo_richiesto'],
                         'importo'         => $importoScoperto,
+                        // La quota orfana storica non ha motivo e continua a non averlo:
+                        // è il caso originale della v1.9.1, e cambiarlo qui cambierebbe
+                        // il significato delle righe già in archivio.
+                        'motivo'          => $ps['motivo'] ?? null,
                     ];
                 }
             }

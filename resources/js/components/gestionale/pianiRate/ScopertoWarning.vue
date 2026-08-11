@@ -6,13 +6,29 @@ import { Input } from '@/components/ui/input';
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter';
 import { usePermission } from "@/composables/permissions";
 
+/**
+ * Uno scoperto ha tre forme, e prima della beta.48 questa schermata ne conosceva una sola.
+ *
+ * - `motivo` assente → **quota orfana**: l'unità c'è, ma nessun soggetto attivo a cui
+ *   addebitarla. È il caso storico della v1.9.1, l'unico che questa tabella sapeva mostrare.
+ * - `conto_senza_tabella` → il capitolo non ha nessuna tabella millesimale collegata.
+ * - `tabella_senza_millesimi` → la tabella è collegata ma non ha immobili, o li ha tutti a zero.
+ *
+ * Le ultime due **non riguardano un immobile**: `immobile_id` arriva `null`. Mostrandole con il
+ * tracciato della prima si otteneva «Immobile #» seguito dal vuoto, un badge di ruolo vuoto e un
+ * collegamento a `/immobili/null` — cioè un pulsante che non porta da nessuna parte, proprio
+ * accanto a un messaggio che chiede di fare qualcosa.
+ */
 export interface ScopertoCents {
-    immobile_id: number;
-    immobile_nome: string;
+    immobile_id: number | null;
+    immobile_nome: string | null;
     conto_id: number;
     conto_nome: string;
+    tabella_id?: number | null;
+    tabella_nome?: string | null;
     importo: number; // in cents
-    ruolo_richiesto: string;
+    ruolo_richiesto: string | null;
+    motivo?: string | null;
 }
 
 const props = defineProps<{
@@ -30,6 +46,66 @@ const { generatePath } = usePermission();
 
 const totaleScoperto = computed(() => props.scoperti.reduce((acc, curr) => acc + curr.importo, 0));
 
+/**
+ * Cosa manca, in una riga, e cosa si deve fare per toglierlo di mezzo.
+ *
+ * La frase dell'azione è la parte che conta: la roadmap lo dice esplicitamente — *«il messaggio
+ * deve nominare i capitoli e dire cosa fare, altrimenti la telefonata si sposta, non si toglie»*.
+ */
+const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
+    if (s.motivo === 'conto_senza_tabella') {
+        return {
+            cosa: 'Nessuna tabella millesimale collegata al capitolo',
+            azione: 'Collega una tabella millesimale a questa voce di spesa',
+        };
+    }
+
+    if (s.motivo === 'tabella_senza_millesimi') {
+        return {
+            cosa: s.tabella_nome
+                ? `La tabella «${s.tabella_nome}» non ha millesimi utilizzabili`
+                : 'La tabella collegata non ha millesimi utilizzabili',
+            azione: 'Assegna gli immobili alla tabella e inserisci i millesimi',
+        };
+    }
+
+    return {
+        cosa: s.immobile_nome ?? 'Unità senza soggetto',
+        azione: 'Censisci le anagrafiche mancanti su questa unità',
+    };
+};
+
+/**
+ * Dove si va a sistemare. `null` quando non c'è una destinazione costruibile.
+ *
+ * ⚠️ **`conto_senza_tabella` non ha collegamento, ed è una scelta.** La pagina in cui si collega
+ * una tabella a un capitolo è `.../esercizi/{esercizio}/piani-conti/{pianoConto}/conti`, e il
+ * payload dello scoperto non porta né l'esercizio né il piano dei conti. Indovinarli
+ * produrrebbe un pulsante che porta altrove — peggio di nessun pulsante, perché sembra una
+ * strada. La riga dice comunque quale capitolo e cosa fare.
+ *
+ * Si chiude quando arriva l'avviso preventivo sui capitoli del piano (§7.4 di
+ * `docs/validatore_coerenza_millesimi.md`): quella schermata quegli id ce li ha già.
+ */
+const destinazione = (s: ScopertoCents): string | null => {
+    if (s.motivo === 'tabella_senza_millesimi') {
+        return s.tabella_id
+            ? generatePath('gestionale/:condominio/tabelle/' + s.tabella_id + '/quote')
+            : null;
+    }
+
+    if (s.motivo === 'conto_senza_tabella') {
+        return null;
+    }
+
+    return s.immobile_id
+        ? generatePath('gestionale/:condominio/immobili/' + s.immobile_id)
+        : null;
+};
+
+const etichettaDestinazione = (s: ScopertoCents): string =>
+    s.motivo === 'tabella_senza_millesimi' ? 'Millesimi' : 'Anagrafiche';
+
 const canProceed = computed(() => nota.value.trim().length >= 10);
 
 const handleProcedi = () => {
@@ -45,10 +121,11 @@ const handleProcedi = () => {
       <AlertTriangle class="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
       <div>
         <h3 class="font-bold text-amber-900 text-base">
-          Attenzione: {{ scoperti.length }} {{ scoperti.length === 1 ? 'quota non assegnabile' : 'quote non assegnabili' }} (totale {{ euro(totaleScoperto / 100) }})
+          Attenzione: {{ scoperti.length }} {{ scoperti.length === 1 ? 'importo non ripartibile' : 'importi non ripartibili' }} (totale {{ euro(totaleScoperto) }})
         </h3>
         <p class="text-sm text-amber-800 mt-1">
-          Queste unità non hanno soggetti attivi a cui addebitare la quota. Le quote degli altri condòmini restano corrette.
+          Questi importi non sono addebitabili a nessuno: manca il soggetto, la tabella millesimale o i millesimi.
+          Se procedi, il piano rate <strong>non li conterrà</strong> — le quote degli altri condòmini restano corrette.
         </p>
       </div>
     </div>
@@ -57,7 +134,7 @@ const handleProcedi = () => {
       <table class="w-full text-sm text-left">
         <thead class="bg-amber-100/30 text-amber-900 text-xs uppercase font-semibold">
           <tr>
-            <th class="px-4 py-2">Immobile</th>
+            <th class="px-4 py-2">Cosa manca</th>
             <th class="px-4 py-2">Voce di spesa</th>
             <th class="px-4 py-2">Ruolo atteso</th>
             <th class="px-4 py-2 text-right">Importo</th>
@@ -65,11 +142,17 @@ const handleProcedi = () => {
           </tr>
         </thead>
         <tbody class="divide-y divide-amber-100 bg-white/50">
-          <tr v-for="(scoperto, index) in scoperti" :key="index" class="hover:bg-amber-50/50">
-            <td class="px-4 py-2 font-medium text-slate-900">{{ scoperto.immobile_nome }}</td>
+          <tr v-for="(scoperto, index) in scoperti" :key="index" class="hover:bg-amber-50/50 align-top">
+            <td class="px-4 py-2">
+              <div class="font-medium text-slate-900">{{ descrizione(scoperto).cosa }}</div>
+              <div class="text-[11px] text-slate-600 mt-0.5">{{ descrizione(scoperto).azione }}</div>
+            </td>
             <td class="px-4 py-2 text-slate-700">{{ scoperto.conto_nome }}</td>
             <td class="px-4 py-2">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border" 
+              <!-- Il ruolo esiste solo per la quota orfana: sulle altre due forme il badge
+                   sarebbe una cornice vuota, che si legge come un dato mancante. -->
+              <span v-if="scoperto.ruolo_richiesto"
+                    class="px-2 py-0.5 rounded text-[10px] font-bold uppercase border"
                     :class="{
                       'bg-blue-50 text-blue-700 border-blue-200': scoperto.ruolo_richiesto === 'inquilino',
                       'bg-purple-50 text-purple-700 border-purple-200': scoperto.ruolo_richiesto === 'usufruttuario',
@@ -77,13 +160,20 @@ const handleProcedi = () => {
                     }">
                 {{ scoperto.ruolo_richiesto }}
               </span>
+              <span v-else class="text-slate-400 text-xs">—</span>
             </td>
-            <td class="px-4 py-2 text-right font-medium text-amber-700">{{ euro(scoperto.importo / 100) }}</td>
+            <!-- `euro()` ha `fromCents: true` come default e la conversione la fa da sé: qui
+                 c'era un `/ 100` che divideva una seconda volta, e € 24.741,60 di scoperto
+                 comparivano come € 247,42. Preesistente, trovato dal primo test di questo
+                 componente. Gli altri due chiamanti che pre-dividono — PianiRateNew ed
+                 EstrattoContoAnagrafica — istanziano `fromCents: false` e sono corretti. -->
+            <td class="px-4 py-2 text-right font-medium text-amber-700">{{ euro(scoperto.importo) }}</td>
             <td class="px-4 py-2 text-center">
-              <a :href="generatePath('gestionale/:condominio/immobili/' + scoperto.immobile_id)" target="_blank" 
+              <a v-if="destinazione(scoperto)" :href="destinazione(scoperto)!" target="_blank"
                  class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors">
-                Anagrafiche <ExternalLink class="w-3 h-3" />
+                {{ etichettaDestinazione(scoperto) }} <ExternalLink class="w-3 h-3" />
               </a>
+              <span v-else class="text-slate-400 text-xs">—</span>
             </td>
           </tr>
         </tbody>
@@ -96,14 +186,17 @@ const handleProcedi = () => {
           Cosa vuoi fare?
         </label>
         <p class="text-xs text-amber-700">Se vuoi procedere comunque addossando la differenza, specifica una motivazione (min. 10 caratteri) che verrà salvata nello storico.</p>
+        <!-- Il testo diceva «correggi l'anagrafica»: vero per la quota orfana, falso per le
+             altre due forme, dove il rimedio è la tabella millesimale. Ogni riga dice già il
+             suo rimedio nella colonna «Cosa manca»: qui resta solo ciò che vale per tutte. -->
         <p class="text-xs font-semibold text-amber-800">
-          Attenzione: una volta emesse le rate non sarà più possibile includere questa unità tramite Ricalcola. Se vuoi includerla, correggi l'anagrafica prima di emettere.
+          Attenzione: una volta emesse le rate, Ricalcola non potrà più recuperare questi importi. Se vuoi includerli, correggi prima di emettere quanto indicato qui sopra.
         </p>
         <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           <Input 
             id="nota_scoperti"
             v-model="nota"
-            placeholder="Es: Immobili in fase di aggiornamento anagrafica..."
+            placeholder="Es: tabella millesimale in approvazione, la collego prima del consuntivo..."
             class="flex-1 bg-white border-amber-300 focus-visible:ring-amber-500"
             :disabled="processing"
             @keyup.enter="handleProcedi"

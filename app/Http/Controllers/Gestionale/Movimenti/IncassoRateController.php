@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\DebitoNonDelPaganteException;
 use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
 use App\Actions\Gestionale\Movimenti\StoreIncassoRateAction;
 use App\Enums\TipoMovimentoContabile;
@@ -167,6 +168,12 @@ class IncassoRateController extends Controller
             // il modulo compilato e il motivo, invece della pagina 500 che l'amministratore si
             // prendeva finora — perdendo la distribuzione appena fatta a mano.
             return back()->withInput()->withErrors(['importo_totale' => $e->getMessage()]);
+        } catch (DebitoNonDelPaganteException $e) {
+            // Stesso trattamento, e per la stessa ragione: la guardia della beta.48 scatta anche
+            // lei prima della transazione. L'errore va su `pagante_id` e non sull'importo, perché
+            // è **quello** il campo da cambiare — il rimedio è scegliere l'intestatario giusto,
+            // non correggere una cifra.
+            return back()->withInput()->withErrors(['pagante_id' => $e->getMessage()]);
         }
 
         // --- AGGIORNAMENTO EVENTI SCADENZIARIO ---

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Gestionale\Movimenti;
 
+use App\Exceptions\Gestionale\DebitoNonDelPaganteException;
 use App\Exceptions\Gestionale\TotaleIncassoNonCorrispondenteException;
 use App\Models\Condominio;
 use App\Models\Gestionale\RataQuote;
@@ -16,6 +17,84 @@ use Illuminate\Support\Facades\DB;
 
 class StoreIncassoRateAction
 {
+    /**
+     * Non si alloca su un debito che non è del pagante.
+     *
+     * Cercando **per immobile** la situazione debitoria aggrega le quote di tutti i
+     * comproprietari (`SituazioneDebitoriaController:39-45`): una riga può portare il debito di
+     * Verdi mentre chi paga è Bianchi. Il motore però tocca solo le quote del pagante, e prima
+     * della beta.48 allocare su una riga altrui non produceva un errore ma un **giro a vuoto**:
+     *
+     * - con il credito, il DARE prelevava e l'AVERE non trovava niente da chiudere, così il
+     *   blocco del riaccredito restituiva tutto — due scritture che si annullano, un protocollo
+     *   consumato, il debito intatto;
+     * - con il contante, quello che non trovava dove andare diventava **anticipo del pagante**,
+     *   lasciando aperto il debito che l'amministratore credeva di saldare.
+     *
+     * In entrambi i casi l'operazione riusciva senza fare quello che diceva.
+     *
+     * ## Perché sta qui e non dentro i due cicli
+     *
+     * È la lezione della beta.47: **il gate dei prerequisiti appartiene all'orchestratore, non
+     * al passo.** Controllando prima di aprire la transazione, nessun ramo può scavalcarlo — e
+     * soprattutto non resta niente a database di un'operazione rifiutata, nemmeno per il tempo
+     * di un rollback.
+     *
+     * ## Cosa NON blocca, deliberatamente
+     *
+     * Se il pagante ha una quota su quella rata ma è **già saldata**, si passa: è la corsa fra
+     * il caricamento della pagina e il salvataggio, non c'è niente da pagare ed è benigno.
+     * Trasformarlo in errore sostituirebbe un difetto con un altro.
+     *
+     * E non riguarda **di chi è il credito**: quella domanda l'ha chiusa la beta.46
+     * (`:281-297`), che permette al credito di un comproprietario di pagare il debito del
+     * pagante quando i due condividono l'unità. Qui si guarda solo chi ha il **debito**.
+     *
+     * @param  array<int,array{rata_id:int,importo:float}>  $pagamentiOrdinari
+     *
+     * @throws DebitoNonDelPaganteException
+     */
+    private function guardiaDebitoDelPagante(array $pagamentiOrdinari, int $paganteId): void
+    {
+        foreach ($pagamentiOrdinari as $pagamento) {
+            $quotaFaro = RataQuote::find($pagamento['rata_id']);
+
+            if (! $quotaFaro) {
+                continue; // Rata inesistente: la segnala il ciclo che scrive, con il suo errore.
+            }
+
+            $paganteHaDebito = RataQuote::where('rata_id', $quotaFaro->rata_id)
+                ->where('anagrafica_id', $paganteId)
+                ->where('importo', '>', 0)
+                ->exists();
+
+            if ($paganteHaDebito) {
+                continue;
+            }
+
+            // Il messaggio nomina chi ha davvero il debito: senza, l'amministratore vede un
+            // rifiuto su una riga che sullo schermo sembra sua e non capisce di chi sia.
+            $intestatari = RataQuote::with('anagrafica')
+                ->where('rata_id', $quotaFaro->rata_id)
+                ->where('importo', '>', 0)
+                ->get()
+                // `anagrafiche` non ha una colonna `cognome`: `nome` porta il nome intero
+                // («Aurora Bassi»). È la stessa lettura che fa il resto dell'azione a `:332`.
+                ->map(fn ($q) => $q->anagrafica?->nome)
+                ->filter()
+                ->unique()
+                ->implode(', ');
+
+            // Eccezione dedicata e non `RuntimeException`: il controller cattura per tipo, e un
+            // tipo generico uscirebbe come pagina 500 buttando via la distribuzione fatta a mano.
+            // Vedi la classe per il resto della storia.
+            throw new DebitoNonDelPaganteException(
+                $quotaFaro->rata->numero_rata ?? '?',
+                $intestatari
+            );
+        }
+    }
+
     public function execute(array $validated, Condominio $condominio, Esercizio $esercizio): void
     {
         $pagamentiOrdinari = array_filter(
@@ -47,6 +126,8 @@ class StoreIncassoRateAction
                 $eccedenzaInizialeCents
             );
         }
+
+        $this->guardiaDebitoDelPagante($pagamentiOrdinari, (int) $validated['pagante_id']);
 
         DB::transaction(function () use (
             $validated,

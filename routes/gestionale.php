@@ -165,7 +165,14 @@ Route::prefix('/gestionale/{condominio}')
     Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/print-riparto', [PianoContiPrintController::class, 'riparto'])
         ->name('esercizi.piani-conti.print-riparto');
     
+    // `only()` e non un `resource` intero: `ContoController` implementa **solo** queste tre
+    // azioni. Le altre quattro che `Route::resource` generava — `index`, `create`, `show`,
+    // `edit` — puntavano a metodi inesistenti e rispondevano **500** a chiunque ci arrivasse
+    // per URL. Nessuna pagina le linkava, quindi il difetto era latente: le voci di spesa si
+    // gestiscono tutte dalla pagina del piano dei conti e dai suoi modali, e quelle quattro
+    // schermate non sono mai state volute. Rimosse nella beta.48.
     Route::resource('esercizi.piani-conti.conti', ContoController::class)
+        ->only(['store', 'update', 'destroy'])
         ->parameters([
             'esercizi'    => 'esercizio',
             'piani-conti' => 'pianoConto',

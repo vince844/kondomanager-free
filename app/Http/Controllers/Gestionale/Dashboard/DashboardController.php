@@ -11,6 +11,7 @@ use App\Models\Gestionale\FatturaPassiva;
 use App\Models\Gestionale\PianoRate;
 use App\Services\Gestionale\BudgetCoverageService;
 use App\Services\Gestionale\SpesaPerVoceService;
+use App\Services\PianoRateQuoteService;
 use App\Services\Dashboard\WidgetManager;
 use App\Services\Dashboard\Widgets\TreasuryGuardianWidget;
 use App\Services\Dashboard\Widgets\ControlliPostImportWidget;
@@ -25,7 +26,7 @@ class DashboardController extends Controller
 {
     use HasCondomini, HasEsercizio;
 
-    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget, ControlliPostImportWidget $controlliWidget): Response
+    public function __invoke(Condominio $condominio, BudgetCoverageService $coverageService, SpesaPerVoceService $spesaPerVoce, WidgetManager $widgetManager, TreasuryGuardianWidget $treasuryWidget, CreditiDaCompensareWidget $creditiWidget, ControlliPostImportWidget $controlliWidget, PianoRateQuoteService $pianoRateQuoteService): Response
     {
         $widgetManager->registerMany([$treasuryWidget, $creditiWidget, $controlliWidget]);
 
@@ -267,41 +268,19 @@ class DashboardController extends Controller
                     ]) 
                     ->get();
                 
+                // Il verdetto vive in `PianoRateQuoteService` dall'11/08/2026, e non più qui:
+                // la stessa domanda la fa anche la pagina del piano, e finché ognuna se la
+                // calcolava per conto proprio le due rispondevano in modo diverso — metodi
+                // diversi e tolleranze diverse (zero qui, € 2,00 di là). Vedi `eDisallineato()`.
                 foreach ($pianiRate as $piano) {
-                    if ($piano->rate->count() > 0) {
-                        $totalePuroGenerato = 0;
-                        foreach ($piano->rate as $rata) {
-                            foreach ($rata->rateQuote as $quota) {
-                                $regole = $quota->regole_calcolo;
-                                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
-                                    $totalePuroGenerato += $regole['importi']['quota_pura_gestione'];
-                                } else {
-                                    if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
-                                        $totalePuroGenerato += $quota->importo;
-                                    }
-                                }
-                            }
-                        }
-
-                        $totaleAtteso = 0;
-                        if ($piano->tipo === 'straordinario') {
-                            foreach ($piano->fattureStraordinarie as $fattura) {
-                                $totaleAtteso += $fattura->pivot->importo_collegato;
-                            }
-                        } else {
-                            foreach ($piano->capitoli as $capitolo) {
-                                $totaleAtteso += $capitolo->pivot->importo ?? $capitolo->importo;
-                            }
-                        }
-
-                        if ($totaleAtteso !== $totalePuroGenerato) {
-                            $pianiDisallineati[] = [
-                                'id' => $piano->id,
-                                'nome' => $piano->nome,
-                                'gestione' => $gestione->nome,
-                                'delta' => $totaleAtteso - $totalePuroGenerato
-                            ];
-                        }
+                    if ($pianoRateQuoteService->eDisallineato($piano)) {
+                        $pianiDisallineati[] = [
+                            'id' => $piano->id,
+                            'nome' => $piano->nome,
+                            'gestione' => $gestione->nome,
+                            'delta' => $pianoRateQuoteService->totaleAttesoCents($piano)
+                                     - $pianoRateQuoteService->totalePuroGeneratoCents($piano),
+                        ];
                     }
                 }
             }

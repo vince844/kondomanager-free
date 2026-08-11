@@ -603,6 +603,10 @@ class PianoRateController extends Controller
             'ratePure' => $ratePure, 
             'quotePerAnagrafica' => $this->pianoRateQuoteService->quotePerAnagrafica($pianoRate),
             'quotePerImmobile' => $this->pianoRateQuoteService->quotePerImmobile($pianoRate),
+            // Il verdetto sull'allineamento arriva dal server, calcolato dallo **stesso** metodo
+            // che usa il cruscotto: fino all'11/08/2026 le due schermate se lo calcolavano da
+            // sole, con metodi e tolleranze diverse, e potevano contraddirsi.
+            'disallineato' => $this->pianoRateQuoteService->eDisallineato($pianoRate),
             'needsMigration' => false, 
             'copertura' => $coperturaData,
             'sources' => $sources, // <--- Ora questo conterrà le fatture!

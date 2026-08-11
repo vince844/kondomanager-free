@@ -47,6 +47,100 @@ class PianoRateQuoteService
         return false;
     }
 
+    /**
+     * Quanto il piano ha **davvero messo in rata** come spesa di gestione, in centesimi.
+     *
+     * Somma `regole_calcolo.importi.quota_pura_gestione`, cioè la sola componente di spesa dello
+     * snapshot: il pregresso non entra **per costruzione**, e non c'è niente da sottrarre.
+     *
+     * ## Perché sottrarre i saldi era la strada sbagliata
+     *
+     * Il cruscotto della pagina del piano faceva `totaleTeorico − saldiPregressi`, e quella
+     * sottrazione è esattamente ciò che si è rotto sui **saldi solidali**: una riga con
+     * `anagrafica_id` nullo non compare in un'aggregazione per persona, quindi mancava dalla
+     * sottrazione e il badge «Disallineato» restava acceso per sempre.
+     *
+     * Leggere la componente pura toglie il problema alla radice invece di rattopparlo — tanto
+     * che la correzione del 10/08/2026 (`totaleSaldiPregressiCents()`) è stata **cancellata**
+     * quando questo metodo l'ha resa inutile.
+     *
+     * ## Il ripiego, e quanto vale
+     *
+     * Le quote senza `quota_pura_gestione` nello snapshot contano il loro `importo`, escluse
+     * quelle di Rata Zero e di tipo `saldo_iniziale` — altrimenti il pregresso rientrerebbe
+     * dalla finestra. È il comportamento che il cruscotto ha da sempre e va conservato: sui dati
+     * reali dell'11/08/2026 non si attiva mai (**0 quote su 369** sono prive della chiave), ma
+     * esiste per i piani generati prima che lo snapshot la portasse.
+     */
+    public function totalePuroGeneratoCents(PianoRate $pianoRate): int
+    {
+        $pianoRate->loadMissing('rate.rateQuote');
+
+        $totale = 0;
+
+        foreach ($pianoRate->rate as $rata) {
+            foreach ($rata->rateQuote as $quota) {
+                $regole = $quota->regole_calcolo;
+
+                if (is_array($regole) && isset($regole['importi']['quota_pura_gestione'])) {
+                    $totale += (int) $regole['importi']['quota_pura_gestione'];
+
+                    continue;
+                }
+
+                if ($rata->numero_rata !== 0 && $quota->tipo !== 'saldo_iniziale') {
+                    $totale += (int) $quota->importo;
+                }
+            }
+        }
+
+        return $totale;
+    }
+
+    /**
+     * Quanto il piano **dovrebbe** mettere in rata: i capitoli collegati, o le fatture se è
+     * straordinario.
+     */
+    public function totaleAttesoCents(PianoRate $pianoRate): int
+    {
+        if ($pianoRate->tipo === 'straordinario') {
+            $pianoRate->loadMissing('fattureStraordinarie');
+
+            return (int) $pianoRate->fattureStraordinarie
+                ->sum(fn ($fattura) => $fattura->pivot->importo_collegato);
+        }
+
+        $pianoRate->loadMissing('capitoli');
+
+        return (int) $pianoRate->capitoli
+            ->sum(fn ($capitolo) => $capitolo->pivot->importo ?? $capitolo->importo);
+    }
+
+    /**
+     * Il verdetto: questo piano è ancora allineato al preventivo?
+     *
+     * **Esiste per avere un posto solo.** Fino all'11/08/2026 la domanda aveva due risposte: il
+     * cruscotto la calcolava in PHP leggendo la componente pura con tolleranza **zero**, la
+     * pagina del piano la ricalcolava in TypeScript sottraendo i saldi con tolleranza **€ 2,00**.
+     * Un piano scostato di € 1,00 era verde di là e «URGENTE» di qua.
+     *
+     * **Tolleranza zero, e i dati lo confermano:** la distribuzione penny-perfect somma esatta
+     * ai capitoli — misurato l'11/08/2026 su tutti i piani reali, delta 0 su ognuno. Una
+     * tolleranza che non scatta mai può solo nascondere.
+     *
+     * Un piano senza rate non è disallineato: non è ancora stato generato.
+     */
+    public function eDisallineato(PianoRate $pianoRate): bool
+    {
+        $pianoRate->loadMissing('rate');
+
+        if ($pianoRate->rate->isEmpty()) {
+            return false;
+        }
+
+        return $this->totaleAttesoCents($pianoRate) !== $this->totalePuroGeneratoCents($pianoRate);
+    }
+
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
     {
         $esercizio = $pianoRate->gestione->esercizi()->wherePivot('attiva', true)->first() 

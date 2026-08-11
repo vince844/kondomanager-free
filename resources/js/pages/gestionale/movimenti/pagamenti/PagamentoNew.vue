@@ -1586,7 +1586,7 @@ const pageGuides = [
                             <div class="w-16 h-16 bg-white dark:bg-amber-900/50 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg border border-amber-100 dark:border-amber-800">
                                 <FileX class="w-8 h-8 text-amber-500" />
                             </div>
-                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Fattura Non Ancora Approvata</h3>
+                            <h3 class="font-black text-slate-800 dark:text-slate-100 text-xl mb-1">Fattura non ancora approvata</h3>
                             <span class="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-amber-600 bg-amber-100 dark:bg-amber-900/50 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-800">
                                 <Scale class="w-3 h-3" /> Art. 1135 c.c.
                             </span>

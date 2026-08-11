@@ -7,6 +7,112 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.10.0-beta.48] - Quello Che Spariva Senza Dirlo
+
+**Nessuna migrazione**, e nessun dato cambia da solo.
+
+Il cruscotto diceva che il piano rate andava ricalcolato. Si premeva «Ricalcola», la finestra
+rispondeva **«Operazione Completata»**, e non cambiava niente. Si poteva premere all'infinito.
+
+La segnalazione era di Vincenzo, e il caso misurato è questo: un piano con **€ 35.661,60** di
+capitoli ne generava **€ 2.400,00**. Gli altri **€ 33.261,60** non finivano da nessuna parte — non
+in una rata, non in un avviso, non in un errore. Solo in una riga di log che nessuno legge.
+
+### Perché sparivano
+
+Dal 2026 il gestionale sa già cosa fare quando una spesa non è ripartibile: la dichiara
+**scoperta**, ferma la generazione e chiede all'amministratore una motivazione scritta. Quella
+guardia però era scritta in un punto del motore che i piani rate **non attraversano mai**, perché
+un piano forza sempre l'importo dei suoi capitoli e prende una strada diversa.
+
+Risultato: la protezione esisteva, era coperta da test, e per i piani rate non è mai scattata.
+
+Ne sono venuti fuori tre punti in cui il denaro usciva in silenzio, non uno:
+
+- **il capitolo senza tabella millesimale** collegata, che è il caso segnalato;
+- **la tabella collegata ma vuota**, senza immobili assegnati o con tutti i millesimi a zero;
+- e lo stesso caso **con più tabelle**, che è peggio: lì l'importo non spariva, veniva
+  **ridistribuito sui partecipanti delle altre tabelle**. Pagava chi non c'entrava.
+
+Adesso tutti e tre si fermano e chiedono cosa fare.
+
+### La schermata dice cosa manca e dove si sistema
+
+Il pannello degli scoperti sapeva raccontare una cosa sola — «questa unità non ha nessuno a cui
+addebitare» — perché fino a ieri quello era l'unico caso possibile. Ora ne racconta tre, ognuna
+con il suo rimedio:
+
+> **Nessuna tabella millesimale collegata al capitolo** — Collega una tabella millesimale a questa voce di spesa
+> **La tabella «Millesimi ascensore» non ha millesimi utilizzabili** — Assegna gli immobili alla tabella e inserisci i millesimi
+> **Interno 3** — Censisci le anagrafiche mancanti su questa unità
+
+Vale identico creando un piano e ricalcolandolo: sono la stessa strada.
+
+### Gli importi erano divisi per cento
+
+Nella stessa finestra, uno scoperto di **€ 24.741,60** compariva come **€ 247,42**. Nel punto in
+cui si chiede all'amministratore di accettare per iscritto una spesa non ripartita, il numero era
+un centesimo di quello vero. Il difetto c'era da prima e si vedeva raramente, proprio perché
+quella finestra si apriva quasi mai.
+
+### «Operazione Completata» non compare più quando non lo è
+
+Corretto il motore, il messaggio continuava a mentire: la finestra verde si apriva **sopra** il
+pannello che elencava cosa mancava. Succedeva perché un'operazione rifiutata torna indietro, e
+tornare indietro per il programma è una risposta riuscita.
+
+### Il totale dei millesimi, mentre lo scrivi
+
+Assegnando i millesimi alle unità non c'era **nessun totale**. Si compilava riga per riga e ci si
+accorgeva di un refuso al primo riparto, oppure mai — perché il motore ripartisce sempre il 100%
+della spesa sul totale effettivo, quindi una tabella a cui manca un'unità fa pagare la sua quota
+agli altri senza che nulla lo segnali.
+
+Ora in fondo alla tabella c'è la somma, che si muove mentre digiti. Non giudica e non pretende il
+1000: sulle tabelle vere il 1000 spesso non è il numero giusto — le parziali, quelle a parti
+uguali, quelle arrotondate dal tecnico e approvate così in assemblea. Il numero che deve venire lo
+sa l'amministratore; il gestionale glielo mostra e tace.
+
+I valori si scrivono ora con i decimali dichiarati dalla tabella — `500.00` e non `500.00000` — e
+**oltre quei decimali non si può digitare**: su una tabella a due, il terzo non entra.
+
+### Il debito di un altro non si può più pagare per sbaglio
+
+Cercando gli incassi **per unità immobiliare**, la schermata raccoglie le quote di tutti i
+comproprietari sotto la stessa riga: può capitare che il debito sia di uno e chi paga sia l'altro.
+Allocando lì sopra, il gestionale rispondeva di sì e non faceva niente — con il credito lo
+prelevava e glielo restituiva subito, con il contante lo trasformava in un anticipo del pagante,
+lasciando aperto il debito che l'amministratore credeva di saldare.
+
+Ora si ferma e dice **di chi è quel debito**, suggerendo di scegliere l'intestatario giusto.
+
+### Il bollino «Disallineato» che non si spegneva
+
+Su una gestione con un **debito solidale** — quello che segue l'unità e non la persona — il
+riquadro del piano rate restava rosso anche a piano perfettamente corretto, e nessun ricalcolo
+poteva spegnerlo. Era lo stesso sintomo della segnalazione iniziale, per una seconda causa.
+
+Nel correggerlo è emerso che il cruscotto in dashboard e la pagina del piano rispondevano alla
+domanda «questo piano è allineato?» con **due metodi diversi e due tolleranze diverse**: un piano
+scostato di un euro era verde di là e urgente di qua. Adesso la risposta è una sola, calcolata in
+un posto solo.
+
+### Sotto il cofano
+
+- **Trentaquattro test nuovi**, di cui quindici sul frontend. Fra questi i primi due file di test
+  di due componenti che non ne avevano nessuno.
+- La correzione del bollino ha **cancellato** quella scritta il giorno prima: leggere la
+  componente di spesa direttamente rende inutile sottrarre i saldi, ed è immune al problema dei
+  solidali per costruzione. Quando la correzione giusta elimina la precedente invece di
+  aggiungersi, di solito è quella giusta.
+- Una revisione critica del codice, condotta prima del rilascio, ha trovato tre difetti in ciò che
+  la beta stessa aveva appena scritto — fra cui una guardia nuova che sarebbe arrivata
+  all'amministratore come **pagina di errore**, buttando via la distribuzione appena fatta a mano.
+- Il limite dei decimali di una tabella era **5 in creazione e 6 in modifica**, su una colonna che
+  ne conserva 5: il sesto veniva troncato in silenzio dal database.
+
+---
+
 ## [1.10.0-beta.47] - Portare Dentro un Condominio Intero
 
 > ⚠️ **Questa versione tocca il database.** Aggiunge **tre tabelle nuove** — `import_batches`,

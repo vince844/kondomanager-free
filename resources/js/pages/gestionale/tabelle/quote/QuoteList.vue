@@ -9,7 +9,7 @@ import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
@@ -33,6 +33,100 @@ const alertMessage = ref("");
 const rawMillesimi = JSON.parse(JSON.stringify(props.millesimi));
 const rawImmobili = JSON.parse(JSON.stringify(props.immobili));
 
+const decimaliTabella = Math.max(0, props.tabella.numero_decimali ?? 2);
+
+/**
+ * Porta il valore digitato alla precisione della tabella, **quando si esce dalla casella**.
+ *
+ * ## Perché non una maschera vera
+ *
+ * Il primo tentativo usava `MoneyInput` (`v-money3`), che è quello che il gestionale adopera
+ * per gli importi. Risolveva la virgola e limitava i decimali, ma con la convenzione dei campi
+ * monetari: **le cifre scorrono da destra**. Digitando `200` compariva `2,00`, e per scrivere
+ * duecento millesimi bisognava battere `20000`.
+ *
+ * Sugli importi ha senso — si digitano i centesimi — ma i millesimi sono numeri tondi, e
+ * costringere a contare gli zeri è peggio del problema che la maschera risolveva. Verificato a
+ * video prima di tenerla.
+ *
+ * ## Cosa fa questa, invece
+ *
+ * Mentre si digita non tocca niente: `333.3` a metà parola resta `333.3`. All'uscita dal campo
+ * porta il valore ai decimali dichiarati dalla tabella, e basta.
+ *
+ * ## Perché il punto e non la virgola
+ *
+ * Un primo giro usava la virgola, che è il separatore italiano e quello del resto del
+ * gestionale. Sbagliato **qui**, per due ragioni. La prima: su questa pagina ogni altro campo
+ * numerico — ultima lettura, quota fissa, coefficiente di dispersione — è un input grezzo col
+ * punto, quindi la virgola rendeva i millesimi l'eccezione invece della regola. La seconda, che
+ * pesa di più: col punto **il valore che si vede è quello che si salva**. Nessuna conversione
+ * al `submit`, nessun `transform`, e nessuna ambiguità fra separatore decimale e delle migliaia
+ * — che è esattamente da dove sono usciti tutti i guai di questa funzione.
+ *
+ * Accetta comunque anche la virgola in ingresso: chi la batte per abitudine non deve essere
+ * corretto da un messaggio d'errore, gli si normalizza il valore e basta.
+ */
+const normalizzaAllaPrecisione = (v: unknown): string => {
+  const grezzo = String(v ?? "").trim();
+  if (grezzo === "") return "";
+
+  const n = Number(grezzo.replace(",", "."));
+  if (!Number.isFinite(n)) return grezzo; // Testo non numerico: lo rifiuta il server, con il suo messaggio.
+
+  return n.toFixed(decimaliTabella);
+};
+
+/**
+ * Impedisce di **digitare** più decimali di quanti la tabella ne dichiari.
+ *
+ * Il normalizzatore all'uscita dal campo non basta: fino al `blur` la casella accetta
+ * `500.345`, e l'amministratore vede a schermo un numero che il sistema poi cambia sotto i suoi
+ * occhi. Meglio non farglielo scrivere: su una tabella a due decimali il terzo non entra.
+ *
+ * **Tronca, non arrotonda** — `500.345` resta `500.34`. Arrotondare mentre si digita
+ * significherebbe che battere una cifra ne cambia un'altra già scritta, che a schermo si legge
+ * come un errore del programma.
+ *
+ * Cosa lascia passare di proposito: il separatore da solo (`500.` è uno stato legittimo di chi
+ * sta per scrivere i decimali) e la virgola, che viene raddrizzata all'uscita — chi la batte per
+ * abitudine non va corretto con un errore.
+ *
+ * Con `numero_decimali` a zero il separatore non si può proprio scrivere.
+ */
+const limitaDecimaliDigitati = (valore: string): string => {
+  // Solo cifre e separatori: lettere e simboli non entrano.
+  let s = valore.replace(/[^\d.,]/g, "");
+
+  // Un separatore solo: i successivi si ignorano invece di produrre `1.2.3`.
+  const primo = s.search(/[.,]/);
+  if (primo !== -1) {
+    s = s.slice(0, primo + 1) + s.slice(primo + 1).replace(/[.,]/g, "");
+  }
+
+  if (decimaliTabella === 0) return s.replace(/[.,]/g, "");
+
+  const parti = s.match(/^(\d*)([.,])(\d*)$/);
+  if (!parti) return s;
+
+  return parti[1] + parti[2] + parti[3].slice(0, decimaliTabella);
+};
+
+/**
+ * Applica il limite e **riallinea la casella**.
+ *
+ * Il `v-model` da solo non basta: quando il valore filtrato coincide con quello che il modello
+ * aveva già, Vue non ridisegna il campo e a schermo resterebbe la cifra di troppo appena
+ * battuta, pur non essendo nel modello. Scrivere `el.value` a mano chiude quella finestra.
+ */
+const onInputValore = (evento: Event, quota: { valore: string }): void => {
+  const el = evento.target as HTMLInputElement;
+  const pulito = limitaDecimaliDigitati(el.value);
+
+  if (el.value !== pulito) el.value = pulito;
+  quota.valore = pulito;
+};
+
 // Form separato a seconda del tipo tabella
 const form = useForm({
   quote: rawMillesimi.map((q: Millesimo) => {
@@ -40,7 +134,7 @@ const form = useForm({
       return {
         id: q.id as number | null,
         immobile: q.immobile as Immobile | null, 
-        valore: q.valore as string,
+        valore: normalizzaAllaPrecisione(q.valore),
         has_contatore: q.coefficienti?.has_contatore ?? false,
         ultima_lettura: q.coefficienti?.ultima_lettura ?? ""
       }
@@ -50,7 +144,7 @@ const form = useForm({
       return {
         id: q.id as number | null,
         immobile: q.immobile as Immobile | null, 
-        valore: q.valore as string,
+        valore: normalizzaAllaPrecisione(q.valore),
         coeff_dispersione: q.coefficienti?.coeff_dispersione ?? "",
         quota_fissa: q.coefficienti?.quota_fissa ?? "",
         quota_variabile: q.coefficienti?.quota_variabile ?? ""
@@ -60,7 +154,7 @@ const form = useForm({
     return {
       id: q.id as number | null,
       immobile: q.immobile as Immobile | null, 
-      valore: q.valore as string
+      valore: normalizzaAllaPrecisione(q.valore)
     }
   }),
 });
@@ -89,8 +183,12 @@ const pageGuides = computed(() => [
     colorVariant: 'emerald' as const
   },
   {
-    title: 'Controllo Totali',
-    description: "Verifica che la somma totale corrisponda al limite previsto.",
+    title: 'Totale sempre a vista',
+    // Il testo precedente diceva «verifica che la somma corrisponda al limite previsto», e
+    // prometteva due cose che non esistevano: una verifica (che il gestionale non fa) e un
+    // limite (che non c'è — il totale giusto dipende dalla tabella, e lo sa l'amministratore).
+    // Dalla beta.48 il totale c'è davvero, e questa riga dice quello che fa: mostrarlo.
+    description: "In fondo all'elenco trovi la somma dei valori inseriti, aggiornata mentre digiti.",
     icon: Hash,
     colorVariant: 'amber' as const
   }
@@ -151,7 +249,66 @@ const valorePlaceholder = (decimali: number) => {
   return "0." + "0".repeat(decimali);
 };
 
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Il totale a video mentre si digita.
+ *
+ * Fino alla beta.48 questa pagina non aveva **nessun** totale: si compilavano i millesimi riga
+ * per riga e ci si accorgeva di un refuso al primo riparto, o mai — perché il motore normalizza
+ * su `valore / sommaValori`, quindi una tabella che somma a 900 ripartisce comunque il 100%
+ * della spesa facendola pagare agli altri, e nessun controllo contabile ha niente da segnalare.
+ *
+ * Il posto giusto per dirlo è questo: qui il refuso si corregge nel momento in cui lo si batte.
+ *
+ * ⚠️ **Il totale non giudica, e non è una svista.** Non c'è confronto con 1000 né con nessun
+ * altro valore atteso: sui dati veri nove tabelle su quindici non sommano a 1000 e sono tutte
+ * corrette — parziali, a parti uguali, o arrotondate dal tecnico e approvate così in assemblea.
+ * Il numero che l'amministratore deve vedere lo sa lui; il gestionale glielo mostra e tace.
+ *
+ * *(Un confronto con un totale dichiarato per tabella è stato progettato e messo da parte
+ * l'11/08/2026 — vedi `docs/validatore_coerenza_millesimi.md`.)*
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+/** Accetta sia `1000.5` sia `1000,5`: il placeholder usa il punto, le tastiere italiane no. */
+const parseValore = (v: unknown): number => {
+  const n = parseFloat(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+};
+
+const decimali = computed(() => Math.max(0, props.tabella.numero_decimali ?? 2));
+
+/** Le stesse righe che conta il motore: i valori a zero non partecipano. */
+const totaleCorrente = computed(() => {
+  const somma = form.quote.reduce((acc, q) => {
+    const v = parseValore(q.valore);
+    return v > 0 ? acc + v : acc;
+  }, 0);
+
+  // Arrotonda ai decimali della tabella: senza, 333,33 × 3 uscirebbe 999,9899999999999.
+  return Number(somma.toFixed(decimali.value));
+});
+
+/** Formatta con i decimali della tabella, senza zeri inutili: 1000 e non 1000,00. */
+/**
+ * Il totale si scrive **come i valori che somma**: stessi decimali, stesso separatore, nessun
+ * raggruppamento delle migliaia.
+ *
+ * Niente `Intl.NumberFormat`, che qui produrrebbe la virgola e reintrodurrebbe due convenzioni
+ * nella stessa colonna. Il punto delle migliaia sarebbe pure peggio: `1.200,00` sotto una
+ * colonna di `500.00` è la stessa ambiguità che ha fatto leggere `333.33333` come
+ * `333.333,33`.
+ */
+const formattaValore = (n: number) => n.toFixed(decimali.value);
+
 const submit = () => {
+  // Nessuna conversione prima di partire: le caselle tengono già il numero nella forma che il
+  // server valida (`numeric`, quindi punto decimale). È il vantaggio pratico di aver scelto il
+  // punto — quello che si vede è quello che si salva.
+  //
+  // Una virgola battuta per abitudine viene normalizzata all'uscita dal campo, quindi non
+  // arriva fin qui; e se il campo non viene mai lasciato, `numeric` la rifiuta con il suo
+  // messaggio invece di far passare un valore ambiguo.
   form.put(
     route("admin.gestionale.tabelle.quote.update", {
       condominio: props.condominio.id,
@@ -280,7 +437,10 @@ const submit = () => {
                       <Input
                         v-model="q.valore"
                         class="w-28 bg-white dark:bg-slate-950"
+                        inputmode="decimal"
                         :placeholder="valorePlaceholder(props.tabella.numero_decimali)"
+                        @input="onInputValore($event, q)"
+                        @blur="q.valore = normalizzaAllaPrecisione(q.valore)"
                       />
                       <InputError :message="(form.errors as Record<string, string>)[`quote.${idx}.valore`]" />
                     </TableCell>
@@ -312,7 +472,54 @@ const submit = () => {
                       </Button>
                     </TableCell>
                   </TableRow>
+
                 </TableBody>
+
+                <!--
+                  Il totale sta in un `<tfoot>` vero, non in una riga in fondo al corpo: è
+                  un'informazione sulla tabella, non un'altra unità immobiliare, e il tag lo dice
+                  anche a chi legge con uno screen reader.
+
+                  Si somma sulle righe a schermo e non si chiede al server: deve muoversi mentre
+                  si digita, o non serve a niente. E non blocca il salvataggio — una tabella si
+                  compila una riga per volta, e le righe intermedie per definizione non tornano.
+                -->
+                <TableFooter v-if="form.quote.length">
+                  <TableRow class="hover:bg-transparent">
+                    <!-- Stessa struttura delle righe sopra: etichetta e sotto-riga di contesto. -->
+                    <TableCell>
+                      <div class="text-[11px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                        Totale
+                      </div>
+                      <div class="text-[11px] text-slate-500 dark:text-slate-400 font-normal">
+                        {{ form.quote.length }} {{ form.quote.length === 1 ? 'unità associata' : 'unità associate' }}
+                      </div>
+                    </TableCell>
+
+                    <!--
+                      Stessa geometria delle caselle della colonna (`h-9 w-28 rounded-md px-3`),
+                      così il numero cade esattamente sotto i valori invece di galleggiare a
+                      sinistra. Ma **non è un `<input>`**, ed è deliberato: il totale è calcolato,
+                      non digitabile, e una casella disabilitata si legge come «potresti
+                      modificarlo, ma adesso no». Il bordo tratteggiato e il fondo pieno dicono
+                      «stessa colonna, altro mestiere».
+                    -->
+                    <TableCell>
+                      <div
+                        class="inline-flex h-9 w-28 items-center rounded-md border border-dashed border-slate-300 bg-slate-100/70 px-3 text-sm font-bold text-slate-900 tabular-nums dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-100"
+                      >
+                        {{ formattaValore(totaleCorrente) }}
+                      </div>
+                    </TableCell>
+
+                    <TableCell v-if="props.tabella.tipo === 'acqua'"></TableCell>
+                    <TableCell v-if="props.tabella.tipo === 'acqua'"></TableCell>
+                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
+                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
+                    <TableCell v-if="props.tabella.tipo === 'riscaldamento'"></TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </TableFooter>
 
               </Table>
             </div>

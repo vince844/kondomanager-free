@@ -39,6 +39,8 @@ const props = defineProps<{
   esercizio: Esercizio;
   pianoRate: any,
   quotePerAnagrafica: any[],
+  /** Verdetto sull'allineamento, calcolato dal server. Vedi `isDisallineato`. */
+  disallineato?: boolean,
   quotePerImmobile: any[],
   ratePure: any[],
   needsMigration: boolean;
@@ -102,16 +104,24 @@ const isCapitoliExpanded = ref(false);
 const isReloadingCapitoli = ref(false);
 const isSpostaSpesaOpen = ref(false); 
 
-const isDisallineato = computed(() => {
-    if (!props.pianoRate.capitoli || !aggregates.value) return false;
-    const totaleVoci = props.pianoRate.capitoli.reduce((acc: number, cap: any) => acc + (cap.importo || 0), 0);
-    if (aggregates.value.totaleTeorico === 0) return false;
-    const saldiPregressi = (props.quotePerAnagrafica || []).reduce((sum, item) => {
-        return sum + (item.saldo_iniziale || 0);
-    }, 0);
-    const totaleRatePuro = aggregates.value.totaleTeorico - saldiPregressi;
-    return Math.abs(totaleVoci - totaleRatePuro) > 200;
-});
+/**
+ * Il badge «Disallineato: ricalcola!».
+ *
+ * **Non si calcola più qui.** Il verdetto arriva dal server (`PianoRateQuoteService::eDisallineato`),
+ * lo stesso metodo che alimenta il cruscotto in dashboard.
+ *
+ * Fino all'11/08/2026 le due schermate rispondevano alla stessa domanda in due modi: il cruscotto
+ * sommava la componente pura dello snapshot con tolleranza **zero**, questa pagina ricavava lo
+ * stesso numero sottraendo i saldi con tolleranza **€ 2,00**. Un piano scostato di € 1,00 era
+ * verde qui e «URGENTE» di là.
+ *
+ * E la sottrazione era anche la strada più fragile: un saldo **solidale** ha `anagrafica_id`
+ * nullo, non compare in un'aggregazione per persona, e il badge restava acceso per sempre —
+ * difetto trovato a video il 10/08/2026 sul piano 207 di Demo KM, € 1.200,00 di solidale.
+ * Leggere la componente pura non ha quel problema **per costruzione**, tanto che la correzione
+ * del giorno prima è stata cancellata da questa.
+ */
+const isDisallineato = computed(() => props.disallineato === true);
 
 const confirmDetachItem = (capitolo: any) => {
     if (aggregates.value.totaleVersato > 0) {
@@ -383,6 +393,30 @@ const confirmRecalculate = () => {
 
 const isProcessingRecalculate = ref(false);
 
+/**
+ * Il ricalcolo è tornato indietro senza aver fatto niente?
+ *
+ * Serve perché `PianoRateGenerationController` risponde con `back()` in **due** casi di
+ * fallimento — gli scoperti non accettati, e qualunque altro guasto intercettato dal
+ * `catch (\Throwable)`, fra cui la guardia del sovra-finanziamento — e per Inertia un `back()`
+ * è una risposta **riuscita**. Senza questo controllo `onSuccess` scatta lo stesso e la finestra
+ * annuncia «Operazione Completata» sopra il pannello degli scoperti o sopra un banner d'errore.
+ *
+ * È il difetto segnalato da Vincenzo — *«diciamo che è completata e non è successo niente»* —
+ * che era sopravvissuto alla correzione del motore: il blocco era diventato vero e il messaggio
+ * continuava a smentirlo. Trovato a video il 10/08/2026 per la via degli scoperti, e la sua
+ * seconda via dalla revisione avversariale il giorno dopo: la prima versione di questa guardia
+ * guardava **solo** `scoperti_warning` e lasciava passare l'errore generico.
+ */
+const ricalcoloNonRiuscito = (page: any): boolean => {
+    const flash = page?.props?.flash ?? {};
+
+    const scoperti = flash.scoperti_warning;
+    if (Array.isArray(scoperti) && scoperti.length > 0) return true;
+
+    return flash.message?.type === 'error';
+};
+
 const executeRecalculate = () => {
     isProcessingRecalculate.value = true;
     router.post(route(generateRoute('gestionale.esercizi.piani-rate.regenerate'), { 
@@ -391,8 +425,20 @@ const executeRecalculate = () => {
         pianoRate: props.pianoRate.id 
     }), { orphan_ids: selectedOrphanIds.value }, { 
         preserveScroll: true,
-        onSuccess: () => {
+        onSuccess: (page) => {
             isRecalculateAlertOpen.value = false;
+
+            // Il ricalcolo bloccato dagli scoperti torna con `back()`, che per Inertia è una
+            // risposta riuscita: `onSuccess` scattava lo stesso e la finestra annunciava
+            // «Operazione Completata» **sopra** il pannello che elenca cosa manca.
+            //
+            // È letteralmente il difetto segnalato — «diciamo che è completata e non è
+            // successo niente» — sopravvissuto alla correzione del motore, che aveva reso il
+            // blocco vero lasciando intatto il messaggio che lo smentiva. Trovato a video il
+            // 10/08/2026, non dai test: la suite verifica cosa risponde il server, non quale
+            // finestra si apre sopra la risposta.
+            if (ricalcoloNonRiuscito(page)) return;
+
             showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato.', false);
         },
         onFinish: () => {
@@ -414,8 +460,15 @@ const handleProcedi = (nota: string) => {
     }, { 
         preserveScroll: true,
         preserveState: true,
-        onSuccess: () => {
+        onSuccess: (page) => {
             isRecalculateAlertOpen.value = false;
+
+            // Anche la strada della forzatura può tornare indietro senza aver fatto niente: la
+            // guardia del sovra-finanziamento e gli altri guasti passano dal `catch (\Throwable)`
+            // del controller, che risponde `back()` con un flash d'errore. Annunciare «completata»
+            // sopra quel banner è lo stesso difetto, su un percorso diverso.
+            if (ricalcoloNonRiuscito(page)) return;
+
             showFeedback('Operazione Completata', 'Il piano rate è stato aggiornato con motivazione per le quote scoperte.', false);
         },
         onFinish: () => {
